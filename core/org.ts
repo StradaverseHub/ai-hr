@@ -7,7 +7,8 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { nextEmployeeCode } from './comp';
-import { person, employment, assignment, reportingLine, leaveLedger, leavePolicy } from '../db/schema';
+import { packFor } from '../localization/registry';
+import { person, employment, assignment, company, reportingLine, leaveLedger } from '../db/schema';
 
 export class ReportingCycleError extends Error {
   constructor() {
@@ -29,30 +30,6 @@ export type HireParams = {
   hiredOn: string; // 'YYYY-MM-DD'
   annualLeaveTypeId?: string; // grant pro-rated annual leave on hire if provided
 };
-
-/** Pro-rated annual grant = annualDays * (months remaining in hire year / 12). */
-async function proratedAnnualGrant(
-  tx: Tx,
-  leaveTypeId: string,
-  hiredOn: string,
-): Promise<number> {
-  const rows = await tx
-    .select({ accrual: leavePolicy.accrual })
-    .from(leavePolicy)
-    .where(
-      and(
-        eq(leavePolicy.leaveTypeId, leaveTypeId),
-        sql`${leavePolicy.validFrom} <= ${hiredOn}`,
-        sql`(${leavePolicy.validTo} IS NULL OR ${leavePolicy.validTo} > ${hiredOn})`,
-      ),
-    )
-    .limit(1);
-  if (rows.length === 0) return 0;
-  const annualDays = Number((rows[0].accrual as { annualDays?: number })?.annualDays ?? 0);
-  const month = Number(hiredOn.slice(5, 7)); // 1..12
-  const remaining = 12 - (month - 1);
-  return Math.round(((annualDays * remaining) / 12) * 100) / 100;
-}
 
 export async function hireEmployee(ctx: SessionContext, p: HireParams) {
   return withTenant(ctx, async (tx) => {
@@ -89,7 +66,17 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     });
 
     if (p.annualLeaveTypeId) {
-      const grant = await proratedAnnualGrant(tx, p.annualLeaveTypeId, p.hiredOn);
+      // Annual entitlement comes from the company's country pack (0 yrs service at hire),
+      // pro-rated by months remaining in the hire year.
+      const [co] = await tx
+        .select({ country: company.country })
+        .from(company)
+        .where(eq(company.id, p.companyId))
+        .limit(1);
+      const pack = packFor(co?.country);
+      const annualDays = pack ? pack.leave.entitlement('ANNUAL', 0) : 0;
+      const month = Number(p.hiredOn.slice(5, 7));
+      const grant = Math.round(((annualDays * (12 - (month - 1))) / 12) * 100) / 100;
       if (grant > 0) {
         await tx.insert(leaveLedger).values({
           tenantId: ctx.tenantId,

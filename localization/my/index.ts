@@ -3,6 +3,8 @@
  * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
  */
 import { getStatutoryProfileMY, isValidIC, setStatutoryProfileMY } from './statutory';
+import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
+import { MY_HOLIDAYS_2026 } from './holidays';
 
 export const myPack = {
   country: 'MY' as const,
@@ -11,4 +13,10 @@ export const myPack = {
     get: getStatutoryProfileMY,
     validateIC: isValidIC,
   },
+  leave: {
+    types: MY_LEAVE_TYPES,
+    entitlement,
+    annualEntitlement,
+  },
+  holidays: MY_HOLIDAYS_2026,
 };

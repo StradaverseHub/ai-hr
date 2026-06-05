@@ -3,10 +3,10 @@
  * (accrual +, debit −, adjustment ±). Approval checks projected balance and writes
  * the debit + status flip + event atomically in one transaction.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { leaveLedger, leaveRequest } from '../db/schema';
+import { holiday, leaveLedger, leaveRequest, leaveType } from '../db/schema';
 
 export class InsufficientLeaveBalanceError extends Error {
   constructor() {
@@ -30,13 +30,47 @@ function dayCount(start: string, end: string): number {
   return Math.floor((e - s) / 86_400_000) + 1;
 }
 
+function eachDate(start: string, end: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/** Working days in [start, end]: excludes Sat/Sun and the given holiday dates. */
+function workingDays(start: string, end: string, holidays: Set<string>): number {
+  let n = 0;
+  for (const d of eachDate(start, end)) {
+    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+    if (dow === 0 || dow === 6 || holidays.has(d)) continue;
+    n++;
+  }
+  return n;
+}
+
 export async function requestLeave(
   ctx: SessionContext,
   p: { employmentId: string; leaveTypeId: string; startDate: string; endDate: string; reason?: string },
 ) {
   return withTenant(ctx, async (tx) => {
-    const days = dayCount(p.startDate, p.endDate);
-    if (days <= 0) throw new Error('endDate is before startDate');
+    // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
+    const [lt] = await tx
+      .select({ counting: leaveType.counting })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.leaveTypeId))
+      .limit(1);
+    let days: number;
+    if (lt?.counting === 'working_days') {
+      const hols = await tx
+        .select({ d: holiday.holidayDate })
+        .from(holiday)
+        .where(and(gte(holiday.holidayDate, p.startDate), lte(holiday.holidayDate, p.endDate)));
+      days = workingDays(p.startDate, p.endDate, new Set(hols.map((h) => h.d)));
+    } else {
+      days = dayCount(p.startDate, p.endDate);
+    }
+    if (days <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
     const [row] = await tx
       .insert(leaveRequest)
       .values({

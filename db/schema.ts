@@ -267,6 +267,8 @@ export const leaveType = pgTable('leave_type', {
   code: text('code').notNull(), // e.g. 'ANNUAL'
   name: text('name').notNull(),
   paid: boolean('paid').notNull().default(true),
+  // 'working_days' (exclude weekends + holidays) | 'calendar_days' (consecutive)
+  counting: text('counting').notNull().default('calendar_days'),
   createdAt: createdAt(),
 });
 
@@ -408,4 +410,18 @@ export const tenantCounter = pgTable(
     value: bigint('value', { mode: 'number' }).notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.kind] })],
+);
+
+// ─────────────── Public holiday calendar (generic; packs seed the data) ───────────────
+export const holiday = pgTable(
+  'holiday',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    country: text('country').notNull(),
+    holidayDate: date('holiday_date').notNull(),
+    name: text('name').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('holiday_uq').on(t.tenantId, t.country, t.holidayDate)],
 );

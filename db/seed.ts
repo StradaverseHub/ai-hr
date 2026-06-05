@@ -9,6 +9,7 @@ import * as schema from './schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { myPack } from '../localization/my';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -50,17 +51,21 @@ async function main() {
   await owner.db
     .insert(schema.costCenter)
     .values({ tenantId: DEV_TENANT_ID, companyId: company.id, code: 'HQ', name: 'Headquarters' });
-  const [annual] = await owner.db
-    .insert(schema.leaveType)
-    .values({ tenantId: DEV_TENANT_ID, code: 'ANNUAL', name: 'Annual Leave', paid: true })
-    .returning({ id: schema.leaveType.id });
-  await owner.db.insert(schema.leavePolicy).values({
-    tenantId: DEV_TENANT_ID,
-    leaveTypeId: annual.id,
-    accrual: { annualDays: 16, method: 'grant_on_hire_prorated' },
-    validFrom: '2020-01-01',
-    validTo: null,
-  });
+  // Leave types + public holidays from the Malaysia pack (ADR-0008).
+  const leaveTypeIds: Record<string, string> = {};
+  for (const lt of myPack.leave.types) {
+    const [row] = await owner.db
+      .insert(schema.leaveType)
+      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting })
+      .returning({ id: schema.leaveType.id });
+    leaveTypeIds[lt.code] = row.id;
+  }
+  const annual = { id: leaveTypeIds.ANNUAL };
+  for (const h of myPack.holidays) {
+    await owner.db
+      .insert(schema.holiday)
+      .values({ tenantId: DEV_TENANT_ID, country: 'MY', holidayDate: h.date, name: h.name });
+  }
   await owner.db
     .insert(schema.appUser)
     .values({ id: DEV_ADMIN_USER_ID, tenantId: DEV_TENANT_ID, workosUserId: 'user_dev_admin', personId: null });

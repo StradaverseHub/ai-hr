@@ -9,6 +9,7 @@ import {
   eventTypesFor,
   ledgerBalance,
   migrateTestDb,
+  owner,
   resetDb,
   seedBase,
   type Base,
@@ -26,6 +27,7 @@ import { reportingLinesFor } from '../core/read';
 import { createCompany } from '../core/admin';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
+import { annualEntitlement, entitlement } from '../localization/my/leave';
 
 let base: Base;
 
@@ -109,7 +111,7 @@ describe('UC6 — leave approval atomicity & balance', () => {
   it('approves within balance; rejects over-balance without debiting', async () => {
     const a = adminCtx(base);
     const { employmentId } = await hire(a, base, 'Bala', { annual: true });
-    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(16);
+    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(8); // EA-1955: <2yr = 8
 
     const r1 = await requestLeave(a, {
       employmentId,
@@ -118,7 +120,7 @@ describe('UC6 — leave approval atomicity & balance', () => {
       endDate: '2026-02-04', // 3 days
     });
     await decideLeave(a, { leaveRequestId: r1.leaveRequestId, decision: 'approved' });
-    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(13);
+    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(5);
 
     const r2 = await requestLeave(a, {
       employmentId,
@@ -129,7 +131,7 @@ describe('UC6 — leave approval atomicity & balance', () => {
     await expect(
       decideLeave(a, { leaveRequestId: r2.leaveRequestId, decision: 'approved' }),
     ).rejects.toBeInstanceOf(InsufficientLeaveBalanceError);
-    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(13); // unchanged (atomic)
+    expect(await ledgerBalance(employmentId, base.annualLeaveTypeId)).toBe(5); // unchanged (atomic)
 
     const evs = await eventTypesFor(base.tenantId, r1.leaveRequestId);
     expect(evs).toContain('leave-request.submitted');
@@ -242,5 +244,32 @@ describe('Slice 1 — Malaysia statutory pack', () => {
     const prof = await getStatutoryProfileMY(a, personId);
     expect(prof?.icNumber).toBe('900101011234'); // dashes stripped
     expect(prof?.epfNumber).toBe('EPF1');
+  });
+});
+
+describe('Slice 2 — MY leave rules', () => {
+  it('EA-1955 annual entitlement is service-tiered', () => {
+    expect(annualEntitlement(0)).toBe(8);
+    expect(annualEntitlement(3)).toBe(12);
+    expect(annualEntitlement(5)).toBe(12);
+    expect(annualEntitlement(6)).toBe(16);
+    expect(entitlement('SICK', 0)).toBe(14);
+    expect(entitlement('MATERNITY', 0)).toBe(98);
+  });
+
+  it('working-day leave excludes weekends and holidays', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Wd');
+    const [lt] = await owner.db
+      .insert(schema.leaveType)
+      .values({ tenantId: base.tenantId, code: 'WD', name: 'Working-day Leave', paid: true, counting: 'working_days' })
+      .returning({ id: schema.leaveType.id });
+    await owner.db
+      .insert(schema.holiday)
+      .values({ tenantId: base.tenantId, country: 'MY', holidayDate: '2026-06-03', name: 'Test Holiday' });
+    // A full 7-day span always includes one weekend → working days ≤ 5 (fewer with the holiday).
+    const r = await requestLeave(a, { employmentId, leaveTypeId: lt.id, startDate: '2026-06-01', endDate: '2026-06-07' });
+    expect(r.days).toBeGreaterThan(0);
+    expect(r.days).toBeLessThanOrEqual(5);
   });
 });
