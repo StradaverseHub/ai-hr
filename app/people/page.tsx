@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getSession } from '@/lib/session';
 import { listCompanies, listDepartments, listEmployees, listLeaveTypes } from '@/core/read';
-import { Card, Field, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { Button, Card, Field, StatusBadge, inputCls } from '@/components/ui';
 import { hireAction } from './actions';
 
 export default async function PeoplePage({
@@ -120,9 +120,7 @@ export default async function PeoplePage({
             </Field>
             {annual && <input type="hidden" name="annualLeaveTypeId" value={annual.id} />}
             <div className="sm:col-span-2">
-              <button type="submit" className={btnPrimary}>
-                Hire
-              </button>
+              <Button type="submit">Hire</Button>
             </div>
           </form>
         </details>

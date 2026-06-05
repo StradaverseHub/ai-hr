@@ -25,5 +25,5 @@ export async function hireAction(formData: FormData) {
     redirect(`/people?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/people');
-  redirect('/people');
+  redirect('/people?toast=Employee hired');
 }

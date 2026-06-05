@@ -10,7 +10,8 @@ import {
   listEmployees,
   reportingLinesFor,
 } from '@/core/read';
-import { Card, ErrorBanner, Field, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
   addReportingLineAction,
   endReportingLineAction,
@@ -339,7 +340,14 @@ export default async function EmployeePage({
                 <input name="terminationDate" type="date" required defaultValue="2026-06-30" className={inputCls} />
               </Field>
               <div className="sm:col-span-2">
-                <button className={btnGhost}>Terminate employment</button>
+                <ConfirmSubmit
+                  title="Terminate employment?"
+                  description={`This ends ${emp.name}'s employment on the chosen date. Assignment history is preserved.`}
+                  confirmLabel="Terminate"
+                  size="sm"
+                >
+                  Terminate employment
+                </ConfirmSubmit>
               </div>
             </form>
           </Card>

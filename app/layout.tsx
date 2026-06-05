@@ -1,9 +1,12 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import { Suspense } from 'react';
 import { Providers } from './providers';
 import { Sidebar } from '@/components/sidebar';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { Toaster } from '@/components/ui/sonner';
+import { ToastFromQuery } from '@/components/ui/toast-trigger';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -39,6 +42,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
               <main className="min-w-0 flex-1 p-6">{children}</main>
             </div>
           </div>
+          <Suspense fallback={null}>
+            <ToastFromQuery />
+          </Suspense>
+          <Toaster />
         </Providers>
       </body>
     </html>

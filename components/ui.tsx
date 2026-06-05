@@ -1,26 +1,26 @@
 import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
+// Primitives (shadcn-pattern) re-exported so pages can `import { Button } from '@/components/ui'`.
+export { Button, buttonVariants } from './ui/button';
+export { Input } from './ui/input';
+export { Badge } from './ui/badge';
+export { Card } from './ui/card';
+
+// Legacy class strings, now token-based — kept for pages not yet migrated to primitives.
 export const inputCls =
-  'w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-700 dark:bg-zinc-900';
+  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 export const btnPrimary =
-  'inline-flex items-center justify-center rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-500 disabled:opacity-50';
+  'inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50';
 export const btnGhost =
-  'inline-flex items-center justify-center rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800';
+  'inline-flex h-9 items-center justify-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground';
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {children}
     </label>
-  );
-}
-
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 ${className}`}>
-      {children}
-    </div>
   );
 }
 
@@ -29,13 +29,13 @@ const STATUS_STYLES: Record<string, string> = {
   on_leave: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   probation: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   offboarding: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400',
-  terminated: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+  terminated: 'bg-muted text-muted-foreground',
 };
 
 export function StatusBadge({ status }: { status: string | null }) {
-  const cls = (status && STATUS_STYLES[status]) || 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400';
+  const cls = (status && STATUS_STYLES[status]) || 'bg-muted text-muted-foreground';
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
+    <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize', cls)}>
       {status ? status.replace(/_/g, ' ') : '—'}
     </span>
   );
@@ -44,7 +44,7 @@ export function StatusBadge({ status }: { status: string | null }) {
 export function ErrorBanner({ message }: { message?: string }) {
   if (!message) return null;
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+    <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
       {message}
     </div>
   );
@@ -52,9 +52,9 @@ export function ErrorBanner({ message }: { message?: string }) {
 
 export function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (
-    <div className="border-b border-zinc-200 px-4 py-3 text-sm font-medium dark:border-zinc-800">
+    <div className="border-b border-border px-4 py-3 text-sm font-medium">
       {title}
-      {count !== undefined && <span className="ml-2 text-zinc-500">({count})</span>}
+      {count !== undefined && <span className="ml-2 text-muted-foreground">({count})</span>}
     </div>
   );
 }

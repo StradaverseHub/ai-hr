@@ -20,7 +20,7 @@ export async function transferAction(formData: FormData) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
 }
 
 export async function terminateAction(formData: FormData) {
@@ -35,7 +35,7 @@ export async function terminateAction(formData: FormData) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
 }
 
 export async function addReportingLineAction(formData: FormData) {
@@ -52,7 +52,7 @@ export async function addReportingLineAction(formData: FormData) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
 }
 
 export async function endReportingLineAction(formData: FormData) {
@@ -67,7 +67,7 @@ export async function endReportingLineAction(formData: FormData) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
 }
 
 export async function setCompensationAction(formData: FormData) {
@@ -84,7 +84,7 @@ export async function setCompensationAction(formData: FormData) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
 }
 
 export async function setStatutoryAction(formData: FormData) {
@@ -108,5 +108,5 @@ export async function setStatutoryAction(formData: FormData) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
 }
