@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getSession } from '@/lib/session';
 import { listCompanies, listDepartments, listEmployees, listLeaveTypes } from '@/core/read';
 import { Card, Field, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
@@ -46,7 +47,12 @@ export default async function PeoplePage({
             {employees.map((e) => (
               <tr key={e.employmentId} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
                 <td className="px-4 py-3">
-                  <div className="font-medium text-zinc-900 dark:text-zinc-100">{e.name}</div>
+                  <Link
+                    href={`/people/${e.employmentId}`}
+                    className="font-medium text-zinc-900 hover:text-indigo-600 dark:text-zinc-100 dark:hover:text-indigo-400"
+                  >
+                    {e.name}
+                  </Link>
                   <div className="text-xs text-zinc-500">{e.email}</div>
                 </td>
                 <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.department ?? '—'}</td>

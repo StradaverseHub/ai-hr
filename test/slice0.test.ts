@@ -18,9 +18,12 @@ import {
   hireEmployee,
   ReportingCycleError,
   setReportingLine,
+  terminateEmployment,
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
+import { reportingLinesFor } from '../core/read';
+import { createCompany } from '../core/admin';
 
 let base: Base;
 
@@ -164,5 +167,52 @@ describe('UC9 — ABAC visibility', () => {
     );
     expect(mgrSeesReport.length).toBe(1);
     expect(peerSeesReport.length).toBe(0);
+  });
+});
+
+describe('UC3 — terminate', () => {
+  it('closes the open assignment, sets terminatedOn, and emits an event', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Tariq');
+    await terminateEmployment(a, { employmentId, terminationDate: '2026-06-30' });
+
+    const [emp] = await withTenant(a, (tx) =>
+      tx.select().from(schema.employment).where(eq(schema.employment.id, employmentId)),
+    );
+    expect(emp.terminatedOn).toBe('2026-06-30');
+
+    const assignments = await withTenant(a, (tx) =>
+      tx.select().from(schema.assignment).where(eq(schema.assignment.employmentId, employmentId)),
+    );
+    expect(assignments[0].validTo).toBe('2026-06-30');
+
+    const evs = await eventTypesFor(base.tenantId, employmentId);
+    expect(evs).toContain('employment.hired');
+    expect(evs).toContain('employment.terminated');
+  });
+});
+
+describe('reporting lines — valid edge', () => {
+  it('creates and lists a manager relationship both directions', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Suba');
+    const M = await hire(a, base, 'Boss');
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-01',
+    });
+    const sub = await reportingLinesFor(a, E.employmentId);
+    expect(sub.managers.map((m) => m.employmentId)).toContain(M.employmentId);
+    const mgr = await reportingLinesFor(a, M.employmentId);
+    expect(mgr.reports.map((r) => r.employmentId)).toContain(E.employmentId);
+  });
+});
+
+describe('hardening — role-gated writes', () => {
+  it('a non-admin session cannot create a company (RLS denies)', async () => {
+    const employee: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['employee'] };
+    await expect(createCompany(employee, { legalName: 'Sneaky Sdn Bhd' })).rejects.toThrow();
   });
 });

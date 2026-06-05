@@ -277,3 +277,20 @@ export async function getAssignmentAsOf(ctx: SessionContext, employmentId: strin
     return row ?? null;
   });
 }
+
+export async function endReportingLine(
+  ctx: SessionContext,
+  p: { reportingLineId: string; endDate: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(reportingLine).set({ validTo: p.endDate }).where(eq(reportingLine.id, p.reportingLineId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'reporting-line',
+      aggregateId: p.reportingLineId,
+      eventType: 'reporting-line.ended',
+      actor: actorOf(ctx),
+      payload: { endDate: p.endDate },
+    });
+  });
+}
