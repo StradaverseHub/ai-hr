@@ -40,3 +40,29 @@ export function StatusBadge({ status }: { status: string | null }) {
     </span>
   );
 }
+
+export function ErrorBanner({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+      {message}
+    </div>
+  );
+}
+
+export function SectionHeader({ title, count }: { title: string; count?: number }) {
+  return (
+    <div className="border-b border-zinc-200 px-4 py-3 text-sm font-medium dark:border-zinc-800">
+      {title}
+      {count !== undefined && <span className="ml-2 text-zinc-500">({count})</span>}
+    </div>
+  );
+}
+
+export function RoleTag({ role }: { role: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium capitalize text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+      {role.replace(/_/g, ' ')}
+    </span>
+  );
+}

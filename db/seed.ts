@@ -72,8 +72,8 @@ async function main() {
     { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id },
     { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id },
   ];
-  for (const p of people) {
-    await hireEmployee(admin, {
+  for (const [i, p] of people.entries()) {
+    const { personId } = await hireEmployee(admin, {
       person: { fullName: p.fullName, primaryEmail: p.email },
       companyId: company.id,
       departmentId: p.dept,
@@ -82,6 +82,14 @@ async function main() {
       hiredOn: '2026-01-06',
       annualLeaveTypeId: annual.id,
     });
+    // Local user record + role (login identity itself is provisioned by WorkOS later).
+    const [u] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: DEV_TENANT_ID, workosUserId: `seed:${p.email}`, personId })
+      .returning({ id: schema.appUser.id });
+    await owner.db
+      .insert(schema.roleAssignment)
+      .values({ tenantId: DEV_TENANT_ID, appUserId: u.id, role: i === 1 ? 'manager' : 'employee', companyId: null });
   }
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
