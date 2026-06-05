@@ -17,8 +17,18 @@ export type SessionContext = {
   roles?: string[];
 };
 
+// Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
+const globalForPg = globalThis as unknown as {
+  __aihrPgPools?: Map<string, ReturnType<typeof postgres>>;
+};
+const pgPools = (globalForPg.__aihrPgPools ??= new Map<string, ReturnType<typeof postgres>>());
+
 export function createDb(connectionString: string, options?: { max?: number }) {
-  const client = postgres(connectionString, { max: options?.max ?? 10 });
+  let client = pgPools.get(connectionString);
+  if (!client) {
+    client = postgres(connectionString, { max: options?.max ?? 10 });
+    pgPools.set(connectionString, client);
+  }
   const db = drizzle(client, { schema });
   type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 

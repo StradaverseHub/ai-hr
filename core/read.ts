@@ -210,3 +210,42 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
     return { managers, reports };
   });
 }
+
+/** Active employees + current administrative reporting edges, for the org chart. */
+export function orgChartData(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const employees = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        department: department.name,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(isNull(employment.terminatedOn))
+      .orderBy(person.fullName);
+    const edges = await tx
+      .select({
+        manager: reportingLine.managerEmploymentId,
+        subordinate: reportingLine.subordinateEmploymentId,
+      })
+      .from(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.lineType, 'administrative'),
+          isNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+        ),
+      );
+    return { employees, edges };
+  });
+}

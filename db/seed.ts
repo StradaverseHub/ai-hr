@@ -6,7 +6,7 @@
 import { sql } from 'drizzle-orm';
 import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
-import { hireEmployee } from '../core/org';
+import { hireEmployee, setReportingLine } from '../core/org';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -72,8 +72,9 @@ async function main() {
     { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id },
     { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id },
   ];
+  const hired: { employmentId: string }[] = [];
   for (const [i, p] of people.entries()) {
-    const { personId } = await hireEmployee(admin, {
+    const { employmentId, personId } = await hireEmployee(admin, {
       person: { fullName: p.fullName, primaryEmail: p.email },
       companyId: company.id,
       departmentId: p.dept,
@@ -82,6 +83,7 @@ async function main() {
       hiredOn: '2026-01-06',
       annualLeaveTypeId: annual.id,
     });
+    hired.push({ employmentId });
     // Local user record + role (login identity itself is provisioned by WorkOS later).
     const [u] = await owner.db
       .insert(schema.appUser)
@@ -90,6 +92,17 @@ async function main() {
     await owner.db
       .insert(schema.roleAssignment)
       .values({ tenantId: DEV_TENANT_ID, appUserId: u.id, role: i === 1 ? 'manager' : 'employee', companyId: null });
+  }
+
+  // Daniel (index 1) is the administrative manager of the rest — gives the org chart shape.
+  for (const [i, h] of hired.entries()) {
+    if (i === 1) continue;
+    await setReportingLine(admin, {
+      subordinateEmploymentId: h.employmentId,
+      managerEmploymentId: hired[1].employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-06',
+    });
   }
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
