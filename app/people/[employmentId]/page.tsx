@@ -14,9 +14,13 @@ import { Card, ErrorBanner, Field, SectionHeader, StatusBadge, btnGhost, btnPrim
 import {
   addReportingLineAction,
   endReportingLineAction,
+  setCompensationAction,
+  setStatutoryAction,
   terminateAction,
   transferAction,
 } from './actions';
+import { currentCompensation } from '@/core/comp';
+import { getStatutoryProfileMY } from '@/localization/my/statutory';
 
 const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -55,14 +59,17 @@ export default async function EmployeePage({
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
 
-  const [history, balances, requests, departments, reporting, employees] = await Promise.all([
-    assignmentHistory(s, employmentId),
-    leaveBalances(s, employmentId),
-    leaveRequestsFor(s, employmentId),
-    listDepartments(s),
-    reportingLinesFor(s, employmentId),
-    listEmployees(s),
-  ]);
+  const [history, balances, requests, departments, reporting, employees, comp, statutory] =
+    await Promise.all([
+      assignmentHistory(s, employmentId),
+      leaveBalances(s, employmentId),
+      leaveRequestsFor(s, employmentId),
+      listDepartments(s),
+      reportingLinesFor(s, employmentId),
+      listEmployees(s),
+      currentCompensation(s, employmentId),
+      getStatutoryProfileMY(s, emp.personId),
+    ]);
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
 
@@ -76,7 +83,7 @@ export default async function EmployeePage({
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{emp.name}</h1>
           <p className="text-sm text-zinc-500">
-            {emp.email} · {emp.company} · hired {emp.hiredOn}
+            {emp.employeeCode ?? '—'} · {emp.email} · {emp.company} · hired {emp.hiredOn}
           </p>
         </div>
         <StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />
@@ -99,6 +106,93 @@ export default async function EmployeePage({
           {balances.length === 0 && <div className="p-4 text-sm text-zinc-500">No leave records.</div>}
         </div>
       </Card>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <SectionHeader title="Compensation" />
+          <div className="p-4">
+            {comp ? (
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="text-2xl font-semibold tabular-nums">
+                  {comp.currency} {Number(comp.basicSalary).toLocaleString()}
+                </span>
+                <span className="text-xs text-zinc-500">
+                  basic / mo
+                  {Number(comp.monthlyAllowance) > 0 && ` · +${Number(comp.monthlyAllowance).toLocaleString()} allowance`}
+                  {' · since '}
+                  {comp.validFrom}
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-500">No compensation set.</p>
+            )}
+          </div>
+          {!emp.terminatedOn && (
+            <form
+              action={setCompensationAction}
+              className="grid grid-cols-1 items-end gap-3 border-t border-zinc-200 p-4 sm:grid-cols-3 dark:border-zinc-800"
+            >
+              <input type="hidden" name="employmentId" value={emp.employmentId} />
+              <input type="hidden" name="effectiveFrom" value="2026-06-05" />
+              <Field label="Basic salary (MYR)">
+                <input
+                  name="basicSalary"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  defaultValue={comp ? Number(comp.basicSalary) : ''}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Allowance">
+                <input
+                  name="monthlyAllowance"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={comp ? Number(comp.monthlyAllowance) : 0}
+                  className={inputCls}
+                />
+              </Field>
+              <button className={btnPrimary}>Update pay</button>
+            </form>
+          )}
+        </Card>
+
+        <Card>
+          <SectionHeader title="Statutory (Malaysia)" />
+          <form action={setStatutoryAction} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <input type="hidden" name="personId" value={emp.personId} />
+            <Field label="IC number">
+              <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
+            </Field>
+            <Field label="EPF number">
+              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
+            </Field>
+            <Field label="SOCSO number">
+              <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
+            </Field>
+            <Field label="Tax number">
+              <input name="taxNumber" defaultValue={statutory?.taxNumber ?? ''} className={inputCls} />
+            </Field>
+            <Field label="Bank">
+              <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
+            </Field>
+            <Field label="Bank account">
+              <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
+            </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
+              EIS eligible
+            </label>
+            <div className="flex items-end justify-end">
+              <button className={btnPrimary}>Save statutory</button>
+            </div>
+          </form>
+        </Card>
+      </div>
 
       <Card className="overflow-hidden">
         <SectionHeader title="Assignment history" count={history.length} />

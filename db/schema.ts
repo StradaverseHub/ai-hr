@@ -23,7 +23,10 @@ import {
   numeric,
   jsonb,
   bigserial,
+  bigint,
   index,
+  uniqueIndex,
+  primaryKey,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
@@ -193,6 +196,7 @@ export const employment = pgTable(
     companyId: uuid('company_id')
       .notNull()
       .references(() => company.id),
+    employeeCode: text('employee_code'),
     hiredOn: date('hired_on').notNull(),
     terminatedOn: date('terminated_on'),
     createdAt: createdAt(),
@@ -200,6 +204,7 @@ export const employment = pgTable(
   (t) => [
     index('employment_person_idx').on(t.personId),
     index('employment_company_idx').on(t.companyId),
+    uniqueIndex('employment_employee_code_uq').on(t.tenantId, t.employeeCode),
   ],
 );
 
@@ -344,4 +349,63 @@ export const domainEvent = pgTable(
     sequence: bigserial('sequence', { mode: 'number' }).notNull(),
   },
   (t) => [index('domain_event_aggregate_idx').on(t.tenantId, t.aggregateType, t.aggregateId)],
+);
+
+// ─────────────────── Compensation (generic, effective-dated) ───────────────────
+// Money is effective-dated (comp history), per ADR-0008. CLOSE + INSERT on change.
+export const compensation = pgTable(
+  'compensation',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    basicSalary: numeric('basic_salary', { precision: 12, scale: 2 }).notNull(),
+    currency: text('currency').notNull().default('MYR'),
+    monthlyAllowance: numeric('monthly_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
+    validFrom: date('valid_from').notNull(),
+    validTo: date('valid_to'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('compensation_employment_idx').on(t.employmentId, t.validFrom)],
+);
+
+// ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
+// Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
+export const employeeStatutoryMy = pgTable(
+  'employee_statutory_my',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    icNumber: text('ic_number').notNull(),
+    epfNumber: text('epf_number'),
+    socsoNumber: text('socso_number'),
+    taxNumber: text('tax_number'),
+    eisEligible: boolean('eis_eligible').notNull().default(true),
+    bankName: text('bank_name'),
+    bankAccountNo: text('bank_account_no'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
+    uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber),
+  ],
+);
+
+// ─────────────── Per-tenant counters (generic, e.g. employee codes) ───────────────
+export const tenantCounter = pgTable(
+  'tenant_counter',
+  {
+    tenantId: tenantId(),
+    kind: text('kind').notNull(),
+    value: bigint('value', { mode: 'number' }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.kind] })],
 );

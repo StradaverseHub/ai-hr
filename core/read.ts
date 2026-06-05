@@ -88,6 +88,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
     const [row] = await tx
       .select({
         employmentId: employment.id,
+        employeeCode: employment.employeeCode,
         personId: employment.personId,
         name: person.fullName,
         email: person.primaryEmail,

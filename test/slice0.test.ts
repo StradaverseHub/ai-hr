@@ -24,6 +24,8 @@ import {
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
 import { reportingLinesFor } from '../core/read';
 import { createCompany } from '../core/admin';
+import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
+import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 
 let base: Base;
 
@@ -214,5 +216,31 @@ describe('hardening — role-gated writes', () => {
   it('a non-admin session cannot create a company (RLS denies)', async () => {
     const employee: SessionContext = { tenantId: base.tenantId, userId: base.adminUserId, roles: ['employee'] };
     await expect(createCompany(employee, { legalName: 'Sneaky Sdn Bhd' })).rejects.toThrow();
+  });
+});
+
+describe('Slice 1 — compensation (effective-dated)', () => {
+  it('CLOSE+INSERTs on change; current reflects latest, history preserved', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Pay');
+    await setCompensation(a, { employmentId, basicSalary: 5000, effectiveFrom: '2026-01-01' });
+    await setCompensation(a, { employmentId, basicSalary: 6000, effectiveFrom: '2026-06-01' });
+    const cur = await currentCompensation(a, employmentId);
+    expect(Number(cur?.basicSalary)).toBe(6000);
+    expect((await compensationHistory(a, employmentId)).length).toBe(2);
+  });
+});
+
+describe('Slice 1 — Malaysia statutory pack', () => {
+  it('validates IC and stores a normalized profile', async () => {
+    const a = adminCtx(base);
+    const { personId } = await hire(a, base, 'Stat');
+    await expect(setStatutoryProfileMY(a, { personId, icNumber: '12345' })).rejects.toBeInstanceOf(
+      InvalidICError,
+    );
+    await setStatutoryProfileMY(a, { personId, icNumber: '900101-01-1234', epfNumber: 'EPF1' });
+    const prof = await getStatutoryProfileMY(a, personId);
+    expect(prof?.icNumber).toBe('900101011234'); // dashes stripped
+    expect(prof?.epfNumber).toBe('EPF1');
   });
 });

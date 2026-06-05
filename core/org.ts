@@ -6,6 +6,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
+import { nextEmployeeCode } from './comp';
 import { person, employment, assignment, reportingLine, leaveLedger, leavePolicy } from '../db/schema';
 
 export class ReportingCycleError extends Error {
@@ -69,9 +70,10 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       personId = row.id;
     }
 
+    const employeeCode = await nextEmployeeCode(tx, ctx.tenantId);
     const [emp] = await tx
       .insert(employment)
-      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn })
+      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode })
       .returning({ id: employment.id });
 
     await tx.insert(assignment).values({

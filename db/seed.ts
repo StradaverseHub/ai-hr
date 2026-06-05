@@ -7,6 +7,8 @@ import { sql } from 'drizzle-orm';
 import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
 import { hireEmployee, setReportingLine } from '../core/org';
+import { setCompensation } from '../core/comp';
+import { setStatutoryProfileMY } from '../localization/my/statutory';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -17,6 +19,7 @@ const TABLES = [
   'tenant', 'company', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
+  'compensation', 'employee_statutory_my', 'tenant_counter',
 ];
 
 async function main() {
@@ -67,10 +70,10 @@ async function main() {
 
   const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
   const people = [
-    { fullName: 'Aisyah Rahman', email: 'aisyah@demo.test', dept: finance.id },
-    { fullName: 'Daniel Tan', email: 'daniel@demo.test', dept: eng.id },
-    { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id },
-    { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id },
+    { fullName: 'Aisyah Rahman', email: 'aisyah@demo.test', dept: finance.id, salary: 6500, ic: '900101011234', bank: 'Maybank' },
+    { fullName: 'Daniel Tan', email: 'daniel@demo.test', dept: eng.id, salary: 11000, ic: '850202022345', bank: 'CIMB' },
+    { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id, salary: 5800, ic: '920303033456', bank: 'Public Bank' },
+    { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id, salary: 7200, ic: '880404044567', bank: 'RHB' },
   ];
   const hired: { employmentId: string }[] = [];
   for (const [i, p] of people.entries()) {
@@ -92,6 +95,18 @@ async function main() {
     await owner.db
       .insert(schema.roleAssignment)
       .values({ tenantId: DEV_TENANT_ID, appUserId: u.id, role: i === 1 ? 'manager' : 'employee', companyId: null });
+
+    await setCompensation(admin, { employmentId, basicSalary: p.salary, monthlyAllowance: 500, effectiveFrom: '2026-01-06' });
+    await setStatutoryProfileMY(admin, {
+      personId,
+      icNumber: p.ic,
+      epfNumber: `EPF${p.ic.slice(0, 7)}`,
+      socsoNumber: `SOC${p.ic.slice(0, 7)}`,
+      taxNumber: `SG${p.ic.slice(0, 8)}`,
+      eisEligible: true,
+      bankName: p.bank,
+      bankAccountNo: `8800${p.ic.slice(0, 8)}`,
+    });
   }
 
   // Daniel (index 1) is the administrative manager of the rest — gives the org chart shape.
