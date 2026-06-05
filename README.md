@@ -67,6 +67,8 @@ routing, billing, SSO/SCIM wiring, additional leave types, performance & success
 - [Domain model & ERD](docs/architecture/domain-model.md)
 - [Slice 0 specification](docs/architecture/slice-0-spec.md) — personas, use cases, acceptance criteria, test strategy
 - [Threat model](docs/architecture/threat-model.md) — STRIDE-lite for the v1 surface
+- [Malaysia localization](docs/architecture/my-localization.md) — country-pack spec mapping
+- [UI/UX enhancement plan](docs/architecture/ui-ux-plan.md) — UX audit + roadmap
 
 ## Methodology
 
