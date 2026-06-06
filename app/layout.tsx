@@ -7,6 +7,9 @@ import { Sidebar } from '@/components/sidebar';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
+import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
+import { getSession } from '@/lib/session';
+import { listPrincipals } from '@/lib/principals';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -16,7 +19,8 @@ export const metadata: Metadata = {
   description: 'AI-native HR platform',
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const [session, principals] = await Promise.all([getSession(), listPrincipals()]);
   return (
     <html
       lang="en"
@@ -37,7 +41,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                     dev session
                   </span>
                 </div>
-                <ThemeToggle />
+                <div className="flex items-center gap-3">
+                  <DevIdentitySwitcher principals={principals} current={session.userId ?? ''} />
+                  <ThemeToggle />
+                </div>
               </header>
               <main className="min-w-0 flex-1 p-6">{children}</main>
             </div>

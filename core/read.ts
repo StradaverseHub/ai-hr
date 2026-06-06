@@ -12,6 +12,7 @@ import {
   leaveRequest,
   leaveType,
   payrollBatch,
+  payslip,
   person,
   position,
   reportingLine,
@@ -323,6 +324,81 @@ export function recentActivity(ctx: SessionContext, limit = 8) {
       })
       .from(domainEvent)
       .orderBy(desc(domainEvent.occurredAt))
+      .limit(limit),
+  );
+}
+
+// ─────────────────────────── Self-service portal (own data) ───────────────────────────
+// All scoped by RLS to the calling principal: an employee sees only themselves.
+
+/** The current principal's active employment + profile (resolved from their linked person). */
+export function myEmployment(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return null;
+    const [row] = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
+        hiredOn: employment.hiredOn,
+        company: company.legalName,
+        department: department.name,
+        position: position.title,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/** The current principal's payslips (RLS already restricts to own employment). */
+export function myPayslips(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: payslip.id,
+        payPeriod: payrollBatch.payPeriod,
+        status: payrollBatch.status,
+        gross: payslip.grossPay,
+        deductions: payslip.totalDeductions,
+        net: payslip.netPay,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .where(eq(payslip.employmentId, employmentId))
+      .orderBy(desc(payrollBatch.payPeriod)),
+  );
+}
+
+/** The current principal's recent attendance. */
+export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: attendance.id,
+        date: attendance.attendanceDate,
+        checkInAt: attendance.checkInAt,
+        checkOutAt: attendance.checkOutAt,
+        status: attendance.status,
+      })
+      .from(attendance)
+      .where(eq(attendance.employmentId, employmentId))
+      .orderBy(desc(attendance.attendanceDate))
       .limit(limit),
   );
 }

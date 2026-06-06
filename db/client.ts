@@ -14,6 +14,8 @@ import * as schema from './schema';
 export type SessionContext = {
   tenantId: string;
   userId?: string;
+  /** The person this principal maps to (null for admins not tied to an employee). */
+  personId?: string | null;
   roles?: string[];
 };
 

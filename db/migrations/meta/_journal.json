@@ -85,6 +85,13 @@
       "when": 1780720043705,
       "tag": "0011_payroll_immutability",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1780722667774,
+      "tag": "0012_principal_bootstrap",
+      "breakpoints": true
     }
   ]
 }
