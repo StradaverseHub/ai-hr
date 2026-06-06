@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
+  archiveDepartment,
   assignRole,
   createCompany,
   createCostCenter,
@@ -11,8 +12,10 @@ import {
   createLeavePolicy,
   createLeaveType,
   createPosition,
+  deleteDepartment,
   revokeRole,
   setCompanyParent,
+  updateDepartment,
 } from '@/core/admin';
 import { packFor } from '@/localization/registry';
 
@@ -84,6 +87,39 @@ export async function createDepartmentAction(formData: FormData) {
       companyId: String(formData.get('companyId')),
       name: String(formData.get('name') ?? '').trim(),
     });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function updateDepartmentAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await updateDepartment(s, { id: String(formData.get('id')), name: String(formData.get('name') ?? '').trim() });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function archiveDepartmentAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await archiveDepartment(s, {
+      id: String(formData.get('id')),
+      archived: formData.get('archived') === 'true',
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function deleteDepartmentAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deleteDepartment(s, { id: String(formData.get('id')) });
   } catch (e) {
     fail(ORG, e);
   }

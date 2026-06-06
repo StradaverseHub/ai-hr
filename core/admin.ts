@@ -3,20 +3,32 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   appUser,
+  assignment,
   company,
   costCenter,
   department,
+  employment,
+  leaveLedger,
   leavePolicy,
+  leaveRequest,
   leaveType,
   person,
   position,
   roleAssignment,
 } from '../db/schema';
+
+/** Thrown when a hard delete is attempted on a referenced record (archive it instead). */
+export class InUseError extends Error {
+  constructor(what: string) {
+    super(`This ${what} is in use — archive it instead of deleting.`);
+    this.name = 'InUseError';
+  }
+}
 
 type Role = 'employee' | 'manager' | 'hr_admin' | 'super_admin';
 
@@ -272,5 +284,122 @@ export function listUsers(ctx: SessionContext) {
       .select({ id: roleAssignment.id, appUserId: roleAssignment.appUserId, role: roleAssignment.role })
       .from(roleAssignment);
     return users.map((u) => ({ ...u, roles: roles.filter((r) => r.appUserId === u.id) }));
+  });
+}
+
+// ───────────────── Edit + state-aware remove (delete if unused, else archive) ─────────────────
+
+export async function updateDepartment(ctx: SessionContext, p: { id: string; name: string }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(department).set({ name: p.name }).where(eq(department.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: 'department.updated', actor: actorOf(ctx), payload: { name: p.name } });
+  });
+}
+export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: p.archived ? 'department.archived' : 'department.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.departmentId, p.id));
+    if ((u?.n ?? 0) > 0) throw new InUseError('department');
+    await tx.delete(department).where(eq(department.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: 'department.deleted', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+export async function updatePosition(ctx: SessionContext, p: { id: string; title: string; jobFamily?: string }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(position).set({ title: p.title, jobFamily: p.jobFamily || null }).where(eq(position.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title: p.title } });
+  });
+}
+export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: p.archived ? 'position.archived' : 'position.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+export async function deletePosition(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.positionId, p.id));
+    if ((u?.n ?? 0) > 0) throw new InUseError('position');
+    await tx.delete(position).where(eq(position.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.deleted', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+export async function updateCostCenter(ctx: SessionContext, p: { id: string; code: string; name: string }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(costCenter).set({ code: p.code, name: p.name }).where(eq(costCenter.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code: p.code } });
+  });
+}
+export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: p.archived ? 'cost-center.archived' : 'cost-center.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [u] = await tx.select({ n: sql<number>`count(*)::int` }).from(assignment).where(eq(assignment.costCenterId, p.id));
+    if ((u?.n ?? 0) > 0) throw new InUseError('cost center');
+    await tx.delete(costCenter).where(eq(costCenter.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.deleted', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+export async function updateLeaveType(ctx: SessionContext, p: { id: string; name: string; paid: boolean; counting: string }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(leaveType).set({ name: p.name, paid: p.paid, counting: p.counting }).where(eq(leaveType.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.updated', actor: actorOf(ctx), payload: { name: p.name } });
+  });
+}
+export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(leaveType).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(leaveType.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: p.archived ? 'leave-type.archived' : 'leave-type.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveRequest).where(eq(leaveRequest.leaveTypeId, p.id));
+    const [led] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveLedger).where(eq(leaveLedger.leaveTypeId, p.id));
+    const [pol] = await tx.select({ n: sql<number>`count(*)::int` }).from(leavePolicy).where(eq(leavePolicy.leaveTypeId, p.id));
+    if ((req?.n ?? 0) + (led?.n ?? 0) + (pol?.n ?? 0) > 0) throw new InUseError('leave type');
+    await tx.delete(leaveType).where(eq(leaveType.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.deleted', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+export async function updateCompany(
+  ctx: SessionContext,
+  p: { id: string; legalName: string; registrationNo?: string; country?: string; currency?: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    await tx
+      .update(company)
+      .set({ legalName: p.legalName, registrationNo: p.registrationNo || null, country: p.country || 'MY', currency: p.currency || 'MYR' })
+      .where(eq(company.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: 'company.updated', actor: actorOf(ctx), payload: { legalName: p.legalName } });
+  });
+}
+export function archiveCompany(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(company).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(company.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: p.archived ? 'company.archived' : 'company.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+export async function deleteCompany(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [dep] = await tx.select({ n: sql<number>`count(*)::int` }).from(department).where(eq(department.companyId, p.id));
+    const [emp] = await tx.select({ n: sql<number>`count(*)::int` }).from(employment).where(eq(employment.companyId, p.id));
+    const [sub] = await tx.select({ n: sql<number>`count(*)::int` }).from(company).where(eq(company.parentCompanyId, p.id));
+    if ((dep?.n ?? 0) + (emp?.n ?? 0) + (sub?.n ?? 0) > 0) throw new InUseError('company');
+    await tx.delete(company).where(eq(company.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: 'company.deleted', actor: actorOf(ctx), payload: {} });
   });
 }

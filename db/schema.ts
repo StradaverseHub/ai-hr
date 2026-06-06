@@ -93,6 +93,7 @@ export const company = pgTable(
     registrationNo: text('registration_no'),
     // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
     parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -156,6 +157,7 @@ export const position = pgTable(
       .references(() => company.id),
     title: text('title').notNull(),
     jobFamily: text('job_family'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('position_company_idx').on(t.companyId)],
@@ -171,6 +173,7 @@ export const department = pgTable(
       .references(() => company.id),
     parentDepartmentId: uuid('parent_department_id').references((): AnyPgColumn => department.id),
     name: text('name').notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('department_company_idx').on(t.companyId)],
@@ -186,6 +189,7 @@ export const costCenter = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('cost_center_company_idx').on(t.companyId)],
@@ -278,6 +282,7 @@ export const leaveType = pgTable('leave_type', {
   paid: boolean('paid').notNull().default(true),
   // 'working_days' (exclude weekends + holidays) | 'calendar_days' (consecutive)
   counting: text('counting').notNull().default('calendar_days'),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
 

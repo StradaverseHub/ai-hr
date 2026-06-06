@@ -3,13 +3,17 @@ import { companyTree, listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { EditableRow } from '@/components/editable-row';
 import {
+  archiveDepartmentAction,
   createCompanyAction,
   createCostCenterAction,
   createDepartmentAction,
   createPositionAction,
+  deleteDepartmentAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
+  updateDepartmentAction,
 } from '../actions';
 
 type TreeNode = { id: string; name: string; country: string; parentId: string | null };
@@ -77,7 +81,7 @@ export default async function OrganizationPage({
   const { error } = await searchParams;
   const [companies, departments, positions, costCenters, tree, statutory] = await Promise.all([
     listCompanies(s),
-    listDepartments(s),
+    listDepartments(s, { includeArchived: true }),
     listPositions(s),
     listCostCenters(s),
     companyTree(s),
@@ -214,10 +218,25 @@ export default async function OrganizationPage({
 
       <Card>
         <SectionHeader title="Departments" count={departments.length} />
-        <Rows
-          rows={departments.map((d) => ({ key: d.id, main: d.name, sub: companyName.get(d.companyId) }))}
-          empty="No departments yet."
-        />
+        <ul className="divide-y divide-border">
+          {departments.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No departments yet.</li>
+          )}
+          {departments.map((d) => (
+            <EditableRow
+              key={d.id}
+              id={d.id}
+              display={d.name}
+              sub={companyName.get(d.companyId)}
+              fields={[{ name: 'name', label: 'Name', value: d.name }]}
+              inUse={d.inUse}
+              archived={!!d.archivedAt}
+              updateAction={updateDepartmentAction}
+              archiveAction={archiveDepartmentAction}
+              deleteAction={deleteDepartmentAction}
+            />
+          ))}
+        </ul>
         <form
           action={createDepartmentAction}
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-3"
