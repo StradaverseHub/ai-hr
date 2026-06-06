@@ -23,8 +23,8 @@ import {
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
-import { reportingLinesFor } from '../core/read';
-import { createCompany, setCompanyParent } from '../core/admin';
+import { listEmployees, reportingLinesFor } from '../core/read';
+import { createCompany, createDepartment, setCompanyParent } from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
@@ -425,5 +425,50 @@ describe('Slice A — company hierarchy + statutory identity', () => {
     const prof = await getCompanyStatutoryMY(a, companyId);
     expect(prof?.epfEmployerNo).toBe('A2');
     expect(prof?.lhdnEmployerNo).toBeNull();
+  });
+});
+
+describe('Slice B — company-scoped authorization', () => {
+  it('confines a company-scoped admin to its company and subtree', async () => {
+    const a = adminCtx(base); // group-wide admin, for setup
+
+    const { id: coA } = await createCompany(a, { legalName: 'Co A Sdn Bhd' });
+    const { id: coB } = await createCompany(a, { legalName: 'Co B Sdn Bhd' });
+    const { id: subA } = await createCompany(a, { legalName: 'Sub A Sdn Bhd' });
+    await setCompanyParent(a, { companyId: subA, parentCompanyId: coA });
+
+    // A department + employee in Co B (created by the group admin).
+    const deptB = await createDepartment(a, { companyId: coB, name: 'B-Dept' });
+    const empB = await hireEmployee(a, {
+      person: { fullName: 'Bob B', primaryEmail: 'bob@b.test' },
+      companyId: coB,
+      departmentId: deptB.id,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+
+    // A principal that is hr_admin for Co A ONLY.
+    const scopedA: SessionContext = {
+      tenantId: base.tenantId,
+      userId: base.adminUserId,
+      grants: [{ role: 'hr_admin', companyId: coA }],
+    };
+
+    // In scope: can write in Co A and its subsidiary Sub A.
+    await expect(createDepartment(scopedA, { companyId: coA, name: 'A-Dept' })).resolves.toBeTruthy();
+    await expect(createDepartment(scopedA, { companyId: subA, name: 'SubA-Dept' })).resolves.toBeTruthy();
+
+    // Out of scope: cannot WRITE into Co B (RLS WITH CHECK denies).
+    await expect(createDepartment(scopedA, { companyId: coB, name: 'nope' })).rejects.toThrow();
+
+    // Out of scope: cannot SEE Co B's employee (RLS USING via can_see_employment).
+    const visible = await listEmployees(scopedA);
+    expect(visible.some((e) => e.employmentId === empB.employmentId)).toBe(false);
+  });
+
+  it('treats a group-wide admin (role-only context) as all-powerful (backward compat)', async () => {
+    const a = adminCtx(base); // roles:['hr_admin'], no grants → group-wide
+    const { id: co } = await createCompany(a, { legalName: 'GW Co Sdn Bhd' });
+    await expect(createDepartment(a, { companyId: co, name: 'GW-Dept' })).resolves.toBeTruthy();
   });
 });

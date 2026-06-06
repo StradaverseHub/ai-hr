@@ -11,12 +11,16 @@ import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import * as schema from './schema';
 
+export type Grant = { role: string; companyId: string | null };
+
 export type SessionContext = {
   tenantId: string;
   userId?: string;
   /** The person this principal maps to (null for admins not tied to an employee). */
   personId?: string | null;
   roles?: string[];
+  /** (role, company) grants; companyId null = group-wide. Drives company-scoped authz (ADR-0009). */
+  grants?: Grant[];
 };
 
 // Reuse pools across hot-reloads (dev) so HMR doesn't leak Postgres connections.
@@ -36,11 +40,15 @@ export function createDb(connectionString: string, options?: { max?: number }) {
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles. */
   async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
+    const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
+    const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
     return db.transaction(async (tx) => {
       // set_config(name, value, is_local=true) === SET LOCAL — cleared at COMMIT.
       await tx.execute(sql`select set_config('app.tenant_id', ${ctx.tenantId}, true)`);
       await tx.execute(sql`select set_config('app.user_id', ${ctx.userId ?? ''}, true)`);
-      await tx.execute(sql`select set_config('app.roles', ${(ctx.roles ?? []).join(',')}, true)`);
+      await tx.execute(sql`select set_config('app.roles', ${roleNames.join(',')}, true)`);
+      await tx.execute(sql`select set_config('app.grants', ${JSON.stringify(grants)}, true)`);
       return fn(tx);
     });
   }

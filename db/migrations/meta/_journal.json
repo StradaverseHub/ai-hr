@@ -113,6 +113,20 @@
       "when": 1780726645485,
       "tag": "0015_company_tree_helpers_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1780727728709,
+      "tag": "0016_company_scoped_authz",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780729626201,
+      "tag": "0017_fix_employment_self_policy",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { client, type SessionContext } from '../db/client';
+import { client, type Grant, type SessionContext } from '../db/client';
 
 /**
  * DEV-ONLY session shim. Real sessions will come from WorkOS (next slice).
@@ -24,17 +24,19 @@ export async function getSession(): Promise<SessionContext> {
   if (!userId) {
     throw new Error('No dev principal. Run `pnpm db:seed`, then pick an identity.');
   }
-  const rows = await client<{ tenant_id: string; person_id: string | null; roles: string[] }[]>`
-    select tenant_id, person_id, roles from app.principal(${userId}::uuid)
+  const rows = await client<{ tenant_id: string; person_id: string | null; grants: Grant[] }[]>`
+    select tenant_id, person_id, grants from app.principal(${userId}::uuid)
   `;
   const principal = rows[0];
   if (!principal) {
     throw new Error(`Unknown principal ${userId} — re-seed or switch identity.`);
   }
+  const grants = (principal.grants ?? []) as Grant[];
   return {
     tenantId: principal.tenant_id,
     userId,
     personId: principal.person_id,
-    roles: principal.roles,
+    grants,
+    roles: Array.from(new Set(grants.map((g) => g.role))),
   };
 }
