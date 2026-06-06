@@ -4,7 +4,11 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
+  archiveCompany,
+  archiveCostCenter,
   archiveDepartment,
+  archiveLeaveType,
+  archivePosition,
   assignRole,
   createCompany,
   createCostCenter,
@@ -12,10 +16,18 @@ import {
   createLeavePolicy,
   createLeaveType,
   createPosition,
+  deleteCompany,
+  deleteCostCenter,
   deleteDepartment,
+  deleteLeaveType,
+  deletePosition,
   revokeRole,
   setCompanyParent,
+  updateCompany,
+  updateCostCenter,
   updateDepartment,
+  updateLeaveType,
+  updatePosition,
 } from '@/core/admin';
 import { packFor } from '@/localization/registry';
 
@@ -203,4 +215,83 @@ export async function revokeRoleAction(formData: FormData) {
     fail(USERS, e);
   }
   ok(USERS);
+}
+
+// ── Edit + state-aware remove actions (department actions are above) ──
+const archived = (fd: FormData) => fd.get('archived') === 'true';
+
+export async function updatePositionAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await updatePosition(s, { id: String(fd.get('id')), title: String(fd.get('title') ?? '').trim(), jobFamily: (fd.get('jobFamily') as string) || undefined });
+  } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function archivePositionAction(fd: FormData) {
+  const s = await getSession();
+  try { await archivePosition(s, { id: String(fd.get('id')), archived: archived(fd) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function deletePositionAction(fd: FormData) {
+  const s = await getSession();
+  try { await deletePosition(s, { id: String(fd.get('id')) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+
+export async function updateCostCenterAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await updateCostCenter(s, { id: String(fd.get('id')), code: String(fd.get('code') ?? '').trim(), name: String(fd.get('name') ?? '').trim() });
+  } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function archiveCostCenterAction(fd: FormData) {
+  const s = await getSession();
+  try { await archiveCostCenter(s, { id: String(fd.get('id')), archived: archived(fd) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function deleteCostCenterAction(fd: FormData) {
+  const s = await getSession();
+  try { await deleteCostCenter(s, { id: String(fd.get('id')) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+
+export async function updateCompanyAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await updateCompany(s, {
+      id: String(fd.get('id')),
+      legalName: String(fd.get('legalName') ?? '').trim(),
+      registrationNo: (fd.get('registrationNo') as string) || undefined,
+      country: (fd.get('country') as string) || undefined,
+      currency: (fd.get('currency') as string) || undefined,
+    });
+  } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function archiveCompanyAction(fd: FormData) {
+  const s = await getSession();
+  try { await archiveCompany(s, { id: String(fd.get('id')), archived: archived(fd) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function deleteCompanyAction(fd: FormData) {
+  const s = await getSession();
+  try { await deleteCompany(s, { id: String(fd.get('id')) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+
+export async function updateLeaveTypeAction(fd: FormData) {
+  const s = await getSession();
+  try { await updateLeaveType(s, { id: String(fd.get('id')), name: String(fd.get('name') ?? '').trim() }); } catch (e) { fail(LEAVE, e); }
+  ok(LEAVE);
+}
+export async function archiveLeaveTypeAction(fd: FormData) {
+  const s = await getSession();
+  try { await archiveLeaveType(s, { id: String(fd.get('id')), archived: archived(fd) }); } catch (e) { fail(LEAVE, e); }
+  ok(LEAVE);
+}
+export async function deleteLeaveTypeAction(fd: FormData) {
+  const s = await getSession();
+  try { await deleteLeaveType(s, { id: String(fd.get('id')) }); } catch (e) { fail(LEAVE, e); }
+  ok(LEAVE);
 }

@@ -2,7 +2,14 @@ import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { createLeavePolicyAction, createLeaveTypeAction } from '../actions';
+import { EditableRow } from '@/components/editable-row';
+import {
+  archiveLeaveTypeAction,
+  createLeavePolicyAction,
+  createLeaveTypeAction,
+  deleteLeaveTypeAction,
+  updateLeaveTypeAction,
+} from '../actions';
 
 export default async function LeaveConfigPage({
   searchParams,
@@ -11,7 +18,10 @@ export default async function LeaveConfigPage({
 }) {
   const s = await requireAdmin();
   const { error } = await searchParams;
-  const [types, policies] = await Promise.all([listLeaveTypes(s), listLeavePolicies(s)]);
+  const [types, policies] = await Promise.all([
+    listLeaveTypes(s, { includeArchived: true }),
+    listLeavePolicies(s),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -21,13 +31,23 @@ export default async function LeaveConfigPage({
       <Card>
         <SectionHeader title="Leave types" count={types.length} />
         <ul className="divide-y divide-border">
+          {types.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No leave types.</li>
+          )}
           {types.map((t) => (
-            <li key={t.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-              <span className="text-foreground">{t.name}</span>
-              <span className="text-xs text-muted-foreground">{t.code}</span>
-            </li>
+            <EditableRow
+              key={t.id}
+              id={t.id}
+              display={t.name}
+              sub={t.code}
+              fields={[{ name: 'name', label: 'Name', value: t.name }]}
+              inUse={t.inUse}
+              archived={!!t.archivedAt}
+              updateAction={updateLeaveTypeAction}
+              archiveAction={archiveLeaveTypeAction}
+              deleteAction={deleteLeaveTypeAction}
+            />
           ))}
-          {types.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">No leave types.</li>}
         </ul>
         <form
           action={createLeaveTypeAction}

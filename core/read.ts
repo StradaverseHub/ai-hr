@@ -49,9 +49,21 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
   );
 }
 
-export function listCompanies(ctx: SessionContext) {
+export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, (tx) =>
-    tx.select({ id: company.id, name: company.legalName }).from(company).orderBy(company.legalName),
+    tx
+      .select({
+        id: company.id,
+        name: company.legalName,
+        country: company.country,
+        currency: company.currency,
+        registrationNo: company.registrationNo,
+        archivedAt: company.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from department d where d.company_id = company.id) or exists (select 1 from employment e where e.company_id = company.id) or exists (select 1 from company c where c.parent_company_id = company.id)`,
+      })
+      .from(company)
+      .where(opts.includeArchived ? undefined : isNull(company.archivedAt))
+      .orderBy(company.legalName),
   );
 }
 
@@ -71,9 +83,20 @@ export function listDepartments(ctx: SessionContext, opts: { includeArchived?: b
   );
 }
 
-export function listLeaveTypes(ctx: SessionContext) {
+export function listLeaveTypes(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, (tx) =>
-    tx.select({ id: leaveType.id, code: leaveType.code, name: leaveType.name }).from(leaveType),
+    tx
+      .select({
+        id: leaveType.id,
+        code: leaveType.code,
+        name: leaveType.name,
+        paid: leaveType.paid,
+        counting: leaveType.counting,
+        archivedAt: leaveType.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from leave_request lr where lr.leave_type_id = leave_type.id) or exists (select 1 from leave_ledger ll where ll.leave_type_id = leave_type.id) or exists (select 1 from leave_policy lp where lp.leave_type_id = leave_type.id)`,
+      })
+      .from(leaveType)
+      .where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt)),
   );
 }
 

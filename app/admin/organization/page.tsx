@@ -5,15 +5,24 @@ import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { EditableRow } from '@/components/editable-row';
 import {
+  archiveCompanyAction,
+  archiveCostCenterAction,
   archiveDepartmentAction,
+  archivePositionAction,
   createCompanyAction,
   createCostCenterAction,
   createDepartmentAction,
   createPositionAction,
+  deleteCompanyAction,
+  deleteCostCenterAction,
   deleteDepartmentAction,
+  deletePositionAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
+  updateCompanyAction,
+  updateCostCenterAction,
   updateDepartmentAction,
+  updatePositionAction,
 } from '../actions';
 
 type TreeNode = { id: string; name: string; country: string; parentId: string | null };
@@ -80,10 +89,10 @@ export default async function OrganizationPage({
   const s = await requireAdmin();
   const { error } = await searchParams;
   const [companies, departments, positions, costCenters, tree, statutory] = await Promise.all([
-    listCompanies(s),
+    listCompanies(s, { includeArchived: true }),
     listDepartments(s, { includeArchived: true }),
-    listPositions(s),
-    listCostCenters(s),
+    listPositions(s, { includeArchived: true }),
+    listCostCenters(s, { includeArchived: true }),
     companyTree(s),
     listCompanyStatutoryMY(s),
   ]);
@@ -202,7 +211,30 @@ export default async function OrganizationPage({
 
       <Card>
         <SectionHeader title="Companies" count={companies.length} />
-        <Rows rows={companies.map((c) => ({ key: c.id, main: c.name }))} empty="No companies yet." />
+        <ul className="divide-y divide-border">
+          {companies.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No companies yet.</li>
+          )}
+          {companies.map((c) => (
+            <EditableRow
+              key={c.id}
+              id={c.id}
+              display={c.name}
+              sub={c.registrationNo}
+              fields={[
+                { name: 'legalName', label: 'Legal name', value: c.name },
+                { name: 'registrationNo', label: 'Reg. no.', value: c.registrationNo ?? '' },
+                { name: 'country', label: 'Country', value: c.country },
+                { name: 'currency', label: 'Currency', value: c.currency },
+              ]}
+              inUse={c.inUse}
+              archived={!!c.archivedAt}
+              updateAction={updateCompanyAction}
+              archiveAction={archiveCompanyAction}
+              deleteAction={deleteCompanyAction}
+            />
+          ))}
+        </ul>
         <form
           action={createCompanyAction}
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
@@ -253,10 +285,28 @@ export default async function OrganizationPage({
 
       <Card>
         <SectionHeader title="Positions" count={positions.length} />
-        <Rows
-          rows={positions.map((p) => ({ key: p.id, main: p.title, sub: p.jobFamily }))}
-          empty="No positions yet."
-        />
+        <ul className="divide-y divide-border">
+          {positions.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No positions yet.</li>
+          )}
+          {positions.map((p) => (
+            <EditableRow
+              key={p.id}
+              id={p.id}
+              display={p.title}
+              sub={p.jobFamily}
+              fields={[
+                { name: 'title', label: 'Title', value: p.title },
+                { name: 'jobFamily', label: 'Job family', value: p.jobFamily ?? '' },
+              ]}
+              inUse={p.inUse}
+              archived={!!p.archivedAt}
+              updateAction={updatePositionAction}
+              archiveAction={archivePositionAction}
+              deleteAction={deletePositionAction}
+            />
+          ))}
+        </ul>
         <form
           action={createPositionAction}
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-3"
@@ -273,10 +323,28 @@ export default async function OrganizationPage({
 
       <Card>
         <SectionHeader title="Cost centers" count={costCenters.length} />
-        <Rows
-          rows={costCenters.map((c) => ({ key: c.id, main: c.code, sub: c.name }))}
-          empty="No cost centers yet."
-        />
+        <ul className="divide-y divide-border">
+          {costCenters.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No cost centers yet.</li>
+          )}
+          {costCenters.map((c) => (
+            <EditableRow
+              key={c.id}
+              id={c.id}
+              display={c.code}
+              sub={c.name}
+              fields={[
+                { name: 'code', label: 'Code', value: c.code },
+                { name: 'name', label: 'Name', value: c.name },
+              ]}
+              inUse={c.inUse}
+              archived={!!c.archivedAt}
+              updateAction={updateCostCenterAction}
+              archiveAction={archiveCostCenterAction}
+              deleteAction={deleteCostCenterAction}
+            />
+          ))}
+        </ul>
         <form
           action={createCostCenterAction}
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"

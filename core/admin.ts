@@ -3,7 +3,7 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { eq, sql } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -240,15 +240,35 @@ export async function revokeRole(ctx: SessionContext, p: { roleAssignmentId: str
 
 // ── Reads ──────────────────────────────────────────────────────────
 
-export function listPositions(ctx: SessionContext) {
+export function listPositions(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, (tx) =>
-    tx.select({ id: position.id, title: position.title, jobFamily: position.jobFamily }).from(position).orderBy(position.title),
+    tx
+      .select({
+        id: position.id,
+        title: position.title,
+        jobFamily: position.jobFamily,
+        archivedAt: position.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
+      })
+      .from(position)
+      .where(opts.includeArchived ? undefined : isNull(position.archivedAt))
+      .orderBy(position.title),
   );
 }
 
-export function listCostCenters(ctx: SessionContext) {
+export function listCostCenters(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, (tx) =>
-    tx.select({ id: costCenter.id, code: costCenter.code, name: costCenter.name }).from(costCenter).orderBy(costCenter.code),
+    tx
+      .select({
+        id: costCenter.id,
+        code: costCenter.code,
+        name: costCenter.name,
+        archivedAt: costCenter.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
+      })
+      .from(costCenter)
+      .where(opts.includeArchived ? undefined : isNull(costCenter.archivedAt))
+      .orderBy(costCenter.code),
   );
 }
 
@@ -352,9 +372,9 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateLeaveType(ctx: SessionContext, p: { id: string; name: string; paid: boolean; counting: string }) {
+export async function updateLeaveType(ctx: SessionContext, p: { id: string; name: string }) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(leaveType).set({ name: p.name, paid: p.paid, counting: p.counting }).where(eq(leaveType.id, p.id));
+    await tx.update(leaveType).set({ name: p.name }).where(eq(leaveType.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.updated', actor: actorOf(ctx), payload: { name: p.name } });
   });
 }
