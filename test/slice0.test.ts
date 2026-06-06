@@ -29,7 +29,7 @@ import { compensationHistory, currentCompensation, setCompensation } from '../co
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
 import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
-import { batchDetail, BatchNotDraftError, createBatch, generatePayslips } from '../core/payroll';
+import { batchDetail, BatchNotDraftError, closeBatch, createBatch, generatePayslips } from '../core/payroll';
 import { eis, epf, pcb, socso } from '../localization/my/payroll';
 
 let base: Base;
@@ -369,5 +369,31 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
     expect(epf(4567)).toEqual({ employee: 503, employer: 594 }); // 502.37→503, 593.71→594
     expect(epf(5000).employer).toBe(650); // 13% at the threshold
     expect(epf(5001).employer).toBe(601); // 12% above (600.12→601)
+  });
+
+  it('freezes a closed batch and its payslips at the DB level', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Lock');
+    await setCompensation(a, { employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId });
+    await closeBatch(a, { batchId });
+
+    // Drizzle wraps the Postgres error; the trigger's message is on `.cause`.
+    const errText = (e: { cause?: { message?: string }; message?: string }) =>
+      String(e?.cause?.message ?? e?.message ?? '');
+
+    // Direct mutation of a payslip in a closed batch is rejected by the trigger.
+    // (Admins can normally update payslips, so a rejection here is specifically the immutability guard.)
+    const payslipMsg = await withTenant(a, (tx) =>
+      tx.update(schema.payslip).set({ netPay: '0.00' }).where(eq(schema.payslip.batchId, batchId)),
+    ).then(() => '', errText);
+    expect(payslipMsg).toMatch(/closed/i);
+
+    // The batch itself can no longer be re-opened or edited.
+    const batchMsg = await withTenant(a, (tx) =>
+      tx.update(schema.payrollBatch).set({ status: 'draft' }).where(eq(schema.payrollBatch.id, batchId)),
+    ).then(() => '', errText);
+    expect(batchMsg).toMatch(/closed/i);
   });
 });

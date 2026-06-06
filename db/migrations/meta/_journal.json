@@ -78,6 +78,13 @@
       "when": 1780713440904,
       "tag": "0010_payroll_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1780720043705,
+      "tag": "0011_payroll_immutability",
+      "breakpoints": true
     }
   ]
 }
