@@ -3,7 +3,7 @@
  * derived from per-company thresholds (late / half-day). Absence is implicit (no row).
  * Each mutation appends a domain event (ADR-0006).
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { attendance, attendancePolicy, employment, person } from '../db/schema';
@@ -106,7 +106,7 @@ export async function checkOut(
 }
 
 /** Every active employee with their attendance row for `date` (null = not yet checked in). */
-export function attendanceForDate(ctx: SessionContext, date: string) {
+export function attendanceForDate(ctx: SessionContext, date: string, companyIds?: string[]) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -123,7 +123,12 @@ export function attendanceForDate(ctx: SessionContext, date: string) {
         attendance,
         and(eq(attendance.employmentId, employment.id), eq(attendance.attendanceDate, date)),
       )
-      .where(isNull(employment.terminatedOn))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
       .orderBy(person.fullName),
   );
 }

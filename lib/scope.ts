@@ -2,6 +2,7 @@ import { cookies } from 'next/headers';
 import type { SessionContext } from '../db/client';
 import { allowedCompanies } from '../core/read';
 import { getSession } from './session';
+import { requireAdmin } from './authz';
 
 /**
  * The active company context (Odoo-style multi-company switcher). Returns the selected company ids
@@ -19,6 +20,14 @@ export async function getScopeIds(allowedIds: string[]): Promise<string[]> {
 /** The session plus the active company-context scope — what every page filters its lists by. */
 export async function scopedSession(): Promise<{ s: SessionContext; scopeIds: string[] }> {
   const s = await getSession();
+  const allowed = await allowedCompanies(s);
+  const scopeIds = await getScopeIds(allowed.map((c) => c.id));
+  return { s, scopeIds };
+}
+
+/** Admin-gated variant: redirects non-admins, then returns the session + active company scope. */
+export async function scopedAdmin(): Promise<{ s: SessionContext; scopeIds: string[] }> {
+  const s = await requireAdmin();
   const allowed = await allowedCompanies(s);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   return { s, scopeIds };

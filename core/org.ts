@@ -311,3 +311,43 @@ export async function setCostAllocation(
     return { id: p.employmentId };
   });
 }
+
+/**
+ * Edit an employee's core person fields (name / email / phone). A person is shared across all of
+ * their (possibly multi-company) employments, so this updates the single canonical record. RLS
+ * requires admin (person policy WITH CHECK app.is_admin()). Appends a before/after domain event.
+ */
+export async function updatePerson(
+  ctx: SessionContext,
+  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({
+        fullName: person.fullName,
+        primaryEmail: person.primaryEmail,
+        phone: person.phone,
+      })
+      .from(person)
+      .where(eq(person.id, p.personId))
+      .limit(1);
+    if (!before) throw new Error('Person not found');
+    const after = {
+      fullName: p.fullName.trim(),
+      primaryEmail: p.primaryEmail.trim(),
+      phone: p.phone?.trim() || null,
+    };
+    if (!after.fullName) throw new Error('Name is required');
+    if (!after.primaryEmail) throw new Error('Email is required');
+    await tx.update(person).set(after).where(eq(person.id, p.personId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'person',
+      aggregateId: p.personId,
+      eventType: 'person.updated',
+      actor: actorOf(ctx),
+      payload: { before, after },
+    });
+    return { id: p.personId };
+  });
+}

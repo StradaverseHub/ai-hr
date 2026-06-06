@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getSession } from '@/lib/session';
+import { scopedSession } from '@/lib/scope';
 import { orgChartData } from '@/core/read';
 import { Card } from '@/components/ui';
 
@@ -41,8 +41,8 @@ function OrgNode({
 }
 
 export default async function OrgChartPage() {
-  const s = await getSession();
-  const { employees, edges } = await orgChartData(s);
+  const { s, scopeIds } = await scopedSession();
+  const { employees, edges } = await orgChartData(s, scopeIds);
 
   const empById = new Map<string, Emp>(employees.map((e) => [e.employmentId, e]));
   const childrenByMgr = new Map<string, string[]>();
