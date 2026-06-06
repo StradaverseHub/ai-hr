@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { isAdmin } from '@/lib/authz';
 import {
   assignmentHistory,
   employeeDetail,
@@ -16,6 +17,7 @@ import {
   addReportingLineAction,
   endReportingLineAction,
   setCompensationAction,
+  setPersonAction,
   setStatutoryAction,
   terminateAction,
   transferAction,
@@ -54,6 +56,7 @@ export default async function EmployeePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await getSession();
+  const admin = isAdmin(s);
   const { employmentId } = await params;
   const { error } = await searchParams;
 
@@ -91,6 +94,31 @@ export default async function EmployeePage({
       </div>
 
       <ErrorBanner message={error} />
+
+      {admin && (
+        <Card>
+          <SectionHeader title="Personal details" />
+          <form
+            action={setPersonAction}
+            className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3"
+          >
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <input type="hidden" name="personId" value={emp.personId} />
+            <Field label="Full name">
+              <input name="fullName" required defaultValue={emp.name} className={inputCls} />
+            </Field>
+            <Field label="Email">
+              <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
+            </Field>
+            <Field label="Phone">
+              <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+            </Field>
+            <div className="sm:col-span-3 flex justify-end">
+              <button className={btnPrimary}>Save details</button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       <Card>
         <SectionHeader title="Leave balance" />

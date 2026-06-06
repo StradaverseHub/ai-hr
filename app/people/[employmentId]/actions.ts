@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { endReportingLine, setReportingLine, terminateEmployment, transferEmployee } from '@/core/org';
+import { endReportingLine, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { packFor } from '@/localization/registry';
 
@@ -79,6 +79,23 @@ export async function setCompensationAction(formData: FormData) {
       basicSalary: Number(formData.get('basicSalary')),
       monthlyAllowance: Number(formData.get('monthlyAllowance') || 0),
       effectiveFrom: String(formData.get('effectiveFrom')),
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
+export async function setPersonAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await updatePerson(s, {
+      personId: String(formData.get('personId')),
+      fullName: String(formData.get('fullName') ?? ''),
+      primaryEmail: String(formData.get('primaryEmail') ?? ''),
+      phone: (formData.get('phone') as string) || null,
     });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
