@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import {
@@ -25,7 +26,7 @@ import {
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
 import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
-import { createCompany, createDepartment, setCompanyParent } from '../core/admin';
+import { assignRole, createCompany, createDepartment, setCompanyParent } from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
@@ -552,5 +553,40 @@ describe('Slice D — concurrent employment + cost allocation', () => {
         .where(eq(schema.employment.id, e2.employmentId)),
     );
     expect(row.ca).toEqual([{ companyId: base.companyId, percent: 60 }]);
+  });
+});
+
+describe('Slice B — company-scoped role assignment (#61)', () => {
+  it('keeps hr_admin company scope but forces super_admin / other roles group-wide', async () => {
+    const a = adminCtx(base);
+    const { id: co } = await createCompany(a, { legalName: 'Scoped Co Sdn Bhd' });
+    const [u] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: base.tenantId, workosUserId: `user_${randomUUID()}`, personId: null })
+      .returning({ id: schema.appUser.id });
+
+    await assignRole(a, { appUserId: u.id, role: 'hr_admin', companyId: co }); // scope honored
+    await assignRole(a, { appUserId: u.id, role: 'super_admin', companyId: co }); // forced group-wide
+    await assignRole(a, { appUserId: u.id, role: 'manager', companyId: co }); // scope not yet impl → null
+
+    const rows = await owner.db
+      .select({ role: schema.roleAssignment.role, companyId: schema.roleAssignment.companyId })
+      .from(schema.roleAssignment)
+      .where(eq(schema.roleAssignment.appUserId, u.id));
+    const byRole = Object.fromEntries(rows.map((r) => [r.role, r.companyId]));
+    expect(byRole['hr_admin']).toBe(co);
+    expect(byRole['super_admin']).toBeNull();
+    expect(byRole['manager']).toBeNull();
+  });
+
+  it('forbids an incoherent company-scoped super_admin row at the DB level', async () => {
+    await expect(
+      owner.db.insert(schema.roleAssignment).values({
+        tenantId: base.tenantId,
+        appUserId: base.adminUserId,
+        role: 'super_admin',
+        companyId: base.companyId,
+      }),
+    ).rejects.toThrow();
   });
 });
