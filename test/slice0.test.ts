@@ -497,13 +497,13 @@ describe('Slice C — consolidation (group vs per-company)', () => {
       hiredOn: '2026-01-01',
     });
 
-    // Scoped to the parent → the whole subtree (parent + child).
-    const groupStats = await dashboardStats(a, parent);
+    // Company context = both companies (multi-select).
+    const groupStats = await dashboardStats(a, [parent, child]);
     expect(groupStats.headcount).toBe(2);
     expect(groupStats.companies).toBe(2);
 
-    // Scoped to the child alone.
-    const childStats = await dashboardStats(a, child);
+    // Company context = the child alone.
+    const childStats = await dashboardStats(a, [child]);
     expect(childStats.headcount).toBe(1);
     expect(childStats.companies).toBe(1);
 

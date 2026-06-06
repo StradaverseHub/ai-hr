@@ -19,7 +19,7 @@ import {
   reportingLine,
 } from '../db/schema';
 
-export function listEmployees(ctx: SessionContext) {
+export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -44,6 +44,7 @@ export function listEmployees(ctx: SessionContext) {
         ),
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
       .orderBy(person.fullName),
   );
 }
@@ -258,16 +259,10 @@ export function orgChartData(ctx: SessionContext) {
 
 /** Aggregate counts + latest attendance/payroll snapshot for the dashboard. When `companyId` is
  *  given, every figure is scoped to that company's subtree (consolidation); else the whole tenant. */
-export function dashboardStats(ctx: SessionContext, companyId?: string) {
+export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
     const one = sql<number>`count(*)::int`;
-    let scopeIds: string[] | null = null;
-    if (companyId) {
-      const rows = (await tx.execute(
-        sql`select id from app.company_subtree(${companyId}::uuid)`,
-      )) as unknown as { id: string }[];
-      scopeIds = rows.map((r) => r.id);
-    }
+    const scopeIds = companyIds && companyIds.length ? companyIds : null;
     const scope = (col: AnyColumn) => (scopeIds ? inArray(col, scopeIds) : sql`true`);
 
     const [headcount] = await tx
@@ -487,6 +482,36 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
       .orderBy(desc(attendance.attendanceDate))
       .limit(limit),
   );
+}
+
+/** Companies this principal may scope to (top-bar company context): group admin → all; otherwise
+ *  the companies they're employed at + the companies of their company-scoped grants. */
+export function allowedCompanies(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const isGroupAdmin =
+      ctx.grants?.some((g) => (g.role === 'hr_admin' || g.role === 'super_admin') && !g.companyId) ??
+      false;
+    if (isGroupAdmin) {
+      return tx
+        .select({ id: company.id, name: company.legalName })
+        .from(company)
+        .orderBy(company.legalName);
+    }
+    const ids = new Set((ctx.grants ?? []).map((g) => g.companyId).filter((c): c is string => !!c));
+    if (ctx.personId) {
+      const emps = await tx
+        .select({ c: employment.companyId })
+        .from(employment)
+        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)));
+      emps.forEach((e) => ids.add(e.c));
+    }
+    if (ids.size === 0) return [];
+    return tx
+      .select({ id: company.id, name: company.legalName })
+      .from(company)
+      .where(inArray(company.id, [...ids]))
+      .orderBy(company.legalName);
+  });
 }
 
 /** Companies with their parent link — the group tree (ADR-0009). */

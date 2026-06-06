@@ -14,7 +14,7 @@ export function DevIdentitySwitcher({
   if (principals.length === 0) return null;
   return (
     <form action={actAs} className="flex items-center gap-1.5">
-      <span className="text-xs text-muted-foreground">Acting as</span>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">dev as</span>
       <select
         key={current}
         name="userId"

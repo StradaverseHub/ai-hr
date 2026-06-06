@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getSession } from '@/lib/session';
+import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployees, listLeaveTypes } from '@/core/read';
 import { Button, Card, Field, StatusBadge, inputCls } from '@/components/ui';
 import { hireAction } from './actions';
@@ -9,10 +9,10 @@ export default async function PeoplePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const session = await getSession();
+  const { s: session, scopeIds } = await scopedSession();
   const { error } = await searchParams;
   const [employees, companies, departments, leaveTypes] = await Promise.all([
-    listEmployees(session),
+    listEmployees(session, scopeIds),
     listCompanies(session),
     listDepartments(session),
     listLeaveTypes(session),
