@@ -1,4 +1,4 @@
-import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
@@ -86,13 +86,15 @@ export default async function OrganizationPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await requireAdmin();
+  const { s, scopeIds } = await scopedAdmin();
   const { error } = await searchParams;
+  // Companies + tree + statutory stay unscoped — that's the group-structure management surface and
+  // the tree needs every node. The per-company lists below follow the active company context.
   const [companies, departments, positions, costCenters, tree, statutory] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
-    listDepartments(s, { includeArchived: true }),
-    listPositions(s, { includeArchived: true }),
-    listCostCenters(s, { includeArchived: true }),
+    listDepartments(s, { includeArchived: true, companyIds: scopeIds }),
+    listPositions(s, { includeArchived: true, companyIds: scopeIds }),
+    listCostCenters(s, { includeArchived: true, companyIds: scopeIds }),
     companyTree(s),
     listCompanyStatutoryMY(s),
   ]);

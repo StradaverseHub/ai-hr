@@ -67,7 +67,10 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
   );
 }
 
-export function listDepartments(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+export function listDepartments(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -78,7 +81,12 @@ export function listDepartments(ctx: SessionContext, opts: { includeArchived?: b
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
       .from(department)
-      .where(opts.includeArchived ? undefined : isNull(department.archivedAt))
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(department.archivedAt),
+          opts.companyIds && opts.companyIds.length ? inArray(department.companyId, opts.companyIds) : undefined,
+        ),
+      )
       .orderBy(department.name),
   );
 }
