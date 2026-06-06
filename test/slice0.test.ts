@@ -24,7 +24,8 @@ import {
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
 import { reportingLinesFor } from '../core/read';
-import { createCompany } from '../core/admin';
+import { createCompany, setCompanyParent } from '../core/admin';
+import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
@@ -395,5 +396,34 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
       tx.update(schema.payrollBatch).set({ status: 'draft' }).where(eq(schema.payrollBatch.id, batchId)),
     ).then(() => '', errText);
     expect(batchMsg).toMatch(/closed/i);
+  });
+});
+
+describe('Slice A — company hierarchy + statutory identity', () => {
+  it('rejects a parent cycle at the DB level', async () => {
+    const a = adminCtx(base);
+    const { id: holding } = await createCompany(a, { legalName: 'Holdings Bhd' });
+    const { id: opco } = await createCompany(a, { legalName: 'OpCo Sdn Bhd' });
+    await setCompanyParent(a, { companyId: opco, parentCompanyId: holding });
+
+    // Making the holding a child of its own descendant would loop → rejected by the trigger.
+    const msg = await setCompanyParent(a, { companyId: holding, parentCompanyId: opco }).then(
+      () => '',
+      (e: { cause?: { message?: string }; message?: string }) =>
+        String(e?.cause?.message ?? e?.message ?? ''),
+    );
+    expect(msg).toMatch(/cycle/i);
+  });
+
+  it('upserts MY company statutory identity', async () => {
+    const a = adminCtx(base);
+    const { id: companyId } = await createCompany(a, { legalName: 'StatCo Sdn Bhd' });
+    await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: 'A1', lhdnEmployerNo: 'E9' });
+    expect((await getCompanyStatutoryMY(a, companyId))?.epfEmployerNo).toBe('A1');
+
+    await setCompanyStatutoryMY(a, { companyId, epfEmployerNo: 'A2' }); // upsert replaces
+    const prof = await getCompanyStatutoryMY(a, companyId);
+    expect(prof?.epfEmployerNo).toBe('A2');
+    expect(prof?.lhdnEmployerNo).toBeNull();
   });
 });

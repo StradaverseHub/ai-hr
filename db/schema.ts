@@ -91,9 +91,14 @@ export const company = pgTable(
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2
     currency: text('currency').notNull().default('MYR'), // ISO-4217
     registrationNo: text('registration_no'),
+    // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
+    parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
     createdAt: createdAt(),
   },
-  (t) => [index('company_tenant_idx').on(t.tenantId)],
+  (t) => [
+    index('company_tenant_idx').on(t.tenantId),
+    index('company_parent_idx').on(t.parentCompanyId),
+  ],
 );
 
 // app_user = a login identity (WorkOS-sourced); optionally linked to a Person.
@@ -401,6 +406,26 @@ export const employeeStatutoryMy = pgTable(
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
     uniqueIndex('employee_statutory_my_ic_uq').on(t.tenantId, t.icNumber),
   ],
+);
+
+// MY company-level statutory identity (ADR-0009): each entity files under its own registrations.
+export const companyStatutoryMy = pgTable(
+  'company_statutory_my',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    epfEmployerNo: text('epf_employer_no'),
+    socsoEmployerCode: text('socso_employer_code'),
+    lhdnEmployerNo: text('lhdn_employer_no'), // LHDN "E" number (employer tax file)
+    myinvoisTin: text('myinvois_tin'),
+    ssmRegistrationNo: text('ssm_registration_no'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('company_statutory_my_company_uq').on(t.companyId)],
 );
 
 // ─────────────── Per-tenant counters (generic, e.g. employee codes) ───────────────

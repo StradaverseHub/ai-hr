@@ -99,6 +99,20 @@
       "when": 1780724527392,
       "tag": "0013_payroll_batch_rls_tighten",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1780726599924,
+      "tag": "0014_company_hierarchy_statutory",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780726645485,
+      "tag": "0015_company_tree_helpers_rls",
+      "breakpoints": true
     }
   ]
 }

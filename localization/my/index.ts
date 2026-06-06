@@ -6,6 +6,7 @@ import { getStatutoryProfileMY, isValidIC, setStatutoryProfileMY } from './statu
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
 import { eis, epf, pcb, socso, statutory } from './payroll';
+import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 
 export const myPack = {
   country: 'MY' as const,
@@ -13,6 +14,10 @@ export const myPack = {
     set: setStatutoryProfileMY,
     get: getStatutoryProfileMY,
     validateIC: isValidIC,
+  },
+  companyStatutory: {
+    set: setCompanyStatutoryMY,
+    get: getCompanyStatutoryMY,
   },
   leave: {
     types: MY_LEAVE_TYPES,

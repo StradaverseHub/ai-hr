@@ -12,7 +12,9 @@ import {
   createLeaveType,
   createPosition,
   revokeRole,
+  setCompanyParent,
 } from '@/core/admin';
+import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
@@ -34,6 +36,40 @@ export async function createCompanyAction(formData: FormData) {
       country: String(formData.get('country') ?? 'MY'),
       currency: String(formData.get('currency') ?? 'MYR'),
       registrationNo: (formData.get('registrationNo') as string) || undefined,
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function setCompanyParentAction(formData: FormData) {
+  const s = await getSession();
+  const parent = String(formData.get('parentCompanyId') ?? '');
+  try {
+    await setCompanyParent(s, {
+      companyId: String(formData.get('companyId')),
+      parentCompanyId: parent || null,
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function setCompanyStatutoryAction(formData: FormData) {
+  const s = await getSession();
+  const country = String(formData.get('country') ?? 'MY');
+  try {
+    const pack = packFor(country);
+    if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${country}`);
+    await pack.companyStatutory.set(s, {
+      companyId: String(formData.get('companyId')),
+      epfEmployerNo: (formData.get('epfEmployerNo') as string) || undefined,
+      socsoEmployerCode: (formData.get('socsoEmployerCode') as string) || undefined,
+      lhdnEmployerNo: (formData.get('lhdnEmployerNo') as string) || undefined,
+      myinvoisTin: (formData.get('myinvoisTin') as string) || undefined,
+      ssmRegistrationNo: (formData.get('ssmRegistrationNo') as string) || undefined,
     });
   } catch (e) {
     fail(ORG, e);

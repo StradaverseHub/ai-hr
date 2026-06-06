@@ -22,7 +22,7 @@ const TABLES = [
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
-  'attendance', 'attendance_policy',
+  'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
 ];
 
 async function main() {
@@ -30,10 +30,30 @@ async function main() {
   await owner.db.execute(sql.raw(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`));
 
   await owner.db.insert(schema.tenant).values({ id: DEV_TENANT_ID, workosOrgId: 'org_dev', name: 'Demo Group' });
+  // Group structure (ADR-0009): a holding company over the operating entity.
+  const [holding] = await owner.db
+    .insert(schema.company)
+    .values({ tenantId: DEV_TENANT_ID, legalName: 'Demo Group Holdings Bhd', country: 'MY', currency: 'MYR' })
+    .returning({ id: schema.company.id });
   const [company] = await owner.db
     .insert(schema.company)
-    .values({ tenantId: DEV_TENANT_ID, legalName: 'Demo Sdn Bhd', country: 'MY', currency: 'MYR' })
+    .values({
+      tenantId: DEV_TENANT_ID,
+      legalName: 'Demo Sdn Bhd',
+      country: 'MY',
+      currency: 'MYR',
+      parentCompanyId: holding.id,
+    })
     .returning({ id: schema.company.id });
+  await owner.db.insert(schema.companyStatutoryMy).values({
+    tenantId: DEV_TENANT_ID,
+    companyId: company.id,
+    epfEmployerNo: 'A1234567890',
+    socsoEmployerCode: 'B9876543',
+    lhdnEmployerNo: 'E1234567890',
+    myinvoisTin: 'C12345678901',
+    ssmRegistrationNo: '202301012345',
+  });
   const [finance] = await owner.db
     .insert(schema.department)
     .values({ tenantId: DEV_TENANT_ID, companyId: company.id, name: 'Finance' })

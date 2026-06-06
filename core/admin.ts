@@ -47,6 +47,28 @@ export async function createCompany(
   });
 }
 
+/** Set (or clear) a company's parent in the group tree. Cycles are rejected by a DB trigger. */
+export async function setCompanyParent(
+  ctx: SessionContext,
+  p: { companyId: string; parentCompanyId: string | null },
+) {
+  return withTenant(ctx, async (tx) => {
+    await tx
+      .update(company)
+      .set({ parentCompanyId: p.parentCompanyId })
+      .where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.parent.changed',
+      actor: actorOf(ctx),
+      payload: { parentCompanyId: p.parentCompanyId },
+    });
+    return { id: p.companyId };
+  });
+}
+
 export async function createDepartment(
   ctx: SessionContext,
   p: { companyId: string; name: string; parentDepartmentId?: string },

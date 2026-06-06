@@ -1,13 +1,42 @@
 import { requireAdmin } from '@/lib/authz';
-import { listCompanies, listDepartments } from '@/core/read';
+import { companyTree, listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
+import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import {
   createCompanyAction,
   createCostCenterAction,
   createDepartmentAction,
   createPositionAction,
+  setCompanyParentAction,
+  setCompanyStatutoryAction,
 } from '../actions';
+
+type TreeNode = { id: string; name: string; country: string; parentId: string | null };
+
+function CompanyTree({
+  nodes,
+  parentId = null,
+  depth = 0,
+}: {
+  nodes: TreeNode[];
+  parentId?: string | null;
+  depth?: number;
+}) {
+  const children = nodes.filter((n) => n.parentId === parentId);
+  if (children.length === 0) return null;
+  return (
+    <ul className={depth === 0 ? 'space-y-0.5' : 'ml-3 space-y-0.5 border-l border-border pl-3'}>
+      {children.map((n) => (
+        <li key={n.id}>
+          <span className="text-sm font-medium text-foreground">{n.name}</span>{' '}
+          <span className="text-xs text-muted-foreground">{n.country}</span>
+          <CompanyTree nodes={nodes} parentId={n.id} depth={depth + 1} />
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 type Company = { id: string; name: string };
 
@@ -46,18 +75,126 @@ export default async function OrganizationPage({
 }) {
   const s = await requireAdmin();
   const { error } = await searchParams;
-  const [companies, departments, positions, costCenters] = await Promise.all([
+  const [companies, departments, positions, costCenters, tree, statutory] = await Promise.all([
     listCompanies(s),
     listDepartments(s),
     listPositions(s),
     listCostCenters(s),
+    companyTree(s),
+    listCompanyStatutoryMY(s),
   ]);
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
+  const statBy = new Map(statutory.map((r) => [r.companyId, r]));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-xl font-semibold tracking-tight">Organization</h1>
       <ErrorBanner message={error} />
+
+      <Card>
+        <SectionHeader title="Company structure" count={companies.length} />
+        <div className="px-4 py-3">
+          {tree.length > 0 ? (
+            <CompanyTree nodes={tree} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No companies yet.</p>
+          )}
+        </div>
+        <form
+          action={setCompanyParentAction}
+          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-3"
+        >
+          <Field label="Company">
+            <select name="companyId" required className={inputCls}>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Parent">
+            <select name="parentCompanyId" className={inputCls} defaultValue="">
+              <option value="">— none (group root) —</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="flex items-end">
+            <button className={btnPrimary}>Set parent</button>
+          </div>
+        </form>
+      </Card>
+
+      <Card>
+        <SectionHeader title="Statutory identity (per company)" count={statutory.length} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Company</th>
+                <th className="px-4 py-2 font-medium">EPF no.</th>
+                <th className="px-4 py-2 font-medium">SOCSO</th>
+                <th className="px-4 py-2 font-medium">LHDN E</th>
+                <th className="px-4 py-2 font-medium">MyInvois TIN</th>
+                <th className="px-4 py-2 font-medium">SSM</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {companies.map((c) => {
+                const st = statBy.get(c.id);
+                return (
+                  <tr key={c.id}>
+                    <td className="px-4 py-2 font-medium">{c.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{st?.epfEmployerNo ?? '—'}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{st?.socsoEmployerCode ?? '—'}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{st?.lhdnEmployerNo ?? '—'}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{st?.myinvoisTin ?? '—'}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{st?.ssmRegistrationNo ?? '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <form
+          action={setCompanyStatutoryAction}
+          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-3"
+        >
+          {/* MY-first: all seeded companies are MY. A multi-country form would derive this per company. */}
+          <input type="hidden" name="country" value="MY" />
+          <Field label="Company">
+            <select name="companyId" required className={inputCls}>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="EPF employer no.">
+            <input name="epfEmployerNo" className={inputCls} />
+          </Field>
+          <Field label="SOCSO employer code">
+            <input name="socsoEmployerCode" className={inputCls} />
+          </Field>
+          <Field label="LHDN E-number">
+            <input name="lhdnEmployerNo" className={inputCls} />
+          </Field>
+          <Field label="MyInvois TIN">
+            <input name="myinvoisTin" className={inputCls} />
+          </Field>
+          <Field label="SSM registration no.">
+            <input name="ssmRegistrationNo" className={inputCls} />
+          </Field>
+          <div className="sm:col-span-3">
+            <button className={btnPrimary}>Save statutory identity</button>
+          </div>
+        </form>
+      </Card>
 
       <Card>
         <SectionHeader title="Companies" count={companies.length} />

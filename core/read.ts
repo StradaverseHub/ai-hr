@@ -407,3 +407,18 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
       .limit(limit),
   );
 }
+
+/** Companies with their parent link — the group tree (ADR-0009). */
+export function companyTree(ctx: SessionContext) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: company.id,
+        name: company.legalName,
+        country: company.country,
+        parentId: company.parentCompanyId,
+      })
+      .from(company)
+      .orderBy(company.legalName),
+  );
+}
