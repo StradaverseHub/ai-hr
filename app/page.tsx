@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { getSession } from '@/lib/session';
-import { dashboardStats, listCompanies, recentActivity } from '@/core/read';
+import { dashboardStats, groupBreakdown, listCompanies, recentActivity } from '@/core/read';
 import { Card } from '@/components/ui';
 
 const rm = (n: unknown) =>
@@ -63,22 +63,72 @@ function StatCard({
   );
 }
 
-export default async function DashboardPage() {
+type BreakdownRow = { id: string; name: string; parentId: string | null; headcount: number };
+
+function orderTree(rows: BreakdownRow[]) {
+  const out: { row: BreakdownRow; depth: number }[] = [];
+  const visit = (parentId: string | null, depth: number) => {
+    for (const row of rows
+      .filter((r) => r.parentId === parentId)
+      .sort((a, b) => a.name.localeCompare(b.name))) {
+      out.push({ row, depth });
+      visit(row.id, depth + 1);
+    }
+  };
+  visit(null, 0);
+  return out;
+}
+
+function ScopeTab({ href, label, active }: { href: string; label: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+        active
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border text-muted-foreground hover:bg-muted'
+      }`}
+    >
+      {label}
+    </Link>
+  );
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ company?: string }>;
+}) {
   const s = await getSession();
-  const [stats, activity, companies] = await Promise.all([
-    dashboardStats(s),
+  const { company: scopeId } = await searchParams;
+  const [stats, activity, companies, breakdown] = await Promise.all([
+    dashboardStats(s, scopeId),
     recentActivity(s, 8),
     listCompanies(s),
+    groupBreakdown(s),
   ]);
+  const scopeName = scopeId ? companies.find((c) => c.id === scopeId)?.name : null;
   const att = stats.attendance;
   const attTotal = att.present + att.late + att.halfDay + att.absent;
   const pct = (n: number) => (attTotal ? `${(n / attTotal) * 100}%` : '0%');
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">{companies[0]?.name ?? 'Your organization'} · overview</p>
+      <div className="space-y-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            {scopeName ? `${scopeName} (consolidated)` : 'All companies'} · overview
+          </p>
+        </div>
+        {companies.length > 1 && (
+          <div className="flex flex-wrap gap-1.5">
+            <ScopeTab href="/" label="All companies" active={!scopeId} />
+            {companies.map((c) => (
+              <ScopeTab key={c.id} href={`/?company=${c.id}`} label={c.name} active={scopeId === c.id} />
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -97,6 +147,34 @@ export default async function DashboardPage() {
           href="/payroll"
         />
       </div>
+
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3">
+          <h2 className="text-sm font-semibold">Headcount by company</h2>
+          <span className="text-xs text-muted-foreground">
+            {breakdown.reduce((sum, c) => sum + c.headcount, 0)} total
+          </span>
+        </div>
+        <table className="w-full text-sm">
+          <tbody className="divide-y divide-border border-t border-border">
+            {orderTree(breakdown).map(({ row, depth }) => (
+              <tr key={row.id} className="hover:bg-muted/40">
+                <td className="py-2 pr-4" style={{ paddingLeft: `${1 + depth * 1.5}rem` }}>
+                  {row.name}
+                </td>
+                <td className="px-4 py-2 text-right tabular-nums">{row.headcount}</td>
+              </tr>
+            ))}
+            {breakdown.length === 0 && (
+              <tr>
+                <td className="px-4 py-6 text-center text-muted-foreground" colSpan={2}>
+                  No companies yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

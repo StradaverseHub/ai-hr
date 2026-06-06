@@ -23,7 +23,7 @@ import {
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
-import { listEmployees, reportingLinesFor } from '../core/read';
+import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
 import { createCompany, createDepartment, setCompanyParent } from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
@@ -470,5 +470,45 @@ describe('Slice B — company-scoped authorization', () => {
     const a = adminCtx(base); // roles:['hr_admin'], no grants → group-wide
     const { id: co } = await createCompany(a, { legalName: 'GW Co Sdn Bhd' });
     await expect(createDepartment(a, { companyId: co, name: 'GW-Dept' })).resolves.toBeTruthy();
+  });
+});
+
+describe('Slice C — consolidation (group vs per-company)', () => {
+  it('scopes dashboard stats to a company subtree and breaks headcount down per company', async () => {
+    const a = adminCtx(base);
+    const { id: parent } = await createCompany(a, { legalName: 'Parent Co' });
+    const { id: child } = await createCompany(a, { legalName: 'Child Co' });
+    await setCompanyParent(a, { companyId: child, parentCompanyId: parent });
+    const deptP = await createDepartment(a, { companyId: parent, name: 'P' });
+    const deptC = await createDepartment(a, { companyId: child, name: 'C' });
+    await hireEmployee(a, {
+      person: { fullName: 'P1', primaryEmail: 'p1@x.test' },
+      companyId: parent,
+      departmentId: deptP.id,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await hireEmployee(a, {
+      person: { fullName: 'C1', primaryEmail: 'c1@x.test' },
+      companyId: child,
+      departmentId: deptC.id,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+
+    // Scoped to the parent → the whole subtree (parent + child).
+    const groupStats = await dashboardStats(a, parent);
+    expect(groupStats.headcount).toBe(2);
+    expect(groupStats.companies).toBe(2);
+
+    // Scoped to the child alone.
+    const childStats = await dashboardStats(a, child);
+    expect(childStats.headcount).toBe(1);
+    expect(childStats.companies).toBe(1);
+
+    // Per-company breakdown.
+    const bd = await groupBreakdown(a);
+    expect(bd.find((r) => r.id === parent)?.headcount).toBe(1);
+    expect(bd.find((r) => r.id === child)?.headcount).toBe(1);
   });
 });

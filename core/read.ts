@@ -1,5 +1,5 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   assignment,
@@ -255,48 +255,67 @@ export function orgChartData(ctx: SessionContext) {
   });
 }
 
-/** Aggregate counts + latest attendance/payroll snapshot for the dashboard. */
-export function dashboardStats(ctx: SessionContext) {
+/** Aggregate counts + latest attendance/payroll snapshot for the dashboard. When `companyId` is
+ *  given, every figure is scoped to that company's subtree (consolidation); else the whole tenant. */
+export function dashboardStats(ctx: SessionContext, companyId?: string) {
   return withTenant(ctx, async (tx) => {
     const one = sql<number>`count(*)::int`;
+    let scopeIds: string[] | null = null;
+    if (companyId) {
+      const rows = (await tx.execute(
+        sql`select id from app.company_subtree(${companyId}::uuid)`,
+      )) as unknown as { id: string }[];
+      scopeIds = rows.map((r) => r.id);
+    }
+    const scope = (col: AnyColumn) => (scopeIds ? inArray(col, scopeIds) : sql`true`);
+
     const [headcount] = await tx
       .select({ n: one })
       .from(employment)
-      .where(isNull(employment.terminatedOn));
-    const [companies] = await tx.select({ n: one }).from(company);
-    const [departments] = await tx.select({ n: one }).from(department);
+      .where(and(isNull(employment.terminatedOn), scope(employment.companyId)));
+    const companiesCount = scopeIds
+      ? scopeIds.length
+      : ((await tx.select({ n: one }).from(company))[0]?.n ?? 0);
+    const [departments] = await tx
+      .select({ n: one })
+      .from(department)
+      .where(scope(department.companyId));
     const [pending] = await tx
       .select({ n: one })
       .from(leaveRequest)
-      .where(eq(leaveRequest.status, 'pending'));
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(and(eq(leaveRequest.status, 'pending'), scope(employment.companyId)));
 
-    // Breakdown for the most recent day that has any attendance.
+    // Breakdown for the most recent day that has any (scoped) attendance.
     const [latestDay] = await tx
       .select({ d: sql<string | null>`max(${attendance.attendanceDate})` })
-      .from(attendance);
+      .from(attendance)
+      .innerJoin(employment, eq(employment.id, attendance.employmentId))
+      .where(scope(employment.companyId));
     const byStatus = latestDay?.d
       ? await tx
           .select({ status: attendance.status, n: one })
           .from(attendance)
-          .where(eq(attendance.attendanceDate, latestDay.d))
+          .innerJoin(employment, eq(employment.id, attendance.employmentId))
+          .where(and(eq(attendance.attendanceDate, latestDay.d), scope(employment.companyId)))
           .groupBy(attendance.status)
       : [];
     const att = (s: string) => byStatus.find((r) => r.status === s)?.n ?? 0;
 
-    // Aggregate payroll totals are admin-only — never surface them to employees/managers,
-    // even though RLS would let them read a batch row they have a payslip in.
+    // Aggregate payroll totals are admin-only — never surface them to employees/managers.
     const isAdmin = ctx.roles?.some((r) => r === 'hr_admin' || r === 'super_admin') ?? false;
     const [latestPayroll] = isAdmin
       ? await tx
           .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, totals: payrollBatch.totals })
           .from(payrollBatch)
+          .where(scope(payrollBatch.companyId))
           .orderBy(desc(payrollBatch.payPeriod))
           .limit(1)
       : [];
 
     return {
       headcount: headcount?.n ?? 0,
-      companies: companies?.n ?? 0,
+      companies: companiesCount,
       departments: departments?.n ?? 0,
       pendingLeave: pending?.n ?? 0,
       attendance: {
@@ -315,6 +334,23 @@ export function dashboardStats(ctx: SessionContext) {
         : null,
     };
   });
+}
+
+/** Per-company active headcount across the group — the consolidation breakdown (RLS-scoped). */
+export function groupBreakdown(ctx: SessionContext) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: company.id,
+        name: company.legalName,
+        parentId: company.parentCompanyId,
+        headcount: sql<number>`(count(${employment.id}) filter (where ${employment.terminatedOn} is null))::int`,
+      })
+      .from(company)
+      .leftJoin(employment, eq(employment.companyId, company.id))
+      .groupBy(company.id, company.legalName, company.parentCompanyId)
+      .orderBy(company.legalName),
+  );
 }
 
 /** Most recent domain events — the substrate's activity feed. */
