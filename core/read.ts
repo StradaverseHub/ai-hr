@@ -100,7 +100,7 @@ export function listLeaveTypes(ctx: SessionContext, opts: { includeArchived?: bo
   );
 }
 
-export function listPendingLeave(ctx: SessionContext) {
+export function listPendingLeave(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -114,7 +114,12 @@ export function listPendingLeave(ctx: SessionContext) {
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(leaveRequest.status, 'pending'))
+      .where(
+        and(
+          eq(leaveRequest.status, 'pending'),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
       .orderBy(leaveRequest.startDate),
   );
 }
@@ -249,7 +254,7 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
 }
 
 /** Active employees + current administrative reporting edges, for the org chart. */
-export function orgChartData(ctx: SessionContext) {
+export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, async (tx) => {
     const employees = await tx
       .select({
@@ -268,7 +273,12 @@ export function orgChartData(ctx: SessionContext) {
         ),
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
-      .where(isNull(employment.terminatedOn))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
       .orderBy(person.fullName);
     const edges = await tx
       .select({

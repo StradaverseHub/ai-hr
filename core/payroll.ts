@@ -2,7 +2,7 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
@@ -161,7 +161,7 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   });
 }
 
-export function listBatches(ctx: SessionContext) {
+export function listBatches(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -174,6 +174,7 @@ export function listBatches(ctx: SessionContext) {
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined)
       .orderBy(desc(payrollBatch.payPeriod)),
   );
 }

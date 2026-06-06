@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/session';
+import { scopedSession } from '@/lib/scope';
 import { listEmployees, listLeaveTypes, listPendingLeave } from '@/core/read';
 import { Card, Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { decideLeaveAction, requestLeaveAction } from './actions';
@@ -8,12 +8,12 @@ export default async function LeavePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const session = await getSession();
+  const { s: session, scopeIds } = await scopedSession();
   const { error } = await searchParams;
   const [employees, leaveTypes, pending] = await Promise.all([
-    listEmployees(session),
+    listEmployees(session, scopeIds),
     listLeaveTypes(session),
-    listPendingLeave(session),
+    listPendingLeave(session, scopeIds),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
 

@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/session';
+import { scopedSession } from '@/lib/scope';
 import { attendanceForDate } from '@/core/attendance';
 import { Button, Card, ErrorBanner, SectionHeader, inputCls } from '@/components/ui';
 import { checkInAction, checkOutAction } from './actions';
@@ -26,9 +26,9 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await getSession();
+  const { s, scopeIds } = await scopedSession();
   const { error } = await searchParams;
-  const rows = await attendanceForDate(s, TODAY);
+  const rows = await attendanceForDate(s, TODAY, scopeIds);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">

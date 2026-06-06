@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireAdmin } from '@/lib/authz';
+import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, SectionHeader, inputCls } from '@/components/ui';
@@ -16,9 +16,9 @@ export default async function PayrollPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await requireAdmin();
+  const { s, scopeIds } = await scopedAdmin();
   const { error } = await searchParams;
-  const [batches, companies] = await Promise.all([listBatches(s), listCompanies(s)]);
+  const [batches, companies] = await Promise.all([listBatches(s, scopeIds), listCompanies(s)]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
