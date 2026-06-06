@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -44,7 +44,7 @@ export default async function OrganizationPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const { error } = await searchParams;
   const [companies, departments, positions, costCenters] = await Promise.all([
     listCompanies(s),

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { listBatches } from '@/core/payroll';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, SectionHeader, inputCls } from '@/components/ui';
@@ -16,7 +16,7 @@ export default async function PayrollPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const { error } = await searchParams;
   const [batches, companies] = await Promise.all([listBatches(s), listCompanies(s)]);
 

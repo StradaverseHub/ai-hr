@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-const GROUPS: { label?: string; items: { href: string; label: string }[] }[] = [
+const GROUPS: { label?: string; adminOnly?: boolean; items: { href: string; label: string }[] }[] = [
   {
     items: [
       { href: '/', label: 'Dashboard' },
@@ -16,6 +16,7 @@ const GROUPS: { label?: string; items: { href: string; label: string }[] }[] = [
   },
   {
     label: 'Admin',
+    adminOnly: true,
     items: [
       { href: '/admin/organization', label: 'Organization' },
       { href: '/admin/leave', label: 'Leave config' },
@@ -25,7 +26,7 @@ const GROUPS: { label?: string; items: { href: string; label: string }[] }[] = [
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   return (
     <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card px-3 py-4 sm:flex">
@@ -36,7 +37,7 @@ export function Sidebar() {
         <span className="text-base font-semibold tracking-tight">AI HR</span>
       </div>
       <nav className="flex flex-col gap-5">
-        {GROUPS.map((group, gi) => (
+        {GROUPS.filter((group) => isAdmin || !group.adminOnly).map((group, gi) => (
           <div key={gi} className="flex flex-col gap-1">
             {group.label && (
               <div className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">

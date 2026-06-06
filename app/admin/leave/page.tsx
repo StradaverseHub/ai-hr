@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -9,7 +9,7 @@ export default async function LeaveConfigPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const { error } = await searchParams;
   const [types, policies] = await Promise.all([listLeaveTypes(s), listLeavePolicies(s)]);
 

@@ -9,6 +9,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { getSession } from '@/lib/session';
+import { isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
@@ -30,7 +31,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="min-h-full font-sans">
         <Providers>
           <div className="flex min-h-dvh">
-            <Sidebar />
+            <Sidebar isAdmin={isAdmin(session)} />
             <div className="flex min-w-0 flex-1 flex-col">
               <header className="flex h-14 items-center justify-between border-b border-border px-6">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">

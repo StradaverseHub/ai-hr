@@ -283,11 +283,16 @@ export function dashboardStats(ctx: SessionContext) {
       : [];
     const att = (s: string) => byStatus.find((r) => r.status === s)?.n ?? 0;
 
-    const [latestPayroll] = await tx
-      .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, totals: payrollBatch.totals })
-      .from(payrollBatch)
-      .orderBy(desc(payrollBatch.payPeriod))
-      .limit(1);
+    // Aggregate payroll totals are admin-only — never surface them to employees/managers,
+    // even though RLS would let them read a batch row they have a payslip in.
+    const isAdmin = ctx.roles?.some((r) => r === 'hr_admin' || r === 'super_admin') ?? false;
+    const [latestPayroll] = isAdmin
+      ? await tx
+          .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, totals: payrollBatch.totals })
+          .from(payrollBatch)
+          .orderBy(desc(payrollBatch.payPeriod))
+          .limit(1)
+      : [];
 
     return {
       headcount: headcount?.n ?? 0,

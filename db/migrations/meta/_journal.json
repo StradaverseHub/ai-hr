@@ -92,6 +92,13 @@
       "when": 1780722667774,
       "tag": "0012_principal_bootstrap",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1780724527392,
+      "tag": "0013_payroll_batch_rls_tighten",
+      "breakpoints": true
     }
   ]
 }

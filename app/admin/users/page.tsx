@@ -1,4 +1,4 @@
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
 import { Card, ErrorBanner, RoleTag, SectionHeader, btnGhost, inputCls } from '@/components/ui';
 import { assignRoleAction, revokeRoleAction } from '../actions';
@@ -10,7 +10,7 @@ export default async function UsersPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const { error } = await searchParams;
   const users = await listUsers(s);
 

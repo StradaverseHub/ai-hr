@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { batchDetail } from '@/core/payroll';
 import { Button, Card, ErrorBanner, SectionHeader } from '@/components/ui';
 import { closeAction, generateAction } from '../actions';
@@ -15,7 +15,7 @@ export default async function BatchPage({
   params: Promise<{ batchId: string }>;
   searchParams: Promise<{ error?: string }>;
 }) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const { batchId } = await params;
   const { error } = await searchParams;
   const data = await batchDetail(s, batchId);
