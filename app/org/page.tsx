@@ -21,16 +21,16 @@ function OrgNode({
     <li>
       <Link
         href={`/people/${e.employmentId}`}
-        className="inline-flex flex-col rounded-lg border border-zinc-200 bg-white px-4 py-2.5 transition-colors hover:border-indigo-400 dark:border-zinc-800 dark:bg-zinc-950 dark:hover:border-indigo-500"
+        className="inline-flex flex-col rounded-lg border border-border bg-card px-4 py-2.5 transition-colors hover:border-primary"
       >
-        <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100">{e.name}</span>
-        <span className="text-xs text-zinc-500">
+        <span className="text-sm font-medium text-foreground">{e.name}</span>
+        <span className="text-xs text-muted-foreground">
           {e.department ?? '—'}
           {reports.length > 0 && ` · ${reports.length} report${reports.length === 1 ? '' : 's'}`}
         </span>
       </Link>
       {reports.length > 0 && (
-        <ul className="ml-5 mt-2 space-y-2 border-l border-zinc-200 pl-5 dark:border-zinc-800">
+        <ul className="ml-5 mt-2 space-y-2 border-l border-border pl-5">
           {reports.map((r) => (
             <OrgNode key={r} id={r} empById={empById} childrenByMgr={childrenByMgr} />
           ))}
@@ -59,12 +59,12 @@ export default async function OrgChartPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold tracking-tight">Org chart</h1>
-        <span className="text-sm text-zinc-500">administrative reporting</span>
+        <span className="text-sm text-muted-foreground">administrative reporting</span>
       </div>
 
       <Card className="p-6">
         {roots.length === 0 ? (
-          <p className="text-sm text-zinc-500">No employees yet.</p>
+          <p className="text-sm text-muted-foreground">No employees yet.</p>
         ) : (
           <ul className="space-y-2">
             {roots.map((r) => (
@@ -74,7 +74,7 @@ export default async function OrgChartPage() {
         )}
       </Card>
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-muted-foreground">
         Shows the <span className="font-medium">administrative</span> reporting line. Functional, project, and
         dotted-line relationships are visible on each person&rsquo;s detail page.
       </p>

@@ -20,18 +20,18 @@ export default async function LeaveConfigPage({
 
       <Card>
         <SectionHeader title="Leave types" count={types.length} />
-        <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <ul className="divide-y divide-border">
           {types.map((t) => (
             <li key={t.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-              <span className="text-zinc-800 dark:text-zinc-200">{t.name}</span>
-              <span className="text-xs text-zinc-500">{t.code}</span>
+              <span className="text-foreground">{t.name}</span>
+              <span className="text-xs text-muted-foreground">{t.code}</span>
             </li>
           ))}
-          {types.length === 0 && <li className="px-4 py-6 text-center text-sm text-zinc-500">No leave types.</li>}
+          {types.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">No leave types.</li>}
         </ul>
         <form
           action={createLeaveTypeAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-zinc-200 p-4 sm:grid-cols-4 dark:border-zinc-800"
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <Field label="Code">
             <input name="code" required placeholder="SICK" className={inputCls} />
@@ -49,23 +49,23 @@ export default async function LeaveConfigPage({
 
       <Card>
         <SectionHeader title="Policies" count={policies.length} />
-        <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+        <ul className="divide-y divide-border">
           {policies.map((p) => {
             const accrual = p.accrual as { annualDays?: number } | null;
             return (
               <li key={p.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                <span className="text-zinc-800 dark:text-zinc-200">{p.leaveType}</span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-foreground">{p.leaveType}</span>
+                <span className="text-xs text-muted-foreground">
                   {accrual?.annualDays ?? '—'} days/yr · from {p.validFrom}
                 </span>
               </li>
             );
           })}
-          {policies.length === 0 && <li className="px-4 py-6 text-center text-sm text-zinc-500">No policies.</li>}
+          {policies.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted-foreground">No policies.</li>}
         </ul>
         <form
           action={createLeavePolicyAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-zinc-200 p-4 sm:grid-cols-4 dark:border-zinc-800"
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <Field label="Leave type">
             <select name="leaveTypeId" required className={inputCls}>

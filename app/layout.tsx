@@ -28,11 +28,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <div className="flex min-h-dvh">
             <Sidebar />
             <div className="flex min-w-0 flex-1 flex-col">
-              <header className="flex h-14 items-center justify-between border-b border-zinc-200 px-6 dark:border-zinc-800">
-                <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+              <header className="flex h-14 items-center justify-between border-b border-border px-6">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span className="inline-flex size-2 rounded-full bg-amber-500" title="Dev session" />
                   Demo Group
-                  <span className="text-zinc-400 dark:text-zinc-600">·</span>
+                  <span className="text-muted-foreground/50">·</span>
                   <span className="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
                     dev session
                   </span>

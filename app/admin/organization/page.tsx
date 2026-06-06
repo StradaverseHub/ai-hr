@@ -26,13 +26,13 @@ function CompanySelect({ companies }: { companies: Company[] }) {
 }
 
 function Rows({ rows, empty }: { rows: { key: string; main: string; sub?: string | null }[]; empty: string }) {
-  if (rows.length === 0) return <div className="px-4 py-6 text-center text-sm text-zinc-500">{empty}</div>;
+  if (rows.length === 0) return <div className="px-4 py-6 text-center text-sm text-muted-foreground">{empty}</div>;
   return (
-    <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+    <ul className="divide-y divide-border">
       {rows.map((r) => (
         <li key={r.key} className="flex items-center justify-between px-4 py-2.5 text-sm">
-          <span className="text-zinc-800 dark:text-zinc-200">{r.main}</span>
-          {r.sub && <span className="text-xs text-zinc-500">{r.sub}</span>}
+          <span className="text-foreground">{r.main}</span>
+          {r.sub && <span className="text-xs text-muted-foreground">{r.sub}</span>}
         </li>
       ))}
     </ul>
@@ -64,7 +64,7 @@ export default async function OrganizationPage({
         <Rows rows={companies.map((c) => ({ key: c.id, main: c.name }))} empty="No companies yet." />
         <form
           action={createCompanyAction}
-          className="grid grid-cols-1 gap-3 border-t border-zinc-200 p-4 sm:grid-cols-4 dark:border-zinc-800"
+          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <input name="legalName" required placeholder="Legal name" className={`${inputCls} sm:col-span-2`} />
           <input name="country" defaultValue="MY" placeholder="Country" className={inputCls} />
@@ -83,7 +83,7 @@ export default async function OrganizationPage({
         />
         <form
           action={createDepartmentAction}
-          className="grid grid-cols-1 gap-3 border-t border-zinc-200 p-4 sm:grid-cols-3 dark:border-zinc-800"
+          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-3"
         >
           <CompanySelect companies={companies} />
           <Field label="Name">
@@ -103,7 +103,7 @@ export default async function OrganizationPage({
         />
         <form
           action={createPositionAction}
-          className="grid grid-cols-1 gap-3 border-t border-zinc-200 p-4 sm:grid-cols-3 dark:border-zinc-800"
+          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-3"
         >
           <CompanySelect companies={companies} />
           <Field label="Title">
@@ -123,7 +123,7 @@ export default async function OrganizationPage({
         />
         <form
           action={createCostCenterAction}
-          className="grid grid-cols-1 gap-3 border-t border-zinc-200 p-4 sm:grid-cols-4 dark:border-zinc-800"
+          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <CompanySelect companies={companies} />
           <Field label="Code">

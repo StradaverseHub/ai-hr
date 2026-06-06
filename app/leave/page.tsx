@@ -28,7 +28,7 @@ export default async function LeavePage({
       )}
 
       <Card>
-        <div className="border-b border-zinc-200 px-4 py-3 text-sm font-medium dark:border-zinc-800">
+        <div className="border-b border-border px-4 py-3 text-sm font-medium">
           Request leave
         </div>
         <form
@@ -71,17 +71,17 @@ export default async function LeavePage({
       </Card>
 
       <Card className="overflow-hidden">
-        <div className="border-b border-zinc-200 px-4 py-3 text-sm font-medium dark:border-zinc-800">
+        <div className="border-b border-border px-4 py-3 text-sm font-medium">
           Pending approvals
-          <span className="ml-2 text-zinc-500">({pending.length})</span>
+          <span className="ml-2 text-muted-foreground">({pending.length})</span>
         </div>
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <tbody className="divide-y divide-border">
             {pending.map((r) => (
               <tr key={r.id}>
                 <td className="px-4 py-3">
-                  <div className="font-medium text-zinc-900 dark:text-zinc-100">{r.employee}</div>
-                  <div className="text-xs text-zinc-500">
+                  <div className="font-medium text-foreground">{r.employee}</div>
+                  <div className="text-xs text-muted-foreground">
                     {r.startDate} → {r.endDate} · {Number(r.days)} day{Number(r.days) === 1 ? '' : 's'}
                   </div>
                 </td>
@@ -107,7 +107,7 @@ export default async function LeavePage({
             ))}
             {pending.length === 0 && (
               <tr>
-                <td className="px-4 py-10 text-center text-zinc-500">No pending requests.</td>
+                <td className="px-4 py-10 text-center text-muted-foreground">No pending requests.</td>
               </tr>
             )}
           </tbody>

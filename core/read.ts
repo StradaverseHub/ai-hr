@@ -3,12 +3,15 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   assignment,
+  attendance,
   company,
   department,
+  domainEvent,
   employment,
   leaveLedger,
   leaveRequest,
   leaveType,
+  payrollBatch,
   person,
   position,
   reportingLine,
@@ -249,4 +252,77 @@ export function orgChartData(ctx: SessionContext) {
       );
     return { employees, edges };
   });
+}
+
+/** Aggregate counts + latest attendance/payroll snapshot for the dashboard. */
+export function dashboardStats(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const one = sql<number>`count(*)::int`;
+    const [headcount] = await tx
+      .select({ n: one })
+      .from(employment)
+      .where(isNull(employment.terminatedOn));
+    const [companies] = await tx.select({ n: one }).from(company);
+    const [departments] = await tx.select({ n: one }).from(department);
+    const [pending] = await tx
+      .select({ n: one })
+      .from(leaveRequest)
+      .where(eq(leaveRequest.status, 'pending'));
+
+    // Breakdown for the most recent day that has any attendance.
+    const [latestDay] = await tx
+      .select({ d: sql<string | null>`max(${attendance.attendanceDate})` })
+      .from(attendance);
+    const byStatus = latestDay?.d
+      ? await tx
+          .select({ status: attendance.status, n: one })
+          .from(attendance)
+          .where(eq(attendance.attendanceDate, latestDay.d))
+          .groupBy(attendance.status)
+      : [];
+    const att = (s: string) => byStatus.find((r) => r.status === s)?.n ?? 0;
+
+    const [latestPayroll] = await tx
+      .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, totals: payrollBatch.totals })
+      .from(payrollBatch)
+      .orderBy(desc(payrollBatch.payPeriod))
+      .limit(1);
+
+    return {
+      headcount: headcount?.n ?? 0,
+      companies: companies?.n ?? 0,
+      departments: departments?.n ?? 0,
+      pendingLeave: pending?.n ?? 0,
+      attendance: {
+        date: latestDay?.d ?? null,
+        present: att('present'),
+        late: att('late'),
+        halfDay: att('half_day'),
+        absent: att('absent'),
+      },
+      latestPayroll: latestPayroll
+        ? {
+            payPeriod: latestPayroll.payPeriod,
+            status: latestPayroll.status,
+            net: (latestPayroll.totals as { net?: number } | null)?.net ?? null,
+          }
+        : null,
+    };
+  });
+}
+
+/** Most recent domain events — the substrate's activity feed. */
+export function recentActivity(ctx: SessionContext, limit = 8) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        eventType: domainEvent.eventType,
+        aggregateType: domainEvent.aggregateType,
+        actorType: domainEvent.actorType,
+        occurredAt: domainEvent.occurredAt,
+      })
+      .from(domainEvent)
+      .orderBy(desc(domainEvent.occurredAt))
+      .limit(limit),
+  );
 }

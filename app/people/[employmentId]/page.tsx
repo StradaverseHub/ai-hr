@@ -27,7 +27,7 @@ const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-  cancelled: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+  cancelled: 'bg-muted text-muted-foreground',
 };
 
 function LeaveStatus({ status }: { status: string }) {
@@ -40,7 +40,7 @@ function LeaveStatus({ status }: { status: string }) {
 
 function LineTypeBadge({ type }: { type: string }) {
   return (
-    <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+    <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
       {type === 'dotted' ? 'dotted-line' : type}
     </span>
   );
@@ -76,14 +76,14 @@ export default async function EmployeePage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Link href="/people" className="text-sm text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-200">
+      <Link href="/people" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
         ← People
       </Link>
 
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{emp.name}</h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-muted-foreground">
             {emp.employeeCode ?? '—'} · {emp.email} · {emp.company} · hired {emp.hiredOn}
           </p>
         </div>
@@ -94,17 +94,17 @@ export default async function EmployeePage({
 
       <Card>
         <SectionHeader title="Leave balance" />
-        <div className="grid grid-cols-1 divide-y divide-zinc-100 sm:grid-cols-3 sm:divide-x sm:divide-y-0 dark:divide-zinc-800">
+        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {balances.map((b) => (
             <div key={b.leaveTypeId} className="p-4">
-              <div className="text-xs text-zinc-500">{b.leaveType}</div>
+              <div className="text-xs text-muted-foreground">{b.leaveType}</div>
               <div className="text-2xl font-semibold tabular-nums">{b.balance}</div>
-              <div className="text-xs text-zinc-500">
+              <div className="text-xs text-muted-foreground">
                 {b.accrued} accrued · {b.taken} taken
               </div>
             </div>
           ))}
-          {balances.length === 0 && <div className="p-4 text-sm text-zinc-500">No leave records.</div>}
+          {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">No leave records.</div>}
         </div>
       </Card>
 
@@ -117,7 +117,7 @@ export default async function EmployeePage({
                 <span className="text-2xl font-semibold tabular-nums">
                   {comp.currency} {Number(comp.basicSalary).toLocaleString()}
                 </span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-muted-foreground">
                   basic / mo
                   {Number(comp.monthlyAllowance) > 0 && ` · +${Number(comp.monthlyAllowance).toLocaleString()} allowance`}
                   {' · since '}
@@ -125,13 +125,13 @@ export default async function EmployeePage({
                 </span>
               </div>
             ) : (
-              <p className="text-sm text-zinc-500">No compensation set.</p>
+              <p className="text-sm text-muted-foreground">No compensation set.</p>
             )}
           </div>
           {!emp.terminatedOn && (
             <form
               action={setCompensationAction}
-              className="grid grid-cols-1 items-end gap-3 border-t border-zinc-200 p-4 sm:grid-cols-3 dark:border-zinc-800"
+              className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3"
             >
               <input type="hidden" name="employmentId" value={emp.employmentId} />
               <input type="hidden" name="effectiveFrom" value="2026-06-05" />
@@ -198,7 +198,7 @@ export default async function EmployeePage({
       <Card className="overflow-hidden">
         <SectionHeader title="Assignment history" count={history.length} />
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900/50 dark:text-zinc-400">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-2 font-medium">Period (valid time)</th>
               <th className="px-4 py-2 font-medium">Department</th>
@@ -206,14 +206,14 @@ export default async function EmployeePage({
               <th className="px-4 py-2 font-medium">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <tbody className="divide-y divide-border">
             {history.map((h) => (
-              <tr key={h.id} className={!h.validTo ? 'bg-indigo-50/40 dark:bg-indigo-500/5' : ''}>
+              <tr key={h.id} className={!h.validTo ? 'bg-primary/5' : ''}>
                 <td className="px-4 py-2.5 font-mono text-xs">
                   {h.validFrom} → {h.validTo ?? 'present'}
                 </td>
-                <td className="px-4 py-2.5 text-zinc-700 dark:text-zinc-300">{h.department ?? '—'}</td>
-                <td className="px-4 py-2.5 text-zinc-500">{h.position ?? '—'}</td>
+                <td className="px-4 py-2.5 text-foreground">{h.department ?? '—'}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{h.position ?? '—'}</td>
                 <td className="px-4 py-2.5">
                   <StatusBadge status={h.status} />
                 </td>
@@ -225,11 +225,11 @@ export default async function EmployeePage({
 
       <Card>
         <SectionHeader title="Reporting lines" />
-        <div className="grid grid-cols-1 divide-zinc-100 sm:grid-cols-2 sm:divide-x dark:divide-zinc-800">
+        <div className="grid grid-cols-1 divide-border sm:grid-cols-2 sm:divide-x">
           <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-400">Reports to</div>
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Reports to</div>
             {reporting.managers.length === 0 ? (
-              <div className="text-sm text-zinc-500">No managers.</div>
+              <div className="text-sm text-muted-foreground">No managers.</div>
             ) : (
               <ul className="space-y-2">
                 {reporting.managers.map((m) => (
@@ -237,7 +237,7 @@ export default async function EmployeePage({
                     <span className="flex items-center gap-2">
                       <Link
                         href={`/people/${m.employmentId}`}
-                        className="text-zinc-800 hover:text-indigo-600 dark:text-zinc-200 dark:hover:text-indigo-400"
+                        className="text-foreground hover:text-primary"
                       >
                         {m.name}
                       </Link>
@@ -247,7 +247,7 @@ export default async function EmployeePage({
                       <input type="hidden" name="employmentId" value={emp.employmentId} />
                       <input type="hidden" name="reportingLineId" value={m.id} />
                       <input type="hidden" name="endDate" value="2026-06-05" />
-                      <button type="submit" title="End reporting line" className="text-zinc-400 transition-colors hover:text-red-500">
+                      <button type="submit" title="End reporting line" className="text-muted-foreground transition-colors hover:text-red-500">
                         ×
                       </button>
                     </form>
@@ -257,16 +257,16 @@ export default async function EmployeePage({
             )}
           </div>
           <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-zinc-400">Direct reports</div>
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Direct reports</div>
             {reporting.reports.length === 0 ? (
-              <div className="text-sm text-zinc-500">No direct reports.</div>
+              <div className="text-sm text-muted-foreground">No direct reports.</div>
             ) : (
               <ul className="space-y-2">
                 {reporting.reports.map((r) => (
                   <li key={r.id} className="flex items-center gap-2 text-sm">
                     <Link
                       href={`/people/${r.employmentId}`}
-                      className="text-zinc-800 hover:text-indigo-600 dark:text-zinc-200 dark:hover:text-indigo-400"
+                      className="text-foreground hover:text-primary"
                     >
                       {r.name}
                     </Link>
@@ -280,7 +280,7 @@ export default async function EmployeePage({
         {!emp.terminatedOn && others.length > 0 && (
           <form
             action={addReportingLineAction}
-            className="grid grid-cols-1 items-end gap-3 border-t border-zinc-200 p-4 sm:grid-cols-4 dark:border-zinc-800"
+            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <input type="hidden" name="validFrom" value="2026-06-05" />
@@ -357,11 +357,11 @@ export default async function EmployeePage({
       <Card className="overflow-hidden">
         <SectionHeader title="Leave requests" count={requests.length} />
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <tbody className="divide-y divide-border">
             {requests.map((r) => (
               <tr key={r.id}>
-                <td className="px-4 py-2.5 text-zinc-700 dark:text-zinc-300">{r.leaveType}</td>
-                <td className="px-4 py-2.5 text-zinc-500">
+                <td className="px-4 py-2.5 text-foreground">{r.leaveType}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">
                   {r.startDate} → {r.endDate}
                 </td>
                 <td className="px-4 py-2.5 tabular-nums">{Number(r.days)} days</td>
@@ -372,7 +372,7 @@ export default async function EmployeePage({
             ))}
             {requests.length === 0 && (
               <tr>
-                <td className="px-4 py-6 text-center text-sm text-zinc-500">No leave requests.</td>
+                <td className="px-4 py-6 text-center text-sm text-muted-foreground">No leave requests.</td>
               </tr>
             )}
           </tbody>

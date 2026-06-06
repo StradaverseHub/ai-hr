@@ -23,7 +23,7 @@ export default async function PeoplePage({
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold tracking-tight">People</h1>
-        <span className="text-sm text-zinc-500">{employees.length} employees</span>
+        <span className="text-sm text-muted-foreground">{employees.length} employees</span>
       </div>
 
       {error && (
@@ -34,7 +34,7 @@ export default async function PeoplePage({
 
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900/50 dark:text-zinc-400">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium">Department</th>
@@ -43,29 +43,29 @@ export default async function PeoplePage({
               <th className="px-4 py-3 font-medium">Hired</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <tbody className="divide-y divide-border">
             {employees.map((e) => (
-              <tr key={e.employmentId} className="hover:bg-zinc-50 dark:hover:bg-zinc-900/40">
+              <tr key={e.employmentId} className="hover:bg-muted/40">
                 <td className="px-4 py-3">
                   <Link
                     href={`/people/${e.employmentId}`}
-                    className="font-medium text-zinc-900 hover:text-indigo-600 dark:text-zinc-100 dark:hover:text-indigo-400"
+                    className="font-medium text-foreground hover:text-primary"
                   >
                     {e.name}
                   </Link>
-                  <div className="text-xs text-zinc-500">{e.email}</div>
+                  <div className="text-xs text-muted-foreground">{e.email}</div>
                 </td>
-                <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.department ?? '—'}</td>
-                <td className="px-4 py-3 text-zinc-600 dark:text-zinc-300">{e.company}</td>
+                <td className="px-4 py-3 text-muted-foreground">{e.department ?? '—'}</td>
+                <td className="px-4 py-3 text-muted-foreground">{e.company}</td>
                 <td className="px-4 py-3">
                   <StatusBadge status={e.terminatedOn ? 'terminated' : e.status} />
                 </td>
-                <td className="px-4 py-3 text-zinc-500">{e.hiredOn}</td>
+                <td className="px-4 py-3 text-muted-foreground">{e.hiredOn}</td>
               </tr>
             ))}
             {employees.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-zinc-500">
+                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
                   No employees yet — hire someone below.
                 </td>
               </tr>
@@ -81,7 +81,7 @@ export default async function PeoplePage({
           </summary>
           <form
             action={hireAction}
-            className="grid grid-cols-1 gap-4 border-t border-zinc-200 p-4 sm:grid-cols-2 dark:border-zinc-800"
+            className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2"
           >
             <Field label="Full name">
               <input name="fullName" required className={inputCls} placeholder="Aisyah Rahman" />

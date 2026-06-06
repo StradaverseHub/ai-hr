@@ -10,7 +10,7 @@ const badgeVariants = cva('inline-flex items-center rounded-full px-2 py-0.5 tex
       warning: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
       danger: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
       info: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
-      accent: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300',
+      accent: 'bg-primary/10 text-primary',
     },
   },
   defaultVariants: { variant: 'default' },

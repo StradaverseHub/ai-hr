@@ -61,7 +61,7 @@ export function SectionHeader({ title, count }: { title: string; count?: number 
 
 export function RoleTag({ role }: { role: string }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium capitalize text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+    <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium capitalize text-primary">
       {role.replace(/_/g, ' ')}
     </span>
   );
