@@ -3,7 +3,7 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -245,7 +245,10 @@ export async function revokeRole(ctx: SessionContext, p: { roleAssignmentId: str
 
 // ── Reads ──────────────────────────────────────────────────────────
 
-export function listPositions(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+export function listPositions(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -256,12 +259,20 @@ export function listPositions(ctx: SessionContext, opts: { includeArchived?: boo
         inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
       })
       .from(position)
-      .where(opts.includeArchived ? undefined : isNull(position.archivedAt))
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(position.archivedAt),
+          opts.companyIds && opts.companyIds.length ? inArray(position.companyId, opts.companyIds) : undefined,
+        ),
+      )
       .orderBy(position.title),
   );
 }
 
-export function listCostCenters(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+export function listCostCenters(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -272,7 +283,12 @@ export function listCostCenters(ctx: SessionContext, opts: { includeArchived?: b
         inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
       })
       .from(costCenter)
-      .where(opts.includeArchived ? undefined : isNull(costCenter.archivedAt))
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(costCenter.archivedAt),
+          opts.companyIds && opts.companyIds.length ? inArray(costCenter.companyId, opts.companyIds) : undefined,
+        ),
+      )
       .orderBy(costCenter.code),
   );
 }
