@@ -283,3 +283,31 @@ export async function endReportingLine(
     });
   });
 }
+
+export type CostAllocationEntry = { companyId: string; percent: number };
+
+/**
+ * Set an employment's inter-company cost split (ADR-0009). For shared-services staff whose
+ * cost is recharged across group companies — feeds consolidation/management reporting (the
+ * cash payroll still runs at the employing company). Pass [] to clear.
+ */
+export async function setCostAllocation(
+  ctx: SessionContext,
+  p: { employmentId: string; allocations: CostAllocationEntry[] },
+) {
+  return withTenant(ctx, async (tx) => {
+    await tx
+      .update(employment)
+      .set({ costAllocation: p.allocations })
+      .where(eq(employment.id, p.employmentId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.cost-allocation.set',
+      actor: actorOf(ctx),
+      payload: { allocations: p.allocations },
+    });
+    return { id: p.employmentId };
+  });
+}

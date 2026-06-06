@@ -1,0 +1,1 @@
+ALTER TABLE "employment" ADD COLUMN "cost_allocation" jsonb;

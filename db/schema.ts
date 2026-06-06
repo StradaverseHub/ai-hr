@@ -206,6 +206,8 @@ export const employment = pgTable(
     employeeCode: text('employee_code'),
     hiredOn: date('hired_on').notNull(),
     terminatedOn: date('terminated_on'),
+    // Inter-company cost split for shared-services staff (ADR-0009): [{ companyId, percent }].
+    costAllocation: jsonb('cost_allocation'),
     createdAt: createdAt(),
   },
   (t) => [

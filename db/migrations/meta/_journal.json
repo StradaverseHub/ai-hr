@@ -127,6 +127,13 @@
       "when": 1780729626201,
       "tag": "0017_fix_employment_self_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780731868065,
+      "tag": "0018_employment_cost_allocation",
+      "breakpoints": true
     }
   ]
 }

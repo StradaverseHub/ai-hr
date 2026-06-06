@@ -5,6 +5,7 @@ import {
   assignment,
   attendance,
   company,
+  compensation,
   department,
   domainEvent,
   employment,
@@ -401,17 +402,60 @@ export function myEmployment(ctx: SessionContext) {
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .orderBy(employment.hiredOn)
       .limit(1);
     return row ?? null;
   });
 }
 
+/** ALL active employments for the current principal (concurrent multi-company, ADR-0009). */
+export function myEmployments(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    return tx
+      .select({
+        employmentId: employment.id,
+        company: company.legalName,
+        department: department.name,
+        position: position.title,
+        hiredOn: employment.hiredOn,
+        basic: compensation.basicSalary,
+        allowance: compensation.monthlyAllowance,
+        costAllocation: employment.costAllocation,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(
+        compensation,
+        and(
+          eq(compensation.employmentId, employment.id),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      )
+      .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      .orderBy(employment.hiredOn);
+  });
+}
+
 /** The current principal's payslips (RLS already restricts to own employment). */
-export function myPayslips(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, (tx) =>
-    tx
+export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
+  return withTenant(ctx, async (tx) => {
+    if (employmentIds.length === 0) return [];
+    return tx
       .select({
         id: payslip.id,
+        company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
         status: payrollBatch.status,
         gross: payslip.grossPay,
@@ -421,9 +465,10 @@ export function myPayslips(ctx: SessionContext, employmentId: string) {
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .where(eq(payslip.employmentId, employmentId))
-      .orderBy(desc(payrollBatch.payPeriod)),
-  );
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(inArray(payslip.employmentId, employmentIds))
+      .orderBy(desc(payrollBatch.payPeriod));
+  });
 }
 
 /** The current principal's recent attendance. */

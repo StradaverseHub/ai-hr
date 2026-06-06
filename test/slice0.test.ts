@@ -18,6 +18,7 @@ import {
   getAssignmentAsOf,
   hireEmployee,
   ReportingCycleError,
+  setCostAllocation,
   setReportingLine,
   terminateEmployment,
   transferEmployee,
@@ -510,5 +511,46 @@ describe('Slice C — consolidation (group vs per-company)', () => {
     const bd = await groupBreakdown(a);
     expect(bd.find((r) => r.id === parent)?.headcount).toBe(1);
     expect(bd.find((r) => r.id === child)?.headcount).toBe(1);
+  });
+});
+
+describe('Slice D — concurrent employment + cost allocation', () => {
+  it('lets one person hold employments at multiple companies, with a cost split', async () => {
+    const a = adminCtx(base);
+    const { id: coX } = await createCompany(a, { legalName: 'Co X Sdn Bhd' });
+    const deptX = await createDepartment(a, { companyId: coX, name: 'X-Dept' });
+
+    const e1 = await hireEmployee(a, {
+      person: { fullName: 'Dual Worker', primaryEmail: 'dual@x.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const e2 = await hireEmployee(a, {
+      person: { id: e1.personId }, // same person, second concurrent employment
+      companyId: coX,
+      departmentId: deptX.id,
+      employmentType: 'part_time',
+      hiredOn: '2026-02-01',
+    });
+    expect(e2.personId).toBe(e1.personId);
+
+    const emps = await withTenant(a, (tx) =>
+      tx.select().from(schema.employment).where(eq(schema.employment.personId, e1.personId)),
+    );
+    expect(emps.length).toBe(2);
+
+    await setCostAllocation(a, {
+      employmentId: e2.employmentId,
+      allocations: [{ companyId: base.companyId, percent: 60 }],
+    });
+    const [row] = await withTenant(a, (tx) =>
+      tx
+        .select({ ca: schema.employment.costAllocation })
+        .from(schema.employment)
+        .where(eq(schema.employment.id, e2.employmentId)),
+    );
+    expect(row.ca).toEqual([{ companyId: base.companyId, percent: 60 }]);
   });
 });

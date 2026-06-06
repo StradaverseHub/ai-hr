@@ -6,7 +6,7 @@
 import { sql } from 'drizzle-orm';
 import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
-import { hireEmployee, setReportingLine } from '../core/org';
+import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn } from '../core/attendance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -103,6 +103,7 @@ async function main() {
     { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id, salary: 7200, ic: '880404044567', bank: 'RHB' },
   ];
   const hired: { employmentId: string }[] = [];
+  let danielPersonId = '';
   for (const [i, p] of people.entries()) {
     const { employmentId, personId } = await hireEmployee(admin, {
       person: { fullName: p.fullName, primaryEmail: p.email },
@@ -114,6 +115,7 @@ async function main() {
       annualLeaveTypeId: annual.id,
     });
     hired.push({ employmentId });
+    if (i === 1) danielPersonId = personId;
     // Local user record + role (login identity itself is provisioned by WorkOS later).
     const [u] = await owner.db
       .insert(schema.appUser)
@@ -146,6 +148,35 @@ async function main() {
       validFrom: '2026-01-06',
     });
   }
+
+  // Concurrent multi-company (ADR-0009): Daniel is also Group CFO at the holding company — a
+  // shared-services role whose cost is recharged 50% to the operating company.
+  const [groupDept] = await owner.db
+    .insert(schema.department)
+    .values({ tenantId: DEV_TENANT_ID, companyId: holding.id, name: 'Group Office' })
+    .returning({ id: schema.department.id });
+  const [groupPos] = await owner.db
+    .insert(schema.position)
+    .values({ tenantId: DEV_TENANT_ID, companyId: holding.id, title: 'Group CFO' })
+    .returning({ id: schema.position.id });
+  const daniel2 = await hireEmployee(admin, {
+    person: { id: danielPersonId },
+    companyId: holding.id,
+    departmentId: groupDept.id,
+    positionId: groupPos.id,
+    employmentType: 'part_time',
+    hiredOn: '2026-02-01',
+  });
+  await setCompensation(admin, {
+    employmentId: daniel2.employmentId,
+    basicSalary: 4000,
+    monthlyAllowance: 0,
+    effectiveFrom: '2026-02-01',
+  });
+  await setCostAllocation(admin, {
+    employmentId: daniel2.employmentId,
+    allocations: [{ companyId: company.id, percent: 50 }],
+  });
 
   // Attendance policy + a couple of today's check-ins (present + late) for the demo.
   await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });

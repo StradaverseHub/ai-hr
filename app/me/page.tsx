@@ -5,9 +5,9 @@ import {
   listLeaveTypes,
   myAttendance,
   myEmployment,
+  myEmployments,
   myPayslips,
 } from '@/core/read';
-import { currentCompensation } from '@/core/comp';
 import { Button, Card, ErrorBanner, Field, SectionHeader, inputCls } from '@/components/ui';
 import { myCheckIn, myCheckOut, myRequestLeave } from './actions';
 
@@ -57,12 +57,12 @@ export default async function MePage({
     );
   }
 
-  const [comp, balances, requests, leaveTypes, payslips, attendance] = await Promise.all([
-    currentCompensation(s, me.employmentId),
+  const employments = await myEmployments(s);
+  const [balances, requests, leaveTypes, payslips, attendance] = await Promise.all([
     leaveBalances(s, me.employmentId),
     leaveRequestsFor(s, me.employmentId),
     listLeaveTypes(s),
-    myPayslips(s, me.employmentId),
+    myPayslips(s, employments.map((e) => e.employmentId)),
     myAttendance(s, me.employmentId, 14),
   ]);
 
@@ -183,27 +183,36 @@ export default async function MePage({
           </div>
         </Card>
 
-        {/* Profile / pay */}
+        {/* My positions (concurrent multi-company, ADR-0009) */}
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">Profile</h2>
-          <dl className="mt-3 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Company</dt>
-              <dd>{me.company}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Joined</dt>
-              <dd className="tabular-nums">{me.hiredOn}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Basic salary</dt>
-              <dd className="tabular-nums">{comp ? rm(comp.basicSalary) : '—'}</dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Allowance</dt>
-              <dd className="tabular-nums">{comp ? rm(comp.monthlyAllowance) : '—'}</dd>
-            </div>
-          </dl>
+          <h2 className="text-sm font-semibold">
+            My position{employments.length > 1 ? 's' : ''}
+          </h2>
+          <p className="text-xs text-muted-foreground">Joined {me.hiredOn}</p>
+          <ul className="mt-3 space-y-3">
+            {employments.map((e) => {
+              const alloc = (e.costAllocation as { companyId: string; percent: number }[] | null) ?? [];
+              return (
+                <li key={e.employmentId} className="rounded-lg border border-border p-3">
+                  <div className="text-sm font-medium">{e.company}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {e.position ?? '—'} · {e.department ?? '—'}
+                  </div>
+                  <div className="mt-1.5 flex justify-between text-xs">
+                    <span className="text-muted-foreground">Basic + allowance</span>
+                    <span className="tabular-nums">
+                      {rm(Number(e.basic ?? 0) + Number(e.allowance ?? 0))}
+                    </span>
+                  </div>
+                  {alloc.length > 0 && (
+                    <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                      Cost recharged: {alloc.map((a) => `${a.percent}%`).join(' / ')}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </Card>
       </div>
 
@@ -215,6 +224,7 @@ export default async function MePage({
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-2 font-medium">Period</th>
+                <th className="px-4 py-2 font-medium">Company</th>
                 <th className="px-4 py-2 text-right font-medium">Gross</th>
                 <th className="px-4 py-2 text-right font-medium">Deductions</th>
                 <th className="px-4 py-2 text-right font-medium">Net</th>
@@ -225,6 +235,7 @@ export default async function MePage({
               {payslips.map((p) => (
                 <tr key={p.id}>
                   <td className="px-4 py-2.5 font-medium">{p.payPeriod}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{p.company}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(p.gross)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(p.deductions)}</td>
                   <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(p.net)}</td>
@@ -233,7 +244,7 @@ export default async function MePage({
               ))}
               {payslips.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     No payslips yet.
                   </td>
                 </tr>
