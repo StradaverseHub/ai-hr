@@ -57,8 +57,10 @@ export default async function BatchPage({
       <ErrorBanner message={error} />
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-        ⚠️ Statutory figures use <span className="font-medium">approximate rates</span>. EPF / SOCSO / EIS and especially
-        PCB/MTD must be replaced with the official LHDN / PERKESO tables and per-employee tax profiles before production use.
+        ⚠️ Figures use the <span className="font-medium">official 2026 LHDN / PERKESO tables</span> but still require
+        accountant sign-off before real use. Current simplifications: PCB assumes Category&nbsp;1 (single, no children)
+        until tax profiles are captured; the SOCSO RM5,000–6,000 ceiling band and EIS are rate-based; bonuses are not yet
+        in the MTD additional-remuneration formula. See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
       </div>
 
       {batch.status !== 'draft' && (

@@ -30,7 +30,7 @@ import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '..
 import { annualEntitlement, entitlement } from '../localization/my/leave';
 import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
 import { batchDetail, BatchNotDraftError, createBatch, generatePayslips } from '../core/payroll';
-import { eis, epf, socso } from '../localization/my/payroll';
+import { eis, epf, pcb, socso } from '../localization/my/payroll';
 
 let base: Base;
 
@@ -341,5 +341,33 @@ describe('Slice 4 — payroll', () => {
     ).rejects.toThrow();
     await generatePayslips(a, { batchId });
     await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(BatchNotDraftError);
+  });
+});
+
+describe('Slice 5 — payroll compliance (official MY statutory tables)', () => {
+  it('PCB follows the LHDN computerised calc with reliefs', () => {
+    // RM3000 single → below the taxable threshold after reliefs → no PCB.
+    expect(pcb(3000)).toBe(0);
+    // RM5000 single → P = 60000 − 9000 − 4000 (EPF cap) = 47000 → (47000−35000)·6% + 600 = 1320/yr.
+    expect(pcb(5000)).toBeCloseTo(110, 2);
+    // Category 2 (non-working spouse, +RM4000 relief) pays less than a single earner.
+    expect(pcb(8000, { category: 2 })).toBeLessThan(pcb(8000, { category: 1 }));
+    // Each qualifying child reduces PCB.
+    expect(pcb(8000, { children: 2 })).toBeLessThan(pcb(8000, { children: 0 }));
+  });
+
+  it('SOCSO First Category matches the official band table up to RM5000', () => {
+    expect(socso(3000)).toEqual({ employer: 51.65, employee: 14.75 });
+    expect(socso(100)).toEqual({ employer: 1.5, employee: 0.4 });
+    expect(socso(5000)).toEqual({ employer: 86.65, employee: 24.75 });
+    // Above RM5000: statutory % capped at the RM6000 ceiling (flagged, not band-table).
+    expect(socso(6000).employee).toBeCloseTo(30, 2);
+    expect(socso(9000).employee).toBeCloseTo(30, 2);
+  });
+
+  it('EPF rounds up to the next ringgit and splits the employer rate at RM5000', () => {
+    expect(epf(4567)).toEqual({ employee: 503, employer: 594 }); // 502.37→503, 593.71→594
+    expect(epf(5000).employer).toBe(650); // 13% at the threshold
+    expect(epf(5001).employer).toBe(601); // 12% above (600.12→601)
   });
 });
