@@ -18,6 +18,7 @@ import {
   uuid,
   text,
   date,
+  time,
   timestamp,
   boolean,
   numeric,
@@ -424,4 +425,42 @@ export const holiday = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('holiday_uq').on(t.tenantId, t.country, t.holidayDate)],
+);
+
+// ──────────────────────── Attendance (generic) ────────────────────────
+export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'late', 'half_day']);
+
+// One row per employee per day. Absence is derived (no row); we store present/late/half_day.
+export const attendance = pgTable(
+  'attendance',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    attendanceDate: date('attendance_date').notNull(),
+    checkInAt: time('check_in_at'),
+    checkOutAt: time('check_out_at'),
+    status: attendanceStatusEnum('status').notNull().default('present'),
+    remarks: text('remarks'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('attendance_employment_date_uq').on(t.employmentId, t.attendanceDate)],
+);
+
+// Per-company attendance thresholds.
+export const attendancePolicy = pgTable(
+  'attendance_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    lateAfter: time('late_after').notNull().default('09:15:00'),
+    halfDayBefore: time('half_day_before').notNull().default('13:00:00'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
 );

@@ -13,6 +13,7 @@ const ALL_TABLES = [
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
+  'attendance', 'attendance_policy',
 ];
 
 export async function migrateTestDb() {

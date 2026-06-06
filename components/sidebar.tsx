@@ -9,6 +9,7 @@ const GROUPS: { label?: string; items: { href: string; label: string }[] }[] = [
       { href: '/people', label: 'People' },
       { href: '/org', label: 'Org chart' },
       { href: '/leave', label: 'Leave' },
+      { href: '/attendance', label: 'Attendance' },
     ],
   },
   {

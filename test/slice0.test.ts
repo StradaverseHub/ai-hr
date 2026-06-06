@@ -28,6 +28,7 @@ import { createCompany } from '../core/admin';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
+import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
 
 let base: Base;
 
@@ -271,5 +272,27 @@ describe('Slice 2 — MY leave rules', () => {
     const r = await requestLeave(a, { employmentId, leaveTypeId: lt.id, startDate: '2026-06-01', endDate: '2026-06-07' });
     expect(r.days).toBeGreaterThan(0);
     expect(r.days).toBeLessThanOrEqual(5);
+  });
+});
+
+describe('Slice 3 — attendance', () => {
+  it('derives status from thresholds; one per day; check-out after check-in', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Att');
+
+    const r1 = await checkIn(a, { employmentId, date: '2026-06-05', time: '09:00' });
+    expect(r1.status).toBe('present'); // before 09:15
+    await expect(
+      checkIn(a, { employmentId, date: '2026-06-05', time: '10:00' }),
+    ).rejects.toBeInstanceOf(AlreadyCheckedInError);
+    await expect(
+      checkOut(a, { employmentId, date: '2026-06-05', time: '08:00' }),
+    ).rejects.toThrow(); // before check-in
+    const r2 = await checkOut(a, { employmentId, date: '2026-06-05', time: '12:30' });
+    expect(r2.status).toBe('half_day'); // out before 13:00, wasn't late
+
+    const late = await hire(a, base, 'Late');
+    const r3 = await checkIn(a, { employmentId: late.employmentId, date: '2026-06-05', time: '09:30' });
+    expect(r3.status).toBe('late'); // after 09:15
   });
 });

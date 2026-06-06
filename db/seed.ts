@@ -8,6 +8,7 @@ import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { checkIn } from '../core/attendance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
 
@@ -21,6 +22,7 @@ const TABLES = [
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
+  'attendance', 'attendance_policy',
 ];
 
 async function main() {
@@ -124,6 +126,11 @@ async function main() {
       validFrom: '2026-01-06',
     });
   }
+
+  // Attendance policy + a couple of today's check-ins (present + late) for the demo.
+  await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });
+  await checkIn(admin, { employmentId: hired[0].employmentId, date: '2026-06-05', time: '09:00' }); // present
+  await checkIn(admin, { employmentId: hired[1].employmentId, date: '2026-06-05', time: '09:30' }); // late
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
   console.log(`  DEV_TENANT_ID=${DEV_TENANT_ID}`);

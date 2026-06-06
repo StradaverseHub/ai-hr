@@ -50,6 +50,20 @@
       "when": 1780658852462,
       "tag": "0006_holiday_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1780711790200,
+      "tag": "0007_brief_masked_marvel",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1780711791348,
+      "tag": "0008_attendance_rls",
+      "breakpoints": true
     }
   ]
 }
