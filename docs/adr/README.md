@@ -14,5 +14,6 @@ decision, add a new ADR that supersedes the old one.
 | [0006](0006-event-and-audit-substrate.md) | Append-only domain-event & audit substrate | Accepted |
 | [0007](0007-ai-native-architecture.md) | AI-native architecture & the self-improvement loop | Accepted (deferred impl) |
 | [0008](0008-localization-packs.md) | Localization via installable country packs (MY first) | Accepted (pack built incrementally) |
+| [0009](0009-multi-company-group-model.md) | Multi-company group model (nested entities, scoped authz, consolidation) | Accepted (built in slices A–D) |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
