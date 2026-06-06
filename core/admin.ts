@@ -201,10 +201,15 @@ export async function assignRole(
   ctx: SessionContext,
   p: { appUserId: string; role: Role; companyId?: string },
 ) {
+  // Only hr_admin consumes a company scope today. super_admin is inherently group-wide (DB CHECK
+  // enforces it); manager/employee scoping isn't implemented yet — so normalize companyId to null
+  // for every role except hr_admin rather than persist inert, misleading grants. RLS additionally
+  // requires the assigner to be a group admin (is_group_admin), so this never escalates privilege.
+  const companyId = p.role === 'hr_admin' ? p.companyId || null : null;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(roleAssignment)
-      .values({ tenantId: ctx.tenantId, appUserId: p.appUserId, role: p.role, companyId: p.companyId || null })
+      .values({ tenantId: ctx.tenantId, appUserId: p.appUserId, role: p.role, companyId })
       .returning({ id: roleAssignment.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -212,7 +217,7 @@ export async function assignRole(
       aggregateId: row.id,
       eventType: 'role.assigned',
       actor: actorOf(ctx),
-      payload: { appUserId: p.appUserId, role: p.role },
+      payload: { appUserId: p.appUserId, role: p.role, companyId },
     });
     return row;
   });
@@ -301,8 +306,15 @@ export function listUsers(ctx: SessionContext) {
       .leftJoin(person, eq(person.id, appUser.personId))
       .orderBy(person.fullName);
     const roles = await tx
-      .select({ id: roleAssignment.id, appUserId: roleAssignment.appUserId, role: roleAssignment.role })
-      .from(roleAssignment);
+      .select({
+        id: roleAssignment.id,
+        appUserId: roleAssignment.appUserId,
+        role: roleAssignment.role,
+        companyId: roleAssignment.companyId,
+        company: company.legalName,
+      })
+      .from(roleAssignment)
+      .leftJoin(company, eq(company.id, roleAssignment.companyId));
     return users.map((u) => ({ ...u, roles: roles.filter((r) => r.appUserId === u.id) }));
   });
 }

@@ -1,5 +1,6 @@
 import { requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
+import { listCompanies } from '@/core/read';
 import { Card, ErrorBanner, RoleTag, SectionHeader, btnGhost, inputCls } from '@/components/ui';
 import { assignRoleAction, revokeRoleAction } from '../actions';
 
@@ -12,7 +13,7 @@ export default async function UsersPage({
 }) {
   const s = await requireAdmin();
   const { error } = await searchParams;
-  const users = await listUsers(s);
+  const [users, companies] = await Promise.all([listUsers(s), listCompanies(s)]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -24,7 +25,9 @@ export default async function UsersPage({
 
       <div className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
         New logins are provisioned via <span className="font-medium">WorkOS</span> (SSO / invite) in a later
-        slice. Here you manage roles for existing users.
+        slice. Here you manage roles for existing users. Company scope applies to{' '}
+        <span className="font-medium">HR Admin</span> grants — that company <em>and its sub-companies</em>;
+        other roles are group-wide.
       </div>
 
       <Card>
@@ -40,6 +43,14 @@ export default async function UsersPage({
                 {u.roles.map((r) => (
                   <span key={r.id} className="inline-flex items-center gap-1">
                     <RoleTag role={r.role} />
+                    {r.companyId && (
+                      <span
+                        className="text-[10px] text-muted-foreground"
+                        title={`Scoped to ${r.company} and its sub-companies`}
+                      >
+                        · {r.company}
+                      </span>
+                    )}
                     <form action={revokeRoleAction} className="inline">
                       <input type="hidden" name="roleAssignmentId" value={r.id} />
                       <button
@@ -59,6 +70,19 @@ export default async function UsersPage({
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
                         {r.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    name="companyId"
+                    className={`${inputCls} py-1`}
+                    defaultValue=""
+                    title="Company scope (HR Admin only)"
+                  >
+                    <option value="">Group-wide</option>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
                       </option>
                     ))}
                   </select>

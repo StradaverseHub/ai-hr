@@ -12,6 +12,7 @@
  *    deliberate hardening follow-up (tracked), not silently skipped — RLS already blocks
  *    cross-tenant *reads*; composite FKs would also block cross-tenant *references*.
  */
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   pgEnum,
@@ -29,6 +30,7 @@ import {
   index,
   uniqueIndex,
   primaryKey,
+  check,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 
@@ -128,7 +130,13 @@ export const roleAssignment = pgTable(
     role: roleEnum('role').notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index('role_assignment_user_idx').on(t.appUserId)],
+  (t) => [
+    index('role_assignment_user_idx').on(t.appUserId),
+    // super_admin is inherently group-wide. A super_admin grant carrying a company_id is
+    // incoherent: is_group_admin() treats it as global, yet is_admin_for(other_company) would
+    // be false. Forbid the state at the DB so no code path can create it (ADR-0009).
+    check('role_assignment_super_admin_group_wide', sql`${t.role} <> 'super_admin' OR ${t.companyId} IS NULL`),
+  ],
 );
 
 // ─────────────────────── Identity & Org (ADR-0003) ───────────────────────
