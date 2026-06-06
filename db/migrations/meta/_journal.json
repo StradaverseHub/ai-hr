@@ -64,6 +64,20 @@
       "when": 1780711791348,
       "tag": "0008_attendance_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1780713439733,
+      "tag": "0009_nervous_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1780713440904,
+      "tag": "0010_payroll_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,7 @@ import {
   jsonb,
   bigserial,
   bigint,
+  integer,
   index,
   uniqueIndex,
   primaryKey,
@@ -463,4 +464,51 @@ export const attendancePolicy = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
+);
+
+// ──────────────────────── Payroll (generic kernel) ────────────────────────
+export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
+
+export const payrollBatch = pgTable(
+  'payroll_batch',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    payPeriod: text('pay_period').notNull(), // 'YYYY-MM'
+    batchDate: date('batch_date').notNull(),
+    status: payrollStatusEnum('status').notNull().default('draft'),
+    employeeCount: integer('employee_count').notNull().default(0),
+    totals: jsonb('totals'), // { gross, net, epfEmployee, epfEmployer, ... }
+    remarks: text('remarks'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('payroll_batch_period_uq').on(t.companyId, t.payPeriod)],
+);
+
+export const payslip = pgTable(
+  'payslip',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    basicSalary: numeric('basic_salary', { precision: 12, scale: 2 }).notNull(),
+    allowance: numeric('allowance', { precision: 12, scale: 2 }).notNull().default('0'),
+    overtimePay: numeric('overtime_pay', { precision: 12, scale: 2 }).notNull().default('0'),
+    grossPay: numeric('gross_pay', { precision: 12, scale: 2 }).notNull(),
+    statutory: jsonb('statutory').notNull(), // { epfEmployee, epfEmployer, socsoEmployee, ... }
+    otherDeductions: numeric('other_deductions', { precision: 12, scale: 2 }).notNull().default('0'),
+    totalDeductions: numeric('total_deductions', { precision: 12, scale: 2 }).notNull(),
+    netPay: numeric('net_pay', { precision: 12, scale: 2 }).notNull(),
+    employerCost: numeric('employer_cost', { precision: 12, scale: 2 }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId)],
 );

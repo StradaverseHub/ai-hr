@@ -17,6 +17,7 @@ const GROUPS: { label?: string; items: { href: string; label: string }[] }[] = [
     items: [
       { href: '/admin/organization', label: 'Organization' },
       { href: '/admin/leave', label: 'Leave config' },
+      { href: '/payroll', label: 'Payroll' },
       { href: '/admin/users', label: 'Users & roles' },
     ],
   },

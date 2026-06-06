@@ -14,6 +14,7 @@ const ALL_TABLES = [
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy',
+  'payroll_batch', 'payslip',
 ];
 
 export async function migrateTestDb() {

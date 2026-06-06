@@ -29,6 +29,8 @@ import { compensationHistory, currentCompensation, setCompensation } from '../co
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
 import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
+import { batchDetail, BatchNotDraftError, createBatch, generatePayslips } from '../core/payroll';
+import { eis, epf, socso } from '../localization/my/payroll';
 
 let base: Base;
 
@@ -294,5 +296,50 @@ describe('Slice 3 — attendance', () => {
     const late = await hire(a, base, 'Late');
     const r3 = await checkIn(a, { employmentId: late.employmentId, date: '2026-06-05', time: '09:30' });
     expect(r3.status).toBe('late'); // after 09:15
+  });
+});
+
+describe('Slice 4 — payroll', () => {
+  it('MY statutory calculators apply the right rates and ceilings', () => {
+    // EPF: employee 11%, employer 13% at wages ≤ RM5000.
+    expect(epf(3000)).toEqual({ employee: 330, employer: 390 });
+    // EPF: employer drops to 12% above RM5000.
+    expect(epf(6000)).toEqual({ employee: 660, employer: 720 });
+    // SOCSO/EIS cap contributions at the RM6000 wage ceiling.
+    expect(socso(8000).employee).toBe(30); // 6000 * 0.005
+    expect(eis(8000).employee).toBe(12); // 6000 * 0.002
+  });
+
+  it('generates one payslip per active employee; net = gross − statutory deductions', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Pay');
+    await setCompensation(a, { employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const res = await generatePayslips(a, { batchId });
+    expect(res.payslips).toBe(1);
+
+    const detail = await batchDetail(a, batchId);
+    expect(detail?.batch.status).toBe('processed');
+    expect(detail?.slips).toHaveLength(1);
+
+    const slip = detail!.slips[0];
+    const st = slip.statutory as Record<string, number>;
+    expect(Number(slip.gross)).toBe(4000);
+    expect(st.epfEmployee).toBe(440); // 4000 * 0.11
+    const expectedNet = 4000 - (st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
+    expect(Number(slip.net)).toBeCloseTo(expectedNet, 2);
+
+    expect(await eventTypesFor(base.tenantId, batchId)).toContain('payroll-batch.processed');
+  });
+
+  it('forbids a duplicate period batch and re-generating a processed batch', async () => {
+    const a = adminCtx(base);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
+    await expect(
+      createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' }),
+    ).rejects.toThrow();
+    await generatePayslips(a, { batchId });
+    await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(BatchNotDraftError);
   });
 });
