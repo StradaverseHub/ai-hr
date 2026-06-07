@@ -2,7 +2,7 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
@@ -24,6 +24,30 @@ export class BatchNotDraftError extends Error {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function daysInMonth(year: number, month1: number): number {
+  if (month1 === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
+  return DAYS_IN_MONTH[month1 - 1];
+}
+
+/**
+ * EA-1955 incomplete-month proration factor for a 'YYYY-MM' wage period: the employee is paid for
+ * the calendar days they were employed within the month, over the number of days in that month
+ * (Employment Act 1955 s.18A ordinary-rate basis). Returns 1 for a full month, 0 if not employed
+ * during the period. Date strings are ISO ('YYYY-MM-DD'), so lexical comparison is chronological.
+ */
+function prorationFactor(payPeriod: string, hiredOn: string, terminatedOn: string | null): number {
+  const [year, month1] = payPeriod.split('-').map(Number);
+  const dim = daysInMonth(year, month1);
+  const periodStart = `${payPeriod}-01`;
+  const periodEnd = `${payPeriod}-${String(dim).padStart(2, '0')}`;
+  const start = hiredOn > periodStart ? hiredOn : periodStart;
+  const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
+  if (start > periodEnd || end < periodStart) return 0;
+  const eligibleDays = Math.max(0, Number(end.slice(8, 10)) - Number(start.slice(8, 10)) + 1);
+  return Math.min(1, eligibleDays / dim);
+}
 
 export async function createBatch(ctx: SessionContext, p: { companyId: string; payPeriod: string }) {
   return withTenant(ctx, async (tx) => {
@@ -70,9 +94,18 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     if (!pack) throw new Error(`No localization pack for ${co?.country ?? 'company'}`);
 
     // Active employees with current compensation.
+    const { payPeriod } = batch;
+    const [pYear, pMonth] = payPeriod.split('-').map(Number);
+    const periodStart = `${payPeriod}-01`;
+    const periodEnd = `${payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+
+    // Anyone employed for at least part of the period: hired on/before period end AND not
+    // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.
     const emps = await tx
       .select({
         employmentId: employment.id,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
         basic: compensation.basicSalary,
         allowance: compensation.monthlyAllowance,
         taxCategory: employeeStatutoryMy.taxCategory,
@@ -88,7 +121,13 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         ),
       )
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(and(eq(employment.companyId, batch.companyId), isNull(employment.terminatedOn)));
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        ),
+      );
 
     const totals = {
       gross: 0, net: 0, epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0,
@@ -96,8 +135,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     };
 
     for (const e of emps) {
-      const basic = Number(e.basic);
-      const allowance = Number(e.allowance ?? 0);
+      // Prorate contractual pay for mid-period joiners/leavers (full month → factor 1).
+      const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn);
+      const basic = round2(Number(e.basic) * factor);
+      const allowance = round2(Number(e.allowance ?? 0) * factor);
       const gross = round2(basic + allowance);
       const st = pack.payroll.statutory(gross, {
         category: (e.taxCategory ?? 1) as 1 | 2 | 3,

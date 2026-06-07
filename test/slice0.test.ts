@@ -366,6 +366,43 @@ describe('Slice 4 — payroll', () => {
     expect(pcbA).toBeGreaterThan(0); // same gross, but the richer relief profile pays less PCB
     expect(pcbB).toBeLessThan(pcbA);
   });
+
+  it('prorates a mid-period joiner by calendar days (EA-1955 incomplete month)', async () => {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'MidJoin', primaryEmail: 'midjoin@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-05-16', // employed 16 of May's 31 days
+    });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3100, effectiveFrom: '2026-05-16' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    const detail = await batchDetail(a, batchId);
+    const slip = detail!.slips.find((s) => s.name === 'MidJoin')!;
+    expect(Number(slip.basic)).toBeCloseTo(1600, 2); // 3100 * 16/31
+  });
+
+  it('includes a mid-period leaver (final prorated payslip) but excludes prior terminations', async () => {
+    const a = adminCtx(base);
+    const leaver = await hire(a, base, 'Leaver'); // hired 2026-01-01
+    await setCompensation(a, { employmentId: leaver.employmentId, basicSalary: 3100, effectiveFrom: '2026-01-01' });
+    await terminateEmployment(a, { employmentId: leaver.employmentId, terminationDate: '2026-05-15' });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    const may = await batchDetail(a, batchId);
+    const slip = may!.slips.find((s) => s.name === 'Leaver')!;
+    expect(Number(slip.basic)).toBeCloseTo(1500, 2); // 3100 * 15/31
+
+    // A June batch must exclude someone terminated in May.
+    const { batchId: junId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    await generatePayslips(a, { batchId: junId });
+    const jun = await batchDetail(a, junId);
+    expect(jun!.slips.find((s) => s.name === 'Leaver')).toBeUndefined();
+  });
 });
 
 describe('Slice 5 — payroll compliance (official MY statutory tables)', () => {
