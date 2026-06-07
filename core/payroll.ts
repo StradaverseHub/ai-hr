@@ -6,7 +6,15 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
-import { company, compensation, employment, payrollBatch, payslip, person } from '../db/schema';
+import {
+  company,
+  compensation,
+  employeeStatutoryMy,
+  employment,
+  payrollBatch,
+  payslip,
+  person,
+} from '../db/schema';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -67,6 +75,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         employmentId: employment.id,
         basic: compensation.basicSalary,
         allowance: compensation.monthlyAllowance,
+        taxCategory: employeeStatutoryMy.taxCategory,
+        numChildren: employeeStatutoryMy.numChildren,
       })
       .from(employment)
       .innerJoin(
@@ -77,6 +87,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           isNull(compensation.supersededAt),
         ),
       )
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(employment.companyId, batch.companyId), isNull(employment.terminatedOn)));
 
     const totals = {
@@ -88,7 +99,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const basic = Number(e.basic);
       const allowance = Number(e.allowance ?? 0);
       const gross = round2(basic + allowance);
-      const st = pack.payroll.statutory(gross);
+      const st = pack.payroll.statutory(gross, {
+        category: (e.taxCategory ?? 1) as 1 | 2 | 3,
+        children: e.numChildren ?? 0,
+      });
       const totalDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const net = round2(gross - totalDeductions);
       const employerCost = round2(gross + st.epfEmployer + st.socsoEmployer + st.eisEmployer);

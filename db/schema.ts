@@ -411,6 +411,9 @@ export const employeeStatutoryMy = pgTable(
     epfNumber: text('epf_number'),
     socsoNumber: text('socso_number'),
     taxNumber: text('tax_number'),
+    // PCB (MTD) inputs. taxCategory: 1=single, 2=married/spouse not working, 3=married/spouse working.
+    taxCategory: integer('tax_category').notNull().default(1),
+    numChildren: integer('num_children').notNull().default(0),
     eisEligible: boolean('eis_eligible').notNull().default(true),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),

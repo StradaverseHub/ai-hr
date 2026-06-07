@@ -206,6 +206,23 @@ export default async function EmployeePage({
             <Field label="Tax number">
               <input name="taxNumber" defaultValue={statutory?.taxNumber ?? ''} className={inputCls} />
             </Field>
+            <Field label="PCB category">
+              <select name="taxCategory" defaultValue={String(statutory?.taxCategory ?? 1)} className={inputCls}>
+                <option value="1">1 — Single</option>
+                <option value="2">2 — Married, spouse not working</option>
+                <option value="3">3 — Married, spouse working</option>
+              </select>
+            </Field>
+            <Field label="Children (PCB relief)">
+              <input
+                name="numChildren"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={statutory?.numChildren ?? 0}
+                className={inputCls}
+              />
+            </Field>
             <Field label="Bank">
               <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
             </Field>

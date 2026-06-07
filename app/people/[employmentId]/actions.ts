@@ -117,6 +117,8 @@ export async function setStatutoryAction(formData: FormData) {
       epfNumber: (formData.get('epfNumber') as string) || undefined,
       socsoNumber: (formData.get('socsoNumber') as string) || undefined,
       taxNumber: (formData.get('taxNumber') as string) || undefined,
+      taxCategory: Number(formData.get('taxCategory')) || 1,
+      numChildren: Number(formData.get('numChildren')) || 0,
       eisEligible: formData.get('eisEligible') === 'on',
       bankName: (formData.get('bankName') as string) || undefined,
       bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
