@@ -1,0 +1,2 @@
+ALTER TABLE "employee_statutory_my" ADD COLUMN "tax_category" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "employee_statutory_my" ADD COLUMN "num_children" integer DEFAULT 0 NOT NULL;

@@ -345,6 +345,27 @@ describe('Slice 4 — payroll', () => {
     await generatePayslips(a, { batchId });
     await expect(generatePayslips(a, { batchId })).rejects.toBeInstanceOf(BatchNotDraftError);
   });
+
+  it('applies the employee PCB tax profile (category + children) to generated payslips', async () => {
+    const a = adminCtx(base);
+    const e1 = await hire(a, base, 'TaxA');
+    const e2 = await hire(a, base, 'TaxB');
+    await setCompensation(a, { employmentId: e1.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
+    await setCompensation(a, { employmentId: e2.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
+    // e1: Category 1, no children (default). e2: Category 2 (spouse relief) + 3 children → more reliefs → less MTD.
+    await setStatutoryProfileMY(a, { personId: e1.personId, icNumber: '900101010001', taxCategory: 1, numChildren: 0 });
+    await setStatutoryProfileMY(a, { personId: e2.personId, icNumber: '900101010002', taxCategory: 2, numChildren: 3 });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId });
+
+    const detail = await batchDetail(a, batchId);
+    const pcbByName = new Map(detail!.slips.map((s) => [s.name, (s.statutory as Record<string, number>).pcb]));
+    const pcbA = pcbByName.get('TaxA')!;
+    const pcbB = pcbByName.get('TaxB')!;
+    expect(pcbA).toBeGreaterThan(0); // same gross, but the richer relief profile pays less PCB
+    expect(pcbB).toBeLessThan(pcbA);
+  });
 });
 
 describe('Slice 5 — payroll compliance (official MY statutory tables)', () => {

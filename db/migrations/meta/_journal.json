@@ -148,6 +148,13 @@
       "when": 1780756326089,
       "tag": "0020_role_assignment_super_admin_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1780758657746,
+      "tag": "0021_employee_tax_profile",
+      "breakpoints": true
     }
   ]
 }

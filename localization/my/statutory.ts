@@ -23,6 +23,8 @@ export type StatutoryInput = {
   epfNumber?: string;
   socsoNumber?: string;
   taxNumber?: string;
+  taxCategory?: number; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
+  numChildren?: number;
   eisEligible?: boolean;
   bankName?: string;
   bankAccountNo?: string;
@@ -30,11 +32,15 @@ export type StatutoryInput = {
 
 export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput) {
   if (!isValidIC(p.icNumber)) throw new InvalidICError();
+  const taxCategory = [1, 2, 3].includes(Number(p.taxCategory)) ? Number(p.taxCategory) : 1;
+  const numChildren = Math.max(0, Math.floor(Number(p.numChildren) || 0));
   const values = {
     icNumber: normalizeIC(p.icNumber),
     epfNumber: p.epfNumber ?? null,
     socsoNumber: p.socsoNumber ?? null,
     taxNumber: p.taxNumber ?? null,
+    taxCategory,
+    numChildren,
     eisEligible: p.eisEligible ?? true,
     bankName: p.bankName ?? null,
     bankAccountNo: p.bankAccountNo ?? null,
