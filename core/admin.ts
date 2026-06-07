@@ -231,7 +231,14 @@ export async function revokeRole(ctx: SessionContext, p: { roleAssignmentId: str
       .where(eq(roleAssignment.id, p.roleAssignmentId))
       .limit(1);
     if (!row) throw new Error('role assignment not found');
-    await tx.delete(roleAssignment).where(eq(roleAssignment.id, p.roleAssignmentId));
+    // Reads are tenant-wide but writes are subtree-gated (migration 0023): a delegated admin can
+    // SELECT a grant they may not DELETE. Use returning() and bail if RLS removed nothing, so we
+    // never log a revoke for a row that still exists.
+    const deleted = await tx
+      .delete(roleAssignment)
+      .where(eq(roleAssignment.id, p.roleAssignmentId))
+      .returning({ id: roleAssignment.id });
+    if (deleted.length === 0) throw new Error('Not permitted to revoke this role assignment');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'role-assignment',

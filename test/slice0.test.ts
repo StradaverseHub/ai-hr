@@ -26,7 +26,7 @@ import {
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
 import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
-import { assignRole, createCompany, createDepartment, setCompanyParent } from '../core/admin';
+import { assignRole, createCompany, createDepartment, revokeRole, setCompanyParent } from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
@@ -702,5 +702,69 @@ describe('Slice B — company-scoped role assignment (#61)', () => {
         companyId: base.companyId,
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe('Sub-delegation — company admins assign within their subtree (#67)', () => {
+  const coAdmin = (companyId: string): SessionContext => ({
+    tenantId: base.tenantId,
+    userId: base.adminUserId,
+    roles: ['hr_admin'],
+    grants: [{ role: 'hr_admin', companyId }],
+  });
+
+  it('lets a delegated admin appoint a scoped hr_admin in their subtree, blocking every escalation', async () => {
+    const a = adminCtx(base);
+    const { id: parent } = await createCompany(a, { legalName: 'Deleg Parent' });
+    const { id: child } = await createCompany(a, { legalName: 'Deleg Child' });
+    await setCompanyParent(a, { companyId: child, parentCompanyId: parent });
+    const { id: other } = await createCompany(a, { legalName: 'Deleg Other' });
+    const [u] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: base.tenantId, workosUserId: `user_${randomUUID()}`, personId: null })
+      .returning({ id: schema.appUser.id });
+
+    const pAdmin = coAdmin(parent);
+    // ALLOWED: scoped hr_admin for own company and a descendant.
+    await expect(assignRole(pAdmin, { appUserId: u.id, role: 'hr_admin', companyId: parent })).resolves.toBeTruthy();
+    await expect(assignRole(pAdmin, { appUserId: u.id, role: 'hr_admin', companyId: child })).resolves.toBeTruthy();
+    // BLOCKED: minting a super_admin.
+    await expect(assignRole(pAdmin, { appUserId: u.id, role: 'super_admin', companyId: parent })).rejects.toThrow();
+    // BLOCKED: a group-wide grant (companyId omitted → null).
+    await expect(assignRole(pAdmin, { appUserId: u.id, role: 'hr_admin' })).rejects.toThrow();
+    // BLOCKED: a company outside their subtree.
+    await expect(assignRole(pAdmin, { appUserId: u.id, role: 'hr_admin', companyId: other })).rejects.toThrow();
+
+    // A group admin remains unrestricted (regression).
+    await expect(assignRole(a, { appUserId: u.id, role: 'super_admin' })).resolves.toBeTruthy();
+  });
+
+  it('blocks a delegated admin from revoking grants outside their authority (no false-success)', async () => {
+    const a = adminCtx(base);
+    const { id: parent } = await createCompany(a, { legalName: 'Rev Parent' });
+    const { id: other } = await createCompany(a, { legalName: 'Rev Other' });
+    const [u] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: base.tenantId, workosUserId: `user_${randomUUID()}`, personId: null })
+      .returning({ id: schema.appUser.id });
+
+    const groupWide = await assignRole(a, { appUserId: u.id, role: 'hr_admin' }); // company_id null
+    const outOfTree = await assignRole(a, { appUserId: u.id, role: 'hr_admin', companyId: other });
+    const inTree = await assignRole(a, { appUserId: u.id, role: 'hr_admin', companyId: parent });
+
+    const pAdmin = coAdmin(parent);
+    await expect(revokeRole(pAdmin, { roleAssignmentId: groupWide.id })).rejects.toThrow();
+    await expect(revokeRole(pAdmin, { roleAssignmentId: outOfTree.id })).rejects.toThrow();
+    await expect(revokeRole(pAdmin, { roleAssignmentId: inTree.id })).resolves.toBeUndefined();
+
+    // The blocked grants must still exist (revoke was a real no-op, not a silent success).
+    const remaining = await owner.db
+      .select({ id: schema.roleAssignment.id })
+      .from(schema.roleAssignment)
+      .where(eq(schema.roleAssignment.appUserId, u.id));
+    const ids = remaining.map((r) => r.id);
+    expect(ids).toContain(groupWide.id);
+    expect(ids).toContain(outOfTree.id);
+    expect(ids).not.toContain(inTree.id);
   });
 });

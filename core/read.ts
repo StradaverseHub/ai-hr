@@ -562,6 +562,21 @@ export function allowedCompanies(ctx: SessionContext) {
   });
 }
 
+/**
+ * Companies the current actor can ADMINISTER — self + subtree, via app.is_admin_for (distinct from
+ * allowedCompanies, which also includes companies the user merely works at). Drives the company
+ * picker when a delegated admin assigns a scoped role. Group admins get every company.
+ */
+export function adminCompanies(ctx: SessionContext) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ id: company.id, name: company.legalName })
+      .from(company)
+      .where(sql`app.is_admin_for(company.id)`)
+      .orderBy(company.legalName),
+  );
+}
+
 /** Companies with their parent link — the group tree (ADR-0009). */
 export function companyTree(ctx: SessionContext) {
   return withTenant(ctx, (tx) =>
