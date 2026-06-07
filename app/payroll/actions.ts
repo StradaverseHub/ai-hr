@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { closeBatch, createBatch, generatePayslips } from '@/core/payroll';
+import { closeBatch, createBatch, generatePayslips, setPayrollInput } from '@/core/payroll';
 
 export async function createBatchAction(formData: FormData) {
   const s = await getSession();
@@ -29,6 +29,22 @@ export async function generateAction(formData: FormData) {
   }
   revalidatePath(`/payroll/${batchId}`);
   redirect(`/payroll/${batchId}?toast=Payslips generated`);
+}
+
+export async function setPayrollInputAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  try {
+    await setPayrollInput(s, {
+      batchId,
+      employmentId: String(formData.get('employmentId')),
+      overtimeAmount: Number(formData.get('overtimeAmount')) || 0,
+    });
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(`/payroll/${batchId}?toast=Saved`);
 }
 
 export async function closeAction(formData: FormData) {

@@ -2,8 +2,8 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
 import {
@@ -11,7 +11,10 @@ import {
   compensation,
   employeeStatutoryMy,
   employment,
+  leaveRequest,
+  leaveType,
   payrollBatch,
+  payrollInput,
   payslip,
   person,
 } from '../db/schema';
@@ -49,6 +52,36 @@ function prorationFactor(payPeriod: string, hiredOn: string, terminatedOn: strin
   return Math.min(1, eligibleDays / dim);
 }
 
+/**
+ * Unpaid-leave days per employment for a wage period, auto-derived from APPROVED requests of an
+ * unpaid leave type (leave_type.paid = false) that START within the period. Single source of truth
+ * with the leave module — no double entry. (Requests straddling a month boundary are attributed to
+ * their start month; cross-month splitting is a documented future refinement.)
+ */
+async function unpaidDaysByEmployment(
+  tx: Tx,
+  periodStart: string,
+  periodEnd: string,
+): Promise<Map<string, number>> {
+  const rows = await tx
+    .select({
+      employmentId: leaveRequest.employmentId,
+      days: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+    })
+    .from(leaveRequest)
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .where(
+      and(
+        eq(leaveRequest.status, 'approved'),
+        eq(leaveType.paid, false),
+        gte(leaveRequest.startDate, periodStart),
+        lte(leaveRequest.startDate, periodEnd),
+      ),
+    )
+    .groupBy(leaveRequest.employmentId);
+  return new Map(rows.map((r) => [r.employmentId, Number(r.days)]));
+}
+
 export async function createBatch(ctx: SessionContext, p: { companyId: string; payPeriod: string }) {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -76,6 +109,50 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       payload: { companyId: p.companyId, payPeriod: p.payPeriod },
     });
     return { batchId: row.id };
+  });
+}
+
+/** Upsert a draft batch's manual overtime input for one employee. Draft-only; appends an event. */
+export async function setPayrollInput(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; overtimeAmount: number },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+    const overtimeAmount = Math.max(0, Number(p.overtimeAmount) || 0);
+    const [existing] = await tx
+      .select({ id: payrollInput.id })
+      .from(payrollInput)
+      .where(and(eq(payrollInput.batchId, p.batchId), eq(payrollInput.employmentId, p.employmentId)))
+      .limit(1);
+    if (existing) {
+      await tx
+        .update(payrollInput)
+        .set({ overtimeAmount: overtimeAmount.toFixed(2), updatedAt: sql`now()` })
+        .where(eq(payrollInput.id, existing.id));
+    } else {
+      await tx.insert(payrollInput).values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        employmentId: p.employmentId,
+        overtimeAmount: overtimeAmount.toFixed(2),
+      });
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.input-set',
+      actor: actorOf(ctx),
+      payload: { employmentId: p.employmentId, overtimeAmount },
+    });
+    return { ok: true };
   });
 }
 
@@ -129,6 +206,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         ),
       );
 
+    // Per-employee inputs: manual overtime (entered on the draft batch) + auto-derived unpaid days.
+    const dim = daysInMonth(pYear, pMonth);
+    const inputRows = await tx
+      .select({ employmentId: payrollInput.employmentId, overtime: payrollInput.overtimeAmount })
+      .from(payrollInput)
+      .where(eq(payrollInput.batchId, p.batchId));
+    const overtimeByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.overtime)]));
+    const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
+
     const totals = {
       gross: 0, net: 0, epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0,
       socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0, deductions: 0, employerCost: 0,
@@ -139,14 +225,19 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn);
       const basic = round2(Number(e.basic) * factor);
       const allowance = round2(Number(e.allowance ?? 0) * factor);
-      const gross = round2(basic + allowance);
-      const st = pack.payroll.statutory(gross, {
+      const overtime = round2(overtimeByEmp.get(e.employmentId) ?? 0);
+      // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / days in month).
+      const unpaidDeduction = round2((Number(e.basic) / dim) * (unpaidByEmp.get(e.employmentId) ?? 0));
+      const gross = round2(basic + allowance + overtime); // gross earnings incl. overtime
+      const statBase = Math.max(0, round2(gross - unpaidDeduction)); // wages actually payable
+      const st = pack.payroll.statutory(statBase, {
         category: (e.taxCategory ?? 1) as 1 | 2 | 3,
         children: e.numChildren ?? 0,
       });
-      const totalDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
+      const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
+      const totalDeductions = round2(statDeductions + unpaidDeduction);
       const net = round2(gross - totalDeductions);
-      const employerCost = round2(gross + st.epfEmployer + st.socsoEmployer + st.eisEmployer);
+      const employerCost = round2(statBase + st.epfEmployer + st.socsoEmployer + st.eisEmployer);
 
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
@@ -154,10 +245,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         employmentId: e.employmentId,
         basicSalary: basic.toFixed(2),
         allowance: allowance.toFixed(2),
-        overtimePay: '0.00',
+        overtimePay: overtime.toFixed(2),
         grossPay: gross.toFixed(2),
         statutory: st,
-        otherDeductions: '0.00',
+        otherDeductions: unpaidDeduction.toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
@@ -255,5 +346,56 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
       .where(eq(payslip.batchId, batchId))
       .orderBy(person.fullName);
     return { batch, slips };
+  });
+}
+
+/**
+ * Rows for the draft-batch input editor: each active-in-period employee with their current manual
+ * overtime and the auto-derived unpaid-leave days (read-only preview of what generation will apply).
+ */
+export function batchInputRows(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, batchId))
+      .limit(1);
+    if (!batch) return [];
+    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+    const emps = await tx
+      .select({ employmentId: employment.id, name: person.fullName, basic: compensation.basicSalary })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(
+        compensation,
+        and(
+          eq(compensation.employmentId, employment.id),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      )
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        ),
+      )
+      .orderBy(person.fullName);
+    const inputs = await tx
+      .select({ employmentId: payrollInput.employmentId, overtime: payrollInput.overtimeAmount })
+      .from(payrollInput)
+      .where(eq(payrollInput.batchId, batchId));
+    const otMap = new Map(inputs.map((r) => [r.employmentId, Number(r.overtime)]));
+    const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
+    return emps.map((e) => ({
+      employmentId: e.employmentId,
+      name: e.name,
+      basic: Number(e.basic),
+      overtimeAmount: otMap.get(e.employmentId) ?? 0,
+      unpaidDays: unpaid.get(e.employmentId) ?? 0,
+    }));
   });
 }

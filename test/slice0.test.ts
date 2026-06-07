@@ -32,7 +32,14 @@ import { compensationHistory, currentCompensation, setCompensation } from '../co
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
 import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
-import { batchDetail, BatchNotDraftError, closeBatch, createBatch, generatePayslips } from '../core/payroll';
+import {
+  batchDetail,
+  BatchNotDraftError,
+  closeBatch,
+  createBatch,
+  generatePayslips,
+  setPayrollInput,
+} from '../core/payroll';
 import { eis, epf, pcb, socso } from '../localization/my/payroll';
 
 let base: Base;
@@ -402,6 +409,55 @@ describe('Slice 4 — payroll', () => {
     await generatePayslips(a, { batchId: junId });
     const jun = await batchDetail(a, junId);
     expect(jun!.slips.find((s) => s.name === 'Leaver')).toBeUndefined();
+  });
+
+  it('adds manual overtime and auto-derives unpaid-leave deductions (statutory on reduced base)', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'OtUnpaid'); // hired 2026-01-01, full May month
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3100, effectiveFrom: '2026-01-01' });
+    // An approved UNPAID-leave request: 2 days starting in the period.
+    const [ult] = await owner.db
+      .insert(schema.leaveType)
+      .values({ tenantId: base.tenantId, code: 'UNPAID', name: 'Unpaid Leave', paid: false })
+      .returning({ id: schema.leaveType.id });
+    await owner.db.insert(schema.leaveRequest).values({
+      tenantId: base.tenantId,
+      employmentId: e.employmentId,
+      leaveTypeId: ult.id,
+      startDate: '2026-05-10',
+      endDate: '2026-05-11',
+      days: '2',
+      status: 'approved',
+    });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await setPayrollInput(a, { batchId, employmentId: e.employmentId, overtimeAmount: 500 });
+    await generatePayslips(a, { batchId });
+
+    const [ps] = await owner.db
+      .select()
+      .from(schema.payslip)
+      .where(eq(schema.payslip.batchId, batchId));
+    expect(Number(ps.grossPay)).toBeCloseTo(3600, 2); // basic 3100 + OT 500
+    expect(Number(ps.overtimePay)).toBeCloseTo(500, 2);
+    expect(Number(ps.otherDeductions)).toBeCloseTo(200, 2); // unpaid 3100/31 * 2
+    // Statutory is on the reduced base (3600 − 200 = 3400): EPF = ceil(3400 × 0.11) = 374, not 396.
+    expect((ps.statutory as Record<string, number>).epfEmployee).toBe(374);
+    expect(Number(ps.netPay)).toBeCloseTo(3600 - 200 - (ps.statutory as Record<string, number>).epfEmployee
+      - (ps.statutory as Record<string, number>).socsoEmployee
+      - (ps.statutory as Record<string, number>).eisEmployee
+      - (ps.statutory as Record<string, number>).pcb, 2);
+  });
+
+  it('rejects payroll input on a non-draft batch', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Locked');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, effectiveFrom: '2026-01-01' });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-09' });
+    await generatePayslips(a, { batchId }); // batch → processed
+    await expect(
+      setPayrollInput(a, { batchId, employmentId: e.employmentId, overtimeAmount: 100 }),
+    ).rejects.toBeInstanceOf(BatchNotDraftError);
   });
 });
 

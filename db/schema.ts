@@ -555,3 +555,23 @@ export const payslip = pgTable(
   },
   (t) => [uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId)],
 );
+
+// Per-employee, per-batch payroll inputs entered before generation. Overtime is manual; unpaid
+// leave is auto-derived from approved unpaid leave requests at generation time (not stored here).
+export const payrollInput = pgTable(
+  'payroll_input',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    overtimeAmount: numeric('overtime_amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('payroll_input_batch_emp_uq').on(t.batchId, t.employmentId)],
+);

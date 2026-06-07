@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail } from '@/core/payroll';
-import { Button, Card, ErrorBanner, SectionHeader } from '@/components/ui';
-import { closeAction, generateAction } from '../actions';
+import { batchDetail, batchInputRows } from '@/core/payroll';
+import { Button, Card, ErrorBanner, SectionHeader, inputCls } from '@/components/ui';
+import { closeAction, generateAction, setPayrollInputAction } from '../actions';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -22,6 +22,7 @@ export default async function BatchPage({
   if (!data) notFound();
   const { batch, slips } = data;
   const totals = (batch.totals ?? {}) as Record<string, number>;
+  const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -63,6 +64,64 @@ export default async function BatchPage({
         are rate-based; bonuses are not yet in the MTD additional-remuneration formula; overtime / unpaid-leave inputs are
         not yet captured. See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
       </div>
+
+      {batch.status === 'draft' && (
+        <Card className="overflow-hidden">
+          <SectionHeader title="Inputs · overtime + unpaid leave" count={inputs.length} />
+          <p className="px-4 pt-3 text-xs text-muted-foreground">
+            Enter overtime per employee. Unpaid-leave days are derived automatically from approved unpaid
+            leave requests starting in this period and deducted at the EA-1955 daily rate. Set inputs before
+            generating payslips.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Employee</th>
+                  <th className="px-4 py-2 text-right font-medium">Basic</th>
+                  <th className="px-4 py-2 text-right font-medium">Overtime (RM)</th>
+                  <th className="px-4 py-2 text-right font-medium">Unpaid days</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {inputs.map((r) => (
+                  <tr key={r.employmentId}>
+                    <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.basic)}</td>
+                    <td className="px-4 py-2.5">
+                      <form action={setPayrollInputAction} className="flex items-center justify-end gap-2">
+                        <input type="hidden" name="batchId" value={batch.id} />
+                        <input type="hidden" name="employmentId" value={r.employmentId} />
+                        <input
+                          name="overtimeAmount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          defaultValue={r.overtimeAmount}
+                          className={`${inputCls} w-28 text-right`}
+                        />
+                        <Button type="submit" variant="secondary">
+                          Save
+                        </Button>
+                      </form>
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {r.unpaidDays > 0 ? r.unpaidDays : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {inputs.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                      No active employees for this period.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
 
       {batch.status !== 'draft' && (
         <div className="grid grid-cols-2 divide-x divide-border rounded-lg border border-border sm:grid-cols-4">
