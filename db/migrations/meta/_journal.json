@@ -162,6 +162,13 @@
       "when": 1780812398952,
       "tag": "0022_payroll_input",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780814602709,
+      "tag": "0023_role_assignment_subdelegation",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
-import { requireAdmin } from '@/lib/authz';
+import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
-import { listCompanies } from '@/core/read';
+import { adminCompanies, listCompanies } from '@/core/read';
 import { Card, ErrorBanner, RoleTag, SectionHeader, btnGhost, inputCls } from '@/components/ui';
 import { assignRoleAction, revokeRoleAction } from '../actions';
 
@@ -13,7 +13,14 @@ export default async function UsersPage({
 }) {
   const s = await requireAdmin();
   const { error } = await searchParams;
-  const [users, companies] = await Promise.all([listUsers(s), listCompanies(s)]);
+  const groupAdmin = isGroupAdmin(s);
+  // Group admins grant any role for any company (or group-wide); delegated admins may only appoint
+  // a scoped hr_admin within the subtree they administer (RLS enforces this regardless of the UI).
+  const [users, companies] = await Promise.all([
+    listUsers(s),
+    groupAdmin ? listCompanies(s) : adminCompanies(s),
+  ]);
+  const roleOptions = groupAdmin ? ROLES : (['hr_admin'] as const);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -51,23 +58,29 @@ export default async function UsersPage({
                         · {r.company}
                       </span>
                     )}
-                    <form action={revokeRoleAction} className="inline">
-                      <input type="hidden" name="roleAssignmentId" value={r.id} />
-                      <button
-                        type="submit"
-                        title="Revoke role"
-                        className="text-muted-foreground transition-colors hover:text-red-500"
-                      >
-                        ×
-                      </button>
-                    </form>
+                    {(groupAdmin || (r.role === 'hr_admin' && r.companyId)) && (
+                      <form action={revokeRoleAction} className="inline">
+                        <input type="hidden" name="roleAssignmentId" value={r.id} />
+                        <button
+                          type="submit"
+                          title="Revoke role"
+                          className="text-muted-foreground transition-colors hover:text-red-500"
+                        >
+                          ×
+                        </button>
+                      </form>
+                    )}
                   </span>
                 ))}
                 {u.roles.length === 0 && <span className="text-xs text-muted-foreground">no roles</span>}
                 <form action={assignRoleAction} className="inline-flex items-center gap-2">
                   <input type="hidden" name="appUserId" value={u.id} />
-                  <select name="role" className={`${inputCls} py-1`} defaultValue="employee">
-                    {ROLES.map((r) => (
+                  <select
+                    name="role"
+                    className={`${inputCls} py-1`}
+                    defaultValue={groupAdmin ? 'employee' : 'hr_admin'}
+                  >
+                    {roleOptions.map((r) => (
                       <option key={r} value={r}>
                         {r.replace(/_/g, ' ')}
                       </option>
@@ -79,7 +92,7 @@ export default async function UsersPage({
                     defaultValue=""
                     title="Company scope (HR Admin only)"
                   >
-                    <option value="">Group-wide</option>
+                    {groupAdmin && <option value="">Group-wide</option>}
                     {companies.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
