@@ -94,21 +94,15 @@ export default async function ReportsPage({
             </div>
           )}
 
-          <div className="grid grid-cols-2 divide-x divide-border rounded-lg border border-border sm:grid-cols-5">
-            {(
-              [
-                ['Gross', result.totals.gross],
-                ['EPF', result.totals.epf],
-                ['SOCSO', result.totals.socso],
-                ['EIS', result.totals.eis],
-                ['PCB', result.totals.pcb],
-              ] as const
-            ).map(([label, v]) => (
-              <div key={label} className="p-4">
-                <div className="text-xs text-muted-foreground">{label}</div>
-                <div className="text-lg font-semibold tabular-nums">{rm(v)}</div>
-              </div>
-            ))}
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
+            {result.columns
+              .filter((c) => c.numeric)
+              .map((c) => (
+                <div key={c.key} className="bg-card p-4">
+                  <div className="text-xs text-muted-foreground">{c.label}</div>
+                  <div className="text-lg font-semibold tabular-nums">{rm(result.totals[c.key])}</div>
+                </div>
+              ))}
           </div>
 
           <Card className="overflow-hidden">
