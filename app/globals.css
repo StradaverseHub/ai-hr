@@ -94,3 +94,14 @@ body {
   background-color: rgb(161 161 170 / 0.4);
   border-radius: 9999px;
 }
+
+/* Clean print output for statutory documents (EA statement, etc.) — hide app chrome. */
+@media print {
+  aside,
+  header {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+}

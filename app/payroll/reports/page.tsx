@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listReports, recentReports, reportPreview } from '@/core/reporting';
@@ -170,9 +171,18 @@ export default async function ReportsPage({
                             row[c.key] == null || row[c.key] === '' ? 'text-red-500' : ''
                           }`}
                         >
-                          {c.numeric
-                            ? rm(row[c.key])
-                            : (row[c.key] as string) || (c.key === 'name' ? '' : '—')}
+                          {c.numeric ? (
+                            rm(row[c.key])
+                          ) : c.key === 'name' && row.employmentId ? (
+                            <Link
+                              href={`/payroll/reports/ea/${row.employmentId}?year=${periodKey}`}
+                              className="text-primary hover:underline"
+                            >
+                              {row.name as string}
+                            </Link>
+                          ) : (
+                            (row[c.key] as string) || (c.key === 'name' ? '' : '—')
+                          )}
                         </td>
                       ))}
                     </tr>

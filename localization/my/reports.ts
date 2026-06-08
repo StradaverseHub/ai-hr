@@ -5,7 +5,15 @@
  */
 import { and, eq, like } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
-import { employeeStatutoryMy, employment, payrollBatch, payslip, person } from '../../db/schema';
+import {
+  company,
+  companyStatutoryMy,
+  employeeStatutoryMy,
+  employment,
+  payrollBatch,
+  payslip,
+  person,
+} from '../../db/schema';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
@@ -389,6 +397,7 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
   const yr = await loadYearRows(ctx, year, params.companyId);
   const rows: ReportRow[] = yr.map((r, i) => ({
     no: i + 1,
+    employmentId: r.employmentId, // not a column — lets the UI deep-link each row to its EA statement
     name: r.name,
     taxNo: r.taxNo,
     ic: r.ic,
@@ -417,6 +426,114 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
       notes: [CP8D_NOTE],
     },
   };
+}
+
+// ── EA statement (C.P.8A) — per employee ────────────────────────────────────
+export type EaStatement = {
+  year: string;
+  employer: { name: string; eNumber: string | null };
+  employee: {
+    name: string;
+    ic: string | null;
+    taxNo: string | null;
+    epfNo: string | null;
+    socsoNo: string | null;
+    category: number;
+    children: number;
+    hiredOn: string;
+    terminatedOn: string | null;
+  };
+  /** Part B — employment income (cash). Untracked items (BIK, VOLA, ESOS, gratuity) are out of scope. */
+  partB: { grossSalary: number; bonus: number; allowances: number; gross: number };
+  partD: { mtd: number }; // total deduction — MTD/PCB (zakat/CP38 untracked)
+  partE: { epf: number; socso: number; eis: number }; // employee's share of EPF + SOCSO/EIS
+  statutoryVersion: string;
+};
+
+/** Per-employee EA (C.P.8A) statement for a tax year, from the year's payslips. */
+export async function eaStatement(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string },
+): Promise<EaStatement | null> {
+  return withTenant(ctx, async (tx) => {
+    const [info] = await tx
+      .select({
+        name: person.fullName,
+        ic: employeeStatutoryMy.icNumber,
+        taxNo: employeeStatutoryMy.taxNumber,
+        epfNo: employeeStatutoryMy.epfNumber,
+        socsoNo: employeeStatutoryMy.socsoNumber,
+        category: employeeStatutoryMy.taxCategory,
+        children: employeeStatutoryMy.numChildren,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+        companyId: employment.companyId,
+        companyName: company.legalName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!info) return null;
+    const [stat] = await tx
+      .select({ eNumber: companyStatutoryMy.lhdnEmployerNo })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, info.companyId))
+      .limit(1);
+    const slips = await tx
+      .select({
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        gross: payslip.grossPay,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .where(and(eq(payslip.employmentId, p.employmentId), like(payrollBatch.payPeriod, `${p.year}-%`)));
+
+    let grossSalary = 0;
+    let bonus = 0;
+    let allowances = 0;
+    let gross = 0;
+    let mtd = 0;
+    let epf = 0;
+    let socso = 0;
+    let eis = 0;
+    for (const s of slips) {
+      const st = (s.statutory ?? {}) as Stat;
+      grossSalary += num(s.basic) + num(s.overtime);
+      bonus += num(s.bonus);
+      allowances += num(s.allowance);
+      gross += num(s.gross);
+      mtd += num(st.pcb);
+      epf += num(st.epfEmployee);
+      socso += num(st.socsoEmployee);
+      eis += num(st.eisEmployee);
+    }
+    return {
+      year: p.year,
+      employer: { name: info.companyName, eNumber: stat?.eNumber ?? null },
+      employee: {
+        name: info.name,
+        ic: info.ic,
+        taxNo: info.taxNo,
+        epfNo: info.epfNo,
+        socsoNo: info.socsoNo,
+        category: info.category ?? 1,
+        children: info.children ?? 0,
+        hiredOn: info.hiredOn,
+        terminatedOn: info.terminatedOn,
+      },
+      partB: { grossSalary: round2(grossSalary), bonus: round2(bonus), allowances: round2(allowances), gross: round2(gross) },
+      partD: { mtd: round2(mtd) },
+      partE: { epf: round2(epf), socso: round2(socso), eis: round2(eis) },
+      statutoryVersion: MY_STATUTORY_VERSION,
+    };
+  });
 }
 
 export const MY_REPORTS: ReportDef[] = [

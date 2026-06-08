@@ -41,7 +41,13 @@ import {
   setPayrollInput,
 } from '../core/payroll';
 import { eis, epf, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
-import { listReports, recentReports, recordReport, reportPreview } from '../core/reporting';
+import {
+  employeeEaStatement,
+  listReports,
+  recentReports,
+  recordReport,
+  reportPreview,
+} from '../core/reporting';
 
 let base: Base;
 
@@ -936,5 +942,27 @@ describe('Slice 6C — annual Form E / CP8D (#72)', () => {
     const active = cp8d.meta.summary!.find((x) => x.label.startsWith('Active at 31 Dec'))!;
     expect(Number(active.value)).toBeGreaterThanOrEqual(1);
     expect(cp8d.meta.summary!.find((x) => x.label === 'Subject to MTD')!.value).toBeGreaterThanOrEqual(1);
+  });
+
+  it('builds a per-employee EA statement aggregating the tax year (incl. bonus)', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'EA Person');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101017777', epfNumber: 'EPFEA', socsoNumber: 'SOCEA', taxNumber: 'TAXEA' });
+    for (const m of ['2026-01', '2026-02']) {
+      const b = await createBatch(a, { companyId: base.companyId, payPeriod: m });
+      await setPayrollInput(a, { batchId: b.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: m === '2026-02' ? 3000 : 0 });
+      await generatePayslips(a, { batchId: b.batchId });
+    }
+
+    const ea = (await employeeEaStatement(a, { employmentId: e.employmentId, year: '2026' }))!;
+    expect(ea.employee.taxNo).toBe('TAXEA');
+    expect(ea.employee.epfNo).toBe('EPFEA');
+    expect(ea.partB.grossSalary).toBeCloseTo(10000, 2); // 5000 × 2 months
+    expect(ea.partB.allowances).toBeCloseTo(1000, 2); // 500 × 2
+    expect(ea.partB.bonus).toBeCloseTo(3000, 2); // Feb only
+    expect(ea.partB.gross).toBeCloseTo(14000, 2);
+    expect(ea.partD.mtd).toBeGreaterThan(0);
+    expect(ea.partE.epf).toBeGreaterThan(0);
   });
 });

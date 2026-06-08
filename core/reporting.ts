@@ -7,9 +7,9 @@
 import { desc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, statutoryReport } from '../db/schema';
+import { company, employment, statutoryReport } from '../db/schema';
 import { packFor } from '../localization/registry';
-import type { ReportDef, ReportResult } from '../localization/my/reports';
+import type { EaStatement, ReportDef, ReportResult } from '../localization/my/reports';
 
 async function companyCountry(ctx: SessionContext, companyId: string): Promise<string | null> {
   return withTenant(ctx, async (tx) => {
@@ -95,6 +95,30 @@ export async function recordReport(
     });
     return row;
   });
+}
+
+/**
+ * Per-employee EA statement for a tax year, via the employment's jurisdiction pack. RLS scopes
+ * visibility: an employee sees only their own (+ reports'); admins see their company scope.
+ */
+export async function employeeEaStatement(
+  ctx: SessionContext,
+  p: { employmentId: string; year: string },
+): Promise<EaStatement | null> {
+  const country = await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ country: company.country })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    return row?.country ?? null;
+  });
+  const pack = packFor(country) as
+    | { eaStatement?: (ctx: SessionContext, p: { employmentId: string; year: string }) => Promise<EaStatement | null> }
+    | undefined;
+  if (!pack?.eaStatement) return null;
+  return pack.eaStatement(ctx, p);
 }
 
 /** Recently recorded report artefacts for a company (audit trail). */
