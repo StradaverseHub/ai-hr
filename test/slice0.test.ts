@@ -910,3 +910,31 @@ describe('Slice 6B — per-agency monthly reports (#71)', () => {
     expect(cp39.readiness).toEqual([]); // tax no present → CP39 ready
   });
 });
+
+describe('Slice 6C — annual Form E / CP8D (#72)', () => {
+  it('aggregates the tax year across batches and computes Form E Part A counts', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Annual Worker'); // hired 2026-01-01
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101016666', epfNumber: 'EPFY', socsoNumber: 'SOCY', taxNumber: 'TAXY' });
+    for (const m of ['2026-01', '2026-02', '2026-03']) {
+      const b = await createBatch(a, { companyId: base.companyId, payPeriod: m });
+      await generatePayslips(a, { batchId: b.batchId });
+    }
+
+    const month = await reportPreview(a, { companyId: base.companyId, reportId: 'my.contributions', periodKey: '2026-01' });
+    const m1 = month.rows.find((r) => r.name === 'Annual Worker')!;
+    const cp8d = await reportPreview(a, { companyId: base.companyId, reportId: 'my.cp8d', periodKey: '2026' });
+    const yr = cp8d.rows.find((r) => r.name === 'Annual Worker')!;
+
+    // Annual figures = 3 months aggregated.
+    expect(Number(yr.gross)).toBeCloseTo(Number(m1.gross) * 3, 2);
+    expect(Number(yr.pcb)).toBeCloseTo(Number(m1.pcb) * 3, 2);
+    expect(yr.taxNo).toBe('TAXY');
+
+    // Form E Part A counts present + sensible.
+    const active = cp8d.meta.summary!.find((x) => x.label.startsWith('Active at 31 Dec'))!;
+    expect(Number(active.value)).toBeGreaterThanOrEqual(1);
+    expect(cp8d.meta.summary!.find((x) => x.label === 'Subject to MTD')!.value).toBeGreaterThanOrEqual(1);
+  });
+});
