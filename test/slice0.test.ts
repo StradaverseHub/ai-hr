@@ -41,7 +41,7 @@ import {
   setPayrollInput,
 } from '../core/payroll';
 import { eis, epf, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
-import { recentReports, recordReport, reportPreview } from '../core/reporting';
+import { listReports, recentReports, recordReport, reportPreview } from '../core/reporting';
 
 let base: Base;
 
@@ -867,5 +867,46 @@ describe('Slice 6A — statutory reporting (#70)', () => {
     const preview = await reportPreview(a, { companyId: base.companyId, reportId: 'my.contributions', periodKey: '2099-12' });
     expect(preview.meta.hasBatch).toBe(false);
     expect(preview.rows).toEqual([]);
+  });
+});
+
+describe('Slice 6B — per-agency monthly reports (#71)', () => {
+  it('lists the monthly reports and keeps figures consistent across them', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Multi Report');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 6000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101014444', epfNumber: 'EPF9', socsoNumber: 'SOC9', taxNumber: 'TAX9' });
+    const batch = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: batch.batchId });
+
+    const ids = (await listReports(a, base.companyId)).map((r) => r.id);
+    expect(ids).toEqual(expect.arrayContaining(['my.contributions', 'my.cp39', 'my.epf', 'my.socso-eis']));
+
+    const prev = (reportId: string) => reportPreview(a, { companyId: base.companyId, reportId, periodKey: '2026-05' });
+    const [contrib, cp39, epfR, socso] = await Promise.all([
+      prev('my.contributions'),
+      prev('my.cp39'),
+      prev('my.epf'),
+      prev('my.socso-eis'),
+    ]);
+    // Figures reconcile across the overview and the per-agency reports.
+    expect(cp39.totals.pcb).toBe(contrib.totals.pcb);
+    expect(epfR.totals.employee + epfR.totals.employer).toBeCloseTo(contrib.totals.epf, 2);
+    expect(socso.totals.socsoEmployee + socso.totals.socsoEmployer).toBeCloseTo(contrib.totals.socso, 2);
+    expect(socso.totals.eisEmployee + socso.totals.eisEmployer).toBeCloseTo(contrib.totals.eis, 2);
+  });
+
+  it('each agency report flags its own missing identifier', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Partial IDs');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015555', taxNumber: 'TAXX' }); // no EPF/SOCSO no
+    const batch = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: batch.batchId });
+
+    const epfR = await reportPreview(a, { companyId: base.companyId, reportId: 'my.epf', periodKey: '2026-05' });
+    expect(epfR.readiness[0].missing).toContain('EPF no');
+    const cp39 = await reportPreview(a, { companyId: base.companyId, reportId: 'my.cp39', periodKey: '2026-05' });
+    expect(cp39.readiness).toEqual([]); // tax no present → CP39 ready
   });
 });
