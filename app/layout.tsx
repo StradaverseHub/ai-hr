@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
@@ -15,7 +15,7 @@ import { listPrincipals } from '@/lib/principals';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
+const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
@@ -30,18 +30,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="h-dvh overflow-hidden p-2 font-sans sm:p-3 lg:p-3.5">
+      <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4">
         <Providers>
-          <div
-            data-app-shell
-            className="flex h-full overflow-hidden rounded-[var(--radius-xl)] border border-border bg-card shadow-[var(--shadow-shell)]"
-          >
+          {/* Detached floating layout: the rail, the top bar, and each content card
+              float separately on the canvas with gutters between them. */}
+          <div className="flex h-full gap-3 lg:gap-4">
             <Sidebar isAdmin={isAdmin(session)} />
-            <div className="flex min-w-0 flex-1 flex-col bg-background">
-              <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-5">
+            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
+              <header className="flex h-16 shrink-0 items-center justify-between gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)]">
                 <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
                   <span className="inline-flex size-1.5 rounded-full bg-amber-500" title="Dev session" />
                   <span className="font-medium text-foreground/80">Demo Group</span>
@@ -56,7 +55,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <ThemeToggle />
                 </div>
               </header>
-              <main className="min-w-0 flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
+              <main className="min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
             </div>
           </div>
           <Suspense fallback={null}>
