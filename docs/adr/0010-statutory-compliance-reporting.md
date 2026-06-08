@@ -159,17 +159,23 @@ the `/me` portal for employees to self-serve.
 
 ## Implementation slices
 
-- **6A — Substrate.** `statutory_report` table + RLS + migration; pack `reports` registry + core
-  `reporting.ts` seam (list / readiness / run / persist + event); the Payroll **Reports** sub-tab
-  (`/payroll/reports` + a `Batches | Reports` sub-nav) — pick company + period + report → readiness →
-  preview. Ship with **one** Layer-A report (monthly contribution summary). Tests: artefact + event +
-  readiness.
-- **6B — Monthly Layer-A complete.** PCB/CP39 view, EPF, SOCSO/EIS reports + CSV, per company.
-- **6C — Annual.** EA form (per employee, + `/me` download) and Form E / CP8D (employer return) via
-  tax-year aggregation.
-- **6D — Layer-B agency files.** CP39 text, KWSP Borang A, PERKESO ASSIST, bank payment file — each
-  sourced + verified + REPORT-FORMATS.md entry, added incrementally.
-- **6E — Event-driven worklist.** CP22 / CP22A surfaced from the domain-event log.
+- **6A — Substrate. ✅ Done.** `statutory_report` table + RLS + migration; pack `reports` registry +
+  core `reporting.ts` seam (list / readiness / run / persist + event); the Payroll **Reports** sub-tab
+  (`/payroll/reports` + a `Batches | Reports` sub-nav). Shipped with the monthly contribution summary.
+- **6B — Monthly Layer-A complete. ✅ Done.** PCB/CP39 view, EPF, SOCSO/EIS reports + CSV, per company.
+- **6C — Annual. ✅ Done.** EA form (per employee, + `/me` download, print-to-PDF) and Form E / CP8D
+  (employer return, with Part A headcounts) via tax-year aggregation. Built after verifying the field
+  structure against LHDN's EA (C.P.8A Pin. 2024) and Form E / CP8D (Pin. 2025) PDFs.
+- **6D — Layer-B agency files. ⏸ Deferred (demand-driven).** CP39 text, KWSP Borang A, PERKESO ASSIST,
+  bank payment file — each sourced + verified + REPORT-FORMATS.md entry, added incrementally.
+  **Reprioritised (verified Jun 2026):** these byte-exact files are **not legally mandatory** — every
+  agency (i-Akaun, ASSIST, e-PCB, MyTax) accepts **manual key-in** as an alternative, and the Layer-A
+  reports already cover the obligation. The files are a **bulk-scale + competitive-parity** feature
+  (incumbents like SQL Payroll / PayrollPanda / Talenox ship them). Build per a concrete customer +
+  target format/bank, not speculatively — a wrong file (rejected upload / wrong contribution) is worse
+  than a clean report keyed in by hand.
+- **6E — Event-driven worklist.** CP22 / CP22A surfaced from the domain-event log. Lighter; can pair
+  with 6D or stand alone.
 
 ## Alternatives rejected
 
