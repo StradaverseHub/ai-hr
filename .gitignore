@@ -44,3 +44,4 @@ next-env.d.ts
 # impeccable design skill — local tool, regenerable via `npx impeccable skills install`
 .claude/
 .cursor/
+.agents/
