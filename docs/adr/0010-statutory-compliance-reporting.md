@@ -108,6 +108,19 @@ remain management-only and are never emitted as a filing.
 Layer A ships after normal review. Layer B files carry the ⚠️ DRAFT banner (same pattern as the
 payroll figures) until human-verified, with per-format provenance in REPORT-FORMATS.md.
 
+### 8. Placement — a sub-module of Payroll, not a new top-level area
+
+Statutory reports are entirely payroll-derived (per batch / per tax year from payslips), so they live
+**inside the Payroll module**, not as a separate "Compliance" nav item. The sidebar keeps a single
+**Payroll** entry; within it a **`Batches | Reports` sub-nav** switches views:
+
+- `/payroll` — batch runs (existing).
+- `/payroll/reports` — statutory reports (monthly contribution summaries; later annual EA / Form E).
+
+`pathname.startsWith('/payroll')` already keeps the sidebar item active across the sub-routes, and a
+monthly report can deep-link from its originating batch. Annual EA statements additionally surface in
+the `/me` portal for employees to self-serve.
+
 ## Consequences
 
 **Positive**
@@ -147,9 +160,10 @@ payroll figures) until human-verified, with per-format provenance in REPORT-FORM
 ## Implementation slices
 
 - **6A — Substrate.** `statutory_report` table + RLS + migration; pack `reports` registry + core
-  `reporting.ts` seam (list / readiness / run / persist + event); a "Compliance" UI shell (pick
-  company + period + report → readiness → preview). Ship with **one** Layer-A report (monthly
-  contribution summary). Tests: artefact + event + readiness.
+  `reporting.ts` seam (list / readiness / run / persist + event); the Payroll **Reports** sub-tab
+  (`/payroll/reports` + a `Batches | Reports` sub-nav) — pick company + period + report → readiness →
+  preview. Ship with **one** Layer-A report (monthly contribution summary). Tests: artefact + event +
+  readiness.
 - **6B — Monthly Layer-A complete.** PCB/CP39 view, EPF, SOCSO/EIS reports + CSV, per company.
 - **6C — Annual.** EA form (per employee, + `/me` download) and Form E / CP8D (employer return) via
   tax-year aggregation.
