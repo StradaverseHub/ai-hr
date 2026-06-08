@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
-import { listReports, recentReports, reportPreview } from '@/core/reporting';
+import { complianceWorklist, listReports, recentReports, reportPreview } from '@/core/reporting';
 import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { DownloadCsv } from '@/components/download-csv';
@@ -25,7 +25,13 @@ export default async function ReportsPage({
   const canPreview = Boolean(companyId && reportId && periodKey);
   const result = canPreview ? await reportPreview(s, { companyId, reportId, periodKey }) : null;
   const recent = companyId ? await recentReports(s, companyId) : [];
+  const worklist = companyId ? await complianceWorklist(s, { companyId }) : [];
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
+  const WL_STATUS: Record<string, string> = {
+    overdue: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+    due_soon: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+    upcoming: 'bg-muted text-muted-foreground',
+  };
   const periodKind = reports.find((r) => r.id === reportId)?.periodKind ?? 'month';
   const annual = periodKind === 'year';
 
@@ -37,6 +43,50 @@ export default async function ReportsPage({
       </div>
       <PayrollTabs active="reports" />
       <ErrorBanner message={sp.error} />
+
+      <Card className="overflow-hidden">
+        <SectionHeader title="Compliance worklist · CP22 / CP22A" count={worklist.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">
+          New-hire (CP22) and cessation (CP22A) notifications due to LHDN for{' '}
+          {companyName.get(companyId) ?? '—'}. File in MyTax; this surfaces what&apos;s outstanding.
+        </p>
+        {worklist.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing due.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Employee</th>
+                  <th className="px-4 py-2 font-medium">Form</th>
+                  <th className="px-4 py-2 font-medium">Reason</th>
+                  <th className="px-4 py-2 font-medium">Event date</th>
+                  <th className="px-4 py-2 font-medium">Notify by</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {worklist.map((w) => (
+                  <tr key={`${w.employmentId}-${w.form}`}>
+                    <td className="px-4 py-2.5 font-medium">{w.name}</td>
+                    <td className="px-4 py-2.5">{w.form}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{w.reason}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{w.eventDate}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs">{w.dueBy}</td>
+                    <td className="px-4 py-2.5">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${WL_STATUS[w.status]}`}
+                      >
+                        {w.status.replace('_', ' ')}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
         ⚠️ Layer-A report — a human-readable summary to remit from or hand to an accountant. Byte-exact
