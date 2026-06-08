@@ -40,7 +40,7 @@ import {
   generatePayslips,
   setPayrollInput,
 } from '../core/payroll';
-import { eis, epf, pcb, socso } from '../localization/my/payroll';
+import { eis, epf, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
 
 let base: Base;
 
@@ -766,5 +766,50 @@ describe('Sub-delegation — company admins assign within their subtree (#67)', 
     expect(ids).toContain(groupWide.id);
     expect(ids).toContain(outOfTree.id);
     expect(ids).not.toContain(inTree.id);
+  });
+});
+
+describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
+  it('PCB on a bonus is the difference method; bonus hits EPF + PCB but not SOCSO/EIS', () => {
+    const profile = { category: 1 as const, children: 0 };
+    const base = statutory(5000, profile, 0); // RM5000/mo, no bonus
+    const withBonus = statutory(5000, profile, 5000); // + RM5000 bonus
+
+    // PCB = normal monthly PCB + bonus PCB (difference method), exposed as pcbBonus.
+    const bonusPcb = pcbAdditional(5000, 5000, profile);
+    expect(bonusPcb).toBeGreaterThan(0);
+    expect(withBonus.pcbBonus).toBe(bonusPcb);
+    expect(withBonus.pcb).toBe(Math.round((pcb(5000, profile) + bonusPcb) * 100) / 100);
+    expect(pcbAdditional(5000, 0, profile)).toBe(0); // no bonus → no extra PCB
+
+    // EPF: bonus IS subject. Employer rate stays 13% (normal wage ≤ RM5000) applied to wage+bonus.
+    expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1300 });
+    expect(withBonus.epfEmployee).toBe(1100);
+    expect(withBonus.epfEmployer).toBe(1300);
+    expect(withBonus.epfEmployer).toBeGreaterThan(base.epfEmployer); // bonus added EPF
+
+    // SOCSO + EIS: bonus EXCLUDED — identical with and without the bonus.
+    expect(withBonus.socsoEmployee).toBe(base.socsoEmployee);
+    expect(withBonus.socsoEmployer).toBe(base.socsoEmployer);
+    expect(withBonus.eisEmployee).toBe(base.eisEmployee);
+    expect(withBonus.eisEmployer).toBe(base.eisEmployer);
+  });
+
+  it('generated payslip taxes the bonus and records it', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Bonus Earner');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 6000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101012222' });
+    const batch = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-03' });
+    await setPayrollInput(a, { batchId: batch.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: 6000 });
+    await generatePayslips(a, { batchId: batch.batchId });
+
+    const { slips } = (await batchDetail(a, batch.batchId))!;
+    const slip = slips.find((s) => s.name === 'Bonus Earner')!;
+    const st = slip.statutory as { pcb: number; pcbBonus: number };
+    expect(Number(slip.bonus)).toBe(6000);
+    expect(Number(slip.gross)).toBe(12000); // 6000 basic + 6000 bonus
+    expect(st.pcbBonus).toBeGreaterThan(0);
+    expect(st.pcb).toBeGreaterThan(pcb(6000, { category: 1, children: 0 })); // bonus pushed PCB up
   });
 });

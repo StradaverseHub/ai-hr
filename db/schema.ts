@@ -545,6 +545,7 @@ export const payslip = pgTable(
     basicSalary: numeric('basic_salary', { precision: 12, scale: 2 }).notNull(),
     allowance: numeric('allowance', { precision: 12, scale: 2 }).notNull().default('0'),
     overtimePay: numeric('overtime_pay', { precision: 12, scale: 2 }).notNull().default('0'),
+    bonus: numeric('bonus', { precision: 12, scale: 2 }).notNull().default('0'),
     grossPay: numeric('gross_pay', { precision: 12, scale: 2 }).notNull(),
     statutory: jsonb('statutory').notNull(), // { epfEmployee, epfEmployer, socsoEmployee, ... }
     otherDeductions: numeric('other_deductions', { precision: 12, scale: 2 }).notNull().default('0'),
@@ -570,6 +571,7 @@ export const payrollInput = pgTable(
       .notNull()
       .references(() => employment.id),
     overtimeAmount: numeric('overtime_amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    bonusAmount: numeric('bonus_amount', { precision: 12, scale: 2 }).notNull().default('0'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

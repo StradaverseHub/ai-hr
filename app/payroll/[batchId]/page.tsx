@@ -59,19 +59,21 @@ export default async function BatchPage({
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
         ⚠️ Figures use the <span className="font-medium">official 2026 LHDN / PERKESO tables</span> but still require
-        accountant sign-off before real use. PCB now uses each employee&apos;s tax profile (category + children) and pay is
-        prorated for mid-month joiners/leavers. Remaining simplifications: the SOCSO RM5,000–6,000 ceiling band and EIS
-        are rate-based; bonuses are not yet in the MTD additional-remuneration formula; overtime / unpaid-leave inputs are
-        not yet captured. See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
+        accountant sign-off before real use. PCB uses each employee&apos;s tax profile (category + children); pay is prorated
+        for mid-month joiners/leavers; overtime, bonus and unpaid leave are captured; and bonuses use the LHDN
+        additional-remuneration (difference) method. Remaining simplifications: the SOCSO RM5,000–6,000 ceiling band and
+        EIS are rate-based (exact band tables not yet encoded), and PCB uses the steady-state monthly model without
+        prior-month accumulators. See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
       </div>
 
       {batch.status === 'draft' && (
         <Card className="overflow-hidden">
-          <SectionHeader title="Inputs · overtime + unpaid leave" count={inputs.length} />
+          <SectionHeader title="Inputs · overtime, bonus + unpaid leave" count={inputs.length} />
           <p className="px-4 pt-3 text-xs text-muted-foreground">
-            Enter overtime per employee. Unpaid-leave days are derived automatically from approved unpaid
-            leave requests starting in this period and deducted at the EA-1955 daily rate. Set inputs before
-            generating payslips.
+            Enter overtime and bonus per employee. Bonus is taxed as additional remuneration (EPF + PCB
+            difference method, excluded from SOCSO/EIS). Unpaid-leave days are derived automatically from
+            approved unpaid leave requests starting in this period and deducted at the EA-1955 daily rate. Set
+            inputs before generating payslips.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -79,7 +81,7 @@ export default async function BatchPage({
                 <tr>
                   <th className="px-4 py-2 font-medium">Employee</th>
                   <th className="px-4 py-2 text-right font-medium">Basic</th>
-                  <th className="px-4 py-2 text-right font-medium">Overtime (RM)</th>
+                  <th className="px-4 py-2 text-right font-medium">Overtime · Bonus (RM)</th>
                   <th className="px-4 py-2 text-right font-medium">Unpaid days</th>
                 </tr>
               </thead>
@@ -92,14 +94,28 @@ export default async function BatchPage({
                       <form action={setPayrollInputAction} className="flex items-center justify-end gap-2">
                         <input type="hidden" name="batchId" value={batch.id} />
                         <input type="hidden" name="employmentId" value={r.employmentId} />
-                        <input
-                          name="overtimeAmount"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          defaultValue={r.overtimeAmount}
-                          className={`${inputCls} w-28 text-right`}
-                        />
+                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
+                          OT
+                          <input
+                            name="overtimeAmount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            defaultValue={r.overtimeAmount}
+                            className={`${inputCls} w-24 text-right`}
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
+                          Bonus
+                          <input
+                            name="bonusAmount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            defaultValue={r.bonusAmount}
+                            className={`${inputCls} w-24 text-right`}
+                          />
+                        </label>
                         <Button type="submit" variant="secondary">
                           Save
                         </Button>
@@ -149,6 +165,7 @@ export default async function BatchPage({
               <tr>
                 <th className="px-4 py-2 font-medium">Employee</th>
                 <th className="px-4 py-2 text-right font-medium">Gross</th>
+                <th className="px-4 py-2 text-right font-medium">Bonus</th>
                 <th className="px-4 py-2 text-right font-medium">EPF</th>
                 <th className="px-4 py-2 text-right font-medium">SOCSO</th>
                 <th className="px-4 py-2 text-right font-medium">EIS</th>
@@ -163,6 +180,9 @@ export default async function BatchPage({
                   <tr key={sl.id}>
                     <td className="px-4 py-2.5 font-medium">{sl.name}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{rm(sl.gross)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
+                      {Number(sl.bonus) > 0 ? rm(sl.bonus) : '—'}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.epfEmployee)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoEmployee)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.eisEmployee)}</td>
@@ -173,7 +193,7 @@ export default async function BatchPage({
               })}
               {slips.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                     No payslips yet — generate them.
                   </td>
                 </tr>
