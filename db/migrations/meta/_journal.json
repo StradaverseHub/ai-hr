@@ -176,6 +176,13 @@
       "when": 1780883185588,
       "tag": "0024_payroll_bonus",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780884135535,
+      "tag": "0025_payslip_days_worked",
+      "breakpoints": true
     }
   ]
 }

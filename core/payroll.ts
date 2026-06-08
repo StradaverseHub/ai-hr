@@ -58,6 +58,12 @@ function prorationFactor(payPeriod: string, hiredOn: string, terminatedOn: strin
  * with the leave module — no double entry. (Requests straddling a month boundary are attributed to
  * their start month; cross-month splitting is a documented future refinement.)
  */
+/**
+ * Approved unpaid-leave days to deduct this period, by employment. Policy: a request is deducted in
+ * full in the month it STARTS (filter on startDate ∈ period). Splitting a request that straddles a
+ * month boundary across both months would need per-day expansion keyed to each leave type's counting
+ * mode (the model stores per-request totals, not per-day) — deliberately deferred as a rare edge case.
+ */
 async function unpaidDaysByEmployment(
   tx: Tx,
   periodStart: string,
@@ -233,7 +239,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
 
     for (const e of emps) {
       // Prorate contractual pay for mid-period joiners/leavers (full month → factor 1).
+      // Allowance prorates with basic — EA-1955 incomplete-month treats fixed monthly wages as a whole.
       const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn);
+      const daysWorked = Math.round(factor * dim); // proration basis surfaced on the payslip
       const basic = round2(Number(e.basic) * factor);
       const allowance = round2(Number(e.allowance ?? 0) * factor);
       const overtime = round2(overtimeByEmp.get(e.employmentId) ?? 0);
@@ -262,6 +270,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         allowance: allowance.toFixed(2),
         overtimePay: overtime.toFixed(2),
         bonus: bonus.toFixed(2),
+        daysWorked: String(daysWorked),
         grossPay: grossPay.toFixed(2),
         statutory: st,
         otherDeductions: unpaidDeduction.toFixed(2),
@@ -351,6 +360,7 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
         name: person.fullName,
         basic: payslip.basicSalary,
         bonus: payslip.bonus,
+        daysWorked: payslip.daysWorked,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
         totalDeductions: payslip.totalDeductions,

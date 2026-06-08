@@ -546,6 +546,8 @@ export const payslip = pgTable(
     allowance: numeric('allowance', { precision: 12, scale: 2 }).notNull().default('0'),
     overtimePay: numeric('overtime_pay', { precision: 12, scale: 2 }).notNull().default('0'),
     bonus: numeric('bonus', { precision: 12, scale: 2 }).notNull().default('0'),
+    // Days the employee was active/paid in the period (proration basis). Null = legacy / full month.
+    daysWorked: numeric('days_worked', { precision: 5, scale: 2 }),
     grossPay: numeric('gross_pay', { precision: 12, scale: 2 }).notNull(),
     statutory: jsonb('statutory').notNull(), // { epfEmployee, epfEmployer, socsoEmployee, ... }
     otherDeductions: numeric('other_deductions', { precision: 12, scale: 2 }).notNull().default('0'),
