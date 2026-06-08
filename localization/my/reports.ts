@@ -3,7 +3,7 @@
  * payslips, per legal entity. Each ReportDef is registered on the pack; the generic core
  * (core/reporting.ts) lists / previews / records them without naming any MY-specific report.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, like } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { employeeStatutoryMy, employment, payrollBatch, payslip, person } from '../../db/schema';
 import { MY_STATUTORY_VERSION } from './statutory-tables';
@@ -17,7 +17,15 @@ export type ReportResult = {
   totals: Record<string, number>;
   /** Employees missing a field a remittance needs. Empty array = fully ready. */
   readiness: ReportReadiness[];
-  meta: { hasBatch: boolean; batchStatus?: string; statutoryVersion: string };
+  meta: {
+    hasBatch: boolean;
+    batchStatus?: string;
+    statutoryVersion: string;
+    /** Headline counts shown above the table (e.g. Form E Part A). */
+    summary?: { label: string; value: string | number }[];
+    /** Caveats for this report (e.g. fields the payroll system does not track). */
+    notes?: string[];
+  };
 };
 export type ReportParams = { companyId: string; periodKey: string };
 export type ReportDef = {
@@ -92,9 +100,18 @@ async function loadBatchRows(ctx: SessionContext, params: ReportParams): Promise
   });
 }
 
+type IdFields = {
+  employmentId: string;
+  name: string;
+  ic: string | null;
+  taxNo: string | null;
+  epfNo: string | null;
+  socsoNo: string | null;
+};
+
 /** Per-employee readiness: which required identifier fields are blank. */
 function readinessFor(
-  rows: BatchRow[],
+  rows: IdFields[],
   checks: { field: 'ic' | 'taxNo' | 'epfNo' | 'socsoNo'; label: string }[],
 ): ReportReadiness[] {
   const out: ReportReadiness[] = [];
@@ -256,9 +273,156 @@ async function socsoEis(ctx: SessionContext, params: ReportParams): Promise<Repo
   };
 }
 
+// ── Annual (Form E / CP8D) ──────────────────────────────────────────────────
+// Aggregates a tax year's payslips per employee. periodKey is the year, e.g. '2026'.
+type YearRow = IdFields & {
+  category: number | null;
+  children: number | null;
+  gross: number;
+  epf: number;
+  socso: number;
+  eis: number;
+  pcb: number;
+};
+
+async function loadYearRows(ctx: SessionContext, year: string, companyId: string): Promise<YearRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const slips = await tx
+      .select({
+        employmentId: payslip.employmentId,
+        name: person.fullName,
+        ic: employeeStatutoryMy.icNumber,
+        taxNo: employeeStatutoryMy.taxNumber,
+        epfNo: employeeStatutoryMy.epfNumber,
+        socsoNo: employeeStatutoryMy.socsoNumber,
+        category: employeeStatutoryMy.taxCategory,
+        children: employeeStatutoryMy.numChildren,
+        gross: payslip.grossPay,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
+
+    const byEmp = new Map<string, YearRow>();
+    for (const s of slips) {
+      const st = (s.statutory ?? {}) as Stat;
+      let r = byEmp.get(s.employmentId);
+      if (!r) {
+        r = {
+          employmentId: s.employmentId,
+          name: s.name,
+          ic: s.ic,
+          taxNo: s.taxNo,
+          epfNo: s.epfNo,
+          socsoNo: s.socsoNo,
+          category: s.category,
+          children: s.children,
+          gross: 0,
+          epf: 0,
+          socso: 0,
+          eis: 0,
+          pcb: 0,
+        };
+        byEmp.set(s.employmentId, r);
+      }
+      r.gross = round2(r.gross + num(s.gross));
+      r.epf = round2(r.epf + num(st.epfEmployee));
+      r.socso = round2(r.socso + num(st.socsoEmployee));
+      r.eis = round2(r.eis + num(st.eisEmployee));
+      r.pcb = round2(r.pcb + num(st.pcb));
+    }
+    return [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
+/** Form E Part A headcounts for the year (employment-based, computed in JS over the company set). */
+async function formECounts(
+  ctx: SessionContext,
+  year: string,
+  companyId: string,
+  subjectToMtd: number,
+): Promise<{ label: string; value: number }[]> {
+  return withTenant(ctx, async (tx) => {
+    const emps = await tx
+      .select({ hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+      .from(employment)
+      .where(eq(employment.companyId, companyId));
+    const yStart = `${year}-01-01`;
+    const yEnd = `${year}-12-31`;
+    const activeAtEnd = emps.filter((e) => e.hiredOn <= yEnd && (!e.terminatedOn || e.terminatedOn >= yEnd)).length;
+    const newHires = emps.filter((e) => e.hiredOn >= yStart && e.hiredOn <= yEnd).length;
+    const ceased = emps.filter((e) => e.terminatedOn && e.terminatedOn >= yStart && e.terminatedOn <= yEnd).length;
+    return [
+      { label: `Active at 31 Dec ${year}`, value: activeAtEnd },
+      { label: 'Subject to MTD', value: subjectToMtd },
+      { label: `New hires (${year})`, value: newHires },
+      { label: `Ceased (${year})`, value: ceased },
+    ];
+  });
+}
+
+const CP8D_COLS: ReportColumn[] = [
+  { key: 'no', label: 'No.' },
+  { key: 'name', label: 'Employee' },
+  { key: 'taxNo', label: 'TIN' },
+  { key: 'ic', label: 'IC' },
+  { key: 'category', label: 'Cat.' },
+  { key: 'children', label: 'Children' },
+  { key: 'gross', label: 'Gross remuneration', numeric: true },
+  { key: 'epf', label: 'EPF', numeric: true },
+  { key: 'pcb', label: 'MTD / PCB', numeric: true },
+  { key: 'socso', label: 'SOCSO', numeric: true },
+];
+
+const CP8D_NOTE =
+  'Covers payroll-derived figures only: gross cash remuneration, EPF, SOCSO and MTD/PCB. Benefits-in-kind, ' +
+  'value of living accommodation, ESOS, tax-exempt allowances, zakat and CP38 are not tracked here — add them ' +
+  'in MyTax / e-CP8D before filing.';
+
+/** Form E / CP8D — annual employer return (per-employee remuneration + Part A headcounts). */
+async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
+  const year = params.periodKey;
+  const yr = await loadYearRows(ctx, year, params.companyId);
+  const rows: ReportRow[] = yr.map((r, i) => ({
+    no: i + 1,
+    name: r.name,
+    taxNo: r.taxNo,
+    ic: r.ic,
+    category: r.category ?? 1,
+    children: r.children ?? 0,
+    gross: r.gross,
+    epf: r.epf,
+    pcb: r.pcb,
+    socso: r.socso,
+  }));
+  const subjectToMtd = yr.filter((r) => r.pcb > 0).length;
+  const summary = await formECounts(ctx, year, params.companyId, subjectToMtd);
+  return {
+    columns: CP8D_COLS,
+    rows,
+    totals: sumTotals(rows, ['gross', 'epf', 'pcb', 'socso']),
+    readiness: readinessFor(yr, [
+      { field: 'taxNo', label: 'Tax no' },
+      { field: 'epfNo', label: 'EPF no' },
+      { field: 'socsoNo', label: 'SOCSO no' },
+    ]),
+    meta: {
+      hasBatch: yr.length > 0,
+      statutoryVersion: MY_STATUTORY_VERSION,
+      summary,
+      notes: [CP8D_NOTE],
+    },
+  };
+}
+
 export const MY_REPORTS: ReportDef[] = [
   { id: 'my.contributions', label: 'Monthly statutory contributions (overview)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: contributions },
   { id: 'my.cp39', label: 'CP39 — MTD / PCB (LHDN)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: cp39 },
   { id: 'my.epf', label: 'EPF contributions (KWSP)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: epfReport },
   { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis },
+  { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d },
 ];

@@ -25,6 +25,8 @@ export default async function ReportsPage({
   const result = canPreview ? await reportPreview(s, { companyId, reportId, periodKey }) : null;
   const recent = companyId ? await recentReports(s, companyId) : [];
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
+  const periodKind = reports.find((r) => r.id === reportId)?.periodKind ?? 'month';
+  const annual = periodKind === 'year';
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -61,8 +63,13 @@ export default async function ReportsPage({
               ))}
             </select>
           </Field>
-          <Field label="Period (YYYY-MM)">
-            <input name="periodKey" defaultValue={periodKey} placeholder="2026-07" className={inputCls} />
+          <Field label={annual ? 'Year (YYYY)' : 'Period (YYYY-MM)'}>
+            <input
+              name="periodKey"
+              defaultValue={periodKey}
+              placeholder={annual ? '2026' : '2026-07'}
+              className={inputCls}
+            />
           </Field>
           <button className={btnPrimary}>Preview</button>
         </form>
@@ -79,6 +86,26 @@ export default async function ReportsPage({
 
       {result && result.meta.hasBatch && (
         <>
+          {result.meta.notes?.map((note, i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
+            >
+              ℹ️ {note}
+            </div>
+          ))}
+
+          {result.meta.summary && result.meta.summary.length > 0 && (
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border sm:grid-cols-4">
+              {result.meta.summary.map((sItem) => (
+                <div key={sItem.label} className="bg-card p-4">
+                  <div className="text-xs text-muted-foreground">{sItem.label}</div>
+                  <div className="text-lg font-semibold tabular-nums">{sItem.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {result.readiness.length > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
               <div className="font-medium">
