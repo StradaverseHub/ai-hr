@@ -390,6 +390,7 @@ describe('Slice 4 — payroll', () => {
     const detail = await batchDetail(a, batchId);
     const slip = detail!.slips.find((s) => s.name === 'MidJoin')!;
     expect(Number(slip.basic)).toBeCloseTo(1600, 2); // 3100 * 16/31
+    expect(Number(slip.daysWorked)).toBe(16); // proration basis surfaced on the payslip
   });
 
   it('includes a mid-period leaver (final prorated payslip) but excludes prior terminations', async () => {

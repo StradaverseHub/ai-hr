@@ -1,0 +1,1 @@
+ALTER TABLE "payslip" ADD COLUMN "days_worked" numeric(5, 2);

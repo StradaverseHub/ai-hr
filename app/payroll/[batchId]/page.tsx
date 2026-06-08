@@ -23,6 +23,8 @@ export default async function BatchPage({
   const { batch, slips } = data;
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
+  const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+  const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -178,7 +180,14 @@ export default async function BatchPage({
                 const st = sl.statutory as Record<string, number>;
                 return (
                   <tr key={sl.id}>
-                    <td className="px-4 py-2.5 font-medium">{sl.name}</td>
+                    <td className="px-4 py-2.5 font-medium">
+                      {sl.name}
+                      {sl.daysWorked != null && Number(sl.daysWorked) < periodDays && (
+                        <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">
+                          prorated · {Number(sl.daysWorked)}/{periodDays} days
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">{rm(sl.gross)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                       {Number(sl.bonus) > 0 ? rm(sl.bonus) : '—'}
