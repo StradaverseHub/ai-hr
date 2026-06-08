@@ -33,26 +33,27 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full font-sans">
+      <body className="h-dvh overflow-hidden font-sans">
         <Providers>
-          <div className="flex min-h-dvh">
+          <div className="flex h-full">
             <Sidebar isAdmin={isAdmin(session)} />
             <div className="flex min-w-0 flex-1 flex-col">
-              <header className="flex h-14 items-center justify-between border-b border-border px-6">
-                <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-                  <span className="inline-flex size-2 rounded-full bg-amber-500" title="Dev session" />
-                  Demo Group
-                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+              <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-background px-5">
+                <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                  <span className="inline-flex size-1.5 rounded-full bg-amber-500" title="Dev session" />
+                  <span className="font-medium text-foreground/80">Demo Group</span>
+                  <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
                     dev
                   </span>
                   <DevIdentitySwitcher principals={principals} current={session.userId ?? ''} />
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
+                  <div className="h-5 w-px bg-border" />
                   <ThemeToggle />
                 </div>
               </header>
-              <main className="min-w-0 flex-1 p-6">{children}</main>
+              <main className="min-w-0 flex-1 overflow-y-auto p-6 lg:p-8">{children}</main>
             </div>
           </div>
           <Suspense fallback={null}>

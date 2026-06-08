@@ -5,46 +5,53 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
+  /* 3-layer surface system (canvas → panel → sidebar) for quiet depth, Linear-style. */
+  --background: #f8f8f9; /* canvas — subtle cool gray so white panels lift */
   --foreground: #18181b; /* zinc-900 */
-  --card: #ffffff;
+  --card: #ffffff; /* panel — lifts off the canvas */
   --card-foreground: #18181b;
   --popover: #ffffff;
   --popover-foreground: #18181b;
+  --sidebar: #ffffff; /* nav rail */
+  --sidebar-foreground: #3f3f46;
+  --sidebar-border: #ececef;
   --primary: #4f46e5; /* indigo-600 */
   --primary-foreground: #ffffff;
   --secondary: #f4f4f5; /* zinc-100 */
   --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a; /* zinc-500 */
+  --muted: #f1f1f3;
+  --muted-foreground: #71717a; /* zinc-500 — 4.6:1 on canvas */
   --accent: #f4f4f5;
   --accent-foreground: #18181b;
   --destructive: #dc2626; /* red-600 */
   --destructive-foreground: #ffffff;
-  --border: #e4e4e7; /* zinc-200 */
+  --border: #e8e8ec;
   --input: #d4d4d8; /* zinc-300 */
   --ring: #6366f1; /* indigo-500 */
-  --radius: 0.625rem;
+  --radius: 0.5rem; /* crisper than 10px */
 }
 
 .dark {
-  --background: #09090b; /* zinc-950 */
+  --background: #09090b; /* zinc-950 canvas */
   --foreground: #fafafa; /* zinc-50 */
-  --card: #09090b;
+  --card: #131316; /* panel — lifted off canvas */
   --card-foreground: #fafafa;
   --popover: #18181b; /* zinc-900 */
   --popover-foreground: #fafafa;
+  --sidebar: #0c0c0e; /* nav rail — a hair off canvas */
+  --sidebar-foreground: #a1a1aa;
+  --sidebar-border: #1d1d20;
   --primary: #6366f1; /* indigo-500 */
   --primary-foreground: #ffffff;
   --secondary: #27272a; /* zinc-800 */
   --secondary-foreground: #fafafa;
-  --muted: #27272a;
+  --muted: #202023;
   --muted-foreground: #a1a1aa; /* zinc-400 */
-  --accent: #27272a;
+  --accent: #202023;
   --accent-foreground: #fafafa;
   --destructive: #ef4444; /* red-500 */
   --destructive-foreground: #ffffff;
-  --border: #27272a; /* zinc-800 */
+  --border: #232327;
   --input: #3f3f46; /* zinc-700 */
   --ring: #6366f1;
 }
@@ -58,6 +65,9 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-border: var(--sidebar-border);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -79,6 +89,18 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary) 22%, transparent);
+}
+
+/* One consistent, crisp focus ring across the app. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 4px);
 }
 
 /* Subtle, theme-aware scrollbar */
@@ -95,13 +117,20 @@ body {
   border-radius: 9999px;
 }
 
-/* Clean print output for statutory documents (EA statement, etc.) — hide app chrome. */
+/* Clean print output for statutory documents (EA statement, etc.) — hide app chrome,
+   and undo the fixed-shell overflow so the full document prints, not just one viewport. */
 @media print {
   aside,
   header {
     display: none !important;
   }
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+  }
   main {
+    overflow: visible !important;
     padding: 0 !important;
   }
 }
