@@ -7,7 +7,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, employment, statutoryReport } from '../db/schema';
+import { company, employment, person, statutoryReport } from '../db/schema';
 import { packFor } from '../localization/registry';
 import type { EaStatement, ReportDef, ReportResult } from '../localization/my/reports';
 
@@ -119,6 +119,67 @@ export async function employeeEaStatement(
     | undefined;
   if (!pack?.eaStatement) return null;
   return pack.eaStatement(ctx, p);
+}
+
+// ── Compliance worklist (CP22 / CP22A) ──────────────────────────────────────
+export type WorklistItem = {
+  employmentId: string;
+  name: string;
+  form: 'CP22' | 'CP22A';
+  reason: string;
+  eventDate: string;
+  dueBy: string;
+  status: 'overdue' | 'due_soon' | 'upcoming';
+};
+
+const isoAddDays = (iso: string, n: number): string => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+const statusFor = (today: string, dueBy: string): WorklistItem['status'] =>
+  today > dueBy ? 'overdue' : today >= isoAddDays(dueBy, -7) ? 'due_soon' : 'upcoming';
+
+/**
+ * CP22 (new-hire) / CP22A (cessation) notifications due to LHDN, driven by the hire/termination
+ * lifecycle (the same events the domain log records). MY-shaped — would move to the localization
+ * pack for other jurisdictions. This is a human-reviewed worklist: filing happens in MyTax; we only
+ * surface what's outstanding, never auto-submit (ADR-0010). No persistence yet — items age out of
+ * the relevance window rather than being marked filed (a documented follow-up).
+ */
+export function complianceWorklist(
+  ctx: SessionContext,
+  p: { companyId: string; today?: string },
+): Promise<WorklistItem[]> {
+  const today = p.today ?? new Date().toISOString().slice(0, 10);
+  const hireFloor = isoAddDays(today, -60); // recent hires still within / just past the 30-day window
+  const ceaseFloor = isoAddDays(today, -60);
+  const ceaseCeil = isoAddDays(today, 90); // upcoming cessations need notice before the date
+  return withTenant(ctx, async (tx) => {
+    const emps = await tx
+      .select({
+        id: employment.id,
+        name: person.fullName,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.companyId, p.companyId));
+    const items: WorklistItem[] = [];
+    for (const e of emps) {
+      if (e.hiredOn >= hireFloor && e.hiredOn <= today) {
+        const dueBy = isoAddDays(e.hiredOn, 30); // notify within 30 days of commencement
+        items.push({ employmentId: e.id, name: e.name, form: 'CP22', reason: 'New hire', eventDate: e.hiredOn, dueBy, status: statusFor(today, dueBy) });
+      }
+      if (e.terminatedOn && e.terminatedOn >= ceaseFloor && e.terminatedOn <= ceaseCeil) {
+        const dueBy = isoAddDays(e.terminatedOn, -30); // notify ≥30 days before cessation
+        items.push({ employmentId: e.id, name: e.name, form: 'CP22A', reason: 'Cessation', eventDate: e.terminatedOn, dueBy, status: statusFor(today, dueBy) });
+      }
+    }
+    const rank = { overdue: 0, due_soon: 1, upcoming: 2 };
+    return items.sort((a, b) => rank[a.status] - rank[b.status] || a.dueBy.localeCompare(b.dueBy));
+  });
 }
 
 /** Recently recorded report artefacts for a company (audit trail). */

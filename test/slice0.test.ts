@@ -42,6 +42,7 @@ import {
 } from '../core/payroll';
 import { eis, epf, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
 import {
+  complianceWorklist,
   employeeEaStatement,
   listReports,
   recentReports,
@@ -964,5 +965,40 @@ describe('Slice 6C — annual Form E / CP8D (#72)', () => {
     expect(ea.partB.gross).toBeCloseTo(14000, 2);
     expect(ea.partD.mtd).toBeGreaterThan(0);
     expect(ea.partE.epf).toBeGreaterThan(0);
+  });
+});
+
+describe('Slice 6E — CP22 / CP22A compliance worklist (#74)', () => {
+  it('surfaces CP22 for a recent hire and CP22A for a cessation, with deadlines + status', async () => {
+    const a = adminCtx(base);
+    const today = '2026-06-08';
+    await hireEmployee(a, {
+      person: { fullName: 'Fresh Hire', primaryEmail: 'fresh@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-06-01',
+    });
+    const leaver = await hireEmployee(a, {
+      person: { fullName: 'Leaver', primaryEmail: 'leaver@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2025-01-01',
+    });
+    await terminateEmployment(a, { employmentId: leaver.employmentId, terminationDate: '2026-06-30' });
+
+    const wl = await complianceWorklist(a, { companyId: base.companyId, today });
+
+    const cp22 = wl.find((w) => w.form === 'CP22' && w.name === 'Fresh Hire')!;
+    expect(cp22.dueBy).toBe('2026-07-01'); // hiredOn + 30 days
+    expect(cp22.status).toBe('upcoming'); // today 06-08, due 07-01
+
+    const cp22a = wl.find((w) => w.form === 'CP22A' && w.name === 'Leaver')!;
+    expect(cp22a.dueBy).toBe('2026-05-31'); // cessation (06-30) − 30 days
+    expect(cp22a.status).toBe('overdue'); // today 06-08 is past 05-31
+
+    // The long-ago hire is outside the CP22 window — only its cessation surfaces.
+    expect(wl.some((w) => w.form === 'CP22' && w.name === 'Leaver')).toBe(false);
   });
 });
