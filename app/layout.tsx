@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google';
+import { cookies } from 'next/headers';
 import './globals.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
@@ -27,6 +28,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const [session, principals] = await Promise.all([getSession(), listPrincipals()]);
   const allowed = await allowedCompanies(session);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
+  const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
   return (
     <html
       lang="en"
@@ -38,7 +40,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           {/* Detached floating layout: the rail, the top bar, and each content card
               float separately on the canvas with gutters between them. */}
           <div className="flex h-full gap-3 lg:gap-4">
-            <Sidebar isAdmin={isAdmin(session)} />
+            <Sidebar isAdmin={isAdmin(session)} defaultCollapsed={railCollapsed} />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               <header className="flex h-16 shrink-0 items-center justify-between gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)]">
                 <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
