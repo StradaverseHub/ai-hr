@@ -3,6 +3,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, SectionHeader, inputCls } from '@/components/ui';
+import { PayrollTabs } from '@/components/payroll-tabs';
 import { createBatchAction } from './actions';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -23,6 +24,7 @@ export default async function PayrollPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <h1 className="text-xl font-semibold tracking-tight">Payroll</h1>
+      <PayrollTabs active="batches" />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">

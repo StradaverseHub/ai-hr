@@ -41,6 +41,7 @@ import {
   setPayrollInput,
 } from '../core/payroll';
 import { eis, epf, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
+import { recentReports, recordReport, reportPreview } from '../core/reporting';
 
 let base: Base;
 
@@ -812,5 +813,59 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
     expect(Number(slip.gross)).toBe(12000); // 6000 basic + 6000 bonus
     expect(st.pcbBonus).toBeGreaterThan(0);
     expect(st.pcb).toBeGreaterThan(pcb(6000, { category: 1, children: 0 })); // bonus pushed PCB up
+  });
+});
+
+describe('Slice 6A — statutory reporting (#70)', () => {
+  it('previews the monthly contribution report and records an audited artefact + event', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'Report Subject');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101013333',
+      epfNumber: 'EPF1',
+      socsoNumber: 'SOC1',
+      taxNumber: 'TAX1',
+    });
+    const batch = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-04' });
+    await generatePayslips(a, { batchId: batch.batchId });
+
+    const preview = await reportPreview(a, { companyId: base.companyId, reportId: 'my.contributions', periodKey: '2026-04' });
+    expect(preview.meta.hasBatch).toBe(true);
+    const row = preview.rows.find((r) => r.name === 'Report Subject')!;
+    expect(row.ic).toBe('900101013333');
+    expect(Number(row.epf)).toBeGreaterThan(0); // EPF EE+ER
+    expect(preview.totals.epf).toBeGreaterThan(0);
+    expect(preview.readiness).toEqual([]); // all identifiers present → ready to file
+
+    const rec = await recordReport(a, { companyId: base.companyId, reportId: 'my.contributions', periodKey: '2026-04' });
+    expect(rec.id).toBeTruthy();
+    const recent = await recentReports(a, base.companyId);
+    expect(recent[0]?.reportType).toBe('my.contributions');
+    expect(recent[0]?.periodKey).toBe('2026-04');
+    expect(await eventTypesFor(base.tenantId, rec.id)).toContain('statutory-report.generated');
+  });
+
+  it('flags employees missing statutory identifiers in the readiness check', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'No Profile');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    // intentionally no statutory profile → IC / tax / EPF / SOCSO blank
+    const batch = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-04' });
+    await generatePayslips(a, { batchId: batch.batchId });
+
+    const preview = await reportPreview(a, { companyId: base.companyId, reportId: 'my.contributions', periodKey: '2026-04' });
+    const flagged = preview.readiness.find((r) => r.name === 'No Profile')!;
+    expect(flagged).toBeTruthy();
+    expect(flagged.missing).toContain('IC');
+    expect(flagged.missing).toContain('EPF no');
+  });
+
+  it('returns hasBatch=false when no payroll batch exists for the period', async () => {
+    const a = adminCtx(base);
+    const preview = await reportPreview(a, { companyId: base.companyId, reportId: 'my.contributions', periodKey: '2099-12' });
+    expect(preview.meta.hasBatch).toBe(false);
+    expect(preview.rows).toEqual([]);
   });
 });

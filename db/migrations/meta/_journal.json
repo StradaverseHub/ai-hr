@@ -183,6 +183,13 @@
       "when": 1780884135535,
       "tag": "0025_payslip_days_worked",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780886250811,
+      "tag": "0026_statutory_report",
+      "breakpoints": true
     }
   ]
 }
