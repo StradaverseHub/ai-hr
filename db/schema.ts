@@ -579,3 +579,32 @@ export const payrollInput = pgTable(
   },
   (t) => [uniqueIndex('payroll_input_batch_emp_uq').on(t.batchId, t.employmentId)],
 );
+
+// Statutory / compliance report artefact (ADR-0010). Append-only record of a generated filing —
+// derived from payslips but persisted for audit/idempotency (who generated what, against which
+// statutory-table version). Filed per legal entity (company_id); never mutated after submission.
+export const statutoryReport = pgTable(
+  'statutory_report',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    jurisdiction: text('jurisdiction').notNull(), // 'MY'
+    reportType: text('report_type').notNull(), // e.g. 'my.contributions'
+    periodKind: text('period_kind').notNull(), // 'month' | 'year' | 'event'
+    periodKey: text('period_key').notNull(), // e.g. '2026-07'
+    status: text('status').notNull().default('draft'), // draft | final | submitted | amended
+    statutoryVersion: text('statutory_version'), // MY_STATUTORY_VERSION at generation time
+    rowCount: integer('row_count').notNull().default(0),
+    totals: jsonb('totals'), // { epfEmployee, epfEmployer, socsoEmployee, ..., pcb }
+    generatedBy: uuid('generated_by'), // app_user id (actor also on the domain event)
+    generatedAt: timestamp('generated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('statutory_report_tenant_idx').on(t.tenantId),
+    index('statutory_report_company_period_idx').on(t.companyId, t.reportType, t.periodKey),
+  ],
+);

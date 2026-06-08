@@ -7,6 +7,7 @@ import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
 import { eis, epf, pcb, socso, statutory } from './payroll';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
+import { MY_REPORTS } from './reports';
 
 export const myPack = {
   country: 'MY' as const,
@@ -26,4 +27,5 @@ export const myPack = {
   },
   holidays: MY_HOLIDAYS_2026,
   payroll: { statutory, epf, socso, eis, pcb },
+  reports: MY_REPORTS,
 };
