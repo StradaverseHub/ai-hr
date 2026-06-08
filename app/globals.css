@@ -84,6 +84,8 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  /* Strong ease-out (easing.dev) — the built-in curve is too weak to feel intentional. */
+  --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 body {
@@ -101,6 +103,18 @@ body {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm, 4px);
+}
+
+/* Respect the OS setting: drop movement, keep the UI usable. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Subtle, theme-aware scrollbar */
