@@ -5,60 +5,73 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* 3-layer surface system (canvas → panel → sidebar) for quiet depth, Linear-style. */
-  --background: #f8f8f9; /* canvas — subtle cool gray so white panels lift */
-  --foreground: #18181b; /* zinc-900 */
-  --card: #ffffff; /* panel — lifts off the canvas */
-  --card-foreground: #18181b;
+  /* Floating-shell surfaces: canvas frame the app floats on → content area
+     where cards sit → white card/chrome. Warm, soft, friendly (the pivot). */
+  --canvas: #e6e8f1; /* outer frame */
+  --background: #f5f6fa; /* content area */
+  --foreground: #1a1a22;
+  --card: #ffffff; /* cards + shell chrome */
+  --card-foreground: #1a1a22;
   --popover: #ffffff;
-  --popover-foreground: #18181b;
-  --sidebar: #ffffff; /* nav rail */
-  --sidebar-foreground: #3f3f46;
-  --sidebar-border: #ececef;
-  --primary: #4f46e5; /* indigo-600 */
+  --popover-foreground: #1a1a22;
+  --sidebar: #ffffff; /* nav chrome */
+  --sidebar-foreground: #55555f;
+  --sidebar-border: #ecedf4;
+  --primary: #4f46e5; /* indigo accent — locked, single accent */
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5; /* zinc-100 */
-  --secondary-foreground: #18181b;
-  --muted: #f1f1f3;
-  --muted-foreground: #71717a; /* zinc-500 — 4.6:1 on canvas */
-  --accent: #f4f4f5;
-  --accent-foreground: #18181b;
-  --destructive: #dc2626; /* red-600 */
+  --secondary: #f0f1f7;
+  --secondary-foreground: #1a1a22;
+  --muted: #f0f1f7;
+  --muted-foreground: #63636f; /* AA (>5:1) on white and content bg */
+  --accent: #eceefb; /* soft indigo wash — nav active + hover */
+  --accent-foreground: #312e81;
+  --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #e8e8ec;
-  --input: #d4d4d8; /* zinc-300 */
-  --ring: #6366f1; /* indigo-500 */
-  --radius: 0.5rem; /* crisper than 10px */
+  --border: #e7e8f1;
+  --input: #dbdce7;
+  --ring: #6366f1;
+  --radius: 1rem; /* soft 16px — the pivot's signature roundness */
+  /* Soft, tinted elevation — toward the canvas hue, never pure black. */
+  --shadow-sm: 0 1px 2px rgb(26 26 48 / 0.05);
+  --shadow-card: 0 1px 2px rgb(26 26 48 / 0.04), 0 6px 16px -4px rgb(26 26 48 / 0.07);
+  --shadow-pop: 0 6px 16px -4px rgb(26 26 48 / 0.1), 0 16px 40px -8px rgb(26 26 48 / 0.14);
+  --shadow-shell: 0 1px 3px rgb(26 26 48 / 0.04), 0 16px 40px -12px rgb(26 26 48 / 0.12);
 }
 
 .dark {
-  --background: #09090b; /* zinc-950 canvas */
-  --foreground: #fafafa; /* zinc-50 */
-  --card: #131316; /* panel — lifted off canvas */
-  --card-foreground: #fafafa;
-  --popover: #18181b; /* zinc-900 */
-  --popover-foreground: #fafafa;
-  --sidebar: #0c0c0e; /* nav rail — a hair off canvas */
-  --sidebar-foreground: #a1a1aa;
-  --sidebar-border: #1d1d20;
+  --canvas: #060609; /* darkest frame */
+  --background: #0d0d11; /* content area */
+  --foreground: #f3f3f6;
+  --card: #161619; /* cards lifted off the content area */
+  --card-foreground: #f3f3f6;
+  --popover: #1b1b20;
+  --popover-foreground: #f3f3f6;
+  --sidebar: #100f13; /* chrome a hair above the frame */
+  --sidebar-foreground: #a4a4af;
+  --sidebar-border: #201f25;
   --primary: #6366f1; /* indigo-500 */
   --primary-foreground: #ffffff;
-  --secondary: #27272a; /* zinc-800 */
-  --secondary-foreground: #fafafa;
-  --muted: #202023;
-  --muted-foreground: #a1a1aa; /* zinc-400 */
-  --accent: #202023;
-  --accent-foreground: #fafafa;
-  --destructive: #ef4444; /* red-500 */
+  --secondary: #232329;
+  --secondary-foreground: #f3f3f6;
+  --muted: #1d1d22;
+  --muted-foreground: #9d9da9;
+  --accent: #211f3d; /* soft indigo wash (dark) */
+  --accent-foreground: #c7d2fe;
+  --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #232327;
-  --input: #3f3f46; /* zinc-700 */
+  --border: #242429;
+  --input: #34343c;
   --ring: #6366f1;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 16px -4px rgb(0 0 0 / 0.45);
+  --shadow-pop: 0 8px 24px -6px rgb(0 0 0 / 0.6);
+  --shadow-shell: 0 16px 48px -12px rgb(0 0 0 / 0.7);
 }
 
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-canvas: var(--canvas);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -81,15 +94,17 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
+  /* One radius scale (shape-consistency lock): controls 12 · cards 16 · panels 24. */
+  --radius-lg: var(--radius); /* 16 — cards */
+  --radius-md: calc(var(--radius) - 4px); /* 12 — buttons, inputs */
+  --radius-sm: calc(var(--radius) - 8px); /* 8 — small */
+  --radius-xl: calc(var(--radius) + 8px); /* 24 — shell, big panels */
   /* Strong ease-out (easing.dev) — the built-in curve is too weak to feel intentional. */
   --ease-snappy: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 body {
-  background: var(--background);
+  background: var(--canvas);
   color: var(--foreground);
   -webkit-font-smoothing: antialiased;
 }
@@ -131,8 +146,8 @@ body {
   border-radius: 9999px;
 }
 
-/* Clean print output for statutory documents (EA statement, etc.) — hide app chrome,
-   and undo the fixed-shell overflow so the full document prints, not just one viewport. */
+/* Clean print output for statutory documents (EA statement, etc.) — hide app
+   chrome and flatten the floating shell so the full document prints. */
 @media print {
   aside,
   header {
@@ -142,6 +157,13 @@ body {
   body {
     height: auto !important;
     overflow: visible !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  [data-app-shell] {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
   }
   main {
     overflow: visible !important;

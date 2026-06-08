@@ -18,20 +18,21 @@ A Malaysia-first, multi-company HRMS: people & org structure, leave, attendance,
 
 ## Brand Personality
 
-Sharp, modern, dependable. Linear-grade craft applied to a serious money-and-compliance tool: crisp lines, high contrast, fast, keyboard-friendly, near-monochrome with a single decisive accent. Voice is precise and plain — it names what a thing does and shows the number. Three words: **precise, dependable, crisp.**
+Warm, modern, dependable. A soft, people-first HR product: a floating inset shell, rounded surfaces, generous space, and friendly color used *semantically* (leave types, statuses), built on real craft so it still feels fast and trustworthy. Payroll and statutory screens stay crisp and high-contrast — warmth never obscures a figure. Voice is precise and plain: it names what a thing does and shows the number. Three words: **warm, dependable, clear.**
 
 ## Anti-references
 
-- SaaS-cream / warm-paper backgrounds, gradient text, glassmorphism, the hero-metric template — generic AI-dashboard slop.
+- SaaS-cream / warm-paper / beige backgrounds, gradient text, glassmorphism and frosted pills, decorative 3D blobs, the hero-metric template — generic AI-dashboard slop. Warmth here comes from a cool-neutral floating shell and soft elevation, not cream; color comes from semantic status, not decoration.
 - Heavy "enterprise admin" clutter (old-school SAP/Oracle density without hierarchy).
-- Rounded, pastel, friendly-startup styling — this is a finance-grade tool, not a consumer app.
+- Toy-like over-rounding or pastel decoration that undercuts trust on money/compliance screens — soft, not childish.
 - Decorative motion, eyebrow kickers, side-stripe-bordered cards, inconsistent per-page component vocabulary.
 
 ## Design Principles
 
 - **Trust the numbers.** Clarity and correctness outrank decoration. Never let styling obscure a figure, a deadline, or a compliance gap; surface gaps, don't hide them.
 - **The tool disappears into the task.** Earned familiarity over invention — reuse the patterns power users already know (Linear/Stripe), never reinvent a standard affordance.
-- **Density with air.** Information-rich but calm: rhythm and alignment do the work, not boxes around everything.
+- **Warmth with rigor.** Soft surfaces, rounded cards, and air make it approachable; rhythm and alignment carry the density. People-facing screens (leave, onboarding, dashboard) lean warm; payroll and compliance stay crisp and legible.
+- **Color is semantic.** The single indigo accent marks primary actions and selection; status color (leave types, approved/pending, compliance state) is meaningful, never decoration.
 - **One vocabulary, everywhere.** The same table, form, button, badge, and empty state across every module. Consistency is the feature; delight is reserved for moments.
 - **Honest states.** Every list, form, and report has a real empty, loading, and error state. A blank screen should teach the interface.
 

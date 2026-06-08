@@ -58,9 +58,9 @@ const isActive = (pathname: string, href: string) =>
 export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
   return (
-    <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 py-3 sm:flex">
-      <Link href="/" className="mb-4 flex items-center gap-2.5 px-2 py-1">
-        <span className="grid size-7 place-items-center rounded-md bg-primary text-[13px] font-bold text-primary-foreground">
+    <aside className="hidden w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-3 py-4 sm:flex">
+      <Link href="/" className="mb-5 flex items-center gap-2.5 px-2 py-1">
+        <span className="grid size-8 place-items-center rounded-xl bg-primary text-[12px] font-bold text-primary-foreground shadow-[var(--shadow-sm)]">
           HR
         </span>
         <span className="text-[15px] font-semibold tracking-tight text-foreground">AI HR</span>
@@ -88,10 +88,10 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
                     href={item.href}
                     aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                      'group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm transition duration-150 ease-snappy',
                       active
-                        ? 'bg-secondary font-medium text-foreground'
-                        : 'text-sidebar-foreground hover:bg-secondary/60 hover:text-foreground',
+                        ? 'bg-accent font-medium text-accent-foreground'
+                        : 'text-sidebar-foreground hover:bg-accent/60 hover:text-foreground',
                     )}
                   >
                     <Icon
@@ -114,9 +114,9 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
                             href={child.href}
                             aria-current={childActive ? 'page' : undefined}
                             className={cn(
-                              'rounded-md px-2.5 py-1 text-[13px] transition-colors',
+                              'rounded-lg px-2.5 py-1.5 text-[13px] transition-colors',
                               childActive
-                                ? 'font-medium text-foreground'
+                                ? 'font-medium text-accent-foreground'
                                 : 'text-muted-foreground hover:text-foreground',
                             )}
                           >
