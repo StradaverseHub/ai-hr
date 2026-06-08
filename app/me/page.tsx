@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getSession } from '@/lib/session';
 import {
   leaveBalances,
@@ -252,6 +253,32 @@ export default async function MePage({
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
+      <Card className="p-5">
+        <SectionHeader title="Tax statement (EA)" />
+        <p className="px-1 pt-2 text-xs text-muted-foreground">
+          Your annual statement of remuneration (Borang EA) for personal income-tax filing.
+        </p>
+        <ul className="mt-3 space-y-2">
+          {employments.map((e) => (
+            <li
+              key={e.employmentId}
+              className="flex items-center justify-between rounded-lg border border-border p-3 text-sm"
+            >
+              <span>
+                {e.company} · <span className="text-muted-foreground">YA 2026</span>
+              </span>
+              <Link
+                href={`/payroll/reports/ea/${e.employmentId}?year=2026`}
+                className="text-primary hover:underline"
+              >
+                View / download
+              </Link>
+            </li>
+          ))}
+        </ul>
       </Card>
     </div>
   );
