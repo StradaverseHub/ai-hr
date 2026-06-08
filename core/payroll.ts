@@ -115,7 +115,7 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
 /** Upsert a draft batch's manual overtime input for one employee. Draft-only; appends an event. */
 export async function setPayrollInput(
   ctx: SessionContext,
-  p: { batchId: string; employmentId: string; overtimeAmount: number },
+  p: { batchId: string; employmentId: string; overtimeAmount: number; bonusAmount?: number },
 ) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
@@ -126,6 +126,7 @@ export async function setPayrollInput(
     if (!batch) throw new Error('batch not found');
     if (batch.status !== 'draft') throw new BatchNotDraftError();
     const overtimeAmount = Math.max(0, Number(p.overtimeAmount) || 0);
+    const bonusAmount = Math.max(0, Number(p.bonusAmount) || 0);
     const [existing] = await tx
       .select({ id: payrollInput.id })
       .from(payrollInput)
@@ -134,7 +135,11 @@ export async function setPayrollInput(
     if (existing) {
       await tx
         .update(payrollInput)
-        .set({ overtimeAmount: overtimeAmount.toFixed(2), updatedAt: sql`now()` })
+        .set({
+          overtimeAmount: overtimeAmount.toFixed(2),
+          bonusAmount: bonusAmount.toFixed(2),
+          updatedAt: sql`now()`,
+        })
         .where(eq(payrollInput.id, existing.id));
     } else {
       await tx.insert(payrollInput).values({
@@ -142,6 +147,7 @@ export async function setPayrollInput(
         batchId: p.batchId,
         employmentId: p.employmentId,
         overtimeAmount: overtimeAmount.toFixed(2),
+        bonusAmount: bonusAmount.toFixed(2),
       });
     }
     await appendEvent(tx, {
@@ -150,7 +156,7 @@ export async function setPayrollInput(
       aggregateId: p.batchId,
       eventType: 'payroll-batch.input-set',
       actor: actorOf(ctx),
-      payload: { employmentId: p.employmentId, overtimeAmount },
+      payload: { employmentId: p.employmentId, overtimeAmount, bonusAmount },
     });
     return { ok: true };
   });
@@ -209,10 +215,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // Per-employee inputs: manual overtime (entered on the draft batch) + auto-derived unpaid days.
     const dim = daysInMonth(pYear, pMonth);
     const inputRows = await tx
-      .select({ employmentId: payrollInput.employmentId, overtime: payrollInput.overtimeAmount })
+      .select({
+        employmentId: payrollInput.employmentId,
+        overtime: payrollInput.overtimeAmount,
+        bonus: payrollInput.bonusAmount,
+      })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
     const overtimeByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.overtime)]));
+    const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
     const totals = {
@@ -226,18 +237,22 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const basic = round2(Number(e.basic) * factor);
       const allowance = round2(Number(e.allowance ?? 0) * factor);
       const overtime = round2(overtimeByEmp.get(e.employmentId) ?? 0);
+      const bonus = round2(bonusByEmp.get(e.employmentId) ?? 0);
       // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / days in month).
       const unpaidDeduction = round2((Number(e.basic) / dim) * (unpaidByEmp.get(e.employmentId) ?? 0));
-      const gross = round2(basic + allowance + overtime); // gross earnings incl. overtime
-      const statBase = Math.max(0, round2(gross - unpaidDeduction)); // wages actually payable
-      const st = pack.payroll.statutory(statBase, {
-        category: (e.taxCategory ?? 1) as 1 | 2 | 3,
-        children: e.numChildren ?? 0,
-      });
+      const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
+      const statBase = Math.max(0, round2(normalWage - unpaidDeduction)); // wages payable, ex-bonus
+      // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
+      const st = pack.payroll.statutory(
+        statBase,
+        { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 },
+        bonus,
+      );
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + unpaidDeduction);
-      const net = round2(gross - totalDeductions);
-      const employerCost = round2(statBase + st.epfEmployer + st.socsoEmployer + st.eisEmployer);
+      const grossPay = round2(normalWage + bonus); // total earnings before deductions
+      const net = round2(grossPay - totalDeductions);
+      const employerCost = round2(statBase + bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer);
 
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
@@ -246,7 +261,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         basicSalary: basic.toFixed(2),
         allowance: allowance.toFixed(2),
         overtimePay: overtime.toFixed(2),
-        grossPay: gross.toFixed(2),
+        bonus: bonus.toFixed(2),
+        grossPay: grossPay.toFixed(2),
         statutory: st,
         otherDeductions: unpaidDeduction.toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
@@ -254,7 +270,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         employerCost: employerCost.toFixed(2),
       });
 
-      totals.gross += gross;
+      totals.gross += grossPay;
       totals.net += net;
       totals.epfEmployee += st.epfEmployee;
       totals.epfEmployer += st.epfEmployer;
@@ -334,6 +350,7 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
         id: payslip.id,
         name: person.fullName,
         basic: payslip.basicSalary,
+        bonus: payslip.bonus,
         gross: payslip.grossPay,
         statutory: payslip.statutory,
         totalDeductions: payslip.totalDeductions,
@@ -385,16 +402,22 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       )
       .orderBy(person.fullName);
     const inputs = await tx
-      .select({ employmentId: payrollInput.employmentId, overtime: payrollInput.overtimeAmount })
+      .select({
+        employmentId: payrollInput.employmentId,
+        overtime: payrollInput.overtimeAmount,
+        bonus: payrollInput.bonusAmount,
+      })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, batchId));
     const otMap = new Map(inputs.map((r) => [r.employmentId, Number(r.overtime)]));
+    const bonusMap = new Map(inputs.map((r) => [r.employmentId, Number(r.bonus)]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
     return emps.map((e) => ({
       employmentId: e.employmentId,
       name: e.name,
       basic: Number(e.basic),
       overtimeAmount: otMap.get(e.employmentId) ?? 0,
+      bonusAmount: bonusMap.get(e.employmentId) ?? 0,
       unpaidDays: unpaid.get(e.employmentId) ?? 0,
     }));
   });

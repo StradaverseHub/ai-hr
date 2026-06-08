@@ -39,6 +39,7 @@ export async function setPayrollInputAction(formData: FormData) {
       batchId,
       employmentId: String(formData.get('employmentId')),
       overtimeAmount: Number(formData.get('overtimeAmount')) || 0,
+      bonusAmount: Number(formData.get('bonusAmount')) || 0,
     });
   } catch (e) {
     redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);

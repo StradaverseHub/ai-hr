@@ -29,9 +29,19 @@ to these tables is traceable to the exact runs it affects.
     mandatory-EPF relief cap **RM4,000/yr**.
   - Formula: `MTD = [(P − M)·R + B − (Z + X)] / (n + 1)`. We implement the **resident, normal
     remuneration** case for **constant monthly income**, which reduces to `annualTax / 12`.
+- **Additional remuneration (bonus) — ✅ implemented (difference method).** A bonus's MTD is the
+  extra **annual** tax it creates: `pcbAdditional = annualTax(P incl. bonus) − annualTax(P excl. bonus)`,
+  taken in the bonus month (`pcb()` / `pcbAdditional()` in `localization/my/payroll.ts`). The bonus
+  carries its own 11% EPF relief, pooled under the RM4,000 cap. This is the spec's additional-
+  remuneration approach in the same simplified (no Z/X accumulator) model as normal MTD.
+  - **EPF:** bonus **is** subject; KWSP fixes the employer rate by the *normal* wage (a ≤RM5,000
+    earner stays 13% even if the bonus pushes the month over RM5,000), applied to wage+bonus.
+  - **SOCSO + EIS:** annual bonus is **excluded** (not "wages" for PERKESO).
+  - Sources: LHDN MTD computerised-calc spec; actpayroll & Talenox bonus-PCB guides;
+    foundingbird / ajobthing on EPF-vs-SOCSO/EIS bonus treatment.
 - **Known limitations (documented, not bugs):**
-  - **Additional remuneration** (bonus, arrears, ESOS) uses a different spec formula — not yet
-    implemented. Current code treats all pay as normal remuneration.
+  - **Arrears / ESOS** other additional-remuneration types reuse the bonus difference method; only
+    bonus is surfaced in the UI so far.
   - **Z** (zakat) and **X** (prior-month accumulated MTD) are assumed 0 — correct only when there
     is no YTD accumulation. Needs per-employee YTD wiring for mid-year hires / variable pay.
   - **Non-resident** employees (flat 30%) and the REP / knowledge-worker / C-suite categories are
@@ -79,5 +89,6 @@ to these tables is traceable to the exact runs it affects.
 - [ ] EPF Third Schedule low-wage band amounts confirmed (or `% + round-up` accepted as policy).
 - [ ] SOCSO RM6,000-ceiling band table obtained and `MY_SOCSO_CATEGORY1` extended past RM5,000.
 - [ ] EIS Act 800 Second Schedule band amounts encoded (replace rate-based calc).
-- [ ] Additional-remuneration (bonus) MTD formula implemented, or bonuses excluded from auto-PCB.
+- [x] Additional-remuneration (bonus) MTD implemented (difference method); EPF on bonus + SOCSO/EIS
+      exclusion handled. ⚠️ Still verify the bonus-month figure against the LHDN e-PCB calculator.
 - [ ] Sign-off recorded (who / date) and `MY_STATUTORY_VERSION` bumped on any change.
