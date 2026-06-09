@@ -1,5 +1,5 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, desc, eq, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   assignment,
@@ -130,6 +130,77 @@ export function listPendingLeave(ctx: SessionContext, companyIds?: string[]) {
       )
       .orderBy(leaveRequest.startDate),
   );
+}
+
+/** Planned-absences timeline: every active employee in scope, each with their approved +
+ *  pending leave overlapping the [from, to] window. Powers the dashboard hero. */
+export function plannedAbsences(
+  ctx: SessionContext,
+  companyIds: string[] | undefined,
+  range: { from: string; to: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const emps = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        role: position.title,
+        company: company.legalName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(person.fullName);
+
+    const leaves = await tx
+      .select({
+        id: leaveRequest.id,
+        employmentId: leaveRequest.employmentId,
+        typeCode: leaveType.code,
+        typeName: leaveType.name,
+        paid: leaveType.paid,
+        status: leaveRequest.status,
+        startDate: leaveRequest.startDate,
+        endDate: leaveRequest.endDate,
+      })
+      .from(leaveRequest)
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(
+        and(
+          inArray(leaveRequest.status, ['approved', 'pending']),
+          // overlaps the window: starts on/before `to` AND ends on/after `from`
+          lte(leaveRequest.startDate, range.to),
+          gte(leaveRequest.endDate, range.from),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(leaveRequest.startDate);
+
+    type Leave = (typeof leaves)[number];
+    const byEmp = new Map<string, Leave[]>();
+    for (const l of leaves) {
+      const arr = byEmp.get(l.employmentId);
+      if (arr) arr.push(l);
+      else byEmp.set(l.employmentId, [l]);
+    }
+    return emps.map((e) => ({ ...e, leaves: byEmp.get(e.employmentId) ?? [] }));
+  });
 }
 
 export function employeeDetail(ctx: SessionContext, employmentId: string) {
