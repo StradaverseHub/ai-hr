@@ -39,21 +39,23 @@ const initials = (name: string) =>
 
 // Solid, semantic chips (no glass), one per leave type, each with an icon.
 const LEAVE: Record<string, { chip: string; Icon: LucideIcon }> = {
-  ANNUAL: { chip: 'bg-violet-100 text-violet-800 dark:bg-violet-500/25 dark:text-violet-100', Icon: Palmtree },
-  SICK: { chip: 'bg-sky-100 text-sky-800 dark:bg-sky-500/25 dark:text-sky-100', Icon: Thermometer },
-  HOSPITALIZATION: { chip: 'bg-rose-100 text-rose-800 dark:bg-rose-500/25 dark:text-rose-100', Icon: Stethoscope },
-  MATERNITY: { chip: 'bg-pink-100 text-pink-800 dark:bg-pink-500/25 dark:text-pink-100', Icon: Baby },
-  PATERNITY: { chip: 'bg-teal-100 text-teal-800 dark:bg-teal-500/25 dark:text-teal-100', Icon: Baby },
-  UNPAID: { chip: 'bg-amber-100 text-amber-800 dark:bg-amber-500/25 dark:text-amber-100', Icon: CircleSlash },
-  _default: { chip: 'bg-slate-100 text-slate-800 dark:bg-slate-500/25 dark:text-slate-100', Icon: CalendarDays },
+  ANNUAL: { chip: 'bg-violet-100 text-violet-800 dark:bg-violet-500/30 dark:text-violet-50', Icon: Palmtree },
+  SICK: { chip: 'bg-sky-100 text-sky-800 dark:bg-sky-500/30 dark:text-sky-50', Icon: Thermometer },
+  HOSPITALIZATION: { chip: 'bg-rose-100 text-rose-800 dark:bg-rose-500/30 dark:text-rose-50', Icon: Stethoscope },
+  MATERNITY: { chip: 'bg-pink-100 text-pink-800 dark:bg-pink-500/30 dark:text-pink-50', Icon: Baby },
+  PATERNITY: { chip: 'bg-teal-100 text-teal-800 dark:bg-teal-500/30 dark:text-teal-50', Icon: Baby },
+  UNPAID: { chip: 'bg-amber-100 text-amber-800 dark:bg-amber-500/30 dark:text-amber-50', Icon: CircleSlash },
+  _default: { chip: 'bg-slate-100 text-slate-800 dark:bg-slate-500/30 dark:text-slate-50', Icon: CalendarDays },
 };
 const styleFor = (code: string) => LEAVE[code] ?? LEAVE._default;
 
-// Faint dotted texture for empty weekday cells (matches the reference's grid feel).
-const DOTS = {
-  backgroundImage: 'radial-gradient(currentColor 1px, transparent 1px)',
-  backgroundSize: '8px 8px',
+// Faint diagonal hatch for empty cells (currentColor = the cell's faint text color).
+const HATCH = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, currentColor 0, currentColor 1px, transparent 1px, transparent 7px)',
 } as const;
+// Soft shadow so leave pills float above the tile grid.
+const FLOAT = { boxShadow: '0 1px 2px rgb(20 20 45 / 0.10), 0 4px 10px -2px rgb(20 20 45 / 0.14)' } as const;
 
 export function PlannedAbsences({
   rows,
@@ -103,36 +105,32 @@ export function PlannedAbsences({
           No employees in scope.
         </p>
       ) : (
-        <div className="overflow-x-auto border-t border-border">
+        <div className="overflow-x-auto border-t border-border px-3 pb-3 pt-1">
           <div
-            className="grid min-w-[760px] text-sm"
-            style={{ gridTemplateColumns: `200px repeat(${days}, minmax(2.25rem, 1fr))` }}
+            className="grid min-w-[820px] gap-1.5 text-sm"
+            style={{ gridTemplateColumns: `188px repeat(${days}, minmax(2.5rem, 1fr))` }}
           >
             {/* header */}
-            <div className="sticky left-0 z-20 bg-card" style={{ gridColumn: 1, gridRow: 1 }} />
+            <div className="sticky left-0 z-20 bg-card" style={{ gridColumn: 1, gridRow: 1 }}>
+              <span className="text-xs font-medium text-muted-foreground">Employees</span>
+            </div>
             {dayArr.map((d, i) => {
               const isToday = d.iso === todayIso;
               return (
                 <div
                   key={d.iso}
                   style={{ gridColumn: i + 2, gridRow: 1 }}
-                  className={cn('border-l border-border/60 px-1 py-2 text-center', d.isWeekend && 'bg-muted/40')}
-                >
-                  <div
-                    className={cn(
-                      'text-[10px] uppercase tracking-wide',
-                      isToday ? 'font-semibold text-primary' : 'text-muted-foreground',
-                    )}
-                  >
-                    {d.weekday}
-                  </div>
-                  {isToday ? (
-                    <div className="mx-auto mt-0.5 grid size-5 place-items-center rounded-full bg-primary text-[12px] font-semibold tabular-nums text-primary-foreground">
-                      {d.dayNum}
-                    </div>
-                  ) : (
-                    <div className="mt-0.5 text-[13px] tabular-nums">{d.dayNum}</div>
+                  className={cn(
+                    'flex flex-col items-center rounded-lg px-1 py-1.5 text-center',
+                    isToday
+                      ? 'bg-primary text-primary-foreground'
+                      : d.isWeekend
+                        ? 'bg-muted/60 text-muted-foreground'
+                        : 'text-muted-foreground',
                   )}
+                >
+                  <span className="text-[10px] uppercase tracking-wide">{d.weekday}</span>
+                  <span className="text-[13px] font-semibold tabular-nums">{d.dayNum}</span>
                 </div>
               );
             })}
@@ -141,49 +139,47 @@ export function PlannedAbsences({
             {rows.map((emp, r) => (
               <Fragment key={emp.id}>
                 <div
-                  className="sticky left-0 z-20 flex min-w-0 items-center gap-2.5 border-t border-border/60 bg-card px-3 py-2.5"
+                  className="sticky left-0 z-20 flex min-w-0 items-center gap-2.5 bg-card pr-2"
                   style={{ gridColumn: 1, gridRow: r + 2 }}
                 >
-                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">
                     {initials(emp.name)}
                   </span>
                   <div className="min-w-0">
-                    <div className="truncate font-medium leading-tight">{emp.name}</div>
+                    <div className="truncate text-[13px] font-medium leading-tight">{emp.name}</div>
                     {emp.role && <div className="truncate text-xs text-muted-foreground">{emp.role}</div>}
                   </div>
                 </div>
+                {/* standalone bubble tiles */}
                 {dayArr.map((d, i) => {
                   const isToday = d.iso === todayIso;
                   return (
                     <div
                       key={d.iso}
-                      style={{ gridColumn: i + 2, gridRow: r + 2, ...(!d.isWeekend && !isToday ? DOTS : {}) }}
+                      style={{ gridColumn: i + 2, gridRow: r + 2, ...HATCH }}
                       className={cn(
-                        'min-h-[3.5rem] border-l border-t border-border/60',
-                        !d.isWeekend && !isToday && 'text-border',
-                        d.isWeekend && 'bg-muted/30',
-                        isToday && 'bg-primary/[0.04]',
+                        'min-h-[2.75rem] rounded-lg text-border',
+                        d.isWeekend ? 'bg-muted/50' : 'bg-muted/25',
+                        isToday && 'bg-primary/[0.06] text-primary/20',
                       )}
                     />
                   );
                 })}
+                {/* floating leave pills */}
                 {emp.leaves.map((l) => {
                   const cs = Math.max(dayIndex(l.startDate, fromMs), 0);
                   const ce = Math.min(dayIndex(l.endDate, fromMs), lastIdx);
                   if (ce < 0 || cs > lastIdx) return null;
                   const { chip, Icon } = styleFor(l.typeCode);
                   const pending = l.status === 'pending';
-                  // Status presentation scales with block width so the leave type always reads:
-                  // 4+ days get the full word, 3 days a compact glyph, 1-2 days nothing (the
-                  // pending ring + tooltip still carry status).
                   const span = ce - cs + 1;
                   const StatusIcon = pending ? Clock : CheckCircle2;
                   return (
                     <div
                       key={l.id}
-                      style={{ gridColumn: `${cs + 2} / ${ce + 3}`, gridRow: r + 2 }}
+                      style={{ gridColumn: `${cs + 2} / ${ce + 3}`, gridRow: r + 2, ...FLOAT }}
                       className={cn(
-                        'z-10 m-1 flex items-center gap-1.5 self-center overflow-hidden rounded-full px-2.5 py-1.5 text-xs font-medium',
+                        'z-10 my-1 flex items-center gap-1.5 self-stretch overflow-hidden rounded-full px-2.5 text-xs font-medium',
                         chip,
                         pending && 'ring-1 ring-inset ring-black/10 dark:ring-white/15',
                       )}
@@ -204,12 +200,12 @@ export function PlannedAbsences({
               </Fragment>
             ))}
 
-            {/* today line (dashed) */}
+            {/* today line (dashed), floating over the tiles */}
             {todayIdx >= 0 && todayIdx <= lastIdx && (
               <div
                 aria-hidden
-                className="pointer-events-none z-30 border-l-2 border-dashed border-primary/60"
-                style={{ gridColumn: todayIdx + 2, gridRow: `1 / ${rows.length + 2}` }}
+                className="pointer-events-none z-30 -ml-1 border-l-2 border-dashed border-primary/50"
+                style={{ gridColumn: todayIdx + 2, gridRow: `2 / ${rows.length + 2}` }}
               />
             )}
           </div>
