@@ -24,6 +24,46 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
+/** Initials avatar (no photos) — the warm, consistent identity mark used everywhere. */
+export function Avatar({ name, className }: { name: string; className?: string }) {
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+  return (
+    <span
+      className={cn(
+        'grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary',
+        className,
+      )}
+    >
+      {initials}
+    </span>
+  );
+}
+
+/** One page header for every screen: title + optional description + optional right-side actions. */
+export function PageHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
 const STATUS_STYLES: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   on_leave: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',

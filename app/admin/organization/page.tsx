@@ -2,7 +2,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
-import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { EditableRow } from '@/components/editable-row';
 import {
   archiveCompanyAction,
@@ -103,7 +103,7 @@ export default async function OrganizationPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-xl font-semibold tracking-tight">Organization</h1>
+      <PageHeader title="Organization" description="Companies, departments, positions and cost centres" />
       <ErrorBanner message={error} />
 
       <Card>

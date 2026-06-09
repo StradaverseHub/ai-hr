@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { orgChartData } from '@/core/read';
-import { Card } from '@/components/ui';
+import { Avatar, Card, PageHeader } from '@/components/ui';
 
 type Emp = { employmentId: string; name: string; department: string | null };
 
@@ -21,12 +21,15 @@ function OrgNode({
     <li>
       <Link
         href={`/people/${e.employmentId}`}
-        className="inline-flex flex-col rounded-lg border border-border bg-card px-4 py-2.5 transition-colors hover:border-primary"
+        className="inline-flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2 shadow-[var(--shadow-sm)] transition-colors hover:border-primary"
       >
-        <span className="text-sm font-medium text-foreground">{e.name}</span>
-        <span className="text-xs text-muted-foreground">
-          {e.department ?? '—'}
-          {reports.length > 0 && ` · ${reports.length} report${reports.length === 1 ? '' : 's'}`}
+        <Avatar name={e.name} className="size-7 text-[10px]" />
+        <span className="flex flex-col">
+          <span className="text-sm font-medium text-foreground">{e.name}</span>
+          <span className="text-xs text-muted-foreground">
+            {e.department ?? '—'}
+            {reports.length > 0 && ` · ${reports.length} report${reports.length === 1 ? '' : 's'}`}
+          </span>
         </span>
       </Link>
       {reports.length > 0 && (
@@ -57,10 +60,10 @@ export default async function OrgChartPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">Org chart</h1>
-        <span className="text-sm text-muted-foreground">administrative reporting</span>
-      </div>
+      <PageHeader
+        title="Org chart"
+        actions={<span className="text-sm text-muted-foreground">administrative reporting</span>}
+      />
 
       <Card className="p-6">
         {roots.length === 0 ? (

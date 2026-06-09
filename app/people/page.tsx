@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployees, listLeaveTypes } from '@/core/read';
-import { Button, Card, Field, StatusBadge, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { hireAction } from './actions';
 
 export default async function PeoplePage({
@@ -21,10 +21,10 @@ export default async function PeoplePage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">People</h1>
-        <span className="text-sm text-muted-foreground">{employees.length} employees</span>
-      </div>
+      <PageHeader
+        title="People"
+        actions={<span className="text-sm text-muted-foreground">{employees.length} employees</span>}
+      />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
@@ -47,13 +47,18 @@ export default async function PeoplePage({
             {employees.map((e) => (
               <tr key={e.employmentId} className="hover:bg-muted/40">
                 <td className="px-4 py-3">
-                  <Link
-                    href={`/people/${e.employmentId}`}
-                    className="font-medium text-foreground hover:text-primary"
-                  >
-                    {e.name}
-                  </Link>
-                  <div className="text-xs text-muted-foreground">{e.email}</div>
+                  <div className="flex items-center gap-3">
+                    <Avatar name={e.name} />
+                    <div className="min-w-0">
+                      <Link
+                        href={`/people/${e.employmentId}`}
+                        className="font-medium text-foreground hover:text-primary"
+                      >
+                        {e.name}
+                      </Link>
+                      <div className="truncate text-xs text-muted-foreground">{e.email}</div>
+                    </div>
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{e.department ?? '—'}</td>
                 <td className="px-4 py-3 text-muted-foreground">{e.company}</td>

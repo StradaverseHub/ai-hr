@@ -10,7 +10,7 @@ import {
   recentHires,
   upcomingHolidays,
 } from '@/core/read';
-import { Card, StatusBadge } from '@/components/ui';
+import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 
 const rm = (n: unknown) =>
@@ -140,15 +140,14 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          {scopeIds.length >= companies.length
+      <PageHeader
+        title="Dashboard"
+        description={`${
+          scopeIds.length >= companies.length
             ? 'All companies'
-            : `${scopeIds.length} of ${companies.length} companies`}{' '}
-          · overview
-        </p>
-      </div>
+            : `${scopeIds.length} of ${companies.length} companies`
+        } · overview`}
+      />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Headcount" value={stats.headcount} hint="Active employees" href="/people" />

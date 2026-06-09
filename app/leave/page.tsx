@@ -1,6 +1,6 @@
 import { scopedSession } from '@/lib/scope';
 import { listEmployees, listLeaveTypes, listPendingLeave } from '@/core/read';
-import { Card, Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { Avatar, Card, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { decideLeaveAction, requestLeaveAction } from './actions';
 
 export default async function LeavePage({
@@ -19,7 +19,7 @@ export default async function LeavePage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-xl font-semibold tracking-tight">Leave</h1>
+      <PageHeader title="Leave" description="Request leave and approve pending requests" />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
@@ -80,9 +80,14 @@ export default async function LeavePage({
             {pending.map((r) => (
               <tr key={r.id}>
                 <td className="px-4 py-3">
-                  <div className="font-medium text-foreground">{r.employee}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {r.startDate} → {r.endDate} · {Number(r.days)} day{Number(r.days) === 1 ? '' : 's'}
+                  <div className="flex items-center gap-3">
+                    <Avatar name={r.employee} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-foreground">{r.employee}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {r.startDate} → {r.endDate} · {Number(r.days)} day{Number(r.days) === 1 ? '' : 's'}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-right">

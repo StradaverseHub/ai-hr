@@ -1,7 +1,7 @@
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
 import { adminCompanies, listCompanies } from '@/core/read';
-import { Card, ErrorBanner, RoleTag, SectionHeader, btnGhost, inputCls } from '@/components/ui';
+import { Avatar, Card, ErrorBanner, PageHeader, RoleTag, SectionHeader, btnGhost, inputCls } from '@/components/ui';
 import { assignRoleAction, revokeRoleAction } from '../actions';
 
 const ROLES = ['employee', 'manager', 'hr_admin', 'super_admin'] as const;
@@ -24,10 +24,10 @@ export default async function UsersPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">Users &amp; roles</h1>
-        <span className="text-sm text-muted-foreground">{users.length} users</span>
-      </div>
+      <PageHeader
+        title="Users & roles"
+        actions={<span className="text-sm text-muted-foreground">{users.length} users</span>}
+      />
       <ErrorBanner message={error} />
 
       <div className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
@@ -42,9 +42,12 @@ export default async function UsersPage({
         <ul className="divide-y divide-border">
           {users.map((u) => (
             <li key={u.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0">
-                <div className="font-medium text-foreground">{u.name ?? u.workosUserId}</div>
-                <div className="truncate text-xs text-muted-foreground">{u.email ?? '—'}</div>
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar name={u.name ?? u.email ?? 'User'} />
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">{u.name ?? u.workosUserId}</div>
+                  <div className="truncate text-xs text-muted-foreground">{u.email ?? '—'}</div>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {u.roles.map((r) => (
