@@ -405,6 +405,7 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        role: position.title,
         department: department.name,
       })
       .from(employment)
@@ -418,6 +419,7 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
         ),
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(
         and(
           isNull(employment.terminatedOn),
@@ -429,15 +431,10 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
       .select({
         manager: reportingLine.managerEmploymentId,
         subordinate: reportingLine.subordinateEmploymentId,
+        type: reportingLine.lineType,
       })
       .from(reportingLine)
-      .where(
-        and(
-          eq(reportingLine.lineType, 'administrative'),
-          isNull(reportingLine.validTo),
-          isNull(reportingLine.supersededAt),
-        ),
-      );
+      .where(and(isNull(reportingLine.validTo), isNull(reportingLine.supersededAt)));
     return { employees, edges };
   });
 }

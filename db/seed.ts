@@ -139,16 +139,19 @@ async function main() {
     });
   }
 
-  // Daniel (index 1) is the administrative manager of the rest — gives the org chart shape.
-  for (const [i, h] of hired.entries()) {
-    if (i === 1) continue;
-    await setReportingLine(admin, {
-      subordinateEmploymentId: h.employmentId,
-      managerEmploymentId: hired[1].employmentId,
-      lineType: 'administrative',
-      validFrom: '2026-01-06',
-    });
-  }
+  // Administrative backbone (multi-level) + cross-cutting lines so the org chart can render
+  // typed connectors: functional, project, and dotted-line reporting.
+  const reportsTo = (
+    sub: string,
+    mgr: string,
+    lineType: 'administrative' | 'functional' | 'project' | 'dotted',
+    validFrom = '2026-01-06',
+  ) => setReportingLine(admin, { subordinateEmploymentId: sub, managerEmploymentId: mgr, lineType, validFrom });
+  await reportsTo(hired[0].employmentId, hired[1].employmentId, 'administrative'); // Aisyah -> Daniel
+  await reportsTo(hired[3].employmentId, hired[1].employmentId, 'administrative'); // Arjun -> Daniel
+  await reportsTo(hired[2].employmentId, hired[0].employmentId, 'administrative'); // Mei Ling -> Aisyah
+  await reportsTo(hired[2].employmentId, hired[3].employmentId, 'functional'); // Mei Ling ~ Arjun (functional)
+  await reportsTo(hired[3].employmentId, hired[0].employmentId, 'dotted'); // Arjun ~ Aisyah (dotted-line)
 
   // Concurrent multi-company (ADR-0009): Daniel is also Group CFO at the holding company — a
   // shared-services role whose cost is recharged 50% to the operating company.
@@ -179,21 +182,28 @@ async function main() {
     allocations: [{ companyId: company.id, percent: 50 }],
   });
 
-  // A couple of recent hires so the dashboard Onboarding card has shape.
-  for (const p of [
-    { fullName: 'Nurul Huda', email: 'nurul@demo.test', dept: ops.id, hiredOn: '2026-06-04' },
-    { fullName: 'Wei Jie Lim', email: 'weijie@demo.test', dept: eng.id, hiredOn: '2026-05-22' },
-  ]) {
-    await hireEmployee(admin, {
-      person: { fullName: p.fullName, primaryEmail: p.email },
-      companyId: company.id,
-      departmentId: p.dept,
-      positionId: pos.id,
-      employmentType: 'full_time',
-      hiredOn: p.hiredOn,
-      annualLeaveTypeId: annual.id,
-    });
-  }
+  // A couple of recent hires — shape for the Onboarding card and depth for the org chart.
+  const nurul = await hireEmployee(admin, {
+    person: { fullName: 'Nurul Huda', primaryEmail: 'nurul@demo.test' },
+    companyId: company.id,
+    departmentId: ops.id,
+    positionId: pos.id,
+    employmentType: 'full_time',
+    hiredOn: '2026-06-04',
+    annualLeaveTypeId: annual.id,
+  });
+  const weijie = await hireEmployee(admin, {
+    person: { fullName: 'Wei Jie Lim', primaryEmail: 'weijie@demo.test' },
+    companyId: company.id,
+    departmentId: eng.id,
+    positionId: pos.id,
+    employmentType: 'full_time',
+    hiredOn: '2026-05-22',
+    annualLeaveTypeId: annual.id,
+  });
+  await reportsTo(nurul.employmentId, hired[3].employmentId, 'administrative', '2026-06-04'); // Nurul -> Arjun
+  await reportsTo(weijie.employmentId, hired[0].employmentId, 'administrative', '2026-05-22'); // Wei Jie -> Aisyah
+  await reportsTo(weijie.employmentId, hired[2].employmentId, 'project', '2026-05-22'); // Wei Jie ~ Mei Ling (project)
 
   // Attendance policy + a couple of today's check-ins (present + late) for the demo.
   await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });
