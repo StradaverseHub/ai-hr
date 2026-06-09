@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { complianceWorklist, listReports, recentReports, reportPreview } from '@/core/reporting';
-import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { DownloadCsv } from '@/components/download-csv';
 import { recordReportAction } from './actions';
@@ -37,10 +37,7 @@ export default async function ReportsPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Payroll</h1>
-        <p className="text-sm text-muted-foreground">Statutory &amp; compliance reports</p>
-      </div>
+      <PageHeader title="Payroll" description="Statutory & compliance reports" />
       <PayrollTabs active="reports" />
       <ErrorBanner message={sp.error} />
 

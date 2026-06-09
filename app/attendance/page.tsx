@@ -1,6 +1,6 @@
 import { scopedSession } from '@/lib/scope';
 import { attendanceForDate } from '@/core/attendance';
-import { Button, Card, ErrorBanner, SectionHeader, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { checkInAction, checkOutAction } from './actions';
 
 const TODAY = '2026-06-05';
@@ -32,10 +32,10 @@ export default async function AttendancePage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">Attendance</h1>
-        <span className="text-sm text-muted-foreground">{TODAY}</span>
-      </div>
+      <PageHeader
+        title="Attendance"
+        actions={<span className="text-sm text-muted-foreground">{TODAY}</span>}
+      />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">
@@ -53,7 +53,12 @@ export default async function AttendancePage({
           <tbody className="divide-y divide-border">
             {rows.map((r) => (
               <tr key={r.employmentId}>
-                <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <Avatar name={r.name} className="size-7 text-[10px]" />
+                    <span className="font-medium">{r.name}</span>
+                  </div>
+                </td>
                 <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.checkInAt?.slice(0, 5) ?? '—'}</td>
                 <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.checkOutAt?.slice(0, 5) ?? '—'}</td>
                 <td className="px-4 py-2.5">

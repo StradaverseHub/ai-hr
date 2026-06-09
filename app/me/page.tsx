@@ -9,7 +9,7 @@ import {
   myEmployments,
   myPayslips,
 } from '@/core/read';
-import { Button, Card, ErrorBanner, Field, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { myCheckIn, myCheckOut, myRequestLeave } from './actions';
 
 const rm = (n: unknown) =>
@@ -72,14 +72,10 @@ export default async function MePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">My workspace</h1>
-        <p className="text-sm text-muted-foreground">
-          {me.name}
-          {me.employeeCode ? ` · ${me.employeeCode}` : ''} · {me.position ?? '—'},{' '}
-          {me.department ?? '—'}
-        </p>
-      </div>
+      <PageHeader
+        title="My workspace"
+        description={`${me.name}${me.employeeCode ? ` · ${me.employeeCode}` : ''} · ${me.position ?? '—'}, ${me.department ?? '—'}`}
+      />
 
       <ErrorBanner message={error} />
 

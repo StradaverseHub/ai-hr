@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
-import { Card, ErrorBanner, Field, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { EditableRow } from '@/components/editable-row';
 import {
   archiveLeaveTypeAction,
@@ -25,7 +25,7 @@ export default async function LeaveConfigPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <h1 className="text-xl font-semibold tracking-tight">Leave configuration</h1>
+      <PageHeader title="Leave configuration" description="Leave types and entitlement policies" />
       <ErrorBanner message={error} />
 
       <Card>
