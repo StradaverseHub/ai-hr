@@ -10,7 +10,7 @@ type Leave = {
   startDate: string;
   endDate: string;
 };
-type Row = { employmentId: string; name: string; role: string | null; leaves: Leave[] };
+type Row = { id: string; name: string; role: string | null; leaves: Leave[] };
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MS_DAY = 86_400_000;
@@ -145,7 +145,7 @@ export function PlannedAbsences({
 
             {/* employee rows */}
             {rows.map((emp, r) => (
-              <Fragment key={emp.employmentId}>
+              <Fragment key={emp.id}>
                 <div
                   className="sticky left-0 z-20 flex min-w-0 flex-col justify-center border-t border-border/60 bg-card px-3 py-2.5"
                   style={{ gridColumn: 1, gridRow: r + 2 }}

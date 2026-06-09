@@ -1,8 +1,16 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
-import { dashboardStats, groupBreakdown, listCompanies, plannedAbsences, recentActivity } from '@/core/read';
-import { Card } from '@/components/ui';
+import {
+  dashboardStats,
+  groupBreakdown,
+  listCompanies,
+  plannedAbsences,
+  recentActivity,
+  recentHires,
+  upcomingHolidays,
+} from '@/core/read';
+import { Card, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 
 const rm = (n: unknown) =>
@@ -28,6 +36,32 @@ function relativeTime(d: Date | string) {
   const days = Math.round(hrs / 24);
   return days < 30 ? `${days}d ago` : t.toLocaleDateString();
 }
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const WK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const utc = (iso: string) => new Date(`${iso}T00:00:00Z`);
+const monthAbbr = (iso: string) => MONTHS[utc(iso).getUTCMonth()];
+const dayOf = (iso: string) => utc(iso).getUTCDate();
+const weekdayOf = (iso: string) => WK[utc(iso).getUTCDay()];
+const daysAway = (iso: string, todayMs: number) => {
+  const d = Math.round((Date.parse(`${iso}T00:00:00Z`) - todayMs) / 86_400_000);
+  return d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`;
+};
+const joinedAgo = (iso: string, todayMs: number) => {
+  const d = Math.round((todayMs - Date.parse(`${iso}T00:00:00Z`)) / 86_400_000);
+  if (d <= 0) return 'joined today';
+  if (d === 1) return 'joined yesterday';
+  if (d < 14) return `joined ${d} days ago`;
+  if (d < 60) return `joined ${Math.round(d / 7)} weeks ago`;
+  return `joined ${Math.round(d / 30)} months ago`;
+};
 
 const PAYROLL_STATUS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -82,21 +116,23 @@ function orderTree(rows: BreakdownRow[]) {
 
 export default async function DashboardPage() {
   const { s, scopeIds } = await scopedSession();
-  // 14-day planned-absences window, starting 2 days before today.
+  // Date window: a 14-day planned-absences strip starting 2 days before today.
   const now = new Date();
-  const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 2 * 86_400_000;
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const todayIso = new Date(todayMs).toISOString().slice(0, 10);
   const ABS_DAYS = 14;
+  const startMs = todayMs - 2 * 86_400_000;
   const absFrom = new Date(startMs).toISOString().slice(0, 10);
   const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
-  const todayIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
-    .toISOString()
-    .slice(0, 10);
-  const [stats, activity, companies, breakdown, absences] = await Promise.all([
+  const since60 = new Date(todayMs - 60 * 86_400_000).toISOString().slice(0, 10);
+  const [stats, activity, companies, breakdown, absences, hires, events] = await Promise.all([
     dashboardStats(s, scopeIds),
     recentActivity(s, 8),
     listCompanies(s),
     groupBreakdown(s),
     plannedAbsences(s, scopeIds, { from: absFrom, to: absTo }),
+    recentHires(s, scopeIds, { since: since60, limit: 5 }),
+    upcomingHolidays(s, { from: todayIso, limit: 5 }),
   ]);
   const att = stats.attendance;
   const attTotal = att.present + att.late + att.halfDay + att.absent;
@@ -132,6 +168,67 @@ export default async function DashboardPage() {
       </div>
 
       <PlannedAbsences rows={absences} from={absFrom} days={ABS_DAYS} todayIso={todayIso} />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">Onboarding</h2>
+              <p className="text-xs text-muted-foreground">Recently joined</p>
+            </div>
+            <Link href="/people" className="text-xs text-muted-foreground hover:text-foreground">
+              View all
+            </Link>
+          </div>
+          {hires.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">No hires in the last 60 days.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {hires.map((h) => (
+                <li key={h.employmentId} className="flex items-center gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {initials(h.name)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{h.name}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {h.role ?? h.department ?? '—'} · {joinedAgo(h.hiredOn, todayMs)}
+                    </div>
+                  </div>
+                  <StatusBadge status={h.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">Upcoming events</h2>
+          <p className="text-xs text-muted-foreground">Public holidays</p>
+          {events.length === 0 ? (
+            <p className="mt-4 text-sm text-muted-foreground">Nothing scheduled.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {events.map((e) => (
+                <li key={e.date} className="flex items-center gap-3">
+                  <span className="flex size-10 shrink-0 flex-col items-center justify-center rounded-xl border border-border bg-muted/50 leading-none">
+                    <span className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {monthAbbr(e.date)}
+                    </span>
+                    <span className="text-sm font-semibold tabular-nums">{dayOf(e.date)}</span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{e.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {weekdayOf(e.date)} · {daysAway(e.date, todayMs)}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3">

@@ -9,6 +9,7 @@ import {
   department,
   domainEvent,
   employment,
+  holiday,
   leaveLedger,
   leaveRequest,
   leaveType,
@@ -142,6 +143,7 @@ export function plannedAbsences(
   return withTenant(ctx, async (tx) => {
     const emps = await tx
       .select({
+        personId: employment.personId,
         employmentId: employment.id,
         name: person.fullName,
         role: position.title,
@@ -199,8 +201,72 @@ export function plannedAbsences(
       if (arr) arr.push(l);
       else byEmp.set(l.employmentId, [l]);
     }
-    return emps.map((e) => ({ ...e, leaves: byEmp.get(e.employmentId) ?? [] }));
+    // One row per person — concurrent employments merge their leave onto a single row.
+    const byPerson = new Map<string, { id: string; name: string; role: string | null; leaves: Leave[] }>();
+    for (const e of emps) {
+      const empLeaves = byEmp.get(e.employmentId) ?? [];
+      const existing = byPerson.get(e.personId);
+      if (existing) {
+        existing.leaves.push(...empLeaves);
+        if (!existing.role && e.role) existing.role = e.role;
+      } else {
+        byPerson.set(e.personId, { id: e.personId, name: e.name, role: e.role, leaves: empLeaves });
+      }
+    }
+    return [...byPerson.values()];
   });
+}
+
+/** Recently-joined employees in scope (for the dashboard Onboarding card). */
+export function recentHires(
+  ctx: SessionContext,
+  companyIds: string[] | undefined,
+  opts: { since: string; limit?: number },
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        role: position.title,
+        department: department.name,
+        status: assignment.status,
+        hiredOn: employment.hiredOn,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          gte(employment.hiredOn, opts.since),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(desc(employment.hiredOn))
+      .limit(opts.limit ?? 5),
+  );
+}
+
+/** Upcoming public holidays in scope (for the dashboard Upcoming-events card). */
+export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ name: holiday.name, date: holiday.holidayDate })
+      .from(holiday)
+      .where(gte(holiday.holidayDate, opts.from))
+      .orderBy(holiday.holidayDate)
+      .limit(opts.limit ?? 5),
+  );
 }
 
 export function employeeDetail(ctx: SessionContext, employmentId: string) {
