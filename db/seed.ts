@@ -9,6 +9,7 @@ import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn } from '../core/attendance';
+import { requestLeave, decideLeave } from '../core/leave';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
 
@@ -182,6 +183,32 @@ async function main() {
   await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });
   await checkIn(admin, { employmentId: hired[0].employmentId, date: '2026-06-05', time: '09:00' }); // present
   await checkIn(admin, { employmentId: hired[1].employmentId, date: '2026-06-05', time: '09:30' }); // late
+
+  // Planned absences around 'today' (2026-06) so the dashboard timeline has shape.
+  const seedLeave = async (
+    employmentId: string,
+    leaveTypeId: string,
+    startDate: string,
+    endDate: string,
+    approve: boolean,
+  ) => {
+    const { leaveRequestId } = await requestLeave(admin, { employmentId, leaveTypeId, startDate, endDate });
+    if (approve) {
+      try {
+        await decideLeave(admin, {
+          leaveRequestId,
+          decision: 'approved',
+          deciderEmploymentId: hired[1].employmentId,
+        });
+      } catch (e) {
+        console.warn(`  (leave ${startDate} left pending: ${(e as Error).message})`);
+      }
+    }
+  };
+  await seedLeave(hired[0].employmentId, annual.id, '2026-06-10', '2026-06-12', true); // Aisyah · annual · approved
+  await seedLeave(hired[3].employmentId, annual.id, '2026-06-16', '2026-06-18', true); // Arjun · annual · approved
+  await seedLeave(hired[2].employmentId, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false); // Mei Ling · sick · pending
+  await seedLeave(hired[1].employmentId, annual.id, '2026-06-11', '2026-06-11', false); // Daniel · annual · pending
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
   console.log(`  DEV_TENANT_ID=${DEV_TENANT_ID}`);

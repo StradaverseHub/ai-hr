@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
-import { dashboardStats, groupBreakdown, listCompanies, recentActivity } from '@/core/read';
+import { dashboardStats, groupBreakdown, listCompanies, plannedAbsences, recentActivity } from '@/core/read';
 import { Card } from '@/components/ui';
+import { PlannedAbsences } from '@/components/planned-absences';
 
 const rm = (n: unknown) =>
   n == null
@@ -81,11 +82,21 @@ function orderTree(rows: BreakdownRow[]) {
 
 export default async function DashboardPage() {
   const { s, scopeIds } = await scopedSession();
-  const [stats, activity, companies, breakdown] = await Promise.all([
+  // 14-day planned-absences window, starting 2 days before today.
+  const now = new Date();
+  const startMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()) - 2 * 86_400_000;
+  const ABS_DAYS = 14;
+  const absFrom = new Date(startMs).toISOString().slice(0, 10);
+  const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  const todayIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    .toISOString()
+    .slice(0, 10);
+  const [stats, activity, companies, breakdown, absences] = await Promise.all([
     dashboardStats(s, scopeIds),
     recentActivity(s, 8),
     listCompanies(s),
     groupBreakdown(s),
+    plannedAbsences(s, scopeIds, { from: absFrom, to: absTo }),
   ]);
   const att = stats.attendance;
   const attTotal = att.present + att.late + att.halfDay + att.absent;
@@ -119,6 +130,8 @@ export default async function DashboardPage() {
           href="/payroll"
         />
       </div>
+
+      <PlannedAbsences rows={absences} from={absFrom} days={ABS_DAYS} todayIso={todayIso} />
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3">
