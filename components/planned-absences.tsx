@@ -4,7 +4,9 @@ import {
   ArrowUpRight,
   Baby,
   CalendarDays,
+  CheckCircle2,
   CircleSlash,
+  Clock,
   Palmtree,
   Stethoscope,
   Thermometer,
@@ -171,6 +173,11 @@ export function PlannedAbsences({
                   if (ce < 0 || cs > lastIdx) return null;
                   const { chip, Icon } = styleFor(l.typeCode);
                   const pending = l.status === 'pending';
+                  // Status presentation scales with block width so the leave type always reads:
+                  // 4+ days get the full word, 3 days a compact glyph, 1-2 days nothing (the
+                  // pending ring + tooltip still carry status).
+                  const span = ce - cs + 1;
+                  const StatusIcon = pending ? Clock : CheckCircle2;
                   return (
                     <div
                       key={l.id}
@@ -184,9 +191,13 @@ export function PlannedAbsences({
                     >
                       <Icon className="size-3.5 shrink-0" />
                       <span className="flex-1 truncate">{l.typeName.replace(/\s*leave$/i, '')}</span>
-                      <span className="shrink-0 rounded-full bg-black/[0.07] px-1.5 py-0.5 text-[10px] font-semibold capitalize dark:bg-white/15">
-                        {l.status}
-                      </span>
+                      {span >= 4 ? (
+                        <span className="shrink-0 rounded-full bg-black/[0.07] px-1.5 py-0.5 text-[10px] font-semibold capitalize dark:bg-white/15">
+                          {l.status}
+                        </span>
+                      ) : span >= 3 ? (
+                        <StatusIcon className="size-3.5 shrink-0 opacity-80" />
+                      ) : null}
                     </div>
                   );
                 })}
