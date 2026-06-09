@@ -179,6 +179,22 @@ async function main() {
     allocations: [{ companyId: company.id, percent: 50 }],
   });
 
+  // A couple of recent hires so the dashboard Onboarding card has shape.
+  for (const p of [
+    { fullName: 'Nurul Huda', email: 'nurul@demo.test', dept: ops.id, hiredOn: '2026-06-04' },
+    { fullName: 'Wei Jie Lim', email: 'weijie@demo.test', dept: eng.id, hiredOn: '2026-05-22' },
+  ]) {
+    await hireEmployee(admin, {
+      person: { fullName: p.fullName, primaryEmail: p.email },
+      companyId: company.id,
+      departmentId: p.dept,
+      positionId: pos.id,
+      employmentType: 'full_time',
+      hiredOn: p.hiredOn,
+      annualLeaveTypeId: annual.id,
+    });
+  }
+
   // Attendance policy + a couple of today's check-ins (present + late) for the demo.
   await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });
   await checkIn(admin, { employmentId: hired[0].employmentId, date: '2026-06-05', time: '09:00' }); // present
