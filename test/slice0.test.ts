@@ -26,7 +26,14 @@ import {
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
 import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
-import { assignRole, createCompany, createDepartment, revokeRole, setCompanyParent } from '../core/admin';
+import {
+  assignRole,
+  createCompany,
+  createDepartment,
+  createLeavePolicy,
+  revokeRole,
+  setCompanyParent,
+} from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
@@ -1000,5 +1007,23 @@ describe('Slice 6E — CP22 / CP22A compliance worklist (#74)', () => {
 
     // The long-ago hire is outside the CP22 window — only its cessation surfaces.
     expect(wl.some((w) => w.form === 'CP22' && w.name === 'Leaver')).toBe(false);
+  });
+});
+
+describe('Leave policy resolution — grant = max(statutory floor, company policy)', () => {
+  it('a more generous company policy raises the grant above the EA floor', async () => {
+    const b = await seedBase(); // fresh tenant so the shared base keeps its floor-only grants
+    const a = adminCtx(b);
+    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 20, validFrom: '2026-01-01' });
+    const { employmentId } = await hire(a, b, 'Generous', { annual: true });
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(20); // policy 20 > floor 8
+  });
+
+  it('a below-minimum policy is clamped to the statutory floor', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 3, validFrom: '2026-01-01' });
+    const { employmentId } = await hire(a, b, 'Clamped', { annual: true });
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // EA floor 8 wins over 3
   });
 });

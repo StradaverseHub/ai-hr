@@ -106,6 +106,11 @@ to these tables is traceable to the exact runs it affects.
     (proviso deletion → separate hospitalization entitlement).
   - Lexology — _Stop prorating sick leave: the hidden legal risks under section 60F_.
   - Cross-checks: CentralHR sick-leave guide; PayrollPanda leave entitlements.
+- **Floor vs. company policy:** these figures are the **non-configurable statutory
+  floor**. Admin-configured `leave_policy` rows may be more generous; grants apply
+  **max(floor, policy)** per type, and a policy below the minimum is recorded but
+  never applied (clamped, flagged in the Leave-config UI). Enforced in
+  `core/org.ts`; covered by integration tests.
 - **Model simplifications (deliberate):** entitlements are granted once at hire at the
   0-year band; **service-band upgrades at the 2- and 5-year anniversaries and
   calendar-year resets/carry-forward are not yet automated** (ledger supports both via

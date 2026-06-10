@@ -10,6 +10,7 @@ import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut } from '../core/attendance';
 import { requestLeave, decideLeave } from '../core/leave';
+import { createLeavePolicy } from '../core/admin';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
 
@@ -103,6 +104,9 @@ async function main() {
     .values({ tenantId: DEV_TENANT_ID, appUserId: DEV_ADMIN_USER_ID, role: 'hr_admin', companyId: null });
 
   const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
+  // Company policy more generous than the EA floor (12 vs 8 annual days): grants apply
+  // max(floor, policy), so this is what every demo hire actually receives.
+  await createLeavePolicy(admin, { leaveTypeId: annual.id, annualDays: 12, validFrom: '2026-01-01' });
   const people = [
     { fullName: 'Aisyah Rahman', email: 'aisyah@demo.test', dept: finance.id, salary: 6500, ic: '900101011234', bank: 'Maybank' },
     { fullName: 'Daniel Tan', email: 'daniel@demo.test', dept: eng.id, salary: 11000, ic: '850202022345', bank: 'CIMB' },
