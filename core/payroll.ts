@@ -2,11 +2,12 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
 import {
+  attendance,
   company,
   compensation,
   employeeStatutoryMy,
@@ -168,6 +169,148 @@ export async function setPayrollInput(
   });
 }
 
+/**
+ * Prefill a draft batch's overtime inputs from classified attendance (ADR-0011 → money).
+ * Per employee, the period's per-day OT minutes (workday / rest day / holiday) are
+ * monetized by the country pack — ORP = wages/26, 1.5× workday, rest-day ½/1-day rule
+ * + 2×, holiday +2 days' ORP + 3×, and the First Schedule RM4,000 eligibility gate
+ * (STATUTORY-SOURCES §6). Existing bonus inputs are preserved; the admin can still
+ * override any figure. Each applied row appends an input-set event carrying the
+ * derivation, so every ringgit is traceable to hours and rates.
+ */
+export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { batchId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        id: payrollBatch.id,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        status: payrollBatch.status,
+        country: company.country,
+      })
+      .from(payrollBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+    const pack = packFor(batch.country);
+    if (!pack) throw new Error(`No localization pack for country ${batch.country}`);
+
+    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+
+    // Per-day classified OT minutes within the pay period (per-day matters: the
+    // rest-day ½/1-day rule cannot be computed from monthly aggregates).
+    const otRows = await tx
+      .select({
+        employmentId: attendance.employmentId,
+        dayType: attendance.dayType,
+        otMinutes: attendance.otMinutes,
+      })
+      .from(attendance)
+      .innerJoin(employment, eq(employment.id, attendance.employmentId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          gte(attendance.attendanceDate, periodStart),
+          lte(attendance.attendanceDate, periodEnd),
+          gt(attendance.otMinutes, 0),
+        ),
+      );
+    if (otRows.length === 0) return { applied: 0, ineligible: 0 };
+    const empIds = [...new Set(otRows.map((r) => r.employmentId))];
+
+    // Current s.2 wages (basic + fixed allowance) — the ORP basis.
+    const comps = await tx
+      .select({
+        employmentId: compensation.employmentId,
+        basic: compensation.basicSalary,
+        allowance: compensation.monthlyAllowance,
+      })
+      .from(compensation)
+      .where(
+        and(
+          inArray(compensation.employmentId, empIds),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      );
+    const wagesBy = new Map(
+      comps.map((c) => [c.employmentId, round2(Number(c.basic) + Number(c.allowance ?? 0))]),
+    );
+
+    // Existing inputs: bonus must survive the prefill.
+    const existing = await tx
+      .select({
+        id: payrollInput.id,
+        employmentId: payrollInput.employmentId,
+        bonus: payrollInput.bonusAmount,
+      })
+      .from(payrollInput)
+      .where(eq(payrollInput.batchId, p.batchId));
+    const existingBy = new Map(existing.map((r) => [r.employmentId, r]));
+
+    const daysBy = new Map<string, { dayType: 'workday' | 'rest_day' | 'holiday'; minutes: number }[]>();
+    for (const r of otRows) {
+      const arr = daysBy.get(r.employmentId) ?? [];
+      arr.push({ dayType: r.dayType ?? 'workday', minutes: r.otMinutes ?? 0 });
+      daysBy.set(r.employmentId, arr);
+    }
+
+    let applied = 0;
+    let ineligible = 0;
+    for (const employmentId of empIds) {
+      const wages = wagesBy.get(employmentId);
+      if (wages == null) continue; // no active compensation — nothing to monetize against
+      const result = pack.payroll.overtimePay({ monthlyWages: wages, days: daysBy.get(employmentId) ?? [] });
+      if (!result.eligible) {
+        ineligible += 1;
+        continue; // > RM4,000 wages: no statutory OT — left for a manual (ex-gratia) entry
+      }
+      const prior = existingBy.get(employmentId);
+      const bonusAmount = prior ? Number(prior.bonus) : 0;
+      if (prior) {
+        await tx
+          .update(payrollInput)
+          .set({ overtimeAmount: result.total.toFixed(2), updatedAt: sql`now()` })
+          .where(eq(payrollInput.id, prior.id));
+      } else {
+        await tx.insert(payrollInput).values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId,
+          overtimeAmount: result.total.toFixed(2),
+          bonusAmount: bonusAmount.toFixed(2),
+        });
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-batch',
+        aggregateId: p.batchId,
+        eventType: 'payroll-batch.input-set',
+        actor: actorOf(ctx),
+        payload: {
+          employmentId,
+          overtimeAmount: result.total,
+          bonusAmount,
+          source: 'attendance',
+          derivation: {
+            orp: result.orp,
+            hourly: result.hourly,
+            workday: result.workday,
+            restDay: result.restDay,
+            holiday: result.holiday,
+          },
+        },
+      });
+      applied += 1;
+    }
+    return { applied, ineligible };
+  });
+}
+
 export async function generatePayslips(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1);
@@ -249,18 +392,23 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / days in month).
       const unpaidDeduction = round2((Number(e.basic) / dim) * (unpaidByEmp.get(e.employmentId) ?? 0));
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
-      const statBase = Math.max(0, round2(normalWage - unpaidDeduction)); // wages payable, ex-bonus
+      // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
+      // include it — so the calculator takes wages ex-OT and the OT separately.
+      const wagesExOt = Math.max(0, round2(basic + allowance - unpaidDeduction));
       // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
       const st = pack.payroll.statutory(
-        statBase,
+        wagesExOt,
         { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 },
         bonus,
+        overtime,
       );
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + unpaidDeduction);
       const grossPay = round2(normalWage + bonus); // total earnings before deductions
       const net = round2(grossPay - totalDeductions);
-      const employerCost = round2(statBase + bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer);
+      const employerCost = round2(
+        wagesExOt + overtime + bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer,
+      );
 
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,

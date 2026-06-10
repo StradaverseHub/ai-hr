@@ -214,6 +214,9 @@ async function main() {
   await reportsTo(nurul.employmentId, hired[3].employmentId, 'administrative', '2026-06-04'); // Nurul -> Arjun
   await reportsTo(weijie.employmentId, hired[0].employmentId, 'administrative', '2026-05-22'); // Wei Jie -> Aisyah
   await reportsTo(weijie.employmentId, hired[2].employmentId, 'project', '2026-05-22'); // Wei Jie ~ Mei Ling (project)
+  // Comps under the RM4,000 First Schedule ceiling — they are the OT-eligible demo cases.
+  await setCompensation(admin, { employmentId: nurul.employmentId, basicSalary: 3200, effectiveFrom: '2026-06-04' });
+  await setCompensation(admin, { employmentId: weijie.employmentId, basicSalary: 3800, effectiveFrom: '2026-05-22' });
 
   // Attendance policy + live demo punches around the real "today" (ADR-0011: hours/OT derive
   // from the schedule; Aisyah stays rowless today so the approved-leave context pill shows).
@@ -224,7 +227,7 @@ async function main() {
   await checkIn(admin, { employmentId: hired[3].employmentId, date: seedYesterday, time: '09:00' });
   await checkOut(admin, { employmentId: hired[3].employmentId, date: seedYesterday, time: '19:30' });
   await checkIn(admin, { employmentId: weijie.employmentId, date: seedYesterday, time: '09:05' });
-  await checkOut(admin, { employmentId: weijie.employmentId, date: seedYesterday, time: '18:05' });
+  await checkOut(admin, { employmentId: weijie.employmentId, date: seedYesterday, time: '19:05' }); // 60m OT (eligible)
   // Today: Daniel late, Wei Jie present (both still in the office).
   await checkIn(admin, { employmentId: hired[1].employmentId, date: seedToday, time: '09:30' });
   await checkIn(admin, { employmentId: weijie.employmentId, date: seedToday, time: '09:00' });

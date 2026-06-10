@@ -42,12 +42,14 @@ import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
 import {
   batchDetail,
   BatchNotDraftError,
+  batchInputRows,
   closeBatch,
   createBatch,
   generatePayslips,
+  prefillOvertimeFromAttendance,
   setPayrollInput,
 } from '../core/payroll';
-import { eis, epf, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
+import { eis, epf, overtimePay, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
 import {
   complianceWorklist,
   employeeEaStatement,
@@ -457,8 +459,10 @@ describe('Slice 4 — payroll', () => {
     expect(Number(ps.grossPay)).toBeCloseTo(3600, 2); // basic 3100 + OT 500
     expect(Number(ps.overtimePay)).toBeCloseTo(500, 2);
     expect(Number(ps.otherDeductions)).toBeCloseTo(200, 2); // unpaid 3100/31 * 2
-    // Statutory is on the reduced base (3600 − 200 = 3400): EPF = ceil(3400 × 0.11) = 374, not 396.
-    expect((ps.statutory as Record<string, number>).epfEmployee).toBe(374);
+    // Agency bases split (STATUTORY-SOURCES §6): EPF EXCLUDES overtime — its base is
+    // wages ex-OT minus unpaid (3100 − 200 = 2900) → ceil(2900 × 0.11) = 319.
+    // SOCSO/EIS/PCB stay on wages incl. OT (3400).
+    expect((ps.statutory as Record<string, number>).epfEmployee).toBe(319);
     expect(Number(ps.netPay)).toBeCloseTo(3600 - 200 - (ps.statutory as Record<string, number>).epfEmployee
       - (ps.statutory as Record<string, number>).socsoEmployee
       - (ps.statutory as Record<string, number>).eisEmployee
@@ -1007,6 +1011,70 @@ describe('Slice 6E — CP22 / CP22A compliance worklist (#74)', () => {
 
     // The long-ago hire is outside the CP22 window — only its cessation surfaces.
     expect(wl.some((w) => w.form === 'CP22' && w.name === 'Leaver')).toBe(false);
+  });
+});
+
+describe('Overtime monetization — EA 1955 (ORP/26, 1.5×/2×/3×, RM4,000 gate)', () => {
+  // RM2,600 wages → ORP 100.00/day, hourly 12.50 — clean hand-checkable figures.
+  it('workday OT pays 1.5× hourly', () => {
+    const r = overtimePay({ monthlyWages: 2600, days: [{ dayType: 'workday', minutes: 90 }] });
+    expect(r.orp).toBe(100);
+    expect(r.hourly).toBe(12.5);
+    expect(r.workday).toBe(28.13); // 1.5h × 1.5 × 12.50
+    expect(r.total).toBe(28.13);
+  });
+
+  it('rest day: ½ day ≤ half normal hours, 1 day above, 2× beyond normal hours', () => {
+    const half = overtimePay({ monthlyWages: 2600, days: [{ dayType: 'rest_day', minutes: 180 }] });
+    expect(half.restDay).toBe(50); // 3h ≤ 4h → ½ × ORP
+    const full = overtimePay({ monthlyWages: 2600, days: [{ dayType: 'rest_day', minutes: 300 }] });
+    expect(full.restDay).toBe(100); // 5h > 4h → 1 × ORP
+    const beyond = overtimePay({ monthlyWages: 2600, days: [{ dayType: 'rest_day', minutes: 600 }] });
+    expect(beyond.restDay).toBe(150); // 8h → ORP, +2h × 2 × 12.50
+  });
+
+  it('holiday: 2 extra days ORP plus 3× beyond normal hours', () => {
+    const r = overtimePay({ monthlyWages: 2600, days: [{ dayType: 'holiday', minutes: 540 }] });
+    expect(r.holiday).toBe(237.5); // 2 × 100 + 1h × 3 × 12.50
+  });
+
+  it('wages above RM4,000 are not statutorily entitled (First Schedule)', () => {
+    const r = overtimePay({ monthlyWages: 4500, days: [{ dayType: 'workday', minutes: 600 }] });
+    expect(r.eligible).toBe(false);
+    expect(r.total).toBe(0);
+  });
+
+  it('statutory bases split: EPF excludes OT; SOCSO/EIS include it', () => {
+    const st = statutory(3000, undefined, 0, 500);
+    expect(st.epfEmployee).toBe(epf(3000).employee); // EPF on wages ex-OT
+    expect(st.eisEmployee).toBe(eis(3500).employee); // EIS on wages incl. OT
+    expect(st.socsoEmployee).toBe(socso(3500).employee); // SOCSO on wages incl. OT
+  });
+
+  it('prefills draft-batch OT inputs from classified attendance', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const { employmentId } = await hire(a, b, 'Otman'); // hired 2026-01-01
+    await setCompensation(a, { employmentId, basicSalary: 2600, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    const rich = await hire(a, b, 'Richman');
+    await setCompensation(a, {
+      employmentId: rich.employmentId,
+      basicSalary: 4500,
+      monthlyAllowance: 0,
+      effectiveFrom: '2026-01-01',
+    });
+    // Wednesday 2026-06-03: 09:00→19:30 = 10.5h span − 1h break = 9.5h → 90m workday OT.
+    for (const emp of [employmentId, rich.employmentId]) {
+      await checkIn(a, { employmentId: emp, date: '2026-06-03', time: '09:00' });
+      await checkOut(a, { employmentId: emp, date: '2026-06-03', time: '19:30' });
+    }
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-06' });
+    const res = await prefillOvertimeFromAttendance(a, { batchId });
+    expect(res.applied).toBe(1);
+    expect(res.ineligible).toBe(1); // Richman: > RM4,000 — left manual
+    const rows = await batchInputRows(a, batchId);
+    expect(Number(rows.find((r) => r.employmentId === employmentId)?.overtimeAmount)).toBe(28.13);
+    expect(Number(rows.find((r) => r.employmentId === rich.employmentId)?.overtimeAmount ?? 0)).toBe(0);
   });
 });
 
