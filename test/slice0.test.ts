@@ -55,6 +55,7 @@ import {
   closeBatch,
   createBatch,
   generatePayslips,
+  payslipDetail,
   prefillOvertimeFromAttendance,
   setPayrollInput,
 } from '../core/payroll';
@@ -1430,5 +1431,39 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     await expect(
       decideProfileChange(emp, { requestId, decision: 'approved' }),
     ).rejects.toThrow(/cannot decide your own/i);
+  });
+});
+
+describe('ESS — payslip detail (ADR-0012 Phase 2)', () => {
+  it('an employee reads their own payslip detail; a peer is RLS-denied', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const E = await hire(a, b, 'Payee');
+    await setCompensation(a, {
+      employmentId: E.employmentId,
+      basicSalary: 5000,
+      monthlyAllowance: 0,
+      effectiveFrom: '2026-01-01',
+    });
+    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010010' });
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+    const [slip] = await owner.db
+      .select({ id: schema.payslip.id })
+      .from(schema.payslip)
+      .where(eq(schema.payslip.employmentId, E.employmentId));
+
+    const uE = await createAppUser(b.tenantId, E.personId, 'employee');
+    const empCtx: SessionContext = { tenantId: b.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const own = await payslipDetail(empCtx, slip.id);
+    expect(own?.payPeriod).toBe('2026-05');
+    expect(Number(own?.gross)).toBe(5000);
+    expect(Number(own?.net)).toBeLessThan(5000); // statutory deducted
+
+    // A peer with no visibility gets nothing back (RLS USING can_see_employment).
+    const X = await hire(a, b, 'Nosey');
+    const uX = await createAppUser(b.tenantId, X.personId, 'employee');
+    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'] };
+    expect(await payslipDetail(peerCtx, slip.id)).toBeNull();
   });
 });

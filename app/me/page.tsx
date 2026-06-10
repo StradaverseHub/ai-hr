@@ -451,7 +451,11 @@ export default async function MePage({
             <tbody className="divide-y divide-border">
               {payslips.map((p) => (
                 <tr key={p.id}>
-                  <td className="px-4 py-2.5 font-medium">{p.payPeriod}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    <Link href={`/me/payslip/${p.id}`} className="text-primary hover:underline">
+                      {p.payPeriod}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{p.company}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(p.gross)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(p.deductions)}</td>

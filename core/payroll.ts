@@ -524,6 +524,40 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
   });
 }
 
+/** A single payslip's full breakdown for the employee detail/print view. RLS scopes it to
+ *  what the caller may see (the employee sees their own via can_see_employment). */
+export function payslipDetail(ctx: SessionContext, payslipId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: payslip.id,
+        employee: person.fullName,
+        company: company.legalName,
+        payPeriod: payrollBatch.payPeriod,
+        status: payrollBatch.status,
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        daysWorked: payslip.daysWorked,
+        gross: payslip.grossPay,
+        statutory: payslip.statutory,
+        otherDeductions: payslip.otherDeductions,
+        totalDeductions: payslip.totalDeductions,
+        net: payslip.netPay,
+        employerCost: payslip.employerCost,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(payslip.id, payslipId))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
 /**
  * Rows for the draft-batch input editor: each active-in-period employee with their current manual
  * overtime and the auto-derived unpaid-leave days (read-only preview of what generation will apply).
