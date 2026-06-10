@@ -1,6 +1,6 @@
 # ADR-0011 — Attendance & time tracking: from punch-clock to a time engine
 
-Status: **Accepted** (Phase A implemented) · Date: 2026-06-10
+Status: **Accepted** (Phase A + Phase B implemented) · Date: 2026-06-10
 
 ## Context
 
@@ -18,7 +18,7 @@ mature time-and-attendance products (Workday Time Tracking, BambooHR, Deputy):
 | Time entry (web/mobile/kiosk, geofencing, photo) | web + mobile + kiosk | web only |
 | Calculation engine (worked hours, break deduction, OT classification, real time) | ✅ | ❌ none |
 | Compliance rules + alerts (max hours, OT caps) | ✅ rule engine | ❌ none |
-| Approvals (timesheet submit/approve, correction requests) | ✅ routed approvals | ❌ none |
+| Approvals (timesheet submit/approve, correction requests) | ✅ routed approvals | ⚠️ correction requests (Phase B); timesheet cycle is Phase C |
 | Absence integration (leave/holiday-aware attendance) | ✅ unified "time & absence" | ❌ leave days look "absent" |
 | Summaries & payroll feed | ✅ | ❌ OT typed into payroll by hand |
 
@@ -60,11 +60,22 @@ across three sources). Monetization of OT is *not* implemented in this phase —
    **OT > 104 h/month** (statutory, red) and **any week > 45 h worked** (indicative, amber —
    the 45 h limit technically binds *normal* hours, so this is a review prompt, not a verdict).
 
-**Phase B (deferred, next).** Correction requests (employee fixes a missed punch → manager
-approves, evented); OT **monetization** into payroll: convert classified OT minutes to RM at
-ORP-based rates (needs the ORP/26 formula and rest-day monthly-rated nuances encoded and
-source-verified like the payroll calculators) with a "pull from attendance" prefill on the
-batch input — payroll keeps the manual override.
+**Phase B (implemented).** Two halves, both shipped:
+
+6. **Correction requests** (`attendance_correction` table). An employee files a proposed
+   check-in/out for a day on `/me` ("Fix a missed punch"); an admin or the employee's
+   **administrative** manager approves or rejects it from the `/attendance` inbox. Approval is
+   not a blind overwrite — the proposed punches run back through the *same* `deriveAttendance`
+   rule the live clock uses (day-type classification + worked/OT minutes), then upsert the day
+   (`onConflictDoUpdate` on `employment_id, attendance_date`) marked `Corrected`, so a fixed
+   punch yields correctly-classified OT that flows to payroll. Self-approval is barred by the
+   shared `assertCanDecide` guard (`core/approvals.ts`, extracted so leave and attendance
+   enforce one rule); RLS confines the inbox to what the viewer may see. Every step is evented
+   (`attendance-correction.requested|approved|rejected`, plus `attendance.amended`).
+7. **OT monetization** into payroll: classified OT minutes convert to RM at ORP-based rates
+   (ORP = wages / 26; 1.5×/2×/3× by day type; RM4,000 First Schedule gate; EPF excludes OT
+   while SOCSO/EIS/PCB include it), exposed as a "pull from attendance" prefill on the batch
+   input. Payroll keeps the manual override. Sourced in `STATUTORY-SOURCES.md` §6.
 
 **Phase C (later).** Shift/roster schedules per employee; mobile/kiosk clocks with
 geofencing (Expo app phase); timesheet submit/approve cycles.

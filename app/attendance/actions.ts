@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { checkIn, checkOut } from '@/core/attendance';
+import { checkIn, checkOut, decideAttendanceCorrection } from '@/core/attendance';
 
 const dateOf = (formData: FormData) => {
   const d = String(formData.get('date') || '');
@@ -21,6 +21,21 @@ export async function checkInAction(formData: FormData) {
   }
   revalidatePath('/attendance');
   redirect(`/attendance?date=${date}&toast=Checked in`);
+}
+
+export async function decideCorrectionAction(formData: FormData) {
+  const s = await getSession();
+  const back = '/attendance';
+  try {
+    await decideAttendanceCorrection(s, {
+      correctionId: String(formData.get('correctionId')),
+      decision: String(formData.get('decision')) as 'approved' | 'rejected',
+    });
+  } catch (e) {
+    redirect(`${back}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(back);
+  redirect(`${back}?toast=${encodeURIComponent('Correction ' + String(formData.get('decision')))}`);
 }
 
 export async function checkOutAction(formData: FormData) {

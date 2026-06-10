@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
 import { requestLeave } from '@/core/leave';
-import { checkIn, checkOut } from '@/core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {
@@ -32,6 +32,27 @@ export async function myRequestLeave(formData: FormData) {
   }
   revalidatePath('/me');
   redirect('/me?toast=Leave+requested');
+}
+
+export async function myRequestCorrection(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const date = String(formData.get('date'));
+  const checkInTime = String(formData.get('checkIn'));
+  const checkOutTime = String(formData.get('checkOut') || '');
+  const reason = String(formData.get('reason') || '').trim();
+  try {
+    await requestAttendanceCorrection(s, {
+      employmentId,
+      date,
+      checkIn: checkInTime,
+      checkOut: checkOutTime || null,
+      reason: reason || undefined,
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Correction+requested');
 }
 
 export async function myCheckIn() {

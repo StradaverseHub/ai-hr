@@ -8,7 +8,7 @@ import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { checkIn, checkOut } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
 import { requestLeave, decideLeave } from '../core/leave';
 import { createLeavePolicy } from '../core/admin';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -231,6 +231,14 @@ async function main() {
   // Today: Daniel late, Wei Jie present (both still in the office).
   await checkIn(admin, { employmentId: hired[1].employmentId, date: seedToday, time: '09:30' });
   await checkIn(admin, { employmentId: weijie.employmentId, date: seedToday, time: '09:00' });
+  // A pending correction so the manager inbox has something to act on (Mei Ling forgot to punch).
+  await requestAttendanceCorrection(admin, {
+    employmentId: hired[2].employmentId,
+    date: seedYesterday,
+    checkIn: '09:00',
+    checkOut: '18:00',
+    reason: 'Forgot to clock in',
+  });
 
   // Planned absences around 'today' (2026-06) so the dashboard timeline has shape.
   const seedLeave = async (

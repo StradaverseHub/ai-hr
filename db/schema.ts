@@ -475,6 +475,11 @@ export const holiday = pgTable(
 export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'late', 'half_day']);
 // Day classification drives the OT class (EA 1955: workday 1.5x, rest day 2x, holiday 3x — ADR-0011).
 export const attendanceDayTypeEnum = pgEnum('attendance_day_type', ['workday', 'rest_day', 'holiday']);
+export const attendanceCorrectionStatusEnum = pgEnum('attendance_correction_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
 
 // One row per employee per day. Absence is derived (no row); we store present/late/half_day.
 export const attendance = pgTable(
@@ -522,6 +527,29 @@ export const attendancePolicy = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
+);
+
+// Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
+// times for a day; an admin or their manager approves, which amends the attendance row
+// (re-derived through the time engine). Mirrors the leave request→decide workflow.
+export const attendanceCorrection = pgTable(
+  'attendance_correction',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    attendanceDate: date('attendance_date').notNull(),
+    proposedCheckIn: time('proposed_check_in').notNull(),
+    proposedCheckOut: time('proposed_check_out'),
+    reason: text('reason'),
+    status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate)],
 );
 
 // ──────────────────────── Payroll (generic kernel) ────────────────────────

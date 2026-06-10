@@ -7,11 +7,13 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
-import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { assertCanDecide } from './approvals';
 import {
   attendance,
+  attendanceCorrection,
   attendancePolicy,
   company,
   employment,
@@ -98,6 +100,26 @@ const scheduledMinutes = (pol: Policy) =>
  */
 const workedFromSpan = (spanMinutes: number, breakMinutes: number) =>
   Math.max(0, spanMinutes - (spanMinutes >= 360 ? breakMinutes : 0));
+
+/** Derive status + worked/OT minutes for a full or partial day — the shared rule that
+ *  check-in/out apply incrementally and a correction applies in one shot. */
+function deriveAttendance(
+  pol: Policy,
+  dayType: DayType,
+  checkInAt: string,
+  checkOutAt: string | null,
+): { status: 'present' | 'late' | 'half_day'; workedMinutes: number | null; otMinutes: number | null } {
+  let status: 'present' | 'late' | 'half_day' =
+    dayType === 'workday' && toMinutes(checkInAt) > toMinutes(pol.lateAfter) ? 'late' : 'present';
+  if (!checkOutAt) return { status, workedMinutes: null, otMinutes: null };
+  if (dayType === 'workday' && status !== 'late' && toMinutes(checkOutAt) < toMinutes(pol.halfDayBefore)) {
+    status = 'half_day';
+  }
+  const workedMinutes = workedFromSpan(toMinutes(checkOutAt) - toMinutes(checkInAt), pol.breakMinutes);
+  const otMinutes =
+    dayType === 'workday' ? Math.max(0, workedMinutes - scheduledMinutes(pol)) : workedMinutes;
+  return { status, workedMinutes, otMinutes };
+}
 
 export async function checkIn(
   ctx: SessionContext,
@@ -448,4 +470,187 @@ export function attendanceMonthSummary(
       };
     });
   });
+}
+
+// ───────────────────── Corrections (ADR-0011 Phase B) ─────────────────────
+
+/** Raise a correction request for a day's punches. RLS confines who an employment is
+ *  visible to (self / manager / admin), so a peer cannot file for someone else. */
+export async function requestAttendanceCorrection(
+  ctx: SessionContext,
+  p: { employmentId: string; date: string; checkIn: string; checkOut?: string | null; reason?: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    if (p.checkOut && toMinutes(p.checkOut) <= toMinutes(p.checkIn)) {
+      throw new Error('Check-out must be after check-in');
+    }
+    const [row] = await tx
+      .insert(attendanceCorrection)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        attendanceDate: p.date,
+        proposedCheckIn: p.checkIn,
+        proposedCheckOut: p.checkOut ?? null,
+        reason: p.reason ?? null,
+      })
+      .returning({ id: attendanceCorrection.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-correction',
+      aggregateId: row.id,
+      eventType: 'attendance-correction.requested',
+      actor: actorOf(ctx),
+      payload: {
+        employmentId: p.employmentId,
+        date: p.date,
+        checkIn: p.checkIn,
+        checkOut: p.checkOut ?? null,
+        reason: p.reason ?? null,
+      },
+    });
+    return { correctionId: row.id };
+  });
+}
+
+/** Decide a correction. Approval upserts the attendance row with the proposed punches,
+ *  re-derived through the time engine (so corrected OT flows to payroll). No self-approval. */
+export async function decideAttendanceCorrection(
+  ctx: SessionContext,
+  p: { correctionId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [cor] = await tx
+      .select()
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.id, p.correctionId))
+      .limit(1);
+    if (!cor) throw new Error('correction request not found (or not visible)');
+    if (cor.status !== 'pending') throw new Error(`correction request is already ${cor.status}`);
+
+    await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction');
+
+    if (p.decision === 'approved') {
+      const pol = await policyFor(tx, cor.employmentId);
+      const dayType = await dayTypeFor(tx, pol, cor.attendanceDate);
+      const d = deriveAttendance(pol, dayType, cor.proposedCheckIn, cor.proposedCheckOut);
+      const [amended] = await tx
+        .insert(attendance)
+        .values({
+          tenantId: ctx.tenantId,
+          employmentId: cor.employmentId,
+          attendanceDate: cor.attendanceDate,
+          checkInAt: cor.proposedCheckIn,
+          checkOutAt: cor.proposedCheckOut,
+          status: d.status,
+          dayType,
+          workedMinutes: d.workedMinutes,
+          otMinutes: d.otMinutes,
+          remarks: 'Corrected',
+        })
+        .onConflictDoUpdate({
+          target: [attendance.employmentId, attendance.attendanceDate],
+          set: {
+            checkInAt: cor.proposedCheckIn,
+            checkOutAt: cor.proposedCheckOut,
+            status: d.status,
+            dayType,
+            workedMinutes: d.workedMinutes,
+            otMinutes: d.otMinutes,
+            remarks: 'Corrected',
+          },
+        })
+        .returning({ id: attendance.id });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'attendance',
+        aggregateId: amended.id,
+        eventType: 'attendance.amended',
+        actor: actorOf(ctx),
+        payload: {
+          correctionId: cor.id,
+          date: cor.attendanceDate,
+          checkIn: cor.proposedCheckIn,
+          checkOut: cor.proposedCheckOut,
+          status: d.status,
+          dayType,
+          workedMinutes: d.workedMinutes,
+          otMinutes: d.otMinutes,
+        },
+      });
+    }
+
+    await tx
+      .update(attendanceCorrection)
+      .set({
+        status: p.decision,
+        decidedByEmploymentId: p.deciderEmploymentId ?? null,
+        decidedAt: sql`now()`,
+      })
+      .where(eq(attendanceCorrection.id, cor.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-correction',
+      aggregateId: cor.id,
+      eventType: `attendance-correction.${p.decision}`,
+      actor: actorOf(ctx),
+      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
+    });
+    return { status: p.decision };
+  });
+}
+
+/** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager
+ *  their reports, employee their own). Recent first. */
+export function listAttendanceCorrections(
+  ctx: SessionContext,
+  opts: { companyIds?: string[]; status?: 'pending' | 'approved' | 'rejected' } = {},
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: attendanceCorrection.id,
+        employmentId: attendanceCorrection.employmentId,
+        personId: employment.personId,
+        employee: person.fullName,
+        attendanceDate: attendanceCorrection.attendanceDate,
+        proposedCheckIn: attendanceCorrection.proposedCheckIn,
+        proposedCheckOut: attendanceCorrection.proposedCheckOut,
+        reason: attendanceCorrection.reason,
+        status: attendanceCorrection.status,
+        createdAt: attendanceCorrection.createdAt,
+      })
+      .from(attendanceCorrection)
+      .innerJoin(employment, eq(employment.id, attendanceCorrection.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          opts.status ? eq(attendanceCorrection.status, opts.status) : undefined,
+          opts.companyIds && opts.companyIds.length
+            ? inArray(employment.companyId, opts.companyIds)
+            : undefined,
+        ),
+      )
+      .orderBy(desc(attendanceCorrection.createdAt))
+      .limit(100),
+  );
+}
+
+/** An employee's own recent corrections (the /me history). */
+export function myAttendanceCorrections(ctx: SessionContext, employmentId: string, limit = 5) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: attendanceCorrection.id,
+        attendanceDate: attendanceCorrection.attendanceDate,
+        proposedCheckIn: attendanceCorrection.proposedCheckIn,
+        proposedCheckOut: attendanceCorrection.proposedCheckOut,
+        status: attendanceCorrection.status,
+        createdAt: attendanceCorrection.createdAt,
+      })
+      .from(attendanceCorrection)
+      .where(eq(attendanceCorrection.employmentId, employmentId))
+      .orderBy(desc(attendanceCorrection.createdAt))
+      .limit(limit),
+  );
 }
