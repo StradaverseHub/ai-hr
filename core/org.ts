@@ -28,7 +28,9 @@ export type HireParams = {
   costCenterId?: string;
   employmentType: EmploymentType;
   hiredOn: string; // 'YYYY-MM-DD'
-  annualLeaveTypeId?: string; // grant pro-rated annual leave on hire if provided
+  /** Standing entitlements to grant on hire (pack-driven). Pass ANNUAL / SICK /
+   *  HOSPITALIZATION; situational types (maternity etc.) are claimed per event, not granted. */
+  grantLeaveTypes?: { id: string; code: string }[];
 };
 
 export async function hireEmployee(ctx: SessionContext, p: HireParams) {
@@ -65,27 +67,36 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       validTo: null,
     });
 
-    if (p.annualLeaveTypeId) {
-      // Annual entitlement comes from the company's country pack (0 yrs service at hire),
-      // pro-rated by months remaining in the hire year.
+    if (p.grantLeaveTypes?.length) {
+      // Entitlements come from the company's country pack (0 yrs service at hire).
       const [co] = await tx
         .select({ country: company.country })
         .from(company)
         .where(eq(company.id, p.companyId))
         .limit(1);
       const pack = packFor(co?.country);
-      const annualDays = pack ? pack.leave.entitlement('ANNUAL', 0) : 0;
-      const month = Number(p.hiredOn.slice(5, 7));
-      const grant = Math.round(((annualDays * (12 - (month - 1))) / 12) * 100) / 100;
-      if (grant > 0) {
-        await tx.insert(leaveLedger).values({
-          tenantId: ctx.tenantId,
-          employmentId: emp.id,
-          leaveTypeId: p.annualLeaveTypeId,
-          entryType: 'accrual',
-          days: grant.toFixed(2),
-          effectiveOn: p.hiredOn,
-        });
+      if (pack) {
+        const month = Number(p.hiredOn.slice(5, 7));
+        for (const lt of p.grantLeaveTypes) {
+          const days = pack.leave.entitlement(lt.code, 0);
+          if (days <= 0) continue;
+          // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
+          // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
+          // entitlement and must not be prorated for mid-year joiners.
+          const grant =
+            lt.code === 'ANNUAL'
+              ? Math.round(((days * (12 - (month - 1))) / 12) * 100) / 100
+              : days;
+          if (grant <= 0) continue;
+          await tx.insert(leaveLedger).values({
+            tenantId: ctx.tenantId,
+            employmentId: emp.id,
+            leaveTypeId: lt.id,
+            entryType: 'accrual',
+            days: grant.toFixed(2),
+            effectiveOn: p.hiredOn,
+          });
+        }
       }
     }
 
