@@ -658,6 +658,8 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
         checkInAt: attendance.checkInAt,
         checkOutAt: attendance.checkOutAt,
         status: attendance.status,
+        workedMinutes: attendance.workedMinutes,
+        otMinutes: attendance.otMinutes,
       })
       .from(attendance)
       .where(eq(attendance.employmentId, employmentId))

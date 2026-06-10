@@ -8,7 +8,7 @@ import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { checkIn } from '../core/attendance';
+import { checkIn, checkOut } from '../core/attendance';
 import { requestLeave, decideLeave } from '../core/leave';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
@@ -205,10 +205,19 @@ async function main() {
   await reportsTo(weijie.employmentId, hired[0].employmentId, 'administrative', '2026-05-22'); // Wei Jie -> Aisyah
   await reportsTo(weijie.employmentId, hired[2].employmentId, 'project', '2026-05-22'); // Wei Jie ~ Mei Ling (project)
 
-  // Attendance policy + a couple of today's check-ins (present + late) for the demo.
+  // Attendance policy + live demo punches around the real "today" (ADR-0011: hours/OT derive
+  // from the schedule; Aisyah stays rowless today so the approved-leave context pill shows).
   await owner.db.insert(schema.attendancePolicy).values({ tenantId: DEV_TENANT_ID, companyId: company.id });
-  await checkIn(admin, { employmentId: hired[0].employmentId, date: '2026-06-05', time: '09:00' }); // present
-  await checkIn(admin, { employmentId: hired[1].employmentId, date: '2026-06-05', time: '09:30' }); // late
+  const seedToday = new Date().toISOString().slice(0, 10);
+  const seedYesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  // Yesterday: two completed days — Arjun with 90m OT, Wei Jie a clean standard day.
+  await checkIn(admin, { employmentId: hired[3].employmentId, date: seedYesterday, time: '09:00' });
+  await checkOut(admin, { employmentId: hired[3].employmentId, date: seedYesterday, time: '19:30' });
+  await checkIn(admin, { employmentId: weijie.employmentId, date: seedYesterday, time: '09:05' });
+  await checkOut(admin, { employmentId: weijie.employmentId, date: seedYesterday, time: '18:05' });
+  // Today: Daniel late, Wei Jie present (both still in the office).
+  await checkIn(admin, { employmentId: hired[1].employmentId, date: seedToday, time: '09:30' });
+  await checkIn(admin, { employmentId: weijie.employmentId, date: seedToday, time: '09:00' });
 
   // Planned absences around 'today' (2026-06) so the dashboard timeline has shape.
   const seedLeave = async (

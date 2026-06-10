@@ -5,29 +5,33 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { checkIn, checkOut } from '@/core/attendance';
 
-// Dev: "today" is fixed to the demo date.
-const TODAY = '2026-06-05';
+const dateOf = (formData: FormData) => {
+  const d = String(formData.get('date') || '');
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date().toISOString().slice(0, 10);
+};
 
 export async function checkInAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));
+  const date = dateOf(formData);
   try {
-    await checkIn(s, { employmentId, date: TODAY, time: String(formData.get('time') || '09:00') });
+    await checkIn(s, { employmentId, date, time: String(formData.get('time') || '09:00') });
   } catch (e) {
-    redirect(`/attendance?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/attendance?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/attendance');
-  redirect('/attendance?toast=Checked in');
+  redirect(`/attendance?date=${date}&toast=Checked in`);
 }
 
 export async function checkOutAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));
+  const date = dateOf(formData);
   try {
-    await checkOut(s, { employmentId, date: TODAY, time: String(formData.get('time') || '18:00') });
+    await checkOut(s, { employmentId, date, time: String(formData.get('time') || '18:00') });
   } catch (e) {
-    redirect(`/attendance?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/attendance?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/attendance');
-  redirect('/attendance?toast=Checked out');
+  redirect(`/attendance?date=${date}&toast=Checked out`);
 }

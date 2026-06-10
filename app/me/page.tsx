@@ -116,8 +116,16 @@ export default async function MePage({
             </div>
             <ul className="space-y-1.5 text-sm">
               {attendance.slice(0, 6).map((a) => (
-                <li key={a.id} className="flex items-center justify-between">
+                <li key={a.id} className="flex items-center justify-between gap-2">
                   <span className="tabular-nums text-muted-foreground">{a.date}</span>
+                  {a.workedMinutes != null && (
+                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                      {Math.floor(a.workedMinutes / 60)}h {String(a.workedMinutes % 60).padStart(2, '0')}m
+                      {(a.otMinutes ?? 0) > 0 && (
+                        <span className="text-amber-600 dark:text-amber-400"> +OT</span>
+                      )}
+                    </span>
+                  )}
                   <Pill status={a.status} map={ATT_STATUS} />
                 </li>
               ))}
