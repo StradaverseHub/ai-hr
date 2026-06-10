@@ -111,10 +111,14 @@ to these tables is traceable to the exact runs it affects.
   **max(floor, policy)** per type, and a policy below the minimum is recorded but
   never applied (clamped, flagged in the Leave-config UI). Enforced in
   `core/org.ts`; covered by integration tests.
-- **Model simplifications (deliberate):** entitlements are granted once at hire at the
-  0-year band; **service-band upgrades at the 2- and 5-year anniversaries and
-  calendar-year resets/carry-forward are not yet automated** (ledger supports both via
-  `accrual`/`adjustment` entries — future slice).
+- **Year boundaries (automated):** `openLeaveYear` (admin → Leave config) posts each
+  active employee's new-year entitlements at their **current** service band — the 2y/5y
+  band upgrades land there — resolved as max(floor, policy). Unused ANNUAL carries up
+  to the policy's `carryForwardMax` (default 0 = forfeit, per s.60E's take-within-the-
+  year expectation) via a negative adjustment; SICK/HOSPITALIZATION reset. Idempotent;
+  in-year hires are covered by their hire grant. Remaining simplification (deliberate):
+  an anniversary that falls mid-year upgrades the band at the **next** year-open, not
+  on the anniversary date itself.
 
 ---
 

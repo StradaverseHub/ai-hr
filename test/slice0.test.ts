@@ -24,7 +24,7 @@ import {
   terminateEmployment,
   transferEmployee,
 } from '../core/org';
-import { decideLeave, InsufficientLeaveBalanceError, requestLeave } from '../core/leave';
+import { decideLeave, InsufficientLeaveBalanceError, openLeaveYear, requestLeave } from '../core/leave';
 import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
 import {
   assignRole,
@@ -1093,5 +1093,80 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
     await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 3, validFrom: '2026-01-01' });
     const { employmentId } = await hire(a, b, 'Clamped', { annual: true });
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // EA floor 8 wins over 3
+  });
+});
+
+describe('Leave year boundary — openLeaveYear', () => {
+  it('grants at the CURRENT service band and forfeits unused annual by default', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    // Hired Jun 2023 → 2 completed years at 2026-01-01 → annual band steps 8 → 12.
+    const { employmentId } = await hireEmployee(a, {
+      person: { fullName: 'Bander', primaryEmail: 'bander@acme.test' },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2023-06-01',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(4.67); // 8 × 7/12 hire-year proration
+    const res = await openLeaveYear(a, { year: 2026 });
+    expect(res.granted).toBe(1);
+    expect(res.forfeits).toBe(1);
+    // Default carry 0 (s.60E): 4.67 forfeited; new grant 12 at the 2–5y band.
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(12);
+  });
+
+  it('carries unused annual up to the policy cap, on top of the new grant', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    await createLeavePolicy(a, {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 5,
+      validFrom: '2025-12-01',
+    });
+    const { employmentId } = await hireEmployee(a, {
+      person: { fullName: 'Carrie', primaryEmail: 'carrie@acme.test' },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2025-01-01',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // policy not yet active at hire
+    const res = await openLeaveYear(a, { year: 2026 });
+    expect(res.forfeits).toBe(1); // 8 unused → carry 5, forfeit 3
+    // carry 5 + new grant max(floor 8 @1y, policy 12) = 17.
+    expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(17);
+  });
+
+  it('is idempotent, and leaves in-year hires to their hire grant', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const vet = await hireEmployee(a, {
+      person: { fullName: 'Vetera', primaryEmail: 'vetera@acme.test' },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2025-03-01',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    const jan = await hireEmployee(a, {
+      person: { fullName: 'Janone', primaryEmail: 'janone@acme.test' },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    const first = await openLeaveYear(a, { year: 2026 });
+    expect(first.granted).toBe(1); // only the 2025 hire; the Jan-1 hire is in-year
+    const vetBalance = await ledgerBalance(vet.employmentId, b.annualLeaveTypeId);
+    const second = await openLeaveYear(a, { year: 2026 });
+    expect(second.granted).toBe(0);
+    expect(second.skipped).toBe(1);
+    expect(await ledgerBalance(vet.employmentId, b.annualLeaveTypeId)).toBe(vetBalance);
+    expect(await ledgerBalance(jan.employmentId, b.annualLeaveTypeId)).toBe(8); // untouched hire grant
   });
 });

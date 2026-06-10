@@ -29,6 +29,7 @@ import {
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
+import { openLeaveYear } from '@/core/leave';
 import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
@@ -186,12 +187,33 @@ export async function createLeavePolicyAction(formData: FormData) {
     await createLeavePolicy(s, {
       leaveTypeId: String(formData.get('leaveTypeId')),
       annualDays: Number(formData.get('annualDays')),
+      carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
     fail(LEAVE, e);
   }
   ok(LEAVE);
+}
+
+export async function openLeaveYearAction(formData: FormData) {
+  const s = await getSession();
+  const year = Number(formData.get('year'));
+  let res = { granted: 0, skipped: 0, forfeits: 0 };
+  try {
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) throw new Error('Invalid year');
+    res = await openLeaveYear(s, { year });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  revalidatePath(LEAVE);
+  redirect(
+    `${LEAVE}?toast=${encodeURIComponent(
+      `Leave year ${year}: ${res.granted} grant${res.granted === 1 ? '' : 's'} posted` +
+        (res.skipped ? `, ${res.skipped} already open` : '') +
+        (res.forfeits ? `, ${res.forfeits} forfeit${res.forfeits === 1 ? '' : 's'}` : ''),
+    )}`,
+  );
 }
 
 export async function assignRoleAction(formData: FormData) {

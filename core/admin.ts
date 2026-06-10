@@ -172,15 +172,23 @@ export async function createLeaveType(
 
 export async function createLeavePolicy(
   ctx: SessionContext,
-  p: { leaveTypeId: string; annualDays: number; method?: string; validFrom: string },
+  p: {
+    leaveTypeId: string;
+    annualDays: number;
+    /** Max unused ANNUAL days carried into the next leave year (default 0 = forfeit). */
+    carryForwardMax?: number;
+    method?: string;
+    validFrom: string;
+  },
 ) {
   return withTenant(ctx, async (tx) => {
+    const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     const [row] = await tx
       .insert(leavePolicy)
       .values({
         tenantId: ctx.tenantId,
         leaveTypeId: p.leaveTypeId,
-        accrual: { annualDays: p.annualDays, method: p.method || 'grant_on_hire_prorated' },
+        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated' },
         validFrom: p.validFrom,
         validTo: null,
       })
@@ -191,7 +199,7 @@ export async function createLeavePolicy(
       aggregateId: row.id,
       eventType: 'leave-policy.created',
       actor: actorOf(ctx),
-      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays },
+      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax },
     });
     return row;
   });
