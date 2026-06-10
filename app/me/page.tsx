@@ -10,8 +10,16 @@ import {
   myPayslips,
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
+import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { myCheckIn, myCheckOut, myRequestCorrection, myRequestLeave } from './actions';
+import {
+  myCheckIn,
+  myCheckOut,
+  myRequestCorrection,
+  myRequestLeave,
+  myRequestProfileChange,
+  myUpdateContact,
+} from './actions';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,6 +35,25 @@ const ATT_STATUS: Record<string, string> = {
   half_day: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   absent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
 };
+
+const PCB_LABEL: Record<number, string> = {
+  1: 'Single',
+  2: 'Married · spouse not working',
+  3: 'Married · spouse working',
+};
+const PROPOSED_LABEL: Record<string, string> = {
+  bankName: 'Bank name',
+  bankAccountNo: 'Account no.',
+  taxCategory: 'PCB category',
+  numChildren: 'Children',
+};
+const maskAcct = (no?: string | null) =>
+  no ? `•••• ${no.slice(-4)}` : '—';
+function summarizeProposed(p: unknown): string {
+  const o = (p ?? {}) as Record<string, unknown>;
+  const keys = Object.keys(o).filter((k) => k in PROPOSED_LABEL);
+  return keys.length ? keys.map((k) => PROPOSED_LABEL[k]).join(', ') : 'change';
+}
 
 function Pill({ status, map }: { status: string; map: Record<string, string> }) {
   return (
@@ -60,14 +87,17 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
-  const [balances, requests, leaveTypes, payslips, attendance, corrections] = await Promise.all([
-    leaveBalances(s, me.employmentId),
-    leaveRequestsFor(s, me.employmentId),
-    listLeaveTypes(s),
-    myPayslips(s, employments.map((e) => e.employmentId)),
-    myAttendance(s, me.employmentId, 14),
-    myAttendanceCorrections(s, me.employmentId),
-  ]);
+  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests] =
+    await Promise.all([
+      leaveBalances(s, me.employmentId),
+      leaveRequestsFor(s, me.employmentId),
+      listLeaveTypes(s),
+      myPayslips(s, employments.map((e) => e.employmentId)),
+      myAttendance(s, me.employmentId, 14),
+      myAttendanceCorrections(s, me.employmentId),
+      myProfile(s),
+      myProfileChangeRequests(s, me.employmentId),
+    ]);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
   const today = new Date().toISOString().slice(0, 10);
@@ -289,6 +319,119 @@ export default async function MePage({
           </ul>
         </Card>
       </div>
+
+      {/* My details — contact self-edit (direct) + pay-affecting changes (approval-gated, ADR-0012) */}
+      <Card className="p-5">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div>
+            <h2 className="text-sm font-semibold">My details</h2>
+            <p className="text-xs text-muted-foreground">Contact info updates immediately.</p>
+            <form action={myUpdateContact} className="mt-3 space-y-3">
+              <Field label="Phone">
+                <input name="phone" defaultValue={profile?.person?.phone ?? ''} className={inputCls} />
+              </Field>
+              <Field label="Address">
+                <input name="address" defaultValue={profile?.person?.address ?? ''} className={inputCls} />
+              </Field>
+              <Field label="Date of birth">
+                <input
+                  type="date"
+                  name="dateOfBirth"
+                  defaultValue={profile?.person?.dateOfBirth ?? ''}
+                  className={inputCls}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Emergency contact">
+                  <input
+                    name="emergencyContactName"
+                    defaultValue={profile?.person?.emergencyContactName ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Emergency phone">
+                  <input
+                    name="emergencyContactPhone"
+                    defaultValue={profile?.person?.emergencyContactPhone ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <Button type="submit" size="sm">
+                Save details
+              </Button>
+            </form>
+          </div>
+
+          <div className="lg:border-l lg:border-border lg:pl-6">
+            <h2 className="text-sm font-semibold">Bank &amp; tax</h2>
+            <p className="text-xs text-muted-foreground">
+              Changes need admin approval before they affect your pay.
+            </p>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Bank</dt>
+                <dd>{profile?.statutory?.bankName ?? '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Account</dt>
+                <dd className="tabular-nums">{maskAcct(profile?.statutory?.bankAccountNo)}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">PCB category</dt>
+                <dd>{PCB_LABEL[profile?.statutory?.taxCategory ?? 1]}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">Dependent children</dt>
+                <dd className="tabular-nums">{profile?.statutory?.numChildren ?? 0}</dd>
+              </div>
+            </dl>
+
+            <details className="mt-4 border-t border-border pt-3">
+              <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Request a change
+              </summary>
+              <form action={myRequestProfileChange} className="mt-3 space-y-2.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Bank name">
+                    <input name="bankName" placeholder="Maybank" className={inputCls} />
+                  </Field>
+                  <Field label="Account no.">
+                    <input name="bankAccountNo" placeholder="1234567890" className={inputCls} />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="PCB category">
+                    <select name="taxCategory" defaultValue="" className={inputCls}>
+                      <option value="">— no change —</option>
+                      <option value="1">1 · Single</option>
+                      <option value="2">2 · Married, spouse not working</option>
+                      <option value="3">3 · Married, spouse working</option>
+                    </select>
+                  </Field>
+                  <Field label="Dependent children">
+                    <input type="number" name="numChildren" min="0" placeholder="—" className={inputCls} />
+                  </Field>
+                </div>
+                <p className="text-xs text-muted-foreground">Leave a field blank to keep it unchanged.</p>
+                <Button type="submit" size="sm">
+                  Submit for approval
+                </Button>
+              </form>
+              {profileRequests.length > 0 && (
+                <ul className="mt-3 space-y-1.5 text-xs">
+                  {profileRequests.map((r) => (
+                    <li key={r.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate text-muted-foreground">{summarizeProposed(r.proposed)}</span>
+                      <Pill status={r.status} map={LEAVE_STATUS} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
+          </div>
+        </div>
+      </Card>
 
       {/* Payslips */}
       <Card className="overflow-hidden">

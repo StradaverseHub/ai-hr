@@ -47,6 +47,7 @@ import {
   decideAttendanceCorrection,
   requestAttendanceCorrection,
 } from '../core/attendance';
+import { decideProfileChange, requestProfileChange, updateOwnContact } from '../core/profile';
 import {
   batchDetail,
   BatchNotDraftError,
@@ -1325,5 +1326,109 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
     expect(rows.length).toBe(0); // no attendance row materialized — that is the proof reject is a no-op
     const evs = await eventTypesFor(base.tenantId, correctionId);
     expect(evs).toContain('attendance-correction.rejected');
+  });
+});
+
+describe('ESS — profile self-service (ADR-0012)', () => {
+  const empCtxFor = async (personId: string): Promise<SessionContext> => {
+    const uid = await createAppUser(base.tenantId, personId, 'employee');
+    return { tenantId: base.tenantId, userId: uid, personId, roles: ['employee'] };
+  };
+
+  it('an employee edits their own contact fields directly (RLS allows the self-write)', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Contacter');
+    const emp = await empCtxFor(E.personId);
+    await updateOwnContact(emp, {
+      phone: '0123456789',
+      address: '12 Jalan Test',
+      dateOfBirth: '1990-01-01',
+    });
+    const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
+    expect(p.phone).toBe('0123456789');
+    expect(p.address).toBe('12 Jalan Test');
+    expect(p.dateOfBirth).toBe('1990-01-01');
+  });
+
+  it('a bank change applies to the statutory profile only after approval', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Banker');
+    await setStatutoryProfileMY(a, {
+      personId: E.personId,
+      icNumber: '900101010001',
+      bankName: 'OldBank',
+      bankAccountNo: '111122223333',
+    });
+    const emp = await empCtxFor(E.personId);
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { bankName: 'Maybank', bankAccountNo: '5566778899' },
+    });
+    // Pending — nothing changes until an admin approves.
+    expect((await getStatutoryProfileMY(a, E.personId))?.bankAccountNo).toBe('111122223333');
+
+    await decideProfileChange(a, { requestId, decision: 'approved' });
+    const stat = await getStatutoryProfileMY(a, E.personId);
+    expect(stat?.bankName).toBe('Maybank');
+    expect(stat?.bankAccountNo).toBe('5566778899');
+  });
+
+  it('rejecting a change leaves the statutory profile untouched', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Keeper');
+    await setStatutoryProfileMY(a, {
+      personId: E.personId,
+      icNumber: '900101010002',
+      bankAccountNo: '111122223333',
+    });
+    const emp = await empCtxFor(E.personId);
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { bankAccountNo: '0000' },
+    });
+    await decideProfileChange(a, { requestId, decision: 'rejected' });
+    expect((await getStatutoryProfileMY(a, E.personId))?.bankAccountNo).toBe('111122223333');
+  });
+
+  it('a manager may NOT approve a profile change — bank/tax is admin-only', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Subord');
+    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010003' });
+    const M = await hire(a, base, 'Boss');
+    const uM = await createAppUser(base.tenantId, M.personId, 'manager');
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-01',
+    });
+    const emp = await empCtxFor(E.personId);
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { numChildren: 2 },
+    });
+    const mgrCtx: SessionContext = {
+      tenantId: base.tenantId,
+      userId: uM,
+      personId: M.personId,
+      roles: ['manager'],
+    };
+    await expect(
+      decideProfileChange(mgrCtx, { requestId, decision: 'approved' }),
+    ).rejects.toThrow(/only an admin/i);
+  });
+
+  it('the requesting employee cannot approve their own change', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Selfprofile');
+    await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010004' });
+    const emp = await empCtxFor(E.personId);
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { bankAccountNo: '1234' },
+    });
+    await expect(
+      decideProfileChange(emp, { requestId, decision: 'approved' }),
+    ).rejects.toThrow(/cannot decide your own/i);
   });
 });

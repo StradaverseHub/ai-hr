@@ -1,8 +1,25 @@
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployees } from '@/core/read';
+import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
-import { hireAction } from './actions';
+import { decideProfileChangeAction, hireAction } from './actions';
+
+const PCB_LABEL: Record<number, string> = {
+  1: 'Single',
+  2: 'Married · spouse not working',
+  3: 'Married · spouse working',
+};
+/** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
+function describeProposed(p: unknown): string {
+  const o = (p ?? {}) as Record<string, unknown>;
+  const parts: string[] = [];
+  if (o.bankName != null) parts.push(`Bank → ${o.bankName}`);
+  if (o.bankAccountNo != null) parts.push(`Account → ${o.bankAccountNo}`);
+  if (o.taxCategory != null) parts.push(`PCB → ${PCB_LABEL[Number(o.taxCategory)] ?? o.taxCategory}`);
+  if (o.numChildren != null) parts.push(`Children → ${o.numChildren}`);
+  return parts.length ? parts.join(' · ') : 'No changes';
+}
 
 export default async function PeoplePage({
   searchParams,
@@ -10,11 +27,15 @@ export default async function PeoplePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
+  const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const { error } = await searchParams;
-  const [employees, companies, departments] = await Promise.all([
+  const [employees, companies, departments, profileChanges] = await Promise.all([
     listEmployees(session, scopeIds),
     listCompanies(session),
     listDepartments(session),
+    isAdmin
+      ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
+      : Promise.resolve([]),
   ]);
 
   return (
@@ -28,6 +49,47 @@ export default async function PeoplePage({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {error}
         </div>
+      )}
+
+      {isAdmin && profileChanges.length > 0 && (
+        <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
+          <div className="flex items-center gap-2 border-b border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-500/10">
+            <h2 className="text-sm font-semibold">Profile change requests</h2>
+            <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+              {profileChanges.length} pending
+            </span>
+          </div>
+          <ul className="divide-y divide-border">
+            {profileChanges.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{r.employee}</div>
+                  <div className="text-xs text-muted-foreground">{describeProposed(r.proposed)}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <form action={decideProfileChangeAction}>
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <input type="hidden" name="decision" value="approved" />
+                    <Button type="submit" size="sm">
+                      Approve
+                    </Button>
+                  </form>
+                  <form action={decideProfileChangeAction}>
+                    <input type="hidden" name="requestId" value={r.id} />
+                    <input type="hidden" name="decision" value="rejected" />
+                    <Button type="submit" size="sm" variant="outline">
+                      Reject
+                    </Button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+            Approving applies the change to the employee&rsquo;s statutory profile (bank / PCB). You
+            cannot approve your own request.
+          </p>
+        </Card>
       )}
 
       <Card className="overflow-hidden">

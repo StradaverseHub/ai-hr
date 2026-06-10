@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
 import { requestLeave } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
+import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {
@@ -53,6 +54,44 @@ export async function myRequestCorrection(formData: FormData) {
   }
   revalidatePath('/me');
   redirect('/me?toast=Correction+requested');
+}
+
+export async function myUpdateContact(formData: FormData) {
+  const { s } = await resolveMe();
+  try {
+    await updateOwnContact(s, {
+      phone: String(formData.get('phone') ?? ''),
+      address: String(formData.get('address') ?? ''),
+      dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
+      emergencyContactName: String(formData.get('emergencyContactName') ?? ''),
+      emergencyContactPhone: String(formData.get('emergencyContactPhone') ?? ''),
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Profile+updated');
+}
+
+export async function myRequestProfileChange(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  // Only carry the fields the employee actually filled — the rest are left unchanged.
+  const proposed: ProfileChangeProposed = {};
+  const bankName = String(formData.get('bankName') ?? '').trim();
+  const bankAccountNo = String(formData.get('bankAccountNo') ?? '').trim();
+  const taxCategory = String(formData.get('taxCategory') ?? '').trim();
+  const numChildren = String(formData.get('numChildren') ?? '').trim();
+  if (bankName) proposed.bankName = bankName;
+  if (bankAccountNo) proposed.bankAccountNo = bankAccountNo;
+  if (taxCategory) proposed.taxCategory = Number(taxCategory);
+  if (numChildren) proposed.numChildren = Number(numChildren);
+  try {
+    await requestProfileChange(s, { employmentId, proposed });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Change+requested+for+approval');
 }
 
 export async function myCheckIn() {
