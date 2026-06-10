@@ -3,10 +3,10 @@
  * (accrual +, debit −, adjustment ±). Approval checks projected balance and writes
  * the debit + status flip + event atomically in one transaction.
  */
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { holiday, leaveLedger, leaveRequest, leaveType } from '../db/schema';
+import { employment, holiday, leaveLedger, leaveRequest, leaveType, reportingLine } from '../db/schema';
 
 export class InsufficientLeaveBalanceError extends Error {
   constructor() {
@@ -108,6 +108,42 @@ export async function decideLeave(
       .limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
+
+    // Authorization beyond RLS visibility (RLS makes self rows writable, so the service
+    // must gate): no self-approval, and only an admin or the requester's administrative
+    // manager may decide. super_admin keeps a sole-admin escape hatch for their own
+    // requests (small-firm reality); every decision is evented with the real actor.
+    const [emp] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, req.employmentId))
+      .limit(1);
+    const roles = ctx.roles ?? [];
+    const isSuperAdmin = roles.includes('super_admin');
+    const isAdminRole = isSuperAdmin || roles.includes('hr_admin');
+    const isSelf = ctx.personId != null && emp?.personId === ctx.personId;
+    if (isSelf && !isSuperAdmin) throw new Error('You cannot decide your own leave request');
+    if (!isAdminRole) {
+      const mgr = ctx.personId
+        ? await tx
+            .select({ id: reportingLine.id })
+            .from(reportingLine)
+            .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+            .where(
+              and(
+                eq(reportingLine.subordinateEmploymentId, req.employmentId),
+                eq(reportingLine.lineType, 'administrative'),
+                isNull(reportingLine.validTo),
+                isNull(reportingLine.supersededAt),
+                eq(employment.personId, ctx.personId),
+              ),
+            )
+            .limit(1)
+        : [];
+      if (mgr.length === 0) {
+        throw new Error('Only an admin or the administrative manager can decide leave');
+      }
+    }
 
     if (p.decision === 'approved') {
       const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
