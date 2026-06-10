@@ -1,25 +1,46 @@
 import { scopedSession } from '@/lib/scope';
-import { listEmployees, listLeaveTypes, listPendingLeave } from '@/core/read';
+import { listEmployees, listLeaveTypes, listPendingLeave, plannedAbsences } from '@/core/read';
 import { Avatar, Card, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { PlannedAbsences } from '@/components/planned-absences';
+import { TimelineNav } from '@/components/timeline-nav';
 import { decideLeaveAction, requestLeaveAction } from './actions';
 
 export default async function LeavePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; abs?: string }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
-  const { error } = await searchParams;
-  const [employees, leaveTypes, pending] = await Promise.all([
+  const { error, abs } = await searchParams;
+  // Same 14-day window semantics as the dashboard: default starts 2 days before today,
+  // ?abs=YYYY-MM-DD (timeline nav) overrides the window start.
+  const now = new Date();
+  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const todayIso = new Date(todayMs).toISOString().slice(0, 10);
+  const ABS_DAYS = 14;
+  const absParam = abs && /^\d{4}-\d{2}-\d{2}$/.test(abs) ? abs : null;
+  const startMs = absParam ? Date.parse(`${absParam}T00:00:00Z`) : todayMs - 2 * 86_400_000;
+  const absFrom = new Date(startMs).toISOString().slice(0, 10);
+  const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
+  const [employees, leaveTypes, pending, absences] = await Promise.all([
     listEmployees(session, scopeIds),
     listLeaveTypes(session),
     listPendingLeave(session, scopeIds),
+    plannedAbsences(session, scopeIds, { from: absFrom, to: absTo }),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title="Leave" description="Request leave and approve pending requests" />
+
+      <PlannedAbsences
+        rows={absences}
+        from={absFrom}
+        days={ABS_DAYS}
+        todayIso={todayIso}
+        controls={<TimelineNav from={absFrom} isDefault={!absParam} basePath="/leave" />}
+      />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">

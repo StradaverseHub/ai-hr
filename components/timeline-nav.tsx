@@ -10,14 +10,34 @@ const shiftIso = (iso: string, days: number) =>
 const iconBtn =
   'grid size-7 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition duration-150 ease-snappy hover:bg-accent hover:text-foreground active:scale-95';
 
-/** Date-window navigation for the Planned Absences timeline — drives the `abs` search param. */
-export function TimelineNav({ from, isDefault }: { from: string; isDefault: boolean }) {
+/** Date navigation that drives a search param — weekly for the absences timeline
+ *  (param `abs`, step 7) or daily for the attendance day view (param `date`, step 1). */
+export function TimelineNav({
+  from,
+  isDefault,
+  basePath = '/',
+  param = 'abs',
+  stepDays = 7,
+}: {
+  from: string;
+  isDefault: boolean;
+  basePath?: string;
+  param?: string;
+  stepDays?: number;
+}) {
   const router = useRouter();
-  const go = (iso: string | null) => router.push(iso ? `/?abs=${iso}` : '/', { scroll: false });
+  const go = (iso: string | null) =>
+    router.push(iso ? `${basePath}?${param}=${iso}` : basePath, { scroll: false });
+  const unit = stepDays === 1 ? 'day' : 'week';
 
   return (
     <div className="flex items-center gap-1.5">
-      <button type="button" onClick={() => go(shiftIso(from, -7))} aria-label="Previous week" className={iconBtn}>
+      <button
+        type="button"
+        onClick={() => go(shiftIso(from, -stepDays))}
+        aria-label={`Previous ${unit}`}
+        className={iconBtn}
+      >
         <ChevronLeft className="size-4" />
       </button>
       <input
@@ -27,10 +47,15 @@ export function TimelineNav({ from, isDefault }: { from: string; isDefault: bool
           const v = e.target.value;
           if (v && v !== from) go(v);
         }}
-        aria-label="Window start date"
+        aria-label={stepDays === 1 ? 'Date' : 'Window start date'}
         className="h-7 rounded-lg border border-border bg-card px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-ring"
       />
-      <button type="button" onClick={() => go(shiftIso(from, 7))} aria-label="Next week" className={iconBtn}>
+      <button
+        type="button"
+        onClick={() => go(shiftIso(from, stepDays))}
+        aria-label={`Next ${unit}`}
+        className={iconBtn}
+      >
         <ChevronRight className="size-4" />
       </button>
       {!isDefault && (
