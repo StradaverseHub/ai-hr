@@ -20,14 +20,23 @@ export async function getSession(): Promise<SessionContext> {
     throw new Error('Dev session is not allowed in production — wire WorkOS auth first.');
   }
   const cookieStore = await cookies();
-  const userId = cookieStore.get(DEV_COOKIE)?.value || process.env.DEV_USER_ID;
+  const cookieUser = cookieStore.get(DEV_COOKIE)?.value;
+  const fallback = process.env.DEV_USER_ID;
+  let userId = cookieUser || fallback;
   if (!userId) {
     throw new Error('No dev principal. Run `pnpm db:seed`, then pick an identity.');
   }
-  const rows = await client<{ tenant_id: string; person_id: string | null; grants: Grant[] }[]>`
-    select tenant_id, person_id, grants from app.principal(${userId}::uuid)
-  `;
-  const principal = rows[0];
+  const lookup = (id: string) =>
+    client<{ tenant_id: string; person_id: string | null; grants: Grant[] }[]>`
+      select tenant_id, person_id, grants from app.principal(${id}::uuid)
+    `;
+  let [principal] = await lookup(userId);
+  if (!principal && cookieUser && fallback && cookieUser !== fallback) {
+    // Stale dev cookie from a previous seed — self-heal to the default identity
+    // instead of crashing every page (the switcher overwrites the cookie on next use).
+    [principal] = await lookup(fallback);
+    userId = fallback;
+  }
   if (!principal) {
     throw new Error(`Unknown principal ${userId} — re-seed or switch identity.`);
   }

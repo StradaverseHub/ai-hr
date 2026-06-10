@@ -473,6 +473,8 @@ export const holiday = pgTable(
 
 // ──────────────────────── Attendance (generic) ────────────────────────
 export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'late', 'half_day']);
+// Day classification drives the OT class (EA 1955: workday 1.5x, rest day 2x, holiday 3x — ADR-0011).
+export const attendanceDayTypeEnum = pgEnum('attendance_day_type', ['workday', 'rest_day', 'holiday']);
 
 // One row per employee per day. Absence is derived (no row); we store present/late/half_day.
 export const attendance = pgTable(
@@ -487,13 +489,18 @@ export const attendance = pgTable(
     checkInAt: time('check_in_at'),
     checkOutAt: time('check_out_at'),
     status: attendanceStatusEnum('status').notNull().default('present'),
+    // Set at check-in (frozen against later policy/calendar edits); minutes derived at check-out (ADR-0011).
+    dayType: attendanceDayTypeEnum('day_type'),
+    workedMinutes: integer('worked_minutes'),
+    otMinutes: integer('ot_minutes'),
     remarks: text('remarks'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_employment_date_uq').on(t.employmentId, t.attendanceDate)],
 );
 
-// Per-company attendance thresholds.
+// Per-company attendance thresholds + work schedule (ADR-0011). One pattern per company;
+// per-employee shift/roster overrides are a deliberate later phase.
 export const attendancePolicy = pgTable(
   'attendance_policy',
   {
@@ -504,6 +511,14 @@ export const attendancePolicy = pgTable(
       .references(() => company.id),
     lateAfter: time('late_after').notNull().default('09:15:00'),
     halfDayBefore: time('half_day_before').notNull().default('13:00:00'),
+    workStart: time('work_start').notNull().default('09:00:00'),
+    workEnd: time('work_end').notNull().default('18:00:00'),
+    breakMinutes: integer('break_minutes').notNull().default(60),
+    // ISO weekday numbers (1=Mon … 7=Sun); default Mon–Fri.
+    workingDays: integer('working_days')
+      .array()
+      .notNull()
+      .default(sql`'{1,2,3,4,5}'::integer[]`),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
