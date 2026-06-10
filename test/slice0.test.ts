@@ -31,8 +31,10 @@ import {
   createCompany,
   createDepartment,
   createLeavePolicy,
+  deleteLeavePolicy,
   revokeRole,
   setCompanyParent,
+  updateLeavePolicy,
 } from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
@@ -1099,6 +1101,29 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
     await createLeavePolicy(a, { leaveTypeId: b.annualLeaveTypeId, annualDays: 3, validFrom: '2026-01-01' });
     const { employmentId } = await hire(a, b, 'Clamped', { annual: true });
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // EA floor 8 wins over 3
+  });
+
+  it('editing a policy changes later grants; removing it falls back to the floor', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const { id: policyId } = await createLeavePolicy(a, {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 20,
+      validFrom: '2026-01-01',
+    });
+    const pre = await hire(a, b, 'PreEdit', { annual: true });
+    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20);
+
+    // Correct in place → a *later* hire grants on the new value (the earlier grant is history).
+    await updateLeavePolicy(a, { id: policyId, annualDays: 10, validFrom: '2026-01-01' });
+    const mid = await hire(a, b, 'PostEdit', { annual: true });
+    expect(await ledgerBalance(mid.employmentId, b.annualLeaveTypeId)).toBe(10); // max(floor 8, policy 10)
+    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20); // untouched
+
+    // Remove → the floor applies again.
+    await deleteLeavePolicy(a, { id: policyId });
+    const post = await hire(a, b, 'PostDelete', { annual: true });
+    expect(await ledgerBalance(post.employmentId, b.annualLeaveTypeId)).toBe(8); // floor only
   });
 });
 

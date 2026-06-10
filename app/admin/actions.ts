@@ -16,6 +16,7 @@ import {
   createLeavePolicy,
   createLeaveType,
   createPosition,
+  deleteLeavePolicy,
   deleteCompany,
   deleteCostCenter,
   deleteDepartment,
@@ -26,6 +27,7 @@ import {
   updateCompany,
   updateCostCenter,
   updateDepartment,
+  updateLeavePolicy,
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
@@ -190,6 +192,31 @@ export async function createLeavePolicyAction(formData: FormData) {
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       validFrom: String(formData.get('validFrom')),
     });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+export async function updateLeavePolicyAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await updateLeavePolicy(s, {
+      id: String(formData.get('id')),
+      annualDays: Number(formData.get('annualDays')),
+      carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+      validFrom: String(formData.get('validFrom')),
+    });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+export async function deleteLeavePolicyAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deleteLeavePolicy(s, { id: String(formData.get('id')) });
   } catch (e) {
     fail(LEAVE, e);
   }

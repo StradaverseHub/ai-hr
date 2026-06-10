@@ -205,6 +205,48 @@ export async function createLeavePolicy(
   });
 }
 
+/** Correct an existing entitlement in place (same effective date) — for fixing a mis-typed
+ *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this. */
+export async function updateLeavePolicy(
+  ctx: SessionContext,
+  p: { id: string; annualDays: number; carryForwardMax?: number; validFrom: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
+    await tx
+      .update(leavePolicy)
+      .set({
+        accrual: { annualDays: p.annualDays, carryForwardMax, method: 'grant_on_hire_prorated' },
+        validFrom: p.validFrom,
+      })
+      .where(eq(leavePolicy.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-policy',
+      aggregateId: p.id,
+      eventType: 'leave-policy.updated',
+      actor: actorOf(ctx),
+      payload: { annualDays: p.annualDays, carryForwardMax, validFrom: p.validFrom },
+    });
+  });
+}
+
+/** Remove an entitlement policy. Safe: the ledger references the leave *type*, not the policy,
+ *  so past grants are untouched — this only stops the row from driving future grants. */
+export async function deleteLeavePolicy(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.delete(leavePolicy).where(eq(leavePolicy.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-policy',
+      aggregateId: p.id,
+      eventType: 'leave-policy.deleted',
+      actor: actorOf(ctx),
+      payload: {},
+    });
+  });
+}
+
 export async function assignRole(
   ctx: SessionContext,
   p: { appUserId: string; role: Role; companyId?: string },
