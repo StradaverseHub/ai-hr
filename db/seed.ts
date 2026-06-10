@@ -244,6 +244,18 @@ async function main() {
   await seedLeave(hired[3].employmentId, annual.id, '2026-06-16', '2026-06-18', true); // Arjun · annual · approved
   await seedLeave(hired[2].employmentId, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false); // Mei Ling · sick · pending
   await seedLeave(hired[1].employmentId, annual.id, '2026-06-11', '2026-06-11', false); // Daniel · annual · pending
+  // One rejected request so the Leave page's status chips have every state.
+  const rejected = await requestLeave(admin, {
+    employmentId: hired[3].employmentId,
+    leaveTypeId: leaveTypeIds.SICK,
+    startDate: '2026-06-19',
+    endDate: '2026-06-19',
+  });
+  await decideLeave(admin, {
+    leaveRequestId: rejected.leaveRequestId,
+    decision: 'rejected',
+    deciderEmploymentId: hired[1].employmentId,
+  });
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
   console.log(`  DEV_TENANT_ID=${DEV_TENANT_ID}`);

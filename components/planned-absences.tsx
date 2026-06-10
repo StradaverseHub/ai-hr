@@ -38,7 +38,8 @@ const initials = (name: string) =>
     .join('');
 
 // Solid, semantic chips (no glass), one per leave type, each with an icon.
-const LEAVE: Record<string, { chip: string; Icon: LucideIcon }> = {
+// Exported so the Leave page's requests table speaks the same color language.
+export const LEAVE: Record<string, { chip: string; Icon: LucideIcon }> = {
   ANNUAL: { chip: 'bg-violet-100 text-violet-800 dark:bg-violet-500/30 dark:text-violet-50', Icon: Palmtree },
   SICK: { chip: 'bg-sky-100 text-sky-800 dark:bg-sky-500/30 dark:text-sky-50', Icon: Thermometer },
   HOSPITALIZATION: { chip: 'bg-rose-100 text-rose-800 dark:bg-rose-500/30 dark:text-rose-50', Icon: Stethoscope },
@@ -47,7 +48,7 @@ const LEAVE: Record<string, { chip: string; Icon: LucideIcon }> = {
   UNPAID: { chip: 'bg-amber-100 text-amber-800 dark:bg-amber-500/30 dark:text-amber-50', Icon: CircleSlash },
   _default: { chip: 'bg-slate-100 text-slate-800 dark:bg-slate-500/30 dark:text-slate-50', Icon: CalendarDays },
 };
-const styleFor = (code: string) => LEAVE[code] ?? LEAVE._default;
+export const styleFor = (code: string) => LEAVE[code] ?? LEAVE._default;
 
 // Faint diagonal hatch for empty cells (currentColor = the cell's faint text color).
 const HATCH = {

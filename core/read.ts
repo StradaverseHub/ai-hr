@@ -109,27 +109,33 @@ export function listLeaveTypes(ctx: SessionContext, opts: { includeArchived?: bo
   );
 }
 
-export function listPendingLeave(ctx: SessionContext, companyIds?: string[]) {
+/** Every leave request in scope (RLS additionally trims to what the viewer may see:
+ *  admins everything, managers their reports, employees themselves). Recent first. */
+export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], limit = 200) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
         id: leaveRequest.id,
         employmentId: leaveRequest.employmentId,
+        personId: employment.personId,
         employee: person.fullName,
+        leaveType: leaveType.name,
+        typeCode: leaveType.code,
+        appliedOn: leaveRequest.createdAt,
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
         days: leaveRequest.days,
+        status: leaveRequest.status,
       })
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(
-        and(
-          eq(leaveRequest.status, 'pending'),
-          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
-        ),
+        companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
       )
-      .orderBy(leaveRequest.startDate),
+      .orderBy(desc(leaveRequest.createdAt))
+      .limit(limit),
   );
 }
 
@@ -385,6 +391,7 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
       tx
         .select({
           employmentId: employment.id,
+          personId: employment.personId,
           name: person.fullName,
           leaveTypeId: leaveType.id,
           leaveType: leaveType.name,
@@ -397,11 +404,12 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
         .innerJoin(person, eq(person.id, employment.personId))
         .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
         .where(scope)
-        .groupBy(employment.id, person.fullName, leaveType.id, leaveType.name)
+        .groupBy(employment.id, employment.personId, person.fullName, leaveType.id, leaveType.name)
         .orderBy(person.fullName, leaveType.name),
       tx
         .select({
           employmentId: leaveRequest.employmentId,
+          personId: employment.personId,
           name: person.fullName,
           leaveTypeId: leaveRequest.leaveTypeId,
           leaveType: leaveType.name,
@@ -412,7 +420,13 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
         .innerJoin(person, eq(person.id, employment.personId))
         .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
         .where(and(eq(leaveRequest.status, 'pending'), scope))
-        .groupBy(leaveRequest.employmentId, person.fullName, leaveRequest.leaveTypeId, leaveType.name),
+        .groupBy(
+          leaveRequest.employmentId,
+          employment.personId,
+          person.fullName,
+          leaveRequest.leaveTypeId,
+          leaveType.name,
+        ),
     ]);
     const pendingBy = new Map(pend.map((p) => [`${p.employmentId}|${p.leaveTypeId}`, Number(p.pending)]));
     const out = rows.map((r) => {
@@ -420,6 +434,7 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
       const balance = Number(r.balance);
       return {
         employmentId: r.employmentId,
+        personId: r.personId,
         name: r.name,
         leaveTypeId: r.leaveTypeId,
         leaveType: r.leaveType,
@@ -437,6 +452,7 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
       const pending = Number(p.pending);
       out.push({
         employmentId: p.employmentId,
+        personId: p.personId,
         name: p.name,
         leaveTypeId: p.leaveTypeId,
         leaveType: p.leaveType,
