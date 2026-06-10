@@ -137,13 +137,40 @@ export default async function MePage({
         {/* Leave */}
         <Card className="p-5">
           <h2 className="text-sm font-semibold">Leave</h2>
-          <div className="mt-3 space-y-1.5">
-            {balances.map((b) => (
-              <div key={b.leaveTypeId} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{b.leaveType}</span>
-                <span className="font-medium tabular-nums">{b.balance} days</span>
-              </div>
-            ))}
+          <div className="mt-3 space-y-3">
+            {balances.map((b) => {
+              const pctUsed = b.accrued > 0 ? Math.min(100, (b.taken / b.accrued) * 100) : 0;
+              const pctPending = b.accrued > 0 ? Math.min(100 - pctUsed, (b.pending / b.accrued) * 100) : 0;
+              const tracked = b.accrued > 0 || b.balance > 0;
+              return (
+                <div key={b.leaveTypeId}>
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="text-muted-foreground">{b.leaveType}</span>
+                    <span className="font-semibold tabular-nums">
+                      {tracked ? (
+                        <>
+                          {b.available}
+                          <span className="font-normal text-muted-foreground"> / {b.accrued}</span>
+                        </>
+                      ) : (
+                        <span className="font-normal text-muted-foreground">—</span>
+                      )}
+                    </span>
+                  </div>
+                  {tracked && (
+                    /* Usage bar: solid = used, translucent = pending approval. */
+                    <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-l-full bg-primary" style={{ width: `${pctUsed}%` }} />
+                      <div className="h-full bg-primary/40" style={{ width: `${pctPending}%` }} />
+                    </div>
+                  )}
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {b.taken} used{b.pending > 0 ? ` · ${b.pending} pending` : ''}
+                    {tracked ? ` · ${b.available} available` : ''}
+                  </div>
+                </div>
+              );
+            })}
             {balances.length === 0 && <p className="text-sm text-muted-foreground">No balances yet.</p>}
           </div>
 
