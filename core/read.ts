@@ -315,25 +315,139 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
 
 export function leaveBalances(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        leaveTypeId: leaveType.id,
-        leaveType: leaveType.name,
-        accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'accrual'), 0)`,
-        taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
-        balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
-      })
-      .from(leaveLedger)
-      .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
-      .where(eq(leaveLedger.employmentId, employmentId))
-      .groupBy(leaveType.id, leaveType.name);
-    return rows.map((r) => ({
-      leaveTypeId: r.leaveTypeId,
-      leaveType: r.leaveType,
-      accrued: Number(r.accrued),
-      taken: Number(r.taken),
-      balance: Number(r.balance),
-    }));
+    const [rows, pend] = await Promise.all([
+      tx
+        .select({
+          leaveTypeId: leaveType.id,
+          leaveType: leaveType.name,
+          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'accrual'), 0)`,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+          balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+        })
+        .from(leaveLedger)
+        .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
+        .where(eq(leaveLedger.employmentId, employmentId))
+        .groupBy(leaveType.id, leaveType.name),
+      tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          leaveType: leaveType.name,
+          pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+        })
+        .from(leaveRequest)
+        .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+        .where(and(eq(leaveRequest.employmentId, employmentId), eq(leaveRequest.status, 'pending')))
+        .groupBy(leaveRequest.leaveTypeId, leaveType.name),
+    ]);
+    const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
+    const out = rows.map((r) => {
+      const pending = pendingBy.get(r.leaveTypeId) ?? 0;
+      const balance = Number(r.balance);
+      return {
+        leaveTypeId: r.leaveTypeId,
+        leaveType: r.leaveType,
+        accrued: Number(r.accrued),
+        taken: Number(r.taken),
+        pending,
+        balance,
+        // What the employee can still book: ledger balance minus not-yet-decided requests.
+        available: balance - pending,
+      };
+    });
+    // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
+    // must still surface, or the pending request is invisible.
+    const seen = new Set(out.map((r) => r.leaveTypeId));
+    for (const p of pend) {
+      if (seen.has(p.leaveTypeId)) continue;
+      const pending = Number(p.pending);
+      out.push({
+        leaveTypeId: p.leaveTypeId,
+        leaveType: p.leaveType,
+        accrued: 0,
+        taken: 0,
+        pending,
+        balance: 0,
+        available: -pending,
+      });
+    }
+    return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+  });
+}
+
+/** Per-employee × leave-type balances for everyone in scope (the Leave page matrix). */
+export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const scope = and(
+      isNull(employment.terminatedOn),
+      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+    );
+    const [rows, pend] = await Promise.all([
+      tx
+        .select({
+          employmentId: employment.id,
+          name: person.fullName,
+          leaveTypeId: leaveType.id,
+          leaveType: leaveType.name,
+          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'accrual'), 0)`,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+          balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+        })
+        .from(leaveLedger)
+        .innerJoin(employment, eq(employment.id, leaveLedger.employmentId))
+        .innerJoin(person, eq(person.id, employment.personId))
+        .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
+        .where(scope)
+        .groupBy(employment.id, person.fullName, leaveType.id, leaveType.name)
+        .orderBy(person.fullName, leaveType.name),
+      tx
+        .select({
+          employmentId: leaveRequest.employmentId,
+          name: person.fullName,
+          leaveTypeId: leaveRequest.leaveTypeId,
+          leaveType: leaveType.name,
+          pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+        })
+        .from(leaveRequest)
+        .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+        .innerJoin(person, eq(person.id, employment.personId))
+        .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+        .where(and(eq(leaveRequest.status, 'pending'), scope))
+        .groupBy(leaveRequest.employmentId, person.fullName, leaveRequest.leaveTypeId, leaveType.name),
+    ]);
+    const pendingBy = new Map(pend.map((p) => [`${p.employmentId}|${p.leaveTypeId}`, Number(p.pending)]));
+    const out = rows.map((r) => {
+      const pending = pendingBy.get(`${r.employmentId}|${r.leaveTypeId}`) ?? 0;
+      const balance = Number(r.balance);
+      return {
+        employmentId: r.employmentId,
+        name: r.name,
+        leaveTypeId: r.leaveTypeId,
+        leaveType: r.leaveType,
+        accrued: Number(r.accrued),
+        taken: Number(r.taken),
+        pending,
+        balance,
+        available: balance - pending,
+      };
+    });
+    // Pending-only (employment, type) combos — e.g. non-accrued sick leave — must surface too.
+    const seen = new Set(out.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+    for (const p of pend) {
+      if (seen.has(`${p.employmentId}|${p.leaveTypeId}`)) continue;
+      const pending = Number(p.pending);
+      out.push({
+        employmentId: p.employmentId,
+        name: p.name,
+        leaveTypeId: p.leaveTypeId,
+        leaveType: p.leaveType,
+        accrued: 0,
+        taken: 0,
+        pending,
+        balance: 0,
+        available: -pending,
+      });
+    }
+    return out;
   });
 }
 

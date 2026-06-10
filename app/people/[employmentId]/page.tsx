@@ -119,9 +119,18 @@ export default async function EmployeePage({
           {balances.map((b) => (
             <div key={b.leaveTypeId} className="p-4">
               <div className="text-xs text-muted-foreground">{b.leaveType}</div>
-              <div className="text-2xl font-semibold tabular-nums">{b.balance}</div>
+              <div className="text-2xl font-semibold tabular-nums">
+                {b.accrued > 0 || b.balance > 0 ? (
+                  <>
+                    {b.available}
+                    <span className="text-sm font-normal text-muted-foreground"> / {b.accrued} available</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </div>
               <div className="text-xs text-muted-foreground">
-                {b.accrued} accrued · {b.taken} taken
+                {b.taken} used{b.pending > 0 ? ` · ${b.pending} pending` : ''}
               </div>
             </div>
           ))}

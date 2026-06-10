@@ -1,5 +1,11 @@
 import { scopedSession } from '@/lib/scope';
-import { listEmployees, listLeaveTypes, listPendingLeave, plannedAbsences } from '@/core/read';
+import {
+  leaveBalancesAll,
+  listEmployees,
+  listLeaveTypes,
+  listPendingLeave,
+  plannedAbsences,
+} from '@/core/read';
 import { Avatar, Card, Field, PageHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { TimelineNav } from '@/components/timeline-nav';
@@ -22,13 +28,24 @@ export default async function LeavePage({
   const startMs = absParam ? Date.parse(`${absParam}T00:00:00Z`) : todayMs - 2 * 86_400_000;
   const absFrom = new Date(startMs).toISOString().slice(0, 10);
   const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
-  const [employees, leaveTypes, pending, absences] = await Promise.all([
+  const [employees, leaveTypes, pending, absences, balances] = await Promise.all([
     listEmployees(session, scopeIds),
     listLeaveTypes(session),
     listPendingLeave(session, scopeIds),
     plannedAbsences(session, scopeIds, { from: absFrom, to: absTo }),
+    leaveBalancesAll(session, scopeIds),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
+  // Pivot balances: one row per employee, one column per leave type seen in scope.
+  const balTypes = [...new Map(balances.map((b) => [b.leaveTypeId, b.leaveType])).entries()].sort(
+    (a, b) => a[1].localeCompare(b[1]),
+  );
+  const balByEmp = new Map<string, { name: string; cells: Map<string, (typeof balances)[number]> }>();
+  for (const b of balances) {
+    const e = balByEmp.get(b.employmentId) ?? { name: b.name, cells: new Map() };
+    e.cells.set(b.leaveTypeId, b);
+    balByEmp.set(b.employmentId, e);
+  }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -47,6 +64,79 @@ export default async function LeavePage({
           {error}
         </div>
       )}
+
+      <Card className="overflow-hidden">
+        <div className="border-b border-border px-4 py-3 text-sm font-medium">
+          Balances
+          <span className="ml-2 font-normal text-muted-foreground">available / entitled</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Employee</th>
+                {balTypes.map(([id, name]) => (
+                  <th key={id} className="px-4 py-2 text-right font-medium">
+                    {name.replace(/\s*leave$/i, '')}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {[...balByEmp.entries()].map(([empId, e]) => (
+                <tr key={empId}>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <Avatar name={e.name} className="size-7 text-[10px]" />
+                      <span className="font-medium">{e.name}</span>
+                    </div>
+                  </td>
+                  {balTypes.map(([typeId]) => {
+                    const b = e.cells.get(typeId);
+                    return (
+                      <td
+                        key={typeId}
+                        className="px-4 py-2.5 text-right tabular-nums"
+                        title={b ? `${b.taken} used · ${b.pending} pending approval` : undefined}
+                      >
+                        {b ? (
+                          <>
+                            {b.accrued > 0 || b.balance > 0 ? (
+                              <>
+                                <span className={b.available <= 0 ? 'font-semibold text-rose-600 dark:text-rose-400' : 'font-semibold'}>
+                                  {b.available}
+                                </span>
+                                <span className="text-muted-foreground"> / {b.accrued}</span>
+                              </>
+                            ) : (
+                              // Non-accrued type (e.g. per-occurrence sick leave): no balance to show.
+                              <span className="text-muted-foreground">—</span>
+                            )}
+                            {b.pending > 0 && (
+                              <span className="ml-1 text-[10px] font-medium uppercase text-amber-600 dark:text-amber-400">
+                                {b.pending} pend
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+              {balByEmp.size === 0 && (
+                <tr>
+                  <td colSpan={1 + balTypes.length} className="px-4 py-8 text-center text-muted-foreground">
+                    No leave records yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <Card>
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
