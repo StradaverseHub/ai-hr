@@ -9,6 +9,7 @@ import {
   createLeavePolicyAction,
   createLeaveTypeAction,
   deleteLeaveTypeAction,
+  openLeaveYearAction,
   updateLeaveTypeAction,
 } from '../actions';
 
@@ -31,14 +32,22 @@ export default async function LeaveConfigPage({
     return days[0] === 0 ? null : days.join(' / ');
   };
   // Most generous active policy per type (overlaps resolve to max, same as the grant logic).
-  const policyByType = new Map<string, { days: number; from: string }>();
+  const policyByType = new Map<string, { days: number; carryMax: number; from: string }>();
   for (const p of policies) {
     if (p.validTo) continue;
-    const d = Number((p.accrual as { annualDays?: number })?.annualDays ?? 0);
+    const acc = p.accrual as { annualDays?: number; carryForwardMax?: number } | null;
+    const d = Number(acc?.annualDays ?? 0);
     const prev = policyByType.get(p.leaveTypeId);
-    if (!prev || d > prev.days) policyByType.set(p.leaveTypeId, { days: d, from: p.validFrom });
+    if (!prev || d > prev.days) {
+      policyByType.set(p.leaveTypeId, {
+        days: d,
+        carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+        from: p.validFrom,
+      });
+    }
   }
   const activeTypes = types.filter((t) => !t.archivedAt);
+  const nextYear = new Date().getUTCFullYear() + 1;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -111,7 +120,12 @@ export default async function LeaveConfigPage({
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums">
                       {pol ? (
-                        <span title={`Effective from ${pol.from}`}>{pol.days} days/yr</span>
+                        <span title={`Effective from ${pol.from}`}>
+                          {pol.days} days/yr
+                          {t.code === 'ANNUAL' && pol.carryMax > 0 && (
+                            <span className="text-muted-foreground"> · carry ≤ {pol.carryMax}</span>
+                          )}
+                        </span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -147,7 +161,7 @@ export default async function LeaveConfigPage({
         </p>
         <form
           action={createLeavePolicyAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-5"
         >
           <Field label="Leave type">
             <select name="leaveTypeId" required className={inputCls}>
@@ -161,10 +175,39 @@ export default async function LeaveConfigPage({
           <Field label="Days / year">
             <input name="annualDays" type="number" min="0" step="0.5" required defaultValue="14" className={inputCls} />
           </Field>
+          <Field label="Carry-forward cap (annual)">
+            <input name="carryForwardMax" type="number" min="0" step="0.5" defaultValue="0" className={inputCls} />
+          </Field>
           <Field label="Effective from">
             <input name="validFrom" type="date" required defaultValue="2026-01-01" className={inputCls} />
           </Field>
           <button className={btnPrimary}>Add policy</button>
+        </form>
+      </Card>
+
+      <Card>
+        <SectionHeader title="Leave year" />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">
+          Opening a year posts each active employee&rsquo;s new entitlements at their{' '}
+          <span className="font-medium text-foreground">current service band</span> (so 2y/5y upgrades
+          apply), resolved as max(statutory floor, policy). Unused annual leave carries up to the
+          policy&rsquo;s cap and the rest is forfeited (s.60E expects leave within the year); sick and
+          hospitalization reset. Idempotent — already-opened employees are skipped; employees hired
+          during the year are covered by their hire grant.
+        </p>
+        <form action={openLeaveYearAction} className="flex flex-wrap items-end gap-3 p-4">
+          <Field label="Year">
+            <input
+              name="year"
+              type="number"
+              min="2020"
+              max="2100"
+              required
+              defaultValue={nextYear}
+              className={`${inputCls} w-28`}
+            />
+          </Field>
+          <button className={btnPrimary}>Open leave year</button>
         </form>
       </Card>
     </div>
