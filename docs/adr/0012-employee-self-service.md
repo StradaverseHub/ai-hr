@@ -1,6 +1,6 @@
 # ADR-0012 — Employee self-service: read-write profile with an approval gate
 
-Status: **Accepted** (Phase 1 implemented) · Date: 2026-06-10
+Status: **Accepted** (Phase 1 + 2 implemented) · Date: 2026-06-10
 
 ## Context
 
@@ -51,5 +51,9 @@ the proposed bundle is a `jsonb` patch so approval applies **only the keys the e
 - The gate is deliberately narrow: only money-touching fields are reviewed, so the common case
   (an employee fixing their phone or address) stays friction-free.
 
-**Phase 2 (next).** Payslip detail + download: open a payslip to see the full
-EPF/SOCSO/EIS/PCB breakdown and download it, linked from the `/me` payslips table.
+**Phase 2 (implemented).** Payslip detail + download. A `/me/payslip/[id]` route
+(`payslipDetail`, RLS-scoped via `can_see_employment` so an employee sees only their own)
+shows the full breakdown — earnings (basic / allowance / overtime / bonus → gross), the
+employee's statutory deductions (EPF / SOCSO / EIS / PCB → net), and the employer-side
+contributions shown separately as "not deducted from you". Linked from the `/me` payslips
+table (the pay period is the link); "Print / Save PDF" reuses the EA statement's print path.
