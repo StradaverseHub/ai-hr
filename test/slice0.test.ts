@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -38,7 +38,13 @@ import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
-import { AlreadyCheckedInError, checkIn, checkOut } from '../core/attendance';
+import {
+  AlreadyCheckedInError,
+  checkIn,
+  checkOut,
+  decideAttendanceCorrection,
+  requestAttendanceCorrection,
+} from '../core/attendance';
 import {
   batchDetail,
   BatchNotDraftError,
@@ -1168,5 +1174,131 @@ describe('Leave year boundary — openLeaveYear', () => {
     expect(second.skipped).toBe(1);
     expect(await ledgerBalance(vet.employmentId, b.annualLeaveTypeId)).toBe(vetBalance);
     expect(await ledgerBalance(jan.employmentId, b.annualLeaveTypeId)).toBe(8); // untouched hire grant
+  });
+});
+
+describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () => {
+  const attRow = (employmentId: string, date: string) =>
+    owner.db
+      .select()
+      .from(schema.attendance)
+      .where(
+        and(eq(schema.attendance.employmentId, employmentId), eq(schema.attendance.attendanceDate, date)),
+      );
+
+  it('approving a correction inserts the day and re-derives it through the time engine', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Misspunch');
+    // No row exists for Wed 2026-06-03 (a workday). Propose a full 09:00→19:30 day.
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId,
+      date: '2026-06-03',
+      checkIn: '09:00',
+      checkOut: '19:30',
+      reason: 'Forgot to clock in',
+    });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+
+    const [row] = await attRow(employmentId, '2026-06-03');
+    expect(row.checkInAt).toBe('09:00:00');
+    expect(row.checkOutAt).toBe('19:30:00');
+    expect(row.dayType).toBe('workday');
+    expect(row.status).toBe('present');
+    expect(row.workedMinutes).toBe(570); // 10.5h span − 1h break
+    expect(row.otMinutes).toBe(90); // beyond the 8h net day
+    expect(row.remarks).toBe('Corrected');
+
+    const evs = await eventTypesFor(base.tenantId, correctionId);
+    expect(evs).toContain('attendance-correction.requested');
+    expect(evs).toContain('attendance-correction.approved');
+  });
+
+  it('approving over an existing row amends it (re-derived OT), not duplicates', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Wrongout');
+    // A genuine but wrong punch: left at 17:00, recorded as 7h, no OT.
+    await checkIn(a, { employmentId, date: '2026-06-04', time: '09:00' });
+    await checkOut(a, { employmentId, date: '2026-06-04', time: '17:00' });
+    const [before] = await attRow(employmentId, '2026-06-04');
+    expect(before.otMinutes).toBe(0);
+
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId,
+      date: '2026-06-04',
+      checkIn: '09:00',
+      checkOut: '19:00', // really stayed to 19:00
+    });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
+
+    const rows = await attRow(employmentId, '2026-06-04');
+    expect(rows.length).toBe(1); // upsert, not a second row
+    expect(rows[0].checkOutAt).toBe('19:00:00');
+    expect(rows[0].workedMinutes).toBe(540); // 10h span − 1h break
+    expect(rows[0].otMinutes).toBe(60); // 9h worked − 8h net day
+  });
+
+  it('the administrative manager may approve a report’s correction', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Reportee');
+    const M = await hire(a, base, 'Linemgr');
+    const uM = await createAppUser(base.tenantId, M.personId, 'manager');
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-01',
+    });
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId: E.employmentId,
+      date: '2026-06-03',
+      checkIn: '09:00',
+      checkOut: '18:00',
+    });
+    const mgrCtx: SessionContext = {
+      tenantId: base.tenantId,
+      userId: uM,
+      personId: M.personId,
+      roles: ['manager'],
+    };
+    await decideAttendanceCorrection(mgrCtx, { correctionId, decision: 'approved' });
+    const [row] = await attRow(E.employmentId, '2026-06-03');
+    expect(row.status).toBe('present');
+  });
+
+  it('an employee cannot approve their own correction', async () => {
+    const a = adminCtx(base);
+    const { employmentId, personId } = await hire(a, base, 'Selfapp');
+    const uid = await createAppUser(base.tenantId, personId, 'employee');
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId,
+      date: '2026-06-03',
+      checkIn: '09:00',
+      checkOut: '18:00',
+    });
+    const selfCtx: SessionContext = {
+      tenantId: base.tenantId,
+      userId: uid,
+      personId,
+      roles: ['employee'],
+    };
+    await expect(
+      decideAttendanceCorrection(selfCtx, { correctionId, decision: 'approved' }),
+    ).rejects.toThrow(/cannot decide your own/i);
+  });
+
+  it('rejecting leaves attendance untouched', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'Rejectee');
+    const { correctionId } = await requestAttendanceCorrection(a, {
+      employmentId,
+      date: '2026-06-03',
+      checkIn: '09:00',
+      checkOut: '18:00',
+    });
+    await decideAttendanceCorrection(a, { correctionId, decision: 'rejected' });
+    const rows = await attRow(employmentId, '2026-06-03');
+    expect(rows.length).toBe(0); // no attendance row materialized — that is the proof reject is a no-op
+    const evs = await eventTypesFor(base.tenantId, correctionId);
+    expect(evs).toContain('attendance-correction.rejected');
   });
 });

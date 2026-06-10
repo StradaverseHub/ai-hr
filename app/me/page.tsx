@@ -9,8 +9,9 @@ import {
   myEmployments,
   myPayslips,
 } from '@/core/read';
+import { myAttendanceCorrections } from '@/core/attendance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { myCheckIn, myCheckOut, myRequestLeave } from './actions';
+import { myCheckIn, myCheckOut, myRequestCorrection, myRequestLeave } from './actions';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -59,13 +60,15 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
-  const [balances, requests, leaveTypes, payslips, attendance] = await Promise.all([
+  const [balances, requests, leaveTypes, payslips, attendance, corrections] = await Promise.all([
     leaveBalances(s, me.employmentId),
     leaveRequestsFor(s, me.employmentId),
     listLeaveTypes(s),
     myPayslips(s, employments.map((e) => e.employmentId)),
     myAttendance(s, me.employmentId, 14),
+    myAttendanceCorrections(s, me.employmentId),
   ]);
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
   const today = new Date().toISOString().slice(0, 10);
   const todayRow = attendance.find((a) => a.date === today);
@@ -132,6 +135,45 @@ export default async function MePage({
               {attendance.length === 0 && <li className="text-muted-foreground">No records yet.</li>}
             </ul>
           </div>
+
+          {/* Missed-punch correction (manager/admin approves — ADR-0011 Phase B) */}
+          <details className="mt-4 border-t border-border pt-4">
+            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Fix a missed punch
+            </summary>
+            <form action={myRequestCorrection} className="mt-3 space-y-2.5">
+              <Field label="Date">
+                <input type="date" name="date" required defaultValue={yesterday} className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Check-in">
+                  <input type="time" name="checkIn" required defaultValue="09:00" className={inputCls} />
+                </Field>
+                <Field label="Check-out">
+                  <input type="time" name="checkOut" defaultValue="18:00" className={inputCls} />
+                </Field>
+              </div>
+              <Field label="Reason (optional)">
+                <input name="reason" placeholder="Forgot to clock out" className={inputCls} />
+              </Field>
+              <Button type="submit" size="sm">
+                Request correction
+              </Button>
+            </form>
+            {corrections.length > 0 && (
+              <ul className="mt-3 space-y-1.5 text-xs">
+                {corrections.map((c) => (
+                  <li key={c.id} className="flex items-center justify-between gap-2">
+                    <span className="tabular-nums text-muted-foreground">
+                      {c.attendanceDate} · {c.proposedCheckIn.slice(0, 5)}
+                      {c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}
+                    </span>
+                    <Pill status={c.status} map={LEAVE_STATUS} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
         </Card>
 
         {/* Leave */}

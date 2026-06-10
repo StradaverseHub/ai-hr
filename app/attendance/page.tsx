@@ -1,10 +1,10 @@
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
-import { attendanceForDate, attendanceMonthSummary } from '@/core/attendance';
+import { attendanceForDate, attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
 import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { TimelineNav } from '@/components/timeline-nav';
-import { checkInAction, checkOutAction } from './actions';
+import { checkInAction, checkOutAction, decideCorrectionAction } from './actions';
 
 const STATUS: Record<string, string> = {
   present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
@@ -50,9 +50,10 @@ export default async function AttendancePage({
   const todayIso = new Date().toISOString().slice(0, 10);
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayIso;
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : date.slice(0, 7);
-  const [rows, summary] = await Promise.all([
+  const [rows, summary, corrections] = await Promise.all([
     attendanceForDate(s, date, scopeIds),
     attendanceMonthSummary(s, { month, companyIds: scopeIds, today: todayIso }),
+    listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
   ]);
   const monthHref = (m: string) => `/attendance?date=${date}&month=${m}`;
 
@@ -148,6 +149,73 @@ export default async function AttendancePage({
           </table>
         </div>
       </Card>
+
+      {corrections.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title="Correction requests" count={corrections.length} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Employee</th>
+                  <th className="px-4 py-2 font-medium">Date</th>
+                  <th className="px-4 py-2 font-medium">Proposed</th>
+                  <th className="px-4 py-2 font-medium">Reason</th>
+                  <th className="px-4 py-2 text-right font-medium">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {corrections.map((c) => {
+                  // No self-approval (the service enforces it too — this just hides the buttons).
+                  const canAct = s.personId == null || c.personId !== s.personId;
+                  return (
+                    <tr key={c.id}>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar name={c.employee} className="size-7 text-[10px]" />
+                          <span className="font-medium">{c.employee}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
+                      <td className="px-4 py-2.5 tabular-nums">
+                        {c.proposedCheckIn.slice(0, 5)}
+                        {c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}
+                      </td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        {canAct ? (
+                          <div className="flex justify-end gap-2">
+                            <form action={decideCorrectionAction}>
+                              <input type="hidden" name="correctionId" value={c.id} />
+                              <input type="hidden" name="decision" value="approved" />
+                              <Button type="submit" size="sm">
+                                Approve
+                              </Button>
+                            </form>
+                            <form action={decideCorrectionAction}>
+                              <input type="hidden" name="correctionId" value={c.id} />
+                              <input type="hidden" name="decision" value="rejected" />
+                              <Button type="submit" size="sm" variant="outline">
+                                Reject
+                              </Button>
+                            </form>
+                          </div>
+                        ) : (
+                          <span className="flex justify-end text-xs text-muted-foreground">your request</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+            Approving amends the day&rsquo;s record (re-derived through the time engine, so corrected
+            overtime flows to payroll). You cannot approve your own request.
+          </p>
+        </Card>
+      )}
 
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
