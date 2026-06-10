@@ -125,13 +125,18 @@ export function pcbAdditional(
  * All statutory contributions for a monthly wage. `profile` defaults to Category 1 (single).
  * `additional` is a bonus / additional remuneration paid this month: subject to EPF (rate by the
  * normal wage) and PCB (difference method), but EXCLUDED from SOCSO and EIS.
+ *
+ * `overtime` is the month's OT pay. Agency bases differ (STATUTORY-SOURCES.md §6):
+ * EPF EXCLUDES overtime (KWSP non-liable list); SOCSO and EIS INCLUDE it (PERKESO wages
+ * definition); PCB taxes all cash remuneration. `wage` must therefore be EX-overtime.
  */
-export function statutory(wage: number, profile?: TaxProfile, additional = 0) {
-  const e = epf(wage, additional); // bonus IS subject to EPF
-  const s = socso(wage); // bonus excluded from SOCSO
-  const i = eis(wage); // bonus excluded from EIS
-  const pcbNormal = pcb(wage, { category: profile?.category, children: profile?.children });
-  const pcbBonus = pcbAdditional(wage, additional, { category: profile?.category, children: profile?.children });
+export function statutory(wage: number, profile?: TaxProfile, additional = 0, overtime = 0) {
+  const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
+  const e = epf(wage, additional); // bonus IS subject to EPF; overtime is NOT
+  const s = socso(cashWage); // bonus excluded from SOCSO; overtime included
+  const i = eis(cashWage); // bonus excluded from EIS; overtime included
+  const pcbNormal = pcb(cashWage, { category: profile?.category, children: profile?.children });
+  const pcbBonus = pcbAdditional(cashWage, additional, { category: profile?.category, children: profile?.children });
   return {
     epfEmployee: e.employee,
     epfEmployer: e.employer,
@@ -145,4 +150,66 @@ export function statutory(wage: number, profile?: TaxProfile, additional = 0) {
     /** Statutory-table version that produced these figures (audit / reproducibility). */
     version: MY_STATUTORY_VERSION,
   };
+}
+
+// ───────────────────── Overtime monetization (EA 1955) ─────────────────────
+/**
+ * Sources (verified 2026-06-10, STATUTORY-SOURCES.md §6):
+ * - ORP (ordinary rate of pay) = monthly wages / 26 (s.60I(1A)); hourly = ORP / normal hours.
+ * - Normal workday OT: 1.5× hourly (s.60A(3)(a)).
+ * - Rest day, monthly-rated: work ≤ half normal hours = ½ day ORP; more (up to normal) =
+ *   1 day ORP (s.60(3)(b)); hours beyond normal = 2× hourly (s.60(3)(c)).
+ * - Public holiday: working it earns 2 extra days' ORP (s.60D(3)(a), on top of the paid
+ *   holiday already in monthly wages); hours beyond normal = 3× hourly (s.60D(3)(aa)).
+ * - First Schedule (Amendment Order 2022): employees with wages > RM4,000/month are not
+ *   entitled to ss.60/60A(3)/60D(3) pay (the manual-worker exception is NOT modelled —
+ *   such employees should be handled with a manual override; documented in §6).
+ */
+export const MY_OT_WAGE_CEILING = 4000;
+
+export type OtDay = { dayType: 'workday' | 'rest_day' | 'holiday'; minutes: number };
+
+export type OvertimePayResult = {
+  eligible: boolean;
+  orp: number;
+  hourly: number;
+  workday: number;
+  restDay: number;
+  holiday: number;
+  total: number;
+};
+
+/** Monetize a month of classified OT minutes (one entry per day — the rest-day ½/1-day
+ *  rule is per day, so aggregates would be wrong). `monthlyWages` is s.2 wages ex-OT/bonus. */
+export function overtimePay(p: {
+  monthlyWages: number;
+  days: OtDay[];
+  normalDailyHours?: number;
+}): OvertimePayResult {
+  const hoursPerDay = p.normalDailyHours ?? 8;
+  const orp = round2(p.monthlyWages / 26);
+  const hourly = round2(orp / hoursPerDay);
+  const eligible = p.monthlyWages <= MY_OT_WAGE_CEILING;
+  const out: OvertimePayResult = { eligible, orp, hourly, workday: 0, restDay: 0, holiday: 0, total: 0 };
+  if (!eligible) return out;
+  const normalMin = hoursPerDay * 60;
+  for (const d of p.days) {
+    const m = Math.max(0, d.minutes);
+    if (m === 0) continue;
+    if (d.dayType === 'workday') {
+      out.workday += (m / 60) * 1.5 * hourly;
+    } else if (d.dayType === 'rest_day') {
+      const within = Math.min(m, normalMin);
+      out.restDay += within <= normalMin / 2 ? 0.5 * orp : orp;
+      out.restDay += (Math.max(0, m - normalMin) / 60) * 2 * hourly;
+    } else {
+      out.holiday += 2 * orp;
+      out.holiday += (Math.max(0, m - normalMin) / 60) * 3 * hourly;
+    }
+  }
+  out.workday = round2(out.workday);
+  out.restDay = round2(out.restDay);
+  out.holiday = round2(out.holiday);
+  out.total = round2(out.workday + out.restDay + out.holiday);
+  return out;
 }

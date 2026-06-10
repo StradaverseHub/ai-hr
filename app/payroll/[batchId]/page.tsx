@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { closeAction, generateAction, setPayrollInputAction } from '../actions';
+import { closeAction, generateAction, prefillOvertimeAction, setPayrollInputAction } from '../actions';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -76,6 +76,20 @@ export default async function BatchPage({
             approved unpaid leave requests starting in this period and deducted at the EA-1955 daily rate. Set
             inputs before generating payslips.
           </p>
+          <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">Overtime from attendance:</span> monetizes this
+              period&rsquo;s classified OT at EA rates (ORP = wages/26 · workday 1.5× · rest day ½/1 day + 2× ·
+              holiday +2 days + 3×). Wages above RM4,000 are not statutorily entitled and stay manual. You can
+              still override any figure.
+            </p>
+            <form action={prefillOvertimeAction}>
+              <input type="hidden" name="batchId" value={batch.id} />
+              <Button type="submit" size="sm" variant="secondary">
+                Prefill OT from attendance
+              </Button>
+            </form>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">

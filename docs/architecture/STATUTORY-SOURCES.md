@@ -118,6 +118,40 @@ to these tables is traceable to the exact runs it affects.
 
 ---
 
+## 6. Overtime monetization — EA 1955 ss.60A(3)/60(3)/60D(3)/60I — ✅ Verified (2026-06-10)
+
+- **Encoded in:** `localization/my/payroll.ts` (`overtimePay`, `MY_OT_WAGE_CEILING`);
+  applied by `core/payroll.ts` (`prefillOvertimeFromAttendance`) from classified
+  attendance (ADR-0011). The derivation (ORP, hourly, per-class amounts) is carried on
+  each `payroll-batch.input-set` event — every ringgit traces to hours and rates.
+- **ORP:** ordinary rate of pay = monthly wages / 26 (s.60I(1A)); hourly = ORP / 8.
+  "Wages" basis = basic + fixed allowance (s.2), ex-OT/bonus.
+- **Rates:** normal workday OT **1.5×** hourly (s.60A(3)(a)). Rest day (monthly-rated):
+  work ≤ half normal hours = **½ day ORP**, more = **1 day ORP** (s.60(3)(b)); beyond
+  normal hours = **2×** hourly (s.60(3)(c)). Public holiday: working it earns **2 extra
+  days' ORP** (s.60D(3)(a)) and **3×** hourly beyond normal hours (s.60D(3)(aa)). The
+  per-day ½/1-day rule is computed per day, never from monthly aggregates.
+- **Eligibility:** Employment (Amendment of First Schedule) Order 2022 — employees with
+  wages > **RM4,000/month** are outside ss.60/60A(3)/60D(3); the prefill skips them
+  (left for a manual/ex-gratia entry). ⚠️ The **manual-worker exception** (entitled
+  regardless of wages) is NOT modelled — handle such employees manually.
+- **Agency bases (the split that made this slice necessary):**
+  | Base | EPF | SOCSO | EIS | PCB |
+  | --- | --- | --- | --- | --- |
+  | Overtime pay | **Excluded** (KWSP non-liable list) | **Included** | **Included** | **Included** |
+  `statutory(wage, profile, additional, overtime)` now takes wages ex-OT plus OT
+  separately; previously OT was (incorrectly) in the EPF base.
+- **Sources:** Act 265 official text (JTKSM PDF, §5 link); The Malaysian Lawyer —
+  _Employees earning up to RM4,000/month will be entitled to overtime payments_ and
+  _EA to apply to all employees… RM4,000 threshold_; KWSP — _Employer Mandatory
+  Contribution_ (OT in the not-liable list); PERKESO — _Contributions_ (wages include
+  overtime payments); AJobThing OT calculation guide (rates cross-check).
+- **⚠️ Verify before production:** cross-check a sample month against the JTKSM/MOHR
+  overtime calculator; confirm the employer's "wages" composition for ORP (which fixed
+  allowances count) with the accountant.
+
+---
+
 ## Verification checklist (before production payroll)
 
 - [ ] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec for the target YA.

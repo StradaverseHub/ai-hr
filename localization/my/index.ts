@@ -5,7 +5,7 @@
 import { getStatutoryProfileMY, isValidIC, setStatutoryProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
-import { eis, epf, pcb, socso, statutory } from './payroll';
+import { eis, epf, overtimePay, pcb, socso, statutory } from './payroll';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
 import { eaStatement, MY_REPORTS } from './reports';
 
@@ -26,7 +26,7 @@ export const myPack = {
     annualEntitlement,
   },
   holidays: MY_HOLIDAYS_2026,
-  payroll: { statutory, epf, socso, eis, pcb },
+  payroll: { statutory, epf, socso, eis, pcb, overtimePay },
   reports: MY_REPORTS,
   eaStatement,
 };
