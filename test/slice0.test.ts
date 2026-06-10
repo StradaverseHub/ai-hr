@@ -70,7 +70,7 @@ const hire = (ctx: SessionContext, b: Base, name: string, opts?: { annual?: bool
     departmentId: b.deptA,
     employmentType: 'full_time',
     hiredOn: '2026-01-01',
-    annualLeaveTypeId: opts?.annual ? b.annualLeaveTypeId : undefined,
+    grantLeaveTypes: opts?.annual ? [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }] : undefined,
   });
 
 describe('UC8 — tenant isolation', () => {

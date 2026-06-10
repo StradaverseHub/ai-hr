@@ -83,6 +83,36 @@ to these tables is traceable to the exact runs it affects.
 
 ---
 
+## 5. Leave entitlements — EA 1955 s.60E / s.60F — ✅ Verified (2026-06-10)
+
+- **Encoded in:** `localization/my/leave.ts` (`annualEntitlement`, `sickEntitlement`,
+  `entitlement`); granted on hire by `core/org.ts` (`grantLeaveTypes`).
+- **Annual (s.60E):** 8 / 12 / 16 days per calendar year for <2 / 2–5 / >5 years of
+  service. Granted pro-rated by months remaining in the hire year (common practice;
+  s.60E(2) ordinary-rate proportion for incomplete years).
+- **Sick, outpatient (s.60F(1)(aa)–(cc)):** **14 / 18 / 22** days per calendar year for
+  <2 / 2–<5 / 5+ years of service.
+- **Hospitalization (s.60F):** **60 days per calendar year**, and since the
+  **Employment (Amendment) Act 2022 (in force 1 Jan 2023)** this is **separate from /
+  in addition to** outpatient sick leave — the amendment **deleted the proviso** that
+  previously capped both at 60 days in aggregate. (Several older articles still quote
+  the pre-2023 aggregate rule; do not reintroduce it.)
+- **No proration for sick/hospitalization:** these are per-calendar-year entitlements
+  from day one of employment; prorating them for mid-year joiners is a compliance risk.
+- **Sources:**
+  - Act 265 official text (JTKSM reprint, post-amendment):
+    <https://jtksm.mohr.gov.my/sites/default/files/2023-11/Akta%20Kerja%201955%20(Akta%20265).pdf>
+  - Lexology — _Employment (Amendment) Act 2022 comes into force on 1 January 2023_
+    (proviso deletion → separate hospitalization entitlement).
+  - Lexology — _Stop prorating sick leave: the hidden legal risks under section 60F_.
+  - Cross-checks: CentralHR sick-leave guide; PayrollPanda leave entitlements.
+- **Model simplifications (deliberate):** entitlements are granted once at hire at the
+  0-year band; **service-band upgrades at the 2- and 5-year anniversaries and
+  calendar-year resets/carry-forward are not yet automated** (ledger supports both via
+  `accrual`/`adjustment` entries — future slice).
+
+---
+
 ## Verification checklist (before production payroll)
 
 - [ ] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec for the target YA.

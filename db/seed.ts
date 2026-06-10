@@ -84,6 +84,12 @@ async function main() {
     leaveTypeIds[lt.code] = row.id;
   }
   const annual = { id: leaveTypeIds.ANNUAL };
+  // Standing entitlements granted on every hire (EA s.60E / s.60F via the MY pack).
+  const standingGrants = [
+    { id: leaveTypeIds.ANNUAL, code: 'ANNUAL' },
+    { id: leaveTypeIds.SICK, code: 'SICK' },
+    { id: leaveTypeIds.HOSPITALIZATION, code: 'HOSPITALIZATION' },
+  ];
   for (const h of myPack.holidays) {
     await owner.db
       .insert(schema.holiday)
@@ -113,7 +119,7 @@ async function main() {
       positionId: pos.id,
       employmentType: 'full_time',
       hiredOn: '2026-01-06',
-      annualLeaveTypeId: annual.id,
+      grantLeaveTypes: standingGrants,
     });
     hired.push({ employmentId });
     if (i === 1) danielPersonId = personId;
@@ -190,7 +196,7 @@ async function main() {
     positionId: pos.id,
     employmentType: 'full_time',
     hiredOn: '2026-06-04',
-    annualLeaveTypeId: annual.id,
+    grantLeaveTypes: standingGrants,
   });
   const weijie = await hireEmployee(admin, {
     person: { fullName: 'Wei Jie Lim', primaryEmail: 'weijie@demo.test' },
@@ -199,7 +205,7 @@ async function main() {
     positionId: pos.id,
     employmentType: 'full_time',
     hiredOn: '2026-05-22',
-    annualLeaveTypeId: annual.id,
+    grantLeaveTypes: standingGrants,
   });
   await reportsTo(nurul.employmentId, hired[3].employmentId, 'administrative', '2026-06-04'); // Nurul -> Arjun
   await reportsTo(weijie.employmentId, hired[0].employmentId, 'administrative', '2026-05-22'); // Wei Jie -> Aisyah

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployees, listLeaveTypes } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees } from '@/core/read';
 import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { hireAction } from './actions';
 
@@ -11,13 +11,11 @@ export default async function PeoplePage({
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const { error } = await searchParams;
-  const [employees, companies, departments, leaveTypes] = await Promise.all([
+  const [employees, companies, departments] = await Promise.all([
     listEmployees(session, scopeIds),
     listCompanies(session),
     listDepartments(session),
-    listLeaveTypes(session),
   ]);
-  const annual = leaveTypes.find((t) => t.code === 'ANNUAL');
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -123,7 +121,6 @@ export default async function PeoplePage({
             <Field label="Hire date">
               <input name="hiredOn" type="date" required defaultValue="2026-06-05" className={inputCls} />
             </Field>
-            {annual && <input type="hidden" name="annualLeaveTypeId" value={annual.id} />}
             <div className="sm:col-span-2">
               <Button type="submit">Hire</Button>
             </div>
