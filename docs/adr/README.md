@@ -16,5 +16,8 @@ decision, add a new ADR that supersedes the old one.
 | [0008](0008-localization-packs.md) | Localization via installable country packs (MY first) | Accepted (pack built incrementally) |
 | [0009](0009-multi-company-group-model.md) | Multi-company group model (nested entities, scoped authz, consolidation) | Accepted (built in slices A–D) |
 | [0010](0010-statutory-compliance-reporting.md) | Statutory & compliance reporting (per-company filings, two output layers) | Proposed |
+| [0011](0011-attendance-time-tracking.md) | Attendance time engine (work schedules, day-type classification, OT, corrections) | Accepted (Phase A + B) |
+| [0012](0012-employee-self-service.md) | Employee self-service: read-write profile with an approval gate | Accepted (Phase 1 + 2) |
+| [0013](0013-performance-talent-management.md) | Performance & talent management: cycle-anchored, closes the loop into pay | Proposed (design only) |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
