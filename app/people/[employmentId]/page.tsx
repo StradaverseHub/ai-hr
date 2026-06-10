@@ -11,7 +11,7 @@ import {
   listEmployees,
   reportingLinesFor,
 } from '@/core/read';
-import { Card, ErrorBanner, Field, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
   addReportingLineAction,
@@ -79,19 +79,12 @@ export default async function EmployeePage({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <Link href="/people" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-        ← People
-      </Link>
-
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{emp.name}</h1>
-          <p className="text-sm text-muted-foreground">
-            {emp.employeeCode ?? '—'} · {emp.email} · {emp.company} · hired {emp.hiredOn}
-          </p>
-        </div>
-        <StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />
-      </div>
+      <PageHeader
+        back={{ href: '/people', label: 'People' }}
+        title={emp.name}
+        description={`${emp.employeeCode ?? '—'} · ${emp.email} · ${emp.company} · hired ${emp.hiredOn}`}
+        actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
+      />
 
       <ErrorBanner message={error} />
 

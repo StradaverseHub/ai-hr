@@ -12,6 +12,7 @@ import {
 } from '@/core/read';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
+import { TimelineNav } from '@/components/timeline-nav';
 
 const rm = (n: unknown) =>
   n == null
@@ -114,14 +115,21 @@ function orderTree(rows: BreakdownRow[]) {
   return out;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ abs?: string }>;
+}) {
   const { s, scopeIds } = await scopedSession();
-  // Date window: a 14-day planned-absences strip starting 2 days before today.
+  const sp = await searchParams;
+  // Date window: a 14-day planned-absences strip, by default starting 2 days before
+  // today; ?abs=YYYY-MM-DD (from the timeline nav) overrides the window start.
   const now = new Date();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayIso = new Date(todayMs).toISOString().slice(0, 10);
   const ABS_DAYS = 14;
-  const startMs = todayMs - 2 * 86_400_000;
+  const absParam = sp.abs && /^\d{4}-\d{2}-\d{2}$/.test(sp.abs) ? sp.abs : null;
+  const startMs = absParam ? Date.parse(`${absParam}T00:00:00Z`) : todayMs - 2 * 86_400_000;
   const absFrom = new Date(startMs).toISOString().slice(0, 10);
   const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
   const since60 = new Date(todayMs - 60 * 86_400_000).toISOString().slice(0, 10);
@@ -166,7 +174,13 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <PlannedAbsences rows={absences} from={absFrom} days={ABS_DAYS} todayIso={todayIso} />
+      <PlannedAbsences
+        rows={absences}
+        from={absFrom}
+        days={ABS_DAYS}
+        todayIso={todayIso}
+        controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">

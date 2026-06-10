@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -62,11 +62,13 @@ export function PlannedAbsences({
   from,
   days,
   todayIso,
+  controls,
 }: {
   rows: Row[];
   from: string;
   days: number;
   todayIso: string;
+  controls?: ReactNode;
 }) {
   const fromMs = ms(from);
   const dayArr = Array.from({ length: days }, (_, i) => {
@@ -91,13 +93,16 @@ export function PlannedAbsences({
             {dayArr[0]?.iso} &ndash; {dayArr[lastIdx]?.iso}
           </p>
         </div>
-        <Link
-          href="/leave"
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          View all
-          <ArrowUpRight className="size-3.5" />
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {controls}
+          <Link
+            href="/leave"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            View all
+            <ArrowUpRight className="size-3.5" />
+          </Link>
+        </div>
       </div>
 
       {rows.length === 0 ? (

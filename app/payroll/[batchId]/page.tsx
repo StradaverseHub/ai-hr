@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows } from '@/core/payroll';
-import { Button, Card, ErrorBanner, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { closeAction, generateAction, setPayrollInputAction } from '../actions';
 
 const rm = (n: unknown) =>
@@ -28,34 +28,33 @@ export default async function BatchPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <Link href="/payroll" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-        ← Payroll
-      </Link>
-
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">{batch.payPeriod}</h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        back={{ href: '/payroll', label: 'Payroll' }}
+        title={batch.payPeriod}
+        description={
+          <>
             Payroll batch · <span className="capitalize">{batch.status}</span>
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {batch.status === 'draft' && (
-            <form action={generateAction}>
-              <input type="hidden" name="batchId" value={batch.id} />
-              <Button type="submit">Generate payslips</Button>
-            </form>
-          )}
-          {batch.status === 'processed' && (
-            <form action={closeAction}>
-              <input type="hidden" name="batchId" value={batch.id} />
-              <Button type="submit" variant="secondary">
-                Close batch
-              </Button>
-            </form>
-          )}
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            {batch.status === 'draft' && (
+              <form action={generateAction}>
+                <input type="hidden" name="batchId" value={batch.id} />
+                <Button type="submit">Generate payslips</Button>
+              </form>
+            )}
+            {batch.status === 'processed' && (
+              <form action={closeAction}>
+                <input type="hidden" name="batchId" value={batch.id} />
+                <Button type="submit" variant="secondary">
+                  Close batch
+                </Button>
+              </form>
+            )}
+          </>
+        }
+      />
 
       <ErrorBanner message={error} />
 
