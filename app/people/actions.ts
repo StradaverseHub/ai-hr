@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { hireEmployee } from '@/core/org';
 import { listLeaveTypes } from '@/core/read';
+import { decideProfileChange } from '@/core/profile';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 
@@ -34,4 +35,19 @@ export async function hireAction(formData: FormData) {
   }
   revalidatePath('/people');
   redirect('/people?toast=Employee hired');
+}
+
+export async function decideProfileChangeAction(formData: FormData) {
+  const session = await getSession();
+  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  try {
+    await decideProfileChange(session, {
+      requestId: String(formData.get('requestId')),
+      decision,
+    });
+  } catch (e) {
+    redirect(`/people?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/people');
+  redirect(`/people?toast=${encodeURIComponent('Change ' + decision)}`);
 }

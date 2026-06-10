@@ -1,0 +1,55 @@
+# ADR-0012 — Employee self-service: read-write profile with an approval gate
+
+Status: **Accepted** (Phase 1 implemented) · Date: 2026-06-10
+
+## Context
+
+The employee portal (`/me`, "My workspace") already covers attendance (with missed-punch
+corrections), leave (balances + apply + status), payslips, and the annual EA statement. But it
+is **read-mostly**: the only things an employee can change about *themselves* are leave requests
+and punches. Everything personal — contact details, bank account, tax-relevant data — is
+admin-only, edited from the People detail page.
+
+That is a real ESS gap, but "let employees edit their own record" is not a single decision.
+Some of those fields change pay:
+
+- **Bank account** decides where salary lands. An employee silently re-pointing it, with the
+  next payroll run paying out there, is exactly the fraud/error surface ESS is meant to control.
+- **Dependents / marital (PCB) category** drive monthly tax (MTD).
+
+Direct, unreviewed employee writes to those fields are wrong. Contact details (phone, address,
+emergency contact) carry no such risk.
+
+## Decision — split by risk, reuse the approval substrate
+
+**Two paths, chosen by what the field affects:**
+
+1. **Low-risk contact fields → direct self-edit.** `phone`, `address`, `date_of_birth`,
+   `emergency_contact_name`, `emergency_contact_phone` live on `person` and the employee edits
+   them on `/me`, applied immediately, evented `person.self-updated`. New columns are added for
+   the fields we did not yet model.
+2. **Pay-affecting fields → change request.** `bank_name`, `bank_account_no`, `tax_category`,
+   `num_children` (all on `employee_statutory_my`) are submitted as a *proposed* bundle that an
+   admin or the employee's **administrative manager** approves before it takes effect. No
+   self-approval — enforced by the shared `assertCanDecide` guard (`core/approvals.ts`) that
+   already gates leave and attendance corrections. Each step is evented.
+
+**A dedicated `profile_change_request` table**, not a generic change table — consistent with
+`leave_request` and `attendance_correction`. The apply logic is typed (it writes specific
+`employee_statutory_my` columns), the RLS is per-domain (tenant + `app.can_see_employment`), and
+the proposed bundle is a `jsonb` patch so approval applies **only the keys the employee changed**
+(it never clobbers unrelated statutory fields, and never has to re-validate the IC).
+
+## Consequences
+
+- ESS becomes read-**write**. The bank account it now captures is the missing input for the
+  bank giro payment file (Reporting 6D, still parked) — payroll knows the amount; it never knew
+  where to send it.
+- Three approval flows (leave, attendance corrections, profile changes) now share one decision
+  guard. The UIs are still per-page; a future generic "approvals inbox" could unify them — noted,
+  not built.
+- The gate is deliberately narrow: only money-touching fields are reviewed, so the common case
+  (an employee fixing their phone or address) stays friction-free.
+
+**Phase 2 (next).** Payslip detail + download: open a payslip to see the full
+EPF/SOCSO/EIS/PCB breakdown and download it, linked from the `/me` payslips table.

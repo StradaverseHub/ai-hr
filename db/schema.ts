@@ -150,6 +150,11 @@ export const person = pgTable(
     fullName: text('full_name').notNull(),
     primaryEmail: text('primary_email').notNull(),
     phone: text('phone'),
+    // Low-risk personal fields the employee self-maintains on /me (ADR-0012).
+    address: text('address'),
+    dateOfBirth: date('date_of_birth'),
+    emergencyContactName: text('emergency_contact_name'),
+    emergencyContactPhone: text('emergency_contact_phone'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
@@ -550,6 +555,36 @@ export const attendanceCorrection = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate)],
+);
+
+export const profileChangeStatusEnum = pgEnum('profile_change_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);
+
+// Pay-affecting profile changes the employee proposes on /me (bank account, dependents, PCB
+// category — all on employee_statutory_my). An admin or their manager approves before it takes
+// effect (ADR-0012). `proposed` is a jsonb patch; approval applies only the keys it carries.
+// Low-risk contact fields are edited directly on `person` and do NOT pass through here.
+export const profileChangeRequest = pgTable(
+  'profile_change_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    proposed: jsonb('proposed').notNull(),
+    status: profileChangeStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status)],
 );
 
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
