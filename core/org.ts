@@ -3,12 +3,20 @@
  * (one transaction, RLS scoped to the session) and appends a domain event before returning.
  * Effective-dated changes CLOSE + INSERT; we never overwrite history.
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { nextEmployeeCode } from './comp';
 import { packFor } from '../localization/registry';
-import { person, employment, assignment, company, reportingLine, leaveLedger } from '../db/schema';
+import {
+  person,
+  employment,
+  assignment,
+  company,
+  leavePolicy,
+  reportingLine,
+  leaveLedger,
+} from '../db/schema';
 
 export class ReportingCycleError extends Error {
   constructor() {
@@ -68,7 +76,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     });
 
     if (p.grantLeaveTypes?.length) {
-      // Entitlements come from the company's country pack (0 yrs service at hire).
+      // Entitlement = max(statutory floor, company policy). The floor comes from the
+      // company's country pack (law — not configurable); the admin-configured
+      // leave_policy may be MORE generous but is clamped at the floor, never below.
       const [co] = await tx
         .select({ country: company.country })
         .from(company)
@@ -76,9 +86,29 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         .limit(1);
       const pack = packFor(co?.country);
       if (pack) {
+        const policies = await tx
+          .select({ leaveTypeId: leavePolicy.leaveTypeId, accrual: leavePolicy.accrual })
+          .from(leavePolicy)
+          .where(
+            and(
+              inArray(
+                leavePolicy.leaveTypeId,
+                p.grantLeaveTypes.map((t) => t.id),
+              ),
+              lte(leavePolicy.validFrom, p.hiredOn),
+              or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.hiredOn)),
+            ),
+          );
+        // Overlapping policies for a type: the most generous active one applies.
+        const policyDays = new Map<string, number>();
+        for (const pol of policies) {
+          const d = Number((pol.accrual as { annualDays?: number })?.annualDays ?? 0);
+          if (d > (policyDays.get(pol.leaveTypeId) ?? 0)) policyDays.set(pol.leaveTypeId, d);
+        }
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
-          const days = pack.leave.entitlement(lt.code, 0);
+          const floor = pack.leave.entitlement(lt.code, 0);
+          const days = Math.max(floor, policyDays.get(lt.id) ?? 0);
           if (days <= 0) continue;
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year

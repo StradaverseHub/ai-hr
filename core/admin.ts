@@ -305,9 +305,12 @@ export function listLeavePolicies(ctx: SessionContext) {
     tx
       .select({
         id: leavePolicy.id,
+        leaveTypeId: leavePolicy.leaveTypeId,
         leaveType: leaveType.name,
+        typeCode: leaveType.code,
         accrual: leavePolicy.accrual,
         validFrom: leavePolicy.validFrom,
+        validTo: leavePolicy.validTo,
       })
       .from(leavePolicy)
       .innerJoin(leaveType, eq(leaveType.id, leavePolicy.leaveTypeId))

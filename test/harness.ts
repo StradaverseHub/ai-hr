@@ -71,13 +71,9 @@ export async function seedBase(): Promise<Base> {
     .insert(schema.leaveType)
     .values({ tenantId, code: 'ANNUAL', name: 'Annual Leave', paid: true })
     .returning({ id: schema.leaveType.id });
-  await owner.db.insert(schema.leavePolicy).values({
-    tenantId,
-    leaveTypeId: lt.id,
-    accrual: { annualDays: 16, method: 'grant_on_hire_prorated' },
-    validFrom: '2020-01-01',
-    validTo: null,
-  });
+  // No default leave_policy here: policies now genuinely override the statutory floor
+  // (max(floor, policy) at grant), so the base tenant stays floor-only and tests that
+  // exercise policies create their own.
   const [au] = await owner.db
     .insert(schema.appUser)
     .values({ tenantId, workosUserId: `user_${randomUUID()}`, personId: null })
