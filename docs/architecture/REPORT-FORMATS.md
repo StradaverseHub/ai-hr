@@ -57,28 +57,50 @@
   mempunyai ruang kosong"); the branch E-number must match the registered employer.
 - **File naming** (from manual screenshots): `<E-number>_<year>.txt`, e.g. `029409640001_2010.txt`.
 
-### ⛔ The verification gap (why it is not built)
+### ✅ UNBLOCKED (2026-06-11): the byte layout is published — Exhibit 4 of the MTD spec
 
-The official **user manual does not contain the byte layout** — field **start positions, widths,
-fixed-width vs. delimited, padding, and line terminator**. That spec is a separate, gated LHDN
-document (referenced as "Exhibit 4" / "spesifikasi yang ditetapkan oleh LHDNM") not published on
-the open web; multiple payroll vendors (SQL, PayrollPanda, Talenox, Kakitangan) implement it but
-none publish the byte layout. The physical encoding is **exactly what decides upload acceptance**,
-so encoding it from guesswork would produce the rejected-file failure ADR-0010 forbids.
+The "gated" layout was hiding in plain sight: **Exhibit 4 — "Specification Format for MTD Text
+File Data"** of the official LHDN _Specification for MTD Calculations Using Computerized
+Calculation for 2026_ (the same PDF our PCB figures come from):
+<https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf>
+(pp. 43–44, incl. a worked sample file). §E.18 states the system "must provide the text file data
+format (Exhibit 4) for the purpose of MTD submission", uploaded via e-Data PCB / **e-PCB Plus**.
 
-Compounding it: LHDN is **transitioning to e-PCB Plus (2025–2026)**, so the current accepted format
-must be reconfirmed against the live portal regardless.
+**Filename:** `<employerNo(10)><mm>_<yyyy>.txt`
 
-### To build this correctly, we need ONE of
+**Header record — fixed-width, 57 chars:**
 
-1. The LHDN **"Spesifikasi Format Fail Teks CP39"** byte-layout document (from a registered e-Data
-   PCB / e-PCB Plus employer account), **or**
-2. A **real sample `.txt`** from a prior successful submission (accountant / existing payroll
-   vendor export) to derive the exact encoding, **and**
-3. Confirmation of the **e-PCB Plus** current accepted format.
+| # | Field | Pos | Len | Type | Rule |
+|---|---|---|---|---|---|
+| 1 | Record type | 1 | 1 | A | literal `H` |
+| 2 | Employer no. (HQ) | 2–11 | 10 | N | E-number digits only, right-justify, zero-pad (E 908915-10 → `0090891510`) |
+| 3 | Employer no. | 12–21 | 10 | N | as above |
+| 4 | Year of deduction | 22–25 | 4 | N | `YYYY` |
+| 5 | Month of deduction | 26–27 | 2 | N | `MM` |
+| 6 | Total MTD amount | 28–37 | 10 | N | cents, no decimal point, zero-padded (RM8,350.00 → `0000835000`) |
+| 7 | Total MTD records | 38–42 | 5 | N | zero-padded |
+| 8 | Total CP38 amount | 43–52 | 10 | N | as field 6 |
+| 9 | Total CP38 records | 53–57 | 5 | N | zero-padded |
 
-The Layer-A `my.cp39` report (readable PCB figures + CSV, in `localization/my/reports.ts`) already
-covers the underlying obligation in the meantime.
+**Detail record — fixed-width, 136 chars:**
+
+| # | Field | Pos | Len | Type | Rule |
+|---|---|---|---|---|---|
+| 10 | Record type | 1 | 1 | A | literal `D` |
+| 11 | TIN | 2–12 | 11 | N | **mandatory**; digits without "IG", zero-padded to 11 (IG 531367080 → `00531367080`) |
+| 12 | Employee name | 13–72 | 60 | A | left-justify, space-pad |
+| 13 | Old IC no. | 73–84 | 12 | A/N | blank if n/a |
+| 14 | New IC no. | 85–96 | 12 | N | digits, no dashes; blank if n/a |
+| 15 | Passport no. | 97–108 | 12 | A/N | left-justify; blank if n/a |
+| 16 | Country code | 109–110 | 2 | A | foreigners only |
+| 17 | MTD amount | 111–118 | 8 | N | cents, no decimal point, zero-padded (RM900.00 → `00090000`) |
+| 18 | CP38 amount | 119–126 | 8 | N | as above |
+| 19 | Employee no. | 127–136 | 10 | A/N | left-justify |
+
+**Still required before "not for submission" comes off a generated file:** confirmation against
+the live **e-PCB Plus** portal (the migration is in progress) and an accountant's verification of
+one real upload — the standard Layer-B sign-off. The Layer-A `my.cp39` report continues to cover
+the obligation meanwhile. A DRAFT generator can now be built sourced, not guessed.
 
 ---
 

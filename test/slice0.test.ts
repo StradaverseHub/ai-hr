@@ -62,7 +62,7 @@ import {
   prefillOvertimeFromAttendance,
   setPayrollInput,
 } from '../core/payroll';
-import { eis, epf, overtimePay, pcb, pcbAdditional, socso, statutory } from '../localization/my/payroll';
+import { eis, epf, overtimePay, pcbMonth, socso, statutory } from '../localization/my/payroll';
 import {
   complianceWorklist,
   employeeEaStatement,
@@ -393,7 +393,9 @@ describe('Slice 4 — payroll', () => {
     await setStatutoryProfileMY(a, { personId: e1.personId, icNumber: '900101010001', taxCategory: 1, numChildren: 0 });
     await setStatutoryProfileMY(a, { personId: e2.personId, icNumber: '900101010002', taxCategory: 2, numChildren: 3 });
 
-    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+    // January: with accumulators, a first-ever batch in month m projects income only from m to
+    // December (an August start on RM8,000 → chargeable 27,000 → rebate wipes the MTD — correctly).
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-01' });
     await generatePayslips(a, { batchId });
 
     const detail = await batchDetail(a, batchId);
@@ -496,14 +498,16 @@ describe('Slice 4 — payroll', () => {
 
 describe('Slice 5 — payroll compliance (official MY statutory tables)', () => {
   it('PCB follows the LHDN computerised calc with reliefs', () => {
+    const jan = (wage: number, profile?: { category?: 1 | 2 | 3; children?: number }) =>
+      pcbMonth({ monthlyWage: wage, epfMonthly: Math.ceil(wage * 0.11), month: 1, profile }).normal;
     // RM3000 single → below the taxable threshold after reliefs → no PCB.
-    expect(pcb(3000)).toBe(0);
-    // RM5000 single → P = 60000 − 9000 − 4000 (EPF cap) = 47000 → (47000−35000)·6% + 600 = 1320/yr.
-    expect(pcb(5000)).toBeCloseTo(110, 2);
+    expect(jan(3000)).toBe(0);
+    // RM5000 single, January: P = 47,000.07 → (12,000.07·6% + 600)/12 → RM110.00.
+    expect(jan(5000)).toBe(110);
     // Category 2 (non-working spouse, +RM4000 relief) pays less than a single earner.
-    expect(pcb(8000, { category: 2 })).toBeLessThan(pcb(8000, { category: 1 }));
+    expect(jan(8000, { category: 2 })).toBeLessThan(jan(8000, { category: 1 }));
     // Each qualifying child reduces PCB.
-    expect(pcb(8000, { children: 2 })).toBeLessThan(pcb(8000, { children: 0 }));
+    expect(jan(8000, { children: 2 })).toBeLessThan(jan(8000, { children: 0 }));
   });
 
   it('SOCSO First Category matches the official Act 4 schedule to the RM6,000 ceiling', () => {
@@ -822,12 +826,19 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
     const base = statutory(5000, profile, 0); // RM5000/mo, no bonus
     const withBonus = statutory(5000, profile, 5000); // + RM5000 bonus
 
-    // PCB = normal monthly PCB + bonus PCB (difference method), exposed as pcbBonus.
-    const bonusPcb = pcbAdditional(5000, 5000, profile);
-    expect(bonusPcb).toBeGreaterThan(0);
-    expect(withBonus.pcbBonus).toBe(bonusPcb);
-    expect(withBonus.pcb).toBe(Math.round((pcb(5000, profile) + bonusPcb) * 100) / 100);
-    expect(pcbAdditional(5000, 0, profile)).toBe(0); // no bonus → no extra PCB
+    // PCB = normal monthly PCB + bonus PCB (spec §D.2 Steps 1–5), exposed as pcbBonus.
+    const m = pcbMonth({
+      monthlyWage: 5000,
+      epfMonthly: 550,
+      month: 1,
+      profile,
+      additional: 5000,
+      epfOnAdditional: 550,
+    });
+    expect(m.additional).toBeGreaterThan(0);
+    expect(withBonus.pcbBonus).toBe(m.additional);
+    expect(withBonus.pcb).toBe(m.total);
+    expect(statutory(5000, profile, 0).pcbBonus).toBe(0); // no bonus → no extra PCB
 
     // EPF: bonus IS subject. Employer rate stays 13% (normal wage ≤ RM5000) applied to wage+bonus.
     expect(epf(5000, 5000)).toEqual({ employee: 1100, employer: 1300 });
@@ -857,7 +868,9 @@ describe('Slice 5 — bonus / additional-remuneration MTD (#68)', () => {
     expect(Number(slip.bonus)).toBe(6000);
     expect(Number(slip.gross)).toBe(12000); // 6000 basic + 6000 bonus
     expect(st.pcbBonus).toBeGreaterThan(0);
-    expect(st.pcb).toBeGreaterThan(pcb(6000, { category: 1, children: 0 })); // bonus pushed PCB up
+    // Bonus pushed total PCB above the normal-only March MTD (fresh year, no priors).
+    const normalOnly = pcbMonth({ monthlyWage: 6000, epfMonthly: 660, month: 3 }).normal;
+    expect(st.pcb).toBeGreaterThan(normalOnly);
   });
 });
 
@@ -1546,5 +1559,141 @@ describe('Leave-type code integrity (0031)', () => {
     expect(await ledgerBalance(employmentId, lt.id)).toBe(14);
     await expect(createLeaveType(a, { code: 'sick', name: 'Dupe' })).rejects.toThrow(/already exists/i);
     await expect(createLeaveType(a, { code: 'sick!', name: 'Bad' })).rejects.toThrow(/letters/i);
+  });
+});
+
+describe('PCB — LHDN 2026 computerised method, spec Exhibit 5 golden sequence', () => {
+  // The spec's own worked example: married, spouse working, 3 children (Category 3),
+  // RM5,500/month, EPF RM605/month; TP1 deductions in Mar/Apr; RM8,250 bonus in April.
+  const profile = { category: 3 as const, children: 3 };
+
+  it('January (no priors): P = 47,000.07 → MTD RM110.00', () => {
+    const r = pcbMonth({ monthlyWage: 5500, epfMonthly: 605, month: 1, profile });
+    expect(r.snapshot.P1).toBe(47000.07);
+    expect(r.normal).toBe(110);
+  });
+
+  it('February (accumulators from January): P = 47,000.00 → MTD RM110.00', () => {
+    const r = pcbMonth({
+      monthlyWage: 5500,
+      epfMonthly: 605,
+      month: 2,
+      profile,
+      acc: { netRemuneration: 4895, epfClaimed: 605, pcbPaid: 110 },
+    });
+    expect(r.snapshot.P1).toBe(47000);
+    expect(r.normal).toBe(110);
+  });
+
+  it('March (TP1 deductions RM300): P = 46,700.07 → MTD RM108.20', () => {
+    const r = pcbMonth({
+      monthlyWage: 5500,
+      epfMonthly: 605,
+      month: 3,
+      profile,
+      acc: { netRemuneration: 9790, epfClaimed: 1210, pcbPaid: 220 },
+      lpCurrent: 300,
+    });
+    expect(r.snapshot.P1).toBe(46700.07);
+    expect(r.normal).toBe(108.2);
+  });
+
+  it('April (bonus RM8,250): normal 106.20 + additional 727.50 = RM833.70', () => {
+    const r = pcbMonth({
+      monthlyWage: 5500,
+      epfMonthly: 605,
+      month: 4,
+      profile,
+      acc: { netRemuneration: 14685, epfClaimed: 1815, pcbPaid: 328.2, lpAccumulated: 300 },
+      additional: 8250,
+      epfOnAdditional: 908,
+      lpCurrent: 300,
+    });
+    expect(r.snapshot.P1).toBe(46400);
+    expect(r.snapshot.P2).toBe(54650);
+    expect(r.normal).toBe(106.2);
+    expect(r.additional).toBe(727.5);
+    expect(r.total).toBe(833.7);
+  });
+
+  it('rounding rules: 5-sen round-up and the RM10 floor', () => {
+    // A wage whose raw MTD lands between 5-sen steps must round UP (spec §E.2)…
+    const r = pcbMonth({ monthlyWage: 5013, epfMonthly: Math.ceil(5013 * 0.11), month: 1 });
+    expect(Math.round(r.normal * 100) % 5).toBe(0);
+    // …and an MTD below RM10 is not deducted at all (spec §E.3).
+    const tiny = pcbMonth({ monthlyWage: 3200, epfMonthly: Math.ceil(3200 * 0.11), month: 1 });
+    expect(tiny.normal).toBe(0);
+  });
+});
+
+describe('PCB accumulators through the payroll engine (ADR-0014)', () => {
+  it('replays prior payslips: Jan and Feb batches both deduct the Exhibit-5 RM110.00', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const e = await hire(a, b, 'Lhdn Example');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015555', taxCategory: 3, numChildren: 3 });
+
+    const jan = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-01' });
+    await generatePayslips(a, { batchId: jan.batchId });
+    const janSlip = (await batchDetail(a, jan.batchId))!.slips.find((s) => s.name === 'Lhdn Example')!;
+    const janSt = janSlip.statutory as { pcb: number; pcbMeta: { ytdNet: number; pcbPaid: number } };
+    expect(janSt.pcb).toBe(110);
+    expect(janSt.pcbMeta.ytdNet).toBe(0);
+
+    const feb = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-02' });
+    await generatePayslips(a, { batchId: feb.batchId });
+    const febSlip = (await batchDetail(a, feb.batchId))!.slips.find((s) => s.name === 'Lhdn Example')!;
+    const febSt = febSlip.statutory as { pcb: number; pcbMeta: { ytdNet: number; epfClaimed: number; pcbPaid: number } };
+    // The engine derived February's accumulators from January's payslip: ∑(Y−K)=4,895, K=605, X=110.
+    expect(febSt.pcbMeta).toMatchObject({ ytdNet: 4895, epfClaimed: 605, pcbPaid: 110 });
+    expect(febSt.pcb).toBe(110);
+  });
+
+  it('TP3 opening balances seed the accumulators for a mid-year first run', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const e = await hire(a, b, 'Tp3 Joiner');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101016666',
+      taxCategory: 3,
+      numChildren: 3,
+      tp3Year: 2026,
+      tp3NetRemuneration: 4895,
+      tp3EpfClaimed: 605,
+      tp3PcbPaid: 110,
+    });
+    // First batch we ever run is February — January lives only in the TP3 figures.
+    const feb = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-02' });
+    await generatePayslips(a, { batchId: feb.batchId });
+    const slip = (await batchDetail(a, feb.batchId))!.slips.find((s) => s.name === 'Tp3 Joiner')!;
+    const st = slip.statutory as { pcb: number; pcbMeta: { ytdNet: number } };
+    expect(st.pcbMeta.ytdNet).toBe(4895);
+    expect(st.pcb).toBe(110); // identical to the Exhibit-5 February figure
+  });
+
+  it('a TP3 record for a DIFFERENT year is ignored', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const e = await hire(a, b, 'Stale Tp3');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101017777',
+      taxCategory: 3,
+      numChildren: 3,
+      tp3Year: 2025, // last year's openings must not leak into 2026
+      tp3NetRemuneration: 50000,
+      tp3EpfClaimed: 4000,
+      tp3PcbPaid: 5000,
+    });
+    const jan = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-01' });
+    await generatePayslips(a, { batchId: jan.batchId });
+    const slip = (await batchDetail(a, jan.batchId))!.slips.find((s) => s.name === 'Stale Tp3')!;
+    const st = slip.statutory as { pcb: number; pcbMeta: { ytdNet: number } };
+    expect(st.pcbMeta.ytdNet).toBe(0);
+    expect(st.pcb).toBe(110);
   });
 });

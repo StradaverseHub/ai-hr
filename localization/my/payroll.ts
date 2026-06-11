@@ -5,10 +5,11 @@
  * Provenance and the human sign-off checklist: docs/architecture/STATUTORY-SOURCES.md.
  *
  * Accuracy posture:
- *  - PCB/MTD  — implements the official LHDN 2026 computerised-calculation formula for a RESIDENT
- *               employee, NORMAL remuneration. Steady-state monthly = annual tax / 12 (correct for
- *               constant monthly income with no prior-month accumulators; bonuses / mid-year changes
- *               need the full (n+1, X) spread — a documented follow-up).
+ *  - PCB/MTD  — the FULL official LHDN 2026 computerised method for a RESIDENT employee, with
+ *               prior-month accumulators (∑(Y−K), K, X) and the (n+1) spread, incl. additional
+ *               remuneration Steps 1–5 and the §E rounding rules (truncate 2dp, 5-sen round-up,
+ *               RM10 floor). Verified against the spec's Exhibit 5 worked example (Jan–Apr).
+ *               TP1 optional deductions (LP) are calculator-level only; zakat untracked (0).
  *  - EPF      — statutory % with round-up to the next ringgit (Third Schedule convention; exact
  *               RM20 low-wage banding still flagged — KWSP PDF pending, see sources doc).
  *  - SOCSO    — exact Act 4 schedule amounts, verified to the RM6,000 ceiling (2026.1).
@@ -64,22 +65,8 @@ export function eis(wage: number) {
   return { employer: band.employer, employee: band.employee };
 }
 
-/** Annual chargeable income P = annual income − reliefs (individual, spouse for Cat 2, children, EPF capped). */
-function chargeableIncome(
-  annualIncome: number,
-  category: TaxCategory,
-  children: number,
-  annualEpf: number,
-): number {
-  const reliefs =
-    MY_RELIEFS.individual +
-    (category === 2 ? MY_RELIEFS.spouse : 0) +
-    children * MY_RELIEFS.perChild +
-    Math.min(annualEpf, MY_RELIEFS.epfReliefCap);
-  return annualIncome - reliefs;
-}
-
-/** Annual tax on chargeable income P: the (M, R, B) band that contains P; category selects B. */
+/** Annual tax on chargeable income P: the (M, R, B) band that contains P; category selects B.
+ *  Negative B encodes the RM400/RM800 rebate; tax floors at 0 (spec: P ≤ 5,000 → no tax). */
 function annualTaxFor(P: number, category: TaxCategory): number {
   if (P <= 5000) return 0;
   const band = MY_PCB_BANDS.find((b) => P <= b.upTo) ?? MY_PCB_BANDS[MY_PCB_BANDS.length - 1];
@@ -87,38 +74,120 @@ function annualTaxFor(P: number, category: TaxCategory): number {
   return Math.max(0, (P - band.M) * band.R + B);
 }
 
-/**
- * PCB/MTD — LHDN 2026 computerised calculation (resident, normal remuneration).
- * Projects annual chargeable income P, looks up the (M, R, B) band, and spreads the annual
- * tax evenly across 12 months. `monthlyEpf` defaults to the employee EPF for relief purposes.
- */
-export function pcb(monthlyGross: number, opts?: TaxProfile & { monthlyEpf?: number }): number {
-  const category: TaxCategory = opts?.category ?? 1;
-  const children = opts?.children ?? 0;
-  const monthlyEpf = opts?.monthlyEpf ?? ceilRinggit(monthlyGross * MY_EPF.employeeRate);
-  const P = chargeableIncome(monthlyGross * 12, category, children, monthlyEpf * 12);
-  return round2(annualTaxFor(P, category) / 12);
-}
+// ── PCB / MTD — LHDN 2026 computerised method WITH prior-month accumulators ──
+// Source (verbatim): "Amendment to: Specification for MTD Calculations Using Computerized
+// Calculation for 2026" (LHDN, updated 01 Jan 2026) §D.1 (normal), §D.2 Steps 1–5 (additional),
+// §E Terms & Conditions (truncation, 5-sen round-up, RM10 floor), Exhibit 5 (worked example).
+//   MTD = [(P − M) × R + B − (Z + X)] / (n + 1)
+//   P   = ∑(Y−K) + (Y₁−K₁) + (Y₂−K₂)·n [+ (Yₜ−Kₜ)] − [D + S + QC + (∑LP + LP₁)]
+// Accumulators (∑(Y−K), K, X, Z) come from the year's prior payslips + TP3 opening balances
+// (ADR-0014); the EPF relief cap is enforced CUMULATIVELY across K, K₁, K₂, Kₜ.
+
+export type PcbAccumulators = {
+  /** ∑(Y−K): accumulated net remuneration paid in prior months this year (incl. previous employer / TP3). */
+  netRemuneration: number;
+  /** K: EPF already CLAIMED toward the annual relief cap (≤ RM4,000). */
+  epfClaimed: number;
+  /** X: accumulated MTD paid in prior months this year (normal + additional; excl. CP38). */
+  pcbPaid: number;
+  /** Z: accumulated zakat paid via salary deduction (we do not track zakat — 0). */
+  zakatPaid?: number;
+  /** ∑LP: accumulated TP1 optional deductions (not tracked in payroll — calculator-level only). */
+  lpAccumulated?: number;
+};
+
+export const PCB_ZERO_ACC: PcbAccumulators = { netRemuneration: 0, epfClaimed: 0, pcbPaid: 0 };
+
+/** Spec §E.1: calculations are limited to two decimals — TRUNCATE, do not round. */
+const trunc2 = (n: number) => Math.trunc(n * 100 + (n >= 0 ? 1e-7 : -1e-7)) / 100;
+/** Spec §E.2: the MTD amount rounds UP to the next 5 sen (287.02 → 287.05, 152.06 → 152.10). */
+const ceil5sen = (n: number) => Math.ceil(n * 20 - 1e-7) / 20;
+/** Spec §E.3/4: an MTD amount below RM10 is not deducted. */
+const rm10Floor = (n: number) => (n < 10 ? 0 : n);
+
+export type PcbMonthResult = {
+  /** MTD on normal remuneration for the month (post rounding + RM10 rule). */
+  normal: number;
+  /** MTD on additional remuneration (bonus) for the month (post rounding + RM10 rule). */
+  additional: number;
+  /** Amount to deduct this month. */
+  total: number;
+  /** Audit snapshot stamped into the payslip (reproducibility, ADR-0006). */
+  snapshot: {
+    month: number;
+    n: number;
+    ytdNet: number;
+    epfClaimed: number;
+    pcbPaid: number;
+    P1: number;
+    P2?: number;
+  };
+};
 
 /**
- * PCB on additional remuneration (bonus) — LHDN difference method: the bonus's MTD is the extra
- * ANNUAL tax it creates — tax on (annual chargeable incl. bonus) minus tax on (annual chargeable
- * excl. bonus) — taken in the bonus month. The bonus carries its own 11% EPF relief (pooled with
- * the normal EPF under the same cap). Same simplified, no-prior-accumulator model as pcb() above.
+ * One month's PCB under the full computerised method. `monthlyWage` is Y₁ (taxable cash, incl.
+ * OT, prorated actual); `epfMonthly` the actual employee EPF on it; `additional`/`epfOnAdditional`
+ * the bonus (Yₜ/Kₜ). `month` is the calendar month of the pay period (1–12).
  */
-export function pcbAdditional(
-  monthlyGross: number,
-  additional: number,
-  opts?: TaxProfile & { monthlyEpf?: number },
-): number {
-  if (additional <= 0) return 0;
-  const category: TaxCategory = opts?.category ?? 1;
-  const children = opts?.children ?? 0;
-  const monthlyEpf = opts?.monthlyEpf ?? ceilRinggit(monthlyGross * MY_EPF.employeeRate);
-  const epfOnBonus = ceilRinggit(additional * MY_EPF.employeeRate);
-  const P0 = chargeableIncome(monthlyGross * 12, category, children, monthlyEpf * 12);
-  const P1 = chargeableIncome(monthlyGross * 12 + additional, category, children, monthlyEpf * 12 + epfOnBonus);
-  return Math.max(0, round2(annualTaxFor(P1, category) - annualTaxFor(P0, category)));
+export function pcbMonth(p: {
+  monthlyWage: number;
+  epfMonthly: number;
+  month: number;
+  profile?: TaxProfile;
+  acc?: PcbAccumulators;
+  additional?: number;
+  epfOnAdditional?: number;
+  /** LP₁ — current-month TP1 optional deductions (tests/golden examples; payroll passes 0). */
+  lpCurrent?: number;
+}): PcbMonthResult {
+  const category: TaxCategory = p.profile?.category ?? 1;
+  const children = p.profile?.children ?? 0;
+  const acc = p.acc ?? PCB_ZERO_ACC;
+  const month = Math.min(12, Math.max(1, Math.trunc(p.month)));
+  const n = 12 - month; // balance of months AFTER the current one
+  const cap = MY_RELIEFS.epfReliefCap;
+  const reliefs =
+    MY_RELIEFS.individual + (category === 2 ? MY_RELIEFS.spouse : 0) + children * MY_RELIEFS.perChild;
+  const lp = (acc.lpAccumulated ?? 0) + (p.lpCurrent ?? 0);
+  const Z = acc.zakatPaid ?? 0;
+  const X = acc.pcbPaid;
+  const Y1 = p.monthlyWage;
+  const K = Math.min(acc.epfClaimed, cap);
+  const K1 = Math.min(p.epfMonthly, Math.max(0, cap - K));
+
+  // Step 1 — MTD on net NORMAL remuneration (additional remuneration excluded).
+  const K2n = n > 0 ? trunc2(Math.min((cap - K - K1) / n, K1)) : 0;
+  const P1 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2n) * n - reliefs - lp);
+  const mtdNormalCalc = ceil5sen(trunc2(Math.max(0, (annualTaxFor(P1, category) - (Z + X)) / (n + 1))));
+
+  // Steps 2–4 — additional remuneration via the year-total difference.
+  const Yt = Math.max(0, p.additional ?? 0);
+  let additional = 0;
+  let P2: number | undefined;
+  if (Yt > 0) {
+    const Kt = Math.min(p.epfOnAdditional ?? 0, Math.max(0, cap - K - K1));
+    const K2a = n > 0 ? trunc2(Math.min((cap - K - K1 - Kt) / n, K1)) : 0;
+    P2 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2a) * n + (Yt - Kt) - reliefs - lp);
+    const totalTaxYear = annualTaxFor(P2, category); // Step 3
+    const totalMtdYear = X + mtdNormalCalc * (n + 1); // Step 1[E]
+    additional = rm10Floor(ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z)))); // Step 4
+  }
+
+  const normal = rm10Floor(mtdNormalCalc);
+  return {
+    normal,
+    additional,
+    total: round2(normal + additional),
+    snapshot: {
+      month,
+      n,
+      ytdNet: round2(acc.netRemuneration),
+      epfClaimed: round2(K),
+      pcbPaid: round2(X),
+      P1,
+      ...(P2 !== undefined ? { P2 } : {}),
+    },
+  };
 }
 
 /**
@@ -130,13 +199,31 @@ export function pcbAdditional(
  * EPF EXCLUDES overtime (KWSP non-liable list); SOCSO and EIS INCLUDE it (PERKESO wages
  * definition); PCB taxes all cash remuneration. `wage` must therefore be EX-overtime.
  */
-export function statutory(wage: number, profile?: TaxProfile, additional = 0, overtime = 0) {
+export function statutory(
+  wage: number,
+  profile?: TaxProfile,
+  additional = 0,
+  overtime = 0,
+  /** PCB context: pay-period month (1–12) + the year's accumulators (ADR-0014).
+   *  Defaults to January-with-no-priors, which is only correct for a first January run. */
+  pcbCtx?: { month?: number; acc?: PcbAccumulators },
+) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
   const e = epf(wage, additional); // bonus IS subject to EPF; overtime is NOT
   const s = socso(cashWage); // bonus excluded from SOCSO; overtime included
   const i = eis(cashWage); // bonus excluded from EIS; overtime included
-  const pcbNormal = pcb(cashWage, { category: profile?.category, children: profile?.children });
-  const pcbBonus = pcbAdditional(cashWage, additional, { category: profile?.category, children: profile?.children });
+  // EPF relief split: the employee share on the bonus (Kₜ) is the rate on the bonus alone; the
+  // remainder of the month's actual EPF belongs to normal remuneration (K₁).
+  const epfOnBonus = additional > 0 ? ceilRinggit(additional * MY_EPF.employeeRate) : 0;
+  const m = pcbMonth({
+    monthlyWage: cashWage,
+    epfMonthly: Math.max(0, e.employee - epfOnBonus),
+    month: pcbCtx?.month ?? 1,
+    profile,
+    acc: pcbCtx?.acc,
+    additional,
+    epfOnAdditional: epfOnBonus,
+  });
   return {
     epfEmployee: e.employee,
     epfEmployer: e.employer,
@@ -144,9 +231,11 @@ export function statutory(wage: number, profile?: TaxProfile, additional = 0, ov
     socsoEmployer: s.employer,
     eisEmployee: i.employee,
     eisEmployer: i.employer,
-    pcb: round2(pcbNormal + pcbBonus),
+    pcb: m.total,
     /** PCB attributable to the bonus alone (audit / payslip breakdown). */
-    pcbBonus,
+    pcbBonus: m.additional,
+    /** Accumulator snapshot the PCB was computed from (audit / reproducibility, ADR-0014). */
+    pcbMeta: m.snapshot,
     /** Statutory-table version that produced these figures (audit / reproducibility). */
     version: MY_STATUTORY_VERSION,
   };

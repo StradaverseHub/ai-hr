@@ -19,5 +19,6 @@ decision, add a new ADR that supersedes the old one.
 | [0011](0011-attendance-time-tracking.md) | Attendance time engine (work schedules, day-type classification, OT, corrections) | Accepted (Phase A + B) |
 | [0012](0012-employee-self-service.md) | Employee self-service: read-write profile with an approval gate | Accepted (Phase 1 + 2) |
 | [0013](0013-performance-talent-management.md) | Performance & talent management: cycle-anchored, closes the loop into pay | Proposed (design only) |
+| [0014](0014-pcb-accumulators.md) | PCB accumulators derived from payslip history + TP3 opening balances | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

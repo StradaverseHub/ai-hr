@@ -122,6 +122,10 @@ export async function setStatutoryAction(formData: FormData) {
       eisEligible: formData.get('eisEligible') === 'on',
       bankName: (formData.get('bankName') as string) || undefined,
       bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
+      tp3Year: Number(formData.get('tp3Year')) || null,
+      tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
+      tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
+      tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
     });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);

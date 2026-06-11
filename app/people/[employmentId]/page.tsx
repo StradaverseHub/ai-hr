@@ -235,7 +235,28 @@ export default async function EmployeePage({
               <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
               EIS eligible
             </label>
-            <div className="flex items-end justify-end">
+            <div className="sm:col-span-2 border-t border-border pt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Previous employment this year (TP3 / opening balances)
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                From the employee&rsquo;s Form TP3 (or pre-migration payroll): seeds the PCB
+                accumulators when the year matches the pay period. Never shown on payslips or the EA.
+              </p>
+            </div>
+            <Field label="Applies to year">
+              <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
+            </Field>
+            <Field label="Accumulated net remuneration (Y−K)">
+              <input name="tp3NetRemuneration" type="number" min="0" step="0.01" defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
+            </Field>
+            <Field label="EPF claimed toward relief (K)">
+              <input name="tp3EpfClaimed" type="number" min="0" step="0.01" defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
+            </Field>
+            <Field label="PCB already deducted (X)">
+              <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
+            </Field>
+            <div className="flex items-end justify-end sm:col-span-2">
               <button className={btnPrimary}>Save statutory</button>
             </div>
           </form>
