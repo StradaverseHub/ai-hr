@@ -9,21 +9,19 @@
  *               employee, NORMAL remuneration. Steady-state monthly = annual tax / 12 (correct for
  *               constant monthly income with no prior-month accumulators; bonuses / mid-year changes
  *               need the full (n+1, X) spread — a documented follow-up).
- *  - EPF      — statutory % with round-up to the next ringgit (Third Schedule convention).
- *  - SOCSO    — official band table for wages ≤ RM5000; statutory % for the RM5000–6000 ceiling band
- *               (UNVERIFIED — see sources doc).
- *  - EIS      — statutory % on the capped wage (exact Act 800 band table not yet encoded).
+ *  - EPF      — statutory % with round-up to the next ringgit (Third Schedule convention; exact
+ *               RM20 low-wage banding still flagged — KWSP PDF pending, see sources doc).
+ *  - SOCSO    — exact Act 4 schedule amounts, verified to the RM6,000 ceiling (2026.1).
+ *  - EIS      — exact Act 800 Second Schedule amounts, verified to the RM6,000 ceiling (2026.1).
  */
 import {
-  MY_CONTRIB_CEILING,
-  MY_EIS_RATES,
+  MY_EIS_BANDS,
   MY_EPF,
   MY_PCB_BANDS,
   MY_RELIEFS,
   MY_SOCSO_CATEGORY1,
-  MY_SOCSO_RATES,
-  MY_SOCSO_VERIFIED_UP_TO,
   MY_STATUTORY_VERSION,
+  type ContribBand,
   type TaxCategory,
 } from './statutory-tables';
 
@@ -48,20 +46,22 @@ export function epf(wage: number, additional = 0) {
   };
 }
 
-/** SOCSO First Category: official band amounts ≤ RM5000, statutory % up to the RM6000 ceiling. */
-export function socso(wage: number) {
-  if (wage <= MY_SOCSO_VERIFIED_UP_TO) {
-    const band = MY_SOCSO_CATEGORY1.find((b) => wage <= b.upTo) ?? MY_SOCSO_CATEGORY1[0];
-    return { employer: band.employer, employee: band.employee };
-  }
-  const w = Math.min(wage, MY_CONTRIB_CEILING);
-  return { employer: round2(w * MY_SOCSO_RATES.employer), employee: round2(w * MY_SOCSO_RATES.employee) };
+/** Exact schedule lookup: first band the wage fits in; wages above the table contribute at the
+ *  top band (both Act 4 and Act 800 prescribe this for wages exceeding RM6,000 — their row 65). */
+function bandFor(bands: ContribBand[], wage: number): ContribBand {
+  return bands.find((b) => wage <= b.upTo) ?? bands[bands.length - 1];
 }
 
-/** EIS: 0.2% employer / 0.2% employee on the wage, capped at the RM6000 ceiling. */
+/** SOCSO First Category — exact Act 4 schedule amounts (verified to the RM6,000 ceiling). */
+export function socso(wage: number) {
+  const band = bandFor(MY_SOCSO_CATEGORY1, wage);
+  return { employer: band.employer, employee: band.employee };
+}
+
+/** EIS — exact Act 800 Second Schedule amounts (verified to the RM6,000 ceiling). */
 export function eis(wage: number) {
-  const w = Math.min(wage, MY_CONTRIB_CEILING);
-  return { employer: round2(w * MY_EIS_RATES.employer), employee: round2(w * MY_EIS_RATES.employee) };
+  const band = bandFor(MY_EIS_BANDS, wage);
+  return { employer: band.employer, employee: band.employee };
 }
 
 /** Annual chargeable income P = annual income − reliefs (individual, spouse for Cat 2, children, EPF capped). */

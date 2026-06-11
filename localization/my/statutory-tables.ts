@@ -9,7 +9,11 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.0';
+export const MY_STATUTORY_VERSION = '2026.1';
+// 2026.1 (2026-06-11): SOCSO bands extended to the RM6,000 ceiling and EIS Second Schedule
+//   band amounts encoded, both verbatim from PERKESO's official Nov-2024 rate PDFs (replacing
+//   the rate-based approximations above RM5,000 / for EIS). EPF unchanged.
+// 2026.0 (2026-06-06): initial sourced tables (PCB, EPF rates, SOCSO ≤ RM5,000, EIS rates).
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Income tax — PCB / MTD computerised calculation (LHDN)
@@ -90,15 +94,17 @@ export const MY_EPF = {
 export const MY_CONTRIB_CEILING = 6000;
 
 // SOCSO — First Category (Employment Injury + Invalidity, employee < 60), Act 4 Third Schedule.
-// Source: https://www.perkeso.gov.my/images/dokumen/Rate_of_Contribution_ACT_4.pdf
-// Rows below (≤ RM5000) are VERIFIED verbatim from that official PDF. The PDF itself still caps
-// at RM5000; the RM6000 ceiling (eff. 1 Oct 2024) is NOT in it, so for wages in (5000, 6000] the
-// calculator falls back to the statutory % (1.75% / 0.5%) — flagged in STATUTORY-SOURCES.md.
+// Source: "Rate of contribution for Employees' Social Security Act 1969 (Act 4)" — PERKESO
+//   official PDF (post-Oct-2024 ceiling, file dated 15 Nov 2024), retrieved 2026-06-11:
+//   https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%204.pdf
+// All 64 bands below are VERIFIED verbatim from that PDF (rows 1–64); its row 65 prescribes
+// that wages exceeding RM6,000 contribute at the top band — the calculator applies the last
+// band for any wage above the table.
 
 export type ContribBand = { upTo: number; employer: number; employee: number };
 
 /** Last wage (RM) for which SOCSO band amounts are officially verified. */
-export const MY_SOCSO_VERIFIED_UP_TO = 5000;
+export const MY_SOCSO_VERIFIED_UP_TO = 6000;
 
 export const MY_SOCSO_CATEGORY1: ContribBand[] = [
   { upTo: 30, employer: 0.4, employee: 0.1 },
@@ -155,12 +161,96 @@ export const MY_SOCSO_CATEGORY1: ContribBand[] = [
   { upTo: 4800, employer: 83.15, employee: 23.75 },
   { upTo: 4900, employer: 84.85, employee: 24.25 },
   { upTo: 5000, employer: 86.65, employee: 24.75 },
+  { upTo: 5100, employer: 88.35, employee: 25.25 },
+  { upTo: 5200, employer: 90.15, employee: 25.75 },
+  { upTo: 5300, employer: 91.85, employee: 26.25 },
+  { upTo: 5400, employer: 93.65, employee: 26.75 },
+  { upTo: 5500, employer: 95.35, employee: 27.25 },
+  { upTo: 5600, employer: 97.15, employee: 27.75 },
+  { upTo: 5700, employer: 98.85, employee: 28.25 },
+  { upTo: 5800, employer: 100.65, employee: 28.75 },
+  { upTo: 5900, employer: 102.35, employee: 29.25 },
+  { upTo: 6000, employer: 104.15, employee: 29.75 },
 ];
 
-/** SOCSO statutory rates (used for the unverified RM5000–6000 band and as a cross-check). */
+/** SOCSO statutory rates — cross-check only (≈1.75% / 0.5% of the band midpoint); the
+ *  calculator uses the exact band table above. */
 export const MY_SOCSO_RATES = { employer: 0.0175, employee: 0.005 };
 
-// EIS / SIP — Employment Insurance System, Act 800. Rate 0.2% employer + 0.2% employee,
-// RM6000 ceiling. ⚠️ The exact Act 800 Second Schedule band amounts are NOT yet encoded; the
-// calculator uses the rate on the capped wage. Flagged in STATUTORY-SOURCES.md.
+// EIS / SIP — Employment Insurance System, Act 800, Second Schedule.
+// Source: "Rate of Contribution Employment Insurance System (Act 800)" — PERKESO official PDF
+//   (post-Oct-2024 ceiling, file dated 15 Nov 2024), retrieved 2026-06-11:
+//   https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%20800.pdf
+// All 64 bands VERIFIED verbatim (rows 1–64); its row 65 prescribes that wages exceeding
+// RM6,000 contribute at the top band (RM11.90 each). Employer and employee amounts are equal
+// in every band — both columns are kept to mirror the published table exactly.
+export const MY_EIS_BANDS: ContribBand[] = [
+  { upTo: 30, employer: 0.05, employee: 0.05 },
+  { upTo: 50, employer: 0.1, employee: 0.1 },
+  { upTo: 70, employer: 0.15, employee: 0.15 },
+  { upTo: 100, employer: 0.2, employee: 0.2 },
+  { upTo: 140, employer: 0.25, employee: 0.25 },
+  { upTo: 200, employer: 0.35, employee: 0.35 },
+  { upTo: 300, employer: 0.5, employee: 0.5 },
+  { upTo: 400, employer: 0.7, employee: 0.7 },
+  { upTo: 500, employer: 0.9, employee: 0.9 },
+  { upTo: 600, employer: 1.1, employee: 1.1 },
+  { upTo: 700, employer: 1.3, employee: 1.3 },
+  { upTo: 800, employer: 1.5, employee: 1.5 },
+  { upTo: 900, employer: 1.7, employee: 1.7 },
+  { upTo: 1000, employer: 1.9, employee: 1.9 },
+  { upTo: 1100, employer: 2.1, employee: 2.1 },
+  { upTo: 1200, employer: 2.3, employee: 2.3 },
+  { upTo: 1300, employer: 2.5, employee: 2.5 },
+  { upTo: 1400, employer: 2.7, employee: 2.7 },
+  { upTo: 1500, employer: 2.9, employee: 2.9 },
+  { upTo: 1600, employer: 3.1, employee: 3.1 },
+  { upTo: 1700, employer: 3.3, employee: 3.3 },
+  { upTo: 1800, employer: 3.5, employee: 3.5 },
+  { upTo: 1900, employer: 3.7, employee: 3.7 },
+  { upTo: 2000, employer: 3.9, employee: 3.9 },
+  { upTo: 2100, employer: 4.1, employee: 4.1 },
+  { upTo: 2200, employer: 4.3, employee: 4.3 },
+  { upTo: 2300, employer: 4.5, employee: 4.5 },
+  { upTo: 2400, employer: 4.7, employee: 4.7 },
+  { upTo: 2500, employer: 4.9, employee: 4.9 },
+  { upTo: 2600, employer: 5.1, employee: 5.1 },
+  { upTo: 2700, employer: 5.3, employee: 5.3 },
+  { upTo: 2800, employer: 5.5, employee: 5.5 },
+  { upTo: 2900, employer: 5.7, employee: 5.7 },
+  { upTo: 3000, employer: 5.9, employee: 5.9 },
+  { upTo: 3100, employer: 6.1, employee: 6.1 },
+  { upTo: 3200, employer: 6.3, employee: 6.3 },
+  { upTo: 3300, employer: 6.5, employee: 6.5 },
+  { upTo: 3400, employer: 6.7, employee: 6.7 },
+  { upTo: 3500, employer: 6.9, employee: 6.9 },
+  { upTo: 3600, employer: 7.1, employee: 7.1 },
+  { upTo: 3700, employer: 7.3, employee: 7.3 },
+  { upTo: 3800, employer: 7.5, employee: 7.5 },
+  { upTo: 3900, employer: 7.7, employee: 7.7 },
+  { upTo: 4000, employer: 7.9, employee: 7.9 },
+  { upTo: 4100, employer: 8.1, employee: 8.1 },
+  { upTo: 4200, employer: 8.3, employee: 8.3 },
+  { upTo: 4300, employer: 8.5, employee: 8.5 },
+  { upTo: 4400, employer: 8.7, employee: 8.7 },
+  { upTo: 4500, employer: 8.9, employee: 8.9 },
+  { upTo: 4600, employer: 9.1, employee: 9.1 },
+  { upTo: 4700, employer: 9.3, employee: 9.3 },
+  { upTo: 4800, employer: 9.5, employee: 9.5 },
+  { upTo: 4900, employer: 9.7, employee: 9.7 },
+  { upTo: 5000, employer: 9.9, employee: 9.9 },
+  { upTo: 5100, employer: 10.1, employee: 10.1 },
+  { upTo: 5200, employer: 10.3, employee: 10.3 },
+  { upTo: 5300, employer: 10.5, employee: 10.5 },
+  { upTo: 5400, employer: 10.7, employee: 10.7 },
+  { upTo: 5500, employer: 10.9, employee: 10.9 },
+  { upTo: 5600, employer: 11.1, employee: 11.1 },
+  { upTo: 5700, employer: 11.3, employee: 11.3 },
+  { upTo: 5800, employer: 11.5, employee: 11.5 },
+  { upTo: 5900, employer: 11.7, employee: 11.7 },
+  { upTo: 6000, employer: 11.9, employee: 11.9 },
+];
+
+/** EIS statutory rates — cross-check only (≈0.2% of the band midpoint); the calculator uses
+ *  the exact band table above. */
 export const MY_EIS_RATES = { employer: 0.002, employee: 0.002 };

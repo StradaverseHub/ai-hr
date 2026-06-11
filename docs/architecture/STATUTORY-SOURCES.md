@@ -1,7 +1,7 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.0` (see `MY_STATUTORY_VERSION`)
-**Retrieved:** 2026-06-06
+**Statutory-table version:** `2026.1` (see `MY_STATUTORY_VERSION`)
+**Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
 > ⚠️ **These figures are encoded from official sources to the best of our ability, but they are
@@ -61,25 +61,31 @@ to these tables is traceable to the exact runs it affects.
   band**. Our `% + round-up` matches at most salary points but may differ by a few sen in some
   bands. Non-citizen rate (2% / 2%) and the age-60+ reduced rates are not implemented.
 
-## 3. SOCSO / PERKESO (Act 4) — ⚠️ Verified ≤ RM5,000, ceiling band UNVERIFIED
+## 3. SOCSO / PERKESO (Act 4) — ✅ Verified to the RM6,000 ceiling (2026.1)
 
-- **Source:** PERKESO _Rate of Contribution, Act 4_ (First Category — Employment Injury + Invalidity).
-  <https://www.perkeso.gov.my/images/dokumen/Rate_of_Contribution_ACT_4.pdf>
-- **What we encoded:** `MY_SOCSO_CATEGORY1` = the official band table **verbatim up to RM5,000**
-  (employer/employee amounts per wage band).
-- **🔴 Verify (important):** the **wage ceiling was raised RM5,000 → RM6,000 effective 1 Oct 2024**,
-  but the official PDF we retrieved **still caps at RM5,000**. For wages in **(RM5,000, RM6,000]**
-  the calculator falls back to the statutory **% (1.75% employer / 0.5% employee)** on the capped
-  wage — these band amounts are **NOT from the official schedule** and must be replaced with the
-  current PERKESO _Jadual Caruman_ (RM6,000 version). Second Category (age 60+) is not implemented.
+- **Source:** PERKESO _Rate of contribution for Employees' Social Security Act 1969 (Act 4)_ —
+  the post-Oct-2024-ceiling PDF (file dated 15 Nov 2024), retrieved **2026-06-11**:
+  <https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%204.pdf>
+- **What we encoded:** `MY_SOCSO_CATEGORY1` = the official First Category band table **verbatim,
+  all 64 bands to RM6,000** (rows 1–64). Row 65 (wages exceeding RM6,000 contribute at the top
+  band, RM104.15 / RM29.75) is implemented by applying the last band above the table. The pre-raise
+  rows were cross-checked unchanged against this newer PDF.
+- **History:** 2026.0 had bands only to RM5,000 (the then-retrieved PDF predated the ceiling raise)
+  with a rate fallback for (5,000, 6,000] — replaced in 2026.1 by the published amounts.
+- **Still not implemented:** Second Category (employer-only, age 60+ / post-invalidity-pension) —
+  the published column exists in the same PDF; encode when age-based category selection lands.
 
-## 4. EIS / SIP (Act 800) — ⚠️ Rate-only
+## 4. EIS / SIP (Act 800) — ✅ Second Schedule verified (2026.1)
 
-- **Source:** PERKESO EIS, rate **0.2% employer / 0.2% employee**, RM6,000 ceiling.
-  <https://perkeso.gov.my/en/rate-of-contribution.html>
-- **What we encoded:** the **rate** on the capped wage (`MY_EIS_RATES`, `MY_CONTRIB_CEILING`).
-- **⚠️ Verify:** the exact **Act 800 Second Schedule band amounts** are not yet encoded; rate-based
-  values may differ from the published per-band figures by a few sen.
+- **Source:** PERKESO _Rate of Contribution Employment Insurance System (Act 800)_ — post-ceiling
+  PDF (file dated 15 Nov 2024), retrieved **2026-06-11**:
+  <https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%20800.pdf>
+- **What we encoded:** `MY_EIS_BANDS` = the official Second Schedule **verbatim, all 64 bands to
+  RM6,000** (employer = employee in every band). Row 65 (wages exceeding RM6,000 → RM11.90 each)
+  via the same last-band rule. The fixed band amounts ≈ 0.2% of the band midpoint — so they
+  **differ from the old 0.2%-of-wage calc** (e.g. RM5,780 → RM11.50 banded vs RM11.56 rated;
+  capped wages → RM11.90, not RM12.00).
+- **History:** 2026.0 used `MY_EIS_RATES` (0.2%) on the capped wage — replaced in 2026.1.
 
 ---
 
@@ -160,8 +166,11 @@ to these tables is traceable to the exact runs it affects.
 
 - [ ] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec for the target YA.
 - [ ] EPF Third Schedule low-wage band amounts confirmed (or `% + round-up` accepted as policy).
-- [ ] SOCSO RM6,000-ceiling band table obtained and `MY_SOCSO_CATEGORY1` extended past RM5,000.
-- [ ] EIS Act 800 Second Schedule band amounts encoded (replace rate-based calc).
+      _(KWSP PDF returns HTTP 403 to programmatic fetch — needs a manual download.)_
+- [x] SOCSO RM6,000-ceiling band table obtained and `MY_SOCSO_CATEGORY1` extended past RM5,000
+      _(2026.1, official Nov-2024 PDF — see §3)_.
+- [x] EIS Act 800 Second Schedule band amounts encoded (replace rate-based calc)
+      _(2026.1, official Nov-2024 PDF — see §4)_.
 - [x] Additional-remuneration (bonus) MTD implemented (difference method); EPF on bonus + SOCSO/EIS
       exclusion handled. ⚠️ Still verify the bonus-month figure against the LHDN e-PCB calculator.
 - [ ] Sign-off recorded (who / date) and `MY_STATUTORY_VERSION` bumped on any change.
