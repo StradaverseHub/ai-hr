@@ -64,6 +64,12 @@ import {
 } from '../core/payroll';
 import { eis, epf, overtimePay, pcbMonth, socso, statutory } from '../localization/my/payroll';
 import {
+  buildCp39File,
+  cp39FileForBatch,
+  Cp39NotReadyError,
+  normalizeEmployerNo,
+} from '../localization/my/cp39-file';
+import {
   complianceWorklist,
   employeeEaStatement,
   listReports,
@@ -1707,5 +1713,109 @@ describe('PCB accumulators through the payroll engine (ADR-0014)', () => {
     const st = slip.statutory as { pcb: number; pcbMeta: { ytdNet: number } };
     expect(st.pcbMeta.ytdNet).toBe(0);
     expect(st.pcb).toBe(110);
+  });
+});
+
+describe('CP39 text file — LHDN Exhibit 4 byte layout (Layer-B DRAFT)', () => {
+  it('reproduces the Exhibit-5 sample detail line byte-for-byte', () => {
+    const f = buildCp39File({
+      employerNo: '0291212306',
+      year: 2002,
+      month: 5,
+      rows: [
+        {
+          tin: '531367080',
+          name: 'ABDUL HANIFAH MOHD ARIF',
+          oldIc: 'A4457334',
+          newIc: '530706015461',
+          mtd: 900,
+          employeeNo: 'AB012283',
+        },
+      ],
+    });
+    const lines = f.content.split('\r\n');
+    const detail = lines[1];
+    const expected =
+      'D' +
+      '00531367080' +
+      'ABDUL HANIFAH MOHD ARIF'.padEnd(60, ' ') +
+      'A4457334'.padEnd(12, ' ') +
+      '530706015461' +
+      ' '.repeat(12) + // passport
+      '  ' + // country
+      '00090000' + // RM900.00 in cents
+      '00000000' +
+      'AB012283'.padEnd(10, ' ');
+    expect(detail.length).toBe(136);
+    expect(detail).toBe(expected);
+    // Position spot-checks straight from the Exhibit-4 table (1-indexed → slice).
+    expect(detail.slice(1, 12)).toBe('00531367080'); // TIN 2–12
+    expect(detail.slice(110, 118)).toBe('00090000'); // MTD 111–118
+  });
+
+  it('builds the 57-char header with totals in cents and the spec filename', () => {
+    const f = buildCp39File({
+      employerNo: '0291212306',
+      year: 2002,
+      month: 5,
+      rows: [
+        { tin: '1', name: 'A', mtd: 5000, cp38: 1000.5 },
+        { tin: '2', name: 'B', mtd: 3350, cp38: 500 },
+        { tin: '3', name: 'C', mtd: 0 },
+      ],
+    });
+    const header = f.content.split('\r\n')[0];
+    expect(header.length).toBe(57);
+    expect(header).toBe('H' + '0291212306' + '0291212306' + '2002' + '05' + '0000835000' + '00002' + '0000150050' + '00002');
+    expect(f.filename).toBe('029121230605_2002.txt');
+    // zero-MTD rows are listed but not counted as MTD records (header field 7 tallies payers).
+    expect(f.totals.mtdRecords).toBe(2);
+  });
+
+  it('normalizes employer E-numbers per the Exhibit-5 examples', () => {
+    expect(normalizeEmployerNo('E 908915-10')).toBe('0090891510');
+    expect(normalizeEmployerNo('E 90002135-00')).toBe('9000213500');
+  });
+
+  it('refuses to emit without a mandatory TIN', () => {
+    expect(() =>
+      buildCp39File({ employerNo: '1', year: 2026, month: 1, rows: [{ tin: '', name: 'No Tin', mtd: 10 }] }),
+    ).toThrow(/TIN is mandatory/i);
+  });
+
+  it('builds from a generated batch and gates on readiness (TIN, E-number)', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const e = await hire(a, b, 'Cp39 Earner');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101018888', taxCategory: 3, numChildren: 3 });
+    const jan = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-01' });
+    await generatePayslips(a, { batchId: jan.batchId });
+
+    // No company E-number yet → readiness gate refuses.
+    await expect(cp39FileForBatch(a, { companyId: b.companyId, periodKey: '2026-01' })).rejects.toThrow(
+      Cp39NotReadyError,
+    );
+    await setCompanyStatutoryMY(a, { companyId: b.companyId, lhdnEmployerNo: 'E 908915-10' });
+
+    // Employee has no TIN yet → named in the refusal.
+    await expect(cp39FileForBatch(a, { companyId: b.companyId, periodKey: '2026-01' })).rejects.toThrow(
+      /Cp39 Earner/,
+    );
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101018888',
+      taxCategory: 3,
+      numChildren: 3,
+      taxNumber: 'IG 531367080',
+    });
+
+    const f = await cp39FileForBatch(a, { companyId: b.companyId, periodKey: '2026-01' });
+    const [header, detail] = f.content.split('\r\n');
+    expect(header.slice(0, 11)).toBe('H0090891510');
+    expect(header.slice(27, 37)).toBe('0000011000'); // total MTD = RM110.00 (Exhibit-5 wage)
+    expect(detail.slice(1, 12)).toBe('00531367080');
+    expect(detail.slice(110, 118)).toBe('00011000'); // RM110.00
+    expect(f.filename).toBe('009089151001_2026.txt');
   });
 });

@@ -97,6 +97,56 @@ export async function recordReport(
   });
 }
 
+/** Record a Layer-B submission FILE generation (byte-exact agency files, ADR-0010 §6D) as the
+ *  same append-only artefact + event the table reports use. The file itself is not stored —
+ *  it is reproducible from the payslips + the stamped statutory version. */
+export async function recordFileReport(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    reportType: string; // e.g. 'my.cp39-file'
+    periodKey: string;
+    rowCount: number;
+    totals: Record<string, number>;
+    statutoryVersion: string;
+  },
+) {
+  const country = await companyCountry(ctx, p.companyId);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(statutoryReport)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId: p.companyId,
+        jurisdiction: country ?? 'MY',
+        reportType: p.reportType,
+        periodKind: 'month',
+        periodKey: p.periodKey,
+        status: 'draft',
+        statutoryVersion: p.statutoryVersion,
+        rowCount: p.rowCount,
+        totals: p.totals,
+        generatedBy: ctx.userId,
+      })
+      .returning({ id: statutoryReport.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'statutory-report',
+      aggregateId: row.id,
+      eventType: 'statutory-report.file-generated',
+      actor: actorOf(ctx),
+      payload: {
+        reportType: p.reportType,
+        companyId: p.companyId,
+        periodKey: p.periodKey,
+        rowCount: p.rowCount,
+        totals: p.totals,
+      },
+    });
+    return row;
+  });
+}
+
 /**
  * Per-employee EA statement for a tax year, via the employment's jurisdiction pack. RLS scopes
  * visibility: an employee sees only their own (+ reports'); admins see their company scope.

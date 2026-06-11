@@ -184,6 +184,16 @@ export default async function ReportsPage({
             <div className="flex items-center justify-between gap-2 px-4 py-3">
               <SectionHeader title={`${reports.find((r) => r.id === reportId)?.label ?? 'Report'} · ${periodKey}`} count={result.rows.length} />
               <div className="flex items-center gap-2">
+                {reportId === 'my.cp39' && result.readiness.length === 0 && (
+                  /* Layer-B (Exhibit 4 byte layout): each download records an artefact + event. */
+                  <a
+                    href={`/payroll/reports/cp39-file?companyId=${companyId}&periodKey=${periodKey}`}
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                    title="e-Data PCB upload file (LHDN Exhibit 4). DRAFT until verified against e-PCB Plus."
+                  >
+                    ⬇ CP39 .txt — DRAFT, not for submission
+                  </a>
+                )}
                 <DownloadCsv
                   columns={result.columns}
                   rows={result.rows}
