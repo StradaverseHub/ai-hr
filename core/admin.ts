@@ -310,6 +310,7 @@ export function listPositions(
     tx
       .select({
         id: position.id,
+        companyId: position.companyId,
         title: position.title,
         jobFamily: position.jobFamily,
         archivedAt: position.archivedAt,
@@ -334,6 +335,7 @@ export function listCostCenters(
     tx
       .select({
         id: costCenter.id,
+        companyId: costCenter.companyId,
         code: costCenter.code,
         name: costCenter.name,
         archivedAt: costCenter.archivedAt,
