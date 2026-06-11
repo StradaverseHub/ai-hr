@@ -342,9 +342,9 @@ describe('Slice 4 — payroll', () => {
     expect(epf(3000)).toEqual({ employee: 330, employer: 390 });
     // EPF: employer drops to 12% above RM5000.
     expect(epf(6000)).toEqual({ employee: 660, employer: 720 });
-    // SOCSO/EIS cap contributions at the RM6000 wage ceiling.
-    expect(socso(8000).employee).toBe(30); // 6000 * 0.005
-    expect(eis(8000).employee).toBe(12); // 6000 * 0.002
+    // SOCSO/EIS: wages above RM6,000 contribute at the schedules' top band (row 65), not a %.
+    expect(socso(8000)).toEqual({ employer: 104.15, employee: 29.75 });
+    expect(eis(8000)).toEqual({ employer: 11.9, employee: 11.9 });
   });
 
   it('generates one payslip per active employee; net = gross − statutory deductions', async () => {
@@ -503,13 +503,27 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
     expect(pcb(8000, { children: 2 })).toBeLessThan(pcb(8000, { children: 0 }));
   });
 
-  it('SOCSO First Category matches the official band table up to RM5000', () => {
+  it('SOCSO First Category matches the official Act 4 schedule to the RM6,000 ceiling', () => {
     expect(socso(3000)).toEqual({ employer: 51.65, employee: 14.75 });
     expect(socso(100)).toEqual({ employer: 1.5, employee: 0.4 });
     expect(socso(5000)).toEqual({ employer: 86.65, employee: 24.75 });
-    // Above RM5000: statutory % capped at the RM6000 ceiling (flagged, not band-table).
-    expect(socso(6000).employee).toBeCloseTo(30, 2);
-    expect(socso(9000).employee).toBeCloseTo(30, 2);
+    // The RM5,000–6,000 bands (rows 55–64 of the Nov-2024 PERKESO PDF) — previously rate-based.
+    expect(socso(5050)).toEqual({ employer: 88.35, employee: 25.25 });
+    expect(socso(5800)).toEqual({ employer: 100.65, employee: 28.75 });
+    expect(socso(6000)).toEqual({ employer: 104.15, employee: 29.75 });
+    // Row 65: wages exceeding RM6,000 stay at the top band.
+    expect(socso(9000)).toEqual({ employer: 104.15, employee: 29.75 });
+  });
+
+  it('EIS matches the official Act 800 Second Schedule (fixed band amounts, not 0.2%)', () => {
+    expect(eis(30)).toEqual({ employer: 0.05, employee: 0.05 });
+    // Band amounts differ from a straight 0.2% of wage — the old approximation.
+    expect(eis(120)).toEqual({ employer: 0.25, employee: 0.25 }); // 0.2% would give 0.24
+    expect(eis(5780)).toEqual({ employer: 11.5, employee: 11.5 }); // 0.2% would give 11.56
+    expect(eis(5000)).toEqual({ employer: 9.9, employee: 9.9 });
+    expect(eis(6000)).toEqual({ employer: 11.9, employee: 11.9 });
+    // Row 65: wages exceeding RM6,000 stay at the top band (was 12.00 under the rate calc).
+    expect(eis(9000)).toEqual({ employer: 11.9, employee: 11.9 });
   });
 
   it('EPF rounds up to the next ringgit and splits the employer rate at RM5000', () => {

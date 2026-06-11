@@ -61,10 +61,11 @@ export default async function BatchPage({
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
         ⚠️ Figures use the <span className="font-medium">official 2026 LHDN / PERKESO tables</span> but still require
         accountant sign-off before real use. PCB uses each employee&apos;s tax profile (category + children); pay is prorated
-        for mid-month joiners/leavers; overtime, bonus and unpaid leave are captured; and bonuses use the LHDN
-        additional-remuneration (difference) method. Remaining simplifications: the SOCSO RM5,000–6,000 ceiling band and
-        EIS are rate-based (exact band tables not yet encoded), and PCB uses the steady-state monthly model without
-        prior-month accumulators. See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
+        for mid-month joiners/leavers; overtime, bonus and unpaid leave are captured; bonuses use the LHDN
+        additional-remuneration (difference) method; and SOCSO + EIS apply the exact Act 4 / Act 800 schedule amounts to
+        the RM6,000 ceiling. Remaining simplifications: EPF low-wage RM20 banding is approximated by % + round-up, and
+        PCB uses the steady-state monthly model without prior-month accumulators.
+        See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
       </div>
 
       {batch.status === 'draft' && (
