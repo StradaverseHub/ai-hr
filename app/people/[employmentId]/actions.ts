@@ -120,6 +120,7 @@ export async function setStatutoryAction(formData: FormData) {
       taxCategory: Number(formData.get('taxCategory')) || 1,
       numChildren: Number(formData.get('numChildren')) || 0,
       eisEligible: formData.get('eisEligible') === 'on',
+      isResident: formData.get('isResident') === 'on',
       bankName: (formData.get('bankName') as string) || undefined,
       bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
       tp3Year: Number(formData.get('tp3Year')) || null,

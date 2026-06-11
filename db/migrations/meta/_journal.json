@@ -232,6 +232,13 @@
       "when": 1781168228840,
       "tag": "0032_famous_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781173129862,
+      "tag": "0033_chunky_redwing",
+      "breakpoints": true
     }
   ]
 }

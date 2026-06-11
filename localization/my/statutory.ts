@@ -26,6 +26,8 @@ export type StatutoryInput = {
   taxCategory?: number; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
   numChildren?: number;
   eisEligible?: boolean;
+  /** Tax residency — non-residents pay flat 30% MTD (LHDN spec §D.a). Defaults to resident. */
+  isResident?: boolean;
   bankName?: string;
   bankAccountNo?: string;
   /** TP3 / opening balances for the PCB accumulators (ADR-0014) — YTD figures from a previous
@@ -51,6 +53,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     taxCategory,
     numChildren,
     eisEligible: p.eisEligible ?? true,
+    isResident: p.isResident ?? true,
     bankName: p.bankName ?? null,
     bankAccountNo: p.bankAccountNo ?? null,
     tp3Year: p.tp3Year ?? null,

@@ -122,7 +122,14 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
 /** Upsert a draft batch's manual overtime input for one employee. Draft-only; appends an event. */
 export async function setPayrollInput(
   ctx: SessionContext,
-  p: { batchId: string; employmentId: string; overtimeAmount: number; bonusAmount?: number },
+  p: {
+    batchId: string;
+    employmentId: string;
+    overtimeAmount: number;
+    bonusAmount?: number;
+    tp1Deduction?: number;
+    zakat?: number;
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
@@ -134,6 +141,8 @@ export async function setPayrollInput(
     if (batch.status !== 'draft') throw new BatchNotDraftError();
     const overtimeAmount = Math.max(0, Number(p.overtimeAmount) || 0);
     const bonusAmount = Math.max(0, Number(p.bonusAmount) || 0);
+    const tp1Deduction = Math.max(0, Number(p.tp1Deduction) || 0);
+    const zakat = Math.max(0, Number(p.zakat) || 0);
     const [existing] = await tx
       .select({ id: payrollInput.id })
       .from(payrollInput)
@@ -145,6 +154,8 @@ export async function setPayrollInput(
         .set({
           overtimeAmount: overtimeAmount.toFixed(2),
           bonusAmount: bonusAmount.toFixed(2),
+          tp1Deduction: tp1Deduction.toFixed(2),
+          zakat: zakat.toFixed(2),
           updatedAt: sql`now()`,
         })
         .where(eq(payrollInput.id, existing.id));
@@ -155,6 +166,8 @@ export async function setPayrollInput(
         employmentId: p.employmentId,
         overtimeAmount: overtimeAmount.toFixed(2),
         bonusAmount: bonusAmount.toFixed(2),
+        tp1Deduction: tp1Deduction.toFixed(2),
+        zakat: zakat.toFixed(2),
       });
     }
     await appendEvent(tx, {
@@ -163,7 +176,7 @@ export async function setPayrollInput(
       aggregateId: p.batchId,
       eventType: 'payroll-batch.input-set',
       actor: actorOf(ctx),
-      payload: { employmentId: p.employmentId, overtimeAmount, bonusAmount },
+      payload: { employmentId: p.employmentId, overtimeAmount, bonusAmount, tp1Deduction, zakat },
     });
     return { ok: true };
   });
@@ -342,6 +355,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         allowance: compensation.monthlyAllowance,
         taxCategory: employeeStatutoryMy.taxCategory,
         numChildren: employeeStatutoryMy.numChildren,
+        isResident: employeeStatutoryMy.isResident,
+        eisEligible: employeeStatutoryMy.eisEligible,
+        dateOfBirth: person.dateOfBirth,
         tp3Year: employeeStatutoryMy.tp3Year,
         tp3Net: employeeStatutoryMy.tp3NetRemuneration,
         tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
@@ -349,6 +365,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
       })
       .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(
         compensation,
         and(
@@ -373,11 +390,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         employmentId: payrollInput.employmentId,
         overtime: payrollInput.overtimeAmount,
         bonus: payrollInput.bonusAmount,
+        tp1: payrollInput.tp1Deduction,
+        zakat: payrollInput.zakat,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
     const overtimeByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.overtime)]));
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
+    const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
+    const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
     // ── PCB accumulators (ADR-0014) ──
@@ -386,7 +407,13 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // payslip history is the ledger; no mutable accumulator state. TP3 / opening balances on the
     // statutory profile seed the replay for mid-year joiners or mid-year system adoption.
     const EPF_RELIEF_CAP = 4000; // mirrors MY_RELIEFS.epfReliefCap; cap math must match the pack
-    type Acc = { netRemuneration: number; epfClaimed: number; pcbPaid: number; zakatPaid: number };
+    type Acc = {
+      netRemuneration: number;
+      epfClaimed: number;
+      pcbPaid: number;
+      zakatPaid: number;
+      lpAccumulated: number;
+    };
     const empIds = emps.map((e) => e.employmentId);
     const priorSlips = empIds.length
       ? await tx
@@ -415,17 +442,35 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         epfClaimed: tp3Applies ? Math.min(Number(e.tp3Epf ?? 0), EPF_RELIEF_CAP) : 0,
         pcbPaid: tp3Applies ? Number(e.tp3Pcb ?? 0) : 0,
         zakatPaid: tp3Applies ? Number(e.tp3Zakat ?? 0) : 0,
+        lpAccumulated: 0,
       });
     }
     for (const s of priorSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
-      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number };
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; lp?: number; zakat?: number };
       const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
       acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
       acc.epfClaimed = round2(acc.epfClaimed + claimed);
       acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
+      acc.zakatPaid = round2(acc.zakatPaid + Number(st.zakat ?? 0)); // §E.5: full zakat accrues to Z
+      acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
     }
+
+    /** Age at the period end; null when DOB is not captured (treated as < 60). */
+    const ageAt = (dob: string | null): number | null => {
+      if (!dob) return null;
+      const d = new Date(`${dob}T00:00:00Z`);
+      const ref = new Date(`${periodEnd}T00:00:00Z`);
+      let age = ref.getUTCFullYear() - d.getUTCFullYear();
+      if (
+        ref.getUTCMonth() < d.getUTCMonth() ||
+        (ref.getUTCMonth() === d.getUTCMonth() && ref.getUTCDate() < d.getUTCDate())
+      ) {
+        age -= 1;
+      }
+      return age;
+    };
 
     const totals = {
       gross: 0, net: 0, epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0,
@@ -448,13 +493,28 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // include it — so the calculator takes wages ex-OT and the OT separately.
       const wagesExOt = Math.max(0, round2(basic + allowance - unpaidDeduction));
       // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
-      const st = pack.payroll.statutory(
-        wagesExOt,
-        { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 },
-        bonus,
-        overtime,
-        { month: pMonth, acc: accByEmp.get(e.employmentId) },
-      );
+      const lp = round2(tp1ByEmp.get(e.employmentId) ?? 0);
+      const zakat = round2(zakatByEmp.get(e.employmentId) ?? 0);
+      const age = ageAt(e.dateOfBirth);
+      const st = {
+        ...pack.payroll.statutory(
+          wagesExOt,
+          { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 },
+          bonus,
+          overtime,
+          { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent: zakat },
+          {
+            // Age 60+: SOCSO Second Category (employer-only) and EIS coverage ends (Act 800,
+            // 18–60). The 57+-no-prior-contribution EIS exemption maps to the eisEligible flag.
+            socsoCategory: age != null && age >= 60 ? 2 : 1,
+            eisEligible: (e.eisEligible ?? true) && (age == null || age < 60),
+            resident: e.isResident ?? true,
+          },
+        ),
+        // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
+        lp,
+        zakat,
+      };
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + unpaidDeduction);
       const grossPay = round2(normalWage + bonus); // total earnings before deductions
@@ -651,11 +711,15 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         employmentId: payrollInput.employmentId,
         overtime: payrollInput.overtimeAmount,
         bonus: payrollInput.bonusAmount,
+        tp1: payrollInput.tp1Deduction,
+        zakat: payrollInput.zakat,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, batchId));
     const otMap = new Map(inputs.map((r) => [r.employmentId, Number(r.overtime)]));
     const bonusMap = new Map(inputs.map((r) => [r.employmentId, Number(r.bonus)]));
+    const tp1Map = new Map(inputs.map((r) => [r.employmentId, Number(r.tp1)]));
+    const zakatMap = new Map(inputs.map((r) => [r.employmentId, Number(r.zakat)]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
     return emps.map((e) => ({
       employmentId: e.employmentId,
@@ -663,6 +727,8 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       basic: Number(e.basic),
       overtimeAmount: otMap.get(e.employmentId) ?? 0,
       bonusAmount: bonusMap.get(e.employmentId) ?? 0,
+      tp1Deduction: tp1Map.get(e.employmentId) ?? 0,
+      zakat: zakatMap.get(e.employmentId) ?? 0,
       unpaidDays: unpaid.get(e.employmentId) ?? 0,
     }));
   });

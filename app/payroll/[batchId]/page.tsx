@@ -63,8 +63,9 @@ export default async function BatchPage({
         accountant sign-off before real use. PCB implements the full LHDN computerised method with prior-month
         accumulators (derived from this year&apos;s payslips + TP3 opening balances) incl. the additional-remuneration
         steps and §E rounding rules; pay is prorated for mid-month joiners/leavers; overtime, bonus and unpaid leave
-        are captured; SOCSO + EIS apply the exact Act 4 / Act 800 schedule amounts. Remaining simplifications: EPF
-        low-wage RM20 banding is approximated by % + round-up; TP1 optional reliefs and zakat are not tracked.
+        are captured (incl. TP1 deductions + zakat per §E.5); SOCSO + EIS apply the exact Act 4 / Act 800 schedule
+        amounts with age-based Category 2 / EIS cut-off at 60; non-residents deduct flat 30%. Remaining simplification:
+        EPF low-wage RM20 banding is approximated by % + round-up.
         See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
       </div>
 
@@ -97,7 +98,7 @@ export default async function BatchPage({
                 <tr>
                   <th className="px-4 py-2 font-medium">Employee</th>
                   <th className="px-4 py-2 text-right font-medium">Basic</th>
-                  <th className="px-4 py-2 text-right font-medium">Overtime · Bonus (RM)</th>
+                  <th className="px-4 py-2 text-right font-medium">Overtime · Bonus · TP1 · Zakat (RM)</th>
                   <th className="px-4 py-2 text-right font-medium">Unpaid days</th>
                 </tr>
               </thead>
@@ -130,6 +131,28 @@ export default async function BatchPage({
                             step="0.01"
                             defaultValue={r.bonusAmount}
                             className={`${inputCls} w-24 text-right`}
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title="TP1 optional deductions claimed this month (LP₁)">
+                          TP1
+                          <input
+                            name="tp1Deduction"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            defaultValue={r.tp1Deduction}
+                            className={`${inputCls} w-20 text-right`}
+                          />
+                        </label>
+                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title="Zakat paid via salary deduction — offsets PCB (§E.5)">
+                          Zakat
+                          <input
+                            name="zakat"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            defaultValue={r.zakat}
+                            className={`${inputCls} w-20 text-right`}
                           />
                         </label>
                         <Button type="submit" variant="secondary">
