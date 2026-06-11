@@ -30,21 +30,59 @@ export class InUseError extends Error {
   }
 }
 
+export class DuplicateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DuplicateError';
+  }
+}
+
+/** Postgres unique-violation (the 0030 partial unique indexes on the org catalog).
+ *  Drizzle wraps the PostgresError, so walk the cause chain for code 23505. */
+function isUniqueViolation(e: unknown): boolean {
+  let cur = e as { code?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    if (cur.code === '23505') return true;
+    cur = cur.cause as { code?: string; cause?: unknown } | null | undefined;
+  }
+  return false;
+}
+
+/** Trim + collapse internal whitespace; the 0030 indexes are case-insensitive on the result. */
+function cleanName(v: string | undefined, label: string): string {
+  const s = (v ?? '').replace(/\s+/g, ' ').trim();
+  if (!s) throw new Error(`${label} is required`);
+  return s;
+}
+
+/** Uppercased fixed-length ISO code — company.country/currency drive pack lookup and holiday
+ *  matching by raw equality, so the shape is enforced here and CHECKed in the DB (0030). */
+function isoCode(v: string | undefined, fallback: string, label: string): string {
+  const s = (v || fallback).trim().toUpperCase();
+  if (!new RegExp(`^[A-Z]{${fallback.length}}$`).test(s)) {
+    throw new Error(`${label} must be ${fallback.length} letters (e.g. ${fallback})`);
+  }
+  return s;
+}
+
 type Role = 'employee' | 'manager' | 'hr_admin' | 'super_admin';
 
 export async function createCompany(
   ctx: SessionContext,
   p: { legalName: string; country?: string; currency?: string; registrationNo?: string },
 ) {
+  const legalName = cleanName(p.legalName, 'Legal name');
+  const country = isoCode(p.country, 'MY', 'Country');
+  const currency = isoCode(p.currency, 'MYR', 'Currency');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(company)
       .values({
         tenantId: ctx.tenantId,
-        legalName: p.legalName,
-        country: p.country || 'MY',
-        currency: p.currency || 'MYR',
-        registrationNo: p.registrationNo || null,
+        legalName,
+        country,
+        currency,
+        registrationNo: p.registrationNo?.trim() || null,
       })
       .returning({ id: company.id });
     await appendEvent(tx, {
@@ -85,16 +123,21 @@ export async function createDepartment(
   ctx: SessionContext,
   p: { companyId: string; name: string; parentDepartmentId?: string },
 ) {
+  const name = cleanName(p.name, 'Department name');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(department)
       .values({
         tenantId: ctx.tenantId,
         companyId: p.companyId,
-        name: p.name,
+        name,
         parentDepartmentId: p.parentDepartmentId || null,
       })
-      .returning({ id: department.id });
+      .returning({ id: department.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A department named “${name}” already exists in this company.`);
+        throw e;
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'department',
@@ -111,11 +154,16 @@ export async function createPosition(
   ctx: SessionContext,
   p: { companyId: string; title: string; jobFamily?: string },
 ) {
+  const title = cleanName(p.title, 'Position title');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(position)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, title: p.title, jobFamily: p.jobFamily || null })
-      .returning({ id: position.id });
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, title, jobFamily: p.jobFamily?.trim() || null })
+      .returning({ id: position.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
+        throw e;
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'position',
@@ -132,11 +180,17 @@ export async function createCostCenter(
   ctx: SessionContext,
   p: { companyId: string; code: string; name: string },
 ) {
+  const code = cleanName(p.code, 'Cost-center code');
+  const name = cleanName(p.name, 'Cost-center name');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(costCenter)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code: p.code, name: p.name })
-      .returning({ id: costCenter.id });
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name })
+      .returning({ id: costCenter.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
+        throw e;
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'cost-center',
@@ -400,14 +454,21 @@ export function listUsers(ctx: SessionContext) {
 // ───────────────── Edit + state-aware remove (delete if unused, else archive) ─────────────────
 
 export async function updateDepartment(ctx: SessionContext, p: { id: string; name: string }) {
+  const name = cleanName(p.name, 'Department name');
   return withTenant(ctx, async (tx) => {
-    await tx.update(department).set({ name: p.name }).where(eq(department.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: 'department.updated', actor: actorOf(ctx), payload: { name: p.name } });
+    await tx.update(department).set({ name }).where(eq(department.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError(`A department named “${name}” already exists in this company.`);
+      throw e;
+    });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: 'department.updated', actor: actorOf(ctx), payload: { name } });
   });
 }
 export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id));
+    await tx.update(department).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(department.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError('An active department with this name already exists — rename it before unarchiving.');
+      throw e;
+    });
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: p.archived ? 'department.archived' : 'department.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
@@ -421,14 +482,21 @@ export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
 }
 
 export async function updatePosition(ctx: SessionContext, p: { id: string; title: string; jobFamily?: string }) {
+  const title = cleanName(p.title, 'Position title');
   return withTenant(ctx, async (tx) => {
-    await tx.update(position).set({ title: p.title, jobFamily: p.jobFamily || null }).where(eq(position.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title: p.title } });
+    await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null }).where(eq(position.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
+      throw e;
+    });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title } });
   });
 }
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id));
+    await tx.update(position).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(position.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError('An active position with this title already exists — rename it before unarchiving.');
+      throw e;
+    });
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: p.archived ? 'position.archived' : 'position.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
@@ -442,14 +510,22 @@ export async function deletePosition(ctx: SessionContext, p: { id: string }) {
 }
 
 export async function updateCostCenter(ctx: SessionContext, p: { id: string; code: string; name: string }) {
+  const code = cleanName(p.code, 'Cost-center code');
+  const name = cleanName(p.name, 'Cost-center name');
   return withTenant(ctx, async (tx) => {
-    await tx.update(costCenter).set({ code: p.code, name: p.name }).where(eq(costCenter.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code: p.code } });
+    await tx.update(costCenter).set({ code, name }).where(eq(costCenter.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
+      throw e;
+    });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code } });
   });
 }
 export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id));
+    await tx.update(costCenter).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(costCenter.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError('An active cost center with this code already exists — change it before unarchiving.');
+      throw e;
+    });
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: p.archived ? 'cost-center.archived' : 'cost-center.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
@@ -489,10 +565,13 @@ export async function updateCompany(
   ctx: SessionContext,
   p: { id: string; legalName: string; registrationNo?: string; country?: string; currency?: string },
 ) {
+  const legalName = cleanName(p.legalName, 'Legal name');
+  const country = isoCode(p.country, 'MY', 'Country');
+  const currency = isoCode(p.currency, 'MYR', 'Currency');
   return withTenant(ctx, async (tx) => {
     await tx
       .update(company)
-      .set({ legalName: p.legalName, registrationNo: p.registrationNo || null, country: p.country || 'MY', currency: p.currency || 'MYR' })
+      .set({ legalName, registrationNo: p.registrationNo?.trim() || null, country, currency })
       .where(eq(company.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: 'company.updated', actor: actorOf(ctx), payload: { legalName: p.legalName } });
   });

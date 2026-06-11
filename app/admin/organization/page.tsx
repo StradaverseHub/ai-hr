@@ -183,8 +183,8 @@ export default async function OrganizationPage({
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <input name="legalName" required placeholder="Legal name" className={`${inputCls} sm:col-span-2`} />
-          <input name="country" defaultValue="MY" placeholder="Country" className={inputCls} />
-          <input name="currency" defaultValue="MYR" placeholder="Currency" className={inputCls} />
+          <input name="country" defaultValue="MY" placeholder="Country" pattern="[A-Za-z]{2}" maxLength={2} title="2-letter ISO country code, e.g. MY" className={`${inputCls} uppercase`} />
+          <input name="currency" defaultValue="MYR" placeholder="Currency" pattern="[A-Za-z]{3}" maxLength={3} title="3-letter ISO currency code, e.g. MYR" className={`${inputCls} uppercase`} />
           <div className="sm:col-span-4">
             <button className={btnPrimary}>Add company</button>
           </div>

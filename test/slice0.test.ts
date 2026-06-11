@@ -27,8 +27,10 @@ import {
 import { decideLeave, InsufficientLeaveBalanceError, openLeaveYear, requestLeave } from '../core/leave';
 import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
 import {
+  archiveDepartment,
   assignRole,
   createCompany,
+  createCostCenter,
   createDepartment,
   createLeavePolicy,
   deleteLeavePolicy,
@@ -1479,5 +1481,45 @@ describe('ESS — payslip detail (ADR-0012 Phase 2)', () => {
     const uX = await createAppUser(b.tenantId, X.personId, 'employee');
     const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uX, personId: X.personId, roles: ['employee'] };
     expect(await payslipDetail(peerCtx, slip.id)).toBeNull();
+  });
+});
+
+describe('Org catalog integrity — uniqueness + normalization (0030)', () => {
+  it('normalizes whitespace and rejects duplicate department names, case-insensitively', async () => {
+    const a = adminCtx(base);
+    await createDepartment(a, { companyId: base.companyId, name: '  Quality   Assurance ' });
+    const [d] = await owner.db
+      .select()
+      .from(schema.department)
+      .where(eq(schema.department.name, 'Quality Assurance'));
+    expect(d).toBeTruthy(); // collapsed + trimmed on write
+    await expect(
+      createDepartment(a, { companyId: base.companyId, name: 'quality assurance' }),
+    ).rejects.toThrow(/already exists/i);
+  });
+
+  it('an archived department does not reserve its name; unarchiving into a clash errors', async () => {
+    const a = adminCtx(base);
+    const { id } = await createDepartment(a, { companyId: base.companyId, name: 'Lab' });
+    await archiveDepartment(a, { id, archived: true });
+    await createDepartment(a, { companyId: base.companyId, name: 'Lab' }); // name freed
+    await expect(archiveDepartment(a, { id, archived: false })).rejects.toThrow(/already exists/i);
+  });
+
+  it('rejects duplicate cost-center codes per company', async () => {
+    const a = adminCtx(base);
+    await createCostCenter(a, { companyId: base.companyId, code: 'OPS', name: 'Operations' });
+    await expect(
+      createCostCenter(a, { companyId: base.companyId, code: ' ops ', name: 'Other' }),
+    ).rejects.toThrow(/already exists/i);
+  });
+
+  it('uppercases company country/currency (holiday matching is raw equality) and rejects junk', async () => {
+    const a = adminCtx(base);
+    const { id } = await createCompany(a, { legalName: 'Iso Sdn Bhd', country: 'my', currency: ' myr ' });
+    const [c] = await owner.db.select().from(schema.company).where(eq(schema.company.id, id));
+    expect(c.country).toBe('MY');
+    expect(c.currency).toBe('MYR');
+    await expect(createCompany(a, { legalName: 'Bad Sdn Bhd', country: 'Malaysia' })).rejects.toThrow(/2 letters/);
   });
 });
