@@ -145,10 +145,10 @@ export function CompanyPanel({
                   <input name="registrationNo" defaultValue={c.registrationNo ?? ''} className={inputCls} />
                 </Field>
                 <Field label="Country">
-                  <input name="country" defaultValue={c.country} className={inputCls} />
+                  <input name="country" defaultValue={c.country} pattern="[A-Za-z]{2}" maxLength={2} title="2-letter ISO country code, e.g. MY" className={`${inputCls} uppercase`} />
                 </Field>
                 <Field label="Currency">
-                  <input name="currency" defaultValue={c.currency} className={inputCls} />
+                  <input name="currency" defaultValue={c.currency} pattern="[A-Za-z]{3}" maxLength={3} title="3-letter ISO currency code, e.g. MYR" className={`${inputCls} uppercase`} />
                 </Field>
               </div>
               <div className="flex items-center gap-1.5">
