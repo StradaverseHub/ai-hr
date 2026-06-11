@@ -1404,6 +1404,18 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     expect(stat?.bankAccountNo).toBe('5566778899');
   });
 
+  it('a bank change must carry both fields — partial updates are rejected at request time', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Halfbank');
+    const emp = await empCtxFor(E.personId);
+    await expect(
+      requestProfileChange(emp, { employmentId: E.employmentId, proposed: { bankAccountNo: '999' } }),
+    ).rejects.toThrow(/both the bank name and the account number/i);
+    await expect(
+      requestProfileChange(emp, { employmentId: E.employmentId, proposed: { bankName: 'OnlyName' } }),
+    ).rejects.toThrow(/both the bank name and the account number/i);
+  });
+
   it('rejecting a change leaves the statutory profile untouched', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Keeper');
@@ -1415,7 +1427,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const emp = await empCtxFor(E.personId);
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankAccountNo: '0000' },
+      proposed: { bankName: 'NoBank', bankAccountNo: '0000' },
     });
     await decideProfileChange(a, { requestId, decision: 'rejected' });
     expect((await getStatutoryProfileMY(a, E.personId))?.bankAccountNo).toBe('111122223333');
@@ -1456,7 +1468,7 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const emp = await empCtxFor(E.personId);
     const { requestId } = await requestProfileChange(emp, {
       employmentId: E.employmentId,
-      proposed: { bankAccountNo: '1234' },
+      proposed: { bankName: 'SelfBank', bankAccountNo: '1234' },
     });
     await expect(
       decideProfileChange(emp, { requestId, decision: 'approved' }),

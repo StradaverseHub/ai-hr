@@ -114,6 +114,11 @@ export async function requestProfileChange(
   if (!ctx.personId) throw new Error('This account is not linked to an employee profile.');
   const proposed = sanitizeProposed(p.proposed);
   if (Object.keys(proposed).length === 0) throw new Error('Nothing to change.');
+  // A bank change is all-or-nothing: approving an account number against a stale bank name (or
+  // vice versa) is exactly the half-update the approval gate exists to prevent.
+  if ((proposed.bankName != null) !== (proposed.bankAccountNo != null)) {
+    throw new Error('A bank change needs both the bank name and the account number.');
+  }
   const personId = ctx.personId;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
