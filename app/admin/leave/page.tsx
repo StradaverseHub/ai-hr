@@ -90,7 +90,13 @@ export default async function LeaveConfigPage({
           className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <Field label="Code">
-            <input name="code" required placeholder="SICK" className={inputCls} />
+            <input
+              name="code"
+              required
+              placeholder="SICK"
+              title="Letters, digits or underscores — stored uppercase (e.g. ANNUAL)"
+              className={`${inputCls} uppercase`}
+            />
           </Field>
           <Field label="Name">
             <input name="name" required placeholder="Sick Leave" className={inputCls} />

@@ -218,6 +218,13 @@
       "when": 1781162200017,
       "tag": "0030_org_catalog_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781167058928,
+      "tag": "0031_leave_type_code_integrity",
+      "breakpoints": true
     }
   ]
 }

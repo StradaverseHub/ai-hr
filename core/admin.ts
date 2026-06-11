@@ -207,18 +207,29 @@ export async function createLeaveType(
   ctx: SessionContext,
   p: { code: string; name: string; paid?: boolean },
 ) {
+  // The code is the semantic key the statutory floor / standing grants / carry-forward match on
+  // (exact, uppercase). Normalize hard so 'annual' can never silently miss the EA floor.
+  const code = cleanName(p.code, 'Leave-type code').toUpperCase().replace(/ /g, '_');
+  if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(code)) {
+    throw new Error('Leave-type code must be letters, digits or underscores (e.g. ANNUAL)');
+  }
+  const name = cleanName(p.name, 'Leave-type name');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(leaveType)
-      .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, paid: p.paid ?? true })
-      .returning({ id: leaveType.id });
+      .values({ tenantId: ctx.tenantId, code, name, paid: p.paid ?? true })
+      .returning({ id: leaveType.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A leave type with code “${code}” already exists.`);
+        throw e;
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-type',
       aggregateId: row.id,
       eventType: 'leave-type.created',
       actor: actorOf(ctx),
-      payload: { code: p.code, name: p.name },
+      payload: { code, name },
     });
     return row;
   });
@@ -539,14 +550,18 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
 }
 
 export async function updateLeaveType(ctx: SessionContext, p: { id: string; name: string }) {
+  const name = cleanName(p.name, 'Leave-type name');
   return withTenant(ctx, async (tx) => {
-    await tx.update(leaveType).set({ name: p.name }).where(eq(leaveType.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.updated', actor: actorOf(ctx), payload: { name: p.name } });
+    await tx.update(leaveType).set({ name }).where(eq(leaveType.id, p.id));
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.updated', actor: actorOf(ctx), payload: { name } });
   });
 }
 export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(leaveType).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(leaveType.id, p.id));
+    await tx.update(leaveType).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(leaveType.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError('An active leave type with this code already exists — it cannot be unarchived.');
+      throw e;
+    });
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: p.archived ? 'leave-type.archived' : 'leave-type.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }

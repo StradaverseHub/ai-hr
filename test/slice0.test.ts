@@ -33,6 +33,7 @@ import {
   createCostCenter,
   createDepartment,
   createLeavePolicy,
+  createLeaveType,
   deleteLeavePolicy,
   revokeRole,
   setCompanyParent,
@@ -1521,5 +1522,29 @@ describe('Org catalog integrity — uniqueness + normalization (0030)', () => {
     expect(c.country).toBe('MY');
     expect(c.currency).toBe('MYR');
     await expect(createCompany(a, { legalName: 'Bad Sdn Bhd', country: 'Malaysia' })).rejects.toThrow(/2 letters/);
+  });
+});
+
+describe('Leave-type code integrity (0031)', () => {
+  it('uppercases codes so the statutory floor applies; rejects duplicates and junk', async () => {
+    const b = await seedBase(); // fresh tenant — only its own ANNUAL exists
+    const a = adminCtx(b);
+    const lt = await createLeaveType(a, { code: ' sick ', name: '  Sick   Leave ' });
+    const [row] = await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id, lt.id));
+    expect(row.code).toBe('SICK');
+    expect(row.name).toBe('Sick Leave');
+    // The whole point: entitlement() matches exact uppercase codes, so the EA s.60F floor
+    // (14 days, <2y service) now actually lands on hire instead of silently granting 0.
+    const { employmentId } = await hireEmployee(a, {
+      person: { fullName: 'Floor Check', primaryEmail: 'floor@acme.test' },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+      grantLeaveTypes: [{ id: lt.id, code: row.code }],
+    });
+    expect(await ledgerBalance(employmentId, lt.id)).toBe(14);
+    await expect(createLeaveType(a, { code: 'sick', name: 'Dupe' })).rejects.toThrow(/already exists/i);
+    await expect(createLeaveType(a, { code: 'sick!', name: 'Bad' })).rejects.toThrow(/letters/i);
   });
 });
