@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, batchInputRows } from '@/core/payroll';
+import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { closeAction, generateAction, prefillOvertimeAction, setPayrollInputAction } from '../actions';
 
@@ -23,6 +23,7 @@ export default async function BatchPage({
   const { batch, slips } = data;
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
+  const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
 
@@ -68,6 +69,40 @@ export default async function BatchPage({
         EPF low-wage RM20 banding is approximated by % + round-up.
         See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
       </div>
+
+      {batch.status === 'draft' && leavers.length > 0 && (
+        <Card className="overflow-hidden border-blue-200 dark:border-blue-500/30">
+          <SectionHeader title="Final pay — leavers this period" count={leavers.length} />
+          <p className="px-4 pt-3 text-xs text-muted-foreground">
+            Unused annual leave is payable in lieu on termination (EA 1955 s.60E) at the ordinary
+            rate of pay (basic / 26 per day). <span className="font-medium">Advisory only</span> —
+            review and key the agreed amount into the Bonus input below; the EPF/PCB treatment of
+            encashment must be confirmed with your accountant first.
+          </p>
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Employee</th>
+                <th className="px-4 py-2 font-medium">Last day</th>
+                <th className="px-4 py-2 text-right font-medium">Unused annual</th>
+                <th className="px-4 py-2 text-right font-medium">ORP / day</th>
+                <th className="px-4 py-2 text-right font-medium">Suggested in lieu</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {leavers.map((l) => (
+                <tr key={l.employmentId}>
+                  <td className="px-4 py-2.5 font-medium">{l.name}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{l.terminatedOn}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{l.annualBalance} d</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(l.basic / 26)}</td>
+                  <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{rm(l.suggested)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {batch.status === 'draft' && (
         <Card className="overflow-hidden">

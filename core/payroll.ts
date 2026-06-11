@@ -12,6 +12,7 @@ import {
   compensation,
   employeeStatutoryMy,
   employment,
+  leaveLedger,
   leaveRequest,
   leaveType,
   payrollBatch,
@@ -609,6 +610,83 @@ export function listBatches(ctx: SessionContext, companyIds?: string[]) {
       .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined)
       .orderBy(desc(payrollBatch.payPeriod)),
   );
+}
+
+export type LeaverAdvisoryRow = {
+  employmentId: string;
+  name: string;
+  terminatedOn: string;
+  basic: number;
+  annualBalance: number;
+  /** Suggested pay-in-lieu for unused annual leave at ORP (basic / 26 per day, EA 1955). */
+  suggested: number;
+};
+
+/**
+ * Final-pay ADVISORY for employees terminating within a draft batch's period: unused annual
+ * leave × ORP daily rate, per EA 1955 s.60E pay-in-lieu. Deliberately NO auto-pay — the
+ * EPF/PCB treatment of encashment is not yet sourced, so the admin keys the amount into the
+ * bonus input consciously (documented in STATUTORY-SOURCES.md).
+ */
+export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<LeaverAdvisoryRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, batchId))
+      .limit(1);
+    if (!batch) return [];
+    const [y, m] = batch.payPeriod.split('-').map(Number);
+    const start = `${batch.payPeriod}-01`;
+    const end = `${batch.payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+    const leavers = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        terminatedOn: employment.terminatedOn,
+        basic: compensation.basicSalary,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(
+        compensation,
+        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+      )
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          gte(employment.terminatedOn, start),
+          lte(employment.terminatedOn, end),
+        ),
+      );
+    if (leavers.length === 0) return [];
+    const [annual] = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(eq(leaveType.code, 'ANNUAL'))
+      .limit(1);
+    const out: LeaverAdvisoryRow[] = [];
+    for (const l of leavers) {
+      let balance = 0;
+      if (annual) {
+        const [row] = await tx
+          .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+          .from(leaveLedger)
+          .where(and(eq(leaveLedger.employmentId, l.employmentId), eq(leaveLedger.leaveTypeId, annual.id)));
+        balance = Number(row?.bal ?? 0);
+      }
+      const basic = Number(l.basic);
+      out.push({
+        employmentId: l.employmentId,
+        name: l.name,
+        terminatedOn: l.terminatedOn!,
+        basic,
+        annualBalance: balance,
+        suggested: balance > 0 ? round2((basic / 26) * balance) : 0,
+      });
+    }
+    return out;
+  });
 }
 
 export function batchDetail(ctx: SessionContext, batchId: string) {

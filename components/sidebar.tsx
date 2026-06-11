@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Clock,
   LayoutDashboard,
+  ListChecks,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -21,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 
 type Item = { href: string; label: string; icon: LucideIcon };
-type Group = { label?: string; adminOnly?: boolean; items: Item[] };
+type Group = { label?: string; adminOnly?: boolean; managerUp?: boolean; items: Item[] };
 
 const GROUPS: Group[] = [
   {
@@ -33,6 +34,11 @@ const GROUPS: Group[] = [
       { href: '/leave', label: 'Leave', icon: CalendarDays },
       { href: '/attendance', label: 'Attendance', icon: Clock },
     ],
+  },
+  {
+    label: 'Manage',
+    managerUp: true,
+    items: [{ href: '/approvals', label: 'Approvals', icon: ListChecks }],
   },
   {
     label: 'Admin',
@@ -52,10 +58,21 @@ const isActive = (pathname: string, href: string) =>
 /** Detached rail that floats on the canvas. Collapses to an icon-only strip; expands
  *  to icon + label. The choice persists via the `rail_collapsed` cookie (read SSR-side
  *  in the layout, so there's no flash and no hydration mismatch). */
-export function Sidebar({ isAdmin, defaultCollapsed }: { isAdmin: boolean; defaultCollapsed: boolean }) {
+export function Sidebar({
+  isAdmin,
+  canApprove = false,
+  defaultCollapsed,
+}: {
+  isAdmin: boolean;
+  /** Manager-and-up: shows the Approvals inbox. */
+  canApprove?: boolean;
+  defaultCollapsed: boolean;
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
-  const groups = GROUPS.filter((g) => isAdmin || !g.adminOnly);
+  const groups = GROUPS.filter((g) =>
+    g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true,
+  );
 
   const toggle = () =>
     setCollapsed((c) => {
