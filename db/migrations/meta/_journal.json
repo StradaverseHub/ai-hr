@@ -225,6 +225,13 @@
       "when": 1781167058928,
       "tag": "0031_leave_type_code_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781168228840,
+      "tag": "0032_famous_giant_girl",
+      "breakpoints": true
     }
   ]
 }

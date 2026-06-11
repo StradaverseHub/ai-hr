@@ -2,7 +2,7 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
@@ -342,6 +342,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         allowance: compensation.monthlyAllowance,
         taxCategory: employeeStatutoryMy.taxCategory,
         numChildren: employeeStatutoryMy.numChildren,
+        tp3Year: employeeStatutoryMy.tp3Year,
+        tp3Net: employeeStatutoryMy.tp3NetRemuneration,
+        tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
+        tp3Pcb: employeeStatutoryMy.tp3PcbPaid,
+        tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
       })
       .from(employment)
       .innerJoin(
@@ -375,6 +380,53 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
+    // ── PCB accumulators (ADR-0014) ──
+    // The accumulators (∑(Y−K), K claimed, X) are DERIVED by replaying this tax year's prior
+    // payslips per employment, in period order, applying the cumulative EPF relief cap — the
+    // payslip history is the ledger; no mutable accumulator state. TP3 / opening balances on the
+    // statutory profile seed the replay for mid-year joiners or mid-year system adoption.
+    const EPF_RELIEF_CAP = 4000; // mirrors MY_RELIEFS.epfReliefCap; cap math must match the pack
+    type Acc = { netRemuneration: number; epfClaimed: number; pcbPaid: number; zakatPaid: number };
+    const empIds = emps.map((e) => e.employmentId);
+    const priorSlips = empIds.length
+      ? await tx
+          .select({
+            employmentId: payslip.employmentId,
+            period: payrollBatch.payPeriod,
+            gross: payslip.grossPay,
+            statutory: payslip.statutory,
+          })
+          .from(payslip)
+          .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+          .where(
+            and(
+              inArray(payslip.employmentId, empIds),
+              like(payrollBatch.payPeriod, `${pYear}-%`),
+              lt(payrollBatch.payPeriod, payPeriod),
+            ),
+          )
+      : [];
+    priorSlips.sort((a, b) => a.period.localeCompare(b.period));
+    const accByEmp = new Map<string, Acc>();
+    for (const e of emps) {
+      const tp3Applies = e.tp3Year === pYear;
+      accByEmp.set(e.employmentId, {
+        netRemuneration: tp3Applies ? Number(e.tp3Net ?? 0) : 0,
+        epfClaimed: tp3Applies ? Math.min(Number(e.tp3Epf ?? 0), EPF_RELIEF_CAP) : 0,
+        pcbPaid: tp3Applies ? Number(e.tp3Pcb ?? 0) : 0,
+        zakatPaid: tp3Applies ? Number(e.tp3Zakat ?? 0) : 0,
+      });
+    }
+    for (const s of priorSlips) {
+      const acc = accByEmp.get(s.employmentId);
+      if (!acc) continue;
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number };
+      const claimed = Math.min(Number(st.epfEmployee ?? 0), Math.max(0, EPF_RELIEF_CAP - acc.epfClaimed));
+      acc.netRemuneration = round2(acc.netRemuneration + Number(s.gross) - claimed);
+      acc.epfClaimed = round2(acc.epfClaimed + claimed);
+      acc.pcbPaid = round2(acc.pcbPaid + Number(st.pcb ?? 0));
+    }
+
     const totals = {
       gross: 0, net: 0, epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0,
       socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0, deductions: 0, employerCost: 0,
@@ -401,6 +453,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 },
         bonus,
         overtime,
+        { month: pMonth, acc: accByEmp.get(e.employmentId) },
       );
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + unpaidDeduction);

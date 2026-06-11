@@ -28,12 +28,21 @@ export type StatutoryInput = {
   eisEligible?: boolean;
   bankName?: string;
   bankAccountNo?: string;
+  /** TP3 / opening balances for the PCB accumulators (ADR-0014) — YTD figures from a previous
+   *  employer (or pre-migration months), applied only when tp3Year matches the pay year. */
+  tp3Year?: number | null;
+  tp3NetRemuneration?: number | null;
+  tp3EpfClaimed?: number | null;
+  tp3PcbPaid?: number | null;
+  tp3ZakatPaid?: number | null;
 };
 
 export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput) {
   if (!isValidIC(p.icNumber)) throw new InvalidICError();
   const taxCategory = [1, 2, 3].includes(Number(p.taxCategory)) ? Number(p.taxCategory) : 1;
   const numChildren = Math.max(0, Math.floor(Number(p.numChildren) || 0));
+  const money = (v: number | null | undefined) =>
+    v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
   const values = {
     icNumber: normalizeIC(p.icNumber),
     epfNumber: p.epfNumber ?? null,
@@ -44,6 +53,11 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     eisEligible: p.eisEligible ?? true,
     bankName: p.bankName ?? null,
     bankAccountNo: p.bankAccountNo ?? null,
+    tp3Year: p.tp3Year ?? null,
+    tp3NetRemuneration: money(p.tp3NetRemuneration),
+    tp3EpfClaimed: money(p.tp3EpfClaimed),
+    tp3PcbPaid: money(p.tp3PcbPaid),
+    tp3ZakatPaid: money(p.tp3ZakatPaid),
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx

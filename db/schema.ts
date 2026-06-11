@@ -422,6 +422,14 @@ export const employeeStatutoryMy = pgTable(
     eisEligible: boolean('eis_eligible').notNull().default(true),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),
+    // TP3 / opening balances for PCB accumulators (ADR-0014): prior-employment (or pre-migration)
+    // year-to-date figures, applied only when tp3Year matches the pay-period year. Per LHDN spec
+    // §E.10 these feed the formula as (Y−K), K, X, Z and never appear on payslips or the EA form.
+    tp3Year: integer('tp3_year'),
+    tp3NetRemuneration: numeric('tp3_net_remuneration', { precision: 12, scale: 2 }),
+    tp3EpfClaimed: numeric('tp3_epf_claimed', { precision: 12, scale: 2 }),
+    tp3PcbPaid: numeric('tp3_pcb_paid', { precision: 12, scale: 2 }),
+    tp3ZakatPaid: numeric('tp3_zakat_paid', { precision: 12, scale: 2 }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

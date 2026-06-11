@@ -21,33 +21,44 @@ to these tables is traceable to the exact runs it affects.
   <https://www.hasil.gov.my/media/arvlrzh5/spesifikasi-kaedah-pengiraan-berkomputer-pcb-2026.pdf>
 - **Cross-check (brackets):** LHDN Tax Rate page (AY2023–2025; unchanged for AY2026).
   <https://www.hasil.gov.my/en/individual/individual-life-cycle/income-declaration/tax-rate/>
-- **What we encoded:**
+- **What we encoded (2026-06-11 — full computerised method with accumulators):**
   - `MY_PCB_BANDS` = the spec's **Table 1 (Value of P, M, R, B)** verbatim, including the
     category-specific B values (negative B encodes the RM400 / RM800 rebate for chargeable
     income ≤ RM35,000).
   - `MY_RELIEFS` = individual **RM9,000**, non-working spouse **RM4,000**, per child **RM2,000**,
-    mandatory-EPF relief cap **RM4,000/yr**.
-  - Formula: `MTD = [(P − M)·R + B − (Z + X)] / (n + 1)`. We implement the **resident, normal
-    remuneration** case for **constant monthly income**, which reduces to `annualTax / 12`.
-- **Additional remuneration (bonus) — ✅ implemented (difference method).** A bonus's MTD is the
-  extra **annual** tax it creates: `pcbAdditional = annualTax(P incl. bonus) − annualTax(P excl. bonus)`,
-  taken in the bonus month (`pcb()` / `pcbAdditional()` in `localization/my/payroll.ts`). The bonus
-  carries its own 11% EPF relief, pooled under the RM4,000 cap. This is the spec's additional-
-  remuneration approach in the same simplified (no Z/X accumulator) model as normal MTD.
+    mandatory-EPF relief cap **RM4,000/yr** (enforced CUMULATIVELY across K, K₁, K₂, Kₜ per the
+    spec's footnote).
+  - Formula (spec §D.1, verbatim): `MTD = [(P − M)·R + B − (Z + X)] / (n + 1)` with
+    `P = ∑(Y−K) + (Y₁−K₁) + (Y₂−K₂)·n [+ (Yₜ−Kₜ)] − [D + S + QC + (∑LP + LP₁)]`, where
+    `Y₂ = Y₁` and `K₂ = min((cap − K − K₁ [− Kₜ]) / n, K₁)` truncated to 2 dp. Implemented in
+    `pcbMonth()` (`localization/my/payroll.ts`).
+  - **Accumulators (ADR-0014):** ∑(Y−K), K (EPF claimed), X (MTD paid) are **derived by replaying
+    the tax year's prior payslips** per employment in `generatePayslips`, seeded from **TP3 /
+    opening balances** on the statutory profile (spec §E.10: TP3 amounts enter the formula as
+    (Y−K), X, Z and never appear on payslips or the EA). Each payslip stamps its `pcbMeta`
+    snapshot for reproducibility.
+  - **Rounding (spec §E.1–4, verbatim):** intermediate values truncate to 2 dp; the MTD rounds
+    **up** to the next 5 sen (287.02→287.05, 152.06→152.10); an MTD below **RM10** is not
+    deducted (applied separately to normal and additional).
+- **Additional remuneration (bonus) — ✅ spec §D.2 Steps 1–5 with accumulators.** Step 1 computes
+  the normal-remuneration MTD and the year total `X + [C]×(n+1)`; Steps 2–3 recompute P and the
+  annual tax **including** (Yₜ−Kₜ) with K₂ re-projected; Step 4's difference is the bonus MTD;
+  Step 5 sums. The bonus carries its own 11% EPF relief, pooled under the cumulative RM4,000 cap.
   - **EPF:** bonus **is** subject; KWSP fixes the employer rate by the *normal* wage (a ≤RM5,000
     earner stays 13% even if the bonus pushes the month over RM5,000), applied to wage+bonus.
   - **SOCSO + EIS:** annual bonus is **excluded** (not "wages" for PERKESO).
-  - Sources: LHDN MTD computerised-calc spec; actpayroll & Talenox bonus-PCB guides;
-    foundingbird / ajobthing on EPF-vs-SOCSO/EIS bonus treatment.
+- **✅ Verified against the spec's own Exhibit 5 worked example** (golden tests): Jan RM110.00 →
+  Feb RM110.00 (accumulated) → Mar RM108.20 (TP1 RM300) → Apr bonus RM8,250: normal 106.20 +
+  additional 727.50 = **RM833.70**, with P₁/P₂ intermediate values matched to the sen.
 - **Known limitations (documented, not bugs):**
-  - **Arrears / ESOS** other additional-remuneration types reuse the bonus difference method; only
-    bonus is surfaced in the UI so far.
-  - **Z** (zakat) and **X** (prior-month accumulated MTD) are assumed 0 — correct only when there
-    is no YTD accumulation. Needs per-employee YTD wiring for mid-year hires / variable pay.
+  - **TP1 optional deductions (LP)** are a calculator parameter only (used by the golden tests);
+    payroll passes 0 — no TP1 capture UI. **Zakat (Z)** untracked (0).
+  - **Arrears / ESOS** other additional-remuneration types reuse the bonus steps; only bonus is
+    surfaced in the UI so far.
   - **Non-resident** employees (flat 30%) and the REP / knowledge-worker / C-suite categories are
     not implemented.
-  - Employee **tax category** (1/2/3) and **child count** default to Category 1 / 0 children until
-    the employee tax profile is captured (follow-up task).
+  - **Cross-employer concurrent employment** (ADR-0009) accumulates per employment, not per
+    person — the ADR-0010 flagged gap stands.
 
 ## 2. EPF / KWSP — ✅ Rates verified, ⚠️ low-wage banding approximated
 
@@ -164,13 +175,16 @@ to these tables is traceable to the exact runs it affects.
 
 ## Verification checklist (before production payroll)
 
-- [ ] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec for the target YA.
+- [x] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec; full computerised
+      method (accumulators + §E rounding) verified against the spec's Exhibit 5 worked example
+      _(2026-06-11; golden tests in `test/slice0.test.ts`)_.
 - [ ] EPF Third Schedule low-wage band amounts confirmed (or `% + round-up` accepted as policy).
       _(KWSP PDF returns HTTP 403 to programmatic fetch — needs a manual download.)_
 - [x] SOCSO RM6,000-ceiling band table obtained and `MY_SOCSO_CATEGORY1` extended past RM5,000
       _(2026.1, official Nov-2024 PDF — see §3)_.
 - [x] EIS Act 800 Second Schedule band amounts encoded (replace rate-based calc)
       _(2026.1, official Nov-2024 PDF — see §4)_.
-- [x] Additional-remuneration (bonus) MTD implemented (difference method); EPF on bonus + SOCSO/EIS
-      exclusion handled. ⚠️ Still verify the bonus-month figure against the LHDN e-PCB calculator.
+- [x] Additional-remuneration (bonus) MTD implemented (spec §D.2 Steps 1–5 with accumulators);
+      EPF on bonus + SOCSO/EIS exclusion handled. Bonus month verified against Exhibit 5
+      (RM727.50 / RM833.70 total).
 - [ ] Sign-off recorded (who / date) and `MY_STATUTORY_VERSION` bumped on any change.
