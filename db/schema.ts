@@ -419,6 +419,8 @@ export const employeeStatutoryMy = pgTable(
     // PCB (MTD) inputs. taxCategory: 1=single, 2=married/spouse not working, 3=married/spouse working.
     taxCategory: integer('tax_category').notNull().default(1),
     numChildren: integer('num_children').notNull().default(0),
+    // Non-residents pay flat 30% MTD (LHDN spec §D.a) — no reliefs, no accumulator method.
+    isResident: boolean('is_resident').notNull().default(true),
     eisEligible: boolean('eis_eligible').notNull().default(true),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),
@@ -660,6 +662,10 @@ export const payrollInput = pgTable(
       .references(() => employment.id),
     overtimeAmount: numeric('overtime_amount', { precision: 12, scale: 2 }).notNull().default('0'),
     bonusAmount: numeric('bonus_amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
+    // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
+    tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
+    zakat: numeric('zakat', { precision: 12, scale: 2 }).notNull().default('0'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

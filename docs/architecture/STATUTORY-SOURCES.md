@@ -50,13 +50,16 @@ to these tables is traceable to the exact runs it affects.
 - **✅ Verified against the spec's own Exhibit 5 worked example** (golden tests): Jan RM110.00 →
   Feb RM110.00 (accumulated) → Mar RM108.20 (TP1 RM300) → Apr bonus RM8,250: normal 106.20 +
   additional 727.50 = **RM833.70**, with P₁/P₂ intermediate values matched to the sen.
+- **TP1 deductions + zakat — ✅ captured per employee per batch** (2026-06-11): LP₁ and zakat
+  inputs on the draft batch; zakat offsets the MTD per the §E.5 tables verbatim (normal first,
+  remainder offsets additional; the FULL zakat accrues to Z) — golden-tested against all nine
+  table rows; ∑LP and Z accumulate through the payslip replay.
+- **Non-resident — ✅ implemented**: flat **30%** of taxable remuneration (spec §D.a, golden:
+  RM3,000 → RM900), toggled by the statutory profile's residency flag; §E rounding applies.
 - **Known limitations (documented, not bugs):**
-  - **TP1 optional deductions (LP)** are a calculator parameter only (used by the golden tests);
-    payroll passes 0 — no TP1 capture UI. **Zakat (Z)** untracked (0).
   - **Arrears / ESOS** other additional-remuneration types reuse the bonus steps; only bonus is
     surfaced in the UI so far.
-  - **Non-resident** employees (flat 30%) and the REP / knowledge-worker / C-suite categories are
-    not implemented.
+  - **REP / knowledge-worker / C-suite** special categories are not implemented.
   - **Cross-employer concurrent employment** (ADR-0009) accumulates per employment, not per
     person — the ADR-0010 flagged gap stands.
 
@@ -83,8 +86,12 @@ to these tables is traceable to the exact runs it affects.
   rows were cross-checked unchanged against this newer PDF.
 - **History:** 2026.0 had bands only to RM5,000 (the then-retrieved PDF predated the ceiling raise)
   with a rate fallback for (5,000, 6,000] — replaced in 2026.1 by the published amounts.
-- **Still not implemented:** Second Category (employer-only, age 60+ / post-invalidity-pension) —
-  the published column exists in the same PDF; encode when age-based category selection lands.
+- **Second Category — ✅ implemented** (2026-06-11): the same PDF's "Contribution By Employer
+  Only" column encoded verbatim (`MY_SOCSO_CATEGORY2`, 64 bands + top-band rule). The engine
+  selects Category 2 at **age ≥ 60** (from `person.date_of_birth` at period end; missing DOB →
+  Category 1). EIS additionally **stops at 60** (Act 800 covers 18–60; the 57+-no-prior-
+  contribution exemption maps to the `eisEligible` flag, now honored by the engine — sources:
+  PERKESO contributions page + Act 800 PDF, perkeso.gov.my, retrieved 2026-06-11).
 
 ## 4. EIS / SIP (Act 800) — ✅ Second Schedule verified (2026.1)
 

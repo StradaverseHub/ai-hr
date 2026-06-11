@@ -21,6 +21,7 @@ import {
   MY_PCB_BANDS,
   MY_RELIEFS,
   MY_SOCSO_CATEGORY1,
+  MY_SOCSO_CATEGORY2,
   MY_STATUTORY_VERSION,
   type ContribBand,
   type TaxCategory,
@@ -53,9 +54,11 @@ function bandFor(bands: ContribBand[], wage: number): ContribBand {
   return bands.find((b) => wage <= b.upTo) ?? bands[bands.length - 1];
 }
 
-/** SOCSO First Category — exact Act 4 schedule amounts (verified to the RM6,000 ceiling). */
-export function socso(wage: number) {
-  const band = bandFor(MY_SOCSO_CATEGORY1, wage);
+/** SOCSO — exact Act 4 schedule amounts (verified to the RM6,000 ceiling). Category 1 =
+ *  Employment Injury + Invalidity (< 60); Category 2 = Employment Injury only, employer-only
+ *  (age 60+). */
+export function socso(wage: number, category: 1 | 2 = 1) {
+  const band = bandFor(category === 2 ? MY_SOCSO_CATEGORY2 : MY_SOCSO_CATEGORY1, wage);
   return { employer: band.employer, employee: band.employee };
 }
 
@@ -105,6 +108,25 @@ const ceil5sen = (n: number) => Math.ceil(n * 20 - 1e-7) / 20;
 /** Spec §E.3/4: an MTD amount below RM10 is not deducted. */
 const rm10Floor = (n: number) => (n < 10 ? 0 : n);
 
+/**
+ * Spec §E.5 (verbatim tables): the month's zakat offsets the NORMAL MTD first (floor 0); any
+ * remainder offsets the additional-remuneration MTD; the FULL zakat amount still accrues to Z.
+ * The RM10 floor applies to each component BEFORE offsetting (table (ii) rows a–b).
+ */
+export function applyZakatOffset(
+  normalCalc: number,
+  additionalCalc: number,
+  zakatCurrent: number,
+): { normal: number; additional: number } {
+  const A = rm10Floor(normalCalc);
+  const E = rm10Floor(additionalCalc);
+  const z = Math.max(0, zakatCurrent);
+  const normal = Math.max(0, round2(A - z));
+  const leftover = Math.max(0, round2(z - A));
+  const additional = Math.max(0, round2(E - leftover));
+  return { normal, additional };
+}
+
 export type PcbMonthResult = {
   /** MTD on normal remuneration for the month (post rounding + RM10 rule). */
   normal: number;
@@ -137,8 +159,10 @@ export function pcbMonth(p: {
   acc?: PcbAccumulators;
   additional?: number;
   epfOnAdditional?: number;
-  /** LP₁ — current-month TP1 optional deductions (tests/golden examples; payroll passes 0). */
+  /** LP₁ — current-month TP1 optional deductions. */
   lpCurrent?: number;
+  /** Zakat paid via salary deduction this month — offsets the MTD per §E.5. */
+  zakatCurrent?: number;
 }): PcbMonthResult {
   const category: TaxCategory = p.profile?.category ?? 1;
   const children = p.profile?.children ?? 0;
@@ -162,7 +186,7 @@ export function pcbMonth(p: {
 
   // Steps 2–4 — additional remuneration via the year-total difference.
   const Yt = Math.max(0, p.additional ?? 0);
-  let additional = 0;
+  let additionalCalc = 0;
   let P2: number | undefined;
   if (Yt > 0) {
     const Kt = Math.min(p.epfOnAdditional ?? 0, Math.max(0, cap - K - K1));
@@ -170,10 +194,11 @@ export function pcbMonth(p: {
     P2 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2a) * n + (Yt - Kt) - reliefs - lp);
     const totalTaxYear = annualTaxFor(P2, category); // Step 3
     const totalMtdYear = X + mtdNormalCalc * (n + 1); // Step 1[E]
-    additional = rm10Floor(ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z)))); // Step 4
+    additionalCalc = ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z))); // Step 4
   }
 
-  const normal = rm10Floor(mtdNormalCalc);
+  // §E.5: current-month zakat offsets normal first, remainder offsets additional.
+  const { normal, additional } = applyZakatOffset(mtdNormalCalc, additionalCalc, p.zakatCurrent ?? 0);
   return {
     normal,
     additional,
@@ -204,17 +229,38 @@ export function statutory(
   profile?: TaxProfile,
   additional = 0,
   overtime = 0,
-  /** PCB context: pay-period month (1–12) + the year's accumulators (ADR-0014).
-   *  Defaults to January-with-no-priors, which is only correct for a first January run. */
-  pcbCtx?: { month?: number; acc?: PcbAccumulators },
+  /** PCB context: pay-period month (1–12), the year's accumulators (ADR-0014), and this
+   *  month's TP1 deduction / zakat inputs. Defaults to January-with-no-priors. */
+  pcbCtx?: { month?: number; acc?: PcbAccumulators; lpCurrent?: number; zakatCurrent?: number },
+  /** Employee attributes the engine derives: SOCSO category (2 = age 60+, employer-only),
+   *  EIS eligibility (false at 60+, or the profile flag), residency (non-residents: flat 30%). */
+  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean },
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
   const e = epf(wage, additional); // bonus IS subject to EPF; overtime is NOT
-  const s = socso(cashWage); // bonus excluded from SOCSO; overtime included
-  const i = eis(cashWage); // bonus excluded from EIS; overtime included
+  const s = socso(cashWage, opts?.socsoCategory ?? 1); // bonus excluded from SOCSO; overtime included
+  const eisOn = opts?.eisEligible ?? true;
+  const i = eisOn ? eis(cashWage) : { employer: 0, employee: 0 }; // bonus excluded; OT included
   // EPF relief split: the employee share on the bonus (Kₜ) is the rate on the bonus alone; the
   // remainder of the month's actual EPF belongs to normal remuneration (K₁).
   const epfOnBonus = additional > 0 ? ceilRinggit(additional * MY_EPF.employeeRate) : 0;
+  if (opts?.resident === false) {
+    // Non-resident MTD (spec §D.a): flat 30% of taxable remuneration, no reliefs/accumulators.
+    const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * 0.3)));
+    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(additional * 0.3)));
+    return {
+      epfEmployee: e.employee,
+      epfEmployer: e.employer,
+      socsoEmployee: s.employee,
+      socsoEmployer: s.employer,
+      eisEmployee: i.employee,
+      eisEmployer: i.employer,
+      pcb: pcbAll,
+      pcbBonus: Math.min(pcbBonusOnly, pcbAll),
+      pcbMeta: { nonResident: true as const, rate: 0.3 },
+      version: MY_STATUTORY_VERSION,
+    };
+  }
   const m = pcbMonth({
     monthlyWage: cashWage,
     epfMonthly: Math.max(0, e.employee - epfOnBonus),
@@ -223,6 +269,8 @@ export function statutory(
     acc: pcbCtx?.acc,
     additional,
     epfOnAdditional: epfOnBonus,
+    lpCurrent: pcbCtx?.lpCurrent,
+    zakatCurrent: pcbCtx?.zakatCurrent,
   });
   return {
     epfEmployee: e.employee,

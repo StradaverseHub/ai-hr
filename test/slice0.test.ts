@@ -62,7 +62,7 @@ import {
   prefillOvertimeFromAttendance,
   setPayrollInput,
 } from '../core/payroll';
-import { eis, epf, overtimePay, pcbMonth, socso, statutory } from '../localization/my/payroll';
+import { applyZakatOffset, eis, epf, overtimePay, pcbMonth, socso, statutory } from '../localization/my/payroll';
 import {
   buildCp39File,
   cp39FileForBatch,
@@ -1713,6 +1713,90 @@ describe('PCB accumulators through the payroll engine (ADR-0014)', () => {
     const st = slip.statutory as { pcb: number; pcbMeta: { ytdNet: number } };
     expect(st.pcbMeta.ytdNet).toBe(0);
     expect(st.pcb).toBe(110);
+  });
+});
+
+describe('Payroll compliance round — zakat §E.5, Category 2, EIS rules, non-resident', () => {
+  it('zakat offset reproduces the spec §E.5 tables verbatim', () => {
+    // Table (i) — normal remuneration only (MTD, zakat → net):
+    expect(applyZakatOffset(8, 0, 5).normal).toBe(0); // 8 < RM10 floor → 0, zakat carries
+    expect(applyZakatOffset(15, 0, 20).normal).toBe(0); // 15 − 20 → 0
+    expect(applyZakatOffset(15, 0, 8).normal).toBe(7); // 15 − 8
+    expect(applyZakatOffset(120, 0, 100).normal).toBe(20);
+    // Table (ii) — with additional remuneration (rows a–e, column f = c + e):
+    expect(applyZakatOffset(8, 9, 5)).toEqual({ normal: 0, additional: 0 }); // both < RM10
+    expect(applyZakatOffset(8, 25, 5)).toEqual({ normal: 0, additional: 20 }); // leftover 5 offsets bonus
+    expect(applyZakatOffset(15, 32.55, 20)).toEqual({ normal: 0, additional: 27.55 });
+    expect(applyZakatOffset(15, 127.3, 8)).toEqual({ normal: 7, additional: 127.3 });
+    expect(applyZakatOffset(120, 392.25, 100)).toEqual({ normal: 20, additional: 392.25 });
+  });
+
+  it('SOCSO Second Category (60+) pays employer-only schedule amounts', () => {
+    expect(socso(3000, 2)).toEqual({ employer: 36.9, employee: 0 }); // row 34 of the Act 4 PDF
+    expect(socso(6000, 2)).toEqual({ employer: 74.4, employee: 0 }); // top band
+    expect(socso(9000, 2)).toEqual({ employer: 74.4, employee: 0 }); // above ceiling → top band
+    expect(socso(3000, 1).employee).toBeGreaterThan(0); // Category 1 unchanged
+  });
+
+  it('non-resident MTD is flat 30% (spec §D.a example: RM3,000 → RM900)', () => {
+    const st = statutory(3000, { category: 1 }, 0, 0, undefined, { resident: false });
+    expect(st.pcb).toBe(900);
+    expect(statutory(3000, { category: 1 }).pcb).toBe(0); // resident at RM3,000: below threshold
+  });
+
+  it('engine: age 60+ flips SOCSO to Category 2 and stops EIS; eisEligible=false stops EIS', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    // Senior: DOB 1960 → 66 in 2026.
+    const senior = await hire(a, b, 'Senior Sixty');
+    await setCompensation(a, { employmentId: senior.employmentId, basicSalary: 3000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: senior.personId, icNumber: '600101015551' });
+    await withTenant(a, (tx) =>
+      tx.update(schema.person).set({ dateOfBirth: '1960-01-01' }).where(eq(schema.person.id, senior.personId)),
+    );
+    // Opted-out: eisEligible unticked (e.g. 57+, never contributed — Act 800 exemption).
+    const opted = await hire(a, b, 'Opted Out');
+    await setCompensation(a, { employmentId: opted.employmentId, basicSalary: 3000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: opted.personId, icNumber: '700101015552', eisEligible: false });
+
+    const jan = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-01' });
+    await generatePayslips(a, { batchId: jan.batchId });
+    const slips = (await batchDetail(a, jan.batchId))!.slips;
+    const seniorSt = slips.find((s) => s.name === 'Senior Sixty')!.statutory as Record<string, number>;
+    expect(seniorSt.socsoEmployee).toBe(0); // Category 2: employer-only
+    expect(seniorSt.socsoEmployer).toBe(36.9);
+    expect(seniorSt.eisEmployee).toBe(0); // EIS coverage ends at 60
+    expect(seniorSt.eisEmployer).toBe(0);
+    const optedSt = slips.find((s) => s.name === 'Opted Out')!.statutory as Record<string, number>;
+    expect(optedSt.eisEmployee).toBe(0);
+    expect(optedSt.socsoEmployee).toBeGreaterThan(0); // SOCSO unaffected by the EIS flag
+  });
+
+  it('engine: TP1 deduction and zakat flow into PCB and accumulate for later months', async () => {
+    const b = await seedBase();
+    const a = adminCtx(b);
+    const e = await hire(a, b, 'Tp1 Zakat');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5500, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015553', taxCategory: 3, numChildren: 3 });
+
+    // January with zakat RM30: Exhibit-5 January MTD is 110.00 → net deduction 80.00.
+    const jan = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-01' });
+    await setPayrollInput(a, { batchId: jan.batchId, employmentId: e.employmentId, overtimeAmount: 0, bonusAmount: 0, zakat: 30 });
+    await generatePayslips(a, { batchId: jan.batchId });
+    const janSt = (await batchDetail(a, jan.batchId))!.slips[0].statutory as Record<string, unknown>;
+    expect(janSt.pcb).toBe(80); // 110 − 30 (§E.5)
+    expect(janSt.zakat).toBe(30); // stamped for the replay
+
+    // February: Z=30 and X=80 must reach the formula via the replay.
+    const feb = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-02' });
+    await generatePayslips(a, { batchId: feb.batchId });
+    const febSt = (await batchDetail(a, feb.batchId))!.slips[0].statutory as {
+      pcb: number;
+      pcbMeta: { pcbPaid: number };
+    };
+    expect(febSt.pcbMeta.pcbPaid).toBe(80); // X = what was actually deducted
+    // MTD Feb = [tax(P) − (Z + X)]/(n+1) = [1,320.0042 − (30 + 80)]/11 = 110.00 — self-consistent.
+    expect(febSt.pcb).toBe(110);
   });
 });
 

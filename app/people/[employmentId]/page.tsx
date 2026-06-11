@@ -235,6 +235,10 @@ export default async function EmployeePage({
               <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
               EIS eligible
             </label>
+            <label className="flex items-center gap-2 text-sm" title="Non-residents pay flat 30% MTD (no reliefs)">
+              <input type="checkbox" name="isResident" defaultChecked={statutory ? statutory.isResident : true} className="size-4 rounded" />
+              Tax resident
+            </label>
             <div className="sm:col-span-2 border-t border-border pt-3">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Previous employment this year (TP3 / opening balances)
