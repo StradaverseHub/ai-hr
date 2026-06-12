@@ -14,8 +14,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const companyId = url.searchParams.get('companyId') ?? '';
   const periodKey = url.searchParams.get('periodKey') ?? '';
-  if (!companyId || !/^\d{4}-\d{2}$/.test(periodKey)) {
-    return new Response('companyId and periodKey (YYYY-MM) are required', { status: 400 });
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID.test(companyId) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodKey)) {
+    return new Response('A valid companyId (uuid) and periodKey (YYYY-MM) are required', { status: 400 });
   }
   try {
     const file = await cp39FileForBatch(s, { companyId, periodKey });
@@ -35,7 +36,9 @@ export async function GET(req: Request) {
       },
     });
   } catch (e) {
-    const status = e instanceof Cp39NotReadyError ? 422 : 500;
-    return new Response((e as Error).message, { status });
+    // Surface the readiness reason (safe, actionable); never echo a raw driver error to the client.
+    if (e instanceof Cp39NotReadyError) return new Response(e.message, { status: 422 });
+    console.error('cp39-file generation failed', e);
+    return new Response('Could not generate the CP39 file — please try again.', { status: 500 });
   }
 }

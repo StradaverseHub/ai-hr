@@ -62,6 +62,7 @@ export default async function EmployeePage({
 
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
+  const today = new Date().toISOString().slice(0, 10);
 
   const [history, balances, requests, departments, reporting, employees, comp, statutory] =
     await Promise.all([
@@ -396,7 +397,7 @@ export default async function EmployeePage({
                 </select>
               </Field>
               <Field label="Effective date">
-                <input name="effectiveDate" type="date" required defaultValue="2026-06-05" className={inputCls} />
+                <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
               </Field>
               <div className="sm:col-span-2">
                 <button className={btnPrimary}>Transfer</button>
@@ -409,7 +410,7 @@ export default async function EmployeePage({
             <form action={terminateAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2">
               <input type="hidden" name="employmentId" value={emp.employmentId} />
               <Field label="Termination date">
-                <input name="terminationDate" type="date" required defaultValue="2026-06-30" className={inputCls} />
+                <input name="terminationDate" type="date" required defaultValue={today} className={inputCls} />
               </Field>
               <div className="sm:col-span-2">
                 <ConfirmSubmit

@@ -131,7 +131,10 @@ export async function requestProfileChange(
       aggregateId: row.id,
       eventType: 'profile-change.requested',
       actor: actorOf(ctx),
-      payload: { employmentId: p.employmentId, proposed },
+      // Audit the WHAT, not the values — bank account / dependents are PII and the event log is
+      // append-only (PDPA erasure). The values live in profile_change_request.proposed (RLS-scoped,
+      // consumed on decide); the apply event likewise records only field names.
+      payload: { employmentId: p.employmentId, fields: Object.keys(proposed) },
     });
     return { requestId: row.id };
   });

@@ -29,11 +29,11 @@ export default async function EaStatementPage({
   params: Promise<{ employmentId: string }>;
   searchParams: Promise<{ year?: string }>;
 }) {
-  await getSession(); // ensure a session; the read is RLS-scoped to what this user may see
   const { employmentId } = await params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employmentId)) notFound();
   const { year } = await searchParams;
-  const yr = year || '2026';
-  const s = await getSession();
+  const yr = /^\d{4}$/.test(year ?? '') ? (year as string) : '2026';
+  const s = await getSession(); // RLS-scopes the read to what this user may see
   const ea = await employeeEaStatement(s, { employmentId, year: yr });
   if (!ea) notFound();
 

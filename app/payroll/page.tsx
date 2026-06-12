@@ -18,6 +18,7 @@ export default async function PayrollPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
+  const thisMonth = new Date().toISOString().slice(0, 7); // current YYYY-MM
   const { error } = await searchParams;
   const [batches, companies] = await Promise.all([listBatches(s, scopeIds), listCompanies(s)]);
 
@@ -82,7 +83,7 @@ export default async function PayrollPage({
             </select>
           </Field>
           <Field label="Pay period">
-            <input name="payPeriod" required placeholder="2026-05" defaultValue="2026-05" className={inputCls} />
+            <input name="payPeriod" required placeholder="2026-05" defaultValue={thisMonth} pattern="[0-9]{4}-(0[1-9]|1[0-2])" title="YYYY-MM" className={inputCls} />
           </Field>
           <div className="sm:col-span-2">
             <Button type="submit">Create batch</Button>
