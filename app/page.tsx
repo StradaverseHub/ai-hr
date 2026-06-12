@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
+import { isAdmin } from '@/lib/authz';
 import {
   dashboardStats,
   groupBreakdown,
@@ -13,30 +14,12 @@ import {
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { TimelineNav } from '@/components/timeline-nav';
+import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
 
 const rm = (n: unknown) =>
   n == null
     ? '—'
     : `RM ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-function humanizeEvent(type: string) {
-  return type
-    .split('.')
-    .join(' ')
-    .replace(/-/g, ' ')
-    .replace(/^\w/, (c) => c.toUpperCase());
-}
-
-function relativeTime(d: Date | string) {
-  const t = typeof d === 'string' ? new Date(d) : d;
-  const mins = Math.round((Date.now() - t.getTime()) / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  return days < 30 ? `${days}d ago` : t.toLocaleDateString();
-}
 
 const initials = (name: string) =>
   name
@@ -68,13 +51,6 @@ const PAYROLL_STATUS: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
   processed: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   closed: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-};
-
-const ACTOR_DOT: Record<string, string> = {
-  user: 'bg-primary',
-  system: 'bg-muted-foreground',
-  agent: 'bg-violet-500',
-  external: 'bg-amber-500',
 };
 
 function StatCard({
@@ -125,6 +101,7 @@ export default async function DashboardPage({
   // Date window: a 14-day planned-absences strip, by default starting 2 days before
   // today; ?abs=YYYY-MM-DD (from the timeline nav) overrides the window start.
   const now = new Date();
+  const nowMs = now.getTime();
   const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const todayIso = new Date(todayMs).toISOString().slice(0, 10);
   const ABS_DAYS = 14;
@@ -333,23 +310,41 @@ export default async function DashboardPage({
         </div>
 
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">Recent activity</h2>
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold">Recent activity</h2>
+            {isAdmin(s) && (
+              <Link href="/admin/audit" className="text-xs text-primary hover:underline">
+                View all
+              </Link>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">From the domain-event log</p>
           {activity.length === 0 ? (
             <p className="mt-4 text-sm text-muted-foreground">No activity yet.</p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {activity.map((a, i) => (
-                <li key={i} className="flex items-start gap-3 text-sm">
-                  <span className={`mt-1.5 size-2 shrink-0 rounded-full ${ACTOR_DOT[a.actorType] ?? 'bg-muted-foreground'}`} />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">{humanizeEvent(a.eventType)}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {a.aggregateType} · {a.actorType} · {relativeTime(a.occurredAt)}
+              {activity.map((a, i) => {
+                const href = aggregateHref(a.aggregateType, a.aggregateId);
+                const who = a.actorName ?? a.actorType;
+                return (
+                  <li key={i} className="flex items-start gap-3 text-sm">
+                    <span className={`mt-1.5 size-2 shrink-0 rounded-full ${ACTOR_DOT[a.actorType] ?? 'bg-muted-foreground'}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">{humanizeEvent(a.eventType)}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {href ? (
+                          <Link href={href} className="text-primary/90 hover:underline">
+                            {aggregateLabel(a.aggregateType)}
+                          </Link>
+                        ) : (
+                          aggregateLabel(a.aggregateType)
+                        )}{' '}
+                        · {who} · {relativeTime(a.occurredAt, nowMs)}
+                      </div>
                     </div>
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Card>

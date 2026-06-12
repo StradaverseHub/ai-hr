@@ -4,6 +4,7 @@ import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import {
   assignmentHistory,
+  employeeAudit,
   employeeDetail,
   leaveBalances,
   leaveRequestsFor,
@@ -12,6 +13,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
   addReportingLineAction,
@@ -77,6 +79,7 @@ export default async function EmployeePage({
     ]);
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
+  const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -295,6 +298,13 @@ export default async function EmployeePage({
           </tbody>
         </table>
       </Card>
+
+      {admin && (
+        <Card className="overflow-hidden">
+          <SectionHeader title="Change history" count={changeHistory.length} />
+          <AuditTable rows={changeHistory} nowMs={Date.now()} />
+        </Card>
+      )}
 
       <Card>
         <SectionHeader title="Reporting lines" />
