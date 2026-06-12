@@ -42,6 +42,8 @@ import {
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
+import { validateEmployeeImport, commitEmployeeImport } from '../core/import';
+import { parseCsvRecords } from '../lib/csv';
 import { annualEntitlement, entitlement } from '../localization/my/leave';
 import {
   AlreadyCheckedInError,
@@ -1911,5 +1913,85 @@ describe('CP39 text file — LHDN Exhibit 4 byte layout (Layer-B DRAFT)', () => 
     expect(detail.slice(1, 12)).toBe('00531367080');
     expect(detail.slice(110, 118)).toBe('00011000'); // RM110.00
     expect(f.filename).toBe('009089151001_2026.txt');
+  });
+});
+
+describe('UC — CSV employee import', () => {
+  const csvFor = (rows: string) =>
+    parseCsvRecords(
+      'full_name,email,department,hired_on,ic_number,basic_salary,monthly_allowance,bank_name,bank_account_no,tax_category\n' +
+        rows,
+    ).records;
+
+  it('validates rows against the catalog and flags every kind of bad row', async () => {
+    const a = adminCtx(base);
+    const records = csvFor(
+      [
+        'Aisyah Rahman,aisyah@acme.test,Finance,2026-06-01,900101011234,5200,400,Maybank,5566778899,2',
+        'Bad Email,not-an-email,Finance,2026-06-01,910101012345,5000,0,,,1',
+        'Bad IC,badic@acme.test,Finance,2026-06-01,12345,5000,0,,,1',
+        'Unknown Dept,dept@acme.test,Marketing,2026-06-01,920101013456,5000,0,,,1',
+        'No Salary,nosalary@acme.test,Finance,2026-06-01,930101014567,,0,,,1',
+        'Dup IC,dupic@acme.test,Finance,2026-06-01,900101011234,5000,0,,,1',
+        'Half Bank,halfbank@acme.test,Finance,2026-06-01,940101015678,5000,0,Maybank,,1',
+      ].join('\n'),
+    );
+    const preview = await validateEmployeeImport(a, { companyId: base.companyId, records });
+    expect(preview.total).toBe(7);
+    expect(preview.validCount).toBe(1);
+    expect(preview.rows[0].ok).toBe(true);
+    expect(preview.rows[1].errors.join()).toMatch(/email/i);
+    expect(preview.rows[2].errors.join()).toMatch(/IC/i);
+    expect(preview.rows[3].errors.join()).toMatch(/department/i);
+    expect(preview.rows[4].errors.join()).toMatch(/salary/i);
+    expect(preview.rows[5].errors.join()).toMatch(/duplicate ic/i);
+    expect(preview.rows[6].errors.join()).toMatch(/bank/i);
+  });
+
+  it('commits valid rows (hire + statutory + comp), skips invalid, and logs a batch event', async () => {
+    const a = adminCtx(base);
+    const before = (await listEmployees(a)).length;
+    const records = csvFor(
+      [
+        'Nadia Yusof,nadia@acme.test,Finance,2026-06-01,910505051234,5200,400,Maybank,5566778899,2',
+        'Ravi Chandran,ravi@acme.test,Operations,2026-06-01,880808082345,9800,600,CIMB,1122334455,3',
+        'Broken,not-an-email,Finance,2026-06-01,950909093456,4100,0,,,1',
+      ].join('\n'),
+    );
+    const result = await commitEmployeeImport(a, { companyId: base.companyId, records });
+    expect(result.imported).toBe(2);
+    expect(result.skipped).toBe(1);
+    expect(result.failed).toHaveLength(0);
+
+    const after = await listEmployees(a);
+    expect(after.length).toBe(before + 2);
+    const nadia = after.find((e) => e.email === 'nadia@acme.test');
+    expect(nadia).toBeTruthy();
+
+    // An imported employee is indistinguishable from a hand hire: statutory profile + compensation.
+    const [pRow] = await owner.db
+      .select({ id: schema.person.id })
+      .from(schema.person)
+      .where(eq(schema.person.primaryEmail, 'nadia@acme.test'));
+    const stat = await getStatutoryProfileMY(a, pRow.id);
+    expect(stat?.icNumber).toBe('910505051234');
+    const comp = await currentCompensation(a, nadia!.employmentId);
+    expect(Number(comp?.basicSalary)).toBe(5200);
+
+    // Per-employee events exist, plus the batch event on the company aggregate.
+    const empEvents = await eventTypesFor(base.tenantId, nadia!.employmentId);
+    expect(empEvents).toContain('employment.hired');
+    const companyEvents = await eventTypesFor(base.tenantId, base.companyId);
+    expect(companyEvents).toContain('employee-import.completed');
+  });
+
+  it('rejects an IC that already exists in the tenant', async () => {
+    const a = adminCtx(base);
+    const first = csvFor('First In,first@acme.test,Finance,2026-06-01,960606061234,5000,0,,,1');
+    await commitEmployeeImport(a, { companyId: base.companyId, records: first });
+    const dup = csvFor('Second Same IC,second@acme.test,Finance,2026-06-01,960606061234,5000,0,,,1');
+    const preview = await validateEmployeeImport(a, { companyId: base.companyId, records: dup });
+    expect(preview.validCount).toBe(0);
+    expect(preview.rows[0].errors.join()).toMatch(/already exists/i);
   });
 });
