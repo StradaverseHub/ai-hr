@@ -96,9 +96,16 @@ async function main() {
       .insert(schema.holiday)
       .values({ tenantId: DEV_TENANT_ID, country: 'MY', holidayDate: h.date, name: h.name });
   }
+  // The dev admin is a real principal in the audit trail: link it to a person so its actions
+  // resolve to a name ("HR Admin") instead of the bare actor type. No employment, so it never
+  // appears in People / org / headcount — it's a back-office identity, not an employee.
+  const [adminPerson] = await owner.db
+    .insert(schema.person)
+    .values({ tenantId: DEV_TENANT_ID, fullName: 'HR Admin', primaryEmail: 'admin@demo.test' })
+    .returning({ id: schema.person.id });
   await owner.db
     .insert(schema.appUser)
-    .values({ id: DEV_ADMIN_USER_ID, tenantId: DEV_TENANT_ID, workosUserId: 'user_dev_admin', personId: null });
+    .values({ id: DEV_ADMIN_USER_ID, tenantId: DEV_TENANT_ID, workosUserId: 'user_dev_admin', personId: adminPerson.id });
   await owner.db
     .insert(schema.roleAssignment)
     .values({ tenantId: DEV_TENANT_ID, appUserId: DEV_ADMIN_USER_ID, role: 'hr_admin', companyId: null });
@@ -113,7 +120,7 @@ async function main() {
     { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id, salary: 5800, ic: '920303033456', bank: 'Public Bank' },
     { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id, salary: 7200, ic: '880404044567', bank: 'RHB' },
   ];
-  const hired: { employmentId: string }[] = [];
+  const hired: { employmentId: string; personId: string; session: SessionContext }[] = [];
   let danielPersonId = '';
   for (const [i, p] of people.entries()) {
     const { employmentId, personId } = await hireEmployee(admin, {
@@ -125,16 +132,20 @@ async function main() {
       hiredOn: '2026-01-06',
       grantLeaveTypes: standingGrants,
     });
-    hired.push({ employmentId });
     if (i === 1) danielPersonId = personId;
     // Local user record + role (login identity itself is provisioned by WorkOS later).
+    const role = i === 1 ? 'manager' : 'employee';
     const [u] = await owner.db
       .insert(schema.appUser)
       .values({ tenantId: DEV_TENANT_ID, workosUserId: `seed:${p.email}`, personId })
       .returning({ id: schema.appUser.id });
     await owner.db
       .insert(schema.roleAssignment)
-      .values({ tenantId: DEV_TENANT_ID, appUserId: u.id, role: i === 1 ? 'manager' : 'employee', companyId: null });
+      .values({ tenantId: DEV_TENANT_ID, appUserId: u.id, role, companyId: null });
+    // Their own session — used below so leave requests are authored by the employee (and
+    // approvals by their manager), giving the audit trail real, differentiated actors.
+    const session: SessionContext = { tenantId: DEV_TENANT_ID, userId: u.id, roles: [role], personId };
+    hired.push({ employmentId, personId, session });
 
     await setCompensation(admin, { employmentId, basicSalary: p.salary, monthlyAllowance: 500, effectiveFrom: '2026-01-06' });
     await setStatutoryProfileMY(admin, {
@@ -241,41 +252,38 @@ async function main() {
   });
 
   // Planned absences around 'today' (2026-06) so the dashboard timeline has shape.
-  const seedLeave = async (
-    employmentId: string,
-    leaveTypeId: string,
-    startDate: string,
-    endDate: string,
-    approve: boolean,
-  ) => {
-    const { leaveRequestId } = await requestLeave(admin, { employmentId, leaveTypeId, startDate, endDate });
+  const manager = hired[1]; // Daniel — administrative manager of Aisyah and Arjun
+  const seedLeave = async (idx: number, leaveTypeId: string, startDate: string, endDate: string, approve: boolean) => {
+    const { employmentId, session } = hired[idx];
+    // Authored by the employee (the real-world actor), so the event carries their identity.
+    const { leaveRequestId } = await requestLeave(session, { employmentId, leaveTypeId, startDate, endDate });
     if (approve) {
       try {
-        await decideLeave(admin, {
+        await decideLeave(manager.session, {
           leaveRequestId,
           decision: 'approved',
-          deciderEmploymentId: hired[1].employmentId,
+          deciderEmploymentId: manager.employmentId,
         });
       } catch (e) {
         console.warn(`  (leave ${startDate} left pending: ${(e as Error).message})`);
       }
     }
   };
-  await seedLeave(hired[0].employmentId, annual.id, '2026-06-10', '2026-06-12', true); // Aisyah · annual · approved
-  await seedLeave(hired[3].employmentId, annual.id, '2026-06-16', '2026-06-18', true); // Arjun · annual · approved
-  await seedLeave(hired[2].employmentId, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false); // Mei Ling · sick · pending
-  await seedLeave(hired[1].employmentId, annual.id, '2026-06-11', '2026-06-11', false); // Daniel · annual · pending
+  await seedLeave(0, annual.id, '2026-06-10', '2026-06-12', true); // Aisyah · annual · approved by Daniel
+  await seedLeave(3, annual.id, '2026-06-16', '2026-06-18', true); // Arjun · annual · approved by Daniel
+  await seedLeave(2, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false); // Mei Ling · sick · pending
+  await seedLeave(1, annual.id, '2026-06-11', '2026-06-11', false); // Daniel · annual · pending
   // One rejected request so the Leave page's status chips have every state.
-  const rejected = await requestLeave(admin, {
+  const rejected = await requestLeave(hired[3].session, {
     employmentId: hired[3].employmentId,
     leaveTypeId: leaveTypeIds.SICK,
     startDate: '2026-06-19',
     endDate: '2026-06-19',
   });
-  await decideLeave(admin, {
+  await decideLeave(manager.session, {
     leaveRequestId: rejected.leaveRequestId,
     decision: 'rejected',
-    deciderEmploymentId: hired[1].employmentId,
+    deciderEmploymentId: manager.employmentId,
   });
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);

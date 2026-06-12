@@ -2,12 +2,14 @@
 import { and, desc, eq, gte, inArray, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import {
+  appUser,
   assignment,
   attendance,
   company,
   compensation,
   department,
   domainEvent,
+  employeeStatutoryMy,
   employment,
   holiday,
   leaveLedger,
@@ -666,15 +668,131 @@ export function recentActivity(ctx: SessionContext, limit = 8) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
-        eventType: domainEvent.eventType,
         aggregateType: domainEvent.aggregateType,
+        aggregateId: domainEvent.aggregateId,
+        eventType: domainEvent.eventType,
         actorType: domainEvent.actorType,
+        actorName: person.fullName,
         occurredAt: domainEvent.occurredAt,
       })
       .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
       .orderBy(desc(domainEvent.occurredAt))
       .limit(limit),
   );
+}
+
+export type AuditRow = {
+  id: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventType: string;
+  actorType: string;
+  actorName: string | null;
+  payload: unknown;
+  occurredAt: Date;
+  sequence: number;
+};
+
+export type AuditFilters = {
+  aggregateType?: string;
+  eventQuery?: string; // matches event type / aggregate type
+  actorId?: string;
+  from?: string; // ISO date (inclusive)
+  to?: string; // ISO date (exclusive next day applied by caller)
+  limit?: number;
+  offset?: number;
+};
+
+/** The full append-only event ledger, filterable. RLS scopes to the tenant; the actor name is
+ *  resolved from app_user → person (null for SYSTEM/AGENT/EXTERNAL or unlinked principals). */
+export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<AuditRow[]> {
+  const limit = Math.min(f.limit ?? 100, 500);
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: domainEvent.id,
+        aggregateType: domainEvent.aggregateType,
+        aggregateId: domainEvent.aggregateId,
+        eventType: domainEvent.eventType,
+        actorType: domainEvent.actorType,
+        actorName: person.fullName,
+        payload: domainEvent.payload,
+        occurredAt: domainEvent.occurredAt,
+        sequence: domainEvent.sequence,
+      })
+      .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(
+        and(
+          f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
+          f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
+          f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
+          f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
+          f.eventQuery
+            ? sql`(${domainEvent.eventType} ilike ${'%' + f.eventQuery + '%'} or ${domainEvent.aggregateType} ilike ${'%' + f.eventQuery + '%'})`
+            : undefined,
+        ),
+      )
+      .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence))
+      .limit(limit)
+      .offset(f.offset ?? 0),
+  ) as Promise<AuditRow[]>;
+}
+
+/** The distinct aggregate types present in the tenant's log — drives the filter dropdown. */
+export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateType: string }[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .selectDistinct({ aggregateType: domainEvent.aggregateType })
+      .from(domainEvent)
+      .orderBy(domainEvent.aggregateType),
+  );
+}
+
+/** Change history for one employee — every event touching their employment, person, statutory
+ *  profile, and compensation rows (the aggregates that carry their record). RLS-scoped. */
+export function employeeAudit(ctx: SessionContext, employmentId: string, limit = 50): Promise<AuditRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    if (!emp) return [];
+    const ids = new Set<string>([employmentId, emp.personId]);
+    const [stat] = await tx
+      .select({ id: employeeStatutoryMy.id })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, emp.personId))
+      .limit(1);
+    if (stat) ids.add(stat.id);
+    const comps = await tx
+      .select({ id: compensation.id })
+      .from(compensation)
+      .where(eq(compensation.employmentId, employmentId));
+    comps.forEach((c) => ids.add(c.id));
+    return tx
+      .select({
+        id: domainEvent.id,
+        aggregateType: domainEvent.aggregateType,
+        aggregateId: domainEvent.aggregateId,
+        eventType: domainEvent.eventType,
+        actorType: domainEvent.actorType,
+        actorName: person.fullName,
+        payload: domainEvent.payload,
+        occurredAt: domainEvent.occurredAt,
+        sequence: domainEvent.sequence,
+      })
+      .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(inArray(domainEvent.aggregateId, [...ids]))
+      .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence))
+      .limit(limit);
+  }) as Promise<AuditRow[]>;
 }
 
 // ─────────────────────────── Self-service portal (own data) ───────────────────────────
