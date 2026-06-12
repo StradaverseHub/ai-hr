@@ -407,7 +407,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // payslips per employment, in period order, applying the cumulative EPF relief cap — the
     // payslip history is the ledger; no mutable accumulator state. TP3 / opening balances on the
     // statutory profile seed the replay for mid-year joiners or mid-year system adoption.
-    const EPF_RELIEF_CAP = 4000; // mirrors MY_RELIEFS.epfReliefCap; cap math must match the pack
+    const EPF_RELIEF_CAP = pack.payroll.epfReliefCap; // pack-owned: cap math always matches the calculator
     type Acc = {
       netRemuneration: number;
       epfClaimed: number;

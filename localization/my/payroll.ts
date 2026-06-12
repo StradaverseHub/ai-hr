@@ -9,7 +9,8 @@
  *               prior-month accumulators (∑(Y−K), K, X) and the (n+1) spread, incl. additional
  *               remuneration Steps 1–5 and the §E rounding rules (truncate 2dp, 5-sen round-up,
  *               RM10 floor). Verified against the spec's Exhibit 5 worked example (Jan–Apr).
- *               TP1 optional deductions (LP) are calculator-level only; zakat untracked (0).
+ *               TP1 deductions (LP₁) and zakat are captured per employee per batch and
+ *               accumulate into ∑LP / Z through the payslip replay.
  *  - EPF      — statutory % with round-up to the next ringgit (Third Schedule convention; exact
  *               RM20 low-wage banding still flagged — KWSP PDF pending, see sources doc).
  *  - SOCSO    — exact Act 4 schedule amounts, verified to the RM6,000 ceiling (2026.1).
@@ -93,9 +94,9 @@ export type PcbAccumulators = {
   epfClaimed: number;
   /** X: accumulated MTD paid in prior months this year (normal + additional; excl. CP38). */
   pcbPaid: number;
-  /** Z: accumulated zakat paid via salary deduction (we do not track zakat — 0). */
+  /** Z: accumulated zakat paid via salary deduction in prior months (replayed from payslips). */
   zakatPaid?: number;
-  /** ∑LP: accumulated TP1 optional deductions (not tracked in payroll — calculator-level only). */
+  /** ∑LP: accumulated TP1 optional deductions claimed in prior months (replayed from payslips). */
   lpAccumulated?: number;
 };
 
