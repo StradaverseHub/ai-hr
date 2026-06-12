@@ -25,7 +25,7 @@ import {
   transferEmployee,
 } from '../core/org';
 import { decideLeave, InsufficientLeaveBalanceError, openLeaveYear, requestLeave } from '../core/leave';
-import { dashboardStats, groupBreakdown, listEmployees, reportingLinesFor } from '../core/read';
+import { dashboardStats, groupBreakdown, listEmployees, listEmployeesPage, reportingLinesFor } from '../core/read';
 import {
   archiveDepartment,
   assignRole,
@@ -2043,5 +2043,27 @@ describe('UC — payment summary export', () => {
     const file = await paymentSummaryForBatch(a, batchId);
     expect(file.payeeCount).toBe(1);
     expect(file.missingBank).toBe(1);
+  });
+});
+
+describe('UC — employee list pagination + search', () => {
+  it('paginates by name and searches name/email', async () => {
+    const a = adminCtx(base);
+    for (const n of ['Alice', 'Bob', 'Carol', 'Dave', 'Eve']) await hire(a, base, n);
+
+    const p1 = await listEmployeesPage(a, { limit: 2, offset: 0 });
+    expect(p1.total).toBe(5);
+    expect(p1.rows.map((r) => r.name)).toEqual(['Alice', 'Bob']); // ordered by name
+
+    const last = await listEmployeesPage(a, { limit: 2, offset: 4 });
+    expect(last.rows.map((r) => r.name)).toEqual(['Eve']);
+
+    const byName = await listEmployeesPage(a, { q: 'carol', limit: 25, offset: 0 });
+    expect(byName.total).toBe(1);
+    expect(byName.rows[0].name).toBe('Carol');
+
+    const byEmail = await listEmployeesPage(a, { q: 'dave@', limit: 25, offset: 0 });
+    expect(byEmail.total).toBe(1);
+    expect(byEmail.rows[0].name).toBe('Dave');
   });
 });

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployees } from '@/core/read';
+import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
 import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { decideProfileChangeAction, hireAction } from './actions';
@@ -21,23 +21,34 @@ function describeProposed(p: unknown): string {
   return parts.length ? parts.join(' · ') : 'No changes';
 }
 
+const PAGE = 25;
+
 export default async function PeoplePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; q?: string; page?: string }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const today = new Date().toISOString().slice(0, 10);
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const { error } = await searchParams;
-  const [employees, companies, departments, profileChanges] = await Promise.all([
-    listEmployees(session, scopeIds),
+  const { error, q, page: pageParam } = await searchParams;
+  const page = Math.max(0, Number(pageParam) || 0);
+  const [{ rows: employees, total }, companies, departments, profileChanges] = await Promise.all([
+    listEmployeesPage(session, { companyIds: scopeIds, q, limit: PAGE, offset: page * PAGE }),
     listCompanies(session),
     listDepartments(session),
     isAdmin
       ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
       : Promise.resolve([]),
   ]);
+  const hasNext = (page + 1) * PAGE < total;
+  const qs = (over: Record<string, string | number | undefined>) => {
+    const merged: Record<string, string | number | undefined> = { q, page: pageParam, ...over };
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries(merged)) if (v) sp.set(k, String(v));
+    const s = sp.toString();
+    return s ? `/people?${s}` : '/people';
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -45,7 +56,7 @@ export default async function PeoplePage({
         title="People"
         actions={
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">{employees.length} employees</span>
+            <span className="text-sm text-muted-foreground">{total} employees</span>
             {isAdmin && (
               <Link
                 href="/people/import"
@@ -105,6 +116,24 @@ export default async function PeoplePage({
         </Card>
       )}
 
+      <form method="get" className="flex items-center gap-2">
+        <input
+          name="q"
+          defaultValue={q ?? ''}
+          placeholder="Search name or email…"
+          className={`${inputCls} max-w-xs`}
+          aria-label="Search employees"
+        />
+        <Button type="submit" variant="secondary" size="sm">
+          Search
+        </Button>
+        {q && (
+          <Link href="/people" className="text-sm text-muted-foreground hover:text-foreground">
+            Clear
+          </Link>
+        )}
+      </form>
+
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -144,12 +173,33 @@ export default async function PeoplePage({
             {employees.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
-                  No employees yet — hire someone below.
+                  {q ? `No employees match “${q}”.` : 'No employees yet — hire someone below.'}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        {(page > 0 || hasNext) && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
+            {page > 0 ? (
+              <Link href={qs({ page: page - 1 || undefined })} className="text-primary hover:underline">
+                ← Newer
+              </Link>
+            ) : (
+              <span />
+            )}
+            <span className="text-xs text-muted-foreground">
+              {page * PAGE + 1}–{Math.min((page + 1) * PAGE, total)} of {total}
+            </span>
+            {hasNext ? (
+              <Link href={qs({ page: page + 1 })} className="text-primary hover:underline">
+                Older →
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        )}
       </Card>
 
       <Card>
