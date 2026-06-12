@@ -43,7 +43,19 @@ export default async function PeoplePage({
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title="People"
-        actions={<span className="text-sm text-muted-foreground">{employees.length} employees</span>}
+        actions={
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted-foreground">{employees.length} employees</span>
+            {isAdmin && (
+              <Link
+                href="/people/import"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                Import CSV
+              </Link>
+            )}
+          </div>
+        }
       />
 
       {error && (
