@@ -1408,6 +1408,16 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const stat = await getStatutoryProfileMY(a, E.personId);
     expect(stat?.bankName).toBe('Maybank');
     expect(stat?.bankAccountNo).toBe('5566778899');
+
+    // S1 (security): the append-only event log must NOT hold the cleartext account number —
+    // it records changed-field NAMES only (PDPA / no-erasure on an immutable log).
+    const events = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.aggregateId, requestId));
+    const dump = JSON.stringify(events);
+    expect(dump).not.toContain('5566778899');
+    expect(dump).toContain('bankAccountNo'); // the field name is audited
   });
 
   it('a bank change must carry both fields — partial updates are rejected at request time', async () => {

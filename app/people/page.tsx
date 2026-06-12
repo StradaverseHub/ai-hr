@@ -27,6 +27,7 @@ export default async function PeoplePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
+  const today = new Date().toISOString().slice(0, 10);
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const { error } = await searchParams;
   const [employees, companies, departments, profileChanges] = await Promise.all([
@@ -181,7 +182,7 @@ export default async function PeoplePage({
               </select>
             </Field>
             <Field label="Hire date">
-              <input name="hiredOn" type="date" required defaultValue="2026-06-05" className={inputCls} />
+              <input name="hiredOn" type="date" required defaultValue={today} className={inputCls} />
             </Field>
             <div className="sm:col-span-2">
               <Button type="submit">Hire</Button>

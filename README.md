@@ -2,9 +2,16 @@
 
 A modern, AI-assisted Human Resource Management System (HRMS).
 
-> **Status:** Pre-implementation. We are at the *data modeling + architecture* stage.
-> No application code has been written yet beyond a disposable UI spike. The
-> documents under [`docs/`](docs/) are the current deliverable and are open for review.
+> **Status:** Active development — the Malaysia payroll/compliance core is **built and tested**.
+> Implemented: org/identity + matrix reporting, leave (EA 1955), attendance/time, the full
+> payroll engine (EPF/SOCSO/EIS + the LHDN 2026 computerised PCB *with prior-month
+> accumulators*, all golden-tested), statutory reporting (EA, Form E/CP8D, CP22/CP22A worklist,
+> a DRAFT CP39 e-Data PCB file), employee self-service, and an append-only audit substrate.
+> Deliberately **not yet** built: real auth (WorkOS — still a dev shim), multi-country packs,
+> bank payment files, bulk import, performance/talent (designed in [ADR-0013](docs/adr/0013-performance-talent-management.md)).
+> Statutory tables ship as DRAFT pending a licensed accountant's sign-off (see
+> [STATUTORY-SOURCES.md](docs/architecture/STATUTORY-SOURCES.md)) and a June-2026 product review
+> is in [docs/REVIEW-2026-06-panel.md](docs/REVIEW-2026-06-panel.md).
 
 ---
 
@@ -42,9 +49,11 @@ else deliberately deferred.
 - AuthZ: RBAC + ABAC enforced in the database via RLS
 - Immutable domain-event log + audit trail
 
-**Explicitly deferred** (recorded, never silently dropped): payroll & the calc kernel,
-attendance, biometrics, the AI feature suite, multi-country, data-residency / region
-routing, billing, SSO/SCIM wiring, additional leave types, performance & succession.
+> Note: the list above was Slice 0's original scope. Payroll, attendance, additional leave
+> types, statutory reporting, and self-service have since been **built** (see Status). Still
+> **deferred** (recorded, never silently dropped): biometrics, the AI feature suite,
+> multi-country, data-residency / region routing, billing, **SSO/SCIM wiring (WorkOS)**,
+> bank payment files, bulk import, performance & succession.
 
 ## Architecture at a glance
 

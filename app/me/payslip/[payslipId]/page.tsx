@@ -27,8 +27,11 @@ function Row({ label, value, muted }: { label: string; value: React.ReactNode; m
   );
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default async function PayslipPage({ params }: { params: Promise<{ payslipId: string }> }) {
   const { payslipId } = await params;
+  if (!UUID.test(payslipId)) notFound(); // malformed id → 404, not a DB-error 500
   const s = await getSession();
   const p = await payslipDetail(s, payslipId);
   if (!p) notFound();

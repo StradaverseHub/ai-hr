@@ -29,6 +29,7 @@ export default async function LeavePage({
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const admin = isAdmin(session);
+  const today = new Date().toISOString().slice(0, 10);
   const sp = await searchParams;
   const statusFilter = STATUSES.includes(sp.status as ReqStatus) ? (sp.status as ReqStatus) : null;
 
@@ -314,10 +315,10 @@ export default async function LeavePage({
               </select>
             </Field>
             <Field label="Start date">
-              <input name="startDate" type="date" required defaultValue="2026-07-01" className={inputCls} />
+              <input name="startDate" type="date" required defaultValue={today} className={inputCls} />
             </Field>
             <Field label="End date">
-              <input name="endDate" type="date" required defaultValue="2026-07-03" className={inputCls} />
+              <input name="endDate" type="date" required defaultValue={today} className={inputCls} />
             </Field>
             <Field label="Reason (optional)">
               <input name="reason" className={inputCls} placeholder="Family trip" />
