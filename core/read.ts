@@ -52,6 +52,69 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
   );
 }
 
+export type EmployeeListRow = {
+  employmentId: string;
+  name: string;
+  email: string;
+  status: string | null;
+  department: string | null;
+  company: string;
+  hiredOn: string;
+  terminatedOn: string | null;
+};
+
+/** Paginated + searchable employee list for the People page. Returns the page rows plus the
+ *  total match count (for the pager). Search matches name or email (case-insensitive). The
+ *  unpaginated `listEmployees` stays for callers that genuinely need the whole set (transfer
+ *  target dropdowns, exports). */
+export function listEmployeesPage(
+  ctx: SessionContext,
+  p: { companyIds?: string[]; q?: string; limit: number; offset: number },
+): Promise<{ rows: EmployeeListRow[]; total: number }> {
+  return withTenant(ctx, async (tx) => {
+    const q = p.q?.trim();
+    const where = and(
+      p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+      q
+        ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'})`
+        : undefined,
+    );
+    const rows = (await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        email: person.primaryEmail,
+        status: assignment.status,
+        department: department.name,
+        company: company.legalName,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(where)
+      .orderBy(person.fullName)
+      .limit(p.limit)
+      .offset(p.offset)) as EmployeeListRow[];
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(where);
+    return { rows, total: Number(count) };
+  });
+}
+
 export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, (tx) =>
     tx

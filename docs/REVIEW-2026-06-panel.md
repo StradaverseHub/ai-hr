@@ -52,9 +52,12 @@ and clean integrations — not a worse Workday."
 
 ## Execution order (autonomous; forks + WorkOS excluded)
 
-1. Trust-debt slice — security S1–S3, default form dates, README. *(#105)*
-2. Audit-trail view — `/admin/audit` + per-record History. *(#106)*
-3. CSV employee importer. *(#107)*
-4. Payment summary export (honest neutral CSV; byte-exact bank file stays #73). *(#108)*
+1. ✅ Trust-debt slice — security S1–S3, default form dates, README. *(#105)*
+2. ✅ Audit-trail view — `/admin/audit` + per-record History. *(#106)*
+3. ✅ CSV employee importer. *(#107)*
+4. ✅ Payment summary export (honest neutral CSV; byte-exact bank file stays #73). *(#108)*
+5. ✅ List pagination + search — People (and the shared pattern for other lists). *(#109)*
 
 Deferred to owner: SME/MNC fork, WorkOS auth, typed pay components, multi-country packs.
+Still open (P1, not forks): EA BIK/CP38; foreign-worker EPF + cross-employer PCB (both
+sourcing-dependent).
