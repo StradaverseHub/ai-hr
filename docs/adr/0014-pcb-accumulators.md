@@ -44,8 +44,8 @@ the spec's Exhibit 5 worked example to the sen (Jan/Feb RM110.00, Mar RM108.20, 
 - Deleting/regenerating a historical batch changes later months' derived accumulators — already
   prevented by closed-batch immutability; draft re-runs of the *current* month are safe (prior
   months only are replayed).
-- TP1 optional deductions (LP) and zakat are parameters of the calculator but not captured in
-  payroll (documented in STATUTORY-SOURCES §1).
+- TP1 optional deductions (LP₁) and zakat are captured per employee per batch (payroll inputs),
+  offset per spec §E.5, stamped on each payslip, and replayed into ∑LP / Z (STATUTORY-SOURCES §1).
 
 ## Alternatives rejected
 

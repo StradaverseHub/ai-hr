@@ -7,13 +7,16 @@
 > remits the **wrong** contribution — is worse than the readable Layer-A report keyed in by hand.
 > Every format here ships **"DRAFT — not for submission"** until an accountant verifies the
 > generated file against the live portal (or against a real sample file). Build per a concrete
-> target, never speculatively. None of the formats below is built yet.
+> target, never speculatively. CP39 is built as a DRAFT generator (§1); the rest are not built.
 
 ---
 
 ## 1. CP39 — MTD / PCB text file (LHDN, `e-Data PCB` → `e-PCB Plus`)
 
-**Status:** 🟡 **Structure sourced; physical byte-encoding BLOCKED — not built.**
+**Status:** 🟢 **DRAFT generator BUILT** (`localization/my/cp39-file.ts`, download on the CP39
+report) — byte layout sourced from Exhibit 4 below; "not for submission" until verified against
+the live e-PCB Plus portal. Open portal-verification points: line terminator (CRLF chosen) and
+whether zero-MTD employees should be omitted entirely rather than listed-but-not-counted.
 
 ### What is authoritatively sourced
 
