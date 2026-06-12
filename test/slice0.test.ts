@@ -60,6 +60,8 @@ import {
   closeBatch,
   createBatch,
   generatePayslips,
+  paymentSummaryForBatch,
+  PaymentSummaryNotReadyError,
   payslipDetail,
   prefillOvertimeFromAttendance,
   setPayrollInput,
@@ -1993,5 +1995,53 @@ describe('UC — CSV employee import', () => {
     const preview = await validateEmployeeImport(a, { companyId: base.companyId, records: dup });
     expect(preview.validCount).toBe(0);
     expect(preview.rows[0].errors.join()).toMatch(/already exists/i);
+  });
+});
+
+describe('UC — payment summary export', () => {
+  it('exports a processed batch as CSV with bank + net pay, and logs the export', async () => {
+    const a = adminCtx(base);
+    const { employmentId, personId } = await hire(a, base, 'Payee');
+    await setCompensation(a, { employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, {
+      personId,
+      icNumber: '900101011234',
+      bankName: 'Maybank',
+      bankAccountNo: '5566778899',
+    });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+
+    const file = await paymentSummaryForBatch(a, batchId);
+    expect(file.payeeCount).toBe(1);
+    expect(file.missingBank).toBe(0);
+    expect(file.filename).toMatch(/payment-summary_.*_2026-05\.csv/);
+    const lines = file.content.trim().split('\r\n');
+    expect(lines[0]).toBe('No,Employee,Employee Code,IC,Bank,Account No,Net Pay (RM)');
+    expect(lines[1]).toContain('Payee');
+    expect(lines[1]).toContain('Maybank');
+    expect(lines[1]).toContain('5566778899');
+    // The row's net equals the recorded batch total to the cent.
+    const net = Number(lines[1].split(',').pop());
+    expect(Math.round(net * 100)).toBe(file.netTotalCents);
+
+    expect(await eventTypesFor(base.tenantId, batchId)).toContain('payroll-batch.payment-summary.exported');
+  });
+
+  it('refuses to export a draft batch (no payslips yet)', async () => {
+    const a = adminCtx(base);
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    await expect(paymentSummaryForBatch(a, batchId)).rejects.toBeInstanceOf(PaymentSummaryNotReadyError);
+  });
+
+  it('still exports an employee with no bank details, flagging the gap', async () => {
+    const a = adminCtx(base);
+    const { employmentId } = await hire(a, base, 'NoBank');
+    await setCompensation(a, { employmentId, basicSalary: 3500, effectiveFrom: '2026-01-01' });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
+    await generatePayslips(a, { batchId });
+    const file = await paymentSummaryForBatch(a, batchId);
+    expect(file.payeeCount).toBe(1);
+    expect(file.missingBank).toBe(1);
   });
 });

@@ -38,7 +38,16 @@ export default async function BatchPage({
           </>
         }
         actions={
-          <>
+          <div className="flex items-center gap-2">
+            {batch.status !== 'draft' && (
+              <a
+                href={`/payroll/reports/payment-summary?batchId=${batch.id}`}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                title="Employee / bank / account / net-pay CSV for manual bank upload"
+              >
+                ⬇ Payment summary
+              </a>
+            )}
             {batch.status === 'draft' && (
               <form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
@@ -53,7 +62,7 @@ export default async function BatchPage({
                 </Button>
               </form>
             )}
-          </>
+          </div>
         }
       />
 

@@ -55,6 +55,16 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''));
 }
 
+/** Serialise rows to RFC-4180 CSV (CRLF endings; a field is quoted when it contains a comma,
+ *  quote, or newline, with embedded quotes doubled). Symmetric with parseCsv. */
+export function toCsv(rows: (string | number | null | undefined)[][]): string {
+  const esc = (v: string | number | null | undefined) => {
+    const s = v == null ? '' : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows.map((r) => r.map(esc).join(',')).join('\r\n') + '\r\n';
+}
+
 /** Parse a CSV with a header row into records keyed by normalised header
  *  (lower-cased, spaces → underscores). Returns the headers and one record per data row. */
 export function parseCsvRecords(text: string): {
