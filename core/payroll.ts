@@ -6,6 +6,7 @@ import { and, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from 
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
+import { toCsv } from '../lib/csv';
 import {
   attendance,
   company,
@@ -712,6 +713,87 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
       .where(eq(payslip.batchId, batchId))
       .orderBy(person.fullName);
     return { batch, slips };
+  });
+}
+
+export class PaymentSummaryNotReadyError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PaymentSummaryNotReadyError';
+  }
+}
+
+const slugify = (s: string) =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'company';
+
+/**
+ * Batch payment summary for manual bank upload. A plain, neutral CSV — employee, bank, account,
+ * net pay — deliberately NOT a byte-exact bank giro / IBG file: every bank's bulk-payment format
+ * differs and must be verified against that bank's own portal (tracked separately as Layer-B).
+ * Available once the batch is processed/closed (payslips exist). Logs an export event on the
+ * batch so this egress of bank + net-pay data is auditable.
+ */
+export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        payPeriod: payrollBatch.payPeriod,
+        company: company.legalName,
+      })
+      .from(payrollBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(eq(payrollBatch.id, batchId))
+      .limit(1);
+    if (!batch) throw new PaymentSummaryNotReadyError('Payroll batch not found.');
+    if (batch.status === 'draft') {
+      throw new PaymentSummaryNotReadyError(
+        'Process the batch before exporting a payment summary — a draft has no payslips yet.',
+      );
+    }
+
+    const rows = await tx
+      .select({
+        name: person.fullName,
+        code: employment.employeeCode,
+        ic: employeeStatutoryMy.icNumber,
+        bankName: employeeStatutoryMy.bankName,
+        bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        net: payslip.netPay,
+      })
+      .from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(payslip.batchId, batchId))
+      .orderBy(person.fullName);
+    if (rows.length === 0) throw new PaymentSummaryNotReadyError('This batch has no payslips to export.');
+
+    const header = ['No', 'Employee', 'Employee Code', 'IC', 'Bank', 'Account No', 'Net Pay (RM)'];
+    const body = rows.map((r, i) => [
+      i + 1,
+      r.name,
+      r.code ?? '',
+      r.ic ?? '',
+      r.bankName ?? '',
+      r.bankAccountNo ?? '',
+      Number(r.net).toFixed(2),
+    ]);
+    const content = toCsv([header, ...body]);
+    const netTotalCents = rows.reduce((sum, r) => sum + Math.round(Number(r.net) * 100), 0);
+    const missingBank = rows.filter((r) => !r.bankName || !r.bankAccountNo).length;
+    const filename = `payment-summary_${slugify(batch.company)}_${batch.payPeriod}.csv`;
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: batchId,
+      eventType: 'payroll-batch.payment-summary.exported',
+      actor: actorOf(ctx),
+      payload: { payeeCount: rows.length, netTotalCents, missingBank, payPeriod: batch.payPeriod },
+    });
+
+    return { content, filename, payeeCount: rows.length, netTotalCents, missingBank, payPeriod: batch.payPeriod };
   });
 }
 
