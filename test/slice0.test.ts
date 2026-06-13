@@ -2371,3 +2371,65 @@ describe('UC — performance: state machine, authz, pay seam', () => {
     expect(E).toBeTruthy();
   });
 });
+
+describe('UC — domain_event subject-scoped privacy (ADR-0015)', () => {
+  const eventsFor = (ctx: SessionContext, employmentId: string) =>
+    withTenant(ctx, (tx) =>
+      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId, employmentId)),
+    );
+
+  it('an employee cannot read a peer’s events, sees their own, and admins see all', async () => {
+    const a = adminCtx(base);
+    const A = await hire(a, base, 'Alpha');
+    const B = await hire(a, base, 'Bravo'); // an unrelated peer (no reporting line)
+    await setCompensation(a, { employmentId: B.employmentId, basicSalary: 7000, effectiveFrom: '2026-01-01' });
+    const uA = await createAppUser(base.tenantId, A.personId, 'employee');
+    const aCtx: SessionContext = { tenantId: base.tenantId, userId: uA, roles: ['employee'], personId: A.personId };
+
+    // Peer isolation: Alpha cannot see any of Bravo's events (hire, compensation).
+    expect(await eventsFor(aCtx, B.employmentId)).toHaveLength(0);
+    // Own visibility: Alpha sees their own events.
+    expect((await eventsFor(aCtx, A.employmentId)).length).toBeGreaterThan(0);
+    // Admin sees Bravo's events (the audit ledger is unchanged for admins).
+    expect((await eventsFor(a, B.employmentId)).length).toBeGreaterThan(0);
+  });
+
+  it('a manager sees a report’s events; config events with no subject are admin-only', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Report');
+    const M = await hire(a, base, 'Boss');
+    const uM = await createAppUser(base.tenantId, M.personId, 'manager');
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-01',
+    });
+    await createLeavePolicy(a, { leaveTypeId: base.annualLeaveTypeId, annualDays: 14, validFrom: '2026-01-01' });
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+
+    // The manager sees their report's events…
+    expect((await eventsFor(mCtx, E.employmentId)).length).toBeGreaterThan(0);
+    // …but not the tenant-wide leave-policy event (no subject → admin-only, fail-closed).
+    const mgrSeesPolicy = await withTenant(mCtx, (tx) =>
+      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, 'leave-policy')),
+    );
+    expect(mgrSeesPolicy).toHaveLength(0);
+    // Admin does see it.
+    const adminSeesPolicy = await withTenant(a, (tx) =>
+      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateType, 'leave-policy')),
+    );
+    expect(adminSeesPolicy.length).toBeGreaterThan(0);
+  });
+
+  it('tenant isolation holds: another tenant’s admin sees none of this tenant’s events', async () => {
+    const a = adminCtx(base);
+    const A = await hire(a, base, 'Solo');
+    const other = await seedBase(); // a separate tenant
+    const otherAdmin = adminCtx(other);
+    const crossTenant = await withTenant(otherAdmin, (tx) =>
+      tx.select().from(schema.domainEvent).where(eq(schema.domainEvent.subjectEmploymentId, A.employmentId)),
+    );
+    expect(crossTenant).toHaveLength(0);
+  });
+});

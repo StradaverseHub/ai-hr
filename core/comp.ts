@@ -49,6 +49,7 @@ export async function setCompensation(
       aggregateId: row.id,
       eventType: 'compensation.set',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: { employmentId: p.employmentId, basicSalary: p.basicSalary, effectiveFrom: p.effectiveFrom },
     });
     return { compensationId: row.id };

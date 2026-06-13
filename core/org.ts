@@ -5,7 +5,7 @@
  */
 import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { appendEvent, actorOf } from '../db/events';
+import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
 import { packFor } from '../localization/registry';
 import {
@@ -136,6 +136,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       aggregateId: emp.id,
       eventType: 'employment.hired',
       actor: actorOf(ctx),
+      subjectEmploymentId: emp.id,
       payload: { personId, companyId: p.companyId, departmentId: p.departmentId, hiredOn: p.hiredOn },
     });
 
@@ -184,6 +185,7 @@ export async function transferEmployee(
       aggregateId: next.id,
       eventType: 'assignment.transferred',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: {
         employmentId: p.employmentId,
         from: { departmentId: cur.departmentId },
@@ -224,6 +226,7 @@ export async function terminateEmployment(
       aggregateId: p.employmentId,
       eventType: 'employment.terminated',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: { terminationDate: p.terminationDate },
     });
   });
@@ -283,6 +286,7 @@ export async function setReportingLine(
       aggregateId: row.id,
       eventType: 'reporting-line.set',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.subordinateEmploymentId,
       payload: { ...p },
     });
     return { reportingLineId: row.id };
@@ -313,13 +317,18 @@ export async function endReportingLine(
   p: { reportingLineId: string; endDate: string },
 ) {
   return withTenant(ctx, async (tx) => {
-    await tx.update(reportingLine).set({ validTo: p.endDate }).where(eq(reportingLine.id, p.reportingLineId));
+    const [ended] = await tx
+      .update(reportingLine)
+      .set({ validTo: p.endDate })
+      .where(eq(reportingLine.id, p.reportingLineId))
+      .returning({ subordinate: reportingLine.subordinateEmploymentId });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'reporting-line',
       aggregateId: p.reportingLineId,
       eventType: 'reporting-line.ended',
       actor: actorOf(ctx),
+      subjectEmploymentId: ended?.subordinate ?? null,
       payload: { endDate: p.endDate },
     });
   });
@@ -347,6 +356,7 @@ export async function setCostAllocation(
       aggregateId: p.employmentId,
       eventType: 'employment.cost-allocation.set',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: { allocations: p.allocations },
     });
     return { id: p.employmentId };
@@ -387,6 +397,7 @@ export async function updatePerson(
       aggregateId: p.personId,
       eventType: 'person.updated',
       actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
       payload: { before, after },
     });
     return { id: p.personId };

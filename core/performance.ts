@@ -254,6 +254,7 @@ export async function submitSelfReview(
       aggregateId: review.id,
       eventType: 'performance-review.self-submitted',
       actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
       // No rating in the payload: domain_event RLS is tenant-wide, so a scalar here would leak the
       // rating to peers. The value lives on the RLS-scoped performance_review row.
       payload: { cycleId: review.cycleId },
@@ -308,6 +309,7 @@ export async function submitManagerReview(
       aggregateId: review.id,
       eventType: 'performance-review.manager-submitted',
       actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
       // Ratings/amounts are omitted from event payloads — domain_event RLS is tenant-wide, so any
       // scalar here would leak to peers. The figures live on the RLS-scoped performance_review row.
       payload: { cycleId: review.cycleId },
@@ -319,6 +321,7 @@ export async function submitManagerReview(
         aggregateId: review.id,
         eventType: 'performance-review.comp-recommended',
         actor: actorOf(ctx),
+        subjectEmploymentId: review.employmentId,
         payload: { cycleId: review.cycleId },
       });
     }
@@ -344,6 +347,7 @@ export async function acknowledgeReview(ctx: SessionContext, p: { reviewId: stri
       aggregateId: review.id,
       eventType: 'performance-review.acknowledged',
       actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
     });
     return { status: 'acknowledged' as const };
   });
@@ -382,6 +386,7 @@ export async function reassignReviewer(
       aggregateId: review.id,
       eventType: 'performance-review.reviewer-reassigned',
       actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
       payload: { reviewerEmploymentId: p.reviewerEmploymentId },
     });
     return { ok: true };
@@ -496,6 +501,7 @@ export async function enactCompAction(
       aggregateId: review.id,
       eventType: 'performance-review.comp-enacted',
       actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
       // Ids only — the merit %/bonus amounts live on the RLS-scoped review row, not in the
       // tenant-wide event log.
       payload: { employmentId: review.employmentId, enactedCompensationId, enactedBatchId },
@@ -519,6 +525,7 @@ export async function declineCompAction(ctx: SessionContext, p: { reviewId: stri
       aggregateId: review.id,
       eventType: 'performance-review.comp-declined',
       actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
     });
     return { ok: true };
   });

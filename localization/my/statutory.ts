@@ -4,7 +4,7 @@
  */
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
-import { actorOf, appendEvent } from '../../db/events';
+import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { employeeStatutoryMy } from '../../db/schema';
 
 export class InvalidICError extends Error {
@@ -88,6 +88,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       aggregateId: id,
       eventType: existing ? 'statutory.my.updated' : 'statutory.my.created',
       actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
       payload: { personId: p.personId },
     });
     return { id };
