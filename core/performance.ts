@@ -14,7 +14,7 @@
  * event log, setCompensation (effective-dated merit) and setPayrollInput (bonus as additional-
  * remuneration MTD).
  */
-import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -23,6 +23,7 @@ import {
   employment,
   payrollInput,
   performanceReview,
+  person,
   reportingLine,
   reviewCycle,
 } from '../db/schema';
@@ -494,6 +495,343 @@ async function loadReview(tx: Tx, reviewId: string) {
     .limit(1);
   if (!row) throw new PerfError('Performance review not found (or not visible)');
   return row;
+}
+
+// ───────────────────────────── reads (UI) ─────────────────────────────
+
+export type CycleSummary = {
+  id: string;
+  name: string;
+  companyId: string | null;
+  periodStart: string;
+  periodEnd: string;
+  status: 'draft' | 'open' | 'calibration' | 'closed';
+  releasedAt: Date | null;
+  total: number;
+  submitted: number; // manager-finalized or beyond
+  acknowledged: number;
+  pendingComp: number; // recommendations awaiting enactment
+};
+
+/** Cycles for the management view, each with progress counts. RLS scopes to the tenant. */
+export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
+  return withTenant(ctx, async (tx) => {
+    const cycles = await tx.select().from(reviewCycle).orderBy(desc(reviewCycle.periodStart));
+    if (cycles.length === 0) return [];
+    const counts = await tx
+      .select({
+        cycleId: performanceReview.cycleId,
+        total: sql<number>`count(*)::int`,
+        submitted: sql<number>`count(*) filter (where ${performanceReview.status} in ('submitted','acknowledged'))::int`,
+        acknowledged: sql<number>`count(*) filter (where ${performanceReview.status} = 'acknowledged')::int`,
+        pendingComp: sql<number>`count(*) filter (where ${performanceReview.compActionStatus} = 'recommended')::int`,
+      })
+      .from(performanceReview)
+      .where(
+        inArray(
+          performanceReview.cycleId,
+          cycles.map((c) => c.id),
+        ),
+      )
+      .groupBy(performanceReview.cycleId);
+    const byId = new Map(counts.map((c) => [c.cycleId, c]));
+    return cycles.map((c) => {
+      const k = byId.get(c.id);
+      return {
+        id: c.id,
+        name: c.name,
+        companyId: c.companyId,
+        periodStart: c.periodStart,
+        periodEnd: c.periodEnd,
+        status: c.status,
+        releasedAt: c.releasedAt,
+        total: k?.total ?? 0,
+        submitted: k?.submitted ?? 0,
+        acknowledged: k?.acknowledged ?? 0,
+        pendingComp: k?.pendingComp ?? 0,
+      };
+    });
+  });
+}
+
+export type RosterRow = {
+  reviewId: string;
+  employee: string;
+  reviewer: string | null;
+  status: 'not_started' | 'self_review' | 'manager_review' | 'submitted' | 'acknowledged';
+  selfRating: number | null;
+  managerRating: number | null;
+  overallRating: number | null;
+  recommendedMeritPct: number | null;
+  recommendedBonus: number | null;
+  compActionStatus: 'none' | 'recommended' | 'enacted' | 'declined';
+  currentBasic: number | null;
+};
+
+/** Full cycle detail for the admin: the roster, the rating distribution, and the merit-budget
+ *  rollup (a soft cap — recommendations may exceed it; calibration trims). */
+export function cycleDetail(ctx: SessionContext, cycleId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
+    if (!cycle) return null;
+    const rows = await tx
+      .select({
+        reviewId: performanceReview.id,
+        employee: person.fullName,
+        reviewerEmploymentId: performanceReview.reviewerEmploymentId,
+        status: performanceReview.status,
+        selfRating: performanceReview.selfRating,
+        managerRating: performanceReview.managerRating,
+        overallRating: performanceReview.overallRating,
+        recommendedMeritPct: performanceReview.recommendedMeritPct,
+        recommendedBonus: performanceReview.recommendedBonus,
+        compActionStatus: performanceReview.compActionStatus,
+        currentBasic: compensation.basicSalary,
+      })
+      .from(performanceReview)
+      .innerJoin(employment, eq(employment.id, performanceReview.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        compensation,
+        and(
+          eq(compensation.employmentId, performanceReview.employmentId),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      )
+      .where(eq(performanceReview.cycleId, cycleId))
+      .orderBy(person.fullName);
+
+    const reviewerNames = await namesForEmployments(
+      tx,
+      rows.map((r) => r.reviewerEmploymentId).filter((x): x is string => x != null),
+    );
+
+    const roster: RosterRow[] = rows.map((r) => ({
+      reviewId: r.reviewId,
+      employee: r.employee,
+      reviewer: r.reviewerEmploymentId ? reviewerNames.get(r.reviewerEmploymentId) ?? null : null,
+      status: r.status,
+      selfRating: r.selfRating,
+      managerRating: r.managerRating,
+      overallRating: r.overallRating,
+      recommendedMeritPct: r.recommendedMeritPct != null ? Number(r.recommendedMeritPct) : null,
+      recommendedBonus: r.recommendedBonus != null ? Number(r.recommendedBonus) : null,
+      compActionStatus: r.compActionStatus,
+      currentBasic: r.currentBasic != null ? Number(r.currentBasic) : null,
+    }));
+
+    // Rating distribution over finalized reviews (the calibration view).
+    const scale = cycle.ratingScale as RatingScale;
+    const distribution = scale.map((s) => ({
+      value: s.value,
+      label: s.label,
+      count: roster.filter((r) => r.overallRating === s.value).length,
+    }));
+
+    // Merit budget rollup. Pool: percent → % of in-scope payroll; amount → flat. Consumed: the RM
+    // monthly increase implied by recommended/enacted merit %. Bonus shown alongside (not capped).
+    const totalBasic = roster.reduce((s, r) => s + (r.currentBasic ?? 0), 0);
+    const meritConsumed = round2(
+      roster.reduce(
+        (s, r) =>
+          r.recommendedMeritPct != null && (r.compActionStatus === 'recommended' || r.compActionStatus === 'enacted')
+            ? s + (r.currentBasic ?? 0) * (r.recommendedMeritPct / 100)
+            : s,
+        0,
+      ),
+    );
+    const bonusTotal = round2(
+      roster.reduce(
+        (s, r) =>
+          r.recommendedBonus != null && (r.compActionStatus === 'recommended' || r.compActionStatus === 'enacted')
+            ? s + r.recommendedBonus
+            : s,
+        0,
+      ),
+    );
+    const mb = cycle.meritBudget as MeritBudget;
+    const meritPool = mb == null ? null : mb.kind === 'percent' ? round2((mb.value / 100) * totalBasic) : round2(mb.value);
+    const budget =
+      meritPool == null
+        ? { pool: null, consumed: meritConsumed, remaining: null, over: false, bonusTotal }
+        : {
+            pool: meritPool,
+            consumed: meritConsumed,
+            remaining: round2(meritPool - meritConsumed),
+            over: meritConsumed > meritPool,
+            bonusTotal,
+          };
+
+    return { cycle, roster, distribution, budget };
+  });
+}
+
+export type ReviewView = {
+  id: string;
+  cycleId: string;
+  cycleName: string;
+  cycleStatus: string;
+  periodStart: string;
+  periodEnd: string;
+  released: boolean;
+  ratingScale: RatingScale;
+  employee: string;
+  reviewer: string | null;
+  status: RosterRow['status'];
+  selfRating: number | null;
+  selfComments: string | null;
+  goalsSummary: string | null;
+  managerRating: number | null;
+  managerComments: string | null;
+  overallRating: number | null;
+  // comp fields — populated only for manager/admin viewers (never the subject)
+  recommendedMeritPct: number | null;
+  recommendedBonus: number | null;
+  compActionStatus: RosterRow['compActionStatus'];
+  // role + capability flags for the viewer
+  isSubject: boolean;
+  canManage: boolean; // reviewer or admin
+  canSelfSubmit: boolean;
+  canManagerSubmit: boolean;
+  canAcknowledge: boolean;
+};
+
+/** One review, shaped for the viewer. The subject never sees the manager's draft (until release)
+ *  nor the comp recommendation (ever); manager/admin see everything. RLS already gates row access. */
+export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<ReviewView | null> {
+  return withTenant(ctx, async (tx) => {
+    const [r] = await tx
+      .select({
+        review: performanceReview,
+        cycle: reviewCycle,
+        employee: person.fullName,
+        subjectPersonId: employment.personId,
+      })
+      .from(performanceReview)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
+      .innerJoin(employment, eq(employment.id, performanceReview.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(performanceReview.id, reviewId))
+      .limit(1);
+    if (!r) return null;
+
+    // Resolve the reviewer's name + person (separate query — avoids a self-join on employment).
+    let reviewerName: string | null = null;
+    let reviewerPersonId: string | null = null;
+    if (r.review.reviewerEmploymentId) {
+      const [rv] = await tx
+        .select({ name: person.fullName, personId: employment.personId })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(eq(employment.id, r.review.reviewerEmploymentId))
+        .limit(1);
+      reviewerName = rv?.name ?? null;
+      reviewerPersonId = rv?.personId ?? null;
+    }
+
+    const admin = isAdminCtx(ctx);
+    const isSubject = ctx.personId != null && ctx.personId === r.subjectPersonId;
+    const isReviewer = ctx.personId != null && ctx.personId === reviewerPersonId;
+    const canManage = admin || isReviewer;
+    const released = r.cycle.releasedAt != null;
+    const rv = r.review;
+    // The subject only sees the manager side after release, and never the comp recommendation.
+    const showManager = canManage || released;
+    const showComp = canManage; // comp recommendation is management-only
+
+    return {
+      id: rv.id,
+      cycleId: rv.cycleId,
+      cycleName: r.cycle.name,
+      cycleStatus: r.cycle.status,
+      periodStart: r.cycle.periodStart,
+      periodEnd: r.cycle.periodEnd,
+      released,
+      ratingScale: r.cycle.ratingScale as RatingScale,
+      employee: r.employee,
+      reviewer: reviewerName,
+      status: rv.status,
+      selfRating: rv.selfRating,
+      selfComments: rv.selfComments,
+      goalsSummary: rv.goalsSummary,
+      managerRating: showManager ? rv.managerRating : null,
+      managerComments: showManager ? rv.managerComments : null,
+      overallRating: showManager ? rv.overallRating : null,
+      recommendedMeritPct: showComp && rv.recommendedMeritPct != null ? Number(rv.recommendedMeritPct) : null,
+      recommendedBonus: showComp && rv.recommendedBonus != null ? Number(rv.recommendedBonus) : null,
+      compActionStatus: showComp ? rv.compActionStatus : 'none',
+      isSubject,
+      canManage,
+      canSelfSubmit: isSubject && rv.status === 'self_review',
+      canManagerSubmit: canManage && (rv.status === 'manager_review' || rv.status === 'self_review'),
+      canAcknowledge: isSubject && released && rv.status === 'submitted',
+    };
+  });
+}
+
+/** The signed-in employee's own reviews (for /me). Released-gated like reviewForViewer. */
+export function myReviews(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    return tx
+      .select({
+        reviewId: performanceReview.id,
+        cycleName: reviewCycle.name,
+        status: performanceReview.status,
+        released: sql<boolean>`${reviewCycle.releasedAt} is not null`,
+        overallRating: sql<number | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.overallRating} end`,
+        periodEnd: reviewCycle.periodEnd,
+      })
+      .from(performanceReview)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
+      .innerJoin(employment, eq(employment.id, performanceReview.employmentId))
+      .where(eq(employment.personId, ctx.personId))
+      .orderBy(desc(reviewCycle.periodEnd));
+  });
+}
+
+/** Reviews awaiting the signed-in manager's action (manager_review, they are the reviewer). */
+export function managerPendingReviews(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    // The viewer's own employment ids (a person may hold concurrent employments / be a reviewer).
+    const mine = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.personId, ctx.personId));
+    const myEmploymentIds = mine.map((m) => m.id);
+    if (myEmploymentIds.length === 0) return [];
+    return tx
+      .select({
+        reviewId: performanceReview.id,
+        employee: person.fullName,
+        cycleName: reviewCycle.name,
+        status: performanceReview.status,
+      })
+      .from(performanceReview)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
+      .innerJoin(employment, eq(employment.id, performanceReview.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          inArray(performanceReview.reviewerEmploymentId, myEmploymentIds),
+          eq(performanceReview.status, 'manager_review'),
+        ),
+      )
+      .orderBy(reviewCycle.name, person.fullName);
+  });
+}
+
+/** Map a set of employment ids → person full name (one query). */
+async function namesForEmployments(tx: Tx, employmentIds: string[]): Promise<Map<string, string>> {
+  if (employmentIds.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: employment.id, name: person.fullName })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(inArray(employment.id, [...new Set(employmentIds)]));
+  return new Map(rows.map((r) => [r.id, r.name]));
 }
 
 /** The current administrative-line manager's employment id, or null (top of org). */

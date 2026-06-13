@@ -62,6 +62,8 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }
   'reporting-line': { label: 'Reporting line' },
   'statutory-report': { label: 'Statutory report' },
   'employee-import': { label: 'Employee import' },
+  'review-cycle': { label: 'Review cycle', href: (id) => `/performance/${id}` },
+  'performance-review': { label: 'Performance review', href: (id) => `/performance/review/${id}` },
 };
 
 export function aggregateLabel(type: string): string {

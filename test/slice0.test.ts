@@ -51,6 +51,7 @@ import {
   openCycle,
   PerfError,
   releaseCycle,
+  reviewForViewer,
   submitManagerReview,
   submitSelfReview,
 } from '../core/performance';
@@ -2218,6 +2219,30 @@ describe('UC — performance: state machine, authz, pay seam', () => {
     const [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
     expect(r.compActionStatus).toBe('declined');
     await expect(enactCompAction(a, { reviewId })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('release gate: employee sees the manager rating only after release, never the recommendation', async () => {
+    const { a, eCtx, mCtx, cycleId, reviewId } = await setupCycle();
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedMeritPct: 5 });
+
+    // Before release: the employee's view withholds the manager rating and the comp recommendation.
+    const before = await reviewForViewer(eCtx, reviewId);
+    expect(before?.overallRating).toBeNull();
+    expect(before?.managerRating).toBeNull();
+    expect(before?.recommendedMeritPct).toBeNull();
+    expect(before?.canManage).toBe(false);
+    // The manager's view sees everything.
+    const mgrView = await reviewForViewer(mCtx, reviewId);
+    expect(mgrView?.overallRating).toBe(4);
+    expect(mgrView?.recommendedMeritPct).toBe(5);
+
+    await releaseCycle(a, { cycleId });
+    // After release: the employee sees the overall rating, but the comp recommendation stays hidden.
+    const after = await reviewForViewer(eCtx, reviewId);
+    expect(after?.overallRating).toBe(4);
+    expect(after?.recommendedMeritPct).toBeNull();
+    expect(after?.canAcknowledge).toBe(true);
   });
 
   it('membership snapshot excludes late hires past the cutoff', async () => {

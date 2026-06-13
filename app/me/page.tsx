@@ -11,6 +11,7 @@ import {
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
+import { myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   myCheckIn,
@@ -87,7 +88,7 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
-  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests] =
+  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews] =
     await Promise.all([
       leaveBalances(s, me.employmentId),
       leaveRequestsFor(s, me.employmentId),
@@ -97,6 +98,7 @@ export default async function MePage({
       myAttendanceCorrections(s, me.employmentId),
       myProfile(s),
       myProfileChangeRequests(s, me.employmentId),
+      myReviews(s),
     ]);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
@@ -474,6 +476,39 @@ export default async function MePage({
           </table>
         </div>
       </Card>
+
+      {/* Performance reviews */}
+      {reviews.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title="My reviews" count={reviews.length} />
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">Cycle</th>
+                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 text-center font-medium">Overall</th>
+                <th className="px-4 py-2" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {reviews.map((r) => (
+                <tr key={r.reviewId}>
+                  <td className="px-4 py-2.5 font-medium">{r.cycleName}</td>
+                  <td className="px-4 py-2.5 capitalize text-muted-foreground">{r.status.replace('_', ' ')}</td>
+                  <td className="px-4 py-2.5 text-center tabular-nums">
+                    {r.released && r.overallRating != null ? r.overallRating : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <Link href={`/performance/review/${r.reviewId}`} className="text-xs text-primary hover:underline">
+                      {r.status === 'self_review' ? 'Self-review →' : r.status === 'submitted' && r.released ? 'Acknowledge →' : 'Open →'}
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
       <Card className="p-5">
