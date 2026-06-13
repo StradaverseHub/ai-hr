@@ -41,6 +41,19 @@ import {
 } from '../core/admin';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { compensationHistory, currentCompensation, setCompensation } from '../core/comp';
+import {
+  acknowledgeReview,
+  closeCycle,
+  createCycle,
+  declineCompAction,
+  enactCompAction,
+  moveCycleToCalibration,
+  openCycle,
+  PerfError,
+  releaseCycle,
+  submitManagerReview,
+  submitSelfReview,
+} from '../core/performance';
 import { getStatutoryProfileMY, InvalidICError, setStatutoryProfileMY } from '../localization/my/statutory';
 import { validateEmployeeImport, commitEmployeeImport } from '../core/import';
 import { parseCsvRecords } from '../lib/csv';
@@ -2065,5 +2078,171 @@ describe('UC — employee list pagination + search', () => {
     const byEmail = await listEmployeesPage(a, { q: 'dave@', limit: 25, offset: 0 });
     expect(byEmail.total).toBe(1);
     expect(byEmail.rows[0].name).toBe('Dave');
+  });
+});
+
+describe('UC — performance: state machine, authz, pay seam', () => {
+  // Employee E reports to manager M; returns sessions + the spawned review id for E.
+  async function setupCycle(opts?: { merit?: boolean }) {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'PerfEmp');
+    const M = await hire(a, base, 'PerfMgr');
+    await setCompensation(a, { employmentId: E.employmentId, basicSalary: 5000, effectiveFrom: '2026-01-01' });
+    const uE = await createAppUser(base.tenantId, E.personId, 'employee');
+    const uM = await createAppUser(base.tenantId, M.personId, 'manager');
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-01-01',
+    });
+    const eCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'], personId: E.personId };
+    const mCtx: SessionContext = { tenantId: base.tenantId, userId: uM, roles: ['manager'], personId: M.personId };
+    const { cycleId } = await createCycle(a, { name: '2026 Annual', periodStart: '2026-01-01', periodEnd: '2026-12-31' });
+    await openCycle(a, { cycleId });
+    const [review] = await owner.db
+      .select()
+      .from(schema.performanceReview)
+      .where(eq(schema.performanceReview.employmentId, E.employmentId));
+    return { a, E, M, eCtx, mCtx, cycleId, reviewId: review.id };
+  }
+
+  it('walks self → manager → release → acknowledge, with an event per transition', async () => {
+    const { a, eCtx, mCtx, cycleId, reviewId, E } = await setupCycle();
+    // reviewer was resolved to the administrative manager at open
+    const [spawned] = await owner.db
+      .select()
+      .from(schema.performanceReview)
+      .where(eq(schema.performanceReview.id, reviewId));
+    expect(spawned.status).toBe('self_review');
+    expect(spawned.reviewerEmploymentId).not.toBeNull();
+
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3, selfComments: 'solid year' });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, managerComments: 'strong' });
+    let [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.status).toBe('submitted');
+    expect(r.overallRating).toBe(4);
+
+    // employee cannot acknowledge before the cycle is released
+    await expect(acknowledgeReview(eCtx, { reviewId })).rejects.toBeInstanceOf(PerfError);
+    await releaseCycle(a, { cycleId });
+    await acknowledgeReview(eCtx, { reviewId });
+    [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.status).toBe('acknowledged');
+
+    const evs = await eventTypesFor(base.tenantId, reviewId);
+    expect(evs).toEqual(
+      expect.arrayContaining([
+        'performance-review.self-submitted',
+        'performance-review.manager-submitted',
+        'performance-review.acknowledged',
+      ]),
+    );
+    const cycleEvs = await eventTypesFor(base.tenantId, cycleId);
+    expect(cycleEvs).toEqual(expect.arrayContaining(['review-cycle.opened', 'review-cycle.released']));
+    expect(E).toBeTruthy();
+  });
+
+  it('enacts a merit recommendation as an effective-dated raise (never writes pay itself)', async () => {
+    const { a, E, eCtx, mCtx, reviewId } = await setupCycle();
+    await submitSelfReview(eCtx, { reviewId, selfRating: 4 });
+    await submitManagerReview(mCtx, {
+      reviewId,
+      managerRating: 5,
+      overallRating: 5,
+      recommendedMeritPct: 10,
+    });
+    let [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.compActionStatus).toBe('recommended');
+
+    await enactCompAction(a, { reviewId, meritEffectiveFrom: '2027-01-01' });
+    const comp = await currentCompensation(a, E.employmentId);
+    expect(Number(comp?.basicSalary)).toBe(5500); // 5000 + 10%
+    [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.compActionStatus).toBe('enacted');
+    expect(r.enactedCompensationId).not.toBeNull();
+    expect(await eventTypesFor(base.tenantId, reviewId)).toContain('performance-review.comp-enacted');
+  });
+
+  it('enacts a bonus into a draft batch, preserving overtime already keyed', async () => {
+    const { a, E, eCtx, mCtx, reviewId } = await setupCycle();
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedBonus: 2000 });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-12' });
+    await setPayrollInput(a, { batchId, employmentId: E.employmentId, overtimeAmount: 150 }); // pre-existing OT
+    await enactCompAction(a, { reviewId, bonusBatchId: batchId });
+
+    const [pi] = await owner.db
+      .select()
+      .from(schema.payrollInput)
+      .where(
+        and(
+          eq(schema.payrollInput.batchId, batchId),
+          eq(schema.payrollInput.employmentId, E.employmentId),
+        ),
+      );
+    expect(Number(pi.bonusAmount)).toBe(2000);
+    expect(Number(pi.overtimeAmount)).toBe(150); // overtime preserved, not clobbered
+    const [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.enactedBatchId).toBe(batchId);
+  });
+
+  it('enforces authz: employee cannot manager-review; manager cannot self-review the report', async () => {
+    const { eCtx, mCtx, reviewId } = await setupCycle();
+    // employee tries to act as manager → assertCanDecide rejects (not the manager / admin)
+    await expect(
+      submitManagerReview(eCtx, { reviewId, managerRating: 5, overallRating: 5 }),
+    ).rejects.toThrow();
+    // manager tries to submit the employee's self-review → only the subject (or admin) may
+    await expect(submitSelfReview(mCtx, { reviewId, selfRating: 5 })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('rejects a rating outside the cycle scale and guards transition order', async () => {
+    const { a, eCtx, mCtx, cycleId, reviewId } = await setupCycle();
+    await expect(submitSelfReview(eCtx, { reviewId, selfRating: 9 })).rejects.toBeInstanceOf(PerfError);
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    // self-review cannot be submitted twice (status moved on)
+    await expect(submitSelfReview(eCtx, { reviewId, selfRating: 2 })).rejects.toBeInstanceOf(PerfError);
+    // a draft-less cycle cannot be re-opened
+    await expect(openCycle(a, { cycleId })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('cannot enact before finalize, and a declined recommendation does not touch pay', async () => {
+    const { a, eCtx, mCtx, reviewId } = await setupCycle();
+    // nothing recommended / not finalized → enact rejected
+    await expect(enactCompAction(a, { reviewId })).rejects.toBeInstanceOf(PerfError);
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 3, overallRating: 3, recommendedBonus: 1000 });
+    await declineCompAction(a, { reviewId });
+    const [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.compActionStatus).toBe('declined');
+    await expect(enactCompAction(a, { reviewId })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('membership snapshot excludes late hires past the cutoff', async () => {
+    const a = adminCtx(base);
+    const early = await hire(a, base, 'Early'); // hired 2026-01-01 (hire helper default)
+    const late = await hireEmployee(a, {
+      person: { fullName: 'Late Joiner', primaryEmail: 'late@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-09-01',
+    });
+    const { cycleId } = await createCycle(a, {
+      name: '2026 Mid',
+      periodStart: '2026-01-01',
+      periodEnd: '2026-12-31',
+      hiredBefore: '2026-06-30',
+    });
+    await openCycle(a, { cycleId });
+    const reviews = await owner.db
+      .select({ employmentId: schema.performanceReview.employmentId })
+      .from(schema.performanceReview)
+      .where(eq(schema.performanceReview.cycleId, cycleId));
+    const ids = reviews.map((r) => r.employmentId);
+    expect(ids).toContain(early.employmentId);
+    expect(ids).not.toContain(late.employmentId);
   });
 });
