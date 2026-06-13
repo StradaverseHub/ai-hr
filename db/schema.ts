@@ -393,11 +393,19 @@ export const domainEvent = pgTable(
     eventType: text('event_type').notNull(), // past-tense, dotted
     actorType: actorTypeEnum('actor_type').notNull(),
     actorId: uuid('actor_id'),
+    // The employment this event is ABOUT (for RLS read-scoping). Null = no single employee
+    // subject (company/tenant/batch events) → admin-only to read. ADR-0015.
+    subjectEmploymentId: uuid('subject_employment_id').references(() => employment.id, {
+      onDelete: 'set null',
+    }),
     payload: jsonb('payload'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
     sequence: bigserial('sequence', { mode: 'number' }).notNull(),
   },
-  (t) => [index('domain_event_aggregate_idx').on(t.tenantId, t.aggregateType, t.aggregateId)],
+  (t) => [
+    index('domain_event_aggregate_idx').on(t.tenantId, t.aggregateType, t.aggregateId),
+    index('domain_event_subject_idx').on(t.tenantId, t.subjectEmploymentId),
+  ],
 );
 
 // ─────────────────── Compensation (generic, effective-dated) ───────────────────

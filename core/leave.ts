@@ -100,6 +100,7 @@ export async function requestLeave(
       aggregateId: row.id,
       eventType: 'leave-request.submitted',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days },
     });
     return { leaveRequestId: row.id, days };
@@ -147,6 +148,7 @@ export async function decideLeave(
       aggregateId: req.id,
       eventType: `leave-request.${p.decision}`,
       actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
       payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
     });
     return { status: p.decision };

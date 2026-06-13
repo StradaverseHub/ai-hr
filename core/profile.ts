@@ -8,7 +8,7 @@
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
 import { assertCanDecide } from './approvals';
 
@@ -100,6 +100,7 @@ export async function updateOwnContact(
       aggregateId: personId,
       eventType: 'person.self-updated',
       actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, personId),
       payload: { fields: Object.keys(p) },
     });
   });
@@ -131,6 +132,7 @@ export async function requestProfileChange(
       aggregateId: row.id,
       eventType: 'profile-change.requested',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       // Audit the WHAT, not the values — bank account / dependents are PII and the event log is
       // append-only (PDPA erasure). The values live in profile_change_request.proposed (RLS-scoped,
       // consumed on decide); the apply event likewise records only field names.
@@ -187,6 +189,7 @@ export async function decideProfileChange(
           aggregateId: existing.id,
           eventType: 'statutory.my.updated',
           actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
           payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(set) },
         });
       }
@@ -206,6 +209,7 @@ export async function decideProfileChange(
       aggregateId: req.id,
       eventType: `profile-change.${p.decision}`,
       actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
       payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
     });
     return { status: p.decision };

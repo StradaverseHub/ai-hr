@@ -1,0 +1,3 @@
+ALTER TABLE "domain_event" ADD COLUMN "subject_employment_id" uuid;--> statement-breakpoint
+ALTER TABLE "domain_event" ADD CONSTRAINT "domain_event_subject_employment_id_employment_id_fk" FOREIGN KEY ("subject_employment_id") REFERENCES "public"."employment"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "domain_event_subject_idx" ON "domain_event" USING btree ("tenant_id","subject_employment_id");

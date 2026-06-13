@@ -253,6 +253,20 @@
       "when": 1781329890108,
       "tag": "0035_performance_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781340852534,
+      "tag": "0036_true_senator_kelly",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1781340942534,
+      "tag": "0037_domain_event_subject_rls",
+      "breakpoints": true
     }
   ]
 }

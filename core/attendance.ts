@@ -155,6 +155,7 @@ export async function checkIn(
       aggregateId: row.id,
       eventType: 'attendance.checked-in',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: { employmentId: p.employmentId, date: p.date, time: p.time, status, dayType },
     });
     return { attendanceId: row.id, status, dayType };
@@ -202,6 +203,7 @@ export async function checkOut(
       aggregateId: rec.id,
       eventType: 'attendance.checked-out',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: {
         employmentId: p.employmentId,
         date: p.date,
@@ -501,6 +503,7 @@ export async function requestAttendanceCorrection(
       aggregateId: row.id,
       eventType: 'attendance-correction.requested',
       actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
       payload: {
         employmentId: p.employmentId,
         date: p.date,
@@ -567,6 +570,7 @@ export async function decideAttendanceCorrection(
         aggregateId: amended.id,
         eventType: 'attendance.amended',
         actor: actorOf(ctx),
+        subjectEmploymentId: cor.employmentId,
         payload: {
           correctionId: cor.id,
           date: cor.attendanceDate,
@@ -594,6 +598,7 @@ export async function decideAttendanceCorrection(
       aggregateId: cor.id,
       eventType: `attendance-correction.${p.decision}`,
       actor: actorOf(ctx),
+      subjectEmploymentId: cor.employmentId,
       payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
     });
     return { status: p.decision };
