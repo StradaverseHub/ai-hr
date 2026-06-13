@@ -3,7 +3,7 @@
  * Run: `pnpm db:seed`  — structural data via the owner role, employees via the real
  * hireEmployee service (so the seed also exercises the service path).
  */
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { createDb, type SessionContext } from './client';
 import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
@@ -11,6 +11,7 @@ import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
 import { requestLeave, decideLeave } from '../core/leave';
 import { createLeavePolicy } from '../core/admin';
+import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
 
@@ -285,6 +286,39 @@ async function main() {
     decision: 'rejected',
     deciderEmploymentId: manager.employmentId,
   });
+
+  // Performance (ADR-0013): a live annual cycle so the module has shape — most reviews sit at
+  // self-review; Aisyah's is finalized with a 5% merit recommendation awaiting enactment.
+  const { cycleId: perfCycle } = await createCycle(admin, {
+    name: '2026 Annual',
+    periodStart: '2026-01-01',
+    periodEnd: '2026-12-31',
+    meritBudget: { kind: 'percent', value: 4 },
+  });
+  await openCycle(admin, { cycleId: perfCycle });
+  const [aisyahReview] = await owner.db
+    .select({ id: schema.performanceReview.id })
+    .from(schema.performanceReview)
+    .where(
+      and(
+        eq(schema.performanceReview.cycleId, perfCycle),
+        eq(schema.performanceReview.employmentId, hired[0].employmentId),
+      ),
+    );
+  if (aisyahReview) {
+    await submitSelfReview(admin, {
+      reviewId: aisyahReview.id,
+      selfRating: 4,
+      selfComments: 'Strong delivery on the migration; want more cross-team scope next year.',
+    });
+    await submitManagerReview(admin, {
+      reviewId: aisyahReview.id,
+      managerRating: 4,
+      overallRating: 4,
+      managerComments: 'Reliable and high-quality. Ready for more responsibility.',
+      recommendedMeritPct: 5,
+    });
+  }
 
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
   console.log(`  DEV_TENANT_ID=${DEV_TENANT_ID}`);

@@ -12,8 +12,11 @@ const money = (n: number | string): string => (typeof n === 'number' ? n.toFixed
 export async function setCompensation(
   ctx: SessionContext,
   p: { employmentId: string; basicSalary: number; currency?: string; monthlyAllowance?: number; effectiveFrom: string },
+  /** Optional caller transaction — pass it to make this write participate in an enclosing
+   *  transaction (e.g. the performance pay-seam enact) so it commits/rolls back atomically. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [cur] = await tx
       .select()
       .from(compensation)
@@ -49,7 +52,8 @@ export async function setCompensation(
       payload: { employmentId: p.employmentId, basicSalary: p.basicSalary, effectiveFrom: p.effectiveFrom },
     });
     return { compensationId: row.id };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 export function currentCompensation(ctx: SessionContext, employmentId: string) {

@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   ScrollText,
   ShieldCheck,
+  Target,
   SlidersHorizontal,
   UserRound,
   Users,
@@ -39,7 +40,10 @@ const GROUPS: Group[] = [
   {
     label: 'Manage',
     managerUp: true,
-    items: [{ href: '/approvals', label: 'Approvals', icon: ListChecks }],
+    items: [
+      { href: '/approvals', label: 'Approvals', icon: ListChecks },
+      { href: '/performance', label: 'Performance', icon: Target },
+    ],
   },
   {
     label: 'Admin',

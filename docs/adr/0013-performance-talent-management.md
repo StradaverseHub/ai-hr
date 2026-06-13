@@ -1,5 +1,36 @@
 # ADR-0013 — Performance & talent management: a cycle-anchored module that closes the loop into pay
 
+Status: **Accepted** (Phase A building) · Date: 2026-06-10 · Decisions logged 2026-06-13
+
+## Decision log (Phase A, accepted 2026-06-13)
+
+Owner-confirmed choices for the first build (the philosophy-dependent ones flagged below as the
+primary risk):
+
+- **Rating scale (seed default):** 5-point, labelled — `[{1,"Below"},{2,"Meets"},{3,"Strong"},
+  {4,"Exceeds"},{5,"Outstanding"}]`. Tenant-configurable per cycle (`review_cycle.rating_scale`).
+- **Review flow:** self → manager. Employee submits a self-review first; the manager then rates
+  and finalizes. Single overall rating (no competency sub-scores — those are Phase C).
+- **Cycle membership:** snapshot of active employees in the cycle's company scope at open, minus
+  configurable exclusions: `exclude_probation` (default on) and an optional `hired_before` cutoff.
+- **Reviewer:** the administrative-line manager (`reporting_line`) resolved at spawn; none (top of
+  org) → admin-reviewed. Dotted/functional lines do not rate in Phase A (that's 360, Phase C).
+- **Release gate:** the manager's rating + overall are hidden from the employee until HR releases
+  the cycle (`review_cycle.released_at`), typically at/after calibration. Self-review is always the
+  employee's own; the manager's draft is never employee-visible.
+- **Calibration (Phase A):** a freeze + distribution view, not 9-box / forced ranking (Phase C).
+- **Pay seam:** the merit/bonus recommendation is captured on the review (free-form, linked record
+  on the row) and **enacted by an admin** via the existing `setCompensation` (effective-dated
+  merit) / payroll `bonusAmount` (additional-remuneration MTD) — performance never writes pay.
+- **Merit budget (the "additional one"):** the cycle carries an optional merit pool
+  (`review_cycle.merit_budget` — `{kind:'percent'|'amount', value}`). Recommendations are tracked
+  against the remaining pool with a **soft** over-budget warning (managers may over-recommend;
+  calibration trims). Bonus totals shown alongside, not hard-capped in Phase A.
+
+---
+
+## Original proposal
+
 Status: **Proposed** (design only — not yet built) · Date: 2026-06-10
 
 ## Context
