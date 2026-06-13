@@ -491,20 +491,45 @@ export default async function MePage({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {reviews.map((r) => (
-                <tr key={r.reviewId}>
-                  <td className="px-4 py-2.5 font-medium">{r.cycleName}</td>
-                  <td className="px-4 py-2.5 capitalize text-muted-foreground">{r.status.replace('_', ' ')}</td>
-                  <td className="px-4 py-2.5 text-center tabular-nums">
-                    {r.released && r.overallRating != null ? r.overallRating : '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <Link href={`/performance/review/${r.reviewId}`} className="text-xs text-primary hover:underline">
-                      {r.status === 'self_review' ? 'Self-review →' : r.status === 'submitted' && r.released ? 'Acknowledge →' : 'Open →'}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {reviews.map((r) => {
+                // Employee-facing status: their own perspective, not the raw enum.
+                const label =
+                  r.status === 'self_review'
+                    ? 'Action needed: self-review'
+                    : r.status === 'manager_review'
+                      ? 'With your manager'
+                      : r.status === 'submitted'
+                        ? r.released
+                          ? 'Ready to acknowledge'
+                          : 'Awaiting release'
+                        : 'Acknowledged';
+                const action =
+                  r.status === 'self_review'
+                    ? 'Self-review →'
+                    : r.status === 'submitted' && r.released
+                      ? 'Acknowledge →'
+                      : r.released || r.status === 'acknowledged'
+                        ? 'View →'
+                        : null; // nothing to do yet (with manager / awaiting release)
+                return (
+                  <tr key={r.reviewId}>
+                    <td className="px-4 py-2.5 font-medium">{r.cycleName}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{label}</td>
+                    <td className="px-4 py-2.5 text-center tabular-nums">
+                      {r.released && r.overallRating != null ? r.overallRating : '—'}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {action ? (
+                        <Link href={`/performance/review/${r.reviewId}`} className="text-xs text-primary hover:underline">
+                          {action}
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">no action needed</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </Card>

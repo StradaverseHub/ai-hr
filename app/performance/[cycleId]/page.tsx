@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/authz';
 import { cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { calibrateAction, closeAction, declineAction, enactAction, openCycleAction, releaseAction } from '../actions';
 
 const rm = (n: number | null | undefined) =>
@@ -58,7 +59,18 @@ export default async function CyclePage({
               <LifecycleButton action={calibrateAction} cycleId={cycle.id} label="Move to calibration" variant="secondary" />
             )}
             {(cycle.status === 'open' || cycle.status === 'calibration') && !cycle.releasedAt && (
-              <LifecycleButton action={releaseAction} cycleId={cycle.id} label="Release ratings" variant="secondary" />
+              <form action={releaseAction}>
+                <input type="hidden" name="cycleId" value={cycle.id} />
+                <ConfirmSubmit
+                  size="sm"
+                  variant="secondary"
+                  title="Release ratings to employees?"
+                  description="Every employee will be able to see their manager rating and overall score. This cannot be undone."
+                  confirmLabel="Release ratings"
+                >
+                  Release ratings
+                </ConfirmSubmit>
+              </form>
             )}
             {(cycle.status === 'open' || cycle.status === 'calibration') && (
               <LifecycleButton action={closeAction} cycleId={cycle.id} label="Close" variant="outline" />
@@ -153,34 +165,49 @@ export default async function CyclePage({
                         </div>
                       </div>
                       <div className="flex items-end gap-2">
-                        <form action={enactAction} className="flex items-end gap-2">
-                          <input type="hidden" name="reviewId" value={r.reviewId} />
-                          <input type="hidden" name="cycleId" value={cycle.id} />
-                          {r.recommendedMeritPct != null && (
-                            <label className="text-[10px] uppercase text-muted-foreground">
-                              effective
-                              <input name="meritEffectiveFrom" type="date" defaultValue={nextDay} className={`${inputCls} w-36`} required />
-                            </label>
-                          )}
-                          {r.recommendedBonus != null && (
-                            <label className="text-[10px] uppercase text-muted-foreground">
-                              bonus batch
-                              <select name="bonusBatchId" className={`${inputCls} w-44`} required defaultValue="">
-                                <option value="" disabled>
-                                  {draftBatches.length ? 'choose draft batch' : 'no draft batch'}
-                                </option>
-                                {draftBatches.map((b) => (
-                                  <option key={b.id} value={b.id}>
-                                    {b.company} · {b.payPeriod}
+                        {r.recommendedBonus != null && draftBatches.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">
+                            Bonus needs a draft batch —{' '}
+                            <Link href="/payroll" className="text-primary hover:underline">
+                              create one in Payroll
+                            </Link>
+                          </span>
+                        ) : (
+                          <form action={enactAction} className="flex items-end gap-2">
+                            <input type="hidden" name="reviewId" value={r.reviewId} />
+                            <input type="hidden" name="cycleId" value={cycle.id} />
+                            {r.recommendedMeritPct != null && (
+                              <label className="text-[10px] uppercase text-muted-foreground">
+                                effective
+                                <input name="meritEffectiveFrom" type="date" defaultValue={nextDay} className={`${inputCls} w-36`} required />
+                              </label>
+                            )}
+                            {r.recommendedBonus != null && (
+                              <label className="text-[10px] uppercase text-muted-foreground">
+                                bonus batch
+                                <select name="bonusBatchId" className={`${inputCls} w-44`} required defaultValue="">
+                                  <option value="" disabled>
+                                    choose draft batch
                                   </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-                          <Button type="submit" size="sm">
-                            Enact
-                          </Button>
-                        </form>
+                                  {draftBatches.map((b) => (
+                                    <option key={b.id} value={b.id}>
+                                      {b.company} · {b.payPeriod}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
+                            <ConfirmSubmit
+                              size="sm"
+                              variant="default"
+                              title={`Enact pay for ${r.employee}?`}
+                              description="This applies a real pay change through payroll — an effective-dated raise and/or a taxed bonus. It cannot be undone here."
+                              confirmLabel="Enact"
+                            >
+                              Enact
+                            </ConfirmSubmit>
+                          </form>
+                        )}
                         <form action={declineAction}>
                           <input type="hidden" name="reviewId" value={r.reviewId} />
                           <input type="hidden" name="cycleId" value={cycle.id} />

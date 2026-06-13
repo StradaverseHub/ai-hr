@@ -45,11 +45,14 @@ import {
   acknowledgeReview,
   closeCycle,
   createCycle,
+  cycleDetail,
   declineCompAction,
   enactCompAction,
+  managerPendingReviews,
   moveCycleToCalibration,
   openCycle,
   PerfError,
+  reassignReviewer,
   releaseCycle,
   reviewForViewer,
   submitManagerReview,
@@ -2269,5 +2272,102 @@ describe('UC — performance: state machine, authz, pay seam', () => {
     const ids = reviews.map((r) => r.employmentId);
     expect(ids).toContain(early.employmentId);
     expect(ids).not.toContain(late.employmentId);
+  });
+
+  // ── Hardening: fixes for the multi-agent adversarial findings ──
+
+  it('enact is ATOMIC: a failing bonus leg rolls back the merit raise (no orphaned pay)', async () => {
+    const { a, E, eCtx, mCtx, reviewId } = await setupCycle(); // E has comp 5000
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, {
+      reviewId,
+      managerRating: 4,
+      overallRating: 4,
+      recommendedMeritPct: 10,
+      recommendedBonus: 2000,
+    });
+    // Make the bonus leg fail: target a PROCESSED (non-draft) batch.
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-11' });
+    await generatePayslips(a, { batchId }); // → processed
+    await expect(
+      enactCompAction(a, { reviewId, meritEffectiveFrom: '2027-01-01', bonusBatchId: batchId }),
+    ).rejects.toThrow();
+    // The merit must NOT have been applied, and the review must still read 'recommended'.
+    const comp = await currentCompensation(a, E.employmentId);
+    expect(Number(comp?.basicSalary)).toBe(5000);
+    const [r] = await owner.db.select().from(schema.performanceReview).where(eq(schema.performanceReview.id, reviewId));
+    expect(r.compActionStatus).toBe('recommended');
+    expect(r.enactedCompensationId).toBeNull();
+  });
+
+  it('refuses to enact pay for a terminated employee', async () => {
+    const { a, E, eCtx, mCtx, reviewId } = await setupCycle();
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedMeritPct: 5 });
+    await owner.db
+      .update(schema.employment)
+      .set({ terminatedOn: '2026-06-01' })
+      .where(eq(schema.employment.id, E.employmentId));
+    await expect(enactCompAction(a, { reviewId, meritEffectiveFrom: '2027-01-01' })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('rejects a backdated merit effective date that would invert the pay range', async () => {
+    const { a, eCtx, mCtx, reviewId } = await setupCycle(); // comp starts 2026-01-01
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedMeritPct: 5 });
+    await expect(enactCompAction(a, { reviewId, meritEffectiveFrom: '2025-01-01' })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('reassignReviewer rejects the subject themselves and a terminated reviewer', async () => {
+    const { a, E, M, reviewId } = await setupCycle();
+    // pointing the reviewer at the subject is the self-review ban via the side door
+    await expect(reassignReviewer(a, { reviewId, reviewerEmploymentId: E.employmentId })).rejects.toBeInstanceOf(PerfError);
+    await owner.db.update(schema.employment).set({ terminatedOn: '2026-06-01' }).where(eq(schema.employment.id, M.employmentId));
+    await expect(reassignReviewer(a, { reviewId, reviewerEmploymentId: M.employmentId })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('a closed/calibration cycle freezes self & manager submissions', async () => {
+    const { a, eCtx, mCtx, cycleId, reviewId } = await setupCycle();
+    await moveCycleToCalibration(a, { cycleId });
+    await expect(submitSelfReview(eCtx, { reviewId, selfRating: 3 })).rejects.toBeInstanceOf(PerfError);
+    await expect(
+      submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4 }),
+    ).rejects.toBeInstanceOf(PerfError);
+    await closeCycle(a, { cycleId });
+    await expect(submitSelfReview(eCtx, { reviewId, selfRating: 3 })).rejects.toBeInstanceOf(PerfError);
+  });
+
+  it('does not leak ratings or comp amounts into the tenant-wide event log', async () => {
+    const { eCtx, mCtx, reviewId } = await setupCycle();
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedMeritPct: 7, recommendedBonus: 1500 });
+    const events = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.aggregateId, reviewId));
+    const blob = JSON.stringify(events.map((e) => e.payload));
+    // no rating value (3/4), no merit %, no bonus amount in any payload
+    expect(blob).not.toMatch(/"(selfRating|managerRating|overallRating|meritPct|bonus)"/);
+    expect(blob).not.toContain('1500');
+    expect(blob).not.toContain('"7"');
+  });
+
+  it('budget "consumed" reflects the true raise, not the post-enact (inflated) salary', async () => {
+    const { a, eCtx, mCtx, cycleId, reviewId } = await setupCycle(); // E basic 5000
+    await submitSelfReview(eCtx, { reviewId, selfRating: 3 });
+    await submitManagerReview(mCtx, { reviewId, managerRating: 4, overallRating: 4, recommendedMeritPct: 10 });
+    const beforeEnact = await cycleDetail(a, cycleId);
+    await enactCompAction(a, { reviewId, meritEffectiveFrom: '2027-01-01' }); // 5000 → 5500
+    const afterEnact = await cycleDetail(a, cycleId);
+    // 10% of 5000 = 500/month, both before and after enactment (no drift onto the raised 5500).
+    expect(beforeEnact?.budget.consumed).toBe(500);
+    expect(afterEnact?.budget.consumed).toBe(500);
+  });
+
+  it('a manager can find reviews still in self_review (no-stall path is discoverable)', async () => {
+    const { mCtx, E } = await setupCycle(); // E reports to M; E's review is at self_review
+    const pending = await managerPendingReviews(mCtx);
+    expect(pending.some((r) => r.status === 'self_review')).toBe(true);
+    expect(E).toBeTruthy();
   });
 });

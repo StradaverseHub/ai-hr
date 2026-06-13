@@ -132,8 +132,11 @@ export async function setPayrollInput(
     tp1Deduction?: number;
     zakat?: number;
   },
+  /** Optional caller transaction — pass it so this participates in an enclosing transaction
+   *  (the performance bonus enact) and commits/rolls back atomically with it. */
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     const [batch] = await tx
       .select({ status: payrollBatch.status })
       .from(payrollBatch)
@@ -181,7 +184,8 @@ export async function setPayrollInput(
       payload: { employmentId: p.employmentId, overtimeAmount, bonusAmount, tp1Deduction, zakat },
     });
     return { ok: true };
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**

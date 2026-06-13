@@ -8,7 +8,7 @@
  *   - only an admin or the subject's *active administrative* manager may decide.
  * Every decision is still evented with the real actor.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { employment, reportingLine } from '../db/schema';
 
@@ -38,7 +38,11 @@ export async function assertCanDecide(
           and(
             eq(reportingLine.subordinateEmploymentId, subjectEmploymentId),
             eq(reportingLine.lineType, 'administrative'),
-            isNull(reportingLine.validTo),
+            // The line must be in its effective window NOW — not future-dated, not ended. Matches
+            // currentAdminManager (perf spawn); previously this checked only isNull(validTo), so a
+            // not-yet-effective or future-ending line could authorise a decision.
+            lte(reportingLine.validFrom, sql`current_date`),
+            or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
             isNull(reportingLine.supersededAt),
             eq(employment.personId, ctx.personId),
           ),

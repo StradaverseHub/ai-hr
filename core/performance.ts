@@ -21,6 +21,7 @@ import {
   assignment,
   compensation,
   employment,
+  payrollBatch,
   payrollInput,
   performanceReview,
   person,
@@ -234,6 +235,7 @@ export async function submitSelfReview(
     const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
     const isSelf = ctx.personId != null && ctx.personId === subjectPersonId;
     if (!isSelf && !isAdminCtx(ctx)) throw new PerfError('Only the employee can submit their own self-review');
+    if (cycle.status !== 'open') throw new PerfError(`The cycle is ${cycle.status}; reviews can only be edited while it is open`);
     if (review.status !== 'self_review') throw new PerfError(`Self-review is not open (status: ${review.status})`);
     assertRatingInScale(cycle.ratingScale as RatingScale, p.selfRating, 'Self rating');
 
@@ -252,7 +254,9 @@ export async function submitSelfReview(
       aggregateId: review.id,
       eventType: 'performance-review.self-submitted',
       actor: actorOf(ctx),
-      payload: { cycleId: review.cycleId, selfRating: p.selfRating },
+      // No rating in the payload: domain_event RLS is tenant-wide, so a scalar here would leak the
+      // rating to peers. The value lives on the RLS-scoped performance_review row.
+      payload: { cycleId: review.cycleId },
     });
     return { status: 'manager_review' as const };
   });
@@ -274,6 +278,7 @@ export async function submitManagerReview(
 ) {
   return withTenant(ctx, async (tx) => {
     const { review, cycle } = await loadReview(tx, p.reviewId);
+    if (cycle.status !== 'open') throw new PerfError(`The cycle is ${cycle.status}; reviews can only be edited while it is open`);
     if (review.status !== 'manager_review' && review.status !== 'self_review') {
       throw new PerfError(`Manager review is not open (status: ${review.status})`);
     }
@@ -303,7 +308,9 @@ export async function submitManagerReview(
       aggregateId: review.id,
       eventType: 'performance-review.manager-submitted',
       actor: actorOf(ctx),
-      payload: { cycleId: review.cycleId, overallRating: p.overallRating },
+      // Ratings/amounts are omitted from event payloads — domain_event RLS is tenant-wide, so any
+      // scalar here would leak to peers. The figures live on the RLS-scoped performance_review row.
+      payload: { cycleId: review.cycleId },
     });
     if (merit != null || bonus != null) {
       await appendEvent(tx, {
@@ -312,7 +319,7 @@ export async function submitManagerReview(
         aggregateId: review.id,
         eventType: 'performance-review.comp-recommended',
         actor: actorOf(ctx),
-        payload: { meritPct: merit, bonus },
+        payload: { cycleId: review.cycleId },
       });
     }
     return { status: 'submitted' as const };
@@ -349,7 +356,22 @@ export async function reassignReviewer(
 ) {
   if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can reassign a reviewer');
   return withTenant(ctx, async (tx) => {
-    const { review } = await loadReview(tx, p.reviewId);
+    const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
+    if (cycle.status === 'closed') throw new PerfError('Cannot reassign on a closed cycle');
+    if (review.status === 'submitted' || review.status === 'acknowledged') {
+      throw new PerfError('Cannot reassign the reviewer on a finalized review');
+    }
+    if (p.reviewerEmploymentId) {
+      const [cand] = await tx
+        .select({ personId: employment.personId, terminatedOn: employment.terminatedOn })
+        .from(employment)
+        .where(eq(employment.id, p.reviewerEmploymentId))
+        .limit(1);
+      if (!cand) throw new PerfError('Reviewer employment not found');
+      if (cand.terminatedOn) throw new PerfError('Cannot assign a terminated employee as reviewer');
+      // The reviewer must never be the subject — that's the self-review ban via the side door.
+      if (cand.personId === subjectPersonId) throw new PerfError('An employee cannot review themselves');
+    }
     await tx
       .update(performanceReview)
       .set({ reviewerEmploymentId: p.reviewerEmploymentId })
@@ -377,6 +399,8 @@ export async function enactCompAction(
 ) {
   if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can enact a pay recommendation');
   return withTenant(ctx, async (tx) => {
+    // Lock the review row first so two concurrent enacts can't both read 'recommended'.
+    await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
     const { review } = await loadReview(tx, p.reviewId);
     if (review.compActionStatus !== 'recommended') {
       throw new PerfError(`No recommendation to enact (comp action: ${review.compActionStatus})`);
@@ -384,6 +408,14 @@ export async function enactCompAction(
     if (review.status !== 'submitted' && review.status !== 'acknowledged') {
       throw new PerfError('A recommendation can only be enacted on a finalized review');
     }
+    // No pay actions for someone who has left.
+    const [emp] = await tx
+      .select({ companyId: employment.companyId, terminatedOn: employment.terminatedOn })
+      .from(employment)
+      .where(eq(employment.id, review.employmentId))
+      .limit(1);
+    if (!emp) throw new PerfError('Employee not found');
+    if (emp.terminatedOn) throw new PerfError('Cannot enact pay for a terminated employee');
 
     let enactedCompensationId: string | null = null;
     let enactedBatchId: string | null = null;
@@ -391,7 +423,7 @@ export async function enactCompAction(
     if (review.recommendedMeritPct != null) {
       if (!p.meritEffectiveFrom) throw new PerfError('A merit increase needs an effective-from date');
       const [cur] = await tx
-        .select({ basicSalary: compensation.basicSalary })
+        .select({ basicSalary: compensation.basicSalary, validFrom: compensation.validFrom })
         .from(compensation)
         .where(
           and(
@@ -402,18 +434,33 @@ export async function enactCompAction(
         )
         .limit(1);
       if (!cur) throw new PerfError('Employee has no current compensation to increase');
+      // Effective date must be after the current record starts, else the temporal range inverts.
+      if (p.meritEffectiveFrom <= cur.validFrom) {
+        throw new PerfError(`The effective date must be after the current pay started (${cur.validFrom})`);
+      }
       const pct = Number(review.recommendedMeritPct);
       const newBasic = round2(Number(cur.basicSalary) * (1 + pct / 100));
-      const res = await setCompensation(ctx, {
-        employmentId: review.employmentId,
-        basicSalary: newBasic,
-        effectiveFrom: p.meritEffectiveFrom,
-      });
+      // Pass tx so the raise commits/rolls back atomically with the rest of the enact.
+      const res = await setCompensation(
+        ctx,
+        { employmentId: review.employmentId, basicSalary: newBasic, effectiveFrom: p.meritEffectiveFrom },
+        tx,
+      );
       enactedCompensationId = res.compensationId;
     }
 
     if (review.recommendedBonus != null) {
       if (!p.bonusBatchId) throw new PerfError('A bonus needs a target draft payroll batch');
+      // The batch must belong to the employee's company, or generatePayslips would never pick it up.
+      const [batch] = await tx
+        .select({ companyId: payrollBatch.companyId, status: payrollBatch.status })
+        .from(payrollBatch)
+        .where(eq(payrollBatch.id, p.bonusBatchId))
+        .limit(1);
+      if (!batch) throw new PerfError('Payroll batch not found');
+      if (batch.companyId !== emp.companyId) {
+        throw new PerfError("The chosen batch belongs to a different company than the employee");
+      }
       // Preserve any overtime / TP1 / zakat already keyed for this employee on the batch.
       const [existing] = await tx
         .select({
@@ -424,14 +471,18 @@ export async function enactCompAction(
         .from(payrollInput)
         .where(and(eq(payrollInput.batchId, p.bonusBatchId), eq(payrollInput.employmentId, review.employmentId)))
         .limit(1);
-      await setPayrollInput(ctx, {
-        batchId: p.bonusBatchId,
-        employmentId: review.employmentId,
-        overtimeAmount: existing ? Number(existing.overtimeAmount) : 0,
-        bonusAmount: Number(review.recommendedBonus),
-        tp1Deduction: existing ? Number(existing.tp1Deduction) : 0,
-        zakat: existing ? Number(existing.zakat) : 0,
-      });
+      await setPayrollInput(
+        ctx,
+        {
+          batchId: p.bonusBatchId,
+          employmentId: review.employmentId,
+          overtimeAmount: existing ? Number(existing.overtimeAmount) : 0,
+          bonusAmount: Number(review.recommendedBonus),
+          tp1Deduction: existing ? Number(existing.tp1Deduction) : 0,
+          zakat: existing ? Number(existing.zakat) : 0,
+        },
+        tx,
+      );
       enactedBatchId = p.bonusBatchId;
     }
 
@@ -445,13 +496,9 @@ export async function enactCompAction(
       aggregateId: review.id,
       eventType: 'performance-review.comp-enacted',
       actor: actorOf(ctx),
-      payload: {
-        employmentId: review.employmentId,
-        meritPct: review.recommendedMeritPct != null ? Number(review.recommendedMeritPct) : null,
-        bonus: review.recommendedBonus != null ? Number(review.recommendedBonus) : null,
-        enactedCompensationId,
-        enactedBatchId,
-      },
+      // Ids only — the merit %/bonus amounts live on the RLS-scoped review row, not in the
+      // tenant-wide event log.
+      payload: { employmentId: review.employmentId, enactedCompensationId, enactedBatchId },
     });
     return { enactedCompensationId, enactedBatchId };
   });
@@ -631,12 +678,24 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
 
     // Merit budget rollup. Pool: percent → % of in-scope payroll; amount → flat. Consumed: the RM
     // monthly increase implied by recommended/enacted merit %. Bonus shown alongside (not capped).
-    const totalBasic = roster.reduce((s, r) => s + (r.currentBasic ?? 0), 0);
+    //
+    // Subtlety: once a merit is ENACTED, currentBasic is the already-raised salary, so a naive
+    // currentBasic*pct would over-state the cost and inflate the pool as raises land. We recover the
+    // PRE-raise basis for enacted-merit rows (newBasic / (1 + pct/100)) so both the pool denominator
+    // and the consumed figure stay stable across enactment.
+    const basisBasic = (r: RosterRow): number => {
+      if (r.currentBasic == null) return 0;
+      if (r.compActionStatus === 'enacted' && r.recommendedMeritPct != null) {
+        return r.currentBasic / (1 + r.recommendedMeritPct / 100);
+      }
+      return r.currentBasic;
+    };
+    const totalBasic = roster.reduce((s, r) => s + basisBasic(r), 0);
     const meritConsumed = round2(
       roster.reduce(
         (s, r) =>
           r.recommendedMeritPct != null && (r.compActionStatus === 'recommended' || r.compActionStatus === 'enacted')
-            ? s + (r.currentBasic ?? 0) * (r.recommendedMeritPct / 100)
+            ? s + basisBasic(r) * (r.recommendedMeritPct / 100)
             : s,
         0,
       ),
@@ -802,6 +861,9 @@ export function managerPendingReviews(ctx: SessionContext) {
       .where(eq(employment.personId, ctx.personId));
     const myEmploymentIds = mine.map((m) => m.id);
     if (myEmploymentIds.length === 0) return [];
+    // Surface both 'manager_review' (employee self-submitted, your turn) and 'self_review' (employee
+    // hasn't self-assessed — you can still finalize; the service allows it, so it must be findable).
+    // Only on OPEN cycles (calibration/closed are frozen).
     return tx
       .select({
         reviewId: performanceReview.id,
@@ -816,7 +878,8 @@ export function managerPendingReviews(ctx: SessionContext) {
       .where(
         and(
           inArray(performanceReview.reviewerEmploymentId, myEmploymentIds),
-          eq(performanceReview.status, 'manager_review'),
+          inArray(performanceReview.status, ['manager_review', 'self_review']),
+          eq(reviewCycle.status, 'open'),
         ),
       )
       .orderBy(reviewCycle.name, person.fullName);
