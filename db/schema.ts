@@ -64,6 +64,26 @@ export const leaveRequestStatusEnum = pgEnum('leave_request_status', [
   'cancelled',
 ]);
 export const actorTypeEnum = pgEnum('actor_type', ['user', 'system', 'agent', 'external']);
+// Performance (ADR-0013) — config-driven, statute-free; correctness is workflow/state, not numbers.
+export const reviewCycleStatusEnum = pgEnum('review_cycle_status', [
+  'draft',
+  'open',
+  'calibration',
+  'closed',
+]);
+export const performanceReviewStatusEnum = pgEnum('performance_review_status', [
+  'not_started',
+  'self_review',
+  'manager_review',
+  'submitted',
+  'acknowledged',
+]);
+export const compActionStatusEnum = pgEnum('comp_action_status', [
+  'none',
+  'recommended',
+  'enacted',
+  'declined',
+]);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -698,5 +718,75 @@ export const statutoryReport = pgTable(
   (t) => [
     index('statutory_report_tenant_idx').on(t.tenantId),
     index('statutory_report_company_period_idx').on(t.companyId, t.reportType, t.periodKey),
+  ],
+);
+
+// ───────────────────── Performance & talent (ADR-0013) ─────────────────────
+// The first unregulated, entirely config-driven module: no statutory floor, no "correct" rating.
+// The review cycle is the backbone; the pay seam (rating → recommendation → enacted via the tested
+// comp/payroll engines) is the reason it lives here. Rating scales / cadence / merit pool are
+// tenant config in the DB (like leave_policy), not country-pack code.
+
+export const reviewCycle = pgTable(
+  'review_cycle',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // null = group-wide (all companies the opener administers); else scoped to one company subtree.
+    companyId: uuid('company_id').references(() => company.id),
+    name: text('name').notNull(), // e.g. "2026 Annual"
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    status: reviewCycleStatusEnum('status').notNull().default('draft'),
+    ratingScale: jsonb('rating_scale').notNull(), // [{ value:int, label:string }] — configurable
+    // Optional merit pool the manager recommendations are tracked against (soft cap).
+    meritBudget: jsonb('merit_budget'), // { kind: 'percent' | 'amount', value: number } | null
+    excludeProbation: boolean('exclude_probation').notNull().default(true),
+    hiredBefore: date('hired_before'), // only include employees hired on/before this; null = no cutoff
+    // The release gate: manager ratings/overall become employee-visible only once this is set.
+    releasedAt: timestamp('released_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('review_cycle_tenant_idx').on(t.tenantId, t.companyId)],
+);
+
+// One row per employee per cycle. RLS = can_see_employment (admin + self + admin-line manager);
+// the SERVICE enforces who may drive which transition (self vs manager) and column scope, exactly
+// as leave_request does. Employee-facing reads withhold manager/comp fields until release.
+export const performanceReview = pgTable(
+  'performance_review',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    cycleId: uuid('cycle_id')
+      .notNull()
+      .references(() => reviewCycle.id),
+    employmentId: uuid('employment_id') // subject
+      .notNull()
+      .references(() => employment.id),
+    // The administrative-line manager resolved at spawn; null = no manager (admin reviews).
+    reviewerEmploymentId: uuid('reviewer_employment_id').references(() => employment.id),
+    status: performanceReviewStatusEnum('status').notNull().default('not_started'),
+    selfRating: integer('self_rating'),
+    selfComments: text('self_comments'),
+    goalsSummary: text('goals_summary'), // the Phase-B goal hook: objectives referenced this cycle
+    managerRating: integer('manager_rating'),
+    managerComments: text('manager_comments'),
+    overallRating: integer('overall_rating'),
+    // Pay seam (free-form recommendation; admin enacts via setCompensation / payroll bonus).
+    recommendedMeritPct: numeric('recommended_merit_pct', { precision: 5, scale: 2 }),
+    recommendedBonus: numeric('recommended_bonus', { precision: 12, scale: 2 }),
+    compActionStatus: compActionStatusEnum('comp_action_status').notNull().default('none'),
+    enactedCompensationId: uuid('enacted_compensation_id'), // resulting comp row (merit), for audit
+    enactedBatchId: uuid('enacted_batch_id'), // payroll batch the bonus was staged into
+    enactedAt: timestamp('enacted_at', { withTimezone: true }),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('performance_review_cycle_emp_uq').on(t.cycleId, t.employmentId),
+    index('performance_review_employment_idx').on(t.employmentId),
+    index('performance_review_reviewer_idx').on(t.reviewerEmploymentId),
   ],
 );
