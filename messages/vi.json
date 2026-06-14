@@ -925,5 +925,32 @@
     "notFound": "Tài liệu đó không tồn tại hoặc bạn không có quyền xem.",
     "openFile": "Mở tệp",
     "cannotPreview": "Loại tệp này không thể xem trước tại đây. Hãy tải xuống để xem."
+  },
+  "onboarding": {
+    "aria": "Hướng dẫn sản phẩm",
+    "launch": "Tham quan nhanh",
+    "stepOf": "Bước {current} trên {total}",
+    "skip": "Bỏ qua",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "done": "Xong",
+    "welcomeTitle": "Chào mừng đến với AI HR 👋",
+    "welcomeBody": "Một chuyến tham quan nhanh 30 giây để biết mọi thứ nằm ở đâu. Bạn có thể xem lại bất cứ lúc nào từ nút trợ giúp trên thanh trên cùng.",
+    "navTitle": "Thanh điều hướng của bạn",
+    "navBody": "Mọi phân hệ đều nằm trong thanh bên này. Những gì bạn thấy ở đây tùy thuộc vào vai trò của bạn — nhân viên, quản lý và quản trị viên nhân sự đều có công cụ riêng.",
+    "workspaceTitle": "Không gian của tôi",
+    "workspaceBody": "Trung tâm cá nhân của bạn: hồ sơ, phiếu lương, số ngày nghỉ phép và chấm công — mọi thứ về bạn, ở cùng một nơi.",
+    "kbTitle": "Cơ sở tri thức",
+    "kbBody": "Hướng dẫn từng bước cho mọi phân hệ, cùng với chính sách và tài liệu của công ty bạn. Hãy bắt đầu từ đây mỗi khi bạn chưa rõ điều gì đó hoạt động ra sao.",
+    "approvalsTitle": "Phê duyệt",
+    "approvalsBody": "Với vai trò quản lý, các yêu cầu từ nhóm của bạn — nghỉ phép, chấm công và thay đổi hồ sơ — sẽ chờ quyết định của bạn tại đây.",
+    "adminTitle": "Quản trị & thiết lập",
+    "adminBody": "Thiết lập công ty, phòng ban và nhân sự của bạn, cấu hình nghỉ phép và bảng lương, quản lý vai trò và xem nhật ký kiểm toán. Mới làm quen? Hãy mở hướng dẫn “Bắt đầu” trong Cơ sở tri thức.",
+    "languageTitle": "Đổi ngôn ngữ",
+    "languageBody": "Dùng ứng dụng bằng tiếng Anh, 简体中文, Bahasa Melayu, தமிழ், ไทย hoặc Tiếng Việt — lựa chọn của bạn sẽ được ghi nhớ.",
+    "themeTitle": "Sáng hay tối",
+    "themeBody": "Chuyển đổi giữa giao diện sáng và tối để phù hợp với mắt bạn và không gian của bạn.",
+    "finishTitle": "Bạn đã sẵn sàng 🎉",
+    "finishBody": "Đó là toàn bộ chuyến tham quan. Bất cứ khi nào cần trợ giúp, hãy mở Cơ sở tri thức hoặc xem lại chuyến tham quan này từ nút trợ giúp."
   }
 }

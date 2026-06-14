@@ -925,5 +925,32 @@
     "notFound": "Dokumen itu tidak wujud atau anda tidak boleh melihatnya.",
     "openFile": "Buka fail",
     "cannotPreview": "Jenis fail ini tidak boleh dipratonton di sini. Muat turun untuk melihatnya."
+  },
+  "onboarding": {
+    "aria": "Lawatan produk",
+    "launch": "Mulakan lawatan",
+    "stepOf": "Langkah {current} daripada {total}",
+    "skip": "Langkau",
+    "back": "Kembali",
+    "next": "Seterusnya",
+    "done": "Selesai",
+    "welcomeTitle": "Selamat datang ke AI HR 👋",
+    "welcomeBody": "Lawatan pantas 30 saat untuk mengenali lokasi setiap perkara. Anda boleh mainkan semula bila-bila masa melalui butang bantuan di bar atas.",
+    "navTitle": "Navigasi anda",
+    "navBody": "Setiap modul terletak di bar sisi ini. Apa yang anda nampak di sini bergantung pada peranan anda — pekerja, pengurus dan pentadbir HR masing-masing mempunyai alat tersendiri.",
+    "workspaceTitle": "Ruang kerja saya",
+    "workspaceBody": "Hab peribadi anda: profil, slip gaji, baki cuti dan kehadiran — segala-galanya tentang anda, di satu tempat.",
+    "kbTitle": "Pusat Pengetahuan",
+    "kbBody": "Panduan langkah demi langkah untuk setiap modul, serta dasar dan dokumen syarikat anda. Mulakan di sini setiap kali anda tidak pasti cara sesuatu berfungsi.",
+    "approvalsTitle": "Kelulusan",
+    "approvalsBody": "Sebagai pengurus, permohonan daripada pasukan anda — cuti, kehadiran dan perubahan profil — menunggu keputusan anda di sini.",
+    "adminTitle": "Pentadbiran & persediaan",
+    "adminBody": "Sediakan syarikat, jabatan dan kakitangan anda, konfigurasikan cuti dan gaji, urus peranan, dan semak jejak audit. Baru di sini? Buka panduan “Cara Bermula” dalam Pusat Pengetahuan.",
+    "languageTitle": "Tukar bahasa",
+    "languageBody": "Gunakan aplikasi dalam bahasa Inggeris, 简体中文, Bahasa Melayu, தமிழ், ไทย atau Tiếng Việt — pilihan anda akan diingati.",
+    "themeTitle": "Terang atau gelap",
+    "themeBody": "Tukar antara tema terang dan gelap mengikut kesesuaian mata dan ruang anda.",
+    "finishTitle": "Anda sudah bersedia 🎉",
+    "finishBody": "Itu sahaja lawatannya. Bila-bila anda perlukan bantuan, buka Pusat Pengetahuan atau mainkan semula lawatan ini melalui butang bantuan."
   }
 }

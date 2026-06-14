@@ -925,5 +925,32 @@
     "notFound": "That document doesn’t exist or you can’t see it.",
     "openFile": "Open file",
     "cannotPreview": "This file type can’t be previewed here. Download it to view."
+  },
+  "onboarding": {
+    "aria": "Product tour",
+    "launch": "Take a tour",
+    "stepOf": "Step {current} of {total}",
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "welcomeTitle": "Welcome to AI HR 👋",
+    "welcomeBody": "A quick 30-second tour of where everything lives. You can replay it any time from the help button in the top bar.",
+    "navTitle": "Your navigation",
+    "navBody": "Every module lives in this sidebar. What you see here depends on your role — employees, managers and HR admins each get their own tools.",
+    "workspaceTitle": "My workspace",
+    "workspaceBody": "Your personal hub: profile, payslips, leave balance and attendance — everything about you, in one place.",
+    "kbTitle": "Knowledge Base",
+    "kbBody": "Step-by-step guides for every module, plus your company’s policies and documents. Start here whenever you’re unsure how something works.",
+    "approvalsTitle": "Approvals",
+    "approvalsBody": "As a manager, requests from your team — leave, attendance and profile changes — wait for your decision here.",
+    "adminTitle": "Admin & setup",
+    "adminBody": "Set up your company, departments and people, configure leave and payroll, manage roles, and review the audit trail. New here? Open the “Getting Started” guide in the Knowledge Base.",
+    "languageTitle": "Switch language",
+    "languageBody": "Use the app in English, 简体中文, Bahasa Melayu, தமிழ், ไทย or Tiếng Việt — your choice is remembered.",
+    "themeTitle": "Light or dark",
+    "themeBody": "Toggle between light and dark themes to suit your eyes and your room.",
+    "finishTitle": "You’re all set 🎉",
+    "finishBody": "That’s the tour. Whenever you need a hand, open the Knowledge Base or replay this tour from the help button."
   }
 }
