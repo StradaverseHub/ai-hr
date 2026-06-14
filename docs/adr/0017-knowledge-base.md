@@ -81,6 +81,25 @@ tokens (no raw-HTML pass-through → no stored-XSS from user Markdown). Editing 
 (textarea + live preview). Downloads go through a Route Handler that re-checks the session and streams
 the article (`text/markdown`) or the file (original `mime_type`, `Content-Disposition: attachment`).
 
+## Update (2026-06-14) — multilingual system guides
+
+Switching the UI language now also translates the **content** of the seeded guides, not just the chrome:
+
+- `kb_document` gains an `i18n jsonb` column: `{ <locale>: { title, body } }`. The base `title`/`body`
+  columns are the English source + fallback; `i18n` holds the 5 non-English locales (user-uploaded docs
+  leave it null). Reads resolve the active locale (`getLocale()`) with English fallback —
+  `listDocuments` pulls just the localized title via a JSON path (no body bloat), `getDocument` returns
+  the localized title+body for display **plus** the English source the inline editor writes (so editing
+  a guide while viewing a translation never clobbers the source), and the download route serves the
+  active language.
+- Each guide's Markdown was translated into zh/ms/ta/th/vi by a workflow into
+  `content/guides/i18n/<slug>.<locale>.md` (+ a `titles.json`); `db/seed-guides.ts` folds them into the
+  `i18n` column on seed (idempotent). ta/th are machine drafts flagged for review.
+- Markdown rendering adds `remark-cjk-friendly` so `**bold**` adjacent to CJK characters (a known
+  CommonMark flanking limitation) renders correctly for the Chinese guides.
+
+Search still matches the English title only (acceptable); localizing search is a later refinement.
+
 ## Consequences
 
 - A new tenant has a full library of role-specific guides on day one; staff have a self-serve reference.

@@ -2,6 +2,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkCjkFriendly from 'remark-cjk-friendly';
 import { cn } from '@/lib/utils';
 
 /**
@@ -13,7 +14,7 @@ export function Markdown({ children, className }: { children: string; className?
   return (
     <div className={cn('max-w-[72ch] text-sm leading-relaxed text-foreground/90', className)}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkCjkFriendly]}
         components={{
           h1: ({ children }) => (
             <h1 className="mb-3 mt-6 text-2xl font-semibold tracking-tight text-foreground first:mt-0">

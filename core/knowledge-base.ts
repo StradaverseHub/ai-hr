@@ -27,19 +27,42 @@ const cleanTitle = (v: unknown): string => {
   return s.slice(0, 200);
 };
 
+type I18nMap = Record<string, { title: string; body: string }> | null;
+
+/** Resolve a document's title/body for the active locale, falling back to the base (English) columns. */
+function localize(
+  row: { title: string; body?: string | null; i18n?: I18nMap },
+  locale?: string,
+): { title: string; body: string | null } {
+  const tr = locale && locale !== 'en' ? row.i18n?.[locale] : undefined;
+  return { title: tr?.title ?? row.title, body: tr?.body ?? row.body ?? null };
+}
+
 // ─────────────────────────────── Reads ───────────────────────────────
 
-/** Library listing — metadata only (no body, no bytes). RLS trims to the tenant. */
+/** Library listing — metadata only (no body, no bytes). Title resolves to the active locale (via a
+ *  JSON path so we never pull the full translations blob into a list). RLS trims to the tenant. */
 export function listDocuments(
   ctx: SessionContext,
-  opts: { category?: string; audience?: KbAudience; includeArchived?: boolean; search?: string } = {},
+  opts: {
+    category?: string;
+    audience?: KbAudience;
+    includeArchived?: boolean;
+    search?: string;
+    locale?: string;
+  } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  const localizedTitle =
+    opts.locale && opts.locale !== 'en'
+      ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
+      : sql<string | null>`null`;
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: kbDocument.id,
         kind: kbDocument.kind,
         title: kbDocument.title,
+        localizedTitle,
         slug: kbDocument.slug,
         category: kbDocument.category,
         audience: kbDocument.audience,
@@ -60,12 +83,13 @@ export function listDocuments(
           opts.search ? sql`${kbDocument.title} ilike ${'%' + opts.search + '%'}` : undefined,
         ),
       )
-      .orderBy(asc(kbDocument.category), asc(kbDocument.title)),
-  );
+      .orderBy(asc(kbDocument.category), asc(kbDocument.title));
+    return rows.map(({ localizedTitle: lt, ...d }) => ({ ...d, title: lt ?? d.title }));
+  });
 }
 
-/** One document for viewing — includes the article body but NOT the file bytes. */
-export function getDocument(ctx: SessionContext, id: string) {
+/** One document for viewing — title + article body resolved to `locale` (English fallback). No bytes. */
+export function getDocument(ctx: SessionContext, id: string, locale?: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .select({
@@ -77,6 +101,7 @@ export function getDocument(ctx: SessionContext, id: string) {
         audience: kbDocument.audience,
         isSystem: kbDocument.isSystem,
         body: kbDocument.body,
+        i18n: kbDocument.i18n,
         fileName: kbDocument.fileName,
         mimeType: kbDocument.mimeType,
         sizeBytes: kbDocument.sizeBytes,
@@ -88,18 +113,32 @@ export function getDocument(ctx: SessionContext, id: string) {
       .from(kbDocument)
       .where(eq(kbDocument.id, id))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    const { i18n, ...rest } = row;
+    const { title, body } = localize(row, locale);
+    // title/body are localized for DISPLAY; sourceTitle/sourceBody are the English source the inline
+    // editor writes (so editing a guide while viewing a translation never clobbers the source).
+    return {
+      ...rest,
+      title,
+      body,
+      sourceTitle: row.title,
+      sourceBody: row.body ?? '',
+      hasTranslations: !!i18n && Object.keys(i18n).length > 0,
+    };
   });
 }
 
-/** The download payload — the ONLY read that selects the file bytes. RLS still applies (tenant member). */
-export function getDownload(ctx: SessionContext, id: string) {
+/** The download payload — the ONLY read that selects the file bytes. Article title/body resolve to
+ *  `locale` (English fallback). RLS still applies (tenant member). */
+export function getDownload(ctx: SessionContext, id: string, locale?: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .select({
         kind: kbDocument.kind,
         title: kbDocument.title,
         body: kbDocument.body,
+        i18n: kbDocument.i18n,
         fileName: kbDocument.fileName,
         mimeType: kbDocument.mimeType,
         content: kbDocument.content,
@@ -107,7 +146,9 @@ export function getDownload(ctx: SessionContext, id: string) {
       .from(kbDocument)
       .where(eq(kbDocument.id, id))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    const { title, body } = localize(row, locale);
+    return { kind: row.kind, title, body, fileName: row.fileName, mimeType: row.mimeType, content: row.content };
   });
 }
 
