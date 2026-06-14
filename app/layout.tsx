@@ -13,11 +13,15 @@ import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { CompanySwitcher } from '@/components/company-switcher';
+import { TourLauncher } from '@/components/tour-launcher';
+import { OnboardingTour } from '@/components/onboarding-tour';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
+import { getOnboardingStatus } from '@/core/onboarding';
+import { tourStepsFor } from '@/lib/onboarding-tour';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -32,6 +36,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const allowed = await allowedCompanies(session);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
+  const onboarded = await getOnboardingStatus(session);
+  const tourSteps = tourStepsFor(session.roles);
   return (
     <html
       lang={locale}
@@ -62,13 +68,19 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <div className="flex items-center gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
-                  <LanguageSwitcher />
-                  <ThemeToggle />
+                  <span data-tour="language">
+                    <LanguageSwitcher />
+                  </span>
+                  <span data-tour="theme">
+                    <ThemeToggle />
+                  </span>
+                  <TourLauncher />
                 </div>
               </header>
               <main className="min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
             </div>
           </div>
+          <OnboardingTour steps={tourSteps} autoStart={!onboarded} />
           <Suspense fallback={null}>
             <ToastFromQuery />
           </Suspense>

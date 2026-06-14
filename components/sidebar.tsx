@@ -26,26 +26,27 @@ import {
 import { cn } from '@/lib/utils';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
-type Item = { href: string; labelKey: string; icon: LucideIcon };
+// `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
+type Item = { href: string; labelKey: string; icon: LucideIcon; tour?: string };
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Item[] };
 
 const GROUPS: Group[] = [
   {
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
-      { href: '/me', labelKey: 'myWorkspace', icon: UserRound },
+      { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
       { href: '/people', labelKey: 'people', icon: Users },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       { href: '/attendance', labelKey: 'attendance', icon: Clock },
-      { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen },
+      { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
     ],
   },
   {
     labelKey: 'manage',
     managerUp: true,
     items: [
-      { href: '/approvals', labelKey: 'approvals', icon: ListChecks },
+      { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals' },
       { href: '/performance', labelKey: 'performance', icon: Target },
     ],
   },
@@ -53,7 +54,7 @@ const GROUPS: Group[] = [
     labelKey: 'admin',
     adminOnly: true,
     items: [
-      { href: '/admin/organization', labelKey: 'organization', icon: Building2 },
+      { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
@@ -120,7 +121,10 @@ export function Sidebar({
         )}
       </Link>
 
-      <nav className="flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3">
+      <nav
+        data-tour="nav"
+        className="flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
+      >
         {groups.map((group, gi) => (
           <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}>
             {gi > 0 &&
@@ -141,6 +145,7 @@ export function Sidebar({
                 <Link
                   key={item.href}
                   href={item.href}
+                  data-tour={item.tour}
                   title={collapsed ? label : undefined}
                   aria-label={label}
                   aria-current={active ? 'page' : undefined}

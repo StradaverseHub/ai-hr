@@ -23,5 +23,6 @@ decision, add a new ADR that supersedes the old one.
 | [0015](0015-domain-event-subject-scoping.md) | Subject-scoped reads on the domain-event log (close tenant-wide leak) | Accepted |
 | [0016](0016-ui-internationalization.md) | UI internationalization: cookie-scoped next-intl, English fallback, export/import matrix | Accepted (full extraction, 6 langs) |
 | [0017](0017-knowledge-base.md) | Knowledge Base: tenant-shared doc repository (articles + files) + seeded module guides | Accepted |
+| [0018](0018-system-user-onboarding.md) | System-user onboarding: first-login spotlight tour, role-aware, replayable | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

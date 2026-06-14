@@ -281,6 +281,20 @@
       "when": 1781440901600,
       "tag": "0039_kb_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1781442519059,
+      "tag": "0040_cool_microchip",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1781442519100,
+      "tag": "0041_onboarding_fns",
+      "breakpoints": true
     }
   ]
 }

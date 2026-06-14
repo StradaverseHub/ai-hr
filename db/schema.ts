@@ -140,6 +140,9 @@ export const appUser = pgTable(
     tenantId: tenantId(),
     workosUserId: text('workos_user_id').notNull(),
     personId: uuid('person_id').references(() => person.id),
+    // First-login product tour (ADR-0018): NULL = not yet completed/dismissed. Written only through
+    // the SECURITY DEFINER app.onboarding_* seam so a user can touch only their own flag.
+    onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('app_user_tenant_idx').on(t.tenantId)],
