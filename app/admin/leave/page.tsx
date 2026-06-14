@@ -60,7 +60,7 @@ export default async function LeaveConfigPage({
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
 
-      <Card>
+      <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
         <ul className="divide-y divide-border">
           {types.length === 0 && (

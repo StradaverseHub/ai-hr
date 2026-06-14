@@ -73,13 +73,15 @@ export default async function AttendancePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        actions={<TimelineNav from={date} isDefault={date === todayIso} basePath="/attendance" param="date" stepDays={1} />}
-      />
+      <div data-tour="attendance-intro">
+        <PageHeader
+          title={t('title')}
+          actions={<TimelineNav from={date} isDefault={date === todayIso} basePath="/attendance" param="date" stepDays={1} />}
+        />
+      </div>
       <ErrorBanner message={sp.error} />
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="attendance-day">
         <SectionHeader title={date === todayIso ? t('today') : date} count={rows.length} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -90,8 +92,8 @@ export default async function AttendancePage({
                 <th className="px-4 py-2 font-medium">{t('colCheckOut')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
-                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('colAction')}</th>
+                <th className="px-4 py-2 font-medium" data-tour="attendance-status">{t('colStatus')}</th>
+                <th className="px-4 py-2 text-right font-medium" data-tour="attendance-action">{t('colAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -230,7 +232,7 @@ export default async function AttendancePage({
         </Card>
       )}
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="attendance-summary">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="text-sm font-medium">
             {t('monthSummary')}

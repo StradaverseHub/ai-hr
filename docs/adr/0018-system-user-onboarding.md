@@ -59,6 +59,27 @@ The layout renders the tour for a signed-in user whose `onboarded_at` is `NULL` 
 for — no global state library, no query-param round-trip. The component is always mounted (cheap when
 idle) so the launcher works from any page.
 
+## Update (2026-06-14) — per-guide interactive walkthroughs
+
+The single welcome tour was generalized into a **named-tour registry** so each Knowledge Base guide can
+launch an interactive, in-product walkthrough of its module:
+
+- `TOURS` keyed by id (`welcome` + one per module: `me`, `leave`, `attendance`, `payroll`, `people`,
+  `performance`, `approvals`, `org`, `admin`). `START_TOUR_EVENT` now carries a `tourId`. A guide view
+  renders a **Start walkthrough** button (`components/guide-tour-button.tsx`) that dispatches it;
+  `guideTourId(slug)` maps each seeded guide to its tour.
+- Steps gained an optional **`route`** — the tour navigates there before showing the step, so a
+  walkthrough can cross pages (e.g. the leave tour spotlights `/leave`, then the admin step jumps to
+  `/admin/leave`). Because the tour lives in the layout, its state survives the navigation. The measure
+  step **retries** until the anchor appears (handles async render after a route change), falling back to
+  a centered card if an element never shows.
+- Module tours are generated data: a workflow added `data-tour` anchors to the real pages and authored
+  the steps; `scripts/merge-guide-tours.mjs` wrote `lib/module-tours.json` + the `onboarding.tour.*`
+  i18n keys (translated into all 6 languages). Adding a tour is data + anchors, no engine change.
+
+Verified: launching the leave guide's walkthrough navigates `/knowledge-base/… → /leave` and spotlights
+the real Balances card (step 2/5), role-filtered (admin-only `/admin/leave` step), no console errors.
+
 ## Consequences
 
 - New users get oriented in seconds and are pointed at the Knowledge Base for depth; the tour is one

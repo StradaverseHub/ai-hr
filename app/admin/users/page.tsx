@@ -26,20 +26,25 @@ export default async function UsersPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        actions={<span className="text-sm text-muted-foreground">{t('userCount', { count: users.length })}</span>}
-      />
+      <div data-tour="admin-intro">
+        <PageHeader
+          title={t('title')}
+          actions={<span className="text-sm text-muted-foreground">{t('userCount', { count: users.length })}</span>}
+        />
+      </div>
       <ErrorBanner message={error} />
 
-      <div className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
+      <div
+        data-tour="admin-provisioning"
+        className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground"
+      >
         {t.rich('provisioningNote', {
           strong: (chunks) => <span className="font-medium">{chunks}</span>,
           em: (chunks) => <em>{chunks}</em>,
         })}
       </div>
 
-      <Card>
+      <Card data-tour="admin-users">
         <SectionHeader title={t('sectionUsers')} count={users.length} />
         <ul className="divide-y divide-border">
           {users.map((u) => (
@@ -78,7 +83,7 @@ export default async function UsersPage({
                   </span>
                 ))}
                 {u.roles.length === 0 && <span className="text-xs text-muted-foreground">{t('noRoles')}</span>}
-                <form action={assignRoleAction} className="inline-flex items-center gap-2">
+                <form data-tour="admin-assign" action={assignRoleAction} className="inline-flex items-center gap-2">
                   <input type="hidden" name="appUserId" value={u.id} />
                   <select
                     name="role"

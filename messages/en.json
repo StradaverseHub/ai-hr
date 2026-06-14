@@ -924,7 +924,8 @@
     "writeTab": "Write",
     "notFound": "That document doesn’t exist or you can’t see it.",
     "openFile": "Open file",
-    "cannotPreview": "This file type can’t be previewed here. Download it to view."
+    "cannotPreview": "This file type can’t be previewed here. Download it to view.",
+    "startWalkthrough": "Start walkthrough"
   },
   "onboarding": {
     "aria": "Product tour",
@@ -951,6 +952,222 @@
     "themeTitle": "Light or dark",
     "themeBody": "Toggle between light and dark themes to suit your eyes and your room.",
     "finishTitle": "You’re all set 🎉",
-    "finishBody": "That’s the tour. Whenever you need a hand, open the Knowledge Base or replay this tour from the help button."
+    "finishBody": "That’s the tour. Whenever you need a hand, open the Knowledge Base or replay this tour from the help button.",
+    "tour": {
+      "me": {
+        "intro": {
+          "title": "Your self-service home",
+          "body": "This is your personal hub. We'll walk through your profile, bank and statutory details, payslips, and your leave and attendance summary."
+        },
+        "contact": {
+          "title": "Your contact details",
+          "body": "Update your phone, address, date of birth, and emergency contact here. These changes save **immediately**, no approval needed."
+        },
+        "bank": {
+          "title": "Bank and statutory",
+          "body": "Your bank account and PCB tax category live here. Open **Request a change** to submit edits, which go to your admin for approval."
+        },
+        "payslips": {
+          "title": "Your payslips",
+          "body": "Every pay period lands here. Click a period to open the full payslip and download it."
+        },
+        "attendance": {
+          "title": "Attendance summary",
+          "body": "Check in and out for today, and review your recent days. You can also request a fix for a missed punch."
+        },
+        "leave": {
+          "title": "Leave balances and requests",
+          "body": "See what's accrued, used, and available across leave types. Use **Request leave** to file a new application."
+        }
+      },
+      "leave": {
+        "intro": {
+          "title": "Leave walkthrough",
+          "body": "Welcome to Leave. We'll show you your leave balances, how to request time off, and where requests are tracked."
+        },
+        "balance": {
+          "title": "Check your balance",
+          "body": "This table shows how much leave you have left, broken down by type. Available days appear over your total entitlement."
+        },
+        "request": {
+          "title": "Request leave",
+          "body": "Open this panel to fill in the dates, leave type, and reason, then submit your request for approval."
+        },
+        "requests": {
+          "title": "Track your requests",
+          "body": "Every request lands here with its status. Use the chips above to filter by pending, approved, or rejected."
+        },
+        "config": {
+          "title": "Configure leave types",
+          "body": "Admins set up leave types, entitlements, and the leave year here. This is where policies and holidays are managed."
+        }
+      },
+      "attendance": {
+        "intro": {
+          "title": "Tour the attendance page",
+          "body": "This quick walkthrough covers checking in and out, reading daily status, your record, and submitting a correction request."
+        },
+        "day": {
+          "title": "Your daily record",
+          "body": "This card lists everyone for the selected day, with check-in, check-out, hours, and overtime. Use the date nav up top to move between days."
+        },
+        "action": {
+          "title": "Check in and out",
+          "body": "Each row's action enters a time and **checks you in**, then later **checks you out**. Once both are set, the day is marked done."
+        },
+        "status": {
+          "title": "Present, late, half day",
+          "body": "The status pill shows present, late, half day, or absent for the day. On leave, holidays, and rest days appear here too."
+        },
+        "correction": {
+          "title": "Request a correction",
+          "body": "Wrong time logged? Submit a correction request with the proposed times and a reason, then a manager approves or rejects it."
+        },
+        "summary": {
+          "title": "Your monthly summary",
+          "body": "Scroll down for the month roll-up: present, late, half day, leave, absent days, plus hours and overtime flags. That wraps up the tour."
+        }
+      },
+      "payroll": {
+        "intro": {
+          "title": "Run a payroll cycle",
+          "body": "This walkthrough covers running payroll: creating a batch, reviewing batches, and finding statutory reports like EA and CP39."
+        },
+        "batches": {
+          "title": "Your payroll batches",
+          "body": "Every pay run lives here. Click a period to open a batch and review payslips, net pay, and statutory totals."
+        },
+        "create": {
+          "title": "Create a new batch",
+          "body": "Pick a company and pay period, then click **Create batch** to start a fresh payroll run."
+        },
+        "reports": {
+          "title": "Statutory reports",
+          "body": "This is where EA, Form E, CP39, and monthly EPF/SOCSO/EIS statutory reports are generated."
+        },
+        "worklist": {
+          "title": "Compliance worklist",
+          "body": "Track CP22 and CP22A obligations here so new hires and leavers are notified to LHDN on time."
+        },
+        "generate": {
+          "title": "Generate a report",
+          "body": "Choose a company, report, and period, then click **Preview** to review figures before exporting or recording."
+        }
+      },
+      "people": {
+        "intro": {
+          "title": "People and org tour",
+          "body": "This quick walkthrough shows you how to find people, hire, and manage your organization's master data. Let's start on the People page."
+        },
+        "search": {
+          "title": "Search for people",
+          "body": "Type a name or email here and hit **Search** to filter the directory. Use **Clear** to reset back to everyone."
+        },
+        "table": {
+          "title": "Browse the directory",
+          "body": "Every employee shows here with their department, company, and status. Click a name to open their full profile."
+        },
+        "hire": {
+          "title": "Hire an employee",
+          "body": "Expand **Hire an employee** to add someone with their company, department, and start date. For bulk onboarding, use **Import CSV** at the top."
+        },
+        "orgTree": {
+          "title": "Your group structure",
+          "body": "Admins manage org master data here. This tree shows how your companies nest into a group."
+        },
+        "orgCompanies": {
+          "title": "Companies and master data",
+          "body": "Open any company to manage its departments, positions, and cost centers. Use **Add company** below to register a new one. That's the tour!"
+        }
+      },
+      "performance": {
+        "intro": {
+          "title": "Performance reviews tour",
+          "body": "This quick walkthrough shows how to run performance review cycles, handle reviews awaiting you, and open or create a cycle."
+        },
+        "pending": {
+          "title": "Reviews awaiting you",
+          "body": "When team reviews need your input they appear here. Click **Review** on any row to complete it."
+        },
+        "cycles": {
+          "title": "Review cycles",
+          "body": "Every cycle is listed here with its period, status, and progress. Click a cycle name to open it and manage its reviews."
+        },
+        "newCycle": {
+          "title": "Create a new cycle",
+          "body": "Expand this panel to set the name, scope, period, and merit pool, then click **Create cycle** to launch it."
+        }
+      },
+      "approvals": {
+        "intro": {
+          "title": "Your approvals inbox",
+          "body": "This is the one place where everything awaiting your decision lands — leave, attendance corrections and profile changes. Let's walk through how to clear it."
+        },
+        "header": {
+          "title": "Pending at a glance",
+          "body": "The header shows how many requests are still pending across all queues. When it hits zero, your inbox is clear."
+        },
+        "leave": {
+          "title": "Leave requests",
+          "body": "Each pending leave request shows the employee, type, dates and days. Review the details before you decide."
+        },
+        "decide": {
+          "title": "Approve or reject",
+          "body": "Use the buttons in this column to **approve** or **reject** a request. You can't approve your own — those rows show *Your request* instead."
+        },
+        "corrections": {
+          "title": "Attendance corrections",
+          "body": "Punch-time fixes appear here. RLS already trims every queue to what you're allowed to see, so you only decide within your scope."
+        }
+      },
+      "org": {
+        "intro": {
+          "title": "Tour the org chart",
+          "body": "This quick walkthrough shows how to **search**, **collapse and zoom**, and read the reporting lines that connect your team."
+        },
+        "header": {
+          "title": "Your org at a glance",
+          "body": "The header names this view and shows how many people are mapped. Everyone reports up from here."
+        },
+        "search": {
+          "title": "Find anyone fast",
+          "body": "Type a name, role, or department in the **search** box at the top right. Matches light up and scroll into view, even inside collapsed branches."
+        },
+        "controls": {
+          "title": "Collapse and zoom",
+          "body": "Click the **+/− toggle** under any manager to collapse or expand their reports. Use the **zoom buttons** to fit large teams on screen."
+        },
+        "lines": {
+          "title": "Read the reporting lines",
+          "body": "Each connector style means a different relationship. Check this **legend** to tell direct, functional, project, and dotted-line reporting apart."
+        }
+      },
+      "admin": {
+        "intro": {
+          "title": "Admin walkthrough",
+          "body": "This tour covers managing user roles, assigning and revoking access, scoped company admins, and the audit trail. Let's start with users."
+        },
+        "users": {
+          "title": "Your users",
+          "body": "Every person in the system is listed here with their current roles. Each tag shows a role and, when scoped, the company it applies to."
+        },
+        "assign": {
+          "title": "Assign a role",
+          "body": "Pick a role, optionally scope it to a company, then click **Add role**. Use the **×** beside a tag to revoke access."
+        },
+        "provisioning": {
+          "title": "Scoped admins",
+          "body": "Company-scoped **hr_admin** roles let delegated admins manage only their own subtree. This note explains how provisioning and scope work."
+        },
+        "audit": {
+          "title": "Audit trail",
+          "body": "Now jump to the audit log. Filter by record type, search events, or narrow a date range to find exactly what changed."
+        },
+        "auditTable": {
+          "title": "Every change, logged",
+          "body": "Each row is one event from the immutable log — who did what, when. That's the admin tour; you're all set."
+        }
+      }
+    }
   }
 }

@@ -141,7 +141,7 @@ export default async function OrganizationPage({
       />
       <ErrorBanner message={error} />
 
-      <Card>
+      <Card data-tour="people-org-tree">
         <SectionHeader title={t('groupStructure')} count={companies.length} />
         <div className="px-4 py-3">
           {tree.length > 0 ? (
@@ -152,7 +152,7 @@ export default async function OrganizationPage({
         </div>
       </Card>
 
-      <Card>
+      <Card data-tour="people-org-companies">
         <SectionHeader title={t('companies')} count={scoped.length} />
         <ul className="divide-y divide-border">
           {scoped.length === 0 && (
@@ -182,6 +182,7 @@ export default async function OrganizationPage({
         </ul>
         <form
           action={createCompanyAction}
+          data-tour="people-org-add"
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
           <input name="legalName" required placeholder={t('legalName')} className={`${inputCls} sm:col-span-2`} />

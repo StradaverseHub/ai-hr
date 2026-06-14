@@ -924,7 +924,8 @@
     "writeTab": "Viết",
     "notFound": "Tài liệu đó không tồn tại hoặc bạn không có quyền xem.",
     "openFile": "Mở tệp",
-    "cannotPreview": "Loại tệp này không thể xem trước tại đây. Hãy tải xuống để xem."
+    "cannotPreview": "Loại tệp này không thể xem trước tại đây. Hãy tải xuống để xem.",
+    "startWalkthrough": "Bắt đầu hướng dẫn"
   },
   "onboarding": {
     "aria": "Hướng dẫn sản phẩm",
@@ -951,6 +952,222 @@
     "themeTitle": "Sáng hay tối",
     "themeBody": "Chuyển đổi giữa giao diện sáng và tối để phù hợp với mắt bạn và không gian của bạn.",
     "finishTitle": "Bạn đã sẵn sàng 🎉",
-    "finishBody": "Đó là toàn bộ chuyến tham quan. Bất cứ khi nào cần trợ giúp, hãy mở Cơ sở tri thức hoặc xem lại chuyến tham quan này từ nút trợ giúp."
+    "finishBody": "Đó là toàn bộ chuyến tham quan. Bất cứ khi nào cần trợ giúp, hãy mở Cơ sở tri thức hoặc xem lại chuyến tham quan này từ nút trợ giúp.",
+    "tour": {
+      "me": {
+        "intro": {
+          "title": "Trang tự phục vụ của bạn",
+          "body": "Đây là trung tâm cá nhân của bạn. Chúng ta sẽ đi qua hồ sơ, thông tin ngân hàng và thông tin pháp định, phiếu lương, cùng tóm tắt nghỉ phép và chấm công của bạn."
+        },
+        "contact": {
+          "title": "Thông tin liên hệ của bạn",
+          "body": "Cập nhật số điện thoại, địa chỉ, ngày sinh và liên hệ khẩn cấp tại đây. Những thay đổi này được lưu **ngay lập tức**, không cần phê duyệt."
+        },
+        "bank": {
+          "title": "Ngân hàng và pháp định",
+          "body": "Tài khoản ngân hàng và hạng thuế PCB của bạn nằm ở đây. Mở **Yêu cầu thay đổi** để gửi chỉnh sửa, các thay đổi này sẽ chuyển đến quản trị viên của bạn để phê duyệt."
+        },
+        "payslips": {
+          "title": "Phiếu lương của bạn",
+          "body": "Mỗi kỳ lương đều xuất hiện ở đây. Nhấp vào một kỳ để mở phiếu lương đầy đủ và tải xuống."
+        },
+        "attendance": {
+          "title": "Tóm tắt chấm công",
+          "body": "Vào ca và tan ca cho hôm nay, và xem lại những ngày gần đây của bạn. Bạn cũng có thể yêu cầu sửa một lần chấm công bị bỏ lỡ."
+        },
+        "leave": {
+          "title": "Số dư và yêu cầu nghỉ phép",
+          "body": "Xem số ngày đã tích lũy, đã dùng và còn lại theo từng loại nghỉ phép. Dùng **Yêu cầu nghỉ phép** để nộp đơn mới."
+        }
+      },
+      "leave": {
+        "intro": {
+          "title": "Hướng dẫn nghỉ phép",
+          "body": "Chào mừng đến với Nghỉ phép. Chúng tôi sẽ giới thiệu số dư nghỉ phép của bạn, cách yêu cầu nghỉ và nơi theo dõi các yêu cầu."
+        },
+        "balance": {
+          "title": "Kiểm tra số dư của bạn",
+          "body": "Bảng này hiển thị bạn còn lại bao nhiêu ngày nghỉ, chia theo từng loại. Số ngày còn lại hiển thị trên tổng số ngày được hưởng."
+        },
+        "request": {
+          "title": "Yêu cầu nghỉ phép",
+          "body": "Mở khung này để điền ngày, loại nghỉ phép và lý do, rồi gửi yêu cầu để phê duyệt."
+        },
+        "requests": {
+          "title": "Theo dõi các yêu cầu của bạn",
+          "body": "Mỗi yêu cầu đều xuất hiện ở đây cùng trạng thái của nó. Dùng các nhãn phía trên để lọc theo đang chờ, đã duyệt hoặc bị từ chối."
+        },
+        "config": {
+          "title": "Cấu hình loại nghỉ phép",
+          "body": "Quản trị viên thiết lập loại nghỉ phép, mức hưởng và năm nghỉ phép tại đây. Đây là nơi quản lý chính sách và ngày lễ."
+        }
+      },
+      "attendance": {
+        "intro": {
+          "title": "Tham quan trang chấm công",
+          "body": "Hướng dẫn nhanh này bao gồm việc vào ca và tan ca, đọc trạng thái trong ngày, hồ sơ của bạn và gửi yêu cầu chỉnh sửa."
+        },
+        "day": {
+          "title": "Hồ sơ hằng ngày của bạn",
+          "body": "Thẻ này liệt kê mọi người trong ngày đã chọn, kèm giờ vào ca, tan ca, số giờ và làm thêm. Dùng thanh điều hướng ngày phía trên để chuyển giữa các ngày."
+        },
+        "action": {
+          "title": "Vào ca và tan ca",
+          "body": "Thao tác ở mỗi dòng nhập một mốc thời gian và **vào ca cho bạn**, rồi sau đó **tan ca cho bạn**. Khi cả hai đã được thiết lập, ngày đó được đánh dấu hoàn tất."
+        },
+        "status": {
+          "title": "Có mặt, đi trễ, nửa ngày",
+          "body": "Nhãn trạng thái hiển thị có mặt, đi trễ, nửa ngày hoặc vắng mặt trong ngày. Đang nghỉ phép, ngày lễ và ngày nghỉ cũng xuất hiện ở đây."
+        },
+        "correction": {
+          "title": "Yêu cầu chỉnh sửa",
+          "body": "Ghi sai giờ? Gửi yêu cầu chỉnh sửa với các mốc thời gian đề xuất và một lý do, rồi quản lý sẽ phê duyệt hoặc từ chối."
+        },
+        "summary": {
+          "title": "Tóm tắt theo tháng của bạn",
+          "body": "Cuộn xuống để xem tổng hợp của tháng: số ngày có mặt, đi trễ, nửa ngày, nghỉ phép, vắng mặt, cùng số giờ và cờ làm thêm. Đến đây là kết thúc chuyến tham quan."
+        }
+      },
+      "payroll": {
+        "intro": {
+          "title": "Chạy một chu kỳ bảng lương",
+          "body": "Hướng dẫn này bao gồm việc chạy bảng lương: tạo một lô, xem lại các lô và tìm các báo cáo pháp định như EA và CP39."
+        },
+        "batches": {
+          "title": "Các lô bảng lương của bạn",
+          "body": "Mọi lần chạy lương đều nằm ở đây. Nhấp vào một kỳ để mở một lô và xem lại phiếu lương, lương thực nhận và tổng các khoản pháp định."
+        },
+        "create": {
+          "title": "Tạo một lô mới",
+          "body": "Chọn một công ty và kỳ lương, rồi nhấp **Tạo lô** để bắt đầu một lần chạy lương mới."
+        },
+        "reports": {
+          "title": "Báo cáo pháp định",
+          "body": "Đây là nơi tạo EA, Form E, CP39 và các báo cáo pháp định EPF/SOCSO/EIS hằng tháng."
+        },
+        "worklist": {
+          "title": "Danh sách công việc tuân thủ",
+          "body": "Theo dõi các nghĩa vụ CP22 và CP22A tại đây để nhân viên mới và nhân viên nghỉ việc được thông báo cho LHDN đúng hạn."
+        },
+        "generate": {
+          "title": "Tạo một báo cáo",
+          "body": "Chọn một công ty, báo cáo và kỳ, rồi nhấp **Xem trước** để rà soát các con số trước khi xuất hoặc ghi nhận."
+        }
+      },
+      "people": {
+        "intro": {
+          "title": "Tham quan nhân sự và tổ chức",
+          "body": "Hướng dẫn nhanh này chỉ cho bạn cách tìm người, tuyển dụng và quản lý dữ liệu nền tảng của tổ chức. Hãy bắt đầu ở trang Nhân sự."
+        },
+        "search": {
+          "title": "Tìm kiếm nhân sự",
+          "body": "Nhập tên hoặc email ở đây và nhấn **Tìm kiếm** để lọc danh bạ. Dùng **Xóa** để đặt lại về tất cả mọi người."
+        },
+        "table": {
+          "title": "Duyệt danh bạ",
+          "body": "Mọi nhân viên đều hiển thị ở đây cùng phòng ban, công ty và trạng thái. Nhấp vào một tên để mở hồ sơ đầy đủ của họ."
+        },
+        "hire": {
+          "title": "Tuyển một nhân viên",
+          "body": "Mở rộng **Tuyển một nhân viên** để thêm người cùng công ty, phòng ban và ngày bắt đầu. Để tiếp nhận hàng loạt, dùng **Nhập CSV** ở phía trên."
+        },
+        "orgTree": {
+          "title": "Cấu trúc tập đoàn của bạn",
+          "body": "Quản trị viên quản lý dữ liệu nền tảng của tổ chức tại đây. Cây này cho thấy các công ty của bạn lồng vào một tập đoàn ra sao."
+        },
+        "orgCompanies": {
+          "title": "Công ty và dữ liệu nền tảng",
+          "body": "Mở bất kỳ công ty nào để quản lý phòng ban, vị trí và trung tâm chi phí của nó. Dùng **Thêm công ty** bên dưới để đăng ký một công ty mới. Đó là toàn bộ chuyến tham quan!"
+        }
+      },
+      "performance": {
+        "intro": {
+          "title": "Tham quan đánh giá hiệu suất",
+          "body": "Hướng dẫn nhanh này chỉ cho bạn cách chạy các chu kỳ đánh giá hiệu suất, xử lý các đánh giá đang chờ bạn và mở hoặc tạo một chu kỳ."
+        },
+        "pending": {
+          "title": "Các đánh giá đang chờ bạn",
+          "body": "Khi các đánh giá của nhóm cần ý kiến của bạn, chúng sẽ xuất hiện ở đây. Nhấp **Đánh giá** ở bất kỳ dòng nào để hoàn tất."
+        },
+        "cycles": {
+          "title": "Các chu kỳ đánh giá",
+          "body": "Mọi chu kỳ đều được liệt kê ở đây cùng kỳ, trạng thái và tiến độ. Nhấp vào tên một chu kỳ để mở và quản lý các đánh giá của nó."
+        },
+        "newCycle": {
+          "title": "Tạo một chu kỳ mới",
+          "body": "Mở rộng khung này để đặt tên, phạm vi, kỳ và quỹ khen thưởng, rồi nhấp **Tạo chu kỳ** để khởi chạy."
+        }
+      },
+      "approvals": {
+        "intro": {
+          "title": "Hộp thư phê duyệt của bạn",
+          "body": "Đây là nơi duy nhất tập hợp mọi thứ đang chờ quyết định của bạn — nghỉ phép, chỉnh sửa chấm công và thay đổi hồ sơ. Hãy cùng xem cách xử lý hết chúng."
+        },
+        "header": {
+          "title": "Tổng quan các mục đang chờ",
+          "body": "Phần đầu trang cho biết còn bao nhiêu yêu cầu đang chờ trên tất cả hàng đợi. Khi về 0, hộp thư của bạn đã sạch."
+        },
+        "leave": {
+          "title": "Yêu cầu nghỉ phép",
+          "body": "Mỗi yêu cầu nghỉ phép đang chờ hiển thị nhân viên, loại, ngày và số ngày. Hãy xem kỹ chi tiết trước khi bạn quyết định."
+        },
+        "decide": {
+          "title": "Duyệt hoặc từ chối",
+          "body": "Dùng các nút ở cột này để **duyệt** hoặc **từ chối** một yêu cầu. Bạn không thể tự duyệt yêu cầu của chính mình — các dòng đó hiển thị *Yêu cầu của bạn* thay thế."
+        },
+        "corrections": {
+          "title": "Chỉnh sửa chấm công",
+          "body": "Các yêu cầu sửa giờ chấm công xuất hiện ở đây. RLS đã lọc mỗi hàng đợi xuống còn những gì bạn được phép xem, nên bạn chỉ quyết định trong phạm vi của mình."
+        }
+      },
+      "org": {
+        "intro": {
+          "title": "Tham quan sơ đồ tổ chức",
+          "body": "Hướng dẫn nhanh này chỉ cho bạn cách **tìm kiếm**, **thu gọn và phóng to**, và đọc các đường báo cáo kết nối nhóm của bạn."
+        },
+        "header": {
+          "title": "Tổng quan tổ chức của bạn",
+          "body": "Phần đầu trang đặt tên cho chế độ xem này và cho biết có bao nhiêu người được sắp xếp. Mọi người đều báo cáo lên từ đây."
+        },
+        "search": {
+          "title": "Tìm bất kỳ ai thật nhanh",
+          "body": "Nhập tên, vai trò hoặc phòng ban vào ô **tìm kiếm** ở góc trên bên phải. Các kết quả khớp sẽ sáng lên và cuộn vào tầm nhìn, kể cả bên trong các nhánh đã thu gọn."
+        },
+        "controls": {
+          "title": "Thu gọn và phóng to",
+          "body": "Nhấp nút **gạt +/−** bên dưới bất kỳ quản lý nào để thu gọn hoặc mở rộng các nhân viên báo cáo. Dùng **các nút phóng to** để vừa các nhóm lớn vào màn hình."
+        },
+        "lines": {
+          "title": "Đọc các đường báo cáo",
+          "body": "Mỗi kiểu đường nối thể hiện một quan hệ khác nhau. Hãy xem **chú giải** này để phân biệt báo cáo trực tiếp, chức năng, dự án và đường đứt nét."
+        }
+      },
+      "admin": {
+        "intro": {
+          "title": "Hướng dẫn quản trị",
+          "body": "Chuyến tham quan này bao gồm quản lý vai trò người dùng, gán và thu hồi quyền truy cập, quản trị viên theo phạm vi công ty và nhật ký kiểm toán. Hãy bắt đầu với người dùng."
+        },
+        "users": {
+          "title": "Người dùng của bạn",
+          "body": "Mọi người trong hệ thống đều được liệt kê ở đây cùng các vai trò hiện tại. Mỗi thẻ hiển thị một vai trò và, khi theo phạm vi, công ty mà nó áp dụng."
+        },
+        "assign": {
+          "title": "Gán một vai trò",
+          "body": "Chọn một vai trò, tùy chọn giới hạn nó theo một công ty, rồi nhấp **Thêm vai trò**. Dùng dấu **×** bên cạnh một thẻ để thu hồi quyền truy cập."
+        },
+        "provisioning": {
+          "title": "Quản trị viên theo phạm vi",
+          "body": "Vai trò `hr_admin` theo phạm vi công ty cho phép các quản trị viên được ủy quyền chỉ quản lý nhánh con của riêng họ. Ghi chú này giải thích cách cấp phát và phạm vi hoạt động."
+        },
+        "audit": {
+          "title": "Nhật ký kiểm toán",
+          "body": "Giờ hãy chuyển đến nhật ký kiểm toán. Lọc theo loại bản ghi, tìm kiếm sự kiện, hoặc thu hẹp khoảng thời gian để tìm chính xác điều gì đã thay đổi."
+        },
+        "auditTable": {
+          "title": "Mọi thay đổi, đều được ghi lại",
+          "body": "Mỗi dòng là một sự kiện từ nhật ký bất biến — ai đã làm gì, khi nào. Đó là chuyến tham quan quản trị; bạn đã sẵn sàng."
+        }
+      }
+    }
   }
 }

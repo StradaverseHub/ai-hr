@@ -108,16 +108,18 @@ export default async function MePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        description={`${me.name}${me.employeeCode ? ` · ${me.employeeCode}` : ''} · ${me.position ?? '—'}, ${me.department ?? '—'}`}
-      />
+      <div data-tour="me-intro">
+        <PageHeader
+          title={t('title')}
+          description={`${me.name}${me.employeeCode ? ` · ${me.employeeCode}` : ''} · ${me.position ?? '—'}, ${me.department ?? '—'}`}
+        />
+      </div>
 
       <ErrorBanner message={error} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Attendance */}
-        <Card className="p-5">
+        <Card className="p-5" data-tour="me-attendance">
           <h2 className="text-sm font-semibold">{t('todayHeading')}</h2>
           <p className="text-xs text-muted-foreground">{today}</p>
           <div className="mt-4">
@@ -214,7 +216,7 @@ export default async function MePage({
         </Card>
 
         {/* Leave */}
-        <Card className="p-5">
+        <Card className="p-5" data-tour="me-leave">
           <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
           <div className="mt-3 space-y-3">
             {balances.map((b) => {
@@ -331,7 +333,7 @@ export default async function MePage({
       {/* My details — contact self-edit (direct) + pay-affecting changes (approval-gated, ADR-0012) */}
       <Card className="p-5">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div>
+          <div data-tour="me-contact">
             <h2 className="text-sm font-semibold">{t('myDetails')}</h2>
             <p className="text-xs text-muted-foreground">{t('contactUpdatesImmediately')}</p>
             <form action={myUpdateContact} className="mt-3 space-y-3">
@@ -371,7 +373,7 @@ export default async function MePage({
             </form>
           </div>
 
-          <div className="lg:border-l lg:border-border lg:pl-6">
+          <div className="lg:border-l lg:border-border lg:pl-6" data-tour="me-bank">
             <h2 className="text-sm font-semibold">{t('bankAndTax')}</h2>
             <p className="text-xs text-muted-foreground">{t('changesNeedApproval')}</p>
             <dl className="mt-3 space-y-2 text-sm">
@@ -440,7 +442,7 @@ export default async function MePage({
       </Card>
 
       {/* Payslips */}
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="me-payslips">
         <SectionHeader title={t('myPayslips')} count={payslips.length} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
