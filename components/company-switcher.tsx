@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
 import { setCompanyScope } from '@/app/scope-actions';
 import { cn } from '@/lib/utils';
@@ -14,15 +15,16 @@ export function CompanySwitcher({
   selected: string[];
 }) {
   const [open, setOpen] = useState(false);
+  const t = useTranslations('topbar');
   if (companies.length === 0) return null;
 
   const selSet = new Set(selected);
   const label =
     selSet.size >= companies.length
-      ? 'All companies'
+      ? t('allCompanies')
       : selSet.size === 1
-        ? (companies.find((c) => selSet.has(c.id))?.name ?? '1 company')
-        : `${selSet.size} companies`;
+        ? (companies.find((c) => selSet.has(c.id))?.name ?? t('companyCount', { count: 1 }))
+        : t('companyCount', { count: selSet.size });
 
   return (
     <div className="relative">
@@ -49,7 +51,7 @@ export function CompanySwitcher({
             className="absolute right-0 z-50 mt-1 w-64 origin-top-right scale-100 rounded-lg border border-border bg-popover p-1.5 text-popover-foreground opacity-100 shadow-lg transition duration-150 ease-snappy starting:scale-95 starting:opacity-0"
           >
             <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              Company context
+              {t('companyContext')}
             </div>
             {companies.map((c) => (
               <label

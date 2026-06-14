@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { actAs } from '@/app/identity-actions';
 import type { Principal } from '@/lib/principals';
 
@@ -11,10 +12,11 @@ export function DevIdentitySwitcher({
   principals: Principal[];
   current: string;
 }) {
+  const t = useTranslations('topbar');
   if (principals.length === 0) return null;
   return (
     <form action={actAs} className="flex items-center gap-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">dev as</span>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('devAs')}</span>
       <select
         key={current}
         name="userId"
@@ -24,7 +26,7 @@ export function DevIdentitySwitcher({
       >
         {principals.map((p) => (
           <option key={p.userId} value={p.userId}>
-            {p.name} · {p.roles.join('/') || 'no role'}
+            {p.name} · {p.roles.join('/') || t('noRole')}
           </option>
         ))}
       </select>

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { complianceWorklist, listReports, recentReports, reportPreview } from '@/core/reporting';
@@ -16,6 +17,7 @@ export default async function ReportsPage({
   searchParams: Promise<{ companyId?: string; reportId?: string; periodKey?: string; error?: string }>;
 }) {
   const s = await requireAdmin();
+  const t = await getTranslations('payroll.reports');
   const sp = await searchParams;
   const companies = (await listCompanies(s)).filter((c) => !c.archivedAt);
   const companyId = sp.companyId || companies[0]?.id || '';
@@ -37,29 +39,28 @@ export default async function ReportsPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title="Payroll" description="Statutory & compliance reports" />
+      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <PayrollTabs active="reports" />
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Compliance worklist · CP22 / CP22A" count={worklist.length} />
+        <SectionHeader title={t('worklistTitle')} count={worklist.length} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">
-          New-hire (CP22) and cessation (CP22A) notifications due to LHDN for{' '}
-          {companyName.get(companyId) ?? '—'}. File in MyTax; this surfaces what&apos;s outstanding.
+          {t('worklistDescription', { company: companyName.get(companyId) ?? '—' })}
         </p>
         {worklist.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing due.</p>
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('worklistEmpty')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Employee</th>
-                  <th className="px-4 py-2 font-medium">Form</th>
-                  <th className="px-4 py-2 font-medium">Reason</th>
-                  <th className="px-4 py-2 font-medium">Event date</th>
-                  <th className="px-4 py-2 font-medium">Notify by</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colForm')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colReason')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colEventDate')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colNotifyBy')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -86,14 +87,13 @@ export default async function ReportsPage({
       </Card>
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-        ⚠️ Layer-A report — a human-readable summary to remit from or hand to an accountant. Byte-exact
-        agency files (CP39 / KWSP / PERKESO / bank) come in a later slice, each sourced + verified.
+        ⚠️ {t('layerABanner')}
       </div>
 
       <Card>
-        <SectionHeader title="Generate report" />
+        <SectionHeader title={t('generateTitle')} />
         <form method="get" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
-          <Field label="Company">
+          <Field label={t('fieldCompany')}>
             <select name="companyId" defaultValue={companyId} className={inputCls}>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -102,7 +102,7 @@ export default async function ReportsPage({
               ))}
             </select>
           </Field>
-          <Field label="Report">
+          <Field label={t('fieldReport')}>
             <select name="reportId" defaultValue={reportId} className={inputCls}>
               {reports.map((r) => (
                 <option key={r.id} value={r.id}>
@@ -111,7 +111,7 @@ export default async function ReportsPage({
               ))}
             </select>
           </Field>
-          <Field label={annual ? 'Year (YYYY)' : 'Period (YYYY-MM)'}>
+          <Field label={annual ? t('fieldYear') : t('fieldPeriod')}>
             <input
               name="periodKey"
               defaultValue={periodKey}
@@ -119,15 +119,14 @@ export default async function ReportsPage({
               className={inputCls}
             />
           </Field>
-          <button className={btnPrimary}>Preview</button>
+          <button className={btnPrimary}>{t('preview')}</button>
         </form>
       </Card>
 
       {result && !result.meta.hasBatch && (
         <Card>
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">
-            No payroll batch found for {companyName.get(companyId)} · {periodKey}. Run payroll for this
-            period first.
+            {t('noBatch', { company: companyName.get(companyId) ?? '—', period: periodKey })}
           </p>
         </Card>
       )}
@@ -157,7 +156,7 @@ export default async function ReportsPage({
           {result.readiness.length > 0 && (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
               <div className="font-medium">
-                {result.readiness.length} employee(s) missing identifiers needed to file:
+                {t('readinessTitle', { count: result.readiness.length })}
               </div>
               <ul className="mt-1 list-inside list-disc text-xs">
                 {result.readiness.map((r) => (
@@ -182,16 +181,22 @@ export default async function ReportsPage({
 
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between gap-2 px-4 py-3">
-              <SectionHeader title={`${reports.find((r) => r.id === reportId)?.label ?? 'Report'} · ${periodKey}`} count={result.rows.length} />
+              <SectionHeader
+                title={t('reportHeader', {
+                  label: reports.find((r) => r.id === reportId)?.label ?? t('reportFallback'),
+                  period: periodKey,
+                })}
+                count={result.rows.length}
+              />
               <div className="flex items-center gap-2">
                 {reportId === 'my.cp39' && result.readiness.length === 0 && (
                   /* Layer-B (Exhibit 4 byte layout): each download records an artefact + event. */
                   <a
                     href={`/payroll/reports/cp39-file?companyId=${companyId}&periodKey=${periodKey}`}
                     className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
-                    title="e-Data PCB upload file (LHDN Exhibit 4). DRAFT until verified against e-PCB Plus."
+                    title={t('cp39DownloadTitle')}
                   >
-                    ⬇ CP39 .txt — DRAFT, not for submission
+                    ⬇ {t('cp39DownloadLabel')}
                   </a>
                 )}
                 <DownloadCsv
@@ -203,7 +208,7 @@ export default async function ReportsPage({
                   <input type="hidden" name="companyId" value={companyId} />
                   <input type="hidden" name="reportId" value={reportId} />
                   <input type="hidden" name="periodKey" value={periodKey} />
-                  <button className={btnPrimary}>Record generation</button>
+                  <button className={btnPrimary}>{t('recordGeneration')}</button>
                 </form>
               </div>
             </div>
@@ -247,7 +252,7 @@ export default async function ReportsPage({
                   {result.rows.length === 0 && (
                     <tr>
                       <td colSpan={result.columns.length} className="px-4 py-8 text-center text-muted-foreground">
-                        No payslips in this batch.
+                        {t('noPayslips')}
                       </td>
                     </tr>
                   )}
@@ -259,15 +264,15 @@ export default async function ReportsPage({
       )}
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Recent generations" count={recent.length} />
+        <SectionHeader title={t('recentTitle')} count={recent.length} />
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-4 py-2 font-medium">Report</th>
-              <th className="px-4 py-2 font-medium">Period</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 text-right font-medium">Rows</th>
-              <th className="px-4 py-2 font-medium">Tables ver.</th>
+              <th className="px-4 py-2 font-medium">{t('colReport')}</th>
+              <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
+              <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+              <th className="px-4 py-2 text-right font-medium">{t('colRows')}</th>
+              <th className="px-4 py-2 font-medium">{t('colTablesVer')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -283,7 +288,7 @@ export default async function ReportsPage({
             {recent.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
-                  No reports recorded yet.
+                  {t('recentEmpty')}
                 </td>
               </tr>
             )}

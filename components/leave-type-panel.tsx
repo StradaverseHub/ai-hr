@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
@@ -63,6 +64,7 @@ export function LeaveTypePanel({
   updatePolicyAction: Action;
   deletePolicyAction: Action;
 }) {
+  const t = useTranslations('admin.leave');
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
@@ -96,21 +98,20 @@ export function LeaveTypePanel({
           </svg>
           <span className="truncate text-sm font-medium text-foreground">{name}</span>
           <span className="text-xs text-muted-foreground">{code}</span>
-          {archived && <span className={badge.muted}>archived</span>}
+          {archived && <span className={badge.muted}>{t('archivedBadge')}</span>}
         </button>
 
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs tabular-nums text-muted-foreground">
-            {effective > 0 ? (
-              <>
-                <span className="font-semibold text-foreground">{fmt(effective)}</span> days/yr
-              </>
-            ) : (
-              '—'
-            )}
+            {effective > 0
+              ? t.rich('daysPerYear', {
+                  days: fmt(effective),
+                  b: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
+                })
+              : '—'}
           </span>
-          {belowFloor && <span className={badge.amber}>below minimum</span>}
-          {above && <span className={badge.emerald}>policy</span>}
+          {belowFloor && <span className={badge.amber}>{t('belowMinimumBadge')}</span>}
+          {above && <span className={badge.emerald}>{t('policyBadge')}</span>}
         </div>
       </div>
 
@@ -120,26 +121,26 @@ export function LeaveTypePanel({
           {editingName ? (
             <form action={updateTypeAction} className="flex flex-wrap items-center gap-2">
               <input type="hidden" name="id" value={id} />
-              <input name="name" defaultValue={name} aria-label="Name" className={`${inputCls} w-52`} />
+              <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
               <Button type="submit" size="sm">
-                Save
+                {t('save')}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setEditingName(false)}>
-                Cancel
+                {t('cancel')}
               </Button>
             </form>
           ) : (
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <span>Type</span>
+              <span>{t('typeLabel')}</span>
               <Button type="button" size="sm" variant="ghost" onClick={() => setEditingName(true)}>
-                Rename
+                {t('rename')}
               </Button>
               {archived ? (
                 <form action={archiveTypeAction}>
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="archived" value="false" />
                   <Button type="submit" size="sm" variant="ghost">
-                    Unarchive
+                    {t('unarchive')}
                   </Button>
                 </form>
               ) : inUse ? (
@@ -147,7 +148,7 @@ export function LeaveTypePanel({
                   <input type="hidden" name="id" value={id} />
                   <input type="hidden" name="archived" value="true" />
                   <Button type="submit" size="sm" variant="ghost">
-                    Archive
+                    {t('archive')}
                   </Button>
                 </form>
               ) : (
@@ -157,11 +158,11 @@ export function LeaveTypePanel({
                     size="sm"
                     variant="ghost"
                     className="text-destructive hover:text-destructive"
-                    title="Delete this leave type?"
-                    description="It isn't referenced anywhere, so this permanently removes it."
-                    confirmLabel="Delete"
+                    title={t('deleteTypeConfirmTitle')}
+                    description={t('deleteTypeConfirmDescription')}
+                    confirmLabel={t('deleteConfirmLabel')}
                   >
-                    Delete
+                    {t('delete')}
                   </ConfirmSubmit>
                 </form>
               )}
@@ -170,16 +171,18 @@ export function LeaveTypePanel({
 
           {/* statutory floor (read-only) */}
           <div className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2 text-xs">
-            <span className="text-muted-foreground">Statutory minimum (MY)</span>
-            <span className="tabular-nums">{floorLabel ? `${floorLabel} days` : 'none'}</span>
+            <span className="text-muted-foreground">{t('statutoryMinimum')}</span>
+            <span className="tabular-nums">
+              {floorLabel ? t('daysValue', { days: floorLabel }) : t('none')}
+            </span>
           </div>
 
           {/* entitlement timeline */}
           <div className="space-y-1.5">
-            <div className="text-xs font-medium text-muted-foreground">Company entitlements</div>
+            <div className="text-xs font-medium text-muted-foreground">{t('companyEntitlements')}</div>
             {policies.length === 0 && (
               <p className="rounded-lg bg-background px-3 py-2 text-xs text-muted-foreground">
-                No company policy — the statutory floor applies.
+                {t('noCompanyPolicy')}
               </p>
             )}
             {policies.map((p) =>
@@ -190,7 +193,7 @@ export function LeaveTypePanel({
                   className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
                 >
                   <input type="hidden" name="id" value={p.id} />
-                  <Field label="Days / year">
+                  <Field label={t('daysPerYearLabel')}>
                     <input
                       name="annualDays"
                       type="number"
@@ -202,7 +205,7 @@ export function LeaveTypePanel({
                     />
                   </Field>
                   {isAnnual ? (
-                    <Field label="Carry cap">
+                    <Field label={t('carryCapLabel')}>
                       <input
                         name="carryForwardMax"
                         type="number"
@@ -215,14 +218,14 @@ export function LeaveTypePanel({
                   ) : (
                     <input type="hidden" name="carryForwardMax" value="0" />
                   )}
-                  <Field label="Effective from">
+                  <Field label={t('effectiveFromLabel')}>
                     <input name="validFrom" type="date" required defaultValue={p.validFrom} className={inputCls} />
                   </Field>
                   <Button type="submit" size="sm">
-                    Save
+                    {t('save')}
                   </Button>
                   <Button type="button" size="sm" variant="outline" onClick={() => setEditingPolicyId(null)}>
-                    Cancel
+                    {t('cancel')}
                   </Button>
                 </form>
               ) : (
@@ -231,19 +234,24 @@ export function LeaveTypePanel({
                   className="flex items-center justify-between gap-3 rounded-lg bg-background px-3 py-2 text-xs"
                 >
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                    <span className="font-semibold tabular-nums text-foreground">{fmt(p.annualDays)} days/yr</span>
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {t('daysPerYearText', { days: fmt(p.annualDays) })}
+                    </span>
                     {isAnnual && p.carryForwardMax > 0 && (
-                      <span className="text-muted-foreground">· carry ≤ {fmt(p.carryForwardMax)}</span>
+                      <span className="text-muted-foreground">
+                        {t('carryCapText', { max: fmt(p.carryForwardMax) })}
+                      </span>
                     )}
                     <span className="text-muted-foreground">
-                      · from {p.validFrom}
-                      {p.validTo ? ` to ${p.validTo}` : ''}
+                      {p.validTo
+                        ? t('validFromTo', { from: p.validFrom, to: p.validTo })
+                        : t('validFrom', { from: p.validFrom })}
                     </span>
-                    {!p.validTo && <span className={badge.emerald}>active</span>}
+                    {!p.validTo && <span className={badge.emerald}>{t('activeBadge')}</span>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditingPolicyId(p.id)}>
-                      Edit
+                      {t('edit')}
                     </Button>
                     <form action={deletePolicyAction}>
                       <input type="hidden" name="id" value={p.id} />
@@ -251,11 +259,11 @@ export function LeaveTypePanel({
                         size="sm"
                         variant="ghost"
                         className="text-destructive hover:text-destructive"
-                        title="Remove this entitlement?"
-                        description="Past grants stay (the ledger isn't affected); this only stops it from driving future grants."
-                        confirmLabel="Remove"
+                        title={t('removePolicyConfirmTitle')}
+                        description={t('removePolicyConfirmDescription')}
+                        confirmLabel={t('removeConfirmLabel')}
                       >
-                        Remove
+                        {t('remove')}
                       </ConfirmSubmit>
                     </form>
                   </div>
@@ -271,7 +279,7 @@ export function LeaveTypePanel({
               className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
             >
               <input type="hidden" name="leaveTypeId" value={id} />
-              <Field label="Days / year">
+              <Field label={t('daysPerYearLabel')}>
                 <input
                   name="annualDays"
                   type="number"
@@ -283,7 +291,7 @@ export function LeaveTypePanel({
                 />
               </Field>
               {isAnnual ? (
-                <Field label="Carry cap">
+                <Field label={t('carryCapLabel')}>
                   <input
                     name="carryForwardMax"
                     type="number"
@@ -296,19 +304,19 @@ export function LeaveTypePanel({
               ) : (
                 <input type="hidden" name="carryForwardMax" value="0" />
               )}
-              <Field label="Effective from">
+              <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
               </Field>
               <Button type="submit" size="sm">
-                Add
+                {t('add')}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setAdding(false)}>
-                Cancel
+                {t('cancel')}
               </Button>
             </form>
           ) : (
             <Button type="button" size="sm" variant="outline" onClick={() => setAdding(true)}>
-              + Add entitlement
+              {t('addEntitlement')}
             </Button>
           )}
         </div>

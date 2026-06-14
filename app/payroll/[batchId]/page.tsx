@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
@@ -16,6 +17,7 @@ export default async function BatchPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await requireAdmin();
+  const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
   const { error } = await searchParams;
   const data = await batchDetail(s, batchId);
@@ -30,11 +32,11 @@ export default async function BatchPage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
-        back={{ href: '/payroll', label: 'Payroll' }}
+        back={{ href: '/payroll', label: t('back') }}
         title={batch.payPeriod}
         description={
           <>
-            Payroll batch · <span className="capitalize">{batch.status}</span>
+            {t('subtitle')} · <span className="capitalize">{batch.status}</span>
           </>
         }
         actions={
@@ -43,22 +45,22 @@ export default async function BatchPage({
               <a
                 href={`/payroll/reports/payment-summary?batchId=${batch.id}`}
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-                title="Employee / bank / account / net-pay CSV for manual bank upload"
+                title={t('paymentSummaryTitle')}
               >
-                ⬇ Payment summary
+                ⬇ {t('paymentSummary')}
               </a>
             )}
             {batch.status === 'draft' && (
               <form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit">Generate payslips</Button>
+                <Button type="submit">{t('generatePayslips')}</Button>
               </form>
             )}
             {batch.status === 'processed' && (
               <form action={closeAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
                 <Button type="submit" variant="secondary">
-                  Close batch
+                  {t('closeBatch')}
                 </Button>
               </form>
             )}
@@ -69,33 +71,29 @@ export default async function BatchPage({
       <ErrorBanner message={error} />
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-        ⚠️ Figures use the <span className="font-medium">official 2026 LHDN / PERKESO tables</span> but still require
-        accountant sign-off before real use. PCB implements the full LHDN computerised method with prior-month
-        accumulators (derived from this year&apos;s payslips + TP3 opening balances) incl. the additional-remuneration
-        steps and §E rounding rules; pay is prorated for mid-month joiners/leavers; overtime, bonus and unpaid leave
-        are captured (incl. TP1 deductions + zakat per §E.5); SOCSO + EIS apply the exact Act 4 / Act 800 schedule
-        amounts with age-based Category 2 / EIS cut-off at 60; non-residents deduct flat 30%. Remaining simplification:
-        EPF low-wage RM20 banding is approximated by % + round-up.
-        See <span className="font-mono">docs/architecture/STATUTORY-SOURCES.md</span>.
+        ⚠️{' '}
+        {t.rich('disclaimer', {
+          strong: (chunks) => <span className="font-medium">{chunks}</span>,
+          mono: (chunks) => <span className="font-mono">{chunks}</span>,
+        })}
       </div>
 
       {batch.status === 'draft' && leavers.length > 0 && (
         <Card className="overflow-hidden border-blue-200 dark:border-blue-500/30">
-          <SectionHeader title="Final pay — leavers this period" count={leavers.length} />
+          <SectionHeader title={t('leaversTitle')} count={leavers.length} />
           <p className="px-4 pt-3 text-xs text-muted-foreground">
-            Unused annual leave is payable in lieu on termination (EA 1955 s.60E) at the ordinary
-            rate of pay (basic / 26 per day). <span className="font-medium">Advisory only</span> —
-            review and key the agreed amount into the Bonus input below; the EPF/PCB treatment of
-            encashment must be confirmed with your accountant first.
+            {t.rich('leaversHint', {
+              strong: (chunks) => <span className="font-medium">{chunks}</span>,
+            })}
           </p>
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 font-medium">Last day</th>
-                <th className="px-4 py-2 text-right font-medium">Unused annual</th>
-                <th className="px-4 py-2 text-right font-medium">ORP / day</th>
-                <th className="px-4 py-2 text-right font-medium">Suggested in lieu</th>
+                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                <th className="px-4 py-2 font-medium">{t('colLastDay')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colUnusedAnnual')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colOrpPerDay')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colSuggestedInLieu')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -103,7 +101,7 @@ export default async function BatchPage({
                 <tr key={l.employmentId}>
                   <td className="px-4 py-2.5 font-medium">{l.name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.terminatedOn}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{l.annualBalance} d</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{t('daysShort', { d: l.annualBalance })}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(l.basic / 26)}</td>
                   <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{rm(l.suggested)}</td>
                 </tr>
@@ -115,24 +113,20 @@ export default async function BatchPage({
 
       {batch.status === 'draft' && (
         <Card className="overflow-hidden">
-          <SectionHeader title="Inputs · overtime, bonus + unpaid leave" count={inputs.length} />
+          <SectionHeader title={t('inputsTitle')} count={inputs.length} />
           <p className="px-4 pt-3 text-xs text-muted-foreground">
-            Enter overtime and bonus per employee. Bonus is taxed as additional remuneration (EPF + PCB
-            difference method, excluded from SOCSO/EIS). Unpaid-leave days are derived automatically from
-            approved unpaid leave requests starting in this period and deducted at the EA-1955 daily rate. Set
-            inputs before generating payslips.
+            {t('inputsHint')}
           </p>
           <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
             <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">Overtime from attendance:</span> monetizes this
-              period&rsquo;s classified OT at EA rates (ORP = wages/26 · workday 1.5× · rest day ½/1 day + 2× ·
-              holiday +2 days + 3×). Wages above RM4,000 are not statutorily entitled and stay manual. You can
-              still override any figure.
+              {t.rich('prefillHint', {
+                strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
+              })}
             </p>
             <form action={prefillOvertimeAction}>
               <input type="hidden" name="batchId" value={batch.id} />
               <Button type="submit" size="sm" variant="secondary">
-                Prefill OT from attendance
+                {t('prefillOt')}
               </Button>
             </form>
           </div>
@@ -140,10 +134,10 @@ export default async function BatchPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Employee</th>
-                  <th className="px-4 py-2 text-right font-medium">Basic</th>
-                  <th className="px-4 py-2 text-right font-medium">Overtime · Bonus · TP1 · Zakat (RM)</th>
-                  <th className="px-4 py-2 text-right font-medium">Unpaid days</th>
+                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('colBasic')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('colOtBonusTp1Zakat')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('colUnpaidDays')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -156,7 +150,7 @@ export default async function BatchPage({
                         <input type="hidden" name="batchId" value={batch.id} />
                         <input type="hidden" name="employmentId" value={r.employmentId} />
                         <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
-                          OT
+                          {t('fieldOt')}
                           <input
                             name="overtimeAmount"
                             type="number"
@@ -167,7 +161,7 @@ export default async function BatchPage({
                           />
                         </label>
                         <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
-                          Bonus
+                          {t('fieldBonus')}
                           <input
                             name="bonusAmount"
                             type="number"
@@ -177,8 +171,8 @@ export default async function BatchPage({
                             className={`${inputCls} w-24 text-right`}
                           />
                         </label>
-                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title="TP1 optional deductions claimed this month (LP₁)">
-                          TP1
+                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldTp1Title')}>
+                          {t('fieldTp1')}
                           <input
                             name="tp1Deduction"
                             type="number"
@@ -188,8 +182,8 @@ export default async function BatchPage({
                             className={`${inputCls} w-20 text-right`}
                           />
                         </label>
-                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title="Zakat paid via salary deduction — offsets PCB (§E.5)">
-                          Zakat
+                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldZakatTitle')}>
+                          {t('fieldZakat')}
                           <input
                             name="zakat"
                             type="number"
@@ -200,7 +194,7 @@ export default async function BatchPage({
                           />
                         </label>
                         <Button type="submit" variant="secondary">
-                          Save
+                          {t('save')}
                         </Button>
                       </form>
                     </td>
@@ -212,7 +206,7 @@ export default async function BatchPage({
                 {inputs.length === 0 && (
                   <tr>
                     <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                      No active employees for this period.
+                      {t('noActiveEmployees')}
                     </td>
                   </tr>
                 )}
@@ -226,14 +220,14 @@ export default async function BatchPage({
         <div className="grid grid-cols-2 divide-x divide-border rounded-lg border border-border sm:grid-cols-4">
           {(
             [
-              ['Gross', totals.gross],
-              ['Deductions', totals.deductions],
-              ['Net pay', totals.net],
-              ['Employer cost', totals.employerCost],
+              ['totalGross', totals.gross],
+              ['totalDeductions', totals.deductions],
+              ['totalNet', totals.net],
+              ['totalEmployerCost', totals.employerCost],
             ] as const
-          ).map(([label, v]) => (
-            <div key={label} className="p-4">
-              <div className="text-xs text-muted-foreground">{label}</div>
+          ).map(([key, v]) => (
+            <div key={key} className="p-4">
+              <div className="text-xs text-muted-foreground">{t(key)}</div>
               <div className="text-lg font-semibold tabular-nums">{rm(v)}</div>
             </div>
           ))}
@@ -241,19 +235,19 @@ export default async function BatchPage({
       )}
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Payslips" count={slips.length} />
+        <SectionHeader title={t('payslipsTitle')} count={slips.length} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 text-right font-medium">Gross</th>
-                <th className="px-4 py-2 text-right font-medium">Bonus</th>
-                <th className="px-4 py-2 text-right font-medium">EPF</th>
-                <th className="px-4 py-2 text-right font-medium">SOCSO</th>
-                <th className="px-4 py-2 text-right font-medium">EIS</th>
-                <th className="px-4 py-2 text-right font-medium">PCB</th>
-                <th className="px-4 py-2 text-right font-medium">Net</th>
+                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colGross')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colBonus')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colEpf')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colSocso')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colEis')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colPcb')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colNet')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -265,7 +259,7 @@ export default async function BatchPage({
                       {sl.name}
                       {sl.daysWorked != null && Number(sl.daysWorked) < periodDays && (
                         <span className="ml-2 text-xs font-normal text-amber-600 dark:text-amber-400">
-                          prorated · {Number(sl.daysWorked)}/{periodDays} days
+                          {t('proratedDays', { worked: Number(sl.daysWorked), total: periodDays })}
                         </span>
                       )}
                     </td>
@@ -284,7 +278,7 @@ export default async function BatchPage({
               {slips.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                    No payslips yet — generate them.
+                    {t('noPayslips')}
                   </td>
                 </tr>
               )}

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { CalendarCheck2, CheckCircle2, Clock, XCircle, type LucideIcon } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
@@ -28,6 +29,7 @@ export default async function LeavePage({
   searchParams: Promise<{ error?: string; abs?: string; status?: string }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
+  const t = await getTranslations('leave');
   const admin = isAdmin(session);
   const today = new Date().toISOString().slice(0, 10);
   const sp = await searchParams;
@@ -82,10 +84,10 @@ export default async function LeavePage({
     return qs ? `/leave?${qs}` : '/leave';
   };
   const chips: { key?: ReqStatus; label: string; count: number; Icon: LucideIcon; active: boolean }[] = [
-    { label: 'Requested', count: requests.length, Icon: CalendarCheck2, active: !statusFilter },
-    { key: 'approved', label: 'Approved', count: counts.approved, Icon: CheckCircle2, active: statusFilter === 'approved' },
-    { key: 'pending', label: 'Pending', count: counts.pending, Icon: Clock, active: statusFilter === 'pending' },
-    { key: 'rejected', label: 'Rejected', count: counts.rejected, Icon: XCircle, active: statusFilter === 'rejected' },
+    { label: t('chipRequested'), count: requests.length, Icon: CalendarCheck2, active: !statusFilter },
+    { key: 'approved', label: t('chipApproved'), count: counts.approved, Icon: CheckCircle2, active: statusFilter === 'approved' },
+    { key: 'pending', label: t('chipPending'), count: counts.pending, Icon: Clock, active: statusFilter === 'pending' },
+    { key: 'rejected', label: t('chipRejected'), count: counts.rejected, Icon: XCircle, active: statusFilter === 'rejected' },
   ];
   const filtered = statusFilter ? requests.filter((r) => r.status === statusFilter) : requests;
   const showActions = filtered.some(
@@ -94,7 +96,7 @@ export default async function LeavePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title="Leave" description="Request leave and approve pending requests" />
+      <PageHeader title={t('title')} description={t('description')} />
 
       <PlannedAbsences
         rows={absences}
@@ -130,14 +132,14 @@ export default async function LeavePage({
 
       <Card className="overflow-hidden">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          {admin ? 'Balances' : 'My balances'}
-          <span className="ml-2 font-normal text-muted-foreground">available / entitled</span>
+          {admin ? t('balancesTitle') : t('myBalancesTitle')}
+          <span className="ml-2 font-normal text-muted-foreground">{t('balancesSubtitle')}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
+                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
                 {balTypes.map(([id, name]) => (
                   <th key={id} className="px-4 py-2 text-right font-medium">
                     {name.replace(/\s*leave$/i, '')}
@@ -160,7 +162,7 @@ export default async function LeavePage({
                       <td
                         key={typeId}
                         className="px-4 py-2.5 text-right tabular-nums"
-                        title={b ? `${b.taken} used · ${b.pending} pending approval` : undefined}
+                        title={b ? t('balanceCellTitle', { taken: b.taken, pending: b.pending }) : undefined}
                       >
                         {b ? (
                           <>
@@ -177,7 +179,7 @@ export default async function LeavePage({
                             )}
                             {b.pending > 0 && (
                               <span className="ml-1 text-[10px] font-medium uppercase text-amber-600 dark:text-amber-400">
-                                {b.pending} pend
+                                {t('pendBadge', { count: b.pending })}
                               </span>
                             )}
                           </>
@@ -192,7 +194,7 @@ export default async function LeavePage({
               {balByEmp.size === 0 && (
                 <tr>
                   <td colSpan={1 + balTypes.length} className="px-4 py-8 text-center text-muted-foreground">
-                    No leave records yet.
+                    {t('balancesEmpty')}
                   </td>
                 </tr>
               )}
@@ -203,22 +205,24 @@ export default async function LeavePage({
 
       <Card className="overflow-hidden">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          Requests
+          {t('requestsTitle')}
           <span className="ml-2 font-normal text-muted-foreground">
-            {statusFilter ? `${statusFilter} · ${filtered.length}` : `${filtered.length} total`}
+            {statusFilter
+              ? t('requestsCountFiltered', { status: t(`status.${statusFilter}`), count: filtered.length })
+              : t('requestsCountTotal', { count: filtered.length })}
           </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 font-medium">Applied</th>
-                <th className="px-4 py-2 font-medium">Type</th>
-                <th className="px-4 py-2 font-medium">Dates</th>
-                <th className="px-4 py-2 text-right font-medium">Days</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                {showActions && <th className="px-4 py-2 text-right font-medium">Action</th>}
+                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                <th className="px-4 py-2 font-medium">{t('colApplied')}</th>
+                <th className="px-4 py-2 font-medium">{t('colType')}</th>
+                <th className="px-4 py-2 font-medium">{t('colDates')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
+                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                {showActions && <th className="px-4 py-2 text-right font-medium">{t('colAction')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -250,7 +254,7 @@ export default async function LeavePage({
                     <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.days)}</td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>
-                        {r.status}
+                        {t(`status.${r.status}`)}
                       </span>
                     </td>
                     {showActions && (
@@ -261,14 +265,14 @@ export default async function LeavePage({
                               <input type="hidden" name="leaveRequestId" value={r.id} />
                               <input type="hidden" name="decision" value="approved" />
                               <Button type="submit" size="sm">
-                                Approve
+                                {t('approve')}
                               </Button>
                             </form>
                             <form action={decideLeaveAction}>
                               <input type="hidden" name="leaveRequestId" value={r.id} />
                               <input type="hidden" name="decision" value="rejected" />
                               <Button type="submit" size="sm" variant="outline">
-                                Reject
+                                {t('reject')}
                               </Button>
                             </form>
                           </div>
@@ -281,7 +285,9 @@ export default async function LeavePage({
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={showActions ? 7 : 6} className="px-4 py-10 text-center text-muted-foreground">
-                    No {statusFilter ?? ''} requests.
+                    {statusFilter
+                      ? t('requestsEmptyFiltered', { status: t(`status.${statusFilter}`) })
+                      : t('requestsEmpty')}
                   </td>
                 </tr>
               )}
@@ -293,10 +299,10 @@ export default async function LeavePage({
       <Card>
         <details>
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
-            + Request leave
+            {t('requestLeaveToggle')}
           </summary>
           <form action={requestLeaveAction} className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
-            <Field label="Employee">
+            <Field label={t('fieldEmployee')}>
               <select name="employmentId" required className={inputCls}>
                 {active.map((e) => (
                   <option key={e.employmentId} value={e.employmentId}>
@@ -305,26 +311,26 @@ export default async function LeavePage({
                 ))}
               </select>
             </Field>
-            <Field label="Leave type">
+            <Field label={t('fieldLeaveType')}>
               <select name="leaveTypeId" required className={inputCls}>
-                {leaveTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                {leaveTypes.map((lt) => (
+                  <option key={lt.id} value={lt.id}>
+                    {lt.name}
                   </option>
                 ))}
               </select>
             </Field>
-            <Field label="Start date">
+            <Field label={t('fieldStartDate')}>
               <input name="startDate" type="date" required defaultValue={today} className={inputCls} />
             </Field>
-            <Field label="End date">
+            <Field label={t('fieldEndDate')}>
               <input name="endDate" type="date" required defaultValue={today} className={inputCls} />
             </Field>
-            <Field label="Reason (optional)">
-              <input name="reason" className={inputCls} placeholder="Family trip" />
+            <Field label={t('fieldReason')}>
+              <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
             </Field>
             <div className="flex items-end">
-              <Button type="submit">Submit request</Button>
+              <Button type="submit">{t('submitRequest')}</Button>
             </div>
           </form>
         </details>

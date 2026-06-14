@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { validateImportAction, commitImportAction } from './actions';
@@ -21,6 +22,7 @@ export function EmployeeImport({
   companies: { id: string; name: string }[];
   defaultCompanyId: string;
 }) {
+  const t = useTranslations('people.import');
   const router = useRouter();
   const [companyId, setCompanyId] = useState(defaultCompanyId);
   const [csv, setCsv] = useState('');
@@ -70,7 +72,7 @@ export function EmployeeImport({
     <div className="space-y-6">
       <Card className="p-5">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[260px_1fr]">
-          <Field label="Target company">
+          <Field label={t('targetCompany')}>
             <select
               className={inputCls}
               value={companyId}
@@ -86,10 +88,10 @@ export function EmployeeImport({
               ))}
             </select>
           </Field>
-          <Field label="CSV data">
+          <Field label={t('csvData')}>
             <textarea
               className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
-              placeholder="Paste CSV with a header row — full_name,email,department,hired_on,ic_number,basic_salary,…"
+              placeholder={t('csvPlaceholder')}
               value={csv}
               onChange={(e) => {
                 setCsv(e.target.value);
@@ -102,7 +104,7 @@ export function EmployeeImport({
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={validate} disabled={pending || !csv.trim()}>
-            {pending && phase !== 'done' ? 'Validating…' : 'Validate'}
+            {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
           <Button
             variant="outline"
@@ -112,21 +114,20 @@ export function EmployeeImport({
             }}
             disabled={pending}
           >
-            Load sample
+            {t('loadSample')}
           </Button>
           <span className="ml-auto text-xs text-muted-foreground">
-            Department / position resolve by name within{' '}
-            <span className="font-medium text-foreground">{company?.name ?? 'the company'}</span>.
+            {t('resolveHint', { company: company?.name ?? t('theCompany') })}
           </span>
         </div>
 
         <details className="mt-4 border-t border-border pt-3 text-xs">
           <summary className="cursor-pointer select-none font-medium text-muted-foreground">
-            Column reference
+            {t('columnReference')}
           </summary>
           <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <div className="mb-1 font-medium text-foreground">Required</div>
+              <div className="mb-1 font-medium text-foreground">{t('required')}</div>
               <ul className="space-y-0.5 text-muted-foreground">
                 {IMPORT_COLUMNS.required.map((c) => (
                   <li key={c}>
@@ -136,7 +137,7 @@ export function EmployeeImport({
               </ul>
             </div>
             <div>
-              <div className="mb-1 font-medium text-foreground">Optional</div>
+              <div className="mb-1 font-medium text-foreground">{t('optional')}</div>
               <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
                 {IMPORT_COLUMNS.optional.map((c) => (
                   <li key={c}>
@@ -147,9 +148,9 @@ export function EmployeeImport({
             </div>
           </div>
           <p className="mt-2 text-muted-foreground">
-            <code>ic_number</code> is a 12-digit MyKad. <code>hired_on</code> is YYYY-MM-DD.{' '}
-            <code>bank_name</code> and <code>bank_account_no</code> are all-or-nothing. Boolean fields
-            (<code>eis_eligible</code>, <code>is_resident</code>) accept yes/no and default to yes.
+            <code>ic_number</code> {t('icHint')} <code>hired_on</code> {t('hiredOnHint')}{' '}
+            <code>bank_name</code> {t('bankAnd')} <code>bank_account_no</code> {t('bankHint')}{' '}
+            {t('booleanHintPre')}(<code>eis_eligible</code>, <code>is_resident</code>){t('booleanHintPost')}
           </p>
         </details>
       </Card>
@@ -164,24 +165,24 @@ export function EmployeeImport({
         <Card className="overflow-hidden border-emerald-200 dark:border-emerald-500/30">
           <div className="border-b border-border bg-emerald-50/60 px-4 py-3 dark:bg-emerald-500/10">
             <h2 className="text-sm font-semibold">
-              Imported {result.imported} {result.imported === 1 ? 'employee' : 'employees'}
-              {result.skipped > 0 && ` · ${result.skipped} skipped (had errors)`}
-              {result.failed.length > 0 && ` · ${result.failed.length} failed`}
+              {t('importedCount', { count: result.imported })}
+              {result.skipped > 0 && ` · ${t('skippedCount', { count: result.skipped })}`}
+              {result.failed.length > 0 && ` · ${t('failedCount', { count: result.failed.length })}`}
             </h2>
           </div>
           {result.failed.length > 0 && (
             <ul className="divide-y divide-border text-sm">
               {result.failed.map((f) => (
                 <li key={f.rowNum} className="px-4 py-2">
-                  <span className="text-muted-foreground">Row {f.rowNum}</span> · {f.email} —{' '}
-                  <span className="text-red-600 dark:text-red-400">{f.message}</span>
+                  <span className="text-muted-foreground">{t('row', { num: f.rowNum })}</span> ·{' '}
+                  {f.email} — <span className="text-red-600 dark:text-red-400">{f.message}</span>
                 </li>
               ))}
             </ul>
           )}
           <div className="flex items-center gap-3 px-4 py-3 text-sm">
             <Link href="/people" className="text-primary hover:underline">
-              View people →
+              {t('viewPeople')}
             </Link>
             <button
               type="button"
@@ -191,7 +192,7 @@ export function EmployeeImport({
                 reset();
               }}
             >
-              Import another batch
+              {t('importAnother')}
             </button>
           </div>
         </Card>
@@ -211,28 +212,33 @@ function PreviewTable({
   onImport: () => void;
   busy: boolean;
 }) {
+  const t = useTranslations('people.import');
   const invalid = preview.total - preview.validCount;
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold">
-          Preview ·{' '}
-          <span className="text-emerald-600 dark:text-emerald-400">{preview.validCount} ready</span>
+          {t('preview')} ·{' '}
+          <span className="text-emerald-600 dark:text-emerald-400">
+            {t('readyCount', { count: preview.validCount })}
+          </span>
           {invalid > 0 && (
             <>
               {' · '}
-              <span className="text-red-600 dark:text-red-400">{invalid} with errors</span>
+              <span className="text-red-600 dark:text-red-400">
+                {t('withErrorsCount', { count: invalid })}
+              </span>
             </>
           )}
         </h2>
         <Button onClick={onImport} disabled={busy || preview.validCount === 0} size="sm">
-          {busy ? 'Importing…' : `Import ${preview.validCount} valid`}
+          {busy ? t('importing') : t('importValid', { count: preview.validCount })}
         </Button>
       </div>
 
       {preview.missingColumns.length > 0 && (
         <div className="border-b border-border bg-red-50/60 px-4 py-2.5 text-xs text-red-700 dark:bg-red-500/10 dark:text-red-400">
-          Missing required column{preview.missingColumns.length > 1 ? 's' : ''}:{' '}
+          {t('missingColumns', { count: preview.missingColumns.length })}{' '}
           {preview.missingColumns.map((c) => (
             <code key={c} className="mx-0.5">
               {c}
@@ -245,9 +251,9 @@ function PreviewTable({
         <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="w-12 px-4 py-2 font-medium">#</th>
-            <th className="px-4 py-2 font-medium">Name</th>
-            <th className="px-4 py-2 font-medium">Email</th>
-            <th className="px-4 py-2 font-medium">Result</th>
+            <th className="px-4 py-2 font-medium">{t('colName')}</th>
+            <th className="px-4 py-2 font-medium">{t('colEmail')}</th>
+            <th className="px-4 py-2 font-medium">{t('colResult')}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -259,7 +265,7 @@ function PreviewTable({
               <td className="px-4 py-2">
                 {r.ok ? (
                   <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                    Ready
+                    {t('ready')}
                     {r.warnings.length > 0 && (
                       <span className="text-amber-600 dark:text-amber-400">· {r.warnings.join('; ')}</span>
                     )}

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForDate, attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
@@ -12,10 +13,10 @@ const STATUS: Record<string, string> = {
   half_day: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
   absent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
 };
-const CONTEXT: Record<string, { label: string; cls: string }> = {
-  on_leave: { label: 'On leave', cls: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300' },
-  holiday: { label: 'Holiday', cls: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300' },
-  rest_day: { label: 'Rest day', cls: 'bg-muted text-muted-foreground' },
+const CONTEXT_CLS: Record<string, string> = {
+  on_leave: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
+  holiday: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
+  rest_day: 'bg-muted text-muted-foreground',
 };
 
 function Pill({ label, cls }: { label: string; cls: string }) {
@@ -45,8 +46,21 @@ export default async function AttendancePage({
 }: {
   searchParams: Promise<{ error?: string; date?: string; month?: string }>;
 }) {
+  const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
+  const contextLabels: Record<string, string> = {
+    on_leave: t('contextOnLeave'),
+    holiday: t('contextHoliday'),
+    rest_day: t('contextRestDay'),
+  };
+  const statusLabels: Record<string, string> = {
+    present: t('statusPresent'),
+    late: t('statusLate'),
+    half_day: t('statusHalfDay'),
+    absent: t('statusAbsent'),
+  };
+  const statusLabel = (status: string) => statusLabels[status] ?? status.replace(/_/g, ' ');
   const todayIso = new Date().toISOString().slice(0, 10);
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayIso;
   const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : date.slice(0, 7);
@@ -60,24 +74,24 @@ export default async function AttendancePage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
-        title="Attendance"
+        title={t('title')}
         actions={<TimelineNav from={date} isDefault={date === todayIso} basePath="/attendance" param="date" stepDays={1} />}
       />
       <ErrorBanner message={sp.error} />
 
       <Card className="overflow-hidden">
-        <SectionHeader title={date === todayIso ? 'Today' : date} count={rows.length} />
+        <SectionHeader title={date === todayIso ? t('today') : date} count={rows.length} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 font-medium">Check-in</th>
-                <th className="px-4 py-2 font-medium">Check-out</th>
-                <th className="px-4 py-2 text-right font-medium">Hours</th>
-                <th className="px-4 py-2 text-right font-medium">Overtime</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 text-right font-medium">Action</th>
+                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                <th className="px-4 py-2 font-medium">{t('colCheckIn')}</th>
+                <th className="px-4 py-2 font-medium">{t('colCheckOut')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
+                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -100,22 +114,22 @@ export default async function AttendancePage({
                   </td>
                   <td
                     className="px-4 py-2.5 text-right tabular-nums text-muted-foreground"
-                    title={r.dayType && r.dayType !== 'workday' ? `OT class: ${r.dayType.replace('_', ' ')}` : undefined}
+                    title={r.dayType && r.dayType !== 'workday' ? t('otClass', { dayType: r.dayType.replace('_', ' ') }) : undefined}
                   >
                     {fmtOt(r.otMinutes)}
                     {(r.otMinutes ?? 0) > 0 && r.dayType !== 'workday' && (
                       <span className="ml-1 text-[10px] uppercase text-amber-600 dark:text-amber-400">
-                        {r.dayType === 'holiday' ? 'PH' : 'RD'}
+                        {r.dayType === 'holiday' ? t('otCodePh') : t('otCodeRd')}
                       </span>
                     )}
                   </td>
                   <td className="px-4 py-2.5">
                     {r.attendanceId && r.status ? (
-                      <Pill label={r.status.replace(/_/g, ' ')} cls={STATUS[r.status] ?? STATUS.absent} />
+                      <Pill label={statusLabel(r.status)} cls={STATUS[r.status] ?? STATUS.absent} />
                     ) : r.context ? (
-                      <Pill label={CONTEXT[r.context].label} cls={CONTEXT[r.context].cls} />
+                      <Pill label={contextLabels[r.context] ?? r.context} cls={CONTEXT_CLS[r.context] ?? ''} />
                     ) : (
-                      <Pill label="absent" cls={STATUS.absent} />
+                      <Pill label={t('statusAbsent')} cls={STATUS.absent} />
                     )}
                   </td>
                   <td className="px-4 py-2.5">
@@ -126,7 +140,7 @@ export default async function AttendancePage({
                           <input type="hidden" name="date" value={date} />
                           <input name="time" type="time" defaultValue="09:00" className={`${inputCls} h-8 w-28`} />
                           <Button type="submit" size="sm">
-                            Check in
+                            {t('checkIn')}
                           </Button>
                         </form>
                       ) : !r.checkOutAt ? (
@@ -135,11 +149,11 @@ export default async function AttendancePage({
                           <input type="hidden" name="date" value={date} />
                           <input name="time" type="time" defaultValue="18:00" className={`${inputCls} h-8 w-28`} />
                           <Button type="submit" size="sm" variant="secondary">
-                            Check out
+                            {t('checkOut')}
                           </Button>
                         </form>
                       ) : (
-                        <span className="text-xs text-muted-foreground">done</span>
+                        <span className="text-xs text-muted-foreground">{t('done')}</span>
                       )}
                     </div>
                   </td>
@@ -152,16 +166,16 @@ export default async function AttendancePage({
 
       {corrections.length > 0 && (
         <Card className="overflow-hidden">
-          <SectionHeader title="Correction requests" count={corrections.length} />
+          <SectionHeader title={t('correctionsTitle')} count={corrections.length} />
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Employee</th>
-                  <th className="px-4 py-2 font-medium">Date</th>
-                  <th className="px-4 py-2 font-medium">Proposed</th>
-                  <th className="px-4 py-2 font-medium">Reason</th>
-                  <th className="px-4 py-2 text-right font-medium">Action</th>
+                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colDate')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colProposed')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colReason')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('colAction')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -189,19 +203,19 @@ export default async function AttendancePage({
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="decision" value="approved" />
                               <Button type="submit" size="sm">
-                                Approve
+                                {t('approve')}
                               </Button>
                             </form>
                             <form action={decideCorrectionAction}>
                               <input type="hidden" name="correctionId" value={c.id} />
                               <input type="hidden" name="decision" value="rejected" />
                               <Button type="submit" size="sm" variant="outline">
-                                Reject
+                                {t('reject')}
                               </Button>
                             </form>
                           </div>
                         ) : (
-                          <span className="flex justify-end text-xs text-muted-foreground">your request</span>
+                          <span className="flex justify-end text-xs text-muted-foreground">{t('yourRequest')}</span>
                         )}
                       </td>
                     </tr>
@@ -211,8 +225,7 @@ export default async function AttendancePage({
             </table>
           </div>
           <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-            Approving amends the day&rsquo;s record (re-derived through the time engine, so corrected
-            overtime flows to payroll). You cannot approve your own request.
+            {t('correctionsNote')}
           </p>
         </Card>
       )}
@@ -220,20 +233,20 @@ export default async function AttendancePage({
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div className="text-sm font-medium">
-            Month summary
+            {t('monthSummary')}
             <span className="ml-2 text-muted-foreground">{monthLabel(month)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <Link
               href={monthHref(shiftMonth(month, -1))}
-              aria-label="Previous month"
+              aria-label={t('previousMonth')}
               className="grid size-7 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <ChevronLeft className="size-4" />
             </Link>
             <Link
               href={monthHref(shiftMonth(month, 1))}
-              aria-label="Next month"
+              aria-label={t('nextMonth')}
               className="grid size-7 place-items-center rounded-lg border border-border bg-card text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <ChevronRight className="size-4" />
@@ -244,15 +257,15 @@ export default async function AttendancePage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 text-right font-medium">Present</th>
-                <th className="px-4 py-2 text-right font-medium">Late</th>
-                <th className="px-4 py-2 text-right font-medium">Half day</th>
-                <th className="px-4 py-2 text-right font-medium">Leave</th>
-                <th className="px-4 py-2 text-right font-medium">Absent</th>
-                <th className="px-4 py-2 text-right font-medium">Hours</th>
-                <th className="px-4 py-2 text-right font-medium">Overtime</th>
-                <th className="px-4 py-2 font-medium">Flags</th>
+                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colPresent')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colLate')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colHalfDay')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colLeave')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colAbsent')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
+                <th className="px-4 py-2 font-medium">{t('colFlags')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -271,17 +284,21 @@ export default async function AttendancePage({
                   </td>
                   <td
                     className="px-4 py-2.5 text-right tabular-nums text-muted-foreground"
-                    title={`Workday ${fmtOt(r.otWorkday)} · Rest day ${fmtOt(r.otRestDay)} · Holiday ${fmtOt(r.otHoliday)}`}
+                    title={t('otBreakdown', {
+                      workday: fmtOt(r.otWorkday),
+                      restDay: fmtOt(r.otRestDay),
+                      holiday: fmtOt(r.otHoliday),
+                    })}
                   >
                     {fmtOt(r.otWorkday + r.otRestDay + r.otHoliday)}
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex flex-wrap gap-1.5">
                       {r.otCapExceeded && (
-                        <Pill label="OT > 104h" cls="bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400" />
+                        <Pill label={t('flagOtCap')} cls="bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400" />
                       )}
                       {r.over45hWeek && (
-                        <Pill label="45h+ week" cls="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" />
+                        <Pill label={t('flagOver45h')} cls="bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400" />
                       )}
                       {!r.otCapExceeded && !r.over45hWeek && <span className="text-xs text-muted-foreground">—</span>}
                     </div>
@@ -291,7 +308,7 @@ export default async function AttendancePage({
               {summary.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
-                    No employees in scope.
+                    {t('noEmployees')}
                   </td>
                 </tr>
               )}
@@ -299,9 +316,7 @@ export default async function AttendancePage({
           </table>
         </div>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-          Hours and overtime derive from the company work schedule; rest-day and holiday work is
-          OT-class in full (EA 1955 — ADR-0011). Flags: OT above the statutory 104h/month cap;
-          45h+ week is indicative. Absent counts elapsed working days only.
+          {t('summaryNote')}
         </p>
       </Card>
     </div>

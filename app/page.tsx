@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
@@ -34,17 +35,19 @@ const utc = (iso: string) => new Date(`${iso}T00:00:00Z`);
 const monthAbbr = (iso: string) => MONTHS[utc(iso).getUTCMonth()];
 const dayOf = (iso: string) => utc(iso).getUTCDate();
 const weekdayOf = (iso: string) => WK[utc(iso).getUTCDay()];
-const daysAway = (iso: string, todayMs: number) => {
+type Translator = (key: string, values?: Record<string, string | number>) => string;
+
+const daysAway = (iso: string, todayMs: number, t: Translator) => {
   const d = Math.round((Date.parse(`${iso}T00:00:00Z`) - todayMs) / 86_400_000);
-  return d <= 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`;
+  return d <= 0 ? t('today') : d === 1 ? t('tomorrow') : t('inDays', { d });
 };
-const joinedAgo = (iso: string, todayMs: number) => {
+const joinedAgo = (iso: string, todayMs: number, t: Translator) => {
   const d = Math.round((todayMs - Date.parse(`${iso}T00:00:00Z`)) / 86_400_000);
-  if (d <= 0) return 'joined today';
-  if (d === 1) return 'joined yesterday';
-  if (d < 14) return `joined ${d} days ago`;
-  if (d < 60) return `joined ${Math.round(d / 7)} weeks ago`;
-  return `joined ${Math.round(d / 30)} months ago`;
+  if (d <= 0) return t('joinedToday');
+  if (d === 1) return t('joinedYesterday');
+  if (d < 14) return t('joinedDaysAgo', { d });
+  if (d < 60) return t('joinedWeeksAgo', { w: Math.round(d / 7) });
+  return t('joinedMonthsAgo', { m: Math.round(d / 30) });
 };
 
 const PAYROLL_STATUS: Record<string, string> = {
@@ -96,6 +99,7 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ abs?: string }>;
 }) {
+  const t = await getTranslations('dashboard');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
   // Date window: a 14-day planned-absences strip, by default starting 2 days before
@@ -126,27 +130,27 @@ export default async function DashboardPage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
-        title="Dashboard"
-        description={`${
+        title={t('title')}
+        description={
           scopeIds.length >= companies.length
-            ? 'All companies'
-            : `${scopeIds.length} of ${companies.length} companies`
-        } · overview`}
+            ? t('overviewAll')
+            : t('overviewScoped', { count: scopeIds.length, total: companies.length })
+        }
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Headcount" value={stats.headcount} hint="Active employees" href="/people" />
-        <StatCard label="Pending leave" value={stats.pendingLeave} hint="Awaiting approval" href="/leave" />
+        <StatCard label={t('headcount')} value={stats.headcount} hint={t('activeEmployees')} href="/people" />
+        <StatCard label={t('pendingLeave')} value={stats.pendingLeave} hint={t('awaitingApproval')} href="/leave" />
         <StatCard
-          label="Companies"
+          label={t('companies')}
           value={stats.companies}
-          hint={`${stats.departments} departments`}
+          hint={t('departments', { count: stats.departments })}
           href="/admin/organization"
         />
         <StatCard
-          label="Latest payroll"
+          label={t('latestPayroll')}
           value={stats.latestPayroll ? rm(stats.latestPayroll.net) : '—'}
-          hint={stats.latestPayroll ? `${stats.latestPayroll.payPeriod} · ${stats.latestPayroll.status}` : 'No runs yet'}
+          hint={stats.latestPayroll ? `${stats.latestPayroll.payPeriod} · ${stats.latestPayroll.status}` : t('noRunsYet')}
           href="/payroll"
         />
       </div>
@@ -163,15 +167,15 @@ export default async function DashboardPage({
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold">Onboarding</h2>
-              <p className="text-xs text-muted-foreground">Recently joined</p>
+              <h2 className="text-sm font-semibold">{t('onboarding')}</h2>
+              <p className="text-xs text-muted-foreground">{t('recentlyJoined')}</p>
             </div>
             <Link href="/people" className="text-xs text-muted-foreground hover:text-foreground">
-              View all
+              {t('viewAll')}
             </Link>
           </div>
           {hires.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">No hires in the last 60 days.</p>
+            <p className="mt-4 text-sm text-muted-foreground">{t('noHires', { days: 60 })}</p>
           ) : (
             <ul className="mt-4 space-y-3">
               {hires.map((h) => (
@@ -182,7 +186,7 @@ export default async function DashboardPage({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{h.name}</div>
                     <div className="truncate text-xs text-muted-foreground">
-                      {h.role ?? h.department ?? '—'} · {joinedAgo(h.hiredOn, todayMs)}
+                      {h.role ?? h.department ?? '—'} · {joinedAgo(h.hiredOn, todayMs, t)}
                     </div>
                   </div>
                   <StatusBadge status={h.status} />
@@ -193,10 +197,10 @@ export default async function DashboardPage({
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">Upcoming events</h2>
-          <p className="text-xs text-muted-foreground">Public holidays</p>
+          <h2 className="text-sm font-semibold">{t('upcomingEvents')}</h2>
+          <p className="text-xs text-muted-foreground">{t('publicHolidays')}</p>
           {events.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">Nothing scheduled.</p>
+            <p className="mt-4 text-sm text-muted-foreground">{t('nothingScheduled')}</p>
           ) : (
             <ul className="mt-4 space-y-3">
               {events.map((e) => (
@@ -210,7 +214,7 @@ export default async function DashboardPage({
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{e.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {weekdayOf(e.date)} · {daysAway(e.date, todayMs)}
+                      {weekdayOf(e.date)} · {daysAway(e.date, todayMs, t)}
                     </div>
                   </div>
                 </li>
@@ -222,9 +226,9 @@ export default async function DashboardPage({
 
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3">
-          <h2 className="text-sm font-semibold">Headcount by company</h2>
+          <h2 className="text-sm font-semibold">{t('headcountByCompany')}</h2>
           <span className="text-xs text-muted-foreground">
-            {breakdown.reduce((sum, c) => sum + c.headcount, 0)} total
+            {t('totalCount', { count: breakdown.reduce((sum, c) => sum + c.headcount, 0) })}
           </span>
         </div>
         <table className="w-full text-sm">
@@ -240,7 +244,7 @@ export default async function DashboardPage({
             {breakdown.length === 0 && (
               <tr>
                 <td className="px-4 py-6 text-center text-muted-foreground" colSpan={2}>
-                  No companies yet.
+                  {t('noCompanies')}
                 </td>
               </tr>
             )}
@@ -252,20 +256,20 @@ export default async function DashboardPage({
         <div className="space-y-6 lg:col-span-2">
           <Card className="p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Attendance</h2>
-              <span className="text-xs text-muted-foreground">{att.date ? `as of ${att.date}` : 'no records'}</span>
+              <h2 className="text-sm font-semibold">{t('attendance')}</h2>
+              <span className="text-xs text-muted-foreground">{att.date ? t('asOf', { date: att.date }) : t('noRecords')}</span>
             </div>
             {attTotal === 0 ? (
-              <p className="mt-4 text-sm text-muted-foreground">No attendance recorded yet.</p>
+              <p className="mt-4 text-sm text-muted-foreground">{t('noAttendance')}</p>
             ) : (
               <>
                 <div className="mt-4 grid grid-cols-4 gap-3">
                   {(
                     [
-                      ['Present', att.present, 'text-emerald-600 dark:text-emerald-400'],
-                      ['Late', att.late, 'text-amber-600 dark:text-amber-400'],
-                      ['Half day', att.halfDay, 'text-blue-600 dark:text-blue-400'],
-                      ['Absent', att.absent, 'text-rose-600 dark:text-rose-400'],
+                      [t('present'), att.present, 'text-emerald-600 dark:text-emerald-400'],
+                      [t('late'), att.late, 'text-amber-600 dark:text-amber-400'],
+                      [t('halfDay'), att.halfDay, 'text-blue-600 dark:text-blue-400'],
+                      [t('absent'), att.absent, 'text-rose-600 dark:text-rose-400'],
                     ] as const
                   ).map(([label, value, color]) => (
                     <div key={label}>
@@ -285,12 +289,12 @@ export default async function DashboardPage({
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-sm font-semibold">Latest payroll run</h2>
+            <h2 className="text-sm font-semibold">{t('latestPayrollRun')}</h2>
             {stats.latestPayroll ? (
               <div className="mt-3 flex items-center justify-between">
                 <div>
                   <div className="text-lg font-semibold">{stats.latestPayroll.payPeriod}</div>
-                  <div className="text-xs text-muted-foreground">Net {rm(stats.latestPayroll.net)}</div>
+                  <div className="text-xs text-muted-foreground">{t('net', { amount: rm(stats.latestPayroll.net) })}</div>
                 </div>
                 <span
                   className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${PAYROLL_STATUS[stats.latestPayroll.status]}`}
@@ -300,9 +304,9 @@ export default async function DashboardPage({
               </div>
             ) : (
               <p className="mt-3 text-sm text-muted-foreground">
-                No payroll runs yet.{' '}
+                {t('noPayrollRuns')}{' '}
                 <Link href="/payroll" className="text-primary hover:underline">
-                  Create one →
+                  {t('createOne')}
                 </Link>
               </p>
             )}
@@ -311,16 +315,16 @@ export default async function DashboardPage({
 
         <Card className="p-5">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-sm font-semibold">Recent activity</h2>
+            <h2 className="text-sm font-semibold">{t('recentActivity')}</h2>
             {isAdmin(s) && (
               <Link href="/admin/audit" className="text-xs text-primary hover:underline">
-                View all
+                {t('viewAll')}
               </Link>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">From the domain-event log</p>
+          <p className="text-xs text-muted-foreground">{t('recentActivitySubtitle')}</p>
           {activity.length === 0 ? (
-            <p className="mt-4 text-sm text-muted-foreground">No activity yet.</p>
+            <p className="mt-4 text-sm text-muted-foreground">{t('noActivity')}</p>
           ) : (
             <ul className="mt-4 space-y-3">
               {activity.map((a, i) => {

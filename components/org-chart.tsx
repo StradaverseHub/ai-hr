@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronUp, Minus, Plus, Search } from 'lucide-react';
 import { Avatar } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -19,11 +20,11 @@ export type OrgEdge = {
 };
 
 /** Connector style per reporting-relationship type — the whole point: direct vs dotted etc. */
-const LINE: Record<OrgEdge['type'], { label: string; stroke: string; dash?: string }> = {
-  administrative: { label: 'Direct', stroke: '#6366f1' },
-  functional: { label: 'Functional', stroke: '#0d9488' },
-  project: { label: 'Project', stroke: '#9333ea' },
-  dotted: { label: 'Dotted-line', stroke: '#d97706', dash: '5 6' },
+const LINE: Record<OrgEdge['type'], { labelKey: string; stroke: string; dash?: string }> = {
+  administrative: { labelKey: 'legend.direct', stroke: '#6366f1' },
+  functional: { labelKey: 'legend.functional', stroke: '#0d9488' },
+  project: { labelKey: 'legend.project', stroke: '#9333ea' },
+  dotted: { labelKey: 'legend.dotted', stroke: '#d97706', dash: '5 6' },
 };
 
 const DEPT_PALETTE = ['#6366f1', '#0d9488', '#d97706', '#db2777', '#0ea5e9', '#65a30d', '#e11d48'];
@@ -39,6 +40,7 @@ type Pos = { cx: number; cy: number; t: number; b: number; l: number; r: number 
 const matchText = (e: OrgEmp) => `${e.name} ${e.role ?? ''} ${e.department ?? ''}`.toLowerCase();
 
 export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: OrgEdge[] }) {
+  const t = useTranslations('org');
   const empById = new Map(employees.map((e) => [e.employmentId, e]));
   const childrenByMgr = new Map<string, string[]>();
   const hasAdminMgr = new Set<string>();
@@ -194,21 +196,21 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
-          {(Object.keys(LINE) as OrgEdge['type'][]).map((t) => (
-            <span key={t} className="inline-flex items-center gap-2">
+          {(Object.keys(LINE) as OrgEdge['type'][]).map((lineType) => (
+            <span key={lineType} className="inline-flex items-center gap-2">
               <svg width="22" height="8" aria-hidden className="overflow-visible">
                 <line
                   x1="0"
                   y1="4"
                   x2="22"
                   y2="4"
-                  stroke={LINE[t].stroke}
+                  stroke={LINE[lineType].stroke}
                   strokeWidth="2"
-                  strokeDasharray={LINE[t].dash}
+                  strokeDasharray={LINE[lineType].dash}
                   strokeLinecap="round"
                 />
               </svg>
-              {LINE[t].label}
+              {t(LINE[lineType].labelKey)}
             </span>
           ))}
         </div>
@@ -220,8 +222,8 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search people…"
-              aria-label="Search the org chart"
+              placeholder={t('searchPlaceholder')}
+              aria-label={t('searchAria')}
               className="h-8 w-48 rounded-lg border border-border bg-card pl-8 pr-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring"
             />
           </div>
@@ -230,7 +232,7 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
               type="button"
               onClick={() => setScale((s) => Math.max(Z_MIN, +(s - 0.1).toFixed(1)))}
               disabled={scale <= Z_MIN}
-              aria-label="Zoom out"
+              aria-label={t('zoomOut')}
               className={zoomBtn}
             >
               <Minus className="size-4" />
@@ -238,7 +240,7 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
             <button
               type="button"
               onClick={() => setScale(1)}
-              title="Reset zoom"
+              title={t('resetZoom')}
               className="h-7 min-w-12 rounded-lg border border-border bg-card px-1.5 text-xs font-medium tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               {Math.round(scale * 100)}%
@@ -247,7 +249,7 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
               type="button"
               onClick={() => setScale((s) => Math.min(Z_MAX, +(s + 0.1).toFixed(1)))}
               disabled={scale >= Z_MAX}
-              aria-label="Zoom in"
+              aria-label={t('zoomIn')}
               className={zoomBtn}
             >
               <Plus className="size-4" />
@@ -257,7 +259,7 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
       </div>
 
       {matches && matches.size === 0 && (
-        <p className="mb-3 text-xs text-muted-foreground">No one matches &ldquo;{query.trim()}&rdquo;.</p>
+        <p className="mb-3 text-xs text-muted-foreground">{t('noMatch', { query: query.trim() })}</p>
       )}
 
       <div className="overflow-x-auto pb-2">
@@ -320,6 +322,7 @@ function Subtree({
   onToggle: (id: string) => void;
   renderNode: (id: string) => ReactNode;
 }) {
+  const t = useTranslations('org');
   const kids = childrenByMgr.get(id) ?? [];
   const isCollapsed = collapsed.has(id);
   return (
@@ -330,7 +333,7 @@ function Subtree({
           type="button"
           onClick={() => onToggle(id)}
           aria-expanded={!isCollapsed}
-          aria-label={isCollapsed ? `Expand ${kids.length} reports` : 'Collapse reports'}
+          aria-label={isCollapsed ? t('expandReports', { count: kids.length }) : t('collapseReports')}
           className="relative z-20 mt-2 inline-flex h-6 items-center gap-1 rounded-full border border-border bg-card px-2 text-[11px] font-medium text-muted-foreground shadow-[var(--shadow-sm)] transition duration-150 ease-snappy hover:bg-accent hover:text-foreground active:scale-95"
         >
           {isCollapsed ? (

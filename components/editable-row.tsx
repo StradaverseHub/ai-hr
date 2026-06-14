@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
@@ -32,6 +33,7 @@ export function EditableRow({
   archiveAction: (fd: FormData) => void;
   deleteAction: (fd: FormData) => void;
 }) {
+  const t = useTranslations('components.editableRow');
   const [editing, setEditing] = useState(false);
 
   if (editing) {
@@ -50,10 +52,10 @@ export function EditableRow({
             />
           ))}
           <Button type="submit" size="sm">
-            Save
+            {t('save')}
           </Button>
           <Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
         </form>
       </li>
@@ -66,21 +68,21 @@ export function EditableRow({
         <span className="text-foreground">{display}</span>
         {archived && (
           <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-            archived
+            {t('archivedBadge')}
           </span>
         )}
         {sub && <span className="ml-2 text-xs text-muted-foreground">{sub}</span>}
       </div>
       <div className="flex shrink-0 items-center gap-1">
         <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(true)}>
-          Edit
+          {t('edit')}
         </Button>
         {archived ? (
           <form action={archiveAction}>
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="archived" value="false" />
             <Button type="submit" size="sm" variant="ghost">
-              Unarchive
+              {t('unarchive')}
             </Button>
           </form>
         ) : inUse ? (
@@ -88,7 +90,7 @@ export function EditableRow({
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="archived" value="true" />
             <Button type="submit" size="sm" variant="ghost">
-              Archive
+              {t('archive')}
             </Button>
           </form>
         ) : (
@@ -98,11 +100,11 @@ export function EditableRow({
               size="sm"
               variant="ghost"
               className="text-destructive hover:text-destructive"
-              title="Delete this record?"
-              description="It isn't referenced anywhere, so this permanently removes it."
-              confirmLabel="Delete"
+              title={t('deleteTitle')}
+              description={t('deleteDescription')}
+              confirmLabel={t('deleteConfirm')}
             >
-              Delete
+              {t('delete')}
             </ConfirmSubmit>
           </form>
         )}

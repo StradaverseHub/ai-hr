@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from 'react';
+import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import {
   ArrowUpRight,
@@ -58,7 +59,7 @@ const HATCH = {
 // Soft shadow so leave pills float above the tile grid.
 const FLOAT = { boxShadow: '0 1px 2px rgb(20 20 45 / 0.10), 0 4px 10px -2px rgb(20 20 45 / 0.14)' } as const;
 
-export function PlannedAbsences({
+export async function PlannedAbsences({
   rows,
   from,
   days,
@@ -71,6 +72,7 @@ export function PlannedAbsences({
   todayIso: string;
   controls?: ReactNode;
 }) {
+  const t = await getTranslations('components.plannedAbsences');
   const fromMs = ms(from);
   const dayArr = Array.from({ length: days }, (_, i) => {
     const d = new Date(fromMs + i * MS_DAY);
@@ -89,7 +91,7 @@ export function PlannedAbsences({
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
         <div>
-          <h2 className="text-base font-semibold tracking-tight">Planned absences</h2>
+          <h2 className="text-base font-semibold tracking-tight">{t('title')}</h2>
           <p className="text-xs text-muted-foreground">
             {dayArr[0]?.iso} &ndash; {dayArr[lastIdx]?.iso}
           </p>
@@ -100,7 +102,7 @@ export function PlannedAbsences({
             href="/leave"
             className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            View all
+            {t('viewAll')}
             <ArrowUpRight className="size-3.5" />
           </Link>
         </div>
@@ -108,7 +110,7 @@ export function PlannedAbsences({
 
       {rows.length === 0 ? (
         <p className="border-t border-border px-5 py-10 text-center text-sm text-muted-foreground">
-          No employees in scope.
+          {t('empty')}
         </p>
       ) : (
         <div className="overflow-x-auto border-t border-border px-3 pb-3 pt-1">
@@ -118,7 +120,7 @@ export function PlannedAbsences({
           >
             {/* header */}
             <div className="sticky left-0 z-20 bg-card" style={{ gridColumn: 1, gridRow: 1 }}>
-              <span className="text-xs font-medium text-muted-foreground">Employees</span>
+              <span className="text-xs font-medium text-muted-foreground">{t('employees')}</span>
             </div>
             {dayArr.map((d, i) => {
               const isToday = d.iso === todayIso;
@@ -189,7 +191,12 @@ export function PlannedAbsences({
                         chip,
                         pending && 'ring-1 ring-inset ring-black/10 dark:ring-white/15',
                       )}
-                      title={`${l.typeName} · ${l.startDate} to ${l.endDate} · ${l.status}`}
+                      title={t('pillTitle', {
+                        type: l.typeName,
+                        start: l.startDate,
+                        end: l.endDate,
+                        status: l.status,
+                      })}
                     >
                       <Icon className="size-3.5 shrink-0" />
                       <span className="flex-1 truncate">{l.typeName.replace(/\s*leave$/i, '')}</span>

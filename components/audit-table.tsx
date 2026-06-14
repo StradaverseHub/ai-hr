@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import type { AuditRow } from '@/core/read';
 import {
@@ -12,9 +13,10 @@ import {
 
 /** Append-only event ledger, rendered as scannable rows with an expandable payload diff.
  *  PII (bank/IC/salary) is masked by describePayload. Server component — no client JS. */
-export function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: number }) {
+export async function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: number }) {
+  const t = await getTranslations('components.auditTable');
   if (rows.length === 0) {
-    return <p className="px-4 py-8 text-center text-sm text-muted-foreground">No events.</p>;
+    return <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('empty')}</p>;
   }
   return (
     <ul className="divide-y divide-border">
@@ -32,7 +34,7 @@ export function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: number })
                 />
                 <span className="min-w-0 flex-1">
                   <span className="font-medium text-foreground">{humanizeEvent(r.eventType)}</span>{' '}
-                  <span className="text-muted-foreground">by {who}</span>
+                  <span className="text-muted-foreground">{t('byActor', { who })}</span>
                 </span>
                 <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                   {href ? (
@@ -62,7 +64,7 @@ export function AuditTable({ rows, nowMs }: { rows: AuditRow[]; nowMs: number })
                       <dd className="tabular-nums">{d.value}</dd>
                     </div>
                   ))}
-                  <div className="pt-0.5 text-[10px] text-muted-foreground/70">seq #{r.sequence}</div>
+                  <div className="pt-0.5 text-[10px] text-muted-foreground/70">{t('sequence', { seq: r.sequence })}</div>
                 </dl>
               )}
             </details>
