@@ -68,12 +68,27 @@ Noto Tamil). Per-glyph fallback walks the chain until a font has the glyph, so L
 and non-Latin text uses whatever script font the user's OS already ships — zero extra bytes. If a
 target OS lacks a script font we can add a self-hosted Noto subset later without touching call sites.
 
+## Update (2026-06-14) — full extraction completed
+
+The "foundation only" boundary below was closed the same day. Every page body and shared component
+was extracted via a two-phase multi-agent workflow (`scripts/wf-i18n-extract.mjs`: 25 file-partitioned
+units × extract→verify), yielding **765 keys across 14 namespaces** (789 total in `en.json`). Files were
+partitioned so no two agents edited the same file (the 5 multi-consumer shared components — planned
+absences, timeline nav, audit table, payroll tabs, print button — went to one agent). Keys merged
+centrally (`scripts/merge-i18n-keys.mjs`) to avoid `en.json` write races. All 6 locales were then
+machine-translated (`scripts/wf-i18n-translate.mjs`: translate→verify per language) to **full 789-key
+parity**. A deterministic gate (`scripts/i18n-check.mjs`) asserts key parity + ICU-placeholder integrity
+across every locale and is the standing regression check. Verified: tsc clean · 119 tests green · all 15
+routes render 200 in English with zero missing-message errors and zero raw keys, and zh/ms/ta/th/vi
+render translated with no key leakage. `ta`/`th` remain machine drafts flagged for native review.
+
 ## Consequences
 
 - **Foundation only.** This slice extracts and wires the **navigation** strings (sidebar) as the proof
   surface, plus `common`/`dashboard` shells. The remaining ~500–800 page strings are migrated
   incrementally page-by-page using the same `useTranslations` pattern; each new key lands in
-  `messages/en.json` and flows through the export/import matrix.
+  `messages/en.json` and flows through the export/import matrix. *(Superseded by the 2026-06-14 update
+  above — full extraction is done; this remains the pattern for any newly-added strings.)*
 - **Machine drafts are provisional.** `zh`/`ms`/`vi` drafts are reasonable; `ta`/`th` are best-effort
   and flagged for native review. The export/import loop is the correction mechanism — no code change
   needed to fix copy.

@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies, listDepartments } from '@/core/read';
@@ -5,6 +6,7 @@ import { PageHeader } from '@/components/ui';
 import { EmployeeImport } from './employee-import';
 
 export default async function ImportPage() {
+  const t = await getTranslations('people.import');
   const s = await requireAdmin();
   const [companies, departments] = await Promise.all([listCompanies(s), listDepartments(s)]);
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
@@ -21,12 +23,12 @@ export default async function ImportPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        back={{ href: '/people', label: 'People' }}
-        title="Import employees"
-        description="Bulk-load employees, statutory profiles and pay from a CSV. Validate first, then import."
+        back={{ href: '/people', label: t('backLabel') }}
+        title={t('title')}
+        description={t('description')}
       />
       {companies.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Create a company before importing employees.</p>
+        <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
       ) : (
         <EmployeeImport
           companies={companies.map((c) => ({ id: c.id, name: c.name }))}

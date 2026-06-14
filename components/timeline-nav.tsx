@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const MS_DAY = 86_400_000;
@@ -25,17 +26,18 @@ export function TimelineNav({
   param?: string;
   stepDays?: number;
 }) {
+  const t = useTranslations('components.timelineNav');
   const router = useRouter();
   const go = (iso: string | null) =>
     router.push(iso ? `${basePath}?${param}=${iso}` : basePath, { scroll: false });
-  const unit = stepDays === 1 ? 'day' : 'week';
+  const unit = stepDays === 1 ? t('unitDay') : t('unitWeek');
 
   return (
     <div className="flex items-center gap-1.5">
       <button
         type="button"
         onClick={() => go(shiftIso(from, -stepDays))}
-        aria-label={`Previous ${unit}`}
+        aria-label={t('previous', { unit })}
         className={iconBtn}
       >
         <ChevronLeft className="size-4" />
@@ -47,13 +49,13 @@ export function TimelineNav({
           const v = e.target.value;
           if (v && v !== from) go(v);
         }}
-        aria-label={stepDays === 1 ? 'Date' : 'Window start date'}
+        aria-label={stepDays === 1 ? t('dateLabel') : t('windowStartLabel')}
         className="h-7 rounded-lg border border-border bg-card px-2 text-xs tabular-nums text-foreground outline-none transition-colors focus-visible:border-ring"
       />
       <button
         type="button"
         onClick={() => go(shiftIso(from, stepDays))}
-        aria-label={`Next ${unit}`}
+        aria-label={t('next', { unit })}
         className={iconBtn}
       >
         <ChevronRight className="size-4" />
@@ -64,7 +66,7 @@ export function TimelineNav({
           onClick={() => go(null)}
           className="h-7 rounded-lg border border-border bg-card px-2.5 text-xs font-medium text-muted-foreground transition duration-150 ease-snappy hover:bg-accent hover:text-foreground active:scale-95"
         >
-          Today
+          {t('today')}
         </button>
       )}
     </div>

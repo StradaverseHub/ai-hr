@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 import { EditableRow } from './editable-row';
@@ -85,6 +86,7 @@ export function CompanyPanel({
     deleteCostCenter: Action;
   };
 }) {
+  const t = useTranslations('admin.organization');
   const [expanded, setExpanded] = useState(false);
   const c = company;
   const isMY = c.country === 'MY';
@@ -115,17 +117,21 @@ export function CompanyPanel({
           <span className="truncate text-sm font-medium text-foreground">{c.name}</span>
           {c.registrationNo && <span className="text-xs text-muted-foreground">{c.registrationNo}</span>}
           <span className={badge.muted}>{c.country}</span>
-          {c.archivedAt && <span className={badge.muted}>archived</span>}
+          {c.archivedAt && <span className={badge.muted}>{t('archived')}</span>}
         </button>
         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {departments.length} dept · {positions.length} pos · {costCenters.length} cc
+            {t('countSummary', {
+              dept: departments.length,
+              pos: positions.length,
+              cc: costCenters.length,
+            })}
           </span>
           {isMY &&
             (statMissing === 0 ? (
-              <span className={badge.emerald}>statutory ✓</span>
+              <span className={badge.emerald}>{t('statutoryComplete')}</span>
             ) : (
-              <span className={badge.amber}>statutory {3 - statMissing}/3</span>
+              <span className={badge.amber}>{t('statutoryPartial', { ready: 3 - statMissing, total: 3 })}</span>
             ))}
         </div>
       </div>
@@ -135,36 +141,36 @@ export function CompanyPanel({
           {/* Company details + group parent */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <form action={actions.updateCompany} className="space-y-2.5 rounded-lg bg-background p-3">
-              <SubHeader>Details</SubHeader>
+              <SubHeader>{t('details')}</SubHeader>
               <input type="hidden" name="id" value={c.id} />
-              <Field label="Legal name">
+              <Field label={t('legalName')}>
                 <input name="legalName" required defaultValue={c.name} className={inputCls} />
               </Field>
               <div className="grid grid-cols-3 gap-2">
-                <Field label="Reg. no.">
+                <Field label={t('regNo')}>
                   <input name="registrationNo" defaultValue={c.registrationNo ?? ''} className={inputCls} />
                 </Field>
-                <Field label="Country">
-                  <input name="country" defaultValue={c.country} pattern="[A-Za-z]{2}" maxLength={2} title="2-letter ISO country code, e.g. MY" className={`${inputCls} uppercase`} />
+                <Field label={t('country')}>
+                  <input name="country" defaultValue={c.country} pattern="[A-Za-z]{2}" maxLength={2} title={t('countryHint')} className={`${inputCls} uppercase`} />
                 </Field>
-                <Field label="Currency">
-                  <input name="currency" defaultValue={c.currency} pattern="[A-Za-z]{3}" maxLength={3} title="3-letter ISO currency code, e.g. MYR" className={`${inputCls} uppercase`} />
+                <Field label={t('currency')}>
+                  <input name="currency" defaultValue={c.currency} pattern="[A-Za-z]{3}" maxLength={3} title={t('currencyHint')} className={`${inputCls} uppercase`} />
                 </Field>
               </div>
               <div className="flex items-center gap-1.5">
                 <Button type="submit" size="sm">
-                  Save details
+                  {t('saveDetails')}
                 </Button>
               </div>
             </form>
 
             <div className="space-y-3">
               <form action={actions.setParent} className="space-y-2.5 rounded-lg bg-background p-3">
-                <SubHeader>Group parent</SubHeader>
+                <SubHeader>{t('groupParent')}</SubHeader>
                 <input type="hidden" name="companyId" value={c.id} />
-                <Field label="Parent company">
+                <Field label={t('parentCompany')}>
                   <select name="parentCompanyId" defaultValue={c.parentId ?? ''} className={inputCls}>
-                    <option value="">— none (group root) —</option>
+                    <option value="">{t('noneGroupRoot')}</option>
                     {companies
                       .filter((o) => o.id !== c.id)
                       .map((o) => (
@@ -175,7 +181,7 @@ export function CompanyPanel({
                   </select>
                 </Field>
                 <Button type="submit" size="sm" variant="outline">
-                  Set parent
+                  {t('setParent')}
                 </Button>
               </form>
 
@@ -185,7 +191,7 @@ export function CompanyPanel({
                     <input type="hidden" name="id" value={c.id} />
                     <input type="hidden" name="archived" value="false" />
                     <Button type="submit" size="sm" variant="ghost">
-                      Unarchive
+                      {t('unarchive')}
                     </Button>
                   </form>
                 ) : c.inUse ? (
@@ -193,7 +199,7 @@ export function CompanyPanel({
                     <input type="hidden" name="id" value={c.id} />
                     <input type="hidden" name="archived" value="true" />
                     <Button type="submit" size="sm" variant="ghost">
-                      Archive company
+                      {t('archiveCompany')}
                     </Button>
                   </form>
                 ) : (
@@ -203,16 +209,16 @@ export function CompanyPanel({
                       size="sm"
                       variant="ghost"
                       className="text-destructive hover:text-destructive"
-                      title="Delete this company?"
-                      description="It has no departments, employees or subsidiaries, so this permanently removes it."
-                      confirmLabel="Delete"
+                      title={t('deleteCompanyTitle')}
+                      description={t('deleteCompanyDescription')}
+                      confirmLabel={t('delete')}
                     >
-                      Delete company
+                      {t('deleteCompany')}
                     </ConfirmSubmit>
                   </form>
                 )}
                 <span className="text-xs text-muted-foreground">
-                  {c.inUse ? 'In use — archive instead of delete.' : 'Not referenced anywhere.'}
+                  {c.inUse ? t('inUseArchiveInstead') : t('notReferenced')}
                 </span>
               </div>
             </div>
@@ -221,27 +227,27 @@ export function CompanyPanel({
           {/* Statutory identity — country-pack section (ADR-0008) */}
           {isMY ? (
             <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
-              <SubHeader>Statutory identity (MY)</SubHeader>
+              <SubHeader>{t('statutoryIdentityMY')}</SubHeader>
               <input type="hidden" name="companyId" value={c.id} />
               <input type="hidden" name="country" value="MY" />
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <Field label="EPF employer no.">
+                <Field label={t('epfEmployerNo')}>
                   <input name="epfEmployerNo" defaultValue={statutory?.epfEmployerNo ?? ''} className={inputCls} />
                 </Field>
-                <Field label="SOCSO employer code">
+                <Field label={t('socsoEmployerCode')}>
                   <input
                     name="socsoEmployerCode"
                     defaultValue={statutory?.socsoEmployerCode ?? ''}
                     className={inputCls}
                   />
                 </Field>
-                <Field label="LHDN E-number">
+                <Field label={t('lhdnENumber')}>
                   <input name="lhdnEmployerNo" defaultValue={statutory?.lhdnEmployerNo ?? ''} className={inputCls} />
                 </Field>
-                <Field label="MyInvois TIN">
+                <Field label={t('myinvoisTin')}>
                   <input name="myinvoisTin" defaultValue={statutory?.myinvoisTin ?? ''} className={inputCls} />
                 </Field>
-                <Field label="SSM registration no.">
+                <Field label={t('ssmRegistrationNo')}>
                   <input
                     name="ssmRegistrationNo"
                     defaultValue={statutory?.ssmRegistrationNo ?? ''}
@@ -250,23 +256,22 @@ export function CompanyPanel({
                 </Field>
               </div>
               <p className="text-xs text-muted-foreground">
-                Used by the statutory filings (CP39, EPF, SOCSO/EIS, EA, Form E).
+                {t('statutoryFilingsHint')}
               </p>
               <Button type="submit" size="sm">
-                Save statutory identity
+                {t('saveStatutoryIdentity')}
               </Button>
             </form>
           ) : (
             <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
-              No statutory pack installed for {c.country} — identifiers become editable when a pack exists
-              (ADR-0008).
+              {t('noStatutoryPack', { country: c.country })}
             </p>
           )}
 
           {/* Children: departments / positions / cost centers — scoped to this company */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
             <div className="rounded-lg bg-background p-3">
-              <SubHeader>Departments ({departments.length})</SubHeader>
+              <SubHeader>{t('departmentsCount', { count: departments.length })}</SubHeader>
               <ul className="mt-1 divide-y divide-border/60">
                 {departments.map((d) => (
                   <EditableRow
@@ -283,22 +288,22 @@ export function CompanyPanel({
                   />
                 ))}
                 {departments.length === 0 && (
-                  <li className="py-2 text-xs text-muted-foreground">None yet.</li>
+                  <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
                 )}
               </ul>
               <form action={actions.createDepartment} className="mt-2 flex items-end gap-2">
                 <input type="hidden" name="companyId" value={c.id} />
-                <Field label="New department">
-                  <input name="name" required placeholder="Marketing" className={inputCls} />
+                <Field label={t('newDepartment')}>
+                  <input name="name" required placeholder={t('departmentPlaceholder')} className={inputCls} />
                 </Field>
                 <Button type="submit" size="sm" variant="outline">
-                  Add
+                  {t('add')}
                 </Button>
               </form>
             </div>
 
             <div className="rounded-lg bg-background p-3">
-              <SubHeader>Positions ({positions.length})</SubHeader>
+              <SubHeader>{t('positionsCount', { count: positions.length })}</SubHeader>
               <ul className="mt-1 divide-y divide-border/60">
                 {positions.map((p) => (
                   <EditableRow
@@ -314,21 +319,21 @@ export function CompanyPanel({
                     deleteAction={actions.deletePosition}
                   />
                 ))}
-                {positions.length === 0 && <li className="py-2 text-xs text-muted-foreground">None yet.</li>}
+                {positions.length === 0 && <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>}
               </ul>
               <form action={actions.createPosition} className="mt-2 flex items-end gap-2">
                 <input type="hidden" name="companyId" value={c.id} />
-                <Field label="New position">
-                  <input name="title" required placeholder="Senior Engineer" className={inputCls} />
+                <Field label={t('newPosition')}>
+                  <input name="title" required placeholder={t('positionPlaceholder')} className={inputCls} />
                 </Field>
                 <Button type="submit" size="sm" variant="outline">
-                  Add
+                  {t('add')}
                 </Button>
               </form>
             </div>
 
             <div className="rounded-lg bg-background p-3">
-              <SubHeader>Cost centers ({costCenters.length})</SubHeader>
+              <SubHeader>{t('costCentersCount', { count: costCenters.length })}</SubHeader>
               <ul className="mt-1 divide-y divide-border/60">
                 {costCenters.map((cc) => (
                   <EditableRow
@@ -345,20 +350,20 @@ export function CompanyPanel({
                   />
                 ))}
                 {costCenters.length === 0 && (
-                  <li className="py-2 text-xs text-muted-foreground">None yet.</li>
+                  <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
                 )}
               </ul>
               <form action={actions.createCostCenter} className="mt-2 space-y-2">
                 <input type="hidden" name="companyId" value={c.id} />
                 <div className="flex items-end gap-2">
-                  <Field label="Code">
-                    <input name="code" required placeholder="HQ" className={`${inputCls} w-20`} />
+                  <Field label={t('fieldCode')}>
+                    <input name="code" required placeholder={t('costCenterCodePlaceholder')} className={`${inputCls} w-20`} />
                   </Field>
-                  <Field label="Name">
-                    <input name="name" required placeholder="Headquarters" className={inputCls} />
+                  <Field label={t('fieldName')}>
+                    <input name="name" required placeholder={t('costCenterNamePlaceholder')} className={inputCls} />
                   </Field>
                   <Button type="submit" size="sm" variant="outline">
-                    Add
+                    {t('add')}
                   </Button>
                 </div>
               </form>

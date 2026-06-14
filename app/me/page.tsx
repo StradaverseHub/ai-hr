@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   leaveBalances,
@@ -37,29 +38,31 @@ const ATT_STATUS: Record<string, string> = {
   absent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
 };
 
-const PCB_LABEL: Record<number, string> = {
-  1: 'Single',
-  2: 'Married · spouse not working',
-  3: 'Married · spouse working',
+// Maps tax-category code → translation leaf key (resolved via t() where rendered).
+const PCB_LABEL_KEY: Record<number, string> = {
+  1: 'pcbSingle',
+  2: 'pcbMarriedSpouseNotWorking',
+  3: 'pcbMarriedSpouseWorking',
 };
-const PROPOSED_LABEL: Record<string, string> = {
-  bankName: 'Bank name',
-  bankAccountNo: 'Account no.',
-  taxCategory: 'PCB category',
-  numChildren: 'Children',
+// Maps proposed-change field → translation leaf key (resolved via t() where rendered).
+const PROPOSED_LABEL_KEY: Record<string, string> = {
+  bankName: 'proposedBankName',
+  bankAccountNo: 'proposedAccountNo',
+  taxCategory: 'proposedPcbCategory',
+  numChildren: 'proposedChildren',
 };
 const maskAcct = (no?: string | null) =>
   no ? `•••• ${no.slice(-4)}` : '—';
-function summarizeProposed(p: unknown): string {
+function summarizeProposed(p: unknown, t: (key: string) => string): string {
   const o = (p ?? {}) as Record<string, unknown>;
-  const keys = Object.keys(o).filter((k) => k in PROPOSED_LABEL);
-  return keys.length ? keys.map((k) => PROPOSED_LABEL[k]).join(', ') : 'change';
+  const keys = Object.keys(o).filter((k) => k in PROPOSED_LABEL_KEY);
+  return keys.length ? keys.map((k) => t(PROPOSED_LABEL_KEY[k])).join(', ') : t('proposedChange');
 }
 
-function Pill({ status, map }: { status: string; map: Record<string, string> }) {
+function Pill({ status, map, label }: { status: string; map: Record<string, string>; label?: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${map[status] ?? 'bg-muted text-muted-foreground'}`}>
-      {status.replace('_', ' ')}
+      {label ?? status.replace('_', ' ')}
     </span>
   );
 }
@@ -69,6 +72,7 @@ export default async function MePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  const t = await getTranslations('me');
   const s = await getSession();
   const { error } = await searchParams;
   const me = await myEmployment(s);
@@ -77,11 +81,8 @@ export default async function MePage({
     return (
       <div className="mx-auto max-w-2xl">
         <Card className="p-8 text-center">
-          <h1 className="text-lg font-semibold">My workspace</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            This account isn’t linked to an employee profile. Use the identity switcher in the top
-            bar to act as an employee (e.g. Aisyah or Daniel).
-          </p>
+          <h1 className="text-lg font-semibold">{t('title')}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t('notLinked')}</p>
         </Card>
       </div>
     );
@@ -108,7 +109,7 @@ export default async function MePage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader
-        title="My workspace"
+        title={t('title')}
         description={`${me.name}${me.employeeCode ? ` · ${me.employeeCode}` : ''} · ${me.position ?? '—'}, ${me.department ?? '—'}`}
       />
 
@@ -117,37 +118,41 @@ export default async function MePage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Attendance */}
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">Today</h2>
+          <h2 className="text-sm font-semibold">{t('todayHeading')}</h2>
           <p className="text-xs text-muted-foreground">{today}</p>
           <div className="mt-4">
             {!todayRow ? (
               <form action={myCheckIn}>
                 <Button type="submit" className="w-full">
-                  Check in
+                  {t('checkIn')}
                 </Button>
               </form>
             ) : !todayRow.checkOutAt ? (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">
-                  Checked in at <span className="font-medium text-foreground">{todayRow.checkInAt}</span>{' '}
-                  <Pill status={todayRow.status} map={ATT_STATUS} />
+                  {t.rich('checkedInAt', {
+                    time: () => (
+                      <span className="font-medium text-foreground">{todayRow.checkInAt}</span>
+                    ),
+                  })}{' '}
+                  <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
                 </div>
                 <form action={myCheckOut}>
                   <Button type="submit" variant="secondary" className="w-full">
-                    Check out
+                    {t('checkOut')}
                   </Button>
                 </form>
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">
-                {todayRow.checkInAt} → {todayRow.checkOutAt} <Pill status={todayRow.status} map={ATT_STATUS} />
+                {todayRow.checkInAt} → {todayRow.checkOutAt} <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
               </div>
             )}
           </div>
 
           <div className="mt-5 border-t border-border pt-4">
             <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Recent
+              {t('recent')}
             </div>
             <ul className="space-y-1.5 text-sm">
               {attendance.slice(0, 6).map((a) => (
@@ -157,39 +162,39 @@ export default async function MePage({
                     <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                       {Math.floor(a.workedMinutes / 60)}h {String(a.workedMinutes % 60).padStart(2, '0')}m
                       {(a.otMinutes ?? 0) > 0 && (
-                        <span className="text-amber-600 dark:text-amber-400"> +OT</span>
+                        <span className="text-amber-600 dark:text-amber-400"> {t('overtimeBadge')}</span>
                       )}
                     </span>
                   )}
-                  <Pill status={a.status} map={ATT_STATUS} />
+                  <Pill status={a.status} map={ATT_STATUS} label={t(`attStatus.${a.status}`)} />
                 </li>
               ))}
-              {attendance.length === 0 && <li className="text-muted-foreground">No records yet.</li>}
+              {attendance.length === 0 && <li className="text-muted-foreground">{t('noRecords')}</li>}
             </ul>
           </div>
 
           {/* Missed-punch correction (manager/admin approves — ADR-0011 Phase B) */}
           <details className="mt-4 border-t border-border pt-4">
             <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Fix a missed punch
+              {t('fixMissedPunch')}
             </summary>
             <form action={myRequestCorrection} className="mt-3 space-y-2.5">
-              <Field label="Date">
+              <Field label={t('dateLabel')}>
                 <input type="date" name="date" required defaultValue={yesterday} className={inputCls} />
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Check-in">
+                <Field label={t('checkInLabel')}>
                   <input type="time" name="checkIn" required defaultValue="09:00" className={inputCls} />
                 </Field>
-                <Field label="Check-out">
+                <Field label={t('checkOutLabel')}>
                   <input type="time" name="checkOut" defaultValue="18:00" className={inputCls} />
                 </Field>
               </div>
-              <Field label="Reason (optional)">
-                <input name="reason" placeholder="Forgot to clock out" className={inputCls} />
+              <Field label={t('reasonOptional')}>
+                <input name="reason" placeholder={t('reasonPlaceholder')} className={inputCls} />
               </Field>
               <Button type="submit" size="sm">
-                Request correction
+                {t('requestCorrection')}
               </Button>
             </form>
             {corrections.length > 0 && (
@@ -200,7 +205,7 @@ export default async function MePage({
                       {c.attendanceDate} · {c.proposedCheckIn.slice(0, 5)}
                       {c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}
                     </span>
-                    <Pill status={c.status} map={LEAVE_STATUS} />
+                    <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
                   </li>
                 ))}
               </ul>
@@ -210,7 +215,7 @@ export default async function MePage({
 
         {/* Leave */}
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">Leave</h2>
+          <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
           <div className="mt-3 space-y-3">
             {balances.map((b) => {
               const pctUsed = b.accrued > 0 ? Math.min(100, (b.taken / b.accrued) * 100) : 0;
@@ -239,41 +244,42 @@ export default async function MePage({
                     </div>
                   )}
                   <div className="mt-1 text-xs text-muted-foreground">
-                    {b.taken} used{b.pending > 0 ? ` · ${b.pending} pending` : ''}
-                    {tracked ? ` · ${b.available} available` : ''}
+                    {t('leaveUsed', { count: b.taken })}
+                    {b.pending > 0 ? ` · ${t('leavePending', { count: b.pending })}` : ''}
+                    {tracked ? ` · ${t('leaveAvailable', { count: b.available })}` : ''}
                   </div>
                 </div>
               );
             })}
-            {balances.length === 0 && <p className="text-sm text-muted-foreground">No balances yet.</p>}
+            {balances.length === 0 && <p className="text-sm text-muted-foreground">{t('noBalances')}</p>}
           </div>
 
           <form action={myRequestLeave} className="mt-4 space-y-3 border-t border-border pt-4">
-            <Field label="Type">
+            <Field label={t('typeLabel')}>
               <select name="leaveTypeId" required className={inputCls}>
-                {leaveTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                {leaveTypes.map((lt) => (
+                  <option key={lt.id} value={lt.id}>
+                    {lt.name}
                   </option>
                 ))}
               </select>
             </Field>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="From">
+              <Field label={t('fromLabel')}>
                 <input type="date" name="startDate" required className={inputCls} />
               </Field>
-              <Field label="To">
+              <Field label={t('toLabel')}>
                 <input type="date" name="endDate" required className={inputCls} />
               </Field>
             </div>
             <Button type="submit" size="sm">
-              Request leave
+              {t('requestLeave')}
             </Button>
           </form>
 
           <div className="mt-4 border-t border-border pt-4">
             <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Requests
+              {t('requests')}
             </div>
             <ul className="space-y-1.5 text-sm">
               {requests.slice(0, 5).map((r) => (
@@ -281,10 +287,10 @@ export default async function MePage({
                   <span className="truncate text-muted-foreground">
                     {r.leaveType} · {r.startDate}
                   </span>
-                  <Pill status={r.status} map={LEAVE_STATUS} />
+                  <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
                 </li>
               ))}
-              {requests.length === 0 && <li className="text-muted-foreground">No requests yet.</li>}
+              {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}
             </ul>
           </div>
         </Card>
@@ -292,9 +298,9 @@ export default async function MePage({
         {/* My positions (concurrent multi-company, ADR-0009) */}
         <Card className="p-5">
           <h2 className="text-sm font-semibold">
-            My position{employments.length > 1 ? 's' : ''}
+            {t('myPositions', { count: employments.length })}
           </h2>
-          <p className="text-xs text-muted-foreground">Joined {me.hiredOn}</p>
+          <p className="text-xs text-muted-foreground">{t('joinedOn', { date: me.hiredOn })}</p>
           <ul className="mt-3 space-y-3">
             {employments.map((e) => {
               const alloc = (e.costAllocation as { companyId: string; percent: number }[] | null) ?? [];
@@ -305,14 +311,14 @@ export default async function MePage({
                     {e.position ?? '—'} · {e.department ?? '—'}
                   </div>
                   <div className="mt-1.5 flex justify-between text-xs">
-                    <span className="text-muted-foreground">Basic + allowance</span>
+                    <span className="text-muted-foreground">{t('basicPlusAllowance')}</span>
                     <span className="tabular-nums">
                       {rm(Number(e.basic ?? 0) + Number(e.allowance ?? 0))}
                     </span>
                   </div>
                   {alloc.length > 0 && (
                     <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                      Cost recharged: {alloc.map((a) => `${a.percent}%`).join(' / ')}
+                      {t('costRecharged', { percents: alloc.map((a) => `${a.percent}%`).join(' / ') })}
                     </div>
                   )}
                 </li>
@@ -326,16 +332,16 @@ export default async function MePage({
       <Card className="p-5">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div>
-            <h2 className="text-sm font-semibold">My details</h2>
-            <p className="text-xs text-muted-foreground">Contact info updates immediately.</p>
+            <h2 className="text-sm font-semibold">{t('myDetails')}</h2>
+            <p className="text-xs text-muted-foreground">{t('contactUpdatesImmediately')}</p>
             <form action={myUpdateContact} className="mt-3 space-y-3">
-              <Field label="Phone">
+              <Field label={t('phoneLabel')}>
                 <input name="phone" defaultValue={profile?.person?.phone ?? ''} className={inputCls} />
               </Field>
-              <Field label="Address">
+              <Field label={t('addressLabel')}>
                 <input name="address" defaultValue={profile?.person?.address ?? ''} className={inputCls} />
               </Field>
-              <Field label="Date of birth">
+              <Field label={t('dateOfBirthLabel')}>
                 <input
                   type="date"
                   name="dateOfBirth"
@@ -344,14 +350,14 @@ export default async function MePage({
                 />
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Emergency contact">
+                <Field label={t('emergencyContactLabel')}>
                   <input
                     name="emergencyContactName"
                     defaultValue={profile?.person?.emergencyContactName ?? ''}
                     className={inputCls}
                   />
                 </Field>
-                <Field label="Emergency phone">
+                <Field label={t('emergencyPhoneLabel')}>
                   <input
                     name="emergencyContactPhone"
                     defaultValue={profile?.person?.emergencyContactPhone ?? ''}
@@ -360,72 +366,70 @@ export default async function MePage({
                 </Field>
               </div>
               <Button type="submit" size="sm">
-                Save details
+                {t('saveDetails')}
               </Button>
             </form>
           </div>
 
           <div className="lg:border-l lg:border-border lg:pl-6">
-            <h2 className="text-sm font-semibold">Bank &amp; tax</h2>
-            <p className="text-xs text-muted-foreground">
-              Changes need admin approval before they affect your pay.
-            </p>
+            <h2 className="text-sm font-semibold">{t('bankAndTax')}</h2>
+            <p className="text-xs text-muted-foreground">{t('changesNeedApproval')}</p>
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between gap-2">
-                <dt className="text-muted-foreground">Bank</dt>
+                <dt className="text-muted-foreground">{t('bank')}</dt>
                 <dd>{profile?.statutory?.bankName ?? '—'}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-muted-foreground">Account</dt>
+                <dt className="text-muted-foreground">{t('account')}</dt>
                 <dd className="tabular-nums">{maskAcct(profile?.statutory?.bankAccountNo)}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-muted-foreground">PCB category</dt>
-                <dd>{PCB_LABEL[profile?.statutory?.taxCategory ?? 1]}</dd>
+                <dt className="text-muted-foreground">{t('pcbCategory')}</dt>
+                <dd>{t(PCB_LABEL_KEY[profile?.statutory?.taxCategory ?? 1])}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-muted-foreground">Dependent children</dt>
+                <dt className="text-muted-foreground">{t('dependentChildren')}</dt>
                 <dd className="tabular-nums">{profile?.statutory?.numChildren ?? 0}</dd>
               </div>
             </dl>
 
             <details className="mt-4 border-t border-border pt-3">
               <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Request a change
+                {t('requestAChange')}
               </summary>
               <form action={myRequestProfileChange} className="mt-3 space-y-2.5">
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Bank name">
+                  <Field label={t('bankNameLabel')}>
                     <input name="bankName" placeholder="Maybank" className={inputCls} />
                   </Field>
-                  <Field label="Account no.">
+                  <Field label={t('accountNoLabel')}>
                     <input name="bankAccountNo" placeholder="1234567890" className={inputCls} />
                   </Field>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="PCB category">
+                  <Field label={t('pcbCategory')}>
                     <select name="taxCategory" defaultValue="" className={inputCls}>
-                      <option value="">— no change —</option>
-                      <option value="1">1 · Single</option>
-                      <option value="2">2 · Married, spouse not working</option>
-                      <option value="3">3 · Married, spouse working</option>
+                      <option value="">{t('noChangeOption')}</option>
+                      <option value="1">{t('pcbOption1')}</option>
+                      <option value="2">{t('pcbOption2')}</option>
+                      <option value="3">{t('pcbOption3')}</option>
                     </select>
                   </Field>
-                  <Field label="Dependent children">
+                  <Field label={t('dependentChildren')}>
                     <input type="number" name="numChildren" min="0" placeholder="—" className={inputCls} />
                   </Field>
                 </div>
-                <p className="text-xs text-muted-foreground">Leave a field blank to keep it unchanged.</p>
+                <p className="text-xs text-muted-foreground">{t('leaveBlankToKeep')}</p>
                 <Button type="submit" size="sm">
-                  Submit for approval
+                  {t('submitForApproval')}
                 </Button>
               </form>
               {profileRequests.length > 0 && (
                 <ul className="mt-3 space-y-1.5 text-xs">
                   {profileRequests.map((r) => (
                     <li key={r.id} className="flex items-center justify-between gap-2">
-                      <span className="truncate text-muted-foreground">{summarizeProposed(r.proposed)}</span>
-                      <Pill status={r.status} map={LEAVE_STATUS} />
+                      <span className="truncate text-muted-foreground">{summarizeProposed(r.proposed, t)}</span>
+                      <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
                     </li>
                   ))}
                 </ul>
@@ -437,17 +441,17 @@ export default async function MePage({
 
       {/* Payslips */}
       <Card className="overflow-hidden">
-        <SectionHeader title="My payslips" count={payslips.length} />
+        <SectionHeader title={t('myPayslips')} count={payslips.length} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Period</th>
-                <th className="px-4 py-2 font-medium">Company</th>
-                <th className="px-4 py-2 text-right font-medium">Gross</th>
-                <th className="px-4 py-2 text-right font-medium">Deductions</th>
-                <th className="px-4 py-2 text-right font-medium">Net</th>
-                <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
+                <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colGross')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colDeductions')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colNet')}</th>
+                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -462,13 +466,13 @@ export default async function MePage({
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(p.gross)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(p.deductions)}</td>
                   <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(p.net)}</td>
-                  <td className="px-4 py-2.5 capitalize text-muted-foreground">{p.status}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{t(`payrollStatus.${p.status}`)}</td>
                 </tr>
               ))}
               {payslips.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    No payslips yet.
+                    {t('noPayslips')}
                   </td>
                 </tr>
               )}
@@ -480,13 +484,13 @@ export default async function MePage({
       {/* Performance reviews */}
       {reviews.length > 0 && (
         <Card className="overflow-hidden">
-          <SectionHeader title="My reviews" count={reviews.length} />
+          <SectionHeader title={t('myReviews')} count={reviews.length} />
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Cycle</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 text-center font-medium">Overall</th>
+                <th className="px-4 py-2 font-medium">{t('colCycle')}</th>
+                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                <th className="px-4 py-2 text-center font-medium">{t('colOverall')}</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -495,21 +499,21 @@ export default async function MePage({
                 // Employee-facing status: their own perspective, not the raw enum.
                 const label =
                   r.status === 'self_review'
-                    ? 'Action needed: self-review'
+                    ? t('reviewLabelSelfReview')
                     : r.status === 'manager_review'
-                      ? 'With your manager'
+                      ? t('reviewLabelWithManager')
                       : r.status === 'submitted'
                         ? r.released
-                          ? 'Ready to acknowledge'
-                          : 'Awaiting release'
-                        : 'Acknowledged';
+                          ? t('reviewLabelReadyToAcknowledge')
+                          : t('reviewLabelAwaitingRelease')
+                        : t('reviewLabelAcknowledged');
                 const action =
                   r.status === 'self_review'
-                    ? 'Self-review →'
+                    ? t('reviewActionSelfReview')
                     : r.status === 'submitted' && r.released
-                      ? 'Acknowledge →'
+                      ? t('reviewActionAcknowledge')
                       : r.released || r.status === 'acknowledged'
-                        ? 'View →'
+                        ? t('reviewActionView')
                         : null; // nothing to do yet (with manager / awaiting release)
                 return (
                   <tr key={r.reviewId}>
@@ -524,7 +528,7 @@ export default async function MePage({
                           {action}
                         </Link>
                       ) : (
-                        <span className="text-xs text-muted-foreground">no action needed</span>
+                        <span className="text-xs text-muted-foreground">{t('noActionNeeded')}</span>
                       )}
                     </td>
                   </tr>
@@ -537,10 +541,8 @@ export default async function MePage({
 
       {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
       <Card className="p-5">
-        <SectionHeader title="Tax statement (EA)" />
-        <p className="px-1 pt-2 text-xs text-muted-foreground">
-          Your annual statement of remuneration (Borang EA) for personal income-tax filing.
-        </p>
+        <SectionHeader title={t('taxStatementEa')} />
+        <p className="px-1 pt-2 text-xs text-muted-foreground">{t('taxStatementDescription')}</p>
         <ul className="mt-3 space-y-2">
           {employments.map((e) => (
             <li
@@ -548,13 +550,13 @@ export default async function MePage({
               className="flex items-center justify-between rounded-lg border border-border p-3 text-sm"
             >
               <span>
-                {e.company} · <span className="text-muted-foreground">YA 2026</span>
+                {e.company} · <span className="text-muted-foreground">{t('yearOfAssessment', { year: '2026' })}</span>
               </span>
               <Link
                 href={`/payroll/reports/ea/${e.employmentId}?year=2026`}
                 className="text-primary hover:underline"
               >
-                View / download
+                {t('viewDownload')}
               </Link>
             </li>
           ))}

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { employeeEaStatement } from '@/core/reporting';
 import { Card } from '@/components/ui';
@@ -7,11 +8,6 @@ import { PrintButton } from '@/components/print-button';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const CATEGORY: Record<number, string> = {
-  1: 'Category 1 — Single',
-  2: 'Category 2 — Married, spouse not working',
-  3: 'Category 3 — Married, spouse working',
-};
 
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
   return (
@@ -37,88 +33,93 @@ export default async function EaStatementPage({
   const ea = await employeeEaStatement(s, { employmentId, year: yr });
   if (!ea) notFound();
 
+  const t = await getTranslations('payroll.ea');
+
+  const CATEGORY: Record<number, string> = {
+    1: t('category1'),
+    2: t('category2'),
+    3: t('category3'),
+  };
+
   const period =
     ea.employee.hiredOn || ea.employee.terminatedOn
-      ? `${ea.employee.hiredOn ?? '—'} → ${ea.employee.terminatedOn ?? 'present'}`
+      ? `${ea.employee.hiredOn ?? '—'} → ${ea.employee.terminatedOn ?? t('present')}`
       : '—';
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div className="flex items-start justify-between gap-4 print:hidden">
         <Link href="/payroll/reports" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
-          ← Reports
+          ← {t('backToReports')}
         </Link>
         <PrintButton />
       </div>
 
       <Card className="space-y-5 p-6">
         <div className="border-b border-border pb-4">
-          <h1 className="text-lg font-semibold tracking-tight">Statement of Remuneration · EA (C.P.8A)</h1>
+          <h1 className="text-lg font-semibold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-muted-foreground">
-            Year ended 31 December {ea.year} · {ea.employer.name}
+            {t('yearEnded', { year: ea.year, employer: ea.employer.name })}
             {ea.employer.eNumber ? ` · E ${ea.employer.eNumber}` : ''}
           </p>
         </div>
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            A · Employee particulars
+            {t('sectionAEmployeeParticulars')}
           </h2>
-          <Row label="Name" value={ea.employee.name} />
-          <Row label="Income tax no. (TIN)" value={ea.employee.taxNo || '—'} />
-          <Row label="IC no." value={ea.employee.ic || '—'} />
-          <Row label="EPF no." value={ea.employee.epfNo || '—'} />
-          <Row label="SOCSO no." value={ea.employee.socsoNo || '—'} />
-          <Row label="MTD category" value={CATEGORY[ea.employee.category] ?? ea.employee.category} />
-          <Row label="Children (tax relief)" value={ea.employee.children} />
-          <Row label="Employment period" value={period} />
+          <Row label={t('name')} value={ea.employee.name} />
+          <Row label={t('incomeTaxNo')} value={ea.employee.taxNo || '—'} />
+          <Row label={t('icNo')} value={ea.employee.ic || '—'} />
+          <Row label={t('epfNo')} value={ea.employee.epfNo || '—'} />
+          <Row label={t('socsoNo')} value={ea.employee.socsoNo || '—'} />
+          <Row label={t('mtdCategory')} value={CATEGORY[ea.employee.category] ?? ea.employee.category} />
+          <Row label={t('childrenTaxRelief')} value={ea.employee.children} />
+          <Row label={t('employmentPeriod')} value={period} />
         </section>
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            B · Employment income (cash)
+            {t('sectionBEmploymentIncome')}
           </h2>
-          <Row label="1(a) Gross salary / wages (incl. overtime)" value={rm(ea.partB.grossSalary)} />
-          <Row label="1(b) Bonus" value={rm(ea.partB.bonus)} />
-          <Row label="1(c) Allowances / perquisites" value={rm(ea.partB.allowances)} />
-          <Row label="3 Benefits in kind" value="not tracked" muted />
-          <Row label="4 Value of living accommodation" value="not tracked" muted />
+          <Row label={t('grossSalary')} value={rm(ea.partB.grossSalary)} />
+          <Row label={t('bonus')} value={rm(ea.partB.bonus)} />
+          <Row label={t('allowancesPerquisites')} value={rm(ea.partB.allowances)} />
+          <Row label={t('benefitsInKind')} value={t('notTracked')} muted />
+          <Row label={t('livingAccommodation')} value={t('notTracked')} muted />
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
-            <span>Total gross remuneration</span>
+            <span>{t('totalGrossRemuneration')}</span>
             <span className="tabular-nums">{rm(ea.partB.gross)}</span>
           </div>
         </section>
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            D · Total deductions
+            {t('sectionDTotalDeductions')}
           </h2>
-          <Row label="1 Monthly tax deduction (MTD / PCB)" value={rm(ea.partD.mtd)} />
-          <Row label="2 CP38 deductions" value="not tracked" muted />
-          <Row label="3 Zakat via salary deduction" value="not tracked" muted />
+          <Row label={t('monthlyTaxDeduction')} value={rm(ea.partD.mtd)} />
+          <Row label={t('cp38Deductions')} value={t('notTracked')} muted />
+          <Row label={t('zakatViaSalary')} value={t('notTracked')} muted />
         </section>
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            E · Contributions to approved fund & SOCSO (employee&apos;s share)
+            {t('sectionEContributions')}
           </h2>
-          <Row label="1 EPF / KWSP" value={rm(ea.partE.epf)} />
-          <Row label="2 SOCSO" value={rm(ea.partE.socso)} />
-          <Row label="EIS / SIP" value={rm(ea.partE.eis)} />
+          <Row label={t('epfKwsp')} value={rm(ea.partE.epf)} />
+          <Row label={t('socso')} value={rm(ea.partE.socso)} />
+          <Row label={t('eisSip')} value={rm(ea.partE.eis)} />
         </section>
 
         <section>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            F · Total tax-exempt allowances / perquisites
+            {t('sectionFTaxExempt')}
           </h2>
-          <Row label="Tax-exempt allowances" value="not tracked" muted />
+          <Row label={t('taxExemptAllowances')} value={t('notTracked')} muted />
         </section>
 
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
-          ℹ️ Generated from payroll for YA {ea.year} (statutory tables {ea.statutoryVersion}). Covers cash
-          remuneration, EPF, SOCSO/EIS and MTD. Benefits-in-kind, living accommodation, ESOS, gratuity,
-          tax-exempt allowances, zakat and CP38 are not tracked in payroll — add any of these before filing.
-          Verify against your records; this is not a substitute for the official LHDN form.
+          ℹ️ {t('disclaimer', { year: ea.year, version: ea.statutoryVersion })}
         </div>
       </Card>
     </div>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import {
@@ -34,18 +35,18 @@ const LEAVE_STATUS: Record<string, string> = {
   cancelled: 'bg-muted text-muted-foreground',
 };
 
-function LeaveStatus({ status }: { status: string }) {
+function LeaveStatus({ status, label }: { status: string; label: string }) {
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${LEAVE_STATUS[status] ?? ''}`}>
-      {status}
+      {label}
     </span>
   );
 }
 
-function LineTypeBadge({ type }: { type: string }) {
+function LineTypeBadge({ type, dottedLabel }: { type: string; dottedLabel: string }) {
   return (
     <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-      {type === 'dotted' ? 'dotted-line' : type}
+      {type === 'dotted' ? dottedLabel : type}
     </span>
   );
 }
@@ -58,6 +59,7 @@ export default async function EmployeePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await getSession();
+  const t = await getTranslations('people.detail');
   const admin = isAdmin(s);
   const { employmentId } = await params;
   const { error } = await searchParams;
@@ -84,9 +86,14 @@ export default async function EmployeePage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
-        back={{ href: '/people', label: 'People' }}
+        back={{ href: '/people', label: t('backToPeople') }}
         title={emp.name}
-        description={`${emp.employeeCode ?? '—'} · ${emp.email} · ${emp.company} · hired ${emp.hiredOn}`}
+        description={t('headerDescription', {
+          code: emp.employeeCode ?? '—',
+          email: emp.email,
+          company: emp.company,
+          hiredOn: emp.hiredOn,
+        })}
         actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
       />
 
@@ -94,31 +101,31 @@ export default async function EmployeePage({
 
       {admin && (
         <Card>
-          <SectionHeader title="Personal details" />
+          <SectionHeader title={t('personalDetails')} />
           <form
             action={setPersonAction}
             className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <input type="hidden" name="personId" value={emp.personId} />
-            <Field label="Full name">
+            <Field label={t('fullName')}>
               <input name="fullName" required defaultValue={emp.name} className={inputCls} />
             </Field>
-            <Field label="Email">
+            <Field label={t('email')}>
               <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
             </Field>
-            <Field label="Phone">
+            <Field label={t('phone')}>
               <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
             </Field>
             <div className="sm:col-span-3 flex justify-end">
-              <button className={btnPrimary}>Save details</button>
+              <button className={btnPrimary}>{t('saveDetails')}</button>
             </div>
           </form>
         </Card>
       )}
 
       <Card>
-        <SectionHeader title="Leave balance" />
+        <SectionHeader title={t('leaveBalance')} />
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {balances.map((b) => (
             <div key={b.leaveTypeId} className="p-4">
@@ -127,24 +134,26 @@ export default async function EmployeePage({
                 {b.accrued > 0 || b.balance > 0 ? (
                   <>
                     {b.available}
-                    <span className="text-sm font-normal text-muted-foreground"> / {b.accrued} available</span>
+                    <span className="text-sm font-normal text-muted-foreground"> {t('availableSuffix', { accrued: b.accrued })}</span>
                   </>
                 ) : (
                   <span className="text-muted-foreground">—</span>
                 )}
               </div>
               <div className="text-xs text-muted-foreground">
-                {b.taken} used{b.pending > 0 ? ` · ${b.pending} pending` : ''}
+                {b.pending > 0
+                  ? t('usedWithPending', { taken: b.taken, pending: b.pending })
+                  : t('used', { taken: b.taken })}
               </div>
             </div>
           ))}
-          {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">No leave records.</div>}
+          {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">{t('noLeaveRecords')}</div>}
         </div>
       </Card>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
-          <SectionHeader title="Compensation" />
+          <SectionHeader title={t('compensation')} />
           <div className="p-4">
             {comp ? (
               <div className="flex flex-wrap items-baseline gap-2">
@@ -152,14 +161,16 @@ export default async function EmployeePage({
                   {comp.currency} {Number(comp.basicSalary).toLocaleString()}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  basic / mo
-                  {Number(comp.monthlyAllowance) > 0 && ` · +${Number(comp.monthlyAllowance).toLocaleString()} allowance`}
-                  {' · since '}
-                  {comp.validFrom}
+                  {Number(comp.monthlyAllowance) > 0
+                    ? t('compMetaWithAllowance', {
+                        allowance: Number(comp.monthlyAllowance).toLocaleString(),
+                        validFrom: comp.validFrom,
+                      })
+                    : t('compMeta', { validFrom: comp.validFrom })}
                 </span>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No compensation set.</p>
+              <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
             )}
           </div>
           {!emp.terminatedOn && (
@@ -169,7 +180,7 @@ export default async function EmployeePage({
             >
               <input type="hidden" name="employmentId" value={emp.employmentId} />
               <input type="hidden" name="effectiveFrom" value="2026-06-05" />
-              <Field label="Basic salary (MYR)">
+              <Field label={t('basicSalaryMyr')}>
                 <input
                   name="basicSalary"
                   type="number"
@@ -180,7 +191,7 @@ export default async function EmployeePage({
                   className={inputCls}
                 />
               </Field>
-              <Field label="Allowance">
+              <Field label={t('allowance')}>
                 <input
                   name="monthlyAllowance"
                   type="number"
@@ -190,36 +201,36 @@ export default async function EmployeePage({
                   className={inputCls}
                 />
               </Field>
-              <button className={btnPrimary}>Update pay</button>
+              <button className={btnPrimary}>{t('updatePay')}</button>
             </form>
           )}
         </Card>
 
         <Card>
-          <SectionHeader title="Statutory (Malaysia)" />
+          <SectionHeader title={t('statutoryMalaysia')} />
           <form action={setStatutoryAction} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <input type="hidden" name="personId" value={emp.personId} />
-            <Field label="IC number">
+            <Field label={t('icNumber')}>
               <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
             </Field>
-            <Field label="EPF number">
+            <Field label={t('epfNumber')}>
               <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
             </Field>
-            <Field label="SOCSO number">
+            <Field label={t('socsoNumber')}>
               <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
             </Field>
-            <Field label="Tax number">
+            <Field label={t('taxNumber')}>
               <input name="taxNumber" defaultValue={statutory?.taxNumber ?? ''} className={inputCls} />
             </Field>
-            <Field label="PCB category">
+            <Field label={t('pcbCategory')}>
               <select name="taxCategory" defaultValue={String(statutory?.taxCategory ?? 1)} className={inputCls}>
-                <option value="1">1 — Single</option>
-                <option value="2">2 — Married, spouse not working</option>
-                <option value="3">3 — Married, spouse working</option>
+                <option value="1">{t('pcbCategory1')}</option>
+                <option value="2">{t('pcbCategory2')}</option>
+                <option value="3">{t('pcbCategory3')}</option>
               </select>
             </Field>
-            <Field label="Children (PCB relief)">
+            <Field label={t('childrenPcbRelief')}>
               <input
                 name="numChildren"
                 type="number"
@@ -229,64 +240,63 @@ export default async function EmployeePage({
                 className={inputCls}
               />
             </Field>
-            <Field label="Bank">
+            <Field label={t('bank')}>
               <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
             </Field>
-            <Field label="Bank account">
+            <Field label={t('bankAccount')}>
               <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
             </Field>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
-              EIS eligible
+              {t('eisEligible')}
             </label>
-            <label className="flex items-center gap-2 text-sm" title="Non-residents pay flat 30% MTD (no reliefs)">
+            <label className="flex items-center gap-2 text-sm" title={t('taxResidentHint')}>
               <input type="checkbox" name="isResident" defaultChecked={statutory ? statutory.isResident : true} className="size-4 rounded" />
-              Tax resident
+              {t('taxResident')}
             </label>
             <div className="sm:col-span-2 border-t border-border pt-3">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Previous employment this year (TP3 / opening balances)
+                {t('tp3SectionTitle')}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                From the employee&rsquo;s Form TP3 (or pre-migration payroll): seeds the PCB
-                accumulators when the year matches the pay period. Never shown on payslips or the EA.
+                {t('tp3SectionDescription')}
               </p>
             </div>
-            <Field label="Applies to year">
+            <Field label={t('appliesToYear')}>
               <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
             </Field>
-            <Field label="Accumulated net remuneration (Y−K)">
+            <Field label={t('tp3NetRemuneration')}>
               <input name="tp3NetRemuneration" type="number" min="0" step="0.01" defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
             </Field>
-            <Field label="EPF claimed toward relief (K)">
+            <Field label={t('tp3EpfClaimed')}>
               <input name="tp3EpfClaimed" type="number" min="0" step="0.01" defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
             </Field>
-            <Field label="PCB already deducted (X)">
+            <Field label={t('tp3PcbPaid')}>
               <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
             </Field>
             <div className="flex items-end justify-end sm:col-span-2">
-              <button className={btnPrimary}>Save statutory</button>
+              <button className={btnPrimary}>{t('saveStatutory')}</button>
             </div>
           </form>
         </Card>
       </div>
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Assignment history" count={history.length} />
+        <SectionHeader title={t('assignmentHistory')} count={history.length} />
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-4 py-2 font-medium">Period (valid time)</th>
-              <th className="px-4 py-2 font-medium">Department</th>
-              <th className="px-4 py-2 font-medium">Position</th>
-              <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">{t('periodValidTime')}</th>
+              <th className="px-4 py-2 font-medium">{t('department')}</th>
+              <th className="px-4 py-2 font-medium">{t('position')}</th>
+              <th className="px-4 py-2 font-medium">{t('status')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {history.map((h) => (
               <tr key={h.id} className={!h.validTo ? 'bg-primary/5' : ''}>
                 <td className="px-4 py-2.5 font-mono text-xs">
-                  {h.validFrom} → {h.validTo ?? 'present'}
+                  {h.validFrom} → {h.validTo ?? t('present')}
                 </td>
                 <td className="px-4 py-2.5 text-foreground">{h.department ?? '—'}</td>
                 <td className="px-4 py-2.5 text-muted-foreground">{h.position ?? '—'}</td>
@@ -301,18 +311,18 @@ export default async function EmployeePage({
 
       {admin && (
         <Card className="overflow-hidden">
-          <SectionHeader title="Change history" count={changeHistory.length} />
+          <SectionHeader title={t('changeHistory')} count={changeHistory.length} />
           <AuditTable rows={changeHistory} nowMs={Date.now()} />
         </Card>
       )}
 
       <Card>
-        <SectionHeader title="Reporting lines" />
+        <SectionHeader title={t('reportingLines')} />
         <div className="grid grid-cols-1 divide-border sm:grid-cols-2 sm:divide-x">
           <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Reports to</div>
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('reportsTo')}</div>
             {reporting.managers.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No managers.</div>
+              <div className="text-sm text-muted-foreground">{t('noManagers')}</div>
             ) : (
               <ul className="space-y-2">
                 {reporting.managers.map((m) => (
@@ -324,13 +334,13 @@ export default async function EmployeePage({
                       >
                         {m.name}
                       </Link>
-                      <LineTypeBadge type={m.lineType} />
+                      <LineTypeBadge type={m.lineType} dottedLabel={t('lineTypeDottedBadge')} />
                     </span>
                     <form action={endReportingLineAction}>
                       <input type="hidden" name="employmentId" value={emp.employmentId} />
                       <input type="hidden" name="reportingLineId" value={m.id} />
                       <input type="hidden" name="endDate" value="2026-06-05" />
-                      <button type="submit" title="End reporting line" className="text-muted-foreground transition-colors hover:text-red-500">
+                      <button type="submit" title={t('endReportingLine')} className="text-muted-foreground transition-colors hover:text-red-500">
                         ×
                       </button>
                     </form>
@@ -340,9 +350,9 @@ export default async function EmployeePage({
             )}
           </div>
           <div className="p-4">
-            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">Direct reports</div>
+            <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('directReports')}</div>
             {reporting.reports.length === 0 ? (
-              <div className="text-sm text-muted-foreground">No direct reports.</div>
+              <div className="text-sm text-muted-foreground">{t('noDirectReports')}</div>
             ) : (
               <ul className="space-y-2">
                 {reporting.reports.map((r) => (
@@ -353,7 +363,7 @@ export default async function EmployeePage({
                     >
                       {r.name}
                     </Link>
-                    <LineTypeBadge type={r.lineType} />
+                    <LineTypeBadge type={r.lineType} dottedLabel={t('lineTypeDottedBadge')} />
                   </li>
                 ))}
               </ul>
@@ -367,7 +377,7 @@ export default async function EmployeePage({
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <input type="hidden" name="validFrom" value="2026-06-05" />
-            <Field label="Manager">
+            <Field label={t('manager')}>
               <select name="managerEmploymentId" required className={inputCls}>
                 {others.map((o) => (
                   <option key={o.employmentId} value={o.employmentId}>
@@ -376,16 +386,16 @@ export default async function EmployeePage({
                 ))}
               </select>
             </Field>
-            <Field label="Line type">
+            <Field label={t('lineType')}>
               <select name="lineType" defaultValue="administrative" className={inputCls}>
-                <option value="administrative">Administrative</option>
-                <option value="functional">Functional</option>
-                <option value="project">Project</option>
-                <option value="dotted">Dotted-line</option>
+                <option value="administrative">{t('lineTypeAdministrative')}</option>
+                <option value="functional">{t('lineTypeFunctional')}</option>
+                <option value="project">{t('lineTypeProject')}</option>
+                <option value="dotted">{t('lineTypeDotted')}</option>
               </select>
             </Field>
             <div className="sm:col-span-2">
-              <button className={btnPrimary}>Add reporting line</button>
+              <button className={btnPrimary}>{t('addReportingLine')}</button>
             </div>
           </form>
         )}
@@ -394,10 +404,10 @@ export default async function EmployeePage({
       {!emp.terminatedOn && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
-            <SectionHeader title="Transfer (effective-dated)" />
+            <SectionHeader title={t('transferTitle')} />
             <form action={transferAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2">
               <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label="New department">
+              <Field label={t('newDepartment')}>
                 <select name="departmentId" required className={inputCls}>
                   {departments.map((d) => (
                     <option key={d.id} value={d.id}>
@@ -406,30 +416,30 @@ export default async function EmployeePage({
                   ))}
                 </select>
               </Field>
-              <Field label="Effective date">
+              <Field label={t('effectiveDate')}>
                 <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
               </Field>
               <div className="sm:col-span-2">
-                <button className={btnPrimary}>Transfer</button>
+                <button className={btnPrimary}>{t('transfer')}</button>
               </div>
             </form>
           </Card>
 
           <Card>
-            <SectionHeader title="Terminate" />
+            <SectionHeader title={t('terminate')} />
             <form action={terminateAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2">
               <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label="Termination date">
+              <Field label={t('terminationDate')}>
                 <input name="terminationDate" type="date" required defaultValue={today} className={inputCls} />
               </Field>
               <div className="sm:col-span-2">
                 <ConfirmSubmit
-                  title="Terminate employment?"
-                  description={`This ends ${emp.name}'s employment on the chosen date. Assignment history is preserved.`}
-                  confirmLabel="Terminate"
+                  title={t('terminateConfirmTitle')}
+                  description={t('terminateConfirmDescription', { name: emp.name })}
+                  confirmLabel={t('terminate')}
                   size="sm"
                 >
-                  Terminate employment
+                  {t('terminateEmployment')}
                 </ConfirmSubmit>
               </div>
             </form>
@@ -438,7 +448,7 @@ export default async function EmployeePage({
       )}
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Leave requests" count={requests.length} />
+        <SectionHeader title={t('leaveRequests')} count={requests.length} />
         <table className="w-full text-sm">
           <tbody className="divide-y divide-border">
             {requests.map((r) => (
@@ -447,15 +457,15 @@ export default async function EmployeePage({
                 <td className="px-4 py-2.5 text-muted-foreground">
                   {r.startDate} → {r.endDate}
                 </td>
-                <td className="px-4 py-2.5 tabular-nums">{Number(r.days)} days</td>
+                <td className="px-4 py-2.5 tabular-nums">{t('daysCount', { days: Number(r.days) })}</td>
                 <td className="px-4 py-2.5">
-                  <LeaveStatus status={r.status} />
+                  <LeaveStatus status={r.status} label={t(`leaveStatus.${r.status}`)} />
                 </td>
               </tr>
             ))}
             {requests.length === 0 && (
               <tr>
-                <td className="px-4 py-6 text-center text-sm text-muted-foreground">No leave requests.</td>
+                <td className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveRequests')}</td>
               </tr>
             )}
           </tbody>

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
@@ -13,6 +14,7 @@ export default async function PerformancePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { s } = await scopedSession();
+  const t = await getTranslations('performance.list');
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
@@ -27,13 +29,13 @@ export default async function PerformancePage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="Performance" description="Review cycles, appraisals, and merit recommendations" />
+      <PageHeader title={t('title')} description={t('description')} />
       <ErrorBanner message={error} />
 
       {pending.length > 0 && (
         <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
           <div className="flex items-center gap-2 border-b border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-500/10">
-            <h2 className="text-sm font-semibold">Reviews awaiting you</h2>
+            <h2 className="text-sm font-semibold">{t('awaitingYou')}</h2>
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
               {pending.length}
             </span>
@@ -46,7 +48,7 @@ export default async function PerformancePage({
                   <span className="ml-2 text-xs text-muted-foreground">{r.cycleName}</span>
                 </div>
                 <Link href={`/performance/review/${r.reviewId}`} className="text-sm text-primary hover:underline">
-                  Review →
+                  {t('reviewAction')}
                 </Link>
               </li>
             ))}
@@ -57,20 +59,20 @@ export default async function PerformancePage({
       {admin && (
         <>
           <Card className="overflow-hidden">
-            <SectionHeader title="Review cycles" count={cycles.length} />
+            <SectionHeader title={t('reviewCycles')} count={cycles.length} />
             {cycles.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                No cycles yet — create one below.
+                {t('noCycles')}
               </p>
             ) : (
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Cycle</th>
-                    <th className="px-4 py-2 font-medium">Period</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 text-right font-medium">Progress</th>
-                    <th className="px-4 py-2 text-right font-medium">Pending pay</th>
+                    <th className="px-4 py-2 font-medium">{t('colCycle')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                    <th className="px-4 py-2 text-right font-medium">{t('colProgress')}</th>
+                    <th className="px-4 py-2 text-right font-medium">{t('colPendingPay')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -81,8 +83,8 @@ export default async function PerformancePage({
                           {c.name}
                         </Link>
                         <div className="text-xs text-muted-foreground">
-                          {c.companyId ? 'Company cycle' : 'Group-wide'}
-                          {c.releasedAt ? ' · released' : ''}
+                          {c.companyId ? t('scopeCompany') : t('scopeGroup')}
+                          {c.releasedAt ? t('releasedSuffix') : ''}
                         </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
@@ -93,7 +95,7 @@ export default async function PerformancePage({
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
                         {c.acknowledged}/{c.submitted}/{c.total}
-                        <div className="text-[10px] uppercase">ack / done / total</div>
+                        <div className="text-[10px] uppercase">{t('progressLegend')}</div>
                       </td>
                       <td className="px-4 py-3 text-right tabular-nums">
                         {c.pendingComp > 0 ? (
@@ -111,14 +113,14 @@ export default async function PerformancePage({
 
           <Card>
             <details>
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">+ New review cycle</summary>
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
               <form action={createCycleAction} className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
-                <Field label="Name">
-                  <input name="name" required className={inputCls} placeholder="2026 Annual" />
+                <Field label={t('fieldName')}>
+                  <input name="name" required className={inputCls} placeholder={t('namePlaceholder')} />
                 </Field>
-                <Field label="Scope">
+                <Field label={t('fieldScope')}>
                   <select name="companyId" className={inputCls} defaultValue="">
-                    <option value="">Group-wide (all companies)</option>
+                    <option value="">{t('scopeAllCompanies')}</option>
                     {companies.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -126,31 +128,31 @@ export default async function PerformancePage({
                     ))}
                   </select>
                 </Field>
-                <Field label="Period start">
+                <Field label={t('fieldPeriodStart')}>
                   <input name="periodStart" type="date" required defaultValue={`${today.slice(0, 4)}-01-01`} className={inputCls} />
                 </Field>
-                <Field label="Period end">
+                <Field label={t('fieldPeriodEnd')}>
                   <input name="periodEnd" type="date" required defaultValue={`${today.slice(0, 4)}-12-31`} className={inputCls} />
                 </Field>
-                <Field label="Merit pool (optional)">
+                <Field label={t('fieldMeritPool')}>
                   <div className="flex gap-2">
                     <select name="meritBudgetKind" className={inputCls} defaultValue="">
-                      <option value="">No pool</option>
-                      <option value="percent">% of payroll</option>
-                      <option value="amount">RM (monthly)</option>
+                      <option value="">{t('meritNoPool')}</option>
+                      <option value="percent">{t('meritPercent')}</option>
+                      <option value="amount">{t('meritAmount')}</option>
                     </select>
                     <input name="meritBudgetValue" type="number" step="0.1" min="0" className={`${inputCls} w-28`} placeholder="3.5" />
                   </div>
                 </Field>
-                <Field label="Only include staff hired before (optional)">
+                <Field label={t('fieldHiredBefore')}>
                   <input name="hiredBefore" type="date" className={inputCls} />
                 </Field>
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <input type="checkbox" name="excludeProbation" defaultChecked className="size-4" />
-                  Exclude employees on probation
+                  {t('excludeProbation')}
                 </label>
                 <div className="sm:col-span-2">
-                  <Button type="submit">Create cycle (draft)</Button>
+                  <Button type="submit">{t('createCycle')}</Button>
                 </div>
               </form>
             </details>

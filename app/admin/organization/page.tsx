@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
@@ -58,6 +59,7 @@ export default async function OrganizationPage({
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const { error } = await searchParams;
+  const t = await getTranslations('admin.organization');
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
   // the active company context, since they are now the per-company management surface.
   const [companies, departments, positions, costCenters, tree, statutory] = await Promise.all([
@@ -78,7 +80,7 @@ export default async function OrganizationPage({
       .map((d) => ({
         id: d.id,
         display: d.name,
-        fields: [{ name: 'name', label: 'Name', value: d.name }],
+        fields: [{ name: 'name', label: t('fieldName'), value: d.name }],
         inUse: d.inUse,
         archived: !!d.archivedAt,
       }));
@@ -90,8 +92,8 @@ export default async function OrganizationPage({
         display: p.title,
         sub: p.jobFamily,
         fields: [
-          { name: 'title', label: 'Title', value: p.title },
-          { name: 'jobFamily', label: 'Job family', value: p.jobFamily ?? '' },
+          { name: 'title', label: t('fieldTitle'), value: p.title },
+          { name: 'jobFamily', label: t('fieldJobFamily'), value: p.jobFamily ?? '' },
         ],
         inUse: p.inUse,
         archived: !!p.archivedAt,
@@ -104,8 +106,8 @@ export default async function OrganizationPage({
         display: c.code,
         sub: c.name,
         fields: [
-          { name: 'code', label: 'Code', value: c.code },
-          { name: 'name', label: 'Name', value: c.name },
+          { name: 'code', label: t('fieldCode'), value: c.code },
+          { name: 'name', label: t('fieldName'), value: c.name },
         ],
         inUse: c.inUse,
         archived: !!c.archivedAt,
@@ -134,27 +136,27 @@ export default async function OrganizationPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        title="Organization"
-        description="Each company manages its details, statutory identity, departments, positions and cost centres"
+        title={t('pageTitle')}
+        description={t('pageDescription')}
       />
       <ErrorBanner message={error} />
 
       <Card>
-        <SectionHeader title="Group structure" count={companies.length} />
+        <SectionHeader title={t('groupStructure')} count={companies.length} />
         <div className="px-4 py-3">
           {tree.length > 0 ? (
             <CompanyTree nodes={tree} />
           ) : (
-            <p className="text-sm text-muted-foreground">No companies yet.</p>
+            <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
           )}
         </div>
       </Card>
 
       <Card>
-        <SectionHeader title="Companies" count={scoped.length} />
+        <SectionHeader title={t('companies')} count={scoped.length} />
         <ul className="divide-y divide-border">
           {scoped.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No companies in scope.</li>
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</li>
           )}
           {scoped.map((c) => (
             <CompanyPanel
@@ -182,11 +184,11 @@ export default async function OrganizationPage({
           action={createCompanyAction}
           className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
-          <input name="legalName" required placeholder="Legal name" className={`${inputCls} sm:col-span-2`} />
-          <input name="country" defaultValue="MY" placeholder="Country" pattern="[A-Za-z]{2}" maxLength={2} title="2-letter ISO country code, e.g. MY" className={`${inputCls} uppercase`} />
-          <input name="currency" defaultValue="MYR" placeholder="Currency" pattern="[A-Za-z]{3}" maxLength={3} title="3-letter ISO currency code, e.g. MYR" className={`${inputCls} uppercase`} />
+          <input name="legalName" required placeholder={t('legalName')} className={`${inputCls} sm:col-span-2`} />
+          <input name="country" defaultValue="MY" placeholder={t('country')} pattern="[A-Za-z]{2}" maxLength={2} title={t('countryHint')} className={`${inputCls} uppercase`} />
+          <input name="currency" defaultValue="MYR" placeholder={t('currency')} pattern="[A-Za-z]{3}" maxLength={3} title={t('currencyHint')} className={`${inputCls} uppercase`} />
           <div className="sm:col-span-4">
-            <button className={btnPrimary}>Add company</button>
+            <button className={btnPrimary}>{t('addCompany')}</button>
           </div>
         </form>
       </Card>

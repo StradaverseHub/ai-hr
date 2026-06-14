@@ -1,3 +1,4 @@
+import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
@@ -21,6 +22,7 @@ export default async function LeaveConfigPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await requireAdmin();
+  const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
   const [types, policies] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
@@ -55,14 +57,14 @@ export default async function LeaveConfigPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="Leave configuration" description="Leave types and their entitlement policies" />
+      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
 
       <Card>
-        <SectionHeader title="Leave types & entitlements" count={types.length} />
+        <SectionHeader title={t('typesSectionTitle')} count={types.length} />
         <ul className="divide-y divide-border">
           {types.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">No leave types.</li>
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</li>
           )}
           {types.map((t) => (
             <LeaveTypePanel
@@ -89,46 +91,38 @@ export default async function LeaveConfigPage({
           action={createLeaveTypeAction}
           className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
         >
-          <Field label="Code">
+          <Field label={t('codeLabel')}>
             <input
               name="code"
               required
-              placeholder="SICK"
-              title="Letters, digits or underscores — stored uppercase (e.g. ANNUAL)"
+              placeholder={t('codePlaceholder')}
+              title={t('codeHint')}
               className={`${inputCls} uppercase`}
             />
           </Field>
-          <Field label="Name">
-            <input name="name" required placeholder="Sick Leave" className={inputCls} />
+          <Field label={t('nameLabel')}>
+            <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="paid" defaultChecked className="size-4 rounded" />
-            Paid
+            {t('paidLabel')}
           </label>
-          <button className={btnPrimary}>Add type</button>
+          <button className={btnPrimary}>{t('addType')}</button>
         </form>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-          Statutory minimums come from the country pack (EA 1955; bands are &lt;2 / 2–5 / 5+ years
-          of service) and are not configurable. Grants apply the <span className="font-medium">greater</span> of
-          the floor and the company policy — a policy below the minimum is recorded but never applied.
-          Entitlements are effective-dated: <span className="font-medium">add</span> one to change going
-          forward, <span className="font-medium">edit</span> one to correct it. Annual leave pro-rates in
-          the hire year; sick and hospitalization grant in full.
+          {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
         </p>
       </Card>
 
       <Card>
-        <SectionHeader title="Leave year" />
+        <SectionHeader title={t('leaveYearTitle')} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">
-          Opening a year posts each active employee&rsquo;s new entitlements at their{' '}
-          <span className="font-medium text-foreground">current service band</span> (so 2y/5y upgrades
-          apply), resolved as max(statutory floor, policy). Unused annual leave carries up to the
-          policy&rsquo;s cap and the rest is forfeited (s.60E expects leave within the year); sick and
-          hospitalization reset. Idempotent — already-opened employees are skipped; employees hired
-          during the year are covered by their hire grant.
+          {t.rich('leaveYearHelp', {
+            strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
+          })}
         </p>
         <form action={openLeaveYearAction} className="flex flex-wrap items-end gap-3 p-4">
-          <Field label="Year">
+          <Field label={t('yearLabel')}>
             <input
               name="year"
               type="number"
@@ -139,7 +133,7 @@ export default async function LeaveConfigPage({
               className={`${inputCls} w-28`}
             />
           </Field>
-          <button className={btnPrimary}>Open leave year</button>
+          <button className={btnPrimary}>{t('openLeaveYear')}</button>
         </form>
       </Card>
     </div>

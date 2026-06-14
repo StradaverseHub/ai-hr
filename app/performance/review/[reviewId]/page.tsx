@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { reviewForViewer } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
@@ -9,16 +10,18 @@ function RatingSelect({
   scale,
   defaultValue,
   required,
+  placeholder,
 }: {
   name: string;
   scale: { value: number; label: string }[];
   defaultValue?: number | null;
   required?: boolean;
+  placeholder: string;
 }) {
   return (
     <select name={name} className={inputCls} required={required} defaultValue={defaultValue ?? ''}>
       <option value="" disabled>
-        Select a rating
+        {placeholder}
       </option>
       {scale.map((s) => (
         <option key={s.value} value={s.value}>
@@ -42,6 +45,7 @@ export default async function ReviewPage({
   params: Promise<{ reviewId: string }>;
   searchParams: Promise<{ error?: string; toast?: string }>;
 }) {
+  const t = await getTranslations('performance.review');
   const s = await getSession();
   const { reviewId } = await params;
   const { error, toast } = await searchParams;
@@ -53,12 +57,12 @@ export default async function ReviewPage({
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
-        back={{ href: backHref, label: r.isSubject && !r.canManage ? 'My workspace' : 'Performance' }}
+        back={{ href: backHref, label: r.isSubject && !r.canManage ? t('backMyWorkspace') : t('backPerformance') }}
         title={`${r.employee} — ${r.cycleName}`}
         description={
           <>
             {r.periodStart} → {r.periodEnd}
-            {r.reviewer ? ` · reviewer: ${r.reviewer}` : ''}
+            {r.reviewer ? ` · ${t('reviewerLabel', { reviewer: r.reviewer })}` : ''}
           </>
         }
         actions={<StatusBadge status={r.status} />}
@@ -72,53 +76,53 @@ export default async function ReviewPage({
 
       {/* Self-review */}
       <Card className="p-5">
-        <h2 className="text-sm font-semibold">Self-review</h2>
+        <h2 className="text-sm font-semibold">{t('selfReviewTitle')}</h2>
         {r.canSelfSubmit ? (
           <form action={submitSelfAction} className="mt-3 space-y-4">
             <input type="hidden" name="reviewId" value={r.id} />
-            <Field label="Your rating">
-              <RatingSelect name="selfRating" scale={scale} required />
+            <Field label={t('yourRatingLabel')}>
+              <RatingSelect name="selfRating" scale={scale} required placeholder={t('selectRating')} />
             </Field>
-            <Field label="Comments (optional)">
-              <textarea name="selfComments" rows={3} className={inputCls} placeholder="How did the period go?" />
+            <Field label={t('commentsOptionalLabel')}>
+              <textarea name="selfComments" rows={3} className={inputCls} placeholder={t('selfCommentsPlaceholder')} />
             </Field>
-            <Field label="Goals / objectives referenced (optional)">
-              <textarea name="goalsSummary" rows={2} className={inputCls} placeholder="What you worked toward this cycle" />
+            <Field label={t('goalsReferencedLabel')}>
+              <textarea name="goalsSummary" rows={2} className={inputCls} placeholder={t('goalsPlaceholder')} />
             </Field>
-            <Button type="submit">Submit self-review</Button>
+            <Button type="submit">{t('submitSelfReview')}</Button>
           </form>
         ) : r.selfRating != null ? (
           <dl className="mt-3 space-y-2 text-sm">
-            <Row label="Rating" value={ratingLabel(scale, r.selfRating)} />
-            {r.selfComments && <Row label="Comments" value={r.selfComments} />}
-            {r.goalsSummary && <Row label="Goals" value={r.goalsSummary} />}
+            <Row label={t('ratingLabel')} value={ratingLabel(scale, r.selfRating)} />
+            {r.selfComments && <Row label={t('commentsLabel')} value={r.selfComments} />}
+            {r.goalsSummary && <Row label={t('goalsLabel')} value={r.goalsSummary} />}
           </dl>
         ) : (
-          <p className="mt-3 text-sm text-muted-foreground">Not submitted yet.</p>
+          <p className="mt-3 text-sm text-muted-foreground">{t('notSubmittedYet')}</p>
         )}
       </Card>
 
       {/* Manager review */}
       <Card className="p-5">
-        <h2 className="text-sm font-semibold">Manager review</h2>
+        <h2 className="text-sm font-semibold">{t('managerReviewTitle')}</h2>
         {r.canManagerSubmit ? (
           <form action={submitManagerAction} className="mt-3 space-y-4">
             <input type="hidden" name="reviewId" value={r.id} />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Manager rating">
-                <RatingSelect name="managerRating" scale={scale} required defaultValue={r.managerRating} />
+              <Field label={t('managerRatingLabel')}>
+                <RatingSelect name="managerRating" scale={scale} required defaultValue={r.managerRating} placeholder={t('selectRating')} />
               </Field>
-              <Field label="Overall rating">
-                <RatingSelect name="overallRating" scale={scale} required defaultValue={r.overallRating} />
+              <Field label={t('overallRatingLabel')}>
+                <RatingSelect name="overallRating" scale={scale} required defaultValue={r.overallRating} placeholder={t('selectRating')} />
               </Field>
             </div>
-            <Field label="Comments (optional)">
+            <Field label={t('commentsOptionalLabel')}>
               <textarea name="managerComments" rows={3} className={inputCls} defaultValue={r.managerComments ?? ''} />
             </Field>
             <div className="rounded-xl border border-border bg-muted/30 p-3">
-              <p className="text-xs font-medium text-muted-foreground">Pay recommendation (optional — an admin enacts it)</p>
+              <p className="text-xs font-medium text-muted-foreground">{t('payRecommendationHint')}</p>
               <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label="Merit increase %">
+                <Field label={t('meritIncreaseLabel')}>
                   <input
                     name="recommendedMeritPct"
                     type="number"
@@ -126,10 +130,10 @@ export default async function ReviewPage({
                     step="0.1"
                     className={inputCls}
                     defaultValue={r.recommendedMeritPct ?? ''}
-                    placeholder="e.g. 5"
+                    placeholder={t('meritIncreasePlaceholder')}
                   />
                 </Field>
-                <Field label="One-off bonus (RM)">
+                <Field label={t('oneOffBonusLabel')}>
                   <input
                     name="recommendedBonus"
                     type="number"
@@ -137,24 +141,24 @@ export default async function ReviewPage({
                     step="0.01"
                     className={inputCls}
                     defaultValue={r.recommendedBonus ?? ''}
-                    placeholder="e.g. 2000"
+                    placeholder={t('oneOffBonusPlaceholder')}
                   />
                 </Field>
               </div>
             </div>
-            <Button type="submit">Finalize review</Button>
+            <Button type="submit">{t('finalizeReview')}</Button>
           </form>
         ) : r.managerRating != null || r.overallRating != null ? (
           <dl className="mt-3 space-y-2 text-sm">
-            <Row label="Manager rating" value={ratingLabel(scale, r.managerRating)} />
-            <Row label="Overall rating" value={ratingLabel(scale, r.overallRating)} />
-            {r.managerComments && <Row label="Comments" value={r.managerComments} />}
+            <Row label={t('managerRatingLabel')} value={ratingLabel(scale, r.managerRating)} />
+            <Row label={t('overallRatingLabel')} value={ratingLabel(scale, r.overallRating)} />
+            {r.managerComments && <Row label={t('commentsLabel')} value={r.managerComments} />}
           </dl>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">
             {r.isSubject && !r.released
-              ? 'Your manager’s review will appear here once ratings are released.'
-              : 'Awaiting the manager.'}
+              ? t('managerReviewPendingRelease')
+              : t('awaitingManager')}
           </p>
         )}
       </Card>
@@ -162,13 +166,13 @@ export default async function ReviewPage({
       {/* Comp recommendation (manager/admin only) */}
       {r.canManage && r.compActionStatus !== 'none' && (
         <Card className="p-5">
-          <h2 className="text-sm font-semibold">Pay recommendation</h2>
+          <h2 className="text-sm font-semibold">{t('payRecommendationTitle')}</h2>
           <dl className="mt-3 space-y-2 text-sm">
-            {r.recommendedMeritPct != null && <Row label="Merit" value={`${r.recommendedMeritPct}%`} />}
-            {r.recommendedBonus != null && <Row label="Bonus" value={`RM ${r.recommendedBonus.toFixed(2)}`} />}
-            <Row label="Status" value={r.compActionStatus} />
+            {r.recommendedMeritPct != null && <Row label={t('meritLabel')} value={`${r.recommendedMeritPct}%`} />}
+            {r.recommendedBonus != null && <Row label={t('bonusLabel')} value={`RM ${r.recommendedBonus.toFixed(2)}`} />}
+            <Row label={t('statusLabel')} value={r.compActionStatus} />
           </dl>
-          <p className="mt-2 text-xs text-muted-foreground">Enact or decline this from the cycle page.</p>
+          <p className="mt-2 text-xs text-muted-foreground">{t('enactFromCyclePage')}</p>
         </Card>
       )}
 
@@ -176,11 +180,11 @@ export default async function ReviewPage({
       {r.canAcknowledge && (
         <Card className="p-5">
           <p className="text-sm text-muted-foreground">
-            Your review has been released. Acknowledging confirms you’ve read it — it does not mean you agree.
+            {t('acknowledgeHint')}
           </p>
           <form action={acknowledgeAction} className="mt-3">
             <input type="hidden" name="reviewId" value={r.id} />
-            <Button type="submit">Acknowledge</Button>
+            <Button type="submit">{t('acknowledge')}</Button>
           </form>
         </Card>
       )}

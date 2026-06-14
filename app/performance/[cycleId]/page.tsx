@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
@@ -25,6 +26,7 @@ export default async function CyclePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s = await requireAdmin();
+  const t = await getTranslations('performance.cycle');
   const { cycleId } = await params;
   const { error } = await searchParams;
   const data = await cycleDetail(s, cycleId);
@@ -41,22 +43,22 @@ export default async function CyclePage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        back={{ href: '/performance', label: 'Performance' }}
+        back={{ href: '/performance', label: t('back') }}
         title={cycle.name}
         description={
           <>
-            {cycle.companyId ? 'Company cycle' : 'Group-wide'} · {cycle.periodStart} → {cycle.periodEnd}
-            {cycle.releasedAt ? ' · ratings released' : ''}
+            {cycle.companyId ? t('scopeCompany') : t('scopeGroup')} · {cycle.periodStart} → {cycle.periodEnd}
+            {cycle.releasedAt ? ` · ${t('ratingsReleased')}` : ''}
           </>
         }
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge status={cycle.status} />
             {cycle.status === 'draft' && (
-              <LifecycleButton action={openCycleAction} cycleId={cycle.id} label="Open cycle" />
+              <LifecycleButton action={openCycleAction} cycleId={cycle.id} label={t('openCycle')} />
             )}
             {cycle.status === 'open' && (
-              <LifecycleButton action={calibrateAction} cycleId={cycle.id} label="Move to calibration" variant="secondary" />
+              <LifecycleButton action={calibrateAction} cycleId={cycle.id} label={t('moveToCalibration')} variant="secondary" />
             )}
             {(cycle.status === 'open' || cycle.status === 'calibration') && !cycle.releasedAt && (
               <form action={releaseAction}>
@@ -64,16 +66,16 @@ export default async function CyclePage({
                 <ConfirmSubmit
                   size="sm"
                   variant="secondary"
-                  title="Release ratings to employees?"
-                  description="Every employee will be able to see their manager rating and overall score. This cannot be undone."
-                  confirmLabel="Release ratings"
+                  title={t('releaseConfirmTitle')}
+                  description={t('releaseConfirmDescription')}
+                  confirmLabel={t('releaseRatings')}
                 >
-                  Release ratings
+                  {t('releaseRatings')}
                 </ConfirmSubmit>
               </form>
             )}
             {(cycle.status === 'open' || cycle.status === 'calibration') && (
-              <LifecycleButton action={closeAction} cycleId={cycle.id} label="Close" variant="outline" />
+              <LifecycleButton action={closeAction} cycleId={cycle.id} label={t('close')} variant="outline" />
             )}
           </div>
         }
@@ -82,16 +84,15 @@ export default async function CyclePage({
 
       {cycle.status === 'draft' ? (
         <Card className="p-6 text-sm text-muted-foreground">
-          This cycle is a draft. Opening it snapshots the in-scope employees into one review each
-          (administrative manager as reviewer) and starts the self-review stage.
+          {t('draftHint')}
         </Card>
       ) : (
         <>
           {/* Distribution + budget */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card className="p-5">
-              <h2 className="text-sm font-semibold">Rating distribution</h2>
-              <p className="text-xs text-muted-foreground">Finalized overall ratings</p>
+              <h2 className="text-sm font-semibold">{t('ratingDistribution')}</h2>
+              <p className="text-xs text-muted-foreground">{t('finalizedOverallRatings')}</p>
               <div className="mt-4 space-y-2">
                 {distribution.map((d) => (
                   <div key={d.value} className="flex items-center gap-3 text-sm">
@@ -111,13 +112,13 @@ export default async function CyclePage({
             </Card>
 
             <Card className="p-5">
-              <h2 className="text-sm font-semibold">Merit budget</h2>
+              <h2 className="text-sm font-semibold">{t('meritBudget')}</h2>
               <p className="text-xs text-muted-foreground">
-                {budget.pool == null ? 'No pool set for this cycle' : 'Recommended salary increases vs the pool (monthly)'}
+                {budget.pool == null ? t('noPoolSet') : t('recommendedIncreasesVsPool')}
               </p>
               {budget.pool == null ? (
                 <p className="mt-4 text-sm">
-                  Recommended merit: <span className="font-medium tabular-nums">{rm(budget.consumed)}</span> / month
+                  {t('recommendedMeritLabel')} <span className="font-medium tabular-nums">{rm(budget.consumed)}</span> {t('perMonth')}
                 </p>
               ) : (
                 <div className="mt-4 space-y-2">
@@ -128,16 +129,16 @@ export default async function CyclePage({
                     />
                   </div>
                   <div className="flex justify-between text-sm tabular-nums">
-                    <span className="text-muted-foreground">used {rm(budget.consumed)}</span>
+                    <span className="text-muted-foreground">{t('used', { amount: rm(budget.consumed) })}</span>
                     <span className={budget.over ? 'font-medium text-red-600 dark:text-red-400' : 'text-muted-foreground'}>
-                      {budget.over ? `over by ${rm(Math.abs(budget.remaining ?? 0))}` : `${rm(budget.remaining)} left`}
+                      {budget.over ? t('overBy', { amount: rm(Math.abs(budget.remaining ?? 0)) }) : t('left', { amount: rm(budget.remaining) })}
                     </span>
-                    <span className="text-muted-foreground">pool {rm(budget.pool)}</span>
+                    <span className="text-muted-foreground">{t('pool', { amount: rm(budget.pool) })}</span>
                   </div>
                 </div>
               )}
               <p className="mt-3 text-xs text-muted-foreground">
-                Recommended bonuses (one-off): <span className="tabular-nums">{rm(budget.bonusTotal)}</span>
+                {t('recommendedBonusesLabel')} <span className="tabular-nums">{rm(budget.bonusTotal)}</span>
               </p>
             </Card>
           </div>
@@ -145,11 +146,9 @@ export default async function CyclePage({
           {/* Enact worklist */}
           {pendingComp.length > 0 && (
             <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
-              <SectionHeader title="Pay recommendations to enact" count={pendingComp.length} />
+              <SectionHeader title={t('payRecommendationsToEnact')} count={pendingComp.length} />
               <p className="px-4 pt-3 text-xs text-muted-foreground">
-                Enacting applies the change through payroll: a merit % becomes an effective-dated salary
-                increase; a bonus is staged into a draft batch and taxed as additional remuneration. Performance
-                never writes pay directly.
+                {t('enactExplainer')}
               </p>
               <ul className="divide-y divide-border">
                 {pendingComp.map((r) => (
@@ -159,17 +158,17 @@ export default async function CyclePage({
                         <span className="font-medium">{r.employee}</span>
                         <div className="text-xs text-muted-foreground">
                           {r.recommendedMeritPct != null && (
-                            <>merit {r.recommendedMeritPct}% (on {rm(r.currentBasic)}) </>
+                            <>{t('meritOn', { pct: r.recommendedMeritPct, basic: rm(r.currentBasic) })} </>
                           )}
-                          {r.recommendedBonus != null && <>· bonus {rm(r.recommendedBonus)}</>}
+                          {r.recommendedBonus != null && <>{t('bonusSep', { amount: rm(r.recommendedBonus) })}</>}
                         </div>
                       </div>
                       <div className="flex items-end gap-2">
                         {r.recommendedBonus != null && draftBatches.length === 0 ? (
                           <span className="text-xs text-muted-foreground">
-                            Bonus needs a draft batch —{' '}
+                            {t('bonusNeedsBatch')}{' '}
                             <Link href="/payroll" className="text-primary hover:underline">
-                              create one in Payroll
+                              {t('createOneInPayroll')}
                             </Link>
                           </span>
                         ) : (
@@ -178,16 +177,16 @@ export default async function CyclePage({
                             <input type="hidden" name="cycleId" value={cycle.id} />
                             {r.recommendedMeritPct != null && (
                               <label className="text-[10px] uppercase text-muted-foreground">
-                                effective
+                                {t('effective')}
                                 <input name="meritEffectiveFrom" type="date" defaultValue={nextDay} className={`${inputCls} w-36`} required />
                               </label>
                             )}
                             {r.recommendedBonus != null && (
                               <label className="text-[10px] uppercase text-muted-foreground">
-                                bonus batch
+                                {t('bonusBatch')}
                                 <select name="bonusBatchId" className={`${inputCls} w-44`} required defaultValue="">
                                   <option value="" disabled>
-                                    choose draft batch
+                                    {t('chooseDraftBatch')}
                                   </option>
                                   {draftBatches.map((b) => (
                                     <option key={b.id} value={b.id}>
@@ -200,11 +199,11 @@ export default async function CyclePage({
                             <ConfirmSubmit
                               size="sm"
                               variant="default"
-                              title={`Enact pay for ${r.employee}?`}
-                              description="This applies a real pay change through payroll — an effective-dated raise and/or a taxed bonus. It cannot be undone here."
-                              confirmLabel="Enact"
+                              title={t('enactConfirmTitle', { employee: r.employee })}
+                              description={t('enactConfirmDescription')}
+                              confirmLabel={t('enact')}
                             >
-                              Enact
+                              {t('enact')}
                             </ConfirmSubmit>
                           </form>
                         )}
@@ -212,7 +211,7 @@ export default async function CyclePage({
                           <input type="hidden" name="reviewId" value={r.reviewId} />
                           <input type="hidden" name="cycleId" value={cycle.id} />
                           <Button type="submit" size="sm" variant="outline">
-                            Decline
+                            {t('decline')}
                           </Button>
                         </form>
                       </div>
@@ -225,16 +224,16 @@ export default async function CyclePage({
 
           {/* Roster */}
           <Card className="overflow-hidden">
-            <SectionHeader title="Reviews" count={roster.length} />
+            <SectionHeader title={t('reviews')} count={roster.length} />
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Employee</th>
-                  <th className="px-4 py-2 font-medium">Reviewer</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 text-center font-medium">Self</th>
-                  <th className="px-4 py-2 text-center font-medium">Overall</th>
-                  <th className="px-4 py-2 font-medium">Recommendation</th>
+                  <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colReviewer')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                  <th className="px-4 py-2 text-center font-medium">{t('colSelf')}</th>
+                  <th className="px-4 py-2 text-center font-medium">{t('colOverall')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colRecommendation')}</th>
                   <th className="px-4 py-2" />
                 </tr>
               </thead>
@@ -242,7 +241,7 @@ export default async function CyclePage({
                 {roster.map((r) => (
                   <tr key={r.reviewId} className="hover:bg-muted/40">
                     <td className="px-4 py-2.5 font-medium">{r.employee}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.reviewer ?? '— (admin)'}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{r.reviewer ?? t('reviewerAdminFallback')}</td>
                     <td className={`px-4 py-2.5 capitalize ${STATUS_TONE[r.status] ?? ''}`}>
                       {r.status.replace('_', ' ')}
                     </td>
@@ -253,15 +252,15 @@ export default async function CyclePage({
                         '—'
                       ) : (
                         <span className="capitalize">
-                          {r.recommendedMeritPct != null && `merit ${r.recommendedMeritPct}% `}
-                          {r.recommendedBonus != null && `bonus ${rm(r.recommendedBonus)} `}
+                          {r.recommendedMeritPct != null && `${t('meritShort', { pct: r.recommendedMeritPct })} `}
+                          {r.recommendedBonus != null && `${t('bonusShort', { amount: rm(r.recommendedBonus) })} `}
                           <span className="text-foreground">({r.compActionStatus})</span>
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
                       <Link href={`/performance/review/${r.reviewId}`} className="text-xs text-primary hover:underline">
-                        Open
+                        {t('open')}
                       </Link>
                     </td>
                   </tr>

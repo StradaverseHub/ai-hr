@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
+import { useTranslations } from 'next-intl';
 import { Button, type ButtonProps } from './button';
 
 type Props = {
@@ -17,12 +18,15 @@ type Props = {
  */
 export function ConfirmSubmit({
   children,
-  title = 'Are you sure?',
+  title,
   description,
-  confirmLabel = 'Confirm',
+  confirmLabel,
   variant = 'destructive',
   ...props
 }: Props) {
+  const t = useTranslations('components.confirmSubmit');
+  const resolvedTitle = title ?? t('title');
+  const resolvedConfirmLabel = confirmLabel ?? t('confirm');
   const ref = React.useRef<HTMLButtonElement>(null);
   return (
     <AlertDialog.Root>
@@ -34,7 +38,7 @@ export function ConfirmSubmit({
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
-          <AlertDialog.Title className="text-base font-semibold">{title}</AlertDialog.Title>
+          <AlertDialog.Title className="text-base font-semibold">{resolvedTitle}</AlertDialog.Title>
           {description ? (
             <AlertDialog.Description className="mt-1.5 text-sm text-muted-foreground">
               {description}
@@ -43,7 +47,7 @@ export function ConfirmSubmit({
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
               <Button type="button" variant="outline" size="sm">
-                Cancel
+                {t('cancel')}
               </Button>
             </AlertDialog.Cancel>
             <AlertDialog.Action asChild>
@@ -53,7 +57,7 @@ export function ConfirmSubmit({
                 size="sm"
                 onClick={() => ref.current?.closest('form')?.requestSubmit()}
               >
-                {confirmLabel}
+                {resolvedConfirmLabel}
               </Button>
             </AlertDialog.Action>
           </div>

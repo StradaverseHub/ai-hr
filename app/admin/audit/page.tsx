@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { auditAggregateTypes, auditEvents } from '@/core/read';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -13,6 +14,7 @@ export default async function AuditPage({
   searchParams: Promise<{ type?: string; q?: string; from?: string; to?: string; page?: string }>;
 }) {
   const s = await requireAdmin();
+  const t = await getTranslations('admin.audit');
   const sp = await searchParams;
   const page = Math.max(0, Number(sp.page) || 0);
   const filters = {
@@ -37,13 +39,13 @@ export default async function AuditPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="Audit trail" description="Every recorded change — who, what, when (append-only)" />
+      <PageHeader title={t('title')} description={t('description')} />
 
       <Card>
         <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5">
-          <Field label="Record type">
+          <Field label={t('recordType')}>
             <select name="type" defaultValue={sp.type ?? ''} className={inputCls}>
-              <option value="">All</option>
+              <option value="">{t('all')}</option>
               {types.map((t) => (
                 <option key={t.aggregateType} value={t.aggregateType}>
                   {aggregateLabel(t.aggregateType)}
@@ -51,40 +53,40 @@ export default async function AuditPage({
               ))}
             </select>
           </Field>
-          <Field label="Search event">
-            <input name="q" defaultValue={sp.q ?? ''} placeholder="e.g. approved, bank, hired" className={inputCls} />
+          <Field label={t('searchEvent')}>
+            <input name="q" defaultValue={sp.q ?? ''} placeholder={t('searchPlaceholder')} className={inputCls} />
           </Field>
-          <Field label="From">
+          <Field label={t('from')}>
             <input name="from" type="date" defaultValue={sp.from ?? ''} className={inputCls} />
           </Field>
-          <Field label="To">
+          <Field label={t('to')}>
             <input name="to" type="date" defaultValue={sp.to ?? ''} className={inputCls} />
           </Field>
           <div className="flex items-center gap-2">
-            <button className={btnPrimary}>Filter</button>
+            <button className={btnPrimary}>{t('filter')}</button>
             <Link href="/admin/audit" className="text-sm text-muted-foreground hover:text-foreground">
-              Reset
+              {t('reset')}
             </Link>
           </div>
         </form>
       </Card>
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Events" count={rows.length} />
+        <SectionHeader title={t('events')} count={rows.length} />
         <AuditTable rows={rows} nowMs={nowMs} />
         {(page > 0 || hasNext) && (
           <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
             {page > 0 ? (
               <Link href={qs({ page: page - 1 || undefined })} className="text-primary hover:underline">
-                ← Newer
+                ← {t('newer')}
               </Link>
             ) : (
               <span />
             )}
-            <span className="text-xs text-muted-foreground">page {page + 1}</span>
+            <span className="text-xs text-muted-foreground">{t('pageIndicator', { page: page + 1 })}</span>
             {hasNext ? (
               <Link href={qs({ page: page + 1 })} className="text-primary hover:underline">
-                Older →
+                {t('older')} →
               </Link>
             ) : (
               <span />

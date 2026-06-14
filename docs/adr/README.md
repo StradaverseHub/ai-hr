@@ -21,6 +21,6 @@ decision, add a new ADR that supersedes the old one.
 | [0013](0013-performance-talent-management.md) | Performance & talent management: cycle-anchored, closes the loop into pay | Proposed (design only) |
 | [0014](0014-pcb-accumulators.md) | PCB accumulators derived from payslip history + TP3 opening balances | Accepted |
 | [0015](0015-domain-event-subject-scoping.md) | Subject-scoped reads on the domain-event log (close tenant-wide leak) | Accepted |
-| [0016](0016-ui-internationalization.md) | UI internationalization: cookie-scoped next-intl, English fallback, export/import matrix | Accepted (foundation) |
+| [0016](0016-ui-internationalization.md) | UI internationalization: cookie-scoped next-intl, English fallback, export/import matrix | Accepted (full extraction, 6 langs) |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

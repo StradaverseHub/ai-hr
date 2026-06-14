@@ -1,5 +1,7 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
+
 type Col = { key: string; label: string };
 
 /** Client-side CSV export of an already-rendered report table (Layer A — no server round-trip). */
@@ -12,6 +14,7 @@ export function DownloadCsv({
   rows: Record<string, unknown>[];
   filename: string;
 }) {
+  const t = useTranslations('components.downloadCsv');
   function download() {
     const esc = (v: unknown) => {
       const s = v == null ? '' : String(v);
@@ -34,7 +37,7 @@ export function DownloadCsv({
       onClick={download}
       className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
     >
-      Download CSV
+      {t('button')}
     </button>
   );
 }

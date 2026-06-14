@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests } from '@/core/read';
@@ -11,13 +12,15 @@ function DecideButtons({
   action,
   id,
   disabled,
+  labels,
 }: {
   action: (fd: FormData) => void | Promise<void>;
   id: string;
   disabled?: boolean;
+  labels: { yourRequest: string; approve: string; reject: string };
 }) {
   if (disabled) {
-    return <span className="text-xs text-muted-foreground">your request</span>;
+    return <span className="text-xs text-muted-foreground">{labels.yourRequest}</span>;
   }
   return (
     <div className="flex items-center justify-end gap-2">
@@ -25,14 +28,14 @@ function DecideButtons({
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="approved" />
         <Button type="submit" size="sm">
-          Approve
+          {labels.approve}
         </Button>
       </form>
       <form action={action}>
         <input type="hidden" name="id" value={id} />
         <input type="hidden" name="decision" value="rejected" />
         <Button type="submit" size="sm" variant="outline">
-          Reject
+          {labels.reject}
         </Button>
       </form>
     </div>
@@ -52,6 +55,12 @@ export default async function ApprovalsPage({
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
   const { error } = await searchParams;
+  const t = await getTranslations('approvals');
+  const decideLabels = {
+    yourRequest: t('yourRequest'),
+    approve: t('approve'),
+    reject: t('reject'),
+  };
 
   const [leave, corrections, profileChanges] = await Promise.all([
     listLeaveRequests(s, scopeIds),
@@ -65,24 +74,24 @@ export default async function ApprovalsPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        title="Approvals"
-        description={total === 0 ? 'Nothing waiting on you' : `${total} item(s) awaiting a decision`}
+        title={t('title')}
+        description={total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
       />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Leave requests" count={pendingLeave.length} />
+        <SectionHeader title={t('leaveRequests')} count={pendingLeave.length} />
         {pendingLeave.length === 0 ? (
-          <p className="px-4 py-5 text-center text-sm text-muted-foreground">No pending leave.</p>
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingLeave')}</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 font-medium">Type</th>
-                <th className="px-4 py-2 font-medium">Dates</th>
-                <th className="px-4 py-2 text-right font-medium">Days</th>
-                <th className="px-4 py-2 text-right font-medium">Action</th>
+                <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                <th className="px-4 py-2 font-medium">{t('type')}</th>
+                <th className="px-4 py-2 font-medium">{t('dates')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('days')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -95,7 +104,12 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.days)}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={approveLeaveAction} id={r.id} disabled={mine(r.personId)} />
+                    <DecideButtons
+                      action={approveLeaveAction}
+                      id={r.id}
+                      disabled={mine(r.personId)}
+                      labels={decideLabels}
+                    />
                   </td>
                 </tr>
               ))}
@@ -105,18 +119,18 @@ export default async function ApprovalsPage({
       </Card>
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Attendance corrections" count={corrections.length} />
+        <SectionHeader title={t('attendanceCorrections')} count={corrections.length} />
         {corrections.length === 0 ? (
-          <p className="px-4 py-5 text-center text-sm text-muted-foreground">No pending corrections.</p>
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCorrections')}</p>
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">Employee</th>
-                <th className="px-4 py-2 font-medium">Date</th>
-                <th className="px-4 py-2 font-medium">Proposed</th>
-                <th className="px-4 py-2 font-medium">Reason</th>
-                <th className="px-4 py-2 text-right font-medium">Action</th>
+                <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                <th className="px-4 py-2 font-medium">{t('date')}</th>
+                <th className="px-4 py-2 font-medium">{t('proposed')}</th>
+                <th className="px-4 py-2 font-medium">{t('reason')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -130,7 +144,12 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons action={approveCorrectionAction} id={c.id} disabled={mine(c.personId)} />
+                    <DecideButtons
+                      action={approveCorrectionAction}
+                      id={c.id}
+                      disabled={mine(c.personId)}
+                      labels={decideLabels}
+                    />
                   </td>
                 </tr>
               ))}
@@ -141,9 +160,9 @@ export default async function ApprovalsPage({
 
       {admin && (
         <Card className="overflow-hidden">
-          <SectionHeader title="Profile changes (bank / tax)" count={profileChanges.length} />
+          <SectionHeader title={t('profileChanges')} count={profileChanges.length} />
           {profileChanges.length === 0 ? (
-            <p className="px-4 py-5 text-center text-sm text-muted-foreground">No pending changes.</p>
+            <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingChanges')}</p>
           ) : (
             <ul className="divide-y divide-border">
               {profileChanges.map((r) => (
@@ -156,7 +175,12 @@ export default async function ApprovalsPage({
                         .join(' · ')}
                     </div>
                   </div>
-                  <DecideButtons action={approveProfileChangeAction} id={r.id} disabled={mine(r.personId)} />
+                  <DecideButtons
+                    action={approveProfileChangeAction}
+                    id={r.id}
+                    disabled={mine(r.personId)}
+                    labels={decideLabels}
+                  />
                 </li>
               ))}
             </ul>

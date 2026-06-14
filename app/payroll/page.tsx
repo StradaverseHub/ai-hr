@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies } from '@/core/read';
@@ -18,26 +19,27 @@ export default async function PayrollPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
+  const t = await getTranslations('payroll.list');
   const thisMonth = new Date().toISOString().slice(0, 7); // current YYYY-MM
   const { error } = await searchParams;
   const [batches, companies] = await Promise.all([listBatches(s, scopeIds), listCompanies(s)]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title="Payroll" />
+      <PageHeader title={t('title')} />
       <PayrollTabs active="batches" />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">
-        <SectionHeader title="Batches" count={batches.length} />
+        <SectionHeader title={t('batches')} count={batches.length} />
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-4 py-2 font-medium">Period</th>
-              <th className="px-4 py-2 font-medium">Company</th>
-              <th className="px-4 py-2 font-medium">Employees</th>
-              <th className="px-4 py-2 font-medium">Net pay</th>
-              <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
+              <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
+              <th className="px-4 py-2 font-medium">{t('colEmployees')}</th>
+              <th className="px-4 py-2 font-medium">{t('colNetPay')}</th>
+              <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -57,7 +59,7 @@ export default async function PayrollPage({
                   </td>
                   <td className="px-4 py-2.5">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_STYLE[b.status]}`}>
-                      {b.status}
+                      {t(`status.${b.status}`)}
                     </span>
                   </td>
                 </tr>
@@ -66,14 +68,14 @@ export default async function PayrollPage({
             {batches.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                  No batches yet — create one below.
+                  {t('empty')}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
         <form action={createBatchAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
-          <Field label="Company">
+          <Field label={t('company')}>
             <select name="companyId" required className={inputCls}>
               {companies.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -82,11 +84,11 @@ export default async function PayrollPage({
               ))}
             </select>
           </Field>
-          <Field label="Pay period">
+          <Field label={t('payPeriod')}>
             <input name="payPeriod" required placeholder="2026-05" defaultValue={thisMonth} pattern="[0-9]{4}-(0[1-9]|1[0-2])" title="YYYY-MM" className={inputCls} />
           </Field>
           <div className="sm:col-span-2">
-            <Button type="submit">Create batch</Button>
+            <Button type="submit">{t('createBatch')}</Button>
           </div>
         </form>
       </Card>
