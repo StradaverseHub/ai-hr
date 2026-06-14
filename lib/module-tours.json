@@ -1,0 +1,544 @@
+{
+  "me": {
+    "id": "me",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/me",
+        "titleKey": "tour.me.intro.title",
+        "bodyKey": "tour.me.intro.body",
+        "placement": "center"
+      },
+      {
+        "id": "contact",
+        "target": "[data-tour=\"me-contact\"]",
+        "route": "/me",
+        "titleKey": "tour.me.contact.title",
+        "bodyKey": "tour.me.contact.body",
+        "placement": "right"
+      },
+      {
+        "id": "bank",
+        "target": "[data-tour=\"me-bank\"]",
+        "route": "/me",
+        "titleKey": "tour.me.bank.title",
+        "bodyKey": "tour.me.bank.body",
+        "placement": "left"
+      },
+      {
+        "id": "payslips",
+        "target": "[data-tour=\"me-payslips\"]",
+        "route": "/me",
+        "titleKey": "tour.me.payslips.title",
+        "bodyKey": "tour.me.payslips.body",
+        "placement": "top"
+      },
+      {
+        "id": "attendance",
+        "target": "[data-tour=\"me-attendance\"]",
+        "route": "/me",
+        "titleKey": "tour.me.attendance.title",
+        "bodyKey": "tour.me.attendance.body",
+        "placement": "right"
+      },
+      {
+        "id": "leave",
+        "target": "[data-tour=\"me-leave\"]",
+        "route": "/me",
+        "titleKey": "tour.me.leave.title",
+        "bodyKey": "tour.me.leave.body",
+        "placement": "left"
+      }
+    ]
+  },
+  "leave": {
+    "id": "leave",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/leave",
+        "titleKey": "tour.leave.intro.title",
+        "bodyKey": "tour.leave.intro.body",
+        "placement": "center"
+      },
+      {
+        "id": "balance",
+        "target": "[data-tour=\"leave-balance\"]",
+        "route": "/leave",
+        "titleKey": "tour.leave.balance.title",
+        "bodyKey": "tour.leave.balance.body",
+        "placement": "top"
+      },
+      {
+        "id": "request",
+        "target": "[data-tour=\"leave-request\"]",
+        "route": "/leave",
+        "titleKey": "tour.leave.request.title",
+        "bodyKey": "tour.leave.request.body",
+        "placement": "top"
+      },
+      {
+        "id": "requests",
+        "target": "[data-tour=\"leave-requests\"]",
+        "route": "/leave",
+        "titleKey": "tour.leave.requests.title",
+        "bodyKey": "tour.leave.requests.body",
+        "placement": "top"
+      },
+      {
+        "id": "config",
+        "target": "[data-tour=\"leave-config\"]",
+        "route": "/admin/leave",
+        "titleKey": "tour.leave.config.title",
+        "bodyKey": "tour.leave.config.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "attendance": {
+    "id": "attendance",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/attendance",
+        "titleKey": "tour.attendance.intro.title",
+        "bodyKey": "tour.attendance.intro.body",
+        "placement": "center"
+      },
+      {
+        "id": "day",
+        "target": "[data-tour=\"attendance-day\"]",
+        "route": "/attendance",
+        "titleKey": "tour.attendance.day.title",
+        "bodyKey": "tour.attendance.day.body",
+        "placement": "bottom"
+      },
+      {
+        "id": "action",
+        "target": "[data-tour=\"attendance-action\"]",
+        "route": "/attendance",
+        "titleKey": "tour.attendance.action.title",
+        "bodyKey": "tour.attendance.action.body",
+        "placement": "left"
+      },
+      {
+        "id": "status",
+        "target": "[data-tour=\"attendance-status\"]",
+        "route": "/attendance",
+        "titleKey": "tour.attendance.status.title",
+        "bodyKey": "tour.attendance.status.body",
+        "placement": "bottom"
+      },
+      {
+        "id": "correction",
+        "target": "[data-tour=\"attendance-day\"]",
+        "route": "/attendance",
+        "titleKey": "tour.attendance.correction.title",
+        "bodyKey": "tour.attendance.correction.body",
+        "placement": "top"
+      },
+      {
+        "id": "summary",
+        "target": "[data-tour=\"attendance-summary\"]",
+        "route": "/attendance",
+        "titleKey": "tour.attendance.summary.title",
+        "bodyKey": "tour.attendance.summary.body",
+        "placement": "top"
+      }
+    ]
+  },
+  "payroll": {
+    "id": "payroll",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/payroll",
+        "titleKey": "tour.payroll.intro.title",
+        "bodyKey": "tour.payroll.intro.body",
+        "placement": "center",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "batches",
+        "target": "[data-tour=\"payroll-batches\"]",
+        "route": "/payroll",
+        "titleKey": "tour.payroll.batches.title",
+        "bodyKey": "tour.payroll.batches.body",
+        "placement": "bottom",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "create",
+        "target": "[data-tour=\"payroll-create\"]",
+        "route": "/payroll",
+        "titleKey": "tour.payroll.create.title",
+        "bodyKey": "tour.payroll.create.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "reports",
+        "target": "[data-tour=\"payroll-reports\"]",
+        "route": "/payroll/reports",
+        "titleKey": "tour.payroll.reports.title",
+        "bodyKey": "tour.payroll.reports.body",
+        "placement": "bottom",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "worklist",
+        "target": "[data-tour=\"payroll-worklist\"]",
+        "route": "/payroll/reports",
+        "titleKey": "tour.payroll.worklist.title",
+        "bodyKey": "tour.payroll.worklist.body",
+        "placement": "bottom",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "generate",
+        "target": "[data-tour=\"payroll-generate\"]",
+        "route": "/payroll/reports",
+        "titleKey": "tour.payroll.generate.title",
+        "bodyKey": "tour.payroll.generate.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "people": {
+    "id": "people",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/people",
+        "titleKey": "tour.people.intro.title",
+        "bodyKey": "tour.people.intro.body",
+        "placement": "center"
+      },
+      {
+        "id": "search",
+        "target": "[data-tour=\"people-search\"]",
+        "route": "/people",
+        "titleKey": "tour.people.search.title",
+        "bodyKey": "tour.people.search.body",
+        "placement": "bottom"
+      },
+      {
+        "id": "table",
+        "target": "[data-tour=\"people-table\"]",
+        "route": "/people",
+        "titleKey": "tour.people.table.title",
+        "bodyKey": "tour.people.table.body",
+        "placement": "top"
+      },
+      {
+        "id": "hire",
+        "target": "[data-tour=\"people-hire\"]",
+        "route": "/people",
+        "titleKey": "tour.people.hire.title",
+        "bodyKey": "tour.people.hire.body",
+        "placement": "top"
+      },
+      {
+        "id": "orgTree",
+        "target": "[data-tour=\"people-org-tree\"]",
+        "route": "/admin/organization",
+        "titleKey": "tour.people.orgTree.title",
+        "bodyKey": "tour.people.orgTree.body",
+        "placement": "bottom",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "orgCompanies",
+        "target": "[data-tour=\"people-org-companies\"]",
+        "route": "/admin/organization",
+        "titleKey": "tour.people.orgCompanies.title",
+        "bodyKey": "tour.people.orgCompanies.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "performance": {
+    "id": "performance",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/performance",
+        "titleKey": "tour.performance.intro.title",
+        "bodyKey": "tour.performance.intro.body",
+        "placement": "center",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "pending",
+        "target": "[data-tour=\"performance-pending\"]",
+        "route": "/performance",
+        "titleKey": "tour.performance.pending.title",
+        "bodyKey": "tour.performance.pending.body",
+        "placement": "bottom",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "cycles",
+        "target": "[data-tour=\"performance-cycles\"]",
+        "route": "/performance",
+        "titleKey": "tour.performance.cycles.title",
+        "bodyKey": "tour.performance.cycles.body",
+        "placement": "top",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "newCycle",
+        "target": "[data-tour=\"performance-new-cycle\"]",
+        "route": "/performance",
+        "titleKey": "tour.performance.newCycle.title",
+        "bodyKey": "tour.performance.newCycle.body",
+        "placement": "top",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "approvals": {
+    "id": "approvals",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/approvals",
+        "titleKey": "tour.approvals.intro.title",
+        "bodyKey": "tour.approvals.intro.body",
+        "placement": "center",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "header",
+        "target": "[data-tour=\"approvals-intro\"]",
+        "route": "/approvals",
+        "titleKey": "tour.approvals.header.title",
+        "bodyKey": "tour.approvals.header.body",
+        "placement": "bottom",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "leave",
+        "target": "[data-tour=\"approvals-leave\"]",
+        "route": "/approvals",
+        "titleKey": "tour.approvals.leave.title",
+        "bodyKey": "tour.approvals.leave.body",
+        "placement": "top",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "decide",
+        "target": "[data-tour=\"approvals-decide\"]",
+        "route": "/approvals",
+        "titleKey": "tour.approvals.decide.title",
+        "bodyKey": "tour.approvals.decide.body",
+        "placement": "left",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "corrections",
+        "target": "[data-tour=\"approvals-corrections\"]",
+        "route": "/approvals",
+        "titleKey": "tour.approvals.corrections.title",
+        "bodyKey": "tour.approvals.corrections.body",
+        "placement": "top",
+        "roles": [
+          "manager",
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
+  "org": {
+    "id": "org",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/org",
+        "titleKey": "tour.org.intro.title",
+        "bodyKey": "tour.org.intro.body",
+        "placement": "center"
+      },
+      {
+        "id": "header",
+        "target": "[data-tour=\"org-intro\"]",
+        "route": "/org",
+        "titleKey": "tour.org.header.title",
+        "bodyKey": "tour.org.header.body",
+        "placement": "bottom"
+      },
+      {
+        "id": "search",
+        "target": "[data-tour=\"org-chart\"]",
+        "route": "/org",
+        "titleKey": "tour.org.search.title",
+        "bodyKey": "tour.org.search.body",
+        "placement": "top"
+      },
+      {
+        "id": "controls",
+        "target": "[data-tour=\"org-chart\"]",
+        "route": "/org",
+        "titleKey": "tour.org.controls.title",
+        "bodyKey": "tour.org.controls.body",
+        "placement": "top"
+      },
+      {
+        "id": "lines",
+        "target": "[data-tour=\"org-legend\"]",
+        "route": "/org",
+        "titleKey": "tour.org.lines.title",
+        "bodyKey": "tour.org.lines.body",
+        "placement": "top"
+      }
+    ]
+  },
+  "admin": {
+    "id": "admin",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/admin/users",
+        "titleKey": "tour.admin.intro.title",
+        "bodyKey": "tour.admin.intro.body",
+        "placement": "center",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "users",
+        "target": "[data-tour=\"admin-users\"]",
+        "route": "/admin/users",
+        "titleKey": "tour.admin.users.title",
+        "bodyKey": "tour.admin.users.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "assign",
+        "target": "[data-tour=\"admin-assign\"]",
+        "route": "/admin/users",
+        "titleKey": "tour.admin.assign.title",
+        "bodyKey": "tour.admin.assign.body",
+        "placement": "left",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "provisioning",
+        "target": "[data-tour=\"admin-provisioning\"]",
+        "route": "/admin/users",
+        "titleKey": "tour.admin.provisioning.title",
+        "bodyKey": "tour.admin.provisioning.body",
+        "placement": "bottom",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "audit",
+        "target": "[data-tour=\"admin-audit-filters\"]",
+        "route": "/admin/audit",
+        "titleKey": "tour.admin.audit.title",
+        "bodyKey": "tour.admin.audit.body",
+        "placement": "bottom",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "auditTable",
+        "target": "[data-tour=\"admin-audit-table\"]",
+        "route": "/admin/audit",
+        "titleKey": "tour.admin.auditTable.title",
+        "bodyKey": "tour.admin.auditTable.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  }
+}

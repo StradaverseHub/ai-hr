@@ -39,11 +39,13 @@ export default async function ReportsPage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <div data-tour="payroll-reports">
+        <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      </div>
       <PayrollTabs active="reports" />
       <ErrorBanner message={sp.error} />
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="payroll-worklist">
         <SectionHeader title={t('worklistTitle')} count={worklist.length} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">
           {t('worklistDescription', { company: companyName.get(companyId) ?? '—' })}
@@ -90,7 +92,7 @@ export default async function ReportsPage({
         ⚠️ {t('layerABanner')}
       </div>
 
-      <Card>
+      <Card data-tour="payroll-generate">
         <SectionHeader title={t('generateTitle')} />
         <form method="get" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
           <Field label={t('fieldCompany')}>

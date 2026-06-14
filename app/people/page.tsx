@@ -68,6 +68,7 @@ export default async function PeoplePage({
             {isAdmin && (
               <Link
                 href="/people/import"
+                data-tour="people-import"
                 className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
               >
                 {t('importCsv')}
@@ -128,6 +129,7 @@ export default async function PeoplePage({
           name="q"
           defaultValue={q ?? ''}
           placeholder={t('searchPlaceholder')}
+          data-tour="people-search"
           className={`${inputCls} max-w-xs`}
           aria-label={t('searchAriaLabel')}
         />
@@ -141,7 +143,7 @@ export default async function PeoplePage({
         )}
       </form>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="people-table">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -213,7 +215,7 @@ export default async function PeoplePage({
         )}
       </Card>
 
-      <Card>
+      <Card data-tour="people-hire">
         <details>
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
             {t('hireAnEmployee')}

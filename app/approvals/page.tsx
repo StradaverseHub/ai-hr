@@ -73,13 +73,15 @@ export default async function ApprovalsPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        description={total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
-      />
+      <div data-tour="approvals-intro">
+        <PageHeader
+          title={t('title')}
+          description={total === 0 ? t('emptyDescription') : t('pendingDescription', { total })}
+        />
+      </div>
       <ErrorBanner message={error} />
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="approvals-leave">
         <SectionHeader title={t('leaveRequests')} count={pendingLeave.length} />
         {pendingLeave.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingLeave')}</p>
@@ -91,7 +93,9 @@ export default async function ApprovalsPage({
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
                 <th className="px-4 py-2 font-medium">{t('dates')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('days')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
+                <th className="px-4 py-2 text-right font-medium" data-tour="approvals-decide">
+                  {t('action')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -118,7 +122,7 @@ export default async function ApprovalsPage({
         )}
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="approvals-corrections">
         <SectionHeader title={t('attendanceCorrections')} count={corrections.length} />
         {corrections.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCorrections')}</p>

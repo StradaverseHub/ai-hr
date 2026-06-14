@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
 import { completeOnboardingAction } from '@/app/onboarding-actions';
 import type { TourStep } from '@/lib/onboarding-tour';
 import { btnGhost, btnPrimary } from '@/components/ui';
 
-/** Custom event other components dispatch to (re)start the tour. */
+/** Custom event other components dispatch to (re)start a tour: detail.tourId selects which one. */
 export const START_TOUR_EVENT = 'aihr:start-tour';
 
 const PAD = 8; // spotlight padding around the target
@@ -17,66 +18,102 @@ const GAP = 14;
 type Box = { top: number; left: number; width: number; height: number };
 
 /**
- * First-login product tour (ADR-0018): a self-contained spotlight walkthrough. A transparent blocker
- * captures clicks, a box-shadow "hole" dims everything but the target, and a placement-aware bubble
- * explains the step. Finishing or skipping persists completion. Replayable via the START_TOUR_EVENT.
+ * Product tour (ADR-0018): a self-contained spotlight walkthrough. A transparent blocker captures
+ * clicks, a box-shadow "hole" dims everything but the target, and a placement-aware bubble explains the
+ * step. Supports multiple named tours (shell welcome + per-module walkthroughs launched from KB guides)
+ * and cross-page steps — a step with a `route` navigates there first, then waits for its anchor to
+ * appear. Lives in the layout so it survives navigation. Finishing/skipping persists completion.
  */
-export function OnboardingTour({ steps, autoStart }: { steps: TourStep[]; autoStart: boolean }) {
+export function OnboardingTour({
+  tours,
+  autoStartTourId,
+}: {
+  tours: Record<string, TourStep[]>;
+  autoStartTourId: string | null;
+}) {
   const t = useTranslations('onboarding');
-  const [open, setOpen] = useState(autoStart);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [activeTourId, setActiveTourId] = useState<string | null>(autoStartTourId);
   const [index, setIndex] = useState(0);
   const [box, setBox] = useState<Box | null>(null);
-  // The tour is a client-only overlay; don't render it during SSR (its position is measured from the
-  // live DOM, so SSR-ing it causes a hydration mismatch). Mount-gate it instead.
+  // Client-only overlay — don't render during SSR (its position is measured from the live DOM).
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const steps = activeTourId ? (tours[activeTourId] ?? []) : [];
   const step = steps[index];
+  const open = activeTourId !== null && steps.length > 0;
   const isLast = index === steps.length - 1;
 
-  // Locate the current step's target and measure it (null → centered card).
-  const measure = useCallback(() => {
-    if (!step || !step.target) {
-      setBox(null);
-      return;
-    }
-    const el = document.querySelector(step.target) as HTMLElement | null;
-    if (!el) {
-      setBox(null);
-      return;
-    }
-    const r = el.getBoundingClientRect();
-    setBox({ top: r.top, left: r.left, width: r.width, height: r.height });
-  }, [step]);
+  // External (re)start with a chosen tour id.
+  useEffect(() => {
+    const onStart = (e: Event) => {
+      const id = (e as CustomEvent<{ tourId?: string }>).detail?.tourId ?? 'welcome';
+      if (!tours[id]?.length) return;
+      setActiveTourId(id);
+      setIndex(0);
+    };
+    window.addEventListener(START_TOUR_EVENT, onStart as EventListener);
+    return () => window.removeEventListener(START_TOUR_EVENT, onStart as EventListener);
+  }, [tours]);
 
-  // Scroll the target into view, then measure; re-measure on scroll/resize while open.
+  // Navigate to the step's route if we're not already there.
+  useEffect(() => {
+    if (!open || !step?.route) return;
+    if (pathname !== step.route) router.push(step.route);
+  }, [open, step, pathname, router]);
+
+  // Locate + measure the target, retrying so it survives a route change / async render.
   useEffect(() => {
     if (!open || !step) return;
-    if (step.target) {
-      const el = document.querySelector(step.target) as HTMLElement | null;
-      el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (!step.target) {
+      setBox(null);
+      return;
     }
-    measure();
-    const onMove = () => measure();
+    let cancelled = false;
+    let tries = 0;
+    const settle = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect();
+      setBox({ top: r.top, left: r.left, width: r.width, height: r.height });
+    };
+    const attempt = () => {
+      if (cancelled) return;
+      const el = document.querySelector(step.target as string) as HTMLElement | null;
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        settle(el);
+        window.setTimeout(() => !cancelled && settle(el), 300); // after smooth-scroll
+      } else if (tries++ < 25) {
+        window.setTimeout(attempt, 140); // wait for navigation / render
+      } else {
+        setBox(null); // give up → centered fallback
+      }
+    };
+    attempt();
+    const onMove = () => {
+      const el = document.querySelector(step.target as string) as HTMLElement | null;
+      if (el) settle(el);
+    };
     window.addEventListener('resize', onMove);
     window.addEventListener('scroll', onMove, true);
-    const id = window.setTimeout(measure, 250); // after smooth-scroll settles
     return () => {
+      cancelled = true;
       window.removeEventListener('resize', onMove);
       window.removeEventListener('scroll', onMove, true);
-      window.clearTimeout(id);
     };
-  }, [open, step, measure]);
+  }, [open, step, pathname]);
 
-  // External (re)start.
-  useEffect(() => {
-    const onStart = () => {
-      setIndex(0);
-      setOpen(true);
-    };
-    window.addEventListener(START_TOUR_EVENT, onStart);
-    return () => window.removeEventListener(START_TOUR_EVENT, onStart);
+  const finish = useCallback(() => {
+    setActiveTourId(null);
+    setBox(null);
+    void completeOnboardingAction(); // idempotent — first finish marks the user onboarded
   }, []);
+
+  const next = useCallback(() => {
+    if (isLast) finish();
+    else setIndex((i) => Math.min(steps.length - 1, i + 1));
+  }, [isLast, finish, steps.length]);
 
   // Keyboard: Esc skips, ←/→ navigate.
   useEffect(() => {
@@ -88,18 +125,7 @@ export function OnboardingTour({ steps, autoStart }: { steps: TourStep[]; autoSt
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, index, isLast]);
-
-  const finish = useCallback(() => {
-    setOpen(false);
-    void completeOnboardingAction();
-  }, []);
-
-  const next = useCallback(() => {
-    if (isLast) finish();
-    else setIndex((i) => Math.min(steps.length - 1, i + 1));
-  }, [isLast, finish, steps.length]);
+  }, [open, next, finish]);
 
   // Bubble position from the target box + placement, clamped to the viewport.
   const bubbleStyle = useMemo<React.CSSProperties>(() => {
@@ -112,14 +138,13 @@ export function OnboardingTour({ steps, autoStart }: { steps: TourStep[]; autoSt
     }
     let top = box.top;
     let left = box.left;
-    const wantRight = step.placement === 'right' && box.left + box.width + GAP + BUBBLE_W < vw;
     if (step.placement === 'right' || step.placement === 'left') {
+      const wantRight = step.placement === 'right' && box.left + box.width + GAP + BUBBLE_W < vw;
       left = wantRight ? box.left + box.width + GAP : box.left - BUBBLE_W - GAP;
-      if (left < GAP) left = box.left + box.width + GAP; // flip if no room on the left
-      top = Math.max(GAP, Math.min(box.top, vh - 220));
+      if (left < GAP) left = box.left + box.width + GAP;
+      top = Math.max(GAP, Math.min(box.top, vh - 240));
     } else {
-      // top / bottom
-      top = step.placement === 'top' ? box.top - 200 - GAP : box.top + box.height + GAP;
+      top = step.placement === 'top' ? box.top - 210 - GAP : box.top + box.height + GAP;
       if (top < GAP) top = box.top + box.height + GAP;
       left = clampL(box.left);
     }
@@ -132,11 +157,9 @@ export function OnboardingTour({ steps, autoStart }: { steps: TourStep[]; autoSt
 
   return (
     <div className="fixed inset-0 z-[100]" role="dialog" aria-modal="true" aria-label={t('aria')}>
-      {/* Click blocker. For centered steps it also provides the dim; for anchored steps the dim
-          comes from the spotlight's box-shadow below. */}
+      {/* Click blocker. Centered steps also get the dim here; anchored steps dim via the spotlight. */}
       <div className={spotlight ? 'absolute inset-0' : 'absolute inset-0 bg-foreground/55'} onClick={finish} />
 
-      {/* Spotlight: a hole over the target, everything else dimmed via a huge box-shadow. */}
       {spotlight && (
         <div
           aria-hidden
@@ -151,7 +174,6 @@ export function OnboardingTour({ steps, autoStart }: { steps: TourStep[]; autoSt
         />
       )}
 
-      {/* Bubble */}
       <div
         className="absolute rounded-2xl border border-border bg-popover p-4 text-popover-foreground shadow-[var(--shadow-pop)] transition-[top,left] duration-200 ease-out motion-reduce:transition-none"
         style={bubbleStyle}

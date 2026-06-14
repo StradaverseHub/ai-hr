@@ -39,9 +39,11 @@ export default async function AuditPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <div data-tour="admin-audit">
+        <PageHeader title={t('title')} description={t('description')} />
+      </div>
 
-      <Card>
+      <Card data-tour="admin-audit-filters">
         <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5">
           <Field label={t('recordType')}>
             <select name="type" defaultValue={sp.type ?? ''} className={inputCls}>
@@ -71,7 +73,7 @@ export default async function AuditPage({
         </form>
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card data-tour="admin-audit-table" className="overflow-hidden">
         <SectionHeader title={t('events')} count={rows.length} />
         <AuditTable rows={rows} nowMs={nowMs} />
         {(page > 0 || hasNext) && (

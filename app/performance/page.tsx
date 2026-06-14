@@ -29,12 +29,14 @@ export default async function PerformancePage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <div data-tour="performance-intro">
+        <PageHeader title={t('title')} description={t('description')} />
+      </div>
       <ErrorBanner message={error} />
 
       {pending.length > 0 && (
         <Card className="overflow-hidden border-amber-200 dark:border-amber-500/30">
-          <div className="flex items-center gap-2 border-b border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-500/10">
+          <div data-tour="performance-pending" className="flex items-center gap-2 border-b border-border bg-amber-50/60 px-4 py-3 dark:bg-amber-500/10">
             <h2 className="text-sm font-semibold">{t('awaitingYou')}</h2>
             <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
               {pending.length}
@@ -58,7 +60,7 @@ export default async function PerformancePage({
 
       {admin && (
         <>
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden" data-tour="performance-cycles">
             <SectionHeader title={t('reviewCycles')} count={cycles.length} />
             {cycles.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -111,7 +113,7 @@ export default async function PerformancePage({
             )}
           </Card>
 
-          <Card>
+          <Card data-tour="performance-new-cycle">
             <details>
               <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
               <form action={createCycleAction} className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">

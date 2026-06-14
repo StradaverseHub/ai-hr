@@ -96,7 +96,9 @@ export default async function LeavePage({
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <div data-tour="leave-intro">
+        <PageHeader title={t('title')} description={t('description')} />
+      </div>
 
       <PlannedAbsences
         rows={absences}
@@ -130,7 +132,7 @@ export default async function LeavePage({
         ))}
       </div>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="leave-balance">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
           {admin ? t('balancesTitle') : t('myBalancesTitle')}
           <span className="ml-2 font-normal text-muted-foreground">{t('balancesSubtitle')}</span>
@@ -203,7 +205,7 @@ export default async function LeavePage({
         </div>
       </Card>
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="leave-requests">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
           {t('requestsTitle')}
           <span className="ml-2 font-normal text-muted-foreground">
@@ -296,7 +298,7 @@ export default async function LeavePage({
         </div>
       </Card>
 
-      <Card>
+      <Card data-tour="leave-request">
         <details>
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
             {t('requestLeaveToggle')}

@@ -11,16 +11,18 @@ export default async function OrgChartPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <PageHeader
-        title={t('title')}
-        actions={
-          <span className="text-sm text-muted-foreground">
-            {t('peopleCount', { count: employees.length })}
-          </span>
-        }
-      />
+      <div data-tour="org-intro">
+        <PageHeader
+          title={t('title')}
+          actions={
+            <span className="text-sm text-muted-foreground">
+              {t('peopleCount', { count: employees.length })}
+            </span>
+          }
+        />
+      </div>
 
-      <Card className="p-5">
+      <Card className="p-5" data-tour="org-chart">
         {employees.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
@@ -28,7 +30,7 @@ export default async function OrgChartPage() {
         )}
       </Card>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground" data-tour="org-legend">
         {t.rich('legendNote', {
           strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
         })}

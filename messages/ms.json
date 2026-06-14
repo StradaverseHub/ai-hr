@@ -924,7 +924,8 @@
     "writeTab": "Tulis",
     "notFound": "Dokumen itu tidak wujud atau anda tidak boleh melihatnya.",
     "openFile": "Buka fail",
-    "cannotPreview": "Jenis fail ini tidak boleh dipratonton di sini. Muat turun untuk melihatnya."
+    "cannotPreview": "Jenis fail ini tidak boleh dipratonton di sini. Muat turun untuk melihatnya.",
+    "startWalkthrough": "Mulakan lawatan"
   },
   "onboarding": {
     "aria": "Lawatan produk",
@@ -951,6 +952,222 @@
     "themeTitle": "Terang atau gelap",
     "themeBody": "Tukar antara tema terang dan gelap mengikut kesesuaian mata dan ruang anda.",
     "finishTitle": "Anda sudah bersedia 🎉",
-    "finishBody": "Itu sahaja lawatannya. Bila-bila anda perlukan bantuan, buka Pusat Pengetahuan atau mainkan semula lawatan ini melalui butang bantuan."
+    "finishBody": "Itu sahaja lawatannya. Bila-bila anda perlukan bantuan, buka Pusat Pengetahuan atau mainkan semula lawatan ini melalui butang bantuan.",
+    "tour": {
+      "me": {
+        "intro": {
+          "title": "Laman layan-diri anda",
+          "body": "Ini hab peribadi anda. Kita akan lalui profil, butiran bank dan berkanun, slip gaji, serta ringkasan cuti dan kehadiran anda."
+        },
+        "contact": {
+          "title": "Butiran hubungan anda",
+          "body": "Kemas kini telefon, alamat, tarikh lahir dan hubungan kecemasan anda di sini. Perubahan ini disimpan **serta-merta**, tanpa kelulusan."
+        },
+        "bank": {
+          "title": "Bank dan berkanun",
+          "body": "Akaun bank dan kategori cukai PCB anda berada di sini. Buka **Mohon perubahan** untuk menghantar suntingan, yang akan ke pentadbir anda untuk kelulusan."
+        },
+        "payslips": {
+          "title": "Slip gaji anda",
+          "body": "Setiap tempoh gaji muncul di sini. Klik satu tempoh untuk membuka slip gaji penuh dan memuat turunnya."
+        },
+        "attendance": {
+          "title": "Ringkasan kehadiran",
+          "body": "Daftar masuk dan keluar untuk hari ini, dan semak hari-hari terkini anda. Anda juga boleh memohon pembetulan bagi rekod masa yang terlepas."
+        },
+        "leave": {
+          "title": "Baki dan permohonan cuti",
+          "body": "Lihat cuti yang terkumpul, digunakan dan tersedia mengikut jenis. Gunakan **Mohon cuti** untuk menghantar permohonan baharu."
+        }
+      },
+      "leave": {
+        "intro": {
+          "title": "Lawatan cuti",
+          "body": "Selamat datang ke Cuti. Kita akan tunjukkan baki cuti anda, cara memohon cuti, dan tempat permohonan dijejaki."
+        },
+        "balance": {
+          "title": "Semak baki anda",
+          "body": "Jadual ini menunjukkan baki cuti anda, dipecahkan mengikut jenis. Hari tersedia dipaparkan berbanding jumlah kelayakan anda."
+        },
+        "request": {
+          "title": "Mohon cuti",
+          "body": "Buka panel ini untuk mengisi tarikh, jenis cuti dan sebab, kemudian hantar permohonan anda untuk kelulusan."
+        },
+        "requests": {
+          "title": "Jejak permohonan anda",
+          "body": "Setiap permohonan muncul di sini dengan statusnya. Gunakan cip di atas untuk menapis mengikut menunggu, diluluskan atau ditolak."
+        },
+        "config": {
+          "title": "Konfigurasi jenis cuti",
+          "body": "Pentadbir menyediakan jenis cuti, kelayakan dan tahun cuti di sini. Di sinilah dasar dan cuti umum diurus."
+        }
+      },
+      "attendance": {
+        "intro": {
+          "title": "Lawati halaman kehadiran",
+          "body": "Lawatan pantas ini meliputi daftar masuk dan keluar, membaca status harian, rekod anda, dan menghantar permohonan pembetulan."
+        },
+        "day": {
+          "title": "Rekod harian anda",
+          "body": "Kad ini menyenaraikan semua orang bagi hari dipilih, dengan masa masuk, masa keluar, jam dan kerja lebih masa. Gunakan navigasi tarikh di atas untuk berpindah antara hari."
+        },
+        "action": {
+          "title": "Daftar masuk dan keluar",
+          "body": "Tindakan setiap baris memasukkan masa dan **mendaftarkan masuk anda**, kemudian **mendaftarkan keluar anda**. Setelah kedua-duanya ditetapkan, hari itu ditanda selesai."
+        },
+        "status": {
+          "title": "Hadir, lewat, separuh hari",
+          "body": "Pil status menunjukkan hadir, lewat, separuh hari atau tidak hadir bagi hari itu. Bercuti, cuti umum dan hari rehat turut muncul di sini."
+        },
+        "correction": {
+          "title": "Mohon pembetulan",
+          "body": "Masa direkod salah? Hantar permohonan pembetulan dengan masa yang dicadangkan dan sebab, kemudian pengurus akan meluluskan atau menolaknya."
+        },
+        "summary": {
+          "title": "Ringkasan bulanan anda",
+          "body": "Tatal ke bawah untuk rumusan bulanan: hari hadir, lewat, separuh hari, cuti, tidak hadir, serta jam dan penanda kerja lebih masa. Itu menamatkan lawatan."
+        }
+      },
+      "payroll": {
+        "intro": {
+          "title": "Jalankan kitaran gaji",
+          "body": "Lawatan ini meliputi pemprosesan gaji: mencipta kelompok, menyemak kelompok, dan mencari laporan berkanun seperti EA dan CP39."
+        },
+        "batches": {
+          "title": "Kelompok gaji anda",
+          "body": "Setiap pemprosesan gaji berada di sini. Klik satu tempoh untuk membuka kelompok dan menyemak slip gaji, gaji bersih dan jumlah berkanun."
+        },
+        "create": {
+          "title": "Cipta kelompok baharu",
+          "body": "Pilih syarikat dan tempoh gaji, kemudian klik **Cipta kelompok** untuk memulakan pemprosesan gaji baharu."
+        },
+        "reports": {
+          "title": "Laporan berkanun",
+          "body": "Di sinilah laporan EA, Form E, CP39 dan laporan berkanun EPF/SOCSO/EIS bulanan dijana."
+        },
+        "worklist": {
+          "title": "Senarai kerja pematuhan",
+          "body": "Jejak kewajipan CP22 dan CP22A di sini supaya pekerja baharu dan yang berhenti dimaklumkan kepada LHDN tepat pada masanya."
+        },
+        "generate": {
+          "title": "Jana laporan",
+          "body": "Pilih syarikat, laporan dan tempoh, kemudian klik **Pratonton** untuk menyemak angka sebelum mengeksport atau merekod."
+        }
+      },
+      "people": {
+        "intro": {
+          "title": "Lawatan kakitangan dan organisasi",
+          "body": "Lawatan pantas ini menunjukkan cara mencari kakitangan, mengambil pekerja, dan mengurus data induk organisasi anda. Mari mulakan di halaman Kakitangan."
+        },
+        "search": {
+          "title": "Cari kakitangan",
+          "body": "Taip nama atau e-mel di sini dan tekan **Cari** untuk menapis direktori. Gunakan **Kosongkan** untuk menetapkan semula kepada semua orang."
+        },
+        "table": {
+          "title": "Layari direktori",
+          "body": "Setiap pekerja dipaparkan di sini dengan jabatan, syarikat dan statusnya. Klik nama untuk membuka profil penuh mereka."
+        },
+        "hire": {
+          "title": "Ambil pekerja",
+          "body": "Kembangkan **Ambil pekerja** untuk menambah seseorang dengan syarikat, jabatan dan tarikh mula mereka. Untuk onboarding pukal, gunakan **Import CSV** di atas."
+        },
+        "orgTree": {
+          "title": "Struktur kumpulan anda",
+          "body": "Pentadbir mengurus data induk organisasi di sini. Pepohon ini menunjukkan cara syarikat anda bersarang menjadi satu kumpulan."
+        },
+        "orgCompanies": {
+          "title": "Syarikat dan data induk",
+          "body": "Buka mana-mana syarikat untuk mengurus jabatan, jawatan dan pusat kosnya. Gunakan **Tambah syarikat** di bawah untuk mendaftarkan yang baharu. Itu sahaja lawatannya!"
+        }
+      },
+      "performance": {
+        "intro": {
+          "title": "Lawatan penilaian prestasi",
+          "body": "Lawatan pantas ini menunjukkan cara menjalankan kitaran penilaian prestasi, mengendalikan penilaian yang menunggu anda, dan membuka atau mencipta kitaran."
+        },
+        "pending": {
+          "title": "Penilaian menunggu anda",
+          "body": "Apabila penilaian pasukan memerlukan input anda, ia akan muncul di sini. Klik **Nilai** pada mana-mana baris untuk melengkapkannya."
+        },
+        "cycles": {
+          "title": "Kitaran penilaian",
+          "body": "Setiap kitaran disenaraikan di sini dengan tempoh, status dan kemajuannya. Klik nama kitaran untuk membukanya dan mengurus penilaiannya."
+        },
+        "newCycle": {
+          "title": "Cipta kitaran baharu",
+          "body": "Kembangkan panel ini untuk menetapkan nama, skop, tempoh dan kumpulan merit, kemudian klik **Cipta kitaran** untuk melancarkannya."
+        }
+      },
+      "approvals": {
+        "intro": {
+          "title": "Peti masuk kelulusan anda",
+          "body": "Inilah satu tempat di mana segala yang menunggu keputusan anda muncul — cuti, pembetulan kehadiran dan perubahan profil. Mari lihat cara membersihkannya."
+        },
+        "header": {
+          "title": "Menunggu sepintas lalu",
+          "body": "Pengepala menunjukkan berapa banyak permohonan masih menunggu merentas semua baris gilir. Apabila ia mencecah sifar, peti masuk anda telah bersih."
+        },
+        "leave": {
+          "title": "Permohonan cuti",
+          "body": "Setiap permohonan cuti yang menunggu memaparkan pekerja, jenis, tarikh dan hari. Semak butirannya sebelum anda membuat keputusan."
+        },
+        "decide": {
+          "title": "Luluskan atau tolak",
+          "body": "Gunakan butang di lajur ini untuk **meluluskan** atau **menolak** permohonan. Anda tidak boleh meluluskan permohonan sendiri — baris itu memaparkan *Permohonan anda* sebaliknya."
+        },
+        "corrections": {
+          "title": "Pembetulan kehadiran",
+          "body": "Pembetulan rekod masa muncul di sini. RLS sudah memangkas setiap baris gilir kepada apa yang anda dibenarkan lihat, jadi anda hanya membuat keputusan dalam skop anda."
+        }
+      },
+      "org": {
+        "intro": {
+          "title": "Lawati carta organisasi",
+          "body": "Lawatan pantas ini menunjukkan cara **mencari**, **menguncup dan menzum**, serta membaca garis pelaporan yang menghubungkan pasukan anda."
+        },
+        "header": {
+          "title": "Organisasi anda sepintas lalu",
+          "body": "Pengepala menamakan paparan ini dan menunjukkan berapa ramai orang yang dipetakan. Semua orang melapor ke atas dari sini."
+        },
+        "search": {
+          "title": "Cari sesiapa dengan pantas",
+          "body": "Taip nama, peranan atau jabatan dalam kotak **carian** di kanan atas. Padanan akan menyala dan ditatal ke paparan, walaupun dalam cabang yang dikuncup."
+        },
+        "controls": {
+          "title": "Kuncup dan zum",
+          "body": "Klik **togol +/−** di bawah mana-mana pengurus untuk menguncup atau mengembangkan laporannya. Gunakan **butang zum** untuk memuatkan pasukan besar pada skrin."
+        },
+        "lines": {
+          "title": "Baca garis pelaporan",
+          "body": "Setiap gaya penyambung bermaksud hubungan yang berbeza. Semak **legenda** ini untuk membezakan pelaporan terus, fungsian, projek dan garis putus-putus."
+        }
+      },
+      "admin": {
+        "intro": {
+          "title": "Lawatan pentadbir",
+          "body": "Lawatan ini meliputi pengurusan peranan pengguna, memberi dan menarik balik akses, pentadbir syarikat berskop, dan jejak audit. Mari mulakan dengan pengguna."
+        },
+        "users": {
+          "title": "Pengguna anda",
+          "body": "Setiap orang dalam sistem disenaraikan di sini dengan peranan semasa mereka. Setiap tag menunjukkan satu peranan dan, apabila berskop, syarikat yang berkenaan."
+        },
+        "assign": {
+          "title": "Berikan peranan",
+          "body": "Pilih satu peranan, secara pilihan skopkannya kepada syarikat, kemudian klik **Tambah peranan**. Gunakan **×** di sebelah tag untuk menarik balik akses."
+        },
+        "provisioning": {
+          "title": "Pentadbir berskop",
+          "body": "Peranan **hr_admin** berskop syarikat membenarkan pentadbir wakil mengurus subpepohon mereka sahaja. Nota ini menerangkan cara peruntukan dan skop berfungsi."
+        },
+        "audit": {
+          "title": "Jejak audit",
+          "body": "Kini lompat ke log audit. Tapis mengikut jenis rekod, cari peristiwa, atau persempitkan julat tarikh untuk mencari dengan tepat apa yang berubah."
+        },
+        "auditTable": {
+          "title": "Setiap perubahan, dilog",
+          "body": "Setiap baris ialah satu peristiwa daripada log tak boleh ubah — siapa membuat apa, bila. Itu lawatan pentadbir; anda sudah bersedia."
+        }
+      }
+    }
   }
 }

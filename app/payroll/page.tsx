@@ -26,11 +26,13 @@ export default async function PayrollPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} />
+      <div data-tour="payroll-intro">
+        <PageHeader title={t('title')} />
+      </div>
       <PayrollTabs active="batches" />
       <ErrorBanner message={error} />
 
-      <Card className="overflow-hidden">
+      <Card className="overflow-hidden" data-tour="payroll-batches">
         <SectionHeader title={t('batches')} count={batches.length} />
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -88,7 +90,7 @@ export default async function PayrollPage({
             <input name="payPeriod" required placeholder="2026-05" defaultValue={thisMonth} pattern="[0-9]{4}-(0[1-9]|1[0-2])" title="YYYY-MM" className={inputCls} />
           </Field>
           <div className="sm:col-span-2">
-            <Button type="submit">{t('createBatch')}</Button>
+            <Button type="submit" data-tour="payroll-create">{t('createBatch')}</Button>
           </div>
         </form>
       </Card>

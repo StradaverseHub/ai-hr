@@ -21,7 +21,7 @@ import { listPrincipals } from '@/lib/principals';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
-import { tourStepsFor } from '@/lib/onboarding-tour';
+import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
@@ -37,7 +37,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
   const onboarded = await getOnboardingStatus(session);
-  const tourSteps = tourStepsFor(session.roles);
+  const tours = toursForRoles(session.roles);
   return (
     <html
       lang={locale}
@@ -80,7 +80,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <main className="min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>
             </div>
           </div>
-          <OnboardingTour steps={tourSteps} autoStart={!onboarded} />
+          <OnboardingTour tours={tours} autoStartTourId={onboarded ? null : WELCOME_TOUR_ID} />
           <Suspense fallback={null}>
             <ToastFromQuery />
           </Suspense>

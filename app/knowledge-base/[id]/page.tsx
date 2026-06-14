@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getDocument, canManage } from '@/core/knowledge-base';
+import { guideTourId } from '@/lib/onboarding-tour';
 import { Card, ErrorBanner, PageHeader, btnGhost, btnPrimary } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
 import { KbArticleEditor } from '@/components/kb-article-editor';
+import { GuideTourButton } from '@/components/guide-tour-button';
 import { archiveDocumentAction, restoreDocumentAction } from '../actions';
 import { Archive, BookOpen, Download, Paperclip, Pencil, RotateCcw } from 'lucide-react';
 
@@ -38,6 +40,7 @@ export default async function KbDocumentPage({
   }
 
   const manage = canManage(s, doc);
+  const tourId = guideTourId(doc.slug);
   const editing = sp.edit === '1' && doc.kind === 'article' && manage && !doc.archivedAt;
   const inlineUrl = `/knowledge-base/${doc.id}/download?inline=1`;
   const isImage = (doc.mimeType ?? '').startsWith('image/');
@@ -45,6 +48,7 @@ export default async function KbDocumentPage({
 
   const actions = !editing && (
     <>
+      {tourId && !doc.archivedAt && <GuideTourButton tourId={tourId} />}
       <a href={`/knowledge-base/${doc.id}/download`} className={btnGhost}>
         <Download className="size-4" />
         {t('download')}
