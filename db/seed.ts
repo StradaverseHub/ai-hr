@@ -14,6 +14,7 @@ import { createLeavePolicy } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
+import { seedGuides } from './seed-guides';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -26,6 +27,7 @@ const TABLES = [
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
+  'kb_document',
 ];
 
 async function main() {
@@ -320,7 +322,10 @@ async function main() {
     });
   }
 
+  const guideCount = await seedGuides(owner.db, DEV_TENANT_ID);
+
   console.log(`✓ Seeded demo tenant with ${people.length} employees.`);
+  console.log(`  ${guideCount} Knowledge Base guides seeded.`);
   console.log(`  DEV_TENANT_ID=${DEV_TENANT_ID}`);
   console.log(`  DEV_USER_ID=${DEV_ADMIN_USER_ID}`);
 

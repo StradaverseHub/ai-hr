@@ -25,7 +25,8 @@
     "usersRoles": "Users & roles",
     "collapse": "Collapse",
     "expand": "Expand",
-    "home": "AI HR home"
+    "home": "AI HR home",
+    "knowledgeBase": "Knowledge Base"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -875,5 +876,54 @@
     "themeToggle": {
       "toggle": "Toggle theme"
     }
+  },
+  "kb": {
+    "title": "Knowledge Base",
+    "subtitle": "Guides, policies and documents for your team",
+    "search": "Search documents…",
+    "searchAria": "Search the knowledge base",
+    "audience": {
+      "all": "Everyone",
+      "employee": "Employees",
+      "manager": "Managers",
+      "hr_admin": "HR admins"
+    },
+    "filterAudience": "Audience",
+    "filterAll": "All",
+    "guideBadge": "Guide",
+    "fileBadge": "File",
+    "empty": "No documents yet. Add the first one below.",
+    "emptySearch": "No documents match “{q}”.",
+    "resultCount": "{count, plural, one {# document} other {# documents}}",
+    "compose": "Add to library",
+    "tabArticle": "Write article",
+    "tabUpload": "Upload file",
+    "fTitle": "Title",
+    "fTitlePlaceholder": "e.g. Remote work policy",
+    "fCategory": "Category",
+    "fCategoryPlaceholder": "general",
+    "fAudience": "Audience",
+    "fBody": "Content (Markdown)",
+    "fBodyPlaceholder": "# Heading\n\nWrite using **Markdown**…",
+    "fFile": "File",
+    "fFileHint": "Up to {mb} MB",
+    "create": "Create article",
+    "upload": "Upload",
+    "cancel": "Cancel",
+    "back": "Knowledge Base",
+    "edit": "Edit",
+    "save": "Save changes",
+    "archive": "Archive",
+    "restore": "Restore",
+    "download": "Download",
+    "archivedNote": "This document is archived — it’s hidden from the library.",
+    "systemNote": "This is an official system guide.",
+    "updatedAt": "Updated {date}",
+    "fileMeta": "{size} · {type}",
+    "previewTab": "Preview",
+    "writeTab": "Write",
+    "notFound": "That document doesn’t exist or you can’t see it.",
+    "openFile": "Open file",
+    "cannotPreview": "This file type can’t be previewed here. Download it to view."
   }
 }

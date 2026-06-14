@@ -25,7 +25,8 @@
     "usersRoles": "ผู้ใช้และบทบาท",
     "collapse": "ย่อ",
     "expand": "ขยาย",
-    "home": "หน้าแรก AI HR"
+    "home": "หน้าแรก AI HR",
+    "knowledgeBase": "ฐานความรู้"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -875,5 +876,54 @@
     "themeToggle": {
       "toggle": "สลับธีม"
     }
+  },
+  "kb": {
+    "title": "ฐานความรู้",
+    "subtitle": "คู่มือ นโยบาย และเอกสารสำหรับทีมของคุณ",
+    "search": "ค้นหาเอกสาร…",
+    "searchAria": "ค้นหาในฐานความรู้",
+    "audience": {
+      "all": "ทุกคน",
+      "employee": "พนักงาน",
+      "manager": "ผู้จัดการ",
+      "hr_admin": "ผู้ดูแล HR"
+    },
+    "filterAudience": "กลุ่มผู้อ่าน",
+    "filterAll": "ทั้งหมด",
+    "guideBadge": "คู่มือ",
+    "fileBadge": "ไฟล์",
+    "empty": "ยังไม่มีเอกสาร เพิ่มเอกสารแรกด้านล่าง",
+    "emptySearch": "ไม่มีเอกสารที่ตรงกับ “{q}”",
+    "resultCount": "{count, plural, one {# เอกสาร} other {# เอกสาร}}",
+    "compose": "เพิ่มลงในคลัง",
+    "tabArticle": "เขียนบทความ",
+    "tabUpload": "อัปโหลดไฟล์",
+    "fTitle": "ชื่อเรื่อง",
+    "fTitlePlaceholder": "เช่น นโยบายการทำงานทางไกล",
+    "fCategory": "หมวดหมู่",
+    "fCategoryPlaceholder": "ทั่วไป",
+    "fAudience": "กลุ่มผู้อ่าน",
+    "fBody": "เนื้อหา (Markdown)",
+    "fBodyPlaceholder": "# หัวข้อ\n\nเขียนโดยใช้ **Markdown**…",
+    "fFile": "ไฟล์",
+    "fFileHint": "ไม่เกิน {mb} MB",
+    "create": "สร้างบทความ",
+    "upload": "อัปโหลด",
+    "cancel": "ยกเลิก",
+    "back": "ฐานความรู้",
+    "edit": "แก้ไข",
+    "save": "บันทึกการเปลี่ยนแปลง",
+    "archive": "เก็บถาวร",
+    "restore": "กู้คืน",
+    "download": "ดาวน์โหลด",
+    "archivedNote": "เอกสารนี้ถูกเก็บถาวร — จะถูกซ่อนจากคลัง",
+    "systemNote": "นี่คือคู่มือระบบอย่างเป็นทางการ",
+    "updatedAt": "อัปเดตเมื่อ {date}",
+    "fileMeta": "{size} · {type}",
+    "previewTab": "ดูตัวอย่าง",
+    "writeTab": "เขียน",
+    "notFound": "ไม่มีเอกสารนี้หรือคุณไม่มีสิทธิ์ดู",
+    "openFile": "เปิดไฟล์",
+    "cannotPreview": "ไม่สามารถดูตัวอย่างไฟล์ประเภทนี้ได้ที่นี่ ดาวน์โหลดเพื่อเปิดดู"
   }
 }

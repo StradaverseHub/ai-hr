@@ -31,8 +31,16 @@ import {
   uniqueIndex,
   primaryKey,
   check,
+  customType,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
+
+/** Postgres `bytea` ↔ Node Buffer (postgres.js round-trips Buffers natively). */
+const bytea = customType<{ data: Buffer; driver: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
 
 // ───────────────────────────── Enums ─────────────────────────────
 
@@ -796,5 +804,55 @@ export const performanceReview = pgTable(
     uniqueIndex('performance_review_cycle_emp_uq').on(t.cycleId, t.employmentId),
     index('performance_review_employment_idx').on(t.employmentId),
     index('performance_review_reviewer_idx').on(t.reviewerEmploymentId),
+  ],
+);
+
+// ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
+// A tenant-shared repository of documents. Two content kinds in one table: 'article' = Markdown
+// authored/edited in-app; 'file' = an uploaded binary (bytes in `content`). The seeded module user
+// guides are articles with is_system = true (idempotent by slug).
+
+export const kbKindEnum = pgEnum('kb_kind', ['article', 'file']);
+// Informational filter for the library, NOT an access control — every tenant member reads all KB.
+export const kbAudienceEnum = pgEnum('kb_audience', ['all', 'employee', 'manager', 'hr_admin']);
+
+export const kbDocument = pgTable(
+  'kb_document',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    kind: kbKindEnum('kind').notNull(),
+    title: text('title').notNull(),
+    // Stable identifier: clean URLs + idempotent upsert key for the seeded system guides.
+    slug: text('slug'),
+    // Module tag for grouping in the library (e.g. 'getting-started', 'payroll', 'general').
+    category: text('category').notNull().default('general'),
+    audience: kbAudienceEnum('audience').notNull().default('all'),
+    // True for the auto-seeded official guides; protects them from non-admin edits/deletes (RLS).
+    isSystem: boolean('is_system').notNull().default(false),
+    // kind = 'article': the Markdown body.
+    body: text('body'),
+    // kind = 'file': the uploaded bytes + descriptors. `content` is only ever selected on download.
+    fileName: text('file_name'),
+    mimeType: text('mime_type'),
+    sizeBytes: integer('size_bytes'),
+    content: bytea('content'),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    updatedByUserId: uuid('updated_by_user_id').references(() => appUser.id),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('kb_document_tenant_idx').on(t.tenantId),
+    index('kb_document_category_idx').on(t.tenantId, t.category),
+    // Slug is unique per tenant when present (system guides rely on it for idempotent upsert).
+    uniqueIndex('kb_document_tenant_slug_uq').on(t.tenantId, t.slug),
+    // A row is one kind XOR the other: an article has a body; a file has bytes + a name.
+    check(
+      'kb_document_kind_shape',
+      sql`(${t.kind} = 'article' AND ${t.body} IS NOT NULL AND ${t.content} IS NULL)
+          OR (${t.kind} = 'file' AND ${t.content} IS NOT NULL AND ${t.fileName} IS NOT NULL)`,
+    ),
   ],
 );

@@ -25,7 +25,8 @@
     "usersRoles": "Pengguna & peranan",
     "collapse": "Kuncupkan",
     "expand": "Kembangkan",
-    "home": "Laman utama AI HR"
+    "home": "Laman utama AI HR",
+    "knowledgeBase": "Pusat Pengetahuan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -875,5 +876,54 @@
     "themeToggle": {
       "toggle": "Tukar tema"
     }
+  },
+  "kb": {
+    "title": "Pusat Pengetahuan",
+    "subtitle": "Panduan, dasar dan dokumen untuk pasukan anda",
+    "search": "Cari dokumen…",
+    "searchAria": "Cari dalam pusat pengetahuan",
+    "audience": {
+      "all": "Semua orang",
+      "employee": "Kakitangan",
+      "manager": "Pengurus",
+      "hr_admin": "Pentadbir HR"
+    },
+    "filterAudience": "Khalayak",
+    "filterAll": "Semua",
+    "guideBadge": "Panduan",
+    "fileBadge": "Fail",
+    "empty": "Belum ada dokumen. Tambah yang pertama di bawah.",
+    "emptySearch": "Tiada dokumen yang sepadan dengan “{q}”.",
+    "resultCount": "{count, plural, one {# dokumen} other {# dokumen}}",
+    "compose": "Tambah ke pustaka",
+    "tabArticle": "Tulis artikel",
+    "tabUpload": "Muat naik fail",
+    "fTitle": "Tajuk",
+    "fTitlePlaceholder": "cth. Dasar kerja jarak jauh",
+    "fCategory": "Kategori",
+    "fCategoryPlaceholder": "umum",
+    "fAudience": "Khalayak",
+    "fBody": "Kandungan (Markdown)",
+    "fBodyPlaceholder": "# Tajuk\n\nTulis menggunakan **Markdown**…",
+    "fFile": "Fail",
+    "fFileHint": "Sehingga {mb} MB",
+    "create": "Cipta artikel",
+    "upload": "Muat naik",
+    "cancel": "Batal",
+    "back": "Pusat Pengetahuan",
+    "edit": "Edit",
+    "save": "Simpan perubahan",
+    "archive": "Arkibkan",
+    "restore": "Pulihkan",
+    "download": "Muat turun",
+    "archivedNote": "Dokumen ini telah diarkibkan — ia disembunyikan daripada pustaka.",
+    "systemNote": "Ini ialah panduan sistem rasmi.",
+    "updatedAt": "Dikemas kini {date}",
+    "fileMeta": "{size} · {type}",
+    "previewTab": "Pratonton",
+    "writeTab": "Tulis",
+    "notFound": "Dokumen itu tidak wujud atau anda tidak boleh melihatnya.",
+    "openFile": "Buka fail",
+    "cannotPreview": "Jenis fail ini tidak boleh dipratonton di sini. Muat turun untuk melihatnya."
   }
 }

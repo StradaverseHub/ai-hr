@@ -25,7 +25,8 @@
     "usersRoles": "用户与角色",
     "collapse": "收起",
     "expand": "展开",
-    "home": "AI HR 首页"
+    "home": "AI HR 首页",
+    "knowledgeBase": "知识库"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -875,5 +876,54 @@
     "themeToggle": {
       "toggle": "切换主题"
     }
+  },
+  "kb": {
+    "title": "知识库",
+    "subtitle": "为团队提供的指南、政策与文档",
+    "search": "搜索文档…",
+    "searchAria": "搜索知识库",
+    "audience": {
+      "all": "所有人",
+      "employee": "员工",
+      "manager": "经理",
+      "hr_admin": "HR 管理员"
+    },
+    "filterAudience": "适用对象",
+    "filterAll": "全部",
+    "guideBadge": "指南",
+    "fileBadge": "文件",
+    "empty": "暂无文档。请在下方添加第一篇。",
+    "emptySearch": "没有与“{q}”匹配的文档。",
+    "resultCount": "{count, plural, one {# 篇文档} other {# 篇文档}}",
+    "compose": "添加到库",
+    "tabArticle": "撰写文章",
+    "tabUpload": "上传文件",
+    "fTitle": "标题",
+    "fTitlePlaceholder": "例如：远程办公政策",
+    "fCategory": "分类",
+    "fCategoryPlaceholder": "通用",
+    "fAudience": "适用对象",
+    "fBody": "内容（Markdown）",
+    "fBodyPlaceholder": "# 标题\n\n使用 **Markdown** 撰写…",
+    "fFile": "文件",
+    "fFileHint": "最大 {mb} MB",
+    "create": "创建文章",
+    "upload": "上传",
+    "cancel": "取消",
+    "back": "知识库",
+    "edit": "编辑",
+    "save": "保存更改",
+    "archive": "归档",
+    "restore": "恢复",
+    "download": "下载",
+    "archivedNote": "此文档已归档——它已从库中隐藏。",
+    "systemNote": "这是一篇官方系统指南。",
+    "updatedAt": "更新于 {date}",
+    "fileMeta": "{size} · {type}",
+    "previewTab": "预览",
+    "writeTab": "撰写",
+    "notFound": "该文档不存在，或您无权查看。",
+    "openFile": "打开文件",
+    "cannotPreview": "此文件类型无法在此预览。请下载后查看。"
   }
 }
