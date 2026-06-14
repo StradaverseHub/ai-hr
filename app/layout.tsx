@@ -1,11 +1,14 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google';
 import { cookies } from 'next/headers';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale } from 'next-intl/server';
 import './globals.css';
 import { Suspense } from 'react';
 import { Providers } from './providers';
 import { Sidebar } from '@/components/sidebar';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
@@ -25,17 +28,18 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [session, principals] = await Promise.all([getSession(), listPrincipals()]);
+  const [session, principals, locale] = await Promise.all([getSession(), listPrincipals(), getLocale()]);
   const allowed = await allowedCompanies(session);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
   return (
     <html
-      lang="en"
+      lang={locale}
       className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4">
+        <NextIntlClientProvider>
         <Providers>
           {/* Detached floating layout: the rail, the top bar, and each content card
               float separately on the canvas with gutters between them. */}
@@ -58,6 +62,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <div className="flex items-center gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
+                  <LanguageSwitcher />
                   <ThemeToggle />
                 </div>
               </header>
@@ -69,6 +74,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </Suspense>
           <Toaster />
         </Providers>
+        </NextIntlClientProvider>
       </body>
     </html>
   );

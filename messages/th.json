@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "AI HR",
+    "language": "ภาษา",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก",
+    "loading": "กำลังโหลด…",
+    "search": "ค้นหา"
+  },
+  "nav": {
+    "dashboard": "แดชบอร์ด",
+    "myWorkspace": "พื้นที่ทำงานของฉัน",
+    "people": "พนักงาน",
+    "orgChart": "ผังองค์กร",
+    "leave": "การลา",
+    "attendance": "การเข้างาน",
+    "manage": "จัดการ",
+    "approvals": "การอนุมัติ",
+    "performance": "ผลงาน",
+    "admin": "ผู้ดูแลระบบ",
+    "organization": "องค์กร",
+    "leaveConfig": "ตั้งค่าการลา",
+    "payroll": "เงินเดือน",
+    "auditTrail": "บันทึกการตรวจสอบ",
+    "usersRoles": "ผู้ใช้และบทบาท",
+    "collapse": "ย่อ",
+    "expand": "ขยาย",
+    "home": "หน้าแรก AI HR"
+  },
+  "dashboard": {
+    "title": "แดชบอร์ด",
+    "recentActivity": "กิจกรรมล่าสุด",
+    "recentActivitySubtitle": "จากบันทึกเหตุการณ์โดเมน",
+    "noActivity": "ยังไม่มีกิจกรรม",
+    "viewAll": "ดูทั้งหมด"
+  }
+}

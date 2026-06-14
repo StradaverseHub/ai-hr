@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "AI HR",
+    "language": "Ngôn ngữ",
+    "save": "Lưu",
+    "cancel": "Hủy",
+    "loading": "Đang tải…",
+    "search": "Tìm kiếm"
+  },
+  "nav": {
+    "dashboard": "Bảng điều khiển",
+    "myWorkspace": "Không gian của tôi",
+    "people": "Nhân viên",
+    "orgChart": "Sơ đồ tổ chức",
+    "leave": "Nghỉ phép",
+    "attendance": "Chấm công",
+    "manage": "Quản lý",
+    "approvals": "Phê duyệt",
+    "performance": "Hiệu suất",
+    "admin": "Quản trị",
+    "organization": "Tổ chức",
+    "leaveConfig": "Cấu hình nghỉ phép",
+    "payroll": "Bảng lương",
+    "auditTrail": "Nhật ký kiểm toán",
+    "usersRoles": "Người dùng & Vai trò",
+    "collapse": "Thu gọn",
+    "expand": "Mở rộng",
+    "home": "Trang chủ AI HR"
+  },
+  "dashboard": {
+    "title": "Bảng điều khiển",
+    "recentActivity": "Hoạt động gần đây",
+    "recentActivitySubtitle": "Từ nhật ký sự kiện miền",
+    "noActivity": "Chưa có hoạt động.",
+    "viewAll": "Xem tất cả"
+  }
+}

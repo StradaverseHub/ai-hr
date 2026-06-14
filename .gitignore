@@ -46,3 +46,6 @@ next-env.d.ts
 .cursor/
 .agents/
 skills-lock.json
+
+# i18n translation working file (regenerate with pnpm i18n:export)
+messages/*.csv

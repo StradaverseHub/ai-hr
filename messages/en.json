@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "AI HR",
+    "language": "Language",
+    "save": "Save",
+    "cancel": "Cancel",
+    "loading": "Loading…",
+    "search": "Search"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "myWorkspace": "My workspace",
+    "people": "People",
+    "orgChart": "Org chart",
+    "leave": "Leave",
+    "attendance": "Attendance",
+    "manage": "Manage",
+    "approvals": "Approvals",
+    "performance": "Performance",
+    "admin": "Admin",
+    "organization": "Organization",
+    "leaveConfig": "Leave config",
+    "payroll": "Payroll",
+    "auditTrail": "Audit trail",
+    "usersRoles": "Users & roles",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "home": "AI HR home"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "recentActivity": "Recent activity",
+    "recentActivitySubtitle": "From the domain-event log",
+    "noActivity": "No activity yet.",
+    "viewAll": "View all"
+  }
+}

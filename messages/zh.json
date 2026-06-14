@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "AI HR",
+    "language": "语言",
+    "save": "保存",
+    "cancel": "取消",
+    "loading": "加载中…",
+    "search": "搜索"
+  },
+  "nav": {
+    "dashboard": "仪表板",
+    "myWorkspace": "我的工作区",
+    "people": "人员",
+    "orgChart": "组织架构图",
+    "leave": "请假",
+    "attendance": "考勤",
+    "manage": "管理",
+    "approvals": "审批",
+    "performance": "绩效",
+    "admin": "管理员",
+    "organization": "组织",
+    "leaveConfig": "请假配置",
+    "payroll": "薪资",
+    "auditTrail": "审计记录",
+    "usersRoles": "用户与角色",
+    "collapse": "收起",
+    "expand": "展开",
+    "home": "AI HR 首页"
+  },
+  "dashboard": {
+    "title": "仪表板",
+    "recentActivity": "最近动态",
+    "recentActivitySubtitle": "来自领域事件日志",
+    "noActivity": "暂无动态。",
+    "viewAll": "查看全部"
+  }
+}
