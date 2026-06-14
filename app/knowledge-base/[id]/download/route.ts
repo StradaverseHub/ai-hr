@@ -1,3 +1,4 @@
+import { getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getDownload } from '@/core/knowledge-base';
 
@@ -6,7 +7,8 @@ import { getDownload } from '@/core/knowledge-base';
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const s = await getSession();
-  const doc = await getDownload(s, id);
+  const locale = await getLocale();
+  const doc = await getDownload(s, id, locale);
   if (!doc) return new Response('Not found', { status: 404 });
 
   const safe = (name: string) => name.replace(/[^a-zA-Z0-9._ -]/g, '_').slice(0, 120) || 'document';

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { listDocuments, type KbAudience } from '@/core/knowledge-base';
 import { Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
@@ -23,7 +23,8 @@ export default async function KnowledgeBasePage({
     | KbAudience
     | undefined;
 
-  const docs = await listDocuments(s, { search: q || undefined, audience });
+  const locale = await getLocale();
+  const docs = await listDocuments(s, { search: q || undefined, audience, locale });
 
   // Group by category, preserving the service's (category, title) order.
   const groups = new Map<string, typeof docs>();

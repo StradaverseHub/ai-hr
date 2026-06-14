@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getDocument, canManage } from '@/core/knowledge-base';
 import { guideTourId } from '@/lib/onboarding-tour';
@@ -28,7 +28,8 @@ export default async function KbDocumentPage({
   const sp = await searchParams;
   const s = await getSession();
   const t = await getTranslations('kb');
-  const doc = await getDocument(s, id);
+  const locale = await getLocale();
+  const doc = await getDocument(s, id, locale);
 
   if (!doc) {
     return (
@@ -120,10 +121,10 @@ export default async function KbDocumentPage({
           <KbArticleEditor
             doc={{
               id: doc.id,
-              title: doc.title,
+              title: doc.sourceTitle,
               category: doc.category,
               audience: doc.audience,
-              body: doc.body ?? '',
+              body: doc.sourceBody,
             }}
           />
         </Card>

@@ -1,0 +1,114 @@
+{
+  "getting-started-admin": {
+    "zh": "入门指南：从空白系统到运转中的 HR",
+    "ms": "Bermula: Daripada Sistem Kosong kepada HR yang Berfungsi",
+    "ta": "தொடங்குதல்: வெறுமையான கணினியிலிருந்து இயங்கும் HR வரை",
+    "th": "เริ่มต้นใช้งาน: จากระบบที่ว่างเปล่าสู่ HR ที่ทำงานได้",
+    "vi": "Bắt đầu: Từ một hệ thống trống đến vận hành HR"
+  },
+  "admin-people-org": {
+    "zh": "管理员指南：人员、公司与组织结构",
+    "ms": "Panduan Pentadbir: Pekerja, Syarikat & Struktur Organisasi",
+    "ta": "நிர்வாகி வழிகாட்டி: பணியாளர்கள், நிறுவனங்கள் & நிறுவன அமைப்பு",
+    "th": "คู่มือผู้ดูแลระบบ: บุคลากร บริษัท และโครงสร้างองค์กร",
+    "vi": "Hướng dẫn Quản trị viên: Nhân sự, Công ty & Cơ cấu Tổ chức"
+  },
+  "admin-leave-attendance": {
+    "zh": "管理员指南：休假政策、公共假期与考勤",
+    "ms": "Panduan Pentadbir: Dasar Cuti, Cuti Umum & Kehadiran",
+    "ta": "நிர்வாகி வழிகாட்டி: விடுப்புக் கொள்கைகள், பொது விடுமுறைகள் & வருகை",
+    "th": "คู่มือผู้ดูแลระบบ: นโยบายการลา วันหยุดราชการ และการเข้างาน",
+    "vi": "Hướng dẫn Quản trị viên: Chính sách Nghỉ phép, Ngày lễ & Chấm công"
+  },
+  "admin-payroll-statutory": {
+    "zh": "管理员指南：薪资与马来西亚法定缴款（EPF/SOCSO/EIS/PCB）",
+    "ms": "Panduan Pentadbir: Gaji & Statutori Malaysia (EPF/SOCSO/EIS/PCB)",
+    "ta": "நிர்வாகி வழிகாட்டி: சம்பளம் & மலேசிய சட்டப்பூர்வ கழிவுகள் (EPF/SOCSO/EIS/PCB)",
+    "th": "คู่มือผู้ดูแลระบบ: เงินเดือนและการหักตามกฎหมายมาเลเซีย (EPF/SOCSO/EIS/PCB)",
+    "vi": "Hướng dẫn Quản trị viên: Bảng lương & Khoản pháp định Malaysia (EPF/SOCSO/EIS/PCB)"
+  },
+  "admin-compliance-reporting": {
+    "zh": "管理员指南：法定申报与合规（EA、Form E、CP39、CP22）",
+    "ms": "Panduan Pentadbir: Pelaporan Berkanun & Pematuhan (EA, Form E, CP39, CP22)",
+    "ta": "நிர்வாகி வழிகாட்டி: சட்டப்பூர்வ அறிக்கையிடல் & இணக்கம் (EA, Form E, CP39, CP22)",
+    "th": "คู่มือผู้ดูแลระบบ: การรายงานตามกฎหมาย & การปฏิบัติตามข้อกำหนด (EA, Form E, CP39, CP22)",
+    "vi": "Hướng dẫn Quản trị viên: Báo cáo theo luật định & Tuân thủ (EA, Form E, CP39, CP22)"
+  },
+  "admin-performance": {
+    "zh": "管理员指南：绩效与人才周期",
+    "ms": "Panduan Pentadbir: Kitaran Prestasi & Bakat",
+    "ta": "நிர்வாகி வழிகாட்டி: செயல்திறன் மற்றும் திறமைச் சுழற்சிகள்",
+    "th": "คู่มือผู้ดูแลระบบ: รอบการประเมินผลงานและบุคลากร",
+    "vi": "Hướng dẫn Quản trị viên: Chu kỳ Hiệu suất & Nhân tài"
+  },
+  "admin-users-roles-audit": {
+    "zh": "管理员指南：用户、角色与审计追踪",
+    "ms": "Panduan Pentadbir: Pengguna, Peranan & Audit Trail",
+    "ta": "நிர்வாகி வழிகாட்டி: பயனர்கள், பாத்திரங்கள் & Audit Trail",
+    "th": "คู่มือผู้ดูแลระบบ: ผู้ใช้ บทบาท และ Audit Trail",
+    "vi": "Hướng Dẫn Quản Trị: Người Dùng, Vai Trò & Nhật Ký Kiểm Toán"
+  },
+  "manager-overview": {
+    "zh": "经理指南：你的界面与日常工作流程",
+    "ms": "Panduan Pengurus: Permukaan Anda & Aliran Kerja Harian",
+    "ta": "மேலாளர் வழிகாட்டி: உங்கள் இடைமுகங்கள் & தினசரி பணிப்பாய்வு",
+    "th": "คู่มือผู้จัดการ: หน้าจอของคุณและเวิร์กโฟลว์รายวัน",
+    "vi": "Hướng dẫn cho Người quản lý: Các giao diện & quy trình làm việc hằng ngày của bạn"
+  },
+  "manager-approvals": {
+    "zh": "经理指南：审批休假、考勤与资料变更",
+    "ms": "Panduan Pengurus: Meluluskan Cuti, Kehadiran & Perubahan Profil",
+    "ta": "மேலாளர் வழிகாட்டி: விடுப்பு, வருகை மற்றும் சுயவிவர மாற்றங்களை அங்கீகரித்தல்",
+    "th": "คู่มือผู้จัดการ: การอนุมัติการลา การเข้างาน และการเปลี่ยนแปลงโปรไฟล์",
+    "vi": "Hướng dẫn cho Người quản lý: Phê duyệt Nghỉ phép, Chấm công & Thay đổi Hồ sơ"
+  },
+  "manager-team-org": {
+    "zh": "经理指南：你的团队、汇报线与组织架构图",
+    "ms": "Panduan Pengurus: Pasukan Anda, Garis Pelaporan & Carta Organisasi",
+    "ta": "மேலாளர் வழிகாட்டி: உங்கள் குழு, அறிக்கையிடல் வரிகள் மற்றும் நிறுவன அமைப்புப் படம்",
+    "th": "คู่มือผู้จัดการ: ทีมของคุณ สายการรายงาน และแผนผังองค์กร",
+    "vi": "Hướng dẫn cho Quản lý: Đội ngũ của bạn, Các đường báo cáo & Sơ đồ tổ chức"
+  },
+  "manager-performance": {
+    "zh": "经理指南：为你的团队进行绩效评估",
+    "ms": "Panduan Pengurus: Menjalankan Penilaian untuk Pasukan Anda",
+    "ta": "மேலாளர் வழிகாட்டி: உங்கள் குழுவிற்கான மதிப்பாய்வுகளை நடத்துதல்",
+    "th": "คู่มือผู้จัดการ: การดำเนินการประเมินผลงานสำหรับทีมของคุณ",
+    "vi": "Hướng dẫn cho Quản lý: Thực hiện Đánh giá cho Nhóm của Bạn"
+  },
+  "employee-overview": {
+    "zh": "员工指南：开始使用您的工作区",
+    "ms": "Panduan Pekerja: Bermula di Ruang Kerja Anda",
+    "ta": "பணியாளர் வழிகாட்டி: உங்கள் பணியிடத்தில் தொடங்குதல்",
+    "th": "คู่มือพนักงาน: เริ่มต้นใช้งานพื้นที่ทำงานของคุณ",
+    "vi": "Hướng dẫn Nhân viên: Bắt đầu trong Không gian làm việc của bạn"
+  },
+  "employee-leave": {
+    "zh": "员工指南：查看你的假期余额与申请休假",
+    "ms": "Panduan Pekerja: Menyemak Baki Anda & Memohon Cuti",
+    "ta": "பணியாளர் வழிகாட்டி: உங்கள் இருப்பைச் சரிபார்த்தல் & விடுப்பு கோருதல்",
+    "th": "คู่มือพนักงาน: การตรวจสอบยอดคงเหลือและการขอลา",
+    "vi": "Hướng dẫn Nhân viên: Kiểm tra Số dư & Yêu cầu Nghỉ phép"
+  },
+  "employee-attendance": {
+    "zh": "员工指南：上班/下班打卡与更正请求",
+    "ms": "Panduan Pekerja: Daftar Masuk/Keluar & Permintaan Pembetulan",
+    "ta": "பணியாளர் வழிகாட்டி: உள்நுழைவு/வெளியேற்றம் மற்றும் திருத்தக் கோரிக்கைகள்",
+    "th": "คู่มือพนักงาน: การลงเวลาเข้า/ออกงานและคำขอแก้ไข",
+    "vi": "Hướng dẫn Nhân viên: Chấm công Vào/Ra & Yêu cầu Chỉnh sửa"
+  },
+  "employee-payslips": {
+    "zh": "员工指南：工资单与你的年度 EA Form",
+    "ms": "Panduan Pekerja: Slip Gaji & EA Form Tahunan Anda",
+    "ta": "பணியாளர் வழிகாட்டி: சம்பளச் சீட்டுகள் & உங்கள் ஆண்டு EA Form",
+    "th": "คู่มือพนักงาน: สลิปเงินเดือน & EA Form ประจำปีของคุณ",
+    "vi": "Hướng dẫn cho Nhân viên: Phiếu lương & EA Form Hằng năm của Bạn"
+  },
+  "employee-profile-performance": {
+    "zh": "员工指南：更新你的个人资料与自我评价",
+    "ms": "Panduan Pekerja: Mengemas Kini Profil Anda & Penilaian Kendiri",
+    "ta": "ஊழியர் வழிகாட்டி: உங்கள் சுயவிவரத்தைப் புதுப்பித்தல் & சுய-மதிப்பீடுகள்",
+    "th": "คู่มือพนักงาน: การอัปเดตโปรไฟล์และการประเมินตนเองของคุณ",
+    "vi": "Hướng Dẫn Nhân Viên: Cập Nhật Hồ Sơ & Bản Tự Đánh Giá Của Bạn"
+  }
+}

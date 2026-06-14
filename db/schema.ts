@@ -833,8 +833,11 @@ export const kbDocument = pgTable(
     audience: kbAudienceEnum('audience').notNull().default('all'),
     // True for the auto-seeded official guides; protects them from non-admin edits/deletes (RLS).
     isSystem: boolean('is_system').notNull().default(false),
-    // kind = 'article': the Markdown body.
+    // kind = 'article': the Markdown body (the English source / fallback for system guides).
     body: text('body'),
+    // Per-locale translated content for system guides (ADR-0017): { <locale>: { title, body } }.
+    // Reads resolve the active locale and fall back to the base title/body. Null for user docs.
+    i18n: jsonb('i18n').$type<Record<string, { title: string; body: string }>>(),
     // kind = 'file': the uploaded bytes + descriptors. `content` is only ever selected on download.
     fileName: text('file_name'),
     mimeType: text('mime_type'),
