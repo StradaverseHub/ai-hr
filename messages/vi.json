@@ -25,7 +25,8 @@
     "usersRoles": "Người dùng & vai trò",
     "collapse": "Thu gọn",
     "expand": "Mở rộng",
-    "home": "Trang chủ AI HR"
+    "home": "Trang chủ AI HR",
+    "knowledgeBase": "Cơ sở tri thức"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -875,5 +876,54 @@
     "themeToggle": {
       "toggle": "Chuyển giao diện"
     }
+  },
+  "kb": {
+    "title": "Cơ sở tri thức",
+    "subtitle": "Hướng dẫn, chính sách và tài liệu cho nhóm của bạn",
+    "search": "Tìm kiếm tài liệu…",
+    "searchAria": "Tìm kiếm trong cơ sở tri thức",
+    "audience": {
+      "all": "Mọi người",
+      "employee": "Nhân viên",
+      "manager": "Quản lý",
+      "hr_admin": "Quản trị viên nhân sự"
+    },
+    "filterAudience": "Đối tượng",
+    "filterAll": "Tất cả",
+    "guideBadge": "Hướng dẫn",
+    "fileBadge": "Tệp",
+    "empty": "Chưa có tài liệu nào. Hãy thêm tài liệu đầu tiên bên dưới.",
+    "emptySearch": "Không có tài liệu nào khớp với “{q}”.",
+    "resultCount": "{count, plural, one {# tài liệu} other {# tài liệu}}",
+    "compose": "Thêm vào thư viện",
+    "tabArticle": "Viết bài",
+    "tabUpload": "Tải tệp lên",
+    "fTitle": "Tiêu đề",
+    "fTitlePlaceholder": "ví dụ: Chính sách làm việc từ xa",
+    "fCategory": "Danh mục",
+    "fCategoryPlaceholder": "chung",
+    "fAudience": "Đối tượng",
+    "fBody": "Nội dung (Markdown)",
+    "fBodyPlaceholder": "# Tiêu đề\n\nViết bằng **Markdown**…",
+    "fFile": "Tệp",
+    "fFileHint": "Tối đa {mb} MB",
+    "create": "Tạo bài viết",
+    "upload": "Tải lên",
+    "cancel": "Hủy",
+    "back": "Cơ sở tri thức",
+    "edit": "Chỉnh sửa",
+    "save": "Lưu thay đổi",
+    "archive": "Lưu trữ",
+    "restore": "Khôi phục",
+    "download": "Tải xuống",
+    "archivedNote": "Tài liệu này đã được lưu trữ — nó bị ẩn khỏi thư viện.",
+    "systemNote": "Đây là hướng dẫn hệ thống chính thức.",
+    "updatedAt": "Cập nhật {date}",
+    "fileMeta": "{size} · {type}",
+    "previewTab": "Xem trước",
+    "writeTab": "Viết",
+    "notFound": "Tài liệu đó không tồn tại hoặc bạn không có quyền xem.",
+    "openFile": "Mở tệp",
+    "cannotPreview": "Loại tệp này không thể xem trước tại đây. Hãy tải xuống để xem."
   }
 }

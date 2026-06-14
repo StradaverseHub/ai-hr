@@ -1,0 +1,21 @@
+{
+  "_comment": "Canonical list of auto-seeded system user guides (ADR-0017). The seed (db/seed-guides.ts) reads each <slug>.md body and upserts it as a kb_document article (kind=article, is_system=true) keyed by slug. audience ∈ all|employee|manager|hr_admin. category groups them in the Knowledge Base library.",
+  "guides": [
+    { "slug": "getting-started-admin", "title": "Getting Started: From an Empty System to Running HR", "audience": "hr_admin", "category": "getting-started", "order": 1 },
+    { "slug": "admin-people-org", "title": "Admin Guide: People, Companies & Org Structure", "audience": "hr_admin", "category": "people", "order": 2 },
+    { "slug": "admin-leave-attendance", "title": "Admin Guide: Leave Policies, Holidays & Attendance", "audience": "hr_admin", "category": "leave", "order": 3 },
+    { "slug": "admin-payroll-statutory", "title": "Admin Guide: Payroll & Malaysian Statutory (EPF/SOCSO/EIS/PCB)", "audience": "hr_admin", "category": "payroll", "order": 4 },
+    { "slug": "admin-compliance-reporting", "title": "Admin Guide: Statutory Reporting & Compliance (EA, Form E, CP39, CP22)", "audience": "hr_admin", "category": "compliance", "order": 5 },
+    { "slug": "admin-performance", "title": "Admin Guide: Performance & Talent Cycles", "audience": "hr_admin", "category": "performance", "order": 6 },
+    { "slug": "admin-users-roles-audit", "title": "Admin Guide: Users, Roles & the Audit Trail", "audience": "hr_admin", "category": "admin", "order": 7 },
+    { "slug": "manager-overview", "title": "Manager Guide: Your Surfaces & Daily Workflow", "audience": "manager", "category": "getting-started", "order": 8 },
+    { "slug": "manager-approvals", "title": "Manager Guide: Approving Leave, Attendance & Profile Changes", "audience": "manager", "category": "approvals", "order": 9 },
+    { "slug": "manager-team-org", "title": "Manager Guide: Your Team, Reporting Lines & Org Chart", "audience": "manager", "category": "org", "order": 10 },
+    { "slug": "manager-performance", "title": "Manager Guide: Running Reviews for Your Team", "audience": "manager", "category": "performance", "order": 11 },
+    { "slug": "employee-overview", "title": "Employee Guide: Getting Started in Your Workspace", "audience": "employee", "category": "getting-started", "order": 12 },
+    { "slug": "employee-leave", "title": "Employee Guide: Checking Your Balance & Requesting Leave", "audience": "employee", "category": "leave", "order": 13 },
+    { "slug": "employee-attendance", "title": "Employee Guide: Clocking In/Out & Correction Requests", "audience": "employee", "category": "attendance", "order": 14 },
+    { "slug": "employee-payslips", "title": "Employee Guide: Payslips & Your Annual EA Form", "audience": "employee", "category": "payroll", "order": 15 },
+    { "slug": "employee-profile-performance", "title": "Employee Guide: Updating Your Profile & Self-Reviews", "audience": "employee", "category": "me", "order": 16 }
+  ]
+}

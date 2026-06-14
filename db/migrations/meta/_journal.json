@@ -267,6 +267,20 @@
       "when": 1781340942534,
       "tag": "0037_domain_event_subject_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781440901531,
+      "tag": "0038_powerful_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1781440901600,
+      "tag": "0039_kb_rls",
+      "breakpoints": true
     }
   ]
 }

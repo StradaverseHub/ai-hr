@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
+  BookOpen,
   Building2,
   CalendarDays,
   Clock,
@@ -37,6 +38,7 @@ const GROUPS: Group[] = [
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       { href: '/attendance', labelKey: 'attendance', icon: Clock },
+      { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen },
     ],
   },
   {
