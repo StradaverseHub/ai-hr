@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "AI HR",
+    "language": "Bahasa",
+    "save": "Simpan",
+    "cancel": "Batal",
+    "loading": "Memuatkan…",
+    "search": "Cari"
+  },
+  "nav": {
+    "dashboard": "Papan Pemuka",
+    "myWorkspace": "Ruang Kerja Saya",
+    "people": "Pekerja",
+    "orgChart": "Carta Organisasi",
+    "leave": "Cuti",
+    "attendance": "Kehadiran",
+    "manage": "Urus",
+    "approvals": "Kelulusan",
+    "performance": "Prestasi",
+    "admin": "Pentadbir",
+    "organization": "Organisasi",
+    "leaveConfig": "Tetapan Cuti",
+    "payroll": "Gaji",
+    "auditTrail": "Jejak Audit",
+    "usersRoles": "Pengguna & Peranan",
+    "collapse": "Runtuhkan",
+    "expand": "Kembangkan",
+    "home": "Laman Utama AI HR"
+  },
+  "dashboard": {
+    "title": "Papan Pemuka",
+    "recentActivity": "Aktiviti Terkini",
+    "recentActivitySubtitle": "Daripada log peristiwa domain",
+    "noActivity": "Tiada aktiviti lagi.",
+    "viewAll": "Lihat semua"
+  }
+}

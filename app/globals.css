@@ -69,7 +69,12 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-jakarta);
+  /* Latin runs on Jakarta; CJK / Thai / Tamil fall through to OS-native script fonts
+     (macOS · Windows · Linux-Noto) via per-glyph fallback — no web-font download. See ADR-0016. */
+  --font-sans:
+    var(--font-jakarta), 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    'Noto Sans SC', 'Thonburi', 'Leelawadee UI', 'Noto Sans Thai', 'Tamil Sangam MN', 'Nirmala UI',
+    'Noto Sans Tamil', system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-canvas: var(--canvas);
   --color-background: var(--background);

@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "AI HR",
+    "language": "மொழி",
+    "save": "சேமி",
+    "cancel": "ரத்து",
+    "loading": "ஏற்றுகிறது…",
+    "search": "தேடு"
+  },
+  "nav": {
+    "dashboard": "டாஷ்போர்டு",
+    "myWorkspace": "எனது பணியிடம்",
+    "people": "பணியாளர்கள்",
+    "orgChart": "நிறுவன அமைப்பு",
+    "leave": "விடுப்பு",
+    "attendance": "வருகை",
+    "manage": "நிர்வகி",
+    "approvals": "ஒப்புதல்கள்",
+    "performance": "செயல்திறன்",
+    "admin": "நிர்வாகம்",
+    "organization": "நிறுவனம்",
+    "leaveConfig": "விடுப்பு அமைப்பு",
+    "payroll": "சம்பளப்பட்டியல்",
+    "auditTrail": "தணிக்கைப் பதிவு",
+    "usersRoles": "பயனர்கள் & பாத்திரங்கள்",
+    "collapse": "சுருக்கு",
+    "expand": "விரிவாக்கு",
+    "home": "AI HR முகப்பு"
+  },
+  "dashboard": {
+    "title": "டாஷ்போர்டு",
+    "recentActivity": "சமீபத்திய செயல்பாடு",
+    "recentActivitySubtitle": "டொமைன் நிகழ்வுப் பதிவிலிருந்து",
+    "noActivity": "இன்னும் செயல்பாடு இல்லை.",
+    "viewAll": "அனைத்தையும் காண்க"
+  }
+}
