@@ -21,13 +21,19 @@ A quick way to let HR consultants try the app over the internet, served from you
    - `SHARE_PASSWORD` turns on the access gate (`middleware.ts`).
    - `ALLOW_DEMO_SESSION=true` lets the production build run the demo identity (it's blocked otherwise).
 
-2. **Install a tunnel** (one of these — `cloudflared` is the easiest, no account):
+2. **Install a tunnel.** Two options — which one works depends on your network (see the note below):
 
    ```bash
-   brew install cloudflared      # recommended: instant HTTPS URL, no signup
-   # or
-   brew install ngrok            # alternative: needs a free ngrok.com account + `ngrok config add-authtoken …`
+   brew install cloudflared      # easiest, no account — BUT needs outbound port 7844
+   brew install ngrok            # works on restrictive Wi-Fi (runs over 443); needs a free ngrok.com authtoken
    ```
+
+   > **Network gotcha (important):** `cloudflared` quick tunnels connect over **port 7844**, which many
+   > office/guest Wi-Fi networks block. If `cloudflared` just hangs and remote people can't connect
+   > (while same-Wi-Fi people can), your network is blocking 7844 — switch to **ngrok**, which runs over
+   > **443** (the normal HTTPS port, almost never blocked). One-time ngrok setup: sign up free at
+   > ngrok.com → copy your authtoken → run `ngrok config add-authtoken <your-token>`.
+   > Or: tether the laptop to a **phone hotspot** (mobile data doesn't block 7844) and `cloudflared` works as-is.
 
 ---
 
@@ -43,14 +49,16 @@ This makes sure Postgres is up, builds the production server, and serves it on
 `http://localhost:3000` (and `http://<your-LAN-ip>:3000` for anyone on the same Wi-Fi). The password
 gate is on. Leave this running.
 
-**Terminal 2 — expose it to the internet:**
+**Terminal 2 — expose it to the internet** (use the tunnel that works on your network):
 
 ```bash
-cloudflared tunnel --url http://localhost:3000
+ngrok http 3000                                   # recommended on office/guest Wi-Fi (runs over 443)
+# or
+cloudflared tunnel --url http://localhost:3000    # fine on home Wi-Fi / hotspot; needs port 7844 open
 ```
 
-It prints a public `https://something.trycloudflare.com` URL. (With ngrok instead:
-`ngrok http 3000`.)
+It prints a public `https://…` URL (`https://….ngrok-free.app` or `https://….trycloudflare.com`).
+**Share that URL** — not the `localhost`/`192.168.x.x` address (those only work on the same Wi-Fi).
 
 **Share with your consultants:** the `https://…` URL **+** the password. When they open it the browser
 asks for a login — they can type **any username** and the password.
