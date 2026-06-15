@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 import { middleware } from '../middleware';
 
@@ -7,6 +7,11 @@ const req = (auth?: string) =>
 const basic = (pass: string) => 'Basic ' + Buffer.from(`demo:${pass}`).toString('base64');
 
 describe('share gate (middleware.ts)', () => {
+  // Each test controls SHARE_PASSWORD explicitly — don't inherit it from the ambient env (.env.local,
+  // which a hosting setup may populate and vitest loads).
+  beforeEach(() => {
+    delete process.env.SHARE_PASSWORD;
+  });
   afterEach(() => {
     delete process.env.SHARE_PASSWORD;
   });
