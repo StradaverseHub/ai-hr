@@ -69,6 +69,24 @@ validated service. The page makes clear which values are statutory (sourced) vs 
   malformed values, but **it does not absolve the operator** — wrong inputs still produce wrong payslips.
   The default stays authoritative and any override is fully audited.
 
+## Implementation notes (Slices 2–4)
+
+- **JSONB round-trip is calculation-safe.** The PCB top band ships as `upTo: Infinity`, which Postgres
+  `jsonb` stores as `null`. Both `bandFor`/`annualTaxFor` resolve "no band matched" to the *last* band,
+  so an open-ended top bound of `Infinity`, `null`, or any value is the same catch-all. `test/statutory-config.test.ts`
+  proves a stored-then-reloaded default (through real Postgres jsonb) yields **byte-identical** payroll
+  across a wage/profile/bonus/OT/residency sweep — the equivalence guarantee, including the top band.
+- **UI edit scope.** `/payroll/configuration` makes the figures that realistically change directly editable
+  (EPF rates + threshold, contribution & OT ceilings, PCB reliefs, the 10 PCB tax bands). The SOCSO and EIS
+  64-row agency schedules are shown read-only and **carried through unchanged** on save: they are exact
+  transcriptions maintained as sourced data (a published PERKESO schedule change is a data update, not a
+  hand-edit of 128 cells). The substrate still stores the *full* ruleset, so those tables remain overridable
+  via the service if ever needed — only the form intentionally scopes them out. This keeps "safe by
+  construction": the dangerous bulk tables can't be fat-fingered in a form.
+- **Rates edited as percentages.** The form takes EPF/PCB rates as percentages (11, 13, 6 …) and converts to
+  fractions on assemble (rounded to kill FP noise); amounts/thresholds are plain ringgit. The open-ended top
+  PCB band's bound is entered as blank (= "and above") and serialised as `null`.
+
 ## Alternatives considered
 
 - **Keep it read-only** (recommended originally) — safest, but the owner wants true configurability.
