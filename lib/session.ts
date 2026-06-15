@@ -16,8 +16,12 @@ import { client, type Grant, type SessionContext } from '../db/client';
 const DEV_COOKIE = 'dev_user';
 
 export async function getSession(): Promise<SessionContext> {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('Dev session is not allowed in production — wire WorkOS auth first.');
+  // In production the dev session is an auth bypass, so it's blocked — UNLESS this is an explicitly
+  // opted-in gated demo (ALLOW_DEMO_SESSION=true, behind the SHARE_PASSWORD gate; see HOSTING.md).
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION !== 'true') {
+    throw new Error(
+      'Dev session is not allowed in production — set ALLOW_DEMO_SESSION=true for a gated demo, or wire WorkOS auth.',
+    );
   }
   const cookieStore = await cookies();
   const cookieUser = cookieStore.get(DEV_COOKIE)?.value;
