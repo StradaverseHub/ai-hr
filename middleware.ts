@@ -15,6 +15,9 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 export function middleware(req: NextRequest) {
+  // The gate is a hosting protection only — never gate local `next dev`, even if SHARE_PASSWORD is set
+  // in .env.local for hosting.
+  if (process.env.NODE_ENV === 'development') return NextResponse.next();
   const password = process.env.SHARE_PASSWORD;
   if (!password) return NextResponse.next(); // gate disabled
 
