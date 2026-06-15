@@ -220,6 +220,9 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     const periodStart = `${batch.payPeriod}-01`;
     const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
 
+    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default.
+    const rules = await pack.payroll.loadRuleset(tx, { asOf: periodEnd });
+
     // Per-day classified OT minutes within the pay period (per-day matters: the
     // rest-day ½/1-day rule cannot be computed from monthly aggregates).
     const otRows = await tx
@@ -283,7 +286,11 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     for (const employmentId of empIds) {
       const wages = wagesBy.get(employmentId);
       if (wages == null) continue; // no active compensation — nothing to monetize against
-      const result = pack.payroll.overtimePay({ monthlyWages: wages, days: daysBy.get(employmentId) ?? [] });
+      const result = pack.payroll.overtimePay({
+        monthlyWages: wages,
+        days: daysBy.get(employmentId) ?? [],
+        wageCeiling: rules.ot.wageCeiling,
+      });
       if (!result.eligible) {
         ineligible += 1;
         continue; // > RM4,000 wages: no statutory OT — left for a manual (ex-gratia) entry
@@ -349,6 +356,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const [pYear, pMonth] = payPeriod.split('-').map(Number);
     const periodStart = `${payPeriod}-01`;
     const periodEnd = `${payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+
+    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default.
+    // Loaded once and threaded into the (pure, synchronous) calculators below; its `version` is
+    // snapshotted onto every payslip so a later edit can never alter this batch's provenance.
+    const rules = await pack.payroll.loadRuleset(tx, { asOf: periodEnd });
 
     // Anyone employed for at least part of the period: hired on/before period end AND not
     // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.
@@ -516,6 +528,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
             eisEligible: (e.eisEligible ?? true) && (age == null || age < 60),
             resident: e.isResident ?? true,
           },
+          rules,
         ),
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
@@ -539,7 +552,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         bonus: bonus.toFixed(2),
         daysWorked: String(daysWorked),
         grossPay: grossPay.toFixed(2),
-        statutory: st,
+        statutory: st, // includes `version` (rules.version) — the immutable provenance snapshot
         otherDeductions: unpaidDeduction.toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),

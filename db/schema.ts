@@ -862,3 +862,26 @@ export const kbDocument = pgTable(
     ),
   ],
 );
+
+// ─────────────────────── Statutory ruleset override (ADR-0019) ───────────────────────
+// Effective-dated override for a country's statutory figures (EPF/SOCSO/EIS/PCB/OT). `data` is a
+// StatutoryRuleset JSON (localization/my/statutory-tables.ts). The loader picks the latest row with
+// effective_from ≤ asOf; an empty table falls back to the verified built-in DEFAULT_MY_STATUTORY.
+// Past payslips snapshot their own figures + version, so edits only affect FUTURE runs.
+
+export const statutoryRuleset = pgTable(
+  'statutory_ruleset',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    country: text('country').notNull().default('MY'),
+    version: text('version').notNull(),
+    effectiveFrom: date('effective_from').notNull(),
+    data: jsonb('data').notNull(),
+    notes: text('notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (t) => [index('statutory_ruleset_lookup_idx').on(t.tenantId, t.country, t.effectiveFrom)],
+);

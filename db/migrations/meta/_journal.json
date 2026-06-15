@@ -302,6 +302,20 @@
       "when": 1781444844057,
       "tag": "0042_faulty_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1781520501005,
+      "tag": "0043_gorgeous_wolfpack",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1781520501100,
+      "tag": "0044_statutory_ruleset_rls",
+      "breakpoints": true
     }
   ]
 }

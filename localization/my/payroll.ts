@@ -17,14 +17,11 @@
  *  - EIS      — exact Act 800 Second Schedule amounts, verified to the RM6,000 ceiling (2026.1).
  */
 import {
-  MY_EIS_BANDS,
-  MY_EPF,
-  MY_PCB_BANDS,
-  MY_RELIEFS,
-  MY_SOCSO_CATEGORY1,
-  MY_SOCSO_CATEGORY2,
-  MY_STATUTORY_VERSION,
+  DEFAULT_MY_STATUTORY,
+  MY_OT_WAGE_CEILING,
   type ContribBand,
+  type PcbBand,
+  type StatutoryRuleset,
   type TaxCategory,
 } from './statutory-tables';
 
@@ -40,11 +37,11 @@ export type TaxProfile = { category?: TaxCategory; children?: number };
  * wage — a ≤RM5000 earner stays at 13% even when the bonus pushes the month over — then applies it
  * to the full wage incl. the bonus.
  */
-export function epf(wage: number, additional = 0) {
-  const employerRate = wage <= MY_EPF.employerThreshold ? MY_EPF.employerRateLow : MY_EPF.employerRateHigh;
+export function epf(wage: number, additional = 0, cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf) {
+  const employerRate = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
   const base = wage + Math.max(0, additional);
   return {
-    employee: ceilRinggit(base * MY_EPF.employeeRate),
+    employee: ceilRinggit(base * cfg.employeeRate),
     employer: ceilRinggit(base * employerRate),
   };
 }
@@ -58,22 +55,22 @@ function bandFor(bands: ContribBand[], wage: number): ContribBand {
 /** SOCSO — exact Act 4 schedule amounts (verified to the RM6,000 ceiling). Category 1 =
  *  Employment Injury + Invalidity (< 60); Category 2 = Employment Injury only, employer-only
  *  (age 60+). */
-export function socso(wage: number, category: 1 | 2 = 1) {
-  const band = bandFor(category === 2 ? MY_SOCSO_CATEGORY2 : MY_SOCSO_CATEGORY1, wage);
+export function socso(wage: number, category: 1 | 2 = 1, cfg: StatutoryRuleset['socso'] = DEFAULT_MY_STATUTORY.socso) {
+  const band = bandFor(category === 2 ? cfg.category2 : cfg.category1, wage);
   return { employer: band.employer, employee: band.employee };
 }
 
 /** EIS — exact Act 800 Second Schedule amounts (verified to the RM6,000 ceiling). */
-export function eis(wage: number) {
-  const band = bandFor(MY_EIS_BANDS, wage);
+export function eis(wage: number, cfg: StatutoryRuleset['eis'] = DEFAULT_MY_STATUTORY.eis) {
+  const band = bandFor(cfg.bands, wage);
   return { employer: band.employer, employee: band.employee };
 }
 
 /** Annual tax on chargeable income P: the (M, R, B) band that contains P; category selects B.
  *  Negative B encodes the RM400/RM800 rebate; tax floors at 0 (spec: P ≤ 5,000 → no tax). */
-function annualTaxFor(P: number, category: TaxCategory): number {
+function annualTaxFor(P: number, category: TaxCategory, bands: PcbBand[]): number {
   if (P <= 5000) return 0;
-  const band = MY_PCB_BANDS.find((b) => P <= b.upTo) ?? MY_PCB_BANDS[MY_PCB_BANDS.length - 1];
+  const band = bands.find((b) => P <= b.upTo) ?? bands[bands.length - 1];
   const B = category === 2 ? band.bCat2 : band.bCat13;
   return Math.max(0, (P - band.M) * band.R + B);
 }
@@ -164,15 +161,18 @@ export function pcbMonth(p: {
   lpCurrent?: number;
   /** Zakat paid via salary deduction this month — offsets the MTD per §E.5. */
   zakatCurrent?: number;
+  /** PCB bands + reliefs (ADR-0019); defaults to the verified built-in set. */
+  pcb?: StatutoryRuleset['pcb'];
 }): PcbMonthResult {
   const category: TaxCategory = p.profile?.category ?? 1;
   const children = p.profile?.children ?? 0;
   const acc = p.acc ?? PCB_ZERO_ACC;
   const month = Math.min(12, Math.max(1, Math.trunc(p.month)));
   const n = 12 - month; // balance of months AFTER the current one
-  const cap = MY_RELIEFS.epfReliefCap;
+  const pcb = p.pcb ?? DEFAULT_MY_STATUTORY.pcb;
+  const cap = pcb.reliefs.epfReliefCap;
   const reliefs =
-    MY_RELIEFS.individual + (category === 2 ? MY_RELIEFS.spouse : 0) + children * MY_RELIEFS.perChild;
+    pcb.reliefs.individual + (category === 2 ? pcb.reliefs.spouse : 0) + children * pcb.reliefs.perChild;
   const lp = (acc.lpAccumulated ?? 0) + (p.lpCurrent ?? 0);
   const Z = acc.zakatPaid ?? 0;
   const X = acc.pcbPaid;
@@ -183,7 +183,7 @@ export function pcbMonth(p: {
   // Step 1 — MTD on net NORMAL remuneration (additional remuneration excluded).
   const K2n = n > 0 ? trunc2(Math.min((cap - K - K1) / n, K1)) : 0;
   const P1 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2n) * n - reliefs - lp);
-  const mtdNormalCalc = ceil5sen(trunc2(Math.max(0, (annualTaxFor(P1, category) - (Z + X)) / (n + 1))));
+  const mtdNormalCalc = ceil5sen(trunc2(Math.max(0, (annualTaxFor(P1, category, pcb.bands) - (Z + X)) / (n + 1))));
 
   // Steps 2–4 — additional remuneration via the year-total difference.
   const Yt = Math.max(0, p.additional ?? 0);
@@ -193,7 +193,7 @@ export function pcbMonth(p: {
     const Kt = Math.min(p.epfOnAdditional ?? 0, Math.max(0, cap - K - K1));
     const K2a = n > 0 ? trunc2(Math.min((cap - K - K1 - Kt) / n, K1)) : 0;
     P2 = trunc2(acc.netRemuneration + (Y1 - K1) + (Y1 - K2a) * n + (Yt - Kt) - reliefs - lp);
-    const totalTaxYear = annualTaxFor(P2, category); // Step 3
+    const totalTaxYear = annualTaxFor(P2, category, pcb.bands); // Step 3
     const totalMtdYear = X + mtdNormalCalc * (n + 1); // Step 1[E]
     additionalCalc = ceil5sen(trunc2(Math.max(0, totalTaxYear - totalMtdYear + Z))); // Step 4
   }
@@ -236,15 +236,17 @@ export function statutory(
   /** Employee attributes the engine derives: SOCSO category (2 = age 60+, employer-only),
    *  EIS eligibility (false at 60+, or the profile flag), residency (non-residents: flat 30%). */
   opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean },
+  /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
+  rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
-  const e = epf(wage, additional); // bonus IS subject to EPF; overtime is NOT
-  const s = socso(cashWage, opts?.socsoCategory ?? 1); // bonus excluded from SOCSO; overtime included
+  const e = epf(wage, additional, rules.epf); // bonus IS subject to EPF; overtime is NOT
+  const s = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
   const eisOn = opts?.eisEligible ?? true;
-  const i = eisOn ? eis(cashWage) : { employer: 0, employee: 0 }; // bonus excluded; OT included
+  const i = eisOn ? eis(cashWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
   // EPF relief split: the employee share on the bonus (Kₜ) is the rate on the bonus alone; the
   // remainder of the month's actual EPF belongs to normal remuneration (K₁).
-  const epfOnBonus = additional > 0 ? ceilRinggit(additional * MY_EPF.employeeRate) : 0;
+  const epfOnBonus = additional > 0 ? ceilRinggit(additional * rules.epf.employeeRate) : 0;
   if (opts?.resident === false) {
     // Non-resident MTD (spec §D.a): flat 30% of taxable remuneration, no reliefs/accumulators.
     const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * 0.3)));
@@ -259,7 +261,7 @@ export function statutory(
       pcb: pcbAll,
       pcbBonus: Math.min(pcbBonusOnly, pcbAll),
       pcbMeta: { nonResident: true as const, rate: 0.3 },
-      version: MY_STATUTORY_VERSION,
+      version: rules.version,
     };
   }
   const m = pcbMonth({
@@ -272,6 +274,7 @@ export function statutory(
     epfOnAdditional: epfOnBonus,
     lpCurrent: pcbCtx?.lpCurrent,
     zakatCurrent: pcbCtx?.zakatCurrent,
+    pcb: rules.pcb,
   });
   return {
     epfEmployee: e.employee,
@@ -286,7 +289,7 @@ export function statutory(
     /** Accumulator snapshot the PCB was computed from (audit / reproducibility, ADR-0014). */
     pcbMeta: m.snapshot,
     /** Statutory-table version that produced these figures (audit / reproducibility). */
-    version: MY_STATUTORY_VERSION,
+    version: rules.version,
   };
 }
 
@@ -303,7 +306,7 @@ export function statutory(
  *   entitled to ss.60/60A(3)/60D(3) pay (the manual-worker exception is NOT modelled —
  *   such employees should be handled with a manual override; documented in §6).
  */
-export const MY_OT_WAGE_CEILING = 4000;
+export { MY_OT_WAGE_CEILING };
 
 export type OtDay = { dayType: 'workday' | 'rest_day' | 'holiday'; minutes: number };
 
@@ -323,11 +326,13 @@ export function overtimePay(p: {
   monthlyWages: number;
   days: OtDay[];
   normalDailyHours?: number;
+  /** Statutory OT entitlement ceiling (ADR-0019); defaults to the EA First Schedule RM4,000. */
+  wageCeiling?: number;
 }): OvertimePayResult {
   const hoursPerDay = p.normalDailyHours ?? 8;
   const orp = round2(p.monthlyWages / 26);
   const hourly = round2(orp / hoursPerDay);
-  const eligible = p.monthlyWages <= MY_OT_WAGE_CEILING;
+  const eligible = p.monthlyWages <= (p.wageCeiling ?? MY_OT_WAGE_CEILING);
   const out: OvertimePayResult = { eligible, orp, hourly, workday: 0, restDay: 0, holiday: 0, total: 0 };
   if (!eligible) return out;
   const normalMin = hoursPerDay * 60;

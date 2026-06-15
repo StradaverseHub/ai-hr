@@ -325,3 +325,51 @@ export const MY_EIS_BANDS: ContribBand[] = [
 /** EIS statutory rates — cross-check only (≈0.2% of the band midpoint); the calculator uses
  *  the exact band table above. */
 export const MY_EIS_RATES = { employer: 0.002, employee: 0.002 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Overtime (Employment Act 1955, First Schedule Amendment Order 2022)
+// Employees with monthly wages > RM4,000 are outside the statutory OT entitlement
+// (ss.60/60A(3)/60D(3)). The OT multipliers themselves live in payroll.ts (overtimePay).
+// ─────────────────────────────────────────────────────────────────────────────
+export const MY_OT_WAGE_CEILING = 4000;
+
+// ─────────────────────────── Aggregate ruleset (ADR-0019) ───────────────────────────
+// All figures above, gathered into one injectable object. The calculators take this as a
+// parameter that defaults to DEFAULT_MY_STATUTORY, so a DB override (statutory_ruleset) can
+// replace it per company/period while the verified built-in set remains the canonical fallback.
+
+export type StatutoryRuleset = {
+  version: string;
+  epf: { employeeRate: number; employerRateLow: number; employerRateHigh: number; employerThreshold: number };
+  /** Display: the SOCSO/EIS contribution wage ceiling (the band tables already encode it). */
+  contribCeiling: number;
+  socso: {
+    category1: ContribBand[];
+    category2: ContribBand[];
+    /** Display/cross-check only — the calculator uses the exact band tables. */
+    rates: { employer: number; employee: number };
+    verifiedUpTo: number;
+  };
+  eis: { bands: ContribBand[]; rates: { employer: number; employee: number } };
+  pcb: {
+    bands: PcbBand[];
+    reliefs: { individual: number; spouse: number; perChild: number; epfReliefCap: number };
+  };
+  ot: { wageCeiling: number };
+};
+
+/** The verified, sourced 2026.1 ruleset — the canonical default + fallback (ADR-0019). */
+export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
+  version: MY_STATUTORY_VERSION,
+  epf: MY_EPF,
+  contribCeiling: MY_CONTRIB_CEILING,
+  socso: {
+    category1: MY_SOCSO_CATEGORY1,
+    category2: MY_SOCSO_CATEGORY2,
+    rates: MY_SOCSO_RATES,
+    verifiedUpTo: MY_SOCSO_VERIFIED_UP_TO,
+  },
+  eis: { bands: MY_EIS_BANDS, rates: MY_EIS_RATES },
+  pcb: { bands: MY_PCB_BANDS, reliefs: MY_RELIEFS },
+  ot: { wageCeiling: MY_OT_WAGE_CEILING },
+};
