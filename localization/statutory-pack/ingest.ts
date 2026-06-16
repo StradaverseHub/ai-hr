@@ -62,8 +62,12 @@ export async function ingestTrustBundle(
       .orderBy(desc(statutorySigningKey.trustSequence))
       .limit(1);
     const stored = maxRow?.s ?? 0;
-    if (stored > 0 && bundle.sequence <= stored) {
-      throw new PackIngestError('TRUST_ROLLBACK', `Trust bundle sequence ${bundle.sequence} ≤ stored ${stored}`);
+    // Reject a STRICTLY OLDER bundle (genuine rollback). Re-ingesting the SAME sequence is idempotent: there
+    // is exactly one root-signed bundle per sequence (a revocation bumps the sequence), and the per-key
+    // upserts below re-apply identical content as a no-op — so a normal repeated `sync` (cron) and a retry
+    // after a crash both succeed instead of being wrongly rejected as a rollback.
+    if (bundle.sequence < stored) {
+      throw new PackIngestError('TRUST_ROLLBACK', `Trust bundle sequence ${bundle.sequence} < stored ${stored}`);
     }
     const revoked = new Map(bundle.revoked.map((r) => [r.keyId, r.revokedAt]));
     for (const k of bundle.keys) {

@@ -92,9 +92,11 @@ describe('ADR-0020 §4 — statutory-pack ingest', () => {
     ).rejects.toMatchObject({ code: 'IDENTITY_CONFLICT' });
   });
 
-  it('rejects a trust bundle whose sequence does not advance (anti-rollback)', async () => {
+  it('rejects a strictly-older trust bundle but re-ingests the SAME sequence idempotently', async () => {
     await ingestTrustBundle(owner.db, trustBundle(2));
     await expect(ingestTrustBundle(owner.db, trustBundle(1))).rejects.toMatchObject({ code: 'TRUST_ROLLBACK' });
+    // Re-ingesting the same sequence (a normal repeated sync / crash retry) must succeed, not error.
+    await expect(ingestTrustBundle(owner.db, trustBundle(2))).resolves.toMatchObject({ sequence: 2 });
   });
 
   it('a revoked operational key cannot ingest a pack', async () => {
