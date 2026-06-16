@@ -110,6 +110,15 @@ strictly increasing** — sync rejects an index whose sequence is below the last
 **alarms** when the newest trusted index is stale (freeze/withhold detection). An operator can **pin/rollback**
 to a known-good `packVersion`.
 
+> Implementation: the transport hardening uses Node stdlib (no `undici` dependency) — `dns.lookup` pre-resolves
+> the host and any private/link-local/CGNAT/mapped address is rejected (`ip-guard.ts`), with https-only +
+> host-allowlist + `redirect: 'error'` + `AbortController` timeout + a streamed max-bytes cap (`fetch.ts`).
+> The pull's fetcher is injectable so the orchestration is unit-tested without a network. The **ed25519
+> signature remains the integrity control** — a residual DNS-rebind window between the pre-resolve check and
+> the connect cannot inject bad data (unsigned/altered bytes fail verification), only probe; the URL is
+> deploy-config-only, never request input. Break-glass: **`STATUTORY_PACK_DISABLE=1`** pins the resolver to
+> the code default + tenant overrides only (packs ignored) during an incident.
+
 ### 6. Precedence — one deterministic merged resolver, total order, fail-safe
 
 `getActiveStatutoryMY` is **rewritten** (it is what `loadRuleset` binds to) into a single merged resolver

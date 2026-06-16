@@ -60,7 +60,9 @@ async function resolveActiveRulesetMY(tx: Tx, asOf: string): Promise<ActiveResol
     );
 
   let packs: (typeof statutoryPack.$inferSelect)[] = [];
+  // Break-glass (ADR-0020 §1): an incident can pin the engine to the code default + tenant overrides only.
   try {
+    if (process.env.STATUTORY_PACK_DISABLE === '1') throw new Error('packs disabled');
     const keys = await tx
       .select({ keyId: statutorySigningKey.keyId, status: statutorySigningKey.status })
       .from(statutorySigningKey);

@@ -8,9 +8,11 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { desc, isNotNull } from 'drizzle-orm';
 import { createDb } from '../db/client';
 import { statutoryPackSyncLog } from '../db/schema';
 import { ingestPack, ingestTrustBundle, PackIngestError } from '../localization/statutory-pack/ingest';
+import { pullAndIngest } from '../localization/statutory-pack/pull';
 
 const BUNDLED = join(dirname(fileURLToPath(import.meta.url)), '..', 'localization', 'statutory-pack', 'bundled');
 
@@ -40,8 +42,9 @@ async function main() {
   for (const dir of dirs) {
     for (const f of listFiles(dir, '.trust.json')) {
       try {
+        // Trust-bundle anti-rollback is internal (statutory_signing_key.trustSequence); sequence_seen in
+        // the sync log is reserved for the pull INDEX sequence, so don't set it here.
         const r = await ingestTrustBundle(db, readFileSync(f, 'utf8'));
-        sequenceSeen = r.sequence;
         console.log(`trust ${f}: seq=${r.sequence} keys=${r.keys} revoked=${r.revoked}`);
       } catch (e) {
         failed += 1;
@@ -66,8 +69,34 @@ async function main() {
     }
   }
 
+  // Optional hardened remote pull (ADR-0020 §5). Anti-rollback compares the index sequence against the
+  // highest sequence ever seen (stored only by prior pulls in statutory_pack_sync_log.sequence_seen).
+  const pullUrl = process.env.STATUTORY_PACK_URL;
+  let source = dirs.join(',');
+  if (pullUrl) {
+    const [last] = await db
+      .select({ s: statutoryPackSyncLog.sequenceSeen })
+      .from(statutoryPackSyncLog)
+      .where(isNotNull(statutoryPackSyncLog.sequenceSeen))
+      .orderBy(desc(statutoryPackSyncLog.sequenceSeen))
+      .limit(1);
+    try {
+      const r = await pullAndIngest(db, { url: pullUrl, now, lastSequence: last?.s ?? 0 });
+      ingested += r.ingested;
+      failed += r.failed;
+      sequenceSeen = r.sequence;
+      for (const e of r.errors) errors.push(`pull ${e}`);
+      console.log(`pull ${pullUrl}: seq=${r.sequence} +${r.ingested} ruleset(s), ${r.failed} failure(s)`);
+    } catch (e) {
+      failed += 1;
+      errors.push(`pull: ${(e as Error).message}`);
+      console.error(`pull FAIL ${pullUrl}: ${(e as Error).message}`);
+    }
+    source += ` +pull:${pullUrl}`;
+  }
+
   await db.insert(statutoryPackSyncLog).values({
-    source: dirs.join(','),
+    source,
     sequenceSeen,
     ingested,
     failed,
