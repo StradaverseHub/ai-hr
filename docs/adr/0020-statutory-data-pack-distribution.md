@@ -132,12 +132,15 @@ today** (regression-guarded). `readActiveStatutoryMY` (the UI resolver) **delega
 returns `{ ruleset, source: 'default'|'pack'|'override', packVersion?, issuedAt?, overrideShadowedByNewerPack? }`
 so the screen always reflects what generation will actually apply.
 
-### 7. Payroll integration — pinning, provenance, the version-stamp fix
+### 7. Payroll integration — provenance, the version-stamp fix
 
-- **Open-draft pin:** at first `generatePayslips`, pin the resolved `(ruleset_version, pack_version,
-  effective_from, signed_key_id)` onto the `payroll_batch`. Re-generating a draft **reuses the pin**; adopting
-  a newer pack requires an **explicit opt-in with a figure diff** — closing the async-sync-vs-draft race that
-  would otherwise silently change deductions.
+- **Open-draft pin — found UNNECESSARY (review premise corrected):** the design review worried that
+  re-generating a draft after a pack lands would silently adopt the newer pack. Verified against the code:
+  `generatePayslips` requires `status = 'draft'` and transitions the batch to `processed` at the end; there
+  is **no re-open-to-draft path**, and `payslip` is unique per `(batch, employment)`. So a batch is generated
+  **exactly once** — a second call hits `BatchNotDraftError` (and the unique index blocks a double-insert).
+  The resolved ruleset is therefore effectively pinned at that single generation, and a later pack cannot
+  alter it. No pin column or re-gen opt-in is needed; the lifecycle already guarantees it.
 - **Payslip provenance:** snapshot `pack_version` + `signed_key_id` alongside the existing `statutory.version`
   so a forged/wrong-pack incident is traceable to which key + packVersion produced which payslip.
 - **Version-stamp fix (latent ADR-0019 bug):** `reports.ts` and `cp39-file.ts` must derive `statutoryVersion`

@@ -727,7 +727,16 @@
       "invalid": "Could not save: {problems}",
       "activePack": "Using a vendor statutory pack",
       "packVersion": "Pack",
-      "issued": "issued"
+      "issued": "issued",
+      "packsTitle": "Statutory packs",
+      "packsNone": "No vendor packs ingested — running on the built-in verified default. Deploy runbook: db:migrate → statutory:sync.",
+      "colSignedBy": "Signed by",
+      "colValidUntil": "Valid until",
+      "revoked": "revoked key",
+      "staleWarn": "A newer statutory pack ({available}) is available but not ingested (latest ingested: {ingested}). Run statutory:sync to apply it.",
+      "syncFailed": "The last sync had {count} failure(s) — check the sync log.",
+      "lastSync": "Last synced",
+      "neverSynced": "Never synced"
     }
   },
   "admin": {

@@ -10,10 +10,12 @@ import { DEFAULT_MY_STATUTORY, MY_RELIEFS } from './statutory-tables';
 import {
   archiveStatutoryRulesetMY,
   getActiveStatutoryMY,
+  listStatutoryPacksMY,
   listStatutoryRulesetsMY,
   MY_STATUTORY_SOURCES,
   readActiveStatutoryMY,
   saveStatutoryRulesetMY,
+  statutorySyncStatusMY,
   validateStatutoryRuleset,
 } from './statutory-config';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
@@ -58,6 +60,9 @@ export const myPack = {
     validate: validateStatutoryRuleset,
     default: DEFAULT_MY_STATUTORY,
     sources: MY_STATUTORY_SOURCES,
+    // Vendor pack distribution (ADR-0020): the pack panel + staleness signal.
+    listPacks: listStatutoryPacksMY,
+    syncStatus: statutorySyncStatusMY,
   },
   reports: MY_REPORTS,
   eaStatement,

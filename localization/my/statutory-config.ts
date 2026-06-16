@@ -10,7 +10,7 @@
 import { and, desc, eq, isNull, lte } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { statutoryPack, statutoryRuleset, statutorySigningKey } from '../../db/schema';
+import { statutoryPack, statutoryPackSyncLog, statutoryRuleset, statutorySigningKey } from '../../db/schema';
 import {
   DEFAULT_MY_STATUTORY,
   MY_STATUTORY_VERSION,
@@ -353,6 +353,67 @@ export async function listStatutoryRulesetsMY(ctx: SessionContext): Promise<Stat
       .where(eq(statutoryRuleset.country, 'MY'))
       .orderBy(desc(statutoryRuleset.effectiveFrom), desc(statutoryRuleset.createdAt));
     return rows.map(mapRow);
+  });
+}
+
+// ─────────────────────────── Vendor packs (read: panel + staleness) ───────────────────────────
+
+export type StatutoryPackRow = {
+  id: string;
+  packVersion: string;
+  rulesetVersion: string;
+  effectiveFrom: string;
+  signedKeyId: string;
+  keyRevoked: boolean;
+  issuedAt: string;
+  validUntil: string;
+  ingestedAt: string;
+  ingestedSource: string | null;
+};
+
+/** Ingested vendor packs (national; readable by all tenants), newest effective first — the pack panel. */
+export async function listStatutoryPacksMY(ctx: SessionContext): Promise<StatutoryPackRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const keys = await tx
+      .select({ keyId: statutorySigningKey.keyId, status: statutorySigningKey.status })
+      .from(statutorySigningKey);
+    const revoked = new Set(keys.filter((k) => k.status === 'revoked').map((k) => k.keyId));
+    const rows = await tx
+      .select()
+      .from(statutoryPack)
+      .where(eq(statutoryPack.country, 'MY'))
+      .orderBy(desc(statutoryPack.effectiveFrom), desc(statutoryPack.packVersion));
+    return rows.map((r) => ({
+      id: r.id,
+      packVersion: r.packVersion,
+      rulesetVersion: r.rulesetVersion,
+      effectiveFrom: r.effectiveFrom,
+      signedKeyId: r.signedKeyId,
+      keyRevoked: revoked.has(r.signedKeyId),
+      issuedAt: r.issuedAt.toISOString(),
+      validUntil: r.validUntil.toISOString(),
+      ingestedAt: r.ingestedAt.toISOString(),
+      ingestedSource: r.ingestedSource,
+    }));
+  });
+}
+
+/** Latest ingested packVersion + last sync — the staleness signal (ADR-0020 §8). */
+export async function statutorySyncStatusMY(
+  ctx: SessionContext,
+): Promise<{ latestIngested: string | null; lastSync: { ranAt: string; ingested: number; failed: number; error: string | null } | null }> {
+  return withTenant(ctx, async (tx) => {
+    const [top] = await tx
+      .select({ pv: statutoryPack.packVersion })
+      .from(statutoryPack)
+      .where(eq(statutoryPack.country, 'MY'))
+      .orderBy(desc(statutoryPack.packVersion))
+      .limit(1);
+    const [log] = await tx.select().from(statutoryPackSyncLog).orderBy(desc(statutoryPackSyncLog.ranAt)).limit(1);
+    return {
+      latestIngested: top?.pv ?? null,
+      lastSync: log ? { ranAt: log.ranAt.toISOString(), ingested: log.ingested, failed: log.failed, error: log.error } : null,
+    };
   });
 }
 
