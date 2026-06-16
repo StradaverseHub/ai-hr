@@ -26,7 +26,8 @@
     "collapse": "ย่อ",
     "expand": "ขยาย",
     "home": "หน้าแรก AI HR",
-    "knowledgeBase": "ฐานความรู้"
+    "knowledgeBase": "ฐานความรู้",
+    "claimsConfig": "Claims config"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -883,6 +884,36 @@
       "newer": "ใหม่กว่า",
       "older": "เก่ากว่า",
       "pageIndicator": "หน้า {page}"
+    },
+    "claims": {
+      "title": "Claims configuration",
+      "subtitle": "Define the expense/benefit claim types employees can submit, their default tax treatment, and optional budgets.",
+      "typesTitle": "Claim types",
+      "empty": "No claim types yet. Add one below.",
+      "newTitle": "New claim type",
+      "codeLabel": "Code",
+      "nameLabel": "Name",
+      "defaultTaxableLabel": "Taxable by default",
+      "requiresReceiptLabel": "Requires receipt",
+      "create": "Create",
+      "taxableHint": "Default tax treatment seeds each claim; the approver confirms taxable vs non-taxable per claim. Taxable → next payslip (PCB); non-taxable → reimbursement.",
+      "taxable": "Taxable",
+      "nonTaxable": "Non-taxable",
+      "receipt": "Receipt",
+      "budget": "Budget",
+      "noBudget": "No budget",
+      "save": "Save",
+      "annualBudgetLabel": "Annual budget (RM)",
+      "perClaimCapLabel": "Per-claim cap (RM)",
+      "effectiveFromLabel": "Effective from",
+      "setBudget": "Set budget",
+      "unlimited": "Unlimited",
+      "noCap": "No cap",
+      "typeLabel": "Type",
+      "archive": "Archive",
+      "archiveConfirmTitle": "Archive this claim type?",
+      "archiveConfirmDescription": "Employees can no longer submit claims of this type. Existing claims are unaffected.",
+      "archiveConfirmLabel": "Archive"
     }
   },
   "topbar": {
