@@ -6,8 +6,23 @@
 import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { claimAttachment, claimPolicy, claimRequest, claimType, employment, person } from '../db/schema';
+import {
+  claimAttachment,
+  claimPolicy,
+  claimRequest,
+  claimType,
+  company,
+  employeeStatutoryMy,
+  employment,
+  payrollBatch,
+  payrollInput,
+  person,
+} from '../db/schema';
+import { toCsv } from '../lib/csv';
 import { assertCanDecide } from './approvals';
+
+const slugify = (s: string): string =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reimbursements';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const num = (v: string | null): number | null => (v == null ? null : Number(v));
@@ -499,5 +514,216 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
       .orderBy(desc(claimRequest.createdAt));
     const atts = await attachmentsByClaim(tx, rows.map((r) => r.id));
     return rows.map((r) => toRow(r, atts));
+  });
+}
+
+// ──────────────────────────── Payout (ADR-0021 §3, Slice 5) ────────────────────────────
+//
+// Two routes, chosen by the `taxable` flag confirmed at approval:
+//   • taxable     → folded into the payslip's taxable allowance base (PCB/EPF/SOCSO/EIS) via
+//                   payroll_input.claim_allowance. `prefillClaimsForBatch` queues approved-taxable
+//                   claims onto a draft batch; generatePayslips marks them paid when it processes.
+//   • non-taxable → paid off-cycle as a reimbursement (`markReimbursementsPaid` + bank CSV export).
+
+/**
+ * Queue approved, taxable, not-yet-scheduled claims for an employee's company onto a DRAFT payroll
+ * batch: sum per employment into payroll_input.claim_allowance and stamp each claim's payrollBatchId
+ * so generatePayslips folds the amount into the taxable allowance line (and marks the claims paid on
+ * processing). Idempotent — already-linked claims are excluded, so re-running adds only new approvals.
+ * Mirrors prefillOvertimeFromAttendance (preserves any existing manual input on the row).
+ */
+export async function prefillClaimsForBatch(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<{ applied: number; claims: number; total: number }> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new ClaimError('Payroll batch not found');
+    if (batch.status !== 'draft') throw new ClaimError('Claims can only be prefilled onto a draft batch');
+
+    // Approved + taxable + unscheduled claims for employees of this batch's company.
+    const due = await tx
+      .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount })
+      .from(claimRequest)
+      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          eq(claimRequest.status, 'approved'),
+          eq(claimRequest.taxable, true),
+          isNull(claimRequest.payrollBatchId),
+        ),
+      );
+    if (due.length === 0) return { applied: 0, claims: 0, total: 0 };
+
+    // Sum per employment, and remember which claim ids belong to each.
+    const sumByEmp = new Map<string, { cents: number; ids: string[] }>();
+    for (const c of due) {
+      const acc = sumByEmp.get(c.employmentId) ?? { cents: 0, ids: [] };
+      acc.cents += Math.round(Number(c.amount) * 100);
+      acc.ids.push(c.id);
+      sumByEmp.set(c.employmentId, acc);
+    }
+
+    // Existing inputs: claim_allowance accumulates on top of any prior prefill for this batch.
+    const existing = await tx
+      .select({ id: payrollInput.id, employmentId: payrollInput.employmentId, claimAllowance: payrollInput.claimAllowance })
+      .from(payrollInput)
+      .where(eq(payrollInput.batchId, p.batchId));
+    const existingBy = new Map(existing.map((r) => [r.employmentId, r]));
+
+    let total = 0;
+    for (const [employmentId, { cents }] of sumByEmp) {
+      const amount = cents / 100;
+      total += cents;
+      const prior = existingBy.get(employmentId);
+      if (prior) {
+        const next = round2Cents(Math.round(Number(prior.claimAllowance) * 100) + cents);
+        await tx
+          .update(payrollInput)
+          .set({ claimAllowance: next, updatedAt: sql`now()` })
+          .where(eq(payrollInput.id, prior.id));
+      } else {
+        await tx.insert(payrollInput).values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId,
+          claimAllowance: amount.toFixed(2),
+        });
+      }
+    }
+
+    // Stamp the claims onto the batch (reservation) — a deliberate state change, so each gets an event.
+    const allIds = [...sumByEmp.values()].flatMap((v) => v.ids);
+    await tx
+      .update(claimRequest)
+      .set({ payrollBatchId: p.batchId })
+      .where(inArray(claimRequest.id, allIds));
+    for (const c of due) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: c.id,
+        eventType: 'claim-request.queued-for-payroll',
+        actor: actorOf(ctx),
+        subjectEmploymentId: c.employmentId,
+        payload: { batchId: p.batchId, amount: Number(c.amount) },
+      });
+    }
+    return { applied: sumByEmp.size, claims: due.length, total: total / 100 };
+  });
+}
+
+const round2Cents = (cents: number): string => (cents / 100).toFixed(2);
+
+export type ReimbursementRow = {
+  id: string;
+  claimant: string;
+  employeeCode: string | null;
+  typeCode: string;
+  typeName: string;
+  amount: number;
+  incurredOn: string;
+  bankName: string | null;
+  bankAccountNo: string | null;
+};
+
+/** Approved, NON-taxable claims awaiting an off-cycle reimbursement payout (RLS-scoped to the caller). */
+export async function listReimbursementsDue(ctx: SessionContext): Promise<ReimbursementRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: claimRequest.id,
+        claimant: person.fullName,
+        employeeCode: employment.employeeCode,
+        typeCode: claimType.code,
+        typeName: claimType.name,
+        amount: claimRequest.amount,
+        incurredOn: claimRequest.incurredOn,
+        bankName: employeeStatutoryMy.bankName,
+        bankAccountNo: employeeStatutoryMy.bankAccountNo,
+      })
+      .from(claimRequest)
+      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(and(eq(claimRequest.status, 'approved'), eq(claimRequest.taxable, false)))
+      .orderBy(person.fullName);
+    return rows.map((r) => ({
+      id: r.id,
+      claimant: r.claimant,
+      employeeCode: r.employeeCode,
+      typeCode: r.typeCode,
+      typeName: r.typeName,
+      amount: Number(r.amount),
+      incurredOn: r.incurredOn,
+      bankName: r.bankName,
+      bankAccountNo: r.bankAccountNo,
+    }));
+  });
+}
+
+/**
+ * Bank-upload CSV for the non-taxable reimbursements due — a plain, neutral file (employee, bank,
+ * account, amount), deliberately NOT a byte-exact giro/IBG format (mirrors paymentSummaryForBatch).
+ * Read-only: building the file does not mark anything paid — that's an explicit `markReimbursementsPaid`.
+ */
+export async function reimbursementCsv(
+  ctx: SessionContext,
+): Promise<{ content: string; filename: string; payeeCount: number; total: number; missingBank: number }> {
+  const due = await listReimbursementsDue(ctx);
+  const header = ['No', 'Employee', 'Employee Code', 'Claim Type', 'Incurred On', 'Bank', 'Account No', 'Amount (RM)'];
+  const body = due.map((r, i) => [
+    i + 1,
+    r.claimant,
+    r.employeeCode ?? '',
+    r.typeCode,
+    r.incurredOn,
+    r.bankName ?? '',
+    r.bankAccountNo ?? '',
+    r.amount.toFixed(2),
+  ]);
+  const content = toCsv([header, ...body]);
+  const total = due.reduce((sum, r) => sum + Math.round(r.amount * 100), 0) / 100;
+  const missingBank = due.filter((r) => !r.bankName || !r.bankAccountNo).length;
+  return { content, filename: `reimbursements_${slugify(today())}.csv`, payeeCount: due.length, total, missingBank };
+}
+
+/** Mark approved non-taxable claims as reimbursed (off-cycle payout confirmed). Appends a paid event per claim. */
+export async function markReimbursementsPaid(
+  ctx: SessionContext,
+  p: { claimIds: string[]; payoutRef?: string | null },
+): Promise<{ paid: number }> {
+  if (p.claimIds.length === 0) return { paid: 0 };
+  return withTenant(ctx, async (tx) => {
+    // RLS already scopes visibility; only flip ones that are genuinely approved + non-taxable.
+    const paid = await tx
+      .update(claimRequest)
+      .set({ status: 'paid', paidAt: new Date(), payoutRef: p.payoutRef ?? 'reimbursement' })
+      .where(
+        and(
+          inArray(claimRequest.id, p.claimIds),
+          eq(claimRequest.status, 'approved'),
+          eq(claimRequest.taxable, false),
+        ),
+      )
+      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount });
+    for (const c of paid) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: c.id,
+        eventType: 'claim-request.paid',
+        actor: actorOf(ctx),
+        subjectEmploymentId: c.employmentId,
+        payload: { via: 'reimbursement', amount: Number(c.amount), payoutRef: p.payoutRef ?? 'reimbursement' },
+      });
+    }
+    return { paid: paid.length };
   });
 }

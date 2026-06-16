@@ -134,6 +134,16 @@ into the existing `/approvals` inbox**.
    Equivalence test: no claims ⇒ payroll byte-identical.
 6. **Verify + tests + merge.**
 
+**Status: implemented (all 6 slices).** Payout landed as designed — `prefillClaimsForBatch` queues approved
+taxable claims onto a draft batch (`claim-request.queued-for-payroll`), `generatePayslips` folds
+`claim_allowance` into the non-prorated taxable allowance line and marks the linked claims `paid` on process
+(`claim-request.paid`, `via: payroll`); non-taxable claims flow through `listReimbursementsDue` →
+`reimbursementCsv` (read-only bank file) → `markReimbursementsPaid` (`via: reimbursement`). Equivalence is
+structural: `claim_allowance` defaults `0`, so a batch with no prefilled claims is byte-identical (covered by
+`test/claims-payout.test.ts`). Side-fix: the `/payroll/[batchId]` page referenced a `payroll.batch` i18n
+namespace that was never added in the ADR-0016 extraction (the whole page rendered raw fallback keys) — added
+the full namespace to `messages/en.json` while wiring the "Prefill claims" affordance.
+
 ## Alternatives considered (the rejected forks)
 
 - **All-through-payroll payout** — rejected: forces receipted reimbursements (not income) through the monthly

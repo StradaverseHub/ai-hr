@@ -9,6 +9,7 @@ import { packFor } from '../localization/registry';
 import { toCsv } from '../lib/csv';
 import {
   attendance,
+  claimRequest,
   company,
   compensation,
   employeeStatutoryMy,
@@ -414,6 +415,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         bonus: payrollInput.bonusAmount,
         tp1: payrollInput.tp1Deduction,
         zakat: payrollInput.zakat,
+        claimAllowance: payrollInput.claimAllowance,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
@@ -421,6 +423,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
     const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
+    // Approved taxable claims prefilled into this batch (ADR-0021): ride the taxable allowance base.
+    const claimAllowanceByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.claimAllowance)]));
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
     // ── PCB accumulators (ADR-0014) ──
@@ -505,7 +509,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn);
       const daysWorked = Math.round(factor * dim); // proration basis surfaced on the payslip
       const basic = round2(Number(e.basic) * factor);
-      const allowance = round2(Number(e.allowance ?? 0) * factor);
+      // Contractual allowance prorates; an approved taxable claim allowance is a fixed reimbursed amount
+      // (not prorated) folded into the same taxable allowance line (ADR-0021).
+      const claimAllow = round2(claimAllowanceByEmp.get(e.employmentId) ?? 0);
+      const allowance = round2(Number(e.allowance ?? 0) * factor + claimAllow);
       const overtime = round2(overtimeByEmp.get(e.employmentId) ?? 0);
       const bonus = round2(bonusByEmp.get(e.employmentId) ?? 0);
       // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / days in month).
@@ -583,6 +590,25 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       .update(payrollBatch)
       .set({ status: 'processed', employeeCount: emps.length, totals })
       .where(eq(payrollBatch.id, p.batchId));
+
+    // Taxable claims prefilled into this batch are now on a payslip → mark them paid (ADR-0021).
+    const paidClaims = await tx
+      .update(claimRequest)
+      .set({ status: 'paid', paidAt: new Date(), payoutRef: `payroll:${batch.payPeriod}` })
+      .where(and(eq(claimRequest.payrollBatchId, p.batchId), eq(claimRequest.status, 'approved')))
+      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+    for (const c of paidClaims) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: c.id,
+        eventType: 'claim-request.paid',
+        actor: actorOf(ctx),
+        subjectEmploymentId: c.employmentId,
+        payload: { via: 'payroll', batchId: p.batchId },
+      });
+    }
+
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
