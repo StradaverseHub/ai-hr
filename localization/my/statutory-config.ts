@@ -10,7 +10,7 @@
 import { and, desc, eq, isNull, lte } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { statutoryRuleset } from '../../db/schema';
+import { statutoryPack, statutoryRuleset, statutorySigningKey } from '../../db/schema';
 import {
   DEFAULT_MY_STATUTORY,
   MY_STATUTORY_VERSION,
@@ -23,27 +23,127 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-// ─────────────────────────────── Loader (kernel) ───────────────────────────────
+// ─────────────────────────────── Loader (kernel) — 3-tier merge ───────────────────────────────
+
+export type ActiveResolution = {
+  ruleset: StatutoryRuleset;
+  source: 'default' | 'override' | 'pack';
+  effectiveFrom: string | null;
+  version: string;
+  packVersion: string | null;
+  issuedAt: string | null;
+  signedKeyId: string | null;
+  /** The winning tenant override row (only when source === 'override'). */
+  overrideRow: StatutoryRulesetRow | null;
+};
 
 /**
- * The ruleset in effect at `asOf`: the latest non-archived MY row with `effective_from ≤ asOf`,
- * else the verified DEFAULT_MY_STATUTORY. Pure read inside the caller's tenant transaction (RLS);
- * `core/payroll.ts` calls this once per run and threads the result into the calculators.
+ * Resolve the active ruleset for `asOf` across THREE sources, in ONE tx snapshot (ADR-0020 §6):
+ *   tenant override (statutory_ruleset) ∪ vendor pack (statutory_pack) → else code DEFAULT_MY_STATUTORY.
+ *
+ * Total order (head wins): effective_from DESC, then issuanceTs DESC (pack.issued_at | override.created_at),
+ * then source rank (an override outranks a pack ONLY at equal issuanceTs — a tenant must RE-ISSUE after a
+ * pack to keep winning, so a same-date vendor correction is never silently shadowed), then packVersion DESC,
+ * then id. Packs signed by a REVOKED key are excluded. The pack read FAILS SAFE: any error → packs ignored,
+ * so the kernel can never break because of the pack channel. Empty override + empty pack ⇒ DEFAULT.
  */
-export async function getActiveStatutoryMY(tx: Tx, p: { asOf: string }): Promise<StatutoryRuleset> {
-  const [row] = await tx
-    .select({ data: statutoryRuleset.data })
+async function resolveActiveRulesetMY(tx: Tx, asOf: string): Promise<ActiveResolution> {
+  const overrides = await tx
+    .select()
     .from(statutoryRuleset)
     .where(
       and(
         eq(statutoryRuleset.country, 'MY'),
         isNull(statutoryRuleset.archivedAt),
-        lte(statutoryRuleset.effectiveFrom, p.asOf),
+        lte(statutoryRuleset.effectiveFrom, asOf),
       ),
-    )
-    .orderBy(desc(statutoryRuleset.effectiveFrom))
-    .limit(1);
-  return (row?.data as StatutoryRuleset | undefined) ?? DEFAULT_MY_STATUTORY;
+    );
+
+  let packs: (typeof statutoryPack.$inferSelect)[] = [];
+  try {
+    const keys = await tx
+      .select({ keyId: statutorySigningKey.keyId, status: statutorySigningKey.status })
+      .from(statutorySigningKey);
+    const active = new Set(keys.filter((k) => k.status !== 'revoked').map((k) => k.keyId));
+    const rows = await tx
+      .select()
+      .from(statutoryPack)
+      .where(and(eq(statutoryPack.country, 'MY'), lte(statutoryPack.effectiveFrom, asOf)));
+    packs = rows.filter((pk) => active.has(pk.signedKeyId)); // exclude revoked-key packs
+  } catch {
+    packs = []; // fail safe: the pack channel must never break payroll
+  }
+
+  type Cand = { effFrom: string; issuanceMs: number; rank: number; packVersion: string; id: string; res: ActiveResolution };
+  const cands: Cand[] = [];
+  for (const o of overrides) {
+    cands.push({
+      effFrom: o.effectiveFrom,
+      issuanceMs: o.createdAt.getTime(),
+      rank: 1, // override outranks pack only at equal issuanceTs
+      packVersion: '',
+      id: o.id,
+      res: {
+        ruleset: o.data as StatutoryRuleset,
+        source: 'override',
+        effectiveFrom: o.effectiveFrom,
+        version: o.version,
+        packVersion: null,
+        issuedAt: null,
+        signedKeyId: null,
+        overrideRow: mapRow(o),
+      },
+    });
+  }
+  for (const pk of packs) {
+    cands.push({
+      effFrom: pk.effectiveFrom,
+      issuanceMs: pk.issuedAt.getTime(),
+      rank: 0,
+      packVersion: pk.packVersion,
+      id: pk.id,
+      res: {
+        ruleset: pk.data as StatutoryRuleset,
+        source: 'pack',
+        effectiveFrom: pk.effectiveFrom,
+        version: pk.rulesetVersion,
+        packVersion: pk.packVersion,
+        issuedAt: pk.issuedAt.toISOString(),
+        signedKeyId: pk.signedKeyId,
+        overrideRow: null,
+      },
+    });
+  }
+
+  if (cands.length === 0) {
+    return {
+      ruleset: DEFAULT_MY_STATUTORY,
+      source: 'default',
+      effectiveFrom: null,
+      version: DEFAULT_MY_STATUTORY.version,
+      packVersion: null,
+      issuedAt: null,
+      signedKeyId: null,
+      overrideRow: null,
+    };
+  }
+  cands.sort(
+    (a, b) =>
+      b.effFrom.localeCompare(a.effFrom) ||
+      b.issuanceMs - a.issuanceMs ||
+      b.rank - a.rank ||
+      b.packVersion.localeCompare(a.packVersion) ||
+      b.id.localeCompare(a.id),
+  );
+  return cands[0].res;
+}
+
+/**
+ * The ruleset in effect at `asOf` for the kernel: the merged resolution above, reduced to the ruleset.
+ * `core/payroll.ts` calls this once per run and threads the result into the calculators.
+ */
+export async function getActiveStatutoryMY(tx: Tx, p: { asOf: string }): Promise<StatutoryRuleset> {
+  return (await resolveActiveRulesetMY(tx, p.asOf)).ruleset;
 }
 
 // ─────────────────────────── Source / provenance metadata ───────────────────────────
@@ -214,27 +314,33 @@ function mapRow(row: typeof statutoryRuleset.$inferSelect): StatutoryRulesetRow 
   };
 }
 
-/** The active ruleset for display, plus whether it's a stored override or the built-in default. */
+/**
+ * The active ruleset for display — delegates to the SAME merged resolution the kernel uses (ADR-0020 §6),
+ * so `/payroll/configuration` always reflects what generation will actually apply: built-in default, a
+ * vendor pack (with packVersion + issuedAt), or a tenant override.
+ */
 export async function readActiveStatutoryMY(
   ctx: SessionContext,
   p?: { asOf?: string },
-): Promise<{ ruleset: StatutoryRuleset; source: 'default' | 'override'; row: StatutoryRulesetRow | null }> {
+): Promise<{
+  ruleset: StatutoryRuleset;
+  source: 'default' | 'override' | 'pack';
+  row: StatutoryRulesetRow | null;
+  packVersion: string | null;
+  issuedAt: string | null;
+  effectiveFrom: string | null;
+}> {
   const asOf = p?.asOf ?? today();
   return withTenant(ctx, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(statutoryRuleset)
-      .where(
-        and(
-          eq(statutoryRuleset.country, 'MY'),
-          isNull(statutoryRuleset.archivedAt),
-          lte(statutoryRuleset.effectiveFrom, asOf),
-        ),
-      )
-      .orderBy(desc(statutoryRuleset.effectiveFrom))
-      .limit(1);
-    if (row) return { ruleset: row.data as StatutoryRuleset, source: 'override' as const, row: mapRow(row) };
-    return { ruleset: DEFAULT_MY_STATUTORY, source: 'default' as const, row: null };
+    const r = await resolveActiveRulesetMY(tx, asOf);
+    return {
+      ruleset: r.ruleset,
+      source: r.source,
+      row: r.overrideRow,
+      packVersion: r.packVersion,
+      issuedAt: r.issuedAt,
+      effectiveFrom: r.effectiveFrom,
+    };
   });
 }
 

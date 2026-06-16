@@ -186,6 +186,13 @@ export function cp39FileForBatch(
         employeeNo: s.employeeNo,
       })),
     });
-    return { ...file, statutoryVersion: MY_STATUTORY_VERSION };
+    // ADR-0020: stamp the version(s) the payslips were ACTUALLY computed with (the snapshot in each
+    // payslip's `statutory` blob), not the code constant — so the file filed to LHDN reports the real figures.
+    const versions = [
+      ...new Set(
+        slips.map((s) => (s.statutory as { version?: string } | null)?.version).filter((v): v is string => !!v),
+      ),
+    ].sort();
+    return { ...file, statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION };
   });
 }

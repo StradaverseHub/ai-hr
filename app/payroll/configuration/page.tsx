@@ -66,7 +66,7 @@ export default async function StatutoryConfigPage({
     );
   }
 
-  const [{ ruleset, source, row }, history] = await Promise.all([
+  const [{ ruleset, source, row, packVersion, issuedAt }, history] = await Promise.all([
     pack.statutoryConfig.readActive(s),
     pack.statutoryConfig.list(s),
   ]);
@@ -118,26 +118,33 @@ export default async function StatutoryConfigPage({
       <PayrollTabs active="configuration" />
       <ErrorBanner message={error} />
 
-      {/* Active-set banner */}
+      {/* Active-set banner — three-way: built-in default / vendor pack / tenant override */}
       <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-3">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
               source === 'override'
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
-                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                : source === 'pack'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400'
+                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
             }`}
           >
-            {source === 'override' ? t('activeOverride') : t('activeDefault')}
+            {source === 'override' ? t('activeOverride') : source === 'pack' ? t('activePack') : t('activeDefault')}
           </span>
           <span className="font-mono text-sm font-medium">{ruleset.version}</span>
         </div>
-        {row && (
+        {source === 'override' && row ? (
           <div className="text-xs text-muted-foreground">
             {t('effectiveFrom')} {row.effectiveFrom}
             {row.notes ? ` · ${row.notes}` : ''}
           </div>
-        )}
+        ) : source === 'pack' && packVersion ? (
+          <div className="text-xs text-muted-foreground">
+            {t('packVersion')} {packVersion}
+            {issuedAt ? ` · ${t('issued')} ${issuedAt.slice(0, 10)}` : ''}
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">

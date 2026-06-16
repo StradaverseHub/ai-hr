@@ -724,7 +724,10 @@
       "by": "by",
       "savedToast": "Statutory version published",
       "archivedToast": "Version archived",
-      "invalid": "Could not save: {problems}"
+      "invalid": "Could not save: {problems}",
+      "activePack": "Using a vendor statutory pack",
+      "packVersion": "Pack",
+      "issued": "issued"
     }
   },
   "admin": {
