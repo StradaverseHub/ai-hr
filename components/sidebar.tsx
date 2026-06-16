@@ -14,6 +14,7 @@ import {
   Network,
   PanelLeftClose,
   PanelLeftOpen,
+  Receipt,
   ScrollText,
   ShieldCheck,
   Target,
@@ -39,6 +40,7 @@ const GROUPS: Group[] = [
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       { href: '/attendance', labelKey: 'attendance', icon: Clock },
+      { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
     ],
   },
@@ -56,6 +58,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
+      { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       { href: '/admin/users', labelKey: 'usersRoles', icon: ShieldCheck },

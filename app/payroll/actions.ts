@@ -10,6 +10,7 @@ import {
   prefillOvertimeFromAttendance,
   setPayrollInput,
 } from '@/core/payroll';
+import { prefillClaimsForBatch } from '@/core/claims';
 
 export async function createBatchAction(formData: FormData) {
   const s = await getSession();
@@ -73,6 +74,27 @@ export async function prefillOvertimeAction(formData: FormData) {
       : `OT prefilled for ${applied} employee${applied === 1 ? '' : 's'}${
           ineligible ? ` (${ineligible} above RM4,000 — not statutorily entitled)` : ''
         }`;
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+export async function prefillClaimsAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  let applied = 0;
+  let claims = 0;
+  let total = 0;
+  try {
+    ({ applied, claims, total } = await prefillClaimsForBatch(s, { batchId }));
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  const note =
+    claims === 0
+      ? 'No approved taxable claims awaiting payout'
+      : `Queued ${claims} claim${claims === 1 ? '' : 's'} (RM ${total.toLocaleString('en-MY', {
+          minimumFractionDigits: 2,
+        })}) onto ${applied} payslip${applied === 1 ? '' : 's'}`;
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
 }
 

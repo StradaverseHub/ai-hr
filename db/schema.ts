@@ -705,6 +705,9 @@ export const payrollInput = pgTable(
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     zakat: numeric('zakat', { precision: 12, scale: 2 }).notNull().default('0'),
+    // Sum of approved TAXABLE claims prefilled into this batch (ADR-0021). Added to the taxable allowance
+    // base in generatePayslips → contributes to PCB/EPF/SOCSO/EIS like a regular monthly allowance.
+    claimAllowance: numeric('claim_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -939,3 +942,100 @@ export const statutoryPackSyncLog = pgTable('statutory_pack_sync_log', {
   failed: integer('failed').notNull().default(0),
   error: text('error'),
 });
+
+// ─────────────────────────────── Claims (ADR-0021) ───────────────────────────────
+// Employee expense/benefit claims. A claim's `taxable` flag (HR-decided, defaulted from the type) routes
+// the payout: non-taxable → off-cycle reimbursement export (never touches payroll); taxable → a Claims
+// allowance line on the next payslip (payroll_input.claim_allowance). Mirrors the leave catalog/policy +
+// the request lifecycle (assertCanDecide + domain events). Receipts in a dedicated, claim-scoped table.
+
+export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected', 'cancelled', 'paid']);
+
+export const claimType = pgTable(
+  'claim_type',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    code: text('code').notNull(), // e.g. 'MEDICAL', 'TRAVEL', 'MEALS'
+    name: text('name').notNull(),
+    /** Seeds each new claim's `taxable`; the approver confirms/overrides per claim (flat tax, ADR-0021). */
+    defaultTaxable: boolean('default_taxable').notNull().default(false),
+    requiresReceipt: boolean('requires_receipt').notNull().default(true),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('claim_type_tenant_idx').on(t.tenantId),
+    // One live code per tenant (archived rows may share a code that was re-created).
+    uniqueIndex('claim_type_tenant_code_uq').on(t.tenantId, t.code).where(sql`archived_at IS NULL`),
+  ],
+);
+
+export const claimPolicy = pgTable(
+  'claim_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    claimTypeId: uuid('claim_type_id')
+      .notNull()
+      .references(() => claimType.id),
+    /** NULL = unlimited. Annual cap on approved claims of this type per employee. */
+    annualBudget: numeric('annual_budget', { precision: 12, scale: 2 }),
+    /** NULL = no cap. Max amount of a single claim. */
+    perClaimCap: numeric('per_claim_cap', { precision: 12, scale: 2 }),
+    validFrom: date('valid_from').notNull(),
+    validTo: date('valid_to'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom)],
+);
+
+export const claimRequest = pgTable(
+  'claim_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    claimTypeId: uuid('claim_type_id')
+      .notNull()
+      .references(() => claimType.id),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    incurredOn: date('incurred_on').notNull(), // the expense date
+    description: text('description'),
+    /** HR-decided (default from the type). taxable ⇒ payroll allowance; non-taxable ⇒ reimbursement. */
+    taxable: boolean('taxable').notNull().default(false),
+    status: claimStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    // Payout provenance: taxable → the batch it rode; either → when/how it was paid.
+    payrollBatchId: uuid('payroll_batch_id').references(() => payrollBatch.id),
+    paidAt: timestamp('paid_at', { withTimezone: true }),
+    payoutRef: text('payout_ref'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('claim_request_employment_idx').on(t.employmentId, t.status)],
+);
+
+export const claimAttachment = pgTable(
+  'claim_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    claimRequestId: uuid('claim_request_id')
+      .notNull()
+      .references(() => claimRequest.id),
+    // Denormalized from the claim so RLS can use can_see_employment(employment_id) directly (no subquery).
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('claim_attachment_claim_idx').on(t.claimRequestId)],
+);
