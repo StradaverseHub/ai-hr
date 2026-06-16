@@ -10,6 +10,7 @@ import { DEFAULT_MY_STATUTORY, MY_RELIEFS } from './statutory-tables';
 import {
   archiveStatutoryRulesetMY,
   getActiveStatutoryMY,
+  getActiveStatutoryResolvedMY,
   listStatutoryPacksMY,
   listStatutoryRulesetsMY,
   MY_STATUTORY_SOURCES,
@@ -49,6 +50,9 @@ export const myPack = {
     // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
     // calls this once per run and threads the result into the calculators above.
     loadRuleset: getActiveStatutoryMY,
+    // Resolved loader (ADR-0020 §7): same resolution + pack provenance (packVersion/signedKeyId) so the
+    // kernel can snapshot which vendor pack + key produced each payslip.
+    loadRulesetResolved: getActiveStatutoryResolvedMY,
   },
   // Editable statutory configuration (ADR-0019): the admin view/edit/audit surface. The verified
   // DEFAULT and per-section source metadata drive the transparency cards.

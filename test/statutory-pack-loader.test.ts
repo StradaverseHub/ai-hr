@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant } from '../db/client';
 import { statutoryPack, statutoryRuleset, statutorySigningKey } from '../db/schema';
-import { getActiveStatutoryMY } from '../localization/my/statutory-config';
+import { getActiveStatutoryMY, getActiveStatutoryResolvedMY } from '../localization/my/statutory-config';
 import { statutory } from '../localization/my/payroll';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from '../localization/my/statutory-tables';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -18,8 +18,9 @@ const withCeiling = (n: number): StatutoryRuleset => {
   return c;
 };
 
-// Compact payroll sweep for byte-identity.
-const WAGES = [1500, 4000, 8000, 200000];
+// Compact payroll sweep for byte-identity. 500k drives projected annual P into the PCB TOP band (upTo
+// Infinity → null after jsonb), which is the band the round-trip equivalence must actually exercise.
+const WAGES = [1500, 4000, 8000, 200000, 500000];
 const sweep = (rules: StatutoryRuleset) =>
   WAGES.map((w) => statutory(w, { category: 1, children: 0 }, 3000, 600, { month: 6 }, {}, rules));
 
@@ -105,6 +106,15 @@ describe('ADR-0020 §6 — 3-tier merged loader', () => {
     await insertPack('2026-10-01', withCeiling(4001), { packVersion: '2026.10.01', issuedAt: new Date('2026-09-15T00:00:00Z') });
     await insertPack('2026-10-01', withCeiling(4002), { packVersion: '2026.10.02', issuedAt: new Date('2026-09-15T00:00:00Z') });
     expect((await resolve('2026-10-31')).ot.wageCeiling).toBe(4002); // correction (higher packVersion)
+  });
+
+  it('exposes pack provenance (source/packVersion/signedKeyId) for payslip stamping (ADR-0020 §7)', async () => {
+    await insertKey('k1');
+    await insertPack('2026-01-01', clone(DEFAULT_MY_STATUTORY), { packVersion: '2026.01.01', keyId: 'k1', issuedAt: new Date('2026-01-01T00:00:00Z') });
+    const r = await withTenant(adminCtx(base), (tx) => getActiveStatutoryResolvedMY(tx, { asOf: '2026-06-30' }));
+    expect(r.source).toBe('pack');
+    expect(r.packVersion).toBe('2026.01.01');
+    expect(r.signedKeyId).toBe('k1');
   });
 
   it('a pack signed by a REVOKED key is excluded from resolution', async () => {

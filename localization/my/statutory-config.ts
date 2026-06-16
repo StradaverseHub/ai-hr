@@ -148,6 +148,12 @@ export async function getActiveStatutoryMY(tx: Tx, p: { asOf: string }): Promise
   return (await resolveActiveRulesetMY(tx, p.asOf)).ruleset;
 }
 
+/** Like getActiveStatutoryMY but returns the full resolution (ruleset + source + packVersion + signedKeyId)
+ *  so the kernel can snapshot pack provenance onto each payslip (ADR-0020 §7). */
+export async function getActiveStatutoryResolvedMY(tx: Tx, p: { asOf: string }): Promise<ActiveResolution> {
+  return resolveActiveRulesetMY(tx, p.asOf);
+}
+
 // ─────────────────────────── Source / provenance metadata ───────────────────────────
 // Drives the transparency surface on /payroll/configuration: each section's official source link,
 // verified flag, and effective note. Mirrors docs/architecture/STATUTORY-SOURCES.md.

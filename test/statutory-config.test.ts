@@ -30,9 +30,11 @@ import {
 
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
-// A representative spread: low/mid/high/very-high wages (200k exercises the PCB top band where the
-// Infinity→null transformation matters), every PCB category, and bonus/OT/category-2/non-resident.
-const WAGES = [800, 1500, 3000, 4000, 5000, 8000, 12000, 50000, 200000];
+// A representative spread: low/mid/high/very-high wages, every PCB category, and bonus/OT/category-2/
+// non-resident. 500k drives projected annual P past RM2,000,000 into the PCB TOP band — the only band
+// whose upTo is Infinity (→ null after the jsonb round-trip), so this is what actually exercises the
+// round-trip equivalence (a top-band M/R/B corruption would otherwise pass green).
+const WAGES = [800, 1500, 3000, 4000, 5000, 8000, 12000, 50000, 200000, 500000];
 const PROFILES = [
   { category: 1 as const, children: 0 },
   { category: 2 as const, children: 3 },

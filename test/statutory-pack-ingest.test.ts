@@ -102,4 +102,16 @@ describe('ADR-0020 §4 — statutory-pack ingest', () => {
     const p = pack('2026.01.01', [{ version: '2026.1', effectiveFrom: '2026-01-01', data: DEFAULT_MY_STATUTORY }]);
     await expect(ingestPack(owner.db, p, { source: 't', now: NOW })).rejects.toMatchObject({ code: 'REVOKED_KEY' });
   });
+
+  it('rejects a mis-formatted packVersion (anti-rollback soundness)', async () => {
+    await ingestTrustBundle(owner.db, trustBundle(1));
+    const p = pack('2026.2.01', [{ version: 'x', effectiveFrom: '2026-02-01', data: DEFAULT_MY_STATUTORY }]);
+    await expect(ingestPack(owner.db, p, { source: 't', now: NOW })).rejects.toMatchObject({ code: 'BAD_PACK_VERSION' });
+  });
+
+  it('rejects a far-future effective date (> 18 months after issuedAt)', async () => {
+    await ingestTrustBundle(owner.db, trustBundle(1));
+    const p = pack('2026.01.01', [{ version: 'x', effectiveFrom: '2030-01-01', data: DEFAULT_MY_STATUTORY }]);
+    await expect(ingestPack(owner.db, p, { source: 't', now: NOW })).rejects.toMatchObject({ code: 'EFFECTIVE_TOO_FAR' });
+  });
 });

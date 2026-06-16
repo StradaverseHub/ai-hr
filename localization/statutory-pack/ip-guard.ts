@@ -18,6 +18,7 @@ export function isPublicIp(ip: string): boolean {
     if (a === 192 && b === 168) return false; // 192.168/16
     if (a === 100 && b >= 64 && b <= 127) return false; // 100.64/10 CGNAT
     if (a === 192 && b === 0) return false; // 192.0.0/24 + 192.0.2/24 (test-net)
+    if (a === 198 && (b === 18 || b === 19)) return false; // 198.18/15 benchmarking
     if (a >= 224) return false; // multicast + reserved (224+)
     return true;
   }
@@ -27,6 +28,8 @@ export function isPublicIp(ip: string): boolean {
   // IPv4-mapped (::ffff:a.b.c.d) → classify the embedded v4.
   const mapped = v6.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mapped) return isPublicIp(mapped[1]);
+  // Hex-form IPv4-mapped (::ffff:7f00:1) or any other ::ffff: shape we can't dot-parse → reject conservatively.
+  if (v6.startsWith('::ffff:')) return false;
   if (v6.startsWith('fe80')) return false; // link-local
   if (v6.startsWith('fc') || v6.startsWith('fd')) return false; // fc00::/7 unique-local
   if (v6.startsWith('ff')) return false; // multicast

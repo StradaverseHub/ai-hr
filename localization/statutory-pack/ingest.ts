@@ -52,53 +52,62 @@ export async function ingestTrustBundle(
   bundleText: string,
 ): Promise<{ sequence: number; keys: number; revoked: number }> {
   const { bundle } = verifyTrustBundle(bundleText); // verified against build-bundled trusted roots
-  const [maxRow] = await db
-    .select({ s: statutorySigningKey.trustSequence })
-    .from(statutorySigningKey)
-    .orderBy(desc(statutorySigningKey.trustSequence))
-    .limit(1);
-  const stored = maxRow?.s ?? 0;
-  if (stored > 0 && bundle.sequence <= stored) {
-    throw new PackIngestError('TRUST_ROLLBACK', `Trust bundle sequence ${bundle.sequence} ≤ stored ${stored}`);
-  }
-  const revoked = new Map(bundle.revoked.map((r) => [r.keyId, r.revokedAt]));
-  for (const k of bundle.keys) {
-    const revokedAt = revoked.get(k.keyId) ?? null;
-    const values = {
-      keyId: k.keyId,
-      publicKey: k.publicKey,
-      status: revokedAt ? 'revoked' : 'active',
-      certifiedAt: new Date(k.certifiedAt),
-      expiresAt: new Date(k.expiresAt),
-      revokedAt: revokedAt ? new Date(revokedAt) : null,
-      trustSequence: bundle.sequence,
-      updatedAt: new Date(),
-    };
-    await db.insert(statutorySigningKey).values(values).onConflictDoUpdate({
-      target: statutorySigningKey.keyId,
-      set: {
-        publicKey: values.publicKey,
-        status: values.status,
-        expiresAt: values.expiresAt,
-        revokedAt: values.revokedAt,
-        trustSequence: values.trustSequence,
-        updatedAt: values.updatedAt,
-      },
-    });
-  }
-  // Revocations of keys no longer listed in `keys` (revoke-and-drop): mark them revoked.
-  for (const r of bundle.revoked) {
-    if (!bundle.keys.find((k) => k.keyId === r.keyId)) {
-      await db
-        .update(statutorySigningKey)
-        .set({ status: 'revoked', revokedAt: new Date(r.revokedAt), trustSequence: bundle.sequence, updatedAt: new Date() })
-        .where(eq(statutorySigningKey.keyId, r.keyId));
+  // ATOMIC: the anti-rollback gate + all key writes run in ONE transaction. A crash mid-way must NOT advance
+  // the stored sequence (which would then reject a retry of the SAME bundle as a rollback and lock out the
+  // security-critical revocation/rotation path) — the transaction guarantees all-or-nothing.
+  await db.transaction(async (tx) => {
+    const [maxRow] = await tx
+      .select({ s: statutorySigningKey.trustSequence })
+      .from(statutorySigningKey)
+      .orderBy(desc(statutorySigningKey.trustSequence))
+      .limit(1);
+    const stored = maxRow?.s ?? 0;
+    if (stored > 0 && bundle.sequence <= stored) {
+      throw new PackIngestError('TRUST_ROLLBACK', `Trust bundle sequence ${bundle.sequence} ≤ stored ${stored}`);
     }
-  }
+    const revoked = new Map(bundle.revoked.map((r) => [r.keyId, r.revokedAt]));
+    for (const k of bundle.keys) {
+      const revokedAt = revoked.get(k.keyId) ?? null;
+      const values = {
+        keyId: k.keyId,
+        publicKey: k.publicKey,
+        status: revokedAt ? 'revoked' : 'active',
+        certifiedAt: new Date(k.certifiedAt),
+        expiresAt: new Date(k.expiresAt),
+        revokedAt: revokedAt ? new Date(revokedAt) : null,
+        trustSequence: bundle.sequence,
+        updatedAt: new Date(),
+      };
+      await tx.insert(statutorySigningKey).values(values).onConflictDoUpdate({
+        target: statutorySigningKey.keyId,
+        set: {
+          publicKey: values.publicKey,
+          status: values.status,
+          expiresAt: values.expiresAt,
+          revokedAt: values.revokedAt,
+          trustSequence: values.trustSequence,
+          updatedAt: values.updatedAt,
+        },
+      });
+    }
+    // Revocations of keys no longer listed in `keys` (revoke-and-drop): mark them revoked.
+    for (const r of bundle.revoked) {
+      if (!bundle.keys.find((k) => k.keyId === r.keyId)) {
+        await tx
+          .update(statutorySigningKey)
+          .set({ status: 'revoked', revokedAt: new Date(r.revokedAt), trustSequence: bundle.sequence, updatedAt: new Date() })
+          .where(eq(statutorySigningKey.keyId, r.keyId));
+      }
+    }
+  });
   return { sequence: bundle.sequence, keys: bundle.keys.length, revoked: bundle.revoked.length };
 }
 
 const FIRST_OF_MONTH = /^\d{4}-\d{2}-01$/;
+/** Zero-padded YYYY.MM.DD — enforced so the lexical monotonic compare is sound (2026.02.01 < 2026.10.01). */
+const PACK_VERSION_RE = /^\d{4}\.\d{2}\.\d{2}$/;
+/** Reject a far-future effective date (ADR-0020 §4) — kills a dormant pre-emption pack. */
+const MAX_EFFECTIVE_HORIZON_MONTHS = 18;
 
 /** Plausibility envelope beyond shape (validateStatutoryRuleset): a signed-but-absurd pack is rejected. */
 function sanityBounds(rs: StatutoryRuleset): string[] {
@@ -133,10 +142,20 @@ export async function ingestPack(
     throw new PackIngestError(e instanceof PackVerifyError ? e.code : 'VERIFY', (e as Error).message);
   }
 
+  // Format guard — makes the lexical monotonic compare below sound (a mis-padded version mis-orders).
+  if (!PACK_VERSION_RE.test(pack.packVersion)) {
+    throw new PackIngestError('BAD_PACK_VERSION', `packVersion ${pack.packVersion} must be YYYY.MM.DD`);
+  }
+  const horizon = new Date(pack.issuedAt);
+  horizon.setMonth(horizon.getMonth() + MAX_EFFECTIVE_HORIZON_MONTHS);
+
   // Content validation — signature proved origin, not correctness.
   for (const r of pack.rulesets) {
     if (!FIRST_OF_MONTH.test(r.effectiveFrom)) {
       throw new PackIngestError('NOT_FIRST_OF_MONTH', `effectiveFrom ${r.effectiveFrom} must be the first of a month`);
+    }
+    if (new Date(`${r.effectiveFrom}T00:00:00Z`) > horizon) {
+      throw new PackIngestError('EFFECTIVE_TOO_FAR', `effectiveFrom ${r.effectiveFrom} is > ${MAX_EFFECTIVE_HORIZON_MONTHS}mo after issuedAt`);
     }
     const data = r.data as StatutoryRuleset;
     const shape = validateStatutoryRuleset(data);
@@ -145,7 +164,7 @@ export async function ingestPack(
     if (sane.length) throw new PackIngestError('IMPLAUSIBLE', sane.join('; '));
   }
 
-  // Monotonic packVersion per country (string compare is correct for the zero-padded YYYY.MM.DD scheme).
+  // Monotonic packVersion per country (lexical compare is sound given the format guard above).
   const [maxRow] = await db
     .select({ pv: statutoryPack.packVersion })
     .from(statutoryPack)
