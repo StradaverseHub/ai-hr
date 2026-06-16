@@ -18,7 +18,9 @@
     "kb:seed": "node --env-file=.env.local --import tsx db/seed-guides.ts",
     "db:studio": "drizzle-kit studio",
     "i18n:export": "node --import tsx scripts/i18n-export.ts",
-    "i18n:import": "node --import tsx scripts/i18n-import.ts"
+    "i18n:import": "node --import tsx scripts/i18n-import.ts",
+    "statutory:build-my": "node --env-file=.env.local --import tsx scripts/statutory-pack-build-my.ts",
+    "statutory:sync": "node --env-file=.env.local --import tsx scripts/statutory-sync.ts"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",

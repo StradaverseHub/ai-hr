@@ -316,6 +316,20 @@
       "when": 1781520501100,
       "tag": "0044_statutory_ruleset_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1781527908635,
+      "tag": "0045_easy_cobalt_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1781527908700,
+      "tag": "0046_statutory_pack_rls",
+      "breakpoints": true
     }
   ]
 }

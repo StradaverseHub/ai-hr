@@ -357,10 +357,14 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const periodStart = `${payPeriod}-01`;
     const periodEnd = `${payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
 
-    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default.
-    // Loaded once and threaded into the (pure, synchronous) calculators below; its `version` is
-    // snapshotted onto every payslip so a later edit can never alter this batch's provenance.
-    const rules = await pack.payroll.loadRuleset(tx, { asOf: periodEnd });
+    // Statutory ruleset in effect at period end (ADR-0019 / ADR-0020). Loaded ONCE with its provenance
+    // (source + packVersion + signedKeyId) and threaded into the (pure, synchronous) calculators below; the
+    // ruleset `version` + pack provenance are snapshotted onto every payslip so a later edit/pack can never
+    // alter this batch, and a forged/wrong-pack incident is traceable to the key + packVersion that produced it.
+    const resolved = await pack.payroll.loadRulesetResolved(tx, { asOf: periodEnd });
+    const rules = resolved.ruleset;
+    const statutoryProvenance =
+      resolved.source === 'pack' ? { packVersion: resolved.packVersion, signedKeyId: resolved.signedKeyId } : {};
 
     // Anyone employed for at least part of the period: hired on/before period end AND not
     // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.
@@ -552,7 +556,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         bonus: bonus.toFixed(2),
         daysWorked: String(daysWorked),
         grossPay: grossPay.toFixed(2),
-        statutory: st, // includes `version` (rules.version) — the immutable provenance snapshot
+        statutory: { ...st, ...statutoryProvenance }, // `version` + (when source=pack) packVersion/signedKeyId snapshot
         otherDeductions: unpaidDeduction.toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),

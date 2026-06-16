@@ -6,6 +6,7 @@ import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
 import type { ContribBand } from '@/localization/my/statutory-tables';
 import type { StatutorySource } from '@/localization/my/statutory-config';
+import { latestAvailablePackVersion } from '@/lib/statutory-pack-available';
 import { archiveStatutoryAction } from './actions';
 import Link from 'next/link';
 
@@ -66,10 +67,14 @@ export default async function StatutoryConfigPage({
     );
   }
 
-  const [{ ruleset, source, row }, history] = await Promise.all([
+  const [{ ruleset, source, row, packVersion, issuedAt }, history, packs, syncStatus] = await Promise.all([
     pack.statutoryConfig.readActive(s),
     pack.statutoryConfig.list(s),
+    pack.statutoryConfig.listPacks(s),
+    pack.statutoryConfig.syncStatus(s),
   ]);
+  const latestAvailable = latestAvailablePackVersion();
+  const stale = !!(latestAvailable && (!syncStatus.latestIngested || latestAvailable > syncStatus.latestIngested));
   const sources = pack.statutoryConfig.sources;
   const src = Object.fromEntries(sources.map((x) => [x.key, x])) as Record<string, StatutorySource>;
 
@@ -118,26 +123,33 @@ export default async function StatutoryConfigPage({
       <PayrollTabs active="configuration" />
       <ErrorBanner message={error} />
 
-      {/* Active-set banner */}
+      {/* Active-set banner — three-way: built-in default / vendor pack / tenant override */}
       <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-3">
           <span
             className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
               source === 'override'
                 ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
-                : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                : source === 'pack'
+                  ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400'
+                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
             }`}
           >
-            {source === 'override' ? t('activeOverride') : t('activeDefault')}
+            {source === 'override' ? t('activeOverride') : source === 'pack' ? t('activePack') : t('activeDefault')}
           </span>
           <span className="font-mono text-sm font-medium">{ruleset.version}</span>
         </div>
-        {row && (
+        {source === 'override' && row ? (
           <div className="text-xs text-muted-foreground">
             {t('effectiveFrom')} {row.effectiveFrom}
             {row.notes ? ` · ${row.notes}` : ''}
           </div>
-        )}
+        ) : source === 'pack' && packVersion ? (
+          <div className="text-xs text-muted-foreground">
+            {t('packVersion')} {packVersion}
+            {issuedAt ? ` · ${t('issued')} ${issuedAt.slice(0, 10)}` : ''}
+          </div>
+        ) : null}
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -273,6 +285,65 @@ export default async function StatutoryConfigPage({
                         </form>
                       )}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Vendor pack panel + staleness (ADR-0020 §8) */}
+      <Card className="p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">{t('packsTitle')}</h2>
+          <span className="text-xs text-muted-foreground">
+            {syncStatus.lastSync
+              ? `${t('lastSync')} ${syncStatus.lastSync.ranAt.slice(0, 16).replace('T', ' ')}`
+              : t('neverSynced')}
+          </span>
+        </div>
+
+        {stale && (
+          <div className="mt-3 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            {t('staleWarn', { available: latestAvailable ?? '', ingested: syncStatus.latestIngested ?? '—' })}
+          </div>
+        )}
+        {syncStatus.lastSync && syncStatus.lastSync.failed > 0 && (
+          <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {t('syncFailed', { count: syncStatus.lastSync.failed })}
+          </div>
+        )}
+
+        {packs.length === 0 ? (
+          <p className="mt-2 text-sm text-muted-foreground">{t('packsNone')}</p>
+        ) : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="py-1.5 pr-4 font-medium">{t('packVersion')}</th>
+                  <th className="py-1.5 pr-4 font-medium">{t('version')}</th>
+                  <th className="py-1.5 pr-4 font-medium">{t('effectiveFrom')}</th>
+                  <th className="py-1.5 pr-4 font-medium">{t('colSignedBy')}</th>
+                  <th className="py-1.5 font-medium">{t('colValidUntil')}</th>
+                </tr>
+              </thead>
+              <tbody className="tabular-nums">
+                {packs.map((pk) => (
+                  <tr key={pk.id} className="border-t border-border">
+                    <td className="py-2 pr-4 font-mono font-medium">{pk.packVersion}</td>
+                    <td className="py-2 pr-4 font-mono">{pk.rulesetVersion}</td>
+                    <td className="py-2 pr-4">{pk.effectiveFrom}</td>
+                    <td className="py-2 pr-4">
+                      <span className="font-mono text-xs">{pk.signedKeyId}</span>
+                      {pk.keyRevoked && (
+                        <span className="ml-2 rounded-full bg-destructive/10 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+                          {t('revoked')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2">{pk.validUntil.slice(0, 10)}</td>
                   </tr>
                 ))}
               </tbody>

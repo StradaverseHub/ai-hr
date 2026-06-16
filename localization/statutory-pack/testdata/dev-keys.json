@@ -1,0 +1,23 @@
+{
+  "_warning": "DEV/TEST ONLY — these private keys are never trusted in production (see trust.ts).",
+  "root": {
+    "keyId": "my-root-dev-1",
+    "privateJwk": {
+      "crv": "Ed25519",
+      "d": "06Ug3uI54Vx2H1a0I-mq_C_sHcUhu1yBL81hd2DV_lU",
+      "x": "InE78j0iRx5x7tqzwHQ_oPo9gl1qrX27w8289xllMgU",
+      "kty": "OKP"
+    },
+    "publicKey": "InE78j0iRx5x7tqzwHQ_oPo9gl1qrX27w8289xllMgU"
+  },
+  "op": {
+    "keyId": "my-op-dev-1",
+    "privateJwk": {
+      "crv": "Ed25519",
+      "d": "Mh-0RmTOXpcqJJtQw35HPIAZGstz0Vj_N8IjNlnUAmU",
+      "x": "vFJwYfTvmF9sXwK09VoroSAct81W-8bT9vjVLEs0g3s",
+      "kty": "OKP"
+    },
+    "publicKey": "vFJwYfTvmF9sXwK09VoroSAct81W-8bT9vjVLEs0g3s"
+  }
+}

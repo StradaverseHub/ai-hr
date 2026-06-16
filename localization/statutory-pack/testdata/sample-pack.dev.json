@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "keyId": "my-op-dev-1",
+  "sig": "IIMVWBmEM8mw7nRU0PmQ9/KSXLlIsl/qDesD34cyxqzHBayInkje8C3Sw4FzKU+lnNdsxx5lGEN4X6bX09XQCA==",
+  "payload": "{\"country\":\"MY\",\"packVersion\":\"2026.01.01\",\"issuedAt\":\"2026-01-01T00:00:00.000Z\",\"validUntil\":\"2099-01-01T00:00:00.000Z\",\"notes\":\"dev sample pack (fixture)\",\"rulesets\":[{\"version\":\"dev-1\",\"effectiveFrom\":\"2026-01-01\",\"data\":{\"hello\":\"world\"}}]}",
+  "checksum": "6c239d0197afb6646714f555ad67a7723a940cecc95462d54df4f2418e9ed994"
+}

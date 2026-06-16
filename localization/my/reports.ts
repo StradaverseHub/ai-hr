@@ -136,10 +136,23 @@ function sumTotals(rows: ReportRow[], keys: string[]): Record<string, number> {
   return totals;
 }
 
+/**
+ * Stamp the statutory version(s) the payslips were ACTUALLY computed with (ADR-0020): read the snapshot in
+ * each payslip's `statutory` blob — NOT the code constant, which would misreport once a pack/override lands.
+ * Multiple versions (an annual report spanning a mid-year change) are joined; legacy payslips with no stamped
+ * version fall back to the code constant.
+ */
+function versionOf(blobs: unknown[]): string {
+  const vs = [
+    ...new Set(blobs.map((b) => ((b ?? {}) as { version?: string }).version).filter((v): v is string => !!v)),
+  ].sort();
+  return vs.length ? vs.join(',') : MY_STATUTORY_VERSION;
+}
+
 const meta = (b: LoadedBatch) => ({
   hasBatch: b.hasBatch,
   batchStatus: b.batchStatus,
-  statutoryVersion: MY_STATUTORY_VERSION,
+  statutoryVersion: versionOf(b.rows.map((r) => r.st)),
 });
 
 const empty = (columns: ReportColumn[], b: LoadedBatch): ReportResult => ({
@@ -293,8 +306,13 @@ type YearRow = IdFields & {
   pcb: number;
 };
 
-async function loadYearRows(ctx: SessionContext, year: string, companyId: string): Promise<YearRow[]> {
+async function loadYearRows(
+  ctx: SessionContext,
+  year: string,
+  companyId: string,
+): Promise<{ rows: YearRow[]; versions: string[] }> {
   return withTenant(ctx, async (tx) => {
+    const versions = new Set<string>();
     const slips = await tx
       .select({
         employmentId: payslip.employmentId,
@@ -318,6 +336,8 @@ async function loadYearRows(ctx: SessionContext, year: string, companyId: string
     const byEmp = new Map<string, YearRow>();
     for (const s of slips) {
       const st = (s.statutory ?? {}) as Stat;
+      const v = (s.statutory as { version?: string } | null)?.version;
+      if (v) versions.add(v);
       let r = byEmp.get(s.employmentId);
       if (!r) {
         r = {
@@ -343,7 +363,10 @@ async function loadYearRows(ctx: SessionContext, year: string, companyId: string
       r.eis = round2(r.eis + num(st.eisEmployee));
       r.pcb = round2(r.pcb + num(st.pcb));
     }
-    return [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      rows: [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      versions: [...versions].sort(),
+    };
   });
 }
 
@@ -394,7 +417,7 @@ const CP8D_NOTE =
 /** Form E / CP8D — annual employer return (per-employee remuneration + Part A headcounts). */
 async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
   const year = params.periodKey;
-  const yr = await loadYearRows(ctx, year, params.companyId);
+  const { rows: yr, versions } = await loadYearRows(ctx, year, params.companyId);
   const rows: ReportRow[] = yr.map((r, i) => ({
     no: i + 1,
     employmentId: r.employmentId, // not a column — lets the UI deep-link each row to its EA statement
@@ -421,7 +444,7 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
     ]),
     meta: {
       hasBatch: yr.length > 0,
-      statutoryVersion: MY_STATUTORY_VERSION,
+      statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION,
       summary,
       notes: [CP8D_NOTE],
     },
@@ -531,7 +554,7 @@ export async function eaStatement(
       partB: { grossSalary: round2(grossSalary), bonus: round2(bonus), allowances: round2(allowances), gross: round2(gross) },
       partD: { mtd: round2(mtd) },
       partE: { epf: round2(epf), socso: round2(socso), eis: round2(eis) },
-      statutoryVersion: MY_STATUTORY_VERSION,
+      statutoryVersion: versionOf(slips.map((s) => s.statutory)),
     };
   });
 }

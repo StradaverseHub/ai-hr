@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "keyId": "my-root-dev-1",
+  "sig": "tC1bQAnllyDpkwcOjYq6KQFrSDap2nXC98X/14NauimzF3ej9mEg6I63GiJjtKOFEPZk9NnHZYi/dwzagm7PAQ==",
+  "payload": "{\"sequence\":1,\"issuedAt\":\"2026-01-01T00:00:00.000Z\",\"keys\":[{\"keyId\":\"my-op-dev-1\",\"publicKey\":\"vFJwYfTvmF9sXwK09VoroSAct81W-8bT9vjVLEs0g3s\",\"certifiedAt\":\"2026-01-01T00:00:00.000Z\",\"expiresAt\":\"2099-01-01T00:00:00.000Z\"}],\"revoked\":[]}",
+  "checksum": "43712934150af14e95b7a89e8b45553c4544a59f775076d19729aa3b4f8385cc"
+}

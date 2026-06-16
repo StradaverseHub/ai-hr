@@ -885,3 +885,57 @@ export const statutoryRuleset = pgTable(
   },
   (t) => [index('statutory_ruleset_lookup_idx').on(t.tenantId, t.country, t.effectiveFrom)],
 );
+
+// ───────────────────── Statutory data-pack distribution (ADR-0020) ─────────────────────
+// NATIONAL, vendor-signed statutory data — NOT tenant-scoped (no tenant_id). The trust boundary is enforced
+// in the RLS migration: SELECT granted to every tenant (USING(true)); INSERT/UPDATE/DELETE REVOKED from
+// ai_hr_app (the live cluster's default privileges auto-grant arwd, so SELECT-only by omission does not
+// work). The only writer is the owner role via `pnpm statutory:sync` (RLS ENABLED but NOT FORCEd, so the
+// owner ingests while ai_hr_app cannot write). Verified pack rulesets, the materialized trust bundle, and a
+// sync audit log.
+
+export const statutoryPack = pgTable(
+  'statutory_pack',
+  {
+    id: id(),
+    country: text('country').notNull().default('MY'),
+    schemaVersion: integer('schema_version').notNull(),
+    packVersion: text('pack_version').notNull(),
+    rulesetVersion: text('ruleset_version').notNull(),
+    effectiveFrom: date('effective_from').notNull(), // first-of-month (validated at ingest)
+    data: jsonb('data').notNull(), // StatutoryRuleset
+    checksum: text('checksum').notNull(),
+    signedKeyId: text('signed_key_id').notNull(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull(),
+    validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+    ingestedAt: timestamp('ingested_at', { withTimezone: true }).defaultNow().notNull(),
+    ingestedSource: text('ingested_source'),
+  },
+  (t) => [
+    uniqueIndex('statutory_pack_identity_uq').on(t.country, t.packVersion, t.rulesetVersion, t.effectiveFrom),
+    index('statutory_pack_lookup_idx').on(t.country, t.effectiveFrom),
+  ],
+);
+
+// Materialized trust bundle: the currently-certified operational signing keys + their revocation/expiry.
+export const statutorySigningKey = pgTable('statutory_signing_key', {
+  keyId: text('key_id').primaryKey(),
+  publicKey: text('public_key').notNull(),
+  status: text('status').notNull().default('active'), // 'active' | 'revoked'
+  certifiedAt: timestamp('certified_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  trustSequence: integer('trust_sequence').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Sync/ingest audit + observability (latest sequence seen, counts, errors). App-readable for the staleness UI.
+export const statutoryPackSyncLog = pgTable('statutory_pack_sync_log', {
+  id: id(),
+  ranAt: timestamp('ran_at', { withTimezone: true }).defaultNow().notNull(),
+  source: text('source').notNull(),
+  sequenceSeen: integer('sequence_seen'),
+  ingested: integer('ingested').notNull().default(0),
+  failed: integer('failed').notNull().default(0),
+  error: text('error'),
+});

@@ -29,6 +29,15 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 /** Round a contribution up to the next whole ringgit (KWSP Third Schedule convention). */
 const ceilRinggit = (n: number) => Math.ceil(n);
 
+/** A malformed ruleset reached a calculator (e.g. an empty band table). Named so the payroll kernel's
+ *  transaction can identify a malformed-ruleset abort and roll the batch back (ADR-0020 §7). */
+export class StatutoryRulesetMalformedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StatutoryRulesetMalformedError';
+  }
+}
+
 export type TaxProfile = { category?: TaxCategory; children?: number };
 
 /**
@@ -49,6 +58,7 @@ export function epf(wage: number, additional = 0, cfg: StatutoryRuleset['epf'] =
 /** Exact schedule lookup: first band the wage fits in; wages above the table contribute at the
  *  top band (both Act 4 and Act 800 prescribe this for wages exceeding RM6,000 — their row 65). */
 function bandFor(bands: ContribBand[], wage: number): ContribBand {
+  if (!bands || bands.length === 0) throw new StatutoryRulesetMalformedError('Statutory contribution band table is empty');
   return bands.find((b) => wage <= b.upTo) ?? bands[bands.length - 1];
 }
 
@@ -70,6 +80,7 @@ export function eis(wage: number, cfg: StatutoryRuleset['eis'] = DEFAULT_MY_STAT
  *  Negative B encodes the RM400/RM800 rebate; tax floors at 0 (spec: P ≤ 5,000 → no tax). */
 function annualTaxFor(P: number, category: TaxCategory, bands: PcbBand[]): number {
   if (P <= 5000) return 0;
+  if (!bands || bands.length === 0) throw new StatutoryRulesetMalformedError('Statutory PCB band table is empty');
   const band = bands.find((b) => P <= b.upTo) ?? bands[bands.length - 1];
   const B = category === 2 ? band.bCat2 : band.bCat13;
   return Math.max(0, (P - band.M) * band.R + B);
