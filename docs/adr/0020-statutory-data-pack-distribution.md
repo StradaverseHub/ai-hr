@@ -200,6 +200,16 @@ than leaving a stale shadow.
 6. **UI:** three-way indicator, pack panel, staleness alarm, accept-pack/supersession diff.
 7. **Adversarial test pass + verify + merge.**
 
+## Deferred (non-blocking, post-audit)
+
+A pre-merge 3-lens implementation audit confirmed all security/RLS/loader/payroll fixes and surfaced two
+ADR-stated niceties intentionally left for later (neither is a security gate):
+- **Large-delta acknowledgement** (§4): ingest enforces absolute plausibility bounds but not a
+  delta-vs-previous guard requiring an "I acknowledge this >X% change" flag. The diff is surfaced in the UI;
+  the absolute bounds already block absurd values.
+- **Max JSON depth cap** before verification (§5): the streamed byte cap is the effective DoS bound, and the
+  duplicate-key scanner is iterative/stack-safe, so a depth cap adds little.
+
 ## Alternatives considered
 
 - **Per-tenant re-keying of national data** — rejected (ADR-0019): N copies, N divergent errors.
