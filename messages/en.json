@@ -271,7 +271,8 @@
     "status": {
       "pending": "Pending",
       "approved": "Approved",
-      "rejected": "Rejected"
+      "rejected": "Rejected",
+      "cancelled": "Cancelled"
     },
     "approve": "Approve",
     "reject": "Reject",
@@ -584,6 +585,41 @@
       "meritShort": "merit {pct}%",
       "bonusShort": "bonus {amount}",
       "open": "Open"
+    },
+    "review": {
+      "backMyWorkspace": "My workspace",
+      "backPerformance": "Performance",
+      "reviewerLabel": "Reviewer: {reviewer}",
+      "selfReviewTitle": "Self-review",
+      "yourRatingLabel": "Your rating",
+      "selectRating": "Select a rating…",
+      "commentsOptionalLabel": "Comments (optional)",
+      "selfCommentsPlaceholder": "Reflect on your work this period",
+      "goalsReferencedLabel": "Goals referenced",
+      "goalsPlaceholder": "Goals you worked towards this period",
+      "submitSelfReview": "Submit self-review",
+      "ratingLabel": "Rating",
+      "commentsLabel": "Comments",
+      "goalsLabel": "Goals",
+      "notSubmittedYet": "Not submitted yet.",
+      "managerReviewTitle": "Manager review",
+      "managerRatingLabel": "Manager rating",
+      "overallRatingLabel": "Overall rating",
+      "payRecommendationHint": "Pay recommendation (advisory — enacted from the cycle page)",
+      "meritIncreaseLabel": "Merit increase",
+      "meritIncreasePlaceholder": "% increase",
+      "oneOffBonusLabel": "One-off bonus",
+      "oneOffBonusPlaceholder": "RM amount",
+      "finalizeReview": "Finalize review",
+      "managerReviewPendingRelease": "Your manager review is complete but not yet released.",
+      "awaitingManager": "Awaiting your manager's review.",
+      "payRecommendationTitle": "Pay recommendation",
+      "meritLabel": "Merit",
+      "bonusLabel": "Bonus",
+      "statusLabel": "Status",
+      "enactFromCyclePage": "This recommendation is enacted from the cycle page.",
+      "acknowledgeHint": "Acknowledge that you have read and discussed this released review.",
+      "acknowledge": "Acknowledge"
     }
   },
   "payroll": {
