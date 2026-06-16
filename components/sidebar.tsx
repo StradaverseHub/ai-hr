@@ -40,6 +40,7 @@ const GROUPS: Group[] = [
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       { href: '/attendance', labelKey: 'attendance', icon: Clock },
+      { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
     ],
   },

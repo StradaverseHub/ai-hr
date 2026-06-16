@@ -207,13 +207,14 @@ async function claimedInYear(
  *  budget (committed = pending+approved+paid). `taxable` defaults from the claim type. */
 export async function submitClaim(
   ctx: SessionContext,
-  p: { employmentId: string; claimTypeId: string; amount: number; incurredOn: string; description?: string | null },
+  p: { employmentId: string; claimTypeId: string; amount: number; incurredOn: string; description?: string | null; hasReceipt?: boolean },
 ): Promise<{ id: string }> {
   if (!(p.amount > 0)) throw new ClaimError('Amount must be greater than zero');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
   return withTenant(ctx, async (tx) => {
     const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
     if (!ct) throw new ClaimError('Unknown or archived claim type');
+    if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
     const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn);
     if (policy?.perClaimCap != null && p.amount > policy.perClaimCap) {
       throw new ClaimError(`Amount exceeds the per-claim cap (RM ${policy.perClaimCap.toLocaleString('en-MY')})`);
@@ -397,6 +398,7 @@ export type ClaimRow = {
   decidedAt: string | null;
   paidAt: string | null;
   claimantName?: string;
+  personId: string | null;
   attachments: { id: string; fileName: string; sizeBytes: number }[];
 };
 
@@ -415,6 +417,7 @@ function rowSelect() {
     paidAt: claimRequest.paidAt,
     employmentId: claimRequest.employmentId,
     claimantName: person.fullName,
+    personId: employment.personId,
   };
 }
 
@@ -447,6 +450,7 @@ type RawClaimRow = {
   paidAt: Date | null;
   employmentId: string;
   claimantName: string;
+  personId: string | null;
 };
 
 const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): ClaimRow => ({
@@ -462,6 +466,7 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
   paidAt: r.paidAt ? r.paidAt.toISOString() : null,
   claimantName: r.claimantName,
+  personId: r.personId,
   attachments: atts.get(r.id) ?? [],
 });
 

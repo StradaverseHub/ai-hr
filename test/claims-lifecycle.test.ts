@@ -43,7 +43,7 @@ describe('ADR-0021 — claim lifecycle', () => {
   async function setup(opts?: { taxable?: boolean; budget?: number | null; cap?: number | null }) {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Subject');
-    const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: opts?.taxable ?? false, requiresReceipt: true });
+    const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: opts?.taxable ?? false, requiresReceipt: false });
     if (opts && ('budget' in opts || 'cap' in opts)) {
       await setClaimPolicy(a, { claimTypeId: typeId, annualBudget: opts.budget ?? null, perClaimCap: opts.cap ?? null, effectiveFrom: '2026-01-01' });
     }
@@ -107,6 +107,14 @@ describe('ADR-0021 — claim lifecycle', () => {
     await expect(cancelClaim(peerCtx, id)).rejects.toThrow(); // peer can't even see it (RLS) → not found
     await cancelClaim(ownCtx, id);
     expect((await listClaimsForEmployment(a, E.employmentId)).find((c) => c.id === id)?.status).toBe('cancelled');
+  });
+
+  it('requires a receipt when the claim type demands it', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Subject');
+    const { id: typeId } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: true });
+    await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 50, incurredOn: '2026-06-01' })).rejects.toThrow(/receipt/i);
+    await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 50, incurredOn: '2026-06-01', hasReceipt: true })).resolves.toBeTruthy();
   });
 
   it('stores + reads a receipt; lists pending claims for approval', async () => {

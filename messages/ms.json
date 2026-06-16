@@ -27,7 +27,8 @@
     "expand": "Kembangkan",
     "home": "Laman utama AI HR",
     "knowledgeBase": "Pusat Pengetahuan",
-    "claimsConfig": "Claims config"
+    "claimsConfig": "Claims config",
+    "claims": "Claims"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -497,7 +498,11 @@
     "reason": "Sebab",
     "yourRequest": "permohonan anda",
     "approve": "Lulus",
-    "reject": "Tolak"
+    "reject": "Tolak",
+    "claims": "Claims",
+    "amount": "Amount",
+    "noPendingClaims": "No claims awaiting your decision.",
+    "receipt": "receipt"
   },
   "performance": {
     "list": {
@@ -1269,5 +1274,37 @@
         }
       }
     }
+  },
+  "claims": {
+    "title": "Claims",
+    "subtitle": "Submit an expense or benefit claim and track its status.",
+    "newClaim": "New claim",
+    "noTypes": "No claim types are configured yet. Ask your HR admin to add them.",
+    "typeLabel": "Claim type",
+    "receiptRequired": "receipt required",
+    "amountLabel": "Amount (RM)",
+    "incurredOnLabel": "Date incurred",
+    "receiptLabel": "Receipt",
+    "descriptionLabel": "Description (optional)",
+    "descriptionPlaceholder": "e.g. taxi to client site",
+    "submit": "Submit claim",
+    "myClaims": "My claims",
+    "empty": "No claims yet.",
+    "colType": "Type",
+    "colAmount": "Amount",
+    "colDate": "Date",
+    "colStatus": "Status",
+    "status_pending": "Pending",
+    "status_approved": "Approved",
+    "status_rejected": "Rejected",
+    "status_cancelled": "Cancelled",
+    "status_paid": "Paid",
+    "taxableBadge": "· taxable",
+    "nonTaxableBadge": "· reimbursement",
+    "cancel": "Cancel",
+    "cancelConfirmTitle": "Cancel this claim?",
+    "cancelConfirmDescription": "This withdraws the claim. You can submit a new one.",
+    "cancelConfirmLabel": "Cancel claim",
+    "noEmployment": "No active employment is linked to your account, so you cannot submit claims."
   }
 }

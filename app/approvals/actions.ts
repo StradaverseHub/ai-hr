@@ -6,6 +6,8 @@ import { getSession } from '@/lib/session';
 import { decideLeave } from '@/core/leave';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
+import { decideClaim } from '@/core/claims';
+import { myEmployment } from '@/core/read';
 
 // Thin wrappers around the same decide services the source pages use (authz lives in the
 // services: assertCanDecide / admin-only) — these just land back on /approvals.
@@ -50,4 +52,20 @@ export async function approveProfileChangeAction(formData: FormData) {
     fail(e);
   }
   done(`Change ${decision}`);
+}
+
+export async function approveClaimAction(formData: FormData) {
+  const s = await getSession();
+  const approved = String(formData.get('decision')) === 'approved';
+  try {
+    const me = await myEmployment(s);
+    await decideClaim(s, {
+      claimRequestId: String(formData.get('id')),
+      decision: approved ? 'approve' : 'reject',
+      deciderEmploymentId: me?.employmentId ?? null,
+    });
+  } catch (e) {
+    fail(e);
+  }
+  done(`Claim ${approved ? 'approved' : 'rejected'}`);
 }

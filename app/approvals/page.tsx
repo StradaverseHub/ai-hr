@@ -5,8 +5,9 @@ import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests } from '@/core/read';
 import { listAttendanceCorrections } from '@/core/attendance';
 import { listProfileChangeRequests } from '@/core/profile';
+import { listPendingClaims } from '@/core/claims';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { approveCorrectionAction, approveLeaveAction, approveProfileChangeAction } from './actions';
+import { approveClaimAction, approveCorrectionAction, approveLeaveAction, approveProfileChangeAction } from './actions';
 
 function DecideButtons({
   action,
@@ -62,14 +63,16 @@ export default async function ApprovalsPage({
     reject: t('reject'),
   };
 
-  const [leave, corrections, profileChanges] = await Promise.all([
+  const [leave, corrections, profileChanges, claims] = await Promise.all([
     listLeaveRequests(s, scopeIds),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
+    listPendingClaims(s),
   ]);
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
-  const total = pendingLeave.length + corrections.length + profileChanges.length;
+  const total = pendingLeave.length + corrections.length + profileChanges.length + claims.length;
+  const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -114,6 +117,45 @@ export default async function ApprovalsPage({
                       disabled={mine(r.personId)}
                       labels={decideLabels}
                     />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('claims')} count={claims.length} />
+        {claims.length === 0 ? (
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingClaims')}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                <th className="px-4 py-2 font-medium">{t('type')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('amount')}</th>
+                <th className="px-4 py-2 font-medium">{t('dates')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {claims.map((c) => (
+                <tr key={c.id}>
+                  <td className="px-4 py-2.5 font-medium">{c.claimantName}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {c.typeName}
+                    {c.attachments.map((a) => (
+                      <a key={a.id} href={`/claims/attachment/${a.id}?inline=1`} target="_blank" rel="noopener noreferrer" className="ml-2 text-xs text-primary underline-offset-2 hover:underline">
+                        ↗ {t('receipt')}
+                      </a>
+                    ))}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{rm(c.amount)}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.incurredOn}</td>
+                  <td className="px-4 py-2.5">
+                    <DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} />
                   </td>
                 </tr>
               ))}
