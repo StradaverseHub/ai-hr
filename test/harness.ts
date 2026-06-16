@@ -16,6 +16,7 @@ const ALL_TABLES = [
   'attendance', 'attendance_policy',
   'payroll_batch', 'payslip', 'payroll_input', 'company_statutory_my',
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
+  'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
 ];
 
 export async function migrateTestDb() {

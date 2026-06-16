@@ -330,6 +330,20 @@
       "when": 1781527908700,
       "tag": "0046_statutory_pack_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1781585858249,
+      "tag": "0047_slow_gargoyle",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1781585858300,
+      "tag": "0048_claims_rls",
+      "breakpoints": true
     }
   ]
 }
