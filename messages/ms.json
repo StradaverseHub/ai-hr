@@ -913,7 +913,8 @@
       "colPcb": "PCB",
       "colNet": "Bersih",
       "proratedDays": "diprorata · {worked}/{total} hari",
-      "noPayslips": "Tiada slip gaji dalam kelompok ini."
+      "noPayslips": "Tiada slip gaji dalam kelompok ini.",
+      "totalHrdf": "Levi HRD Corp"
     }
   },
   "admin": {
@@ -972,7 +973,12 @@
       "positionPlaceholder": "Jurutera Kanan",
       "costCenterCodePlaceholder": "HQ",
       "costCenterNamePlaceholder": "Ibu pejabat",
-      "add": "Tambah"
+      "add": "Tambah",
+      "hrdfStatusLabel": "Levi HRD Corp (PSMB)",
+      "hrdfNotRegistered": "Tidak berdaftar",
+      "hrdfMandatory": "Wajib — 10+ pekerja (1%)",
+      "hrdfOptional": "Pilihan — 5–9 pekerja (0.5%)",
+      "hrdfHint": "Levi pihak majikan sahaja atas gaji asas + elaun tetap (tidak termasuk bonus, komisen, kerja lebih masa). Wajib pada 10+ pekerja Malaysia, pilihan pada 5–9."
     },
     "leave": {
       "pageTitle": "Konfigurasi cuti",

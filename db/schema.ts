@@ -489,6 +489,11 @@ export const employeeStatutoryMy = pgTable(
   ],
 );
 
+// HRD Corp (HRDF) registration band per employer (Wave 2A, PSMB Act 2001). not_registered = below
+// the headcount threshold / not registered (no levy); mandatory = 10+ Malaysian employees (1%);
+// optional = 5–9 who opt to register (0.5%). Sourced in docs/wave2-payroll-design.md.
+export const hrdfStatusEnum = pgEnum('hrdf_status', ['not_registered', 'mandatory', 'optional']);
+
 // MY company-level statutory identity (ADR-0009): each entity files under its own registrations.
 export const companyStatutoryMy = pgTable(
   'company_statutory_my',
@@ -503,6 +508,8 @@ export const companyStatutoryMy = pgTable(
     lhdnEmployerNo: text('lhdn_employer_no'), // LHDN "E" number (employer tax file)
     myinvoisTin: text('myinvois_tin'),
     ssmRegistrationNo: text('ssm_registration_no'),
+    // HRD Corp levy registration band (Wave 2A). Drives the employer-only HRDF levy in payroll.
+    hrdfStatus: hrdfStatusEnum('hrdf_status').notNull().default('not_registered'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

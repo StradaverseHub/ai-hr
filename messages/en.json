@@ -774,7 +774,8 @@
       "colPcb": "PCB",
       "colNet": "Net",
       "proratedDays": "prorated · {worked}/{total} days",
-      "noPayslips": "No payslips in this batch."
+      "noPayslips": "No payslips in this batch.",
+      "totalHrdf": "HRD Corp levy"
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -972,7 +973,12 @@
       "positionPlaceholder": "Senior Engineer",
       "costCenterCodePlaceholder": "HQ",
       "costCenterNamePlaceholder": "Headquarters",
-      "add": "Add"
+      "add": "Add",
+      "hrdfStatusLabel": "HRD Corp (HRDF) levy",
+      "hrdfNotRegistered": "Not registered",
+      "hrdfMandatory": "Mandatory — 10+ employees (1%)",
+      "hrdfOptional": "Optional — 5–9 employees (0.5%)",
+      "hrdfHint": "Employer-only levy on basic + fixed allowances (excludes bonus, commission, overtime). Mandatory at 10+ Malaysian employees, optional at 5–9."
     },
     "leave": {
       "pageTitle": "Leave configuration",

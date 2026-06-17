@@ -5,7 +5,7 @@
 import { getStatutoryProfileMY, isValidIC, setStatutoryProfileMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026 } from './holidays';
-import { eis, epf, overtimePay, pcbMonth, socso, statutory } from './payroll';
+import { eis, epf, hrdfLevy, overtimePay, pcbMonth, socso, statutory } from './payroll';
 import { DEFAULT_MY_STATUTORY, MY_RELIEFS } from './statutory-tables';
 import {
   archiveStatutoryRulesetMY,
@@ -46,6 +46,7 @@ export const myPack = {
     eis,
     pcbMonth,
     overtimePay,
+    hrdfLevy,
     epfReliefCap: MY_RELIEFS.epfReliefCap,
     // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
     // calls this once per run and threads the result into the calculators above.

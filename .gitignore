@@ -49,3 +49,6 @@ skills-lock.json
 
 # i18n translation working file (regenerate with pnpm i18n:export)
 messages/*.csv
+
+# Consultant-supplied feedback workbook (kept locally, not part of the repo)
+AI-HR-Consultant-Feedback-Template.xlsx

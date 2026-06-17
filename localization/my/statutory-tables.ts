@@ -333,6 +333,18 @@ export const MY_EIS_RATES = { employer: 0.002, employee: 0.002 };
 // ─────────────────────────────────────────────────────────────────────────────
 export const MY_OT_WAGE_CEILING = 4000;
 
+// ─────────────────────────── HRD Corp levy (PSMB Act 2001) ───────────────────────────
+// Mandatory 1% of HRDF wages for employers with 10+ Malaysian employees (s.14); optional 0.5%
+// for 5–9 who opt to register (s.15). Employer-only — no employee deduction — and no wage cap.
+// The HRDF wage base is basic salary + fixed allowances ONLY; it is NOT the EPF/SOCSO base —
+// it excludes bonus, commission, overtime and non-fixed allowances (the caller builds the base).
+// Sourced + re-verified against hrdcorp.gov.my / PSMB Act 2001 in docs/wave2-payroll-design.md.
+// The 1%/0.5% rates are stable national figures held as pack constants (not the editable ruleset);
+// the per-company registration band lives on company_statutory_my.hrdf_status. If HRDF rate
+// versioning is ever needed it belongs in Wave 3 #6 (per-statutory-body versioning).
+export type HrdfStatus = 'not_registered' | 'mandatory' | 'optional';
+export const MY_HRDF = { mandatoryRate: 0.01, optionalRate: 0.005 } as const;
+
 // ─────────────────────────── Aggregate ruleset (ADR-0019) ───────────────────────────
 // All figures above, gathered into one injectable object. The calculators take this as a
 // parameter that defaults to DEFAULT_MY_STATUTORY, so a DB override (statutory_ruleset) can

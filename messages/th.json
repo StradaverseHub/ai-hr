@@ -913,7 +913,8 @@
       "colPcb": "PCB",
       "colNet": "สุทธิ",
       "proratedDays": "คำนวณตามสัดส่วน · {worked}/{total} วัน",
-      "noPayslips": "ไม่มีสลิปเงินเดือนในชุดจ่ายนี้"
+      "noPayslips": "ไม่มีสลิปเงินเดือนในชุดจ่ายนี้",
+      "totalHrdf": "ภาษี HRD Corp"
     }
   },
   "admin": {
@@ -972,7 +973,12 @@
       "positionPlaceholder": "วิศวกรอาวุโส",
       "costCenterCodePlaceholder": "HQ",
       "costCenterNamePlaceholder": "สำนักงานใหญ่",
-      "add": "เพิ่ม"
+      "add": "เพิ่ม",
+      "hrdfStatusLabel": "ภาษี HRD Corp (HRDF)",
+      "hrdfNotRegistered": "ไม่ได้ลงทะเบียน",
+      "hrdfMandatory": "บังคับ — พนักงาน 10+ คน (1%)",
+      "hrdfOptional": "ทางเลือก — พนักงาน 5–9 คน (0.5%)",
+      "hrdfHint": "ภาษีที่นายจ้างจ่ายฝ่ายเดียว คำนวณจากเงินเดือนพื้นฐาน + เบี้ยเลี้ยงคงที่ (ไม่รวมโบนัส ค่าคอมมิชชัน ค่าล่วงเวลา) บังคับเมื่อมีพนักงานมาเลเซีย 10+ คน ทางเลือกเมื่อ 5–9 คน"
     },
     "leave": {
       "pageTitle": "ตั้งค่าการลา",

@@ -7,6 +7,7 @@ import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
 import { companyStatutoryMy } from '../../db/schema';
+import type { HrdfStatus } from './statutory-tables';
 
 export type CompanyStatutoryInput = {
   companyId: string;
@@ -15,6 +16,8 @@ export type CompanyStatutoryInput = {
   lhdnEmployerNo?: string;
   myinvoisTin?: string;
   ssmRegistrationNo?: string;
+  /** HRD Corp levy registration band (Wave 2A). Omitted on upsert = leave at the column default. */
+  hrdfStatus?: HrdfStatus;
 };
 
 export async function setCompanyStatutoryMY(ctx: SessionContext, p: CompanyStatutoryInput) {
@@ -24,6 +27,8 @@ export async function setCompanyStatutoryMY(ctx: SessionContext, p: CompanyStatu
     lhdnEmployerNo: p.lhdnEmployerNo ?? null,
     myinvoisTin: p.myinvoisTin ?? null,
     ssmRegistrationNo: p.ssmRegistrationNo ?? null,
+    // Default to not_registered on first insert; on update only change it when provided.
+    ...(p.hrdfStatus !== undefined ? { hrdfStatus: p.hrdfStatus } : {}),
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx

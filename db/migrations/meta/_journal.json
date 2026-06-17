@@ -428,6 +428,13 @@
       "when": 1781680441040,
       "tag": "0060_compensation_read_admin_or_self",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1781691282538,
+      "tag": "0061_sleepy_nehzno",
+      "breakpoints": true
     }
   ]
 }

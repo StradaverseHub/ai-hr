@@ -18,8 +18,10 @@
  */
 import {
   DEFAULT_MY_STATUTORY,
+  MY_HRDF,
   MY_OT_WAGE_CEILING,
   type ContribBand,
+  type HrdfStatus,
   type PcbBand,
   type StatutoryRuleset,
   type TaxCategory,
@@ -53,6 +55,23 @@ export function epf(wage: number, additional = 0, cfg: StatutoryRuleset['epf'] =
     employee: ceilRinggit(base * cfg.employeeRate),
     employer: ceilRinggit(base * employerRate),
   };
+}
+
+/**
+ * HRD Corp levy (employer-only) on the HRDF wage base. `base` is basic + fixed allowances net of
+ * unpaid leave (the kernel builds it — it is NOT the EPF/SOCSO wage; bonus/commission/overtime are
+ * excluded). Rate by the employer's registration band: mandatory 1% (10+ Malaysian employees),
+ * optional 0.5% (5–9). Not registered → 0. No employee deduction, no wage cap (PSMB Act 2001 s.14/15).
+ * The levy carries sen — HRD Corp prescribes no round-up-to-ringgit (unlike KWSP), so round to 2dp.
+ */
+export function hrdfLevy(
+  base: number,
+  status: HrdfStatus,
+  cfg: { mandatoryRate: number; optionalRate: number } = MY_HRDF,
+): number {
+  if (status === 'not_registered' || base <= 0) return 0;
+  const rate = status === 'mandatory' ? cfg.mandatoryRate : cfg.optionalRate;
+  return round2(Math.max(0, base) * rate);
 }
 
 /** Exact schedule lookup: first band the wage fits in; wages above the table contribute at the
