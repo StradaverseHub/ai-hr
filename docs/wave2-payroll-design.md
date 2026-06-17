@@ -5,8 +5,19 @@ Statutory facts below were sourced from official `.gov.my` pages and independent
 re-fetched from its cited URL). Vendor blogs and accounting-firm summaries were rejected as sources. Anything
 unverifiable is flagged, not guessed. As-of date: **2026-06-17**.
 
-Status: **2A HRDF + 2B EPF modes SHIPPED (2026-06-17).** Build order: **2A HRDF ✅ → 2B EPF modes ✅ → 2C multi-cycle (gated, next)**.
-Period model: **Option B (first-class `pay_period` parent)**. EPF scope: **statutory-aligned only**.
+Status: **2A HRDF + 2B EPF modes SHIPPED; 2C foundation built (gated).** Build order: **2A HRDF ✅ → 2B EPF modes ✅
+→ 2C multi-cycle (in progress, GATED OFF)**. Period model: **Option B (first-class `pay_period` parent)**. EPF scope:
+**statutory-aligned only**.
+
+> **2C — multi-cycle: foundation built, GATED OFF pending accountant sign-off** (on branch `feat/wave2c-multicycle`).
+> `docs/adr/0024-multi-cycle-payroll.md` documents Option B, the statutory rules, the migration plan, the gating
+> (`MULTI_CYCLE_PAYROLL_ENABLED`, default off), and a **§7 accountant sign-off worksheet** with a worked two-run
+> example (figures filled from the golden test). `localization/my/multicycle.ts` is the pure computation core —
+> the **increment method**: re-run the cumulative month per run and take the delta, so per-run figures sum to the
+> exact one-batch month (LHDN MTD month-as-one-computation; Act 4 s.6(7)/6(9) single SOCSO/EIS; EPF combined
+> round-up). `test/multicycle-compute.test.ts` (9) proves it. NOT wired into the live kernel. Remaining (gated
+> slices): **2C-3** pay_period parent schema + backfill + immutability/RLS re-expression; **2C-4** kernel wiring +
+> read paths + UI. Blocked-until: §7 sign-off + EPF Third Schedule PDF (#95).
 
 > **2B — EPF contribution modes: DONE.** Per-employee standing election on `employee_statutory_my`
 > (`epf_mode` enum + `epf_employee_rate`/`epf_employer_rate`, mig 0062). `resolveEpfRates()` enforces the
