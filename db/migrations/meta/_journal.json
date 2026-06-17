@@ -344,6 +344,69 @@
       "when": 1781585858300,
       "tag": "0048_claims_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1781669998010,
+      "tag": "0049_bored_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781669998060,
+      "tag": "0050_performance_goal_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1781671253321,
+      "tag": "0051_harsh_albert_cleary",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1781671253371,
+      "tag": "0052_performance_checkin_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1781671845614,
+      "tag": "0053_heavy_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1781671845664,
+      "tag": "0054_peer_feedback_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1781672199785,
+      "tag": "0055_slow_kabuki",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781673425192,
+      "tag": "0056_shocking_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1781673425242,
+      "tag": "0057_calibration_rls",
+      "breakpoints": true
     }
   ]
 }

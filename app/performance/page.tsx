@@ -4,9 +4,14 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
-import { listCycles, managerPendingReviews } from '@/core/performance';
+import { listCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
-import { createCycleAction } from './actions';
+import {
+  cancelCheckInAction,
+  completeCheckInAction,
+  createCycleAction,
+  scheduleCheckInAction,
+} from './actions';
 
 export default async function PerformancePage({
   searchParams,
@@ -21,11 +26,19 @@ export default async function PerformancePage({
   const { error } = await searchParams;
   const today = new Date().toISOString().slice(0, 10);
 
-  const [cycles, pending, companies] = await Promise.all([
+  const [cycles, pending, companies, checkinData] = await Promise.all([
     admin ? listCycles(s) : Promise.resolve([]),
     managerPendingReviews(s),
     admin ? listCompanies(s) : Promise.resolve([]),
+    managerCheckIns(s),
   ]);
+  const { checkins, reports } = checkinData;
+  const checkinTone = (status: string) =>
+    status === 'completed'
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+      : status === 'cancelled'
+        ? 'bg-muted text-muted-foreground'
+        : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400';
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -55,6 +68,71 @@ export default async function PerformancePage({
               </li>
             ))}
           </ul>
+        </Card>
+      )}
+
+      {(reports.length > 0 || checkins.length > 0) && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('checkinsTitle')} count={checkins.length} />
+          {reports.length > 0 && (
+            <form action={scheduleCheckInAction} className="flex flex-wrap items-end gap-3 border-b border-border bg-muted/20 px-4 py-3">
+              <Field label={t('checkinReport')}>
+                <select name="subjectEmploymentId" required defaultValue="" className={`${inputCls} w-48`}>
+                  <option value="" disabled>
+                    {t('checkinReportPlaceholder')}
+                  </option>
+                  {reports.map((r) => (
+                    <option key={r.employmentId} value={r.employmentId}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('checkinDate')}>
+                <input name="scheduledOn" type="date" required defaultValue={today} className={inputCls} />
+              </Field>
+              <Button type="submit" variant="secondary">
+                {t('checkinSchedule')}
+              </Button>
+            </form>
+          )}
+          {checkins.length === 0 ? (
+            <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('checkinsEmpty')}</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {checkins.map((c) => (
+                <li key={c.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{c.subject}</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{c.scheduledOn}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${checkinTone(c.status)}`}>
+                        {t(`checkinStatus_${c.status}`)}
+                      </span>
+                    </div>
+                    {c.status === 'scheduled' && (
+                      <div className="flex items-center gap-2">
+                        <form action={completeCheckInAction} className="flex items-center gap-2">
+                          <input type="hidden" name="checkinId" value={c.id} />
+                          <input name="notes" placeholder={t('checkinNotesPlaceholder')} className={`${inputCls} w-56`} />
+                          <Button type="submit" size="sm" variant="secondary">
+                            {t('checkinComplete')}
+                          </Button>
+                        </form>
+                        <form action={cancelCheckInAction}>
+                          <input type="hidden" name="checkinId" value={c.id} />
+                          <Button type="submit" size="sm" variant="ghost">
+                            {t('checkinCancel')}
+                          </Button>
+                        </form>
+                      </div>
+                    )}
+                  </div>
+                  {c.notes && <p className="mt-1 text-xs text-muted-foreground">{c.notes}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
       )}
 

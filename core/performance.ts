@@ -19,18 +19,26 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
+  calibrationEntry,
+  calibrationSession,
   compensation,
   employment,
   payrollBatch,
   payrollInput,
+  peerFeedback,
+  peerFeedbackRequest,
+  performanceCheckin,
+  performanceGoal,
   performanceReview,
   person,
   reportingLine,
   reviewCycle,
+  reviewGoal,
 } from '../db/schema';
 import { setCompensation } from './comp';
 import { setPayrollInput } from './payroll';
 import { assertCanDecide } from './approvals';
+import { aiModel, generateDraft, isAiConfigured, redactPII } from '../lib/ai';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -921,4 +929,1040 @@ async function currentAdminManager(tx: Tx, tenantId: string, subjectEmploymentId
     )
     .limit(1);
   return mgr?.id ?? null;
+}
+
+// ─────────────────────────── Goals / OKRs (ADR-0022, Phase B) ───────────────────────────
+//
+// Continuous + cycle-linkable: a goal is owned by an employment and may bind to a cycle (cycle_id)
+// or live standalone (null). RLS (can_see_employment) scopes who can read/write — the subject, their
+// admin-line manager, and admins co-own. Goals are REFERENCE SIGNAL ONLY: nothing here computes a
+// rating or pay (ADR-0022 principle 1). Lifecycle is a status (active → achieved/missed/dropped)
+// plus a 0–100 progress.
+
+export type GoalStatus = 'active' | 'achieved' | 'missed' | 'dropped';
+export type GoalRow = {
+  id: string;
+  employmentId: string;
+  cycleId: string | null;
+  cycleName: string | null;
+  title: string;
+  description: string | null;
+  metric: string | null;
+  target: string | null;
+  weight: number | null;
+  progress: number;
+  status: GoalStatus;
+  dueOn: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const clampProgress = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
+
+const goalSelect = () => ({
+  id: performanceGoal.id,
+  employmentId: performanceGoal.employmentId,
+  cycleId: performanceGoal.cycleId,
+  cycleName: reviewCycle.name,
+  title: performanceGoal.title,
+  description: performanceGoal.description,
+  metric: performanceGoal.metric,
+  target: performanceGoal.target,
+  weight: performanceGoal.weight,
+  progress: performanceGoal.progress,
+  status: performanceGoal.status,
+  dueOn: performanceGoal.dueOn,
+  createdAt: performanceGoal.createdAt,
+  updatedAt: performanceGoal.updatedAt,
+});
+type RawGoal = {
+  id: string; employmentId: string; cycleId: string | null; cycleName: string | null;
+  title: string; description: string | null; metric: string | null; target: string | null;
+  weight: string | null; progress: number; status: GoalStatus; dueOn: string | null;
+  createdAt: Date; updatedAt: Date;
+};
+const toGoalRow = (r: RawGoal): GoalRow => ({
+  id: r.id, employmentId: r.employmentId, cycleId: r.cycleId, cycleName: r.cycleName,
+  title: r.title, description: r.description, metric: r.metric, target: r.target,
+  weight: r.weight == null ? null : Number(r.weight),
+  progress: r.progress, status: r.status, dueOn: r.dueOn,
+  createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+});
+
+/** Create a goal for an employment (continuous, optionally bound to a cycle). RLS WITH CHECK ensures
+ *  only the subject / their manager / an admin can — a peer cannot create a goal for someone else. */
+export async function createGoal(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    cycleId?: string | null;
+    title: string;
+    description?: string;
+    metric?: string;
+    target?: string;
+    weight?: number | null;
+    dueOn?: string | null;
+  },
+): Promise<{ id: string }> {
+  const title = p.title.trim();
+  if (!title) throw new PerfError('A goal needs a title');
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(performanceGoal)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        cycleId: p.cycleId ?? null,
+        title,
+        description: p.description?.trim() || null,
+        metric: p.metric?.trim() || null,
+        target: p.target?.trim() || null,
+        weight: p.weight != null ? money(p.weight) : null,
+        dueOn: p.dueOn || null,
+        createdByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: performanceGoal.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: row.id,
+      eventType: 'performance-goal.created',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { cycleId: p.cycleId ?? null },
+    });
+    return { id: row.id };
+  });
+}
+
+async function loadGoal(tx: Tx, goalId: string) {
+  const [g] = await tx.select().from(performanceGoal).where(eq(performanceGoal.id, goalId)).limit(1);
+  if (!g) throw new PerfError('Goal not found'); // RLS-invisible goals read as not-found
+  return g;
+}
+
+/** Edit a goal's descriptive fields (not its progress/status — that's updateGoalProgress). */
+export async function updateGoal(
+  ctx: SessionContext,
+  p: { goalId: string; title?: string; description?: string; metric?: string; target?: string; weight?: number | null; dueOn?: string | null },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const g = await loadGoal(tx, p.goalId);
+    const title = p.title?.trim();
+    if (p.title != null && !title) throw new PerfError('A goal needs a title');
+    await tx
+      .update(performanceGoal)
+      .set({
+        title: title ?? g.title,
+        description: p.description !== undefined ? (p.description?.trim() || null) : g.description,
+        metric: p.metric !== undefined ? (p.metric?.trim() || null) : g.metric,
+        target: p.target !== undefined ? (p.target?.trim() || null) : g.target,
+        weight: p.weight !== undefined ? (p.weight != null ? money(p.weight) : null) : g.weight,
+        dueOn: p.dueOn !== undefined ? (p.dueOn || null) : g.dueOn,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(performanceGoal.id, g.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: g.id,
+      eventType: 'performance-goal.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: g.employmentId,
+    });
+  });
+}
+
+/** Track progress (0–100) and/or move the lifecycle (active → achieved/missed/dropped). */
+export async function updateGoalProgress(
+  ctx: SessionContext,
+  p: { goalId: string; progress?: number; status?: GoalStatus },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const g = await loadGoal(tx, p.goalId);
+    const progress = p.progress != null ? clampProgress(p.progress) : g.progress;
+    const status = p.status ?? g.status;
+    await tx
+      .update(performanceGoal)
+      .set({ progress, status, updatedAt: sql`now()` })
+      .where(eq(performanceGoal.id, g.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: g.id,
+      eventType: 'performance-goal.progressed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: g.employmentId,
+      payload: { status }, // progress value omitted (tenant-wide event log)
+    });
+  });
+}
+
+/** Link a goal onto a review so the manager can reference what was worked on. The goal and review
+ *  must belong to the same subject. RLS scopes visibility; this is reversible reference, not a decision. */
+export async function linkGoalToReview(ctx: SessionContext, p: { reviewId: string; goalId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const { review } = await loadReview(tx, p.reviewId);
+    const goal = await loadGoal(tx, p.goalId);
+    if (goal.employmentId !== review.employmentId) {
+      throw new PerfError('That goal belongs to a different employee');
+    }
+    const [existing] = await tx
+      .select({ id: reviewGoal.id })
+      .from(reviewGoal)
+      .where(and(eq(reviewGoal.reviewId, p.reviewId), eq(reviewGoal.goalId, p.goalId)))
+      .limit(1);
+    if (existing) return; // idempotent
+    await tx.insert(reviewGoal).values({ tenantId: ctx.tenantId, reviewId: p.reviewId, goalId: p.goalId });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: p.reviewId,
+      eventType: 'performance-review.goal-linked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { goalId: p.goalId },
+    });
+  });
+}
+
+export async function unlinkGoalFromReview(ctx: SessionContext, p: { reviewId: string; goalId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const { review } = await loadReview(tx, p.reviewId);
+    await tx.delete(reviewGoal).where(and(eq(reviewGoal.reviewId, p.reviewId), eq(reviewGoal.goalId, p.goalId)));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: p.reviewId,
+      eventType: 'performance-review.goal-unlinked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { goalId: p.goalId },
+    });
+  });
+}
+
+// ── Goal reads (RLS scopes each to the viewer) ──
+
+/** Goals for one employment, newest first (manager viewing a report; admin; self). */
+export function listGoalsForEmployment(ctx: SessionContext, employmentId: string): Promise<GoalRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select(goalSelect())
+      .from(performanceGoal)
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(performanceGoal.employmentId, employmentId))
+      .orderBy(desc(performanceGoal.createdAt));
+    return rows.map(toGoalRow);
+  });
+}
+
+/** The signed-in person's own goals across their employment(s) — the /me surface. */
+export function myGoals(ctx: SessionContext): Promise<GoalRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const ids = mine.map((m) => m.id);
+    if (ids.length === 0) return [];
+    const rows = await tx
+      .select(goalSelect())
+      .from(performanceGoal)
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(inArray(performanceGoal.employmentId, ids))
+      .orderBy(desc(performanceGoal.createdAt));
+    return rows.map(toGoalRow);
+  });
+}
+
+/** Goals linked onto a review (shown on the review page). */
+export function goalsForReview(ctx: SessionContext, reviewId: string): Promise<GoalRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select(goalSelect())
+      .from(reviewGoal)
+      .innerJoin(performanceGoal, eq(performanceGoal.id, reviewGoal.goalId))
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(reviewGoal.reviewId, reviewId))
+      .orderBy(desc(performanceGoal.createdAt));
+    return rows.map(toGoalRow);
+  });
+}
+
+/** For the review page: the goals already linked + the subject's other goals available to link. */
+export function reviewGoals(ctx: SessionContext, reviewId: string): Promise<{ linked: GoalRow[]; linkable: GoalRow[] }> {
+  return withTenant(ctx, async (tx) => {
+    const [r] = await tx
+      .select({ employmentId: performanceReview.employmentId })
+      .from(performanceReview)
+      .where(eq(performanceReview.id, reviewId))
+      .limit(1);
+    if (!r) return { linked: [], linkable: [] };
+    const linkedRows = await tx
+      .select(goalSelect())
+      .from(reviewGoal)
+      .innerJoin(performanceGoal, eq(performanceGoal.id, reviewGoal.goalId))
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(reviewGoal.reviewId, reviewId))
+      .orderBy(desc(performanceGoal.createdAt));
+    const allRows = await tx
+      .select(goalSelect())
+      .from(performanceGoal)
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(performanceGoal.employmentId, r.employmentId))
+      .orderBy(desc(performanceGoal.createdAt));
+    const linkedIds = new Set(linkedRows.map((g) => g.id));
+    return {
+      linked: linkedRows.map(toGoalRow),
+      linkable: allRows.filter((g) => !linkedIds.has(g.id)).map(toGoalRow),
+    };
+  });
+}
+
+// ─────────────────────── Manager 1:1 check-ins (ADR-0022, slice 2) ───────────────────────
+//
+// A continuous touchpoint between a manager and a report — no cycle required. The manager (or admin)
+// schedules and completes; the subject reads their own. RLS scopes to can_see_employment(subject);
+// the service bans self-scheduling (assertCanDecide) so a check-in is always manager↔report.
+
+export type CheckinStatus = 'scheduled' | 'completed' | 'cancelled';
+export type CheckinRow = {
+  id: string;
+  subjectEmploymentId: string;
+  subject: string;
+  manager: string | null;
+  scheduledOn: string;
+  status: CheckinStatus;
+  notes: string | null;
+  completedAt: string | null;
+};
+
+/** Schedule a 1:1 with a report. Manager-or-admin only (assertCanDecide bans self). The manager is
+ *  resolved to the subject's current administrative manager. */
+export async function scheduleCheckIn(
+  ctx: SessionContext,
+  p: { subjectEmploymentId: string; scheduledOn: string; notes?: string },
+): Promise<{ id: string }> {
+  if (!p.scheduledOn) throw new PerfError('A check-in needs a date');
+  return withTenant(ctx, async (tx) => {
+    await assertCanDecide(tx, ctx, p.subjectEmploymentId, 'check-in');
+    const managerEmploymentId = await currentAdminManager(tx, ctx.tenantId, p.subjectEmploymentId);
+    const [row] = await tx
+      .insert(performanceCheckin)
+      .values({
+        tenantId: ctx.tenantId,
+        subjectEmploymentId: p.subjectEmploymentId,
+        managerEmploymentId,
+        scheduledOn: p.scheduledOn,
+        notes: p.notes?.trim() || null,
+        createdByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: performanceCheckin.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-checkin',
+      aggregateId: row.id,
+      eventType: 'performance-checkin.scheduled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.subjectEmploymentId,
+      payload: { scheduledOn: p.scheduledOn },
+    });
+    return { id: row.id };
+  });
+}
+
+async function loadCheckin(tx: Tx, checkinId: string) {
+  const [c] = await tx.select().from(performanceCheckin).where(eq(performanceCheckin.id, checkinId)).limit(1);
+  if (!c) throw new PerfError('Check-in not found');
+  return c;
+}
+
+/** Mark a scheduled check-in completed, capturing the shared notes. Manager-or-admin. */
+export async function completeCheckIn(ctx: SessionContext, p: { checkinId: string; notes?: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const c = await loadCheckin(tx, p.checkinId);
+    if (c.status !== 'scheduled') throw new PerfError(`This check-in is ${c.status}`);
+    await assertCanDecide(tx, ctx, c.subjectEmploymentId, 'check-in');
+    await tx
+      .update(performanceCheckin)
+      .set({ status: 'completed', completedAt: new Date(), notes: p.notes?.trim() ?? c.notes })
+      .where(eq(performanceCheckin.id, c.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-checkin',
+      aggregateId: c.id,
+      eventType: 'performance-checkin.completed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.subjectEmploymentId,
+    });
+  });
+}
+
+/** Cancel a scheduled check-in. Manager-or-admin. */
+export async function cancelCheckIn(ctx: SessionContext, p: { checkinId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const c = await loadCheckin(tx, p.checkinId);
+    if (c.status !== 'scheduled') throw new PerfError(`This check-in is ${c.status}`);
+    await assertCanDecide(tx, ctx, c.subjectEmploymentId, 'check-in');
+    await tx.update(performanceCheckin).set({ status: 'cancelled' }).where(eq(performanceCheckin.id, c.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-checkin',
+      aggregateId: c.id,
+      eventType: 'performance-checkin.cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.subjectEmploymentId,
+    });
+  });
+}
+
+const checkinSelect = () => ({
+  id: performanceCheckin.id,
+  subjectEmploymentId: performanceCheckin.subjectEmploymentId,
+  managerEmploymentId: performanceCheckin.managerEmploymentId,
+  scheduledOn: performanceCheckin.scheduledOn,
+  status: performanceCheckin.status,
+  notes: performanceCheckin.notes,
+  completedAt: performanceCheckin.completedAt,
+});
+type RawCheckin = {
+  id: string; subjectEmploymentId: string; managerEmploymentId: string | null; scheduledOn: string;
+  status: CheckinStatus; notes: string | null; completedAt: Date | null;
+};
+const toCheckinRow = (r: RawCheckin, names: Map<string, string>): CheckinRow => ({
+  id: r.id,
+  subjectEmploymentId: r.subjectEmploymentId,
+  subject: names.get(r.subjectEmploymentId) ?? '—',
+  manager: r.managerEmploymentId ? (names.get(r.managerEmploymentId) ?? null) : null,
+  scheduledOn: r.scheduledOn,
+  status: r.status,
+  notes: r.notes,
+  completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+});
+
+async function hydrateCheckins(tx: Tx, rows: RawCheckin[]): Promise<CheckinRow[]> {
+  const ids = rows.flatMap((r) => [r.subjectEmploymentId, r.managerEmploymentId].filter(Boolean) as string[]);
+  const names = await namesForEmployments(tx, ids);
+  return rows.map((r) => toCheckinRow(r, names));
+}
+
+/** The signed-in person's own check-ins (as the subject) — the /me surface. */
+export function myCheckIns(ctx: SessionContext): Promise<CheckinRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const ids = mine.map((m) => m.id);
+    if (ids.length === 0) return [];
+    const rows = await tx
+      .select(checkinSelect())
+      .from(performanceCheckin)
+      .where(inArray(performanceCheckin.subjectEmploymentId, ids))
+      .orderBy(desc(performanceCheckin.scheduledOn));
+    return hydrateCheckins(tx, rows as RawCheckin[]);
+  });
+}
+
+/** Check-ins the signed-in manager runs (they are the manager) + their direct reports for scheduling. */
+export function managerCheckIns(ctx: SessionContext): Promise<{ checkins: CheckinRow[]; reports: { employmentId: string; name: string }[] }> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return { checkins: [], reports: [] };
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const myIds = mine.map((m) => m.id);
+    if (myIds.length === 0) return { checkins: [], reports: [] };
+    const rows = await tx
+      .select(checkinSelect())
+      .from(performanceCheckin)
+      .where(inArray(performanceCheckin.managerEmploymentId, myIds))
+      .orderBy(desc(performanceCheckin.scheduledOn));
+    const checkins = await hydrateCheckins(tx, rows as RawCheckin[]);
+    // The manager's current direct admin-line reports (the schedule picker).
+    const reportRows = await tx
+      .select({ employmentId: reportingLine.subordinateEmploymentId, name: person.fullName })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.subordinateEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          inArray(reportingLine.managerEmploymentId, myIds),
+          eq(reportingLine.lineType, 'administrative'),
+          lte(reportingLine.validFrom, sql`current_date`),
+          or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .orderBy(person.fullName);
+    return { checkins, reports: reportRows };
+  });
+}
+
+// ─────────────────────── 360 peer feedback (ADR-0022, slice 3) ───────────────────────
+//
+// A manager/admin invites peers to give feedback on a subject for a review; each peer responds to their
+// OWN request. Anonymity (ADR-0022 default): the subject sees feedback content without authorship and
+// never the requester list — enforced by RLS (peer_feedback carries no author; the identity is on the
+// request, which the subject's RLS denies). The manager sees attributed feedback for accountability.
+
+/** Invite peers to give 360 feedback on a review's subject. Manager/admin only (assertCanDecide). */
+export async function requestPeerFeedback(
+  ctx: SessionContext,
+  p: { reviewId: string; peerEmploymentIds: string[] },
+): Promise<{ created: number }> {
+  return withTenant(ctx, async (tx) => {
+    const { review, cycle } = await loadReview(tx, p.reviewId);
+    await assertCanDecide(tx, ctx, review.employmentId, 'peer feedback');
+    const existing = await tx
+      .select({ peer: peerFeedbackRequest.peerEmploymentId })
+      .from(peerFeedbackRequest)
+      .where(eq(peerFeedbackRequest.reviewId, p.reviewId));
+    const already = new Set(existing.map((e) => e.peer));
+    // Names resolved by the inviting manager (who can see the subject + the picked peers) and denormalized
+    // onto the request — a 360 crosses RLS name-visibility, so they can't be re-resolved by peer/manager later.
+    const names = await namesForEmployments(tx, [review.employmentId, ...p.peerEmploymentIds]);
+    const subjectName = names.get(review.employmentId) ?? '—';
+    let created = 0;
+    for (const peerEmploymentId of [...new Set(p.peerEmploymentIds)]) {
+      if (peerEmploymentId === review.employmentId) continue; // never the subject themselves
+      if (already.has(peerEmploymentId)) continue; // idempotent per (review, peer)
+      const [row] = await tx
+        .insert(peerFeedbackRequest)
+        .values({
+          tenantId: ctx.tenantId,
+          reviewId: p.reviewId,
+          subjectEmploymentId: review.employmentId,
+          peerEmploymentId,
+          subjectName,
+          peerName: names.get(peerEmploymentId) ?? '—',
+          cycleName: cycle.name,
+          requestedByUserId: ctx.userId ?? null,
+        })
+        .returning({ id: peerFeedbackRequest.id });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'peer-feedback-request',
+        aggregateId: row.id,
+        eventType: 'peer-feedback-request.created',
+        actor: actorOf(ctx),
+        subjectEmploymentId: review.employmentId,
+        payload: { reviewId: p.reviewId },
+      });
+      created += 1;
+    }
+    return { created };
+  });
+}
+
+/** The peer submits their feedback for one of their own pending requests. RLS guarantees the writer is
+ *  the peer; the service guards the pending state + carries the denormalized subject for RLS. */
+export async function submitPeerFeedback(
+  ctx: SessionContext,
+  p: { requestId: string; strengths?: string; improvements?: string; named?: boolean },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
+    if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
+    if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
+    await tx.insert(peerFeedback).values({
+      tenantId: ctx.tenantId,
+      requestId: rq.id,
+      subjectEmploymentId: rq.subjectEmploymentId,
+      strengths: p.strengths?.trim() || null,
+      improvements: p.improvements?.trim() || null,
+      named: p.named ?? false,
+    });
+    await tx.update(peerFeedbackRequest).set({ status: 'submitted' }).where(eq(peerFeedbackRequest.id, rq.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'peer-feedback-request',
+      aggregateId: rq.id,
+      eventType: 'peer-feedback-request.submitted',
+      actor: actorOf(ctx),
+      subjectEmploymentId: rq.subjectEmploymentId,
+    });
+  });
+}
+
+/** The peer declines a request. */
+export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
+    if (!rq) throw new PerfError('Feedback request not found');
+    if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
+    await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'peer-feedback-request',
+      aggregateId: rq.id,
+      eventType: 'peer-feedback-request.declined',
+      actor: actorOf(ctx),
+      subjectEmploymentId: rq.subjectEmploymentId,
+    });
+  });
+}
+
+export type FeedbackRequestRow = { requestId: string; subject: string; cycleName: string };
+
+/** The signed-in peer's pending feedback requests — "give 360 feedback". */
+export function myFeedbackRequests(ctx: SessionContext): Promise<FeedbackRequestRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const ids = mine.map((m) => m.id);
+    if (ids.length === 0) return [];
+    // Names are denormalized on the request — the peer can't re-resolve the subject's name via RLS.
+    const rows = await tx
+      .select({
+        requestId: peerFeedbackRequest.id,
+        subject: peerFeedbackRequest.subjectName,
+        cycleName: peerFeedbackRequest.cycleName,
+      })
+      .from(peerFeedbackRequest)
+      .where(and(inArray(peerFeedbackRequest.peerEmploymentId, ids), eq(peerFeedbackRequest.status, 'pending')))
+      .orderBy(desc(peerFeedbackRequest.createdAt));
+    return rows.map((r) => ({ requestId: r.requestId, subject: r.subject, cycleName: r.cycleName ?? '' }));
+  });
+}
+
+export type FeedbackRow = {
+  id: string;
+  strengths: string | null;
+  improvements: string | null;
+  // Attributed peer name — present for the manager/admin view, null (anonymous) for the subject.
+  peer: string | null;
+};
+
+/** Viewer flags for a review, at the tx level (canManage / isSubject / released). Returns null if the
+ *  review is not visible to the caller. */
+async function reviewViewerFlags(
+  tx: Tx,
+  ctx: SessionContext,
+  reviewId: string,
+): Promise<{ canManage: boolean; isSubject: boolean; released: boolean } | null> {
+  let loaded: Awaited<ReturnType<typeof loadReview>>;
+  try {
+    loaded = await loadReview(tx, reviewId);
+  } catch {
+    return null;
+  }
+  const { review, cycle, subjectPersonId } = loaded;
+  let reviewerPersonId: string | null = null;
+  if (review.reviewerEmploymentId) {
+    const [rv] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, review.reviewerEmploymentId))
+      .limit(1);
+    reviewerPersonId = rv?.personId ?? null;
+  }
+  const admin = isAdminCtx(ctx);
+  const isSubject = ctx.personId != null && ctx.personId === subjectPersonId;
+  const isReviewer = ctx.personId != null && ctx.personId === reviewerPersonId;
+  return { canManage: admin || isReviewer, isSubject, released: cycle.releasedAt != null };
+}
+
+/** 360 feedback gathered on a review. Shaped for the viewer: the manager/admin sees attributed feedback;
+ *  the subject sees it anonymized AND only after the cycle is released. Also reports the pending count
+ *  for the manager. */
+export function peerFeedbackForReview(
+  ctx: SessionContext,
+  reviewId: string,
+): Promise<{ feedback: FeedbackRow[]; pending: number; canManage: boolean; invitable: { employmentId: string; name: string }[] }> {
+  return withTenant(ctx, async (tx) => {
+    const view = await reviewViewerFlags(tx, ctx, reviewId);
+    if (!view) return { feedback: [], pending: 0, canManage: false, invitable: [] };
+    const { canManage, isSubject, released } = view;
+    // The subject sees nothing until release (and never attribution).
+    if (isSubject && !canManage && !released) return { feedback: [], pending: 0, canManage: false, invitable: [] };
+
+    const rows = await tx
+      .select({
+        id: peerFeedback.id,
+        strengths: peerFeedback.strengths,
+        improvements: peerFeedback.improvements,
+        named: peerFeedback.named,
+        requestId: peerFeedback.requestId,
+      })
+      .from(peerFeedback)
+      .innerJoin(performanceReview, eq(performanceReview.id, reviewId))
+      .where(eq(peerFeedback.subjectEmploymentId, performanceReview.employmentId))
+      .orderBy(desc(peerFeedback.createdAt));
+
+    let feedback: FeedbackRow[];
+    if (canManage) {
+      // Manager/admin: attribute via the denormalized peer_name on the request (they have RLS access).
+      const reqIds = rows.map((r) => r.requestId);
+      const peers =
+        reqIds.length > 0
+          ? await tx
+              .select({ requestId: peerFeedbackRequest.id, name: peerFeedbackRequest.peerName })
+              .from(peerFeedbackRequest)
+              .where(inArray(peerFeedbackRequest.id, reqIds))
+          : [];
+      const peerByReq = new Map(peers.map((x) => [x.requestId, x.name]));
+      feedback = rows.map((r) => ({ id: r.id, strengths: r.strengths, improvements: r.improvements, peer: peerByReq.get(r.requestId) ?? null }));
+    } else {
+      // Subject (released): anonymized — never the author.
+      feedback = rows.map((r) => ({ id: r.id, strengths: r.strengths, improvements: r.improvements, peer: null }));
+    }
+
+    let pending = 0;
+    let invitable: { employmentId: string; name: string }[] = [];
+    if (canManage) {
+      const reqs = await tx
+        .select({ peer: peerFeedbackRequest.peerEmploymentId, status: peerFeedbackRequest.status })
+        .from(peerFeedbackRequest)
+        .where(eq(peerFeedbackRequest.reviewId, reviewId));
+      pending = reqs.filter((r) => r.status === 'pending').length;
+      // Invitable peers = the subject's teammates (the reviewer's other admin-line reports), minus
+      // the subject and anyone already invited.
+      const [rev] = await tx
+        .select({ reviewer: performanceReview.reviewerEmploymentId, subject: performanceReview.employmentId })
+        .from(performanceReview)
+        .where(eq(performanceReview.id, reviewId))
+        .limit(1);
+      const invited = new Set(reqs.map((r) => r.peer));
+      if (rev?.reviewer) {
+        const teammates = await tx
+          .select({ employmentId: reportingLine.subordinateEmploymentId, name: person.fullName })
+          .from(reportingLine)
+          .innerJoin(employment, eq(employment.id, reportingLine.subordinateEmploymentId))
+          .innerJoin(person, eq(person.id, employment.personId))
+          .where(
+            and(
+              eq(reportingLine.managerEmploymentId, rev.reviewer),
+              eq(reportingLine.lineType, 'administrative'),
+              lte(reportingLine.validFrom, sql`current_date`),
+              or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+              isNull(reportingLine.supersededAt),
+            ),
+          )
+          .orderBy(person.fullName);
+        invitable = teammates.filter((tm) => tm.employmentId !== rev.subject && !invited.has(tm.employmentId));
+      }
+    }
+    return { feedback, pending, canManage, invitable };
+  });
+}
+
+// ─────────────────────── Calibration + analytics (ADR-0022, slice 4) ───────────────────────
+//
+// Advisory calibration: an admin opens a session over a cycle (in 'calibration' status), proposes
+// adjusted overall ratings across the cohort against the live distribution, then COMMITS — only the
+// commit writes performance_review.overall_rating (+ a 'performance-review.calibrated' event). A proposal
+// never silently mutates a rating. Admin-only (RLS). The view also carries light analytics: the rating
+// distribution and per-reviewer leniency (average overall).
+
+/** Open (or reuse the open) calibration session for a cycle in 'calibration' status. Admin only. */
+export async function openCalibrationSession(ctx: SessionContext, p: { cycleId: string }): Promise<{ sessionId: string }> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  return withTenant(ctx, async (tx) => {
+    const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, p.cycleId)).limit(1);
+    if (!cycle) throw new PerfError('Cycle not found');
+    if (cycle.status !== 'calibration') throw new PerfError(`Calibration runs while the cycle is in calibration (it is ${cycle.status})`);
+    const [open] = await tx
+      .select({ id: calibrationSession.id })
+      .from(calibrationSession)
+      .where(and(eq(calibrationSession.cycleId, p.cycleId), eq(calibrationSession.status, 'open')))
+      .limit(1);
+    if (open) return { sessionId: open.id };
+    const [row] = await tx
+      .insert(calibrationSession)
+      .values({ tenantId: ctx.tenantId, cycleId: p.cycleId })
+      .returning({ id: calibrationSession.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'calibration-session',
+      aggregateId: row.id,
+      eventType: 'calibration-session.opened',
+      actor: actorOf(ctx),
+      payload: { cycleId: p.cycleId },
+    });
+    return { sessionId: row.id };
+  });
+}
+
+/** Propose an adjusted overall rating for one review in the session (a draft — no event, no rating write). */
+export async function proposeCalibration(
+  ctx: SessionContext,
+  p: { sessionId: string; reviewId: string; proposedRating: number | null; note?: string },
+): Promise<void> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  await withTenant(ctx, async (tx) => {
+    const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
+    if (!sess) throw new PerfError('Session not found');
+    if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
+    if (p.proposedRating != null) {
+      const [cycle] = await tx.select({ scale: reviewCycle.ratingScale }).from(reviewCycle).where(eq(reviewCycle.id, sess.cycleId)).limit(1);
+      assertRatingInScale(cycle.scale as RatingScale, p.proposedRating, 'Proposed rating');
+    }
+    // Draft upsert (no DomainEvent — calibration scratchpad; the COMMIT is the audited act).
+    const [existing] = await tx
+      .select({ id: calibrationEntry.id })
+      .from(calibrationEntry)
+      .where(and(eq(calibrationEntry.sessionId, p.sessionId), eq(calibrationEntry.reviewId, p.reviewId)))
+      .limit(1);
+    if (existing) {
+      await tx.update(calibrationEntry).set({ proposedRating: p.proposedRating, note: p.note?.trim() || null }).where(eq(calibrationEntry.id, existing.id));
+    } else {
+      await tx.insert(calibrationEntry).values({ tenantId: ctx.tenantId, sessionId: p.sessionId, reviewId: p.reviewId, proposedRating: p.proposedRating, note: p.note?.trim() || null });
+    }
+  });
+}
+
+/** Commit the session: write each proposed overall rating onto its review (+ event), close the session. */
+export async function commitCalibration(ctx: SessionContext, p: { sessionId: string }): Promise<{ applied: number }> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  return withTenant(ctx, async (tx) => {
+    const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
+    if (!sess) throw new PerfError('Session not found');
+    if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
+    const entries = await tx
+      .select({ id: calibrationEntry.id, reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating })
+      .from(calibrationEntry)
+      .where(eq(calibrationEntry.sessionId, p.sessionId));
+    let applied = 0;
+    for (const e of entries) {
+      if (e.proposed == null) continue;
+      const [rev] = await tx.select({ employmentId: performanceReview.employmentId }).from(performanceReview).where(eq(performanceReview.id, e.reviewId)).limit(1);
+      if (!rev) continue;
+      await tx.update(performanceReview).set({ overallRating: e.proposed }).where(eq(performanceReview.id, e.reviewId));
+      await tx.update(calibrationEntry).set({ committedRating: e.proposed }).where(eq(calibrationEntry.id, e.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'performance-review',
+        aggregateId: e.reviewId,
+        eventType: 'performance-review.calibrated',
+        actor: actorOf(ctx),
+        subjectEmploymentId: rev.employmentId,
+        payload: { sessionId: p.sessionId },
+      });
+      applied += 1;
+    }
+    await tx.update(calibrationSession).set({ status: 'committed', committedAt: new Date() }).where(eq(calibrationSession.id, p.sessionId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'calibration-session',
+      aggregateId: p.sessionId,
+      eventType: 'calibration-session.committed',
+      actor: actorOf(ctx),
+      payload: { applied },
+    });
+    return { applied };
+  });
+}
+
+export type CalibrationRow = {
+  reviewId: string;
+  employee: string;
+  reviewer: string | null;
+  overallRating: number | null;
+  proposedRating: number | null;
+};
+export type CalibrationView = {
+  sessionId: string | null;
+  status: 'open' | 'committed' | 'none';
+  ratingScale: RatingScale;
+  rows: CalibrationRow[];
+  distribution: { value: number; label: string; count: number }[];
+  reviewerLeniency: { reviewer: string; avg: number; count: number }[];
+};
+
+/** The calibration cockpit for a cycle (admin): roster + open-session proposals + distribution + per-
+ *  reviewer leniency. Returns rows ordered by employee. */
+export function calibrationView(ctx: SessionContext, cycleId: string): Promise<CalibrationView> {
+  return withTenant(ctx, async (tx) => {
+    const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
+    const scale = (cycle?.ratingScale ?? DEFAULT_RATING_SCALE) as RatingScale;
+    const [sess] = await tx
+      .select({ id: calibrationSession.id, status: calibrationSession.status })
+      .from(calibrationSession)
+      .where(eq(calibrationSession.cycleId, cycleId))
+      .orderBy(desc(calibrationSession.createdAt))
+      .limit(1);
+    const proposals = sess
+      ? await tx.select({ reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating }).from(calibrationEntry).where(eq(calibrationEntry.sessionId, sess.id))
+      : [];
+    const proposedByReview = new Map(proposals.map((p) => [p.reviewId, p.proposed]));
+
+    const rows = await tx
+      .select({
+        reviewId: performanceReview.id,
+        employmentId: performanceReview.employmentId,
+        reviewerEmploymentId: performanceReview.reviewerEmploymentId,
+        overallRating: performanceReview.overallRating,
+      })
+      .from(performanceReview)
+      .where(eq(performanceReview.cycleId, cycleId));
+    const names = await namesForEmployments(
+      tx,
+      rows.flatMap((r) => [r.employmentId, r.reviewerEmploymentId].filter(Boolean) as string[]),
+    );
+
+    const calRows: CalibrationRow[] = rows
+      .map((r) => ({
+        reviewId: r.reviewId,
+        employee: names.get(r.employmentId) ?? '—',
+        reviewer: r.reviewerEmploymentId ? (names.get(r.reviewerEmploymentId) ?? null) : null,
+        overallRating: r.overallRating,
+        proposedRating: proposedByReview.get(r.reviewId) ?? null,
+      }))
+      .sort((a, b) => a.employee.localeCompare(b.employee));
+
+    // Distribution over the EFFECTIVE rating (proposed if present, else committed overall).
+    const effective = (r: CalibrationRow) => r.proposedRating ?? r.overallRating;
+    const distribution = scale.map((s) => ({ value: s.value, label: s.label, count: calRows.filter((r) => effective(r) === s.value).length }));
+
+    // Per-reviewer leniency: average effective overall.
+    const byReviewer = new Map<string, number[]>();
+    for (const r of calRows) {
+      const v = effective(r);
+      if (r.reviewer == null || v == null) continue;
+      const arr = byReviewer.get(r.reviewer) ?? [];
+      arr.push(v);
+      byReviewer.set(r.reviewer, arr);
+    }
+    const reviewerLeniency = [...byReviewer.entries()]
+      .map(([rv, vals]) => ({ reviewer: rv, avg: round2(vals.reduce((a, b) => a + b, 0) / vals.length), count: vals.length }))
+      .sort((a, b) => b.avg - a.avg);
+
+    return {
+      sessionId: sess?.id ?? null,
+      status: sess?.status ?? 'none',
+      ratingScale: scale,
+      rows: calRows,
+      distribution,
+      reviewerLeniency,
+    };
+  });
+}
+
+// ─────────────────── AI-assisted review drafting (ADR-0022 slice 5, ADR-0007) ───────────────────
+//
+// Draft-only, human-in-the-loop. A manager asks for a STARTING draft; we gather the signals already
+// on the review (the employee's self-assessment, linked goals, prior overall ratings, anonymized 360
+// feedback), redact direct identifiers, and ask the governed gateway (lib/ai) for prose. We never
+// write a rating, a comment, or pay — the text lands in the manager's editable textarea and only a
+// human `submitManagerReview` changes state. The single write here is an audit event noting that a
+// draft was generated. Graceful degradation: with no API key the feature is OFF (PerfError), so the
+// build and tests never need a live key — gate the UI on `isAiConfigured()`.
+
+export type DraftSignals = { hasSelf: boolean; goals: number; priorRatings: number; peerNotes: number };
+
+export async function draftManagerReview(
+  ctx: SessionContext,
+  p: { reviewId: string },
+): Promise<{ draft: string; signals: DraftSignals }> {
+  if (!isAiConfigured()) throw new PerfError('AI drafting is not configured on this instance.');
+
+  // 1) Authorize + gather signals in a short read transaction. NO LLM call inside the tx — we must
+  //    not hold a pooled connection open across a multi-second network call.
+  const gathered = await withTenant(ctx, async (tx) => {
+    const { review, cycle } = await loadReview(tx, p.reviewId);
+    if (cycle.status !== 'open') {
+      throw new PerfError(`The cycle is ${cycle.status}; a draft can only be prepared while it is open`);
+    }
+    if (review.status !== 'manager_review' && review.status !== 'self_review') {
+      throw new PerfError(`Manager review is not open (status: ${review.status})`);
+    }
+    // Same gate as submitManagerReview: reviewer-or-admin, never self.
+    await assertCanDecide(tx, ctx, review.employmentId, 'AI review draft');
+
+    const scale = cycle.ratingScale as RatingScale;
+
+    const goals = await tx
+      .select({
+        title: performanceGoal.title,
+        description: performanceGoal.description,
+        progress: performanceGoal.progress,
+        status: performanceGoal.status,
+        weight: performanceGoal.weight,
+      })
+      .from(reviewGoal)
+      .innerJoin(performanceGoal, eq(performanceGoal.id, reviewGoal.goalId))
+      .where(eq(reviewGoal.reviewId, review.id));
+
+    const prior = await tx
+      .select({ overall: performanceReview.overallRating })
+      .from(performanceReview)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
+      .where(
+        and(
+          eq(performanceReview.employmentId, review.employmentId),
+          sql`${performanceReview.id} <> ${review.id}`,
+          sql`${performanceReview.overallRating} is not null`,
+        ),
+      )
+      .orderBy(desc(reviewCycle.periodEnd))
+      .limit(5);
+
+    // 360 notes carry no author column and we read no peer identity → inherently anonymous.
+    const peers = await tx
+      .select({ strengths: peerFeedback.strengths, improvements: peerFeedback.improvements })
+      .from(peerFeedback)
+      .where(eq(peerFeedback.subjectEmploymentId, review.employmentId));
+
+    return { review, cycle, scale, goals, prior, peers };
+  });
+
+  // 2) Build a redacted prompt — the employee is referred to generically; peer notes are anonymous.
+  const { review, cycle, scale, goals, prior, peers } = gathered;
+  const lines: string[] = [
+    `Review cycle: ${redactPII(cycle.name)} (${cycle.periodStart} to ${cycle.periodEnd}).`,
+    `Rating scale: ${scale.map((s) => `${s.value}=${s.label}`).join(', ')}.`,
+  ];
+  if (review.selfRating != null) lines.push(`Employee self-rating: ${review.selfRating}.`);
+  if (review.selfComments) lines.push(`Employee self-assessment: ${redactPII(review.selfComments)}`);
+  if (review.goalsSummary) lines.push(`Goals the employee referenced: ${redactPII(review.goalsSummary)}`);
+  if (goals.length) {
+    lines.push('Linked goals (title — progress — status):');
+    for (const g of goals) {
+      const weight = g.weight != null ? ` (weight ${Number(g.weight)})` : '';
+      const desc = g.description ? `: ${redactPII(g.description)}` : '';
+      lines.push(`- ${redactPII(g.title)} — ${g.progress}% — ${g.status}${weight}${desc}`);
+    }
+  }
+  if (prior.length) lines.push(`Prior overall ratings (most recent first): ${prior.map((x) => x.overall).join(', ')}.`);
+  const peerNotes = peers.filter((n) => n.strengths || n.improvements);
+  if (peerNotes.length) {
+    lines.push('Anonymous peer (360) feedback:');
+    for (const n of peerNotes) {
+      if (n.strengths) lines.push(`- Strength: ${redactPII(n.strengths)}`);
+      if (n.improvements) lines.push(`- To improve: ${redactPII(n.improvements)}`);
+    }
+  }
+  if (lines.length <= 2) {
+    lines.push(
+      '(No self-assessment, goals, prior ratings, or peer feedback are available yet — write a brief, neutral starting draft the manager can expand.)',
+    );
+  }
+
+  const system = [
+    'You are assisting a manager writing a performance review for one of their direct reports at a Malaysian company.',
+    'Write a balanced, specific, professional manager-review narrative in British English.',
+    'Ground every statement in the signals provided. Do not invent achievements, numbers, or incidents.',
+    'Cover overall contribution, strengths evidenced by the goals and feedback, and concrete areas to develop.',
+    'Refer to the person as "the employee" — you are not given their name.',
+    'This is a DRAFT for the manager to edit: do not state a final rating or any pay decision.',
+    'Output only the review prose — no preamble, headings, bullet labels, or meta-commentary.',
+  ].join(' ');
+
+  // 3) Call the gateway OUTSIDE any DB transaction.
+  const draft = await generateDraft({ system, prompt: `Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`, maxTokens: 1536 });
+
+  // 4) Audit that a draft was generated (AGENT actor, PII-free payload). No state was changed.
+  await withTenant(ctx, async (tx) => {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-review.ai-draft-generated',
+      // AGENT actor with no id — actor_id is a uuid column; the model is recorded in the payload.
+      actor: { type: 'agent' },
+      subjectEmploymentId: review.employmentId,
+      payload: { cycleId: review.cycleId, model: aiModel() },
+    });
+  });
+
+  return {
+    draft,
+    signals: { hasSelf: review.selfRating != null, goals: goals.length, priorRatings: prior.length, peerNotes: peerNotes.length },
+  };
 }

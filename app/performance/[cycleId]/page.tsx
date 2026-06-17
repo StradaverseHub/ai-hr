@@ -2,11 +2,21 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { cycleDetail } from '@/core/performance';
+import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { calibrateAction, closeAction, declineAction, enactAction, openCycleAction, releaseAction } from '../actions';
+import {
+  calibrateAction,
+  closeAction,
+  commitCalibrationAction,
+  declineAction,
+  enactAction,
+  openCalibrationAction,
+  openCycleAction,
+  proposeCalibrationAction,
+  releaseAction,
+} from '../actions';
 
 const rm = (n: number | null | undefined) =>
   n == null ? '—' : `RM ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -32,6 +42,7 @@ export default async function CyclePage({
   const data = await cycleDetail(s, cycleId);
   if (!data) notFound();
   const { cycle, roster, distribution, budget } = data;
+  const calib = cycle.status === 'calibration' ? await calibrationView(s, cycleId) : null;
   const today = new Date().toISOString().slice(0, 10);
   const nextDay = new Date(Date.parse(`${cycle.periodEnd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
@@ -142,6 +153,101 @@ export default async function CyclePage({
               </p>
             </Card>
           </div>
+
+          {/* Calibration cockpit (ADR-0022) — admins propose adjusted overall ratings, then commit */}
+          {calib && (
+            <Card className="overflow-hidden border-indigo-200 dark:border-indigo-500/30">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-indigo-50/50 px-4 py-3 dark:bg-indigo-500/10">
+                <div>
+                  <h2 className="text-sm font-semibold">{t('calibrationTitle')}</h2>
+                  <p className="text-xs text-muted-foreground">{t('calibrationHint')}</p>
+                </div>
+                {calib.status === 'committed' ? (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
+                    {t('calibrationCommitted')}
+                  </span>
+                ) : calib.sessionId == null ? (
+                  <form action={openCalibrationAction}>
+                    <input type="hidden" name="cycleId" value={cycle.id} />
+                    <Button type="submit" size="sm">
+                      {t('calibrationOpen')}
+                    </Button>
+                  </form>
+                ) : (
+                  <form action={commitCalibrationAction}>
+                    <input type="hidden" name="sessionId" value={calib.sessionId} />
+                    <input type="hidden" name="cycleId" value={cycle.id} />
+                    <Button type="submit" size="sm">
+                      {t('calibrationCommit')}
+                    </Button>
+                  </form>
+                )}
+              </div>
+
+              {/* Per-reviewer leniency (analytics) */}
+              {calib.reviewerLeniency.length > 0 && (
+                <div className="border-b border-border px-4 py-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('calibrationLeniency')}</p>
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                    {calib.reviewerLeniency.map((rl) => (
+                      <span key={rl.reviewer} className="tabular-nums">
+                        {rl.reviewer}: <span className="font-medium">{rl.avg}</span>
+                        <span className="text-xs text-muted-foreground"> ({rl.count})</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Roster with inline proposed-rating editor (when a session is open) */}
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">{t('calibrationEmployee')}</th>
+                    <th className="px-4 py-2 font-medium">{t('calibrationReviewer')}</th>
+                    <th className="px-4 py-2 text-center font-medium">{t('calibrationCurrent')}</th>
+                    <th className="px-4 py-2 text-center font-medium">{t('calibrationProposed')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {calib.rows.map((cr) => (
+                    <tr key={cr.reviewId}>
+                      <td className="px-4 py-2.5 font-medium">{cr.employee}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{cr.reviewer ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-center tabular-nums">{cr.overallRating ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-center">
+                        {calib.status === 'open' && calib.sessionId ? (
+                          <form action={proposeCalibrationAction} className="flex items-center justify-center">
+                            <input type="hidden" name="sessionId" value={calib.sessionId} />
+                            <input type="hidden" name="reviewId" value={cr.reviewId} />
+                            <input type="hidden" name="cycleId" value={cycle.id} />
+                            <select
+                              name="proposedRating"
+                              defaultValue={cr.proposedRating ?? ''}
+                              className={`${inputCls} w-32`}
+                              // auto-submit on change via a sibling button is simpler than JS; show a Save
+                            >
+                              <option value="">—</option>
+                              {calib.ratingScale.map((sc) => (
+                                <option key={sc.value} value={sc.value}>
+                                  {sc.value} · {sc.label}
+                                </option>
+                              ))}
+                            </select>
+                            <Button type="submit" size="sm" variant="ghost" className="ml-1">
+                              {t('calibrationSet')}
+                            </Button>
+                          </form>
+                        ) : (
+                          <span className="tabular-nums text-muted-foreground">{cr.proposedRating ?? '—'}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
 
           {/* Enact worklist */}
           {pendingComp.length > 0 && (

@@ -1,9 +1,17 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { reviewForViewer } from '@/core/performance';
+import { peerFeedbackForReview, reviewForViewer, reviewGoals } from '@/core/performance';
+import { isAiConfigured } from '@/lib/ai';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
-import { acknowledgeAction, submitManagerAction, submitSelfAction } from '../../actions';
+import { ManagerReviewForm } from './manager-review-form';
+import {
+  acknowledgeAction,
+  linkGoalAction,
+  requestPeerFeedbackAction,
+  submitSelfAction,
+  unlinkGoalAction,
+} from '../../actions';
 
 function RatingSelect({
   name,
@@ -53,6 +61,8 @@ export default async function ReviewPage({
   if (!r) notFound();
   const scale = r.ratingScale;
   const backHref = r.isSubject && !r.canManage ? '/me' : '/performance';
+  const { linked: linkedGoals, linkable: linkableGoals } = await reviewGoals(s, reviewId);
+  const f360 = await peerFeedbackForReview(s, reviewId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -102,52 +112,137 @@ export default async function ReviewPage({
         )}
       </Card>
 
+      {/* Goals referenced (ADR-0022) — the manager links the subject's goals onto this review */}
+      {(linkedGoals.length > 0 || r.canManage) && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('goalsCardTitle')}</h2>
+          {linkedGoals.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">{t('goalsCardEmpty')}</p>
+          ) : (
+            <ul className="mt-3 space-y-2.5">
+              {linkedGoals.map((g) => (
+                <li key={g.id} className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{g.title}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{t(`goalStatus_${g.status}`)}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${g.progress}%` }} />
+                    </div>
+                  </div>
+                  <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{g.progress}%</span>
+                  {r.canManage && (
+                    <form action={unlinkGoalAction}>
+                      <input type="hidden" name="reviewId" value={r.id} />
+                      <input type="hidden" name="goalId" value={g.id} />
+                      <Button type="submit" size="sm" variant="ghost">
+                        {t('goalUnlink')}
+                      </Button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {r.canManage && linkableGoals.length > 0 && (
+            <form action={linkGoalAction} className="mt-4 flex items-end gap-2 border-t border-border pt-3">
+              <input type="hidden" name="reviewId" value={r.id} />
+              <Field label={t('goalLinkLabel')}>
+                <select name="goalId" required className={inputCls} defaultValue="">
+                  <option value="" disabled>
+                    {t('goalLinkPlaceholder')}
+                  </option>
+                  {linkableGoals.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Button type="submit" variant="secondary">
+                {t('goalLink')}
+              </Button>
+            </form>
+          )}
+        </Card>
+      )}
+
+      {/* 360 peer feedback (ADR-0022) — manager invites + sees attributed; subject sees anonymized after release */}
+      {(f360.canManage || f360.feedback.length > 0) && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('feedback360Title')}</h2>
+          {f360.canManage && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('feedback360ManagerHint')}</p>
+          )}
+          {!f360.canManage && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('feedback360SubjectHint')}</p>
+          )}
+
+          {f360.feedback.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {f360.canManage && f360.pending > 0 ? t('feedback360Pending', { count: f360.pending }) : t('feedback360Empty')}
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {f360.feedback.map((fb) => (
+                <li key={fb.id} className="rounded-xl border border-border bg-muted/20 p-3 text-sm">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {fb.peer ? fb.peer : t('feedback360Anonymous')}
+                  </div>
+                  {fb.strengths && (
+                    <p className="mt-1">
+                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t('feedbackStrengths')}: </span>
+                      {fb.strengths}
+                    </p>
+                  )}
+                  {fb.improvements && (
+                    <p className="mt-1">
+                      <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{t('feedbackImprovements')}: </span>
+                      {fb.improvements}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {f360.canManage && f360.invitable.length > 0 && (
+            <form action={requestPeerFeedbackAction} className="mt-4 border-t border-border pt-3">
+              <input type="hidden" name="reviewId" value={r.id} />
+              <p className="mb-2 text-xs font-medium text-muted-foreground">{t('feedback360Invite')}</p>
+              <div className="flex flex-wrap gap-3">
+                {f360.invitable.map((p) => (
+                  <label key={p.employmentId} className="flex items-center gap-1.5 text-sm">
+                    <input type="checkbox" name="peerEmploymentId" value={p.employmentId} className="size-4" />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button type="submit" variant="secondary">
+                  {t('feedback360Request')}
+                </Button>
+              </div>
+            </form>
+          )}
+        </Card>
+      )}
+
       {/* Manager review */}
       <Card className="p-5">
         <h2 className="text-sm font-semibold">{t('managerReviewTitle')}</h2>
         {r.canManagerSubmit ? (
-          <form action={submitManagerAction} className="mt-3 space-y-4">
-            <input type="hidden" name="reviewId" value={r.id} />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label={t('managerRatingLabel')}>
-                <RatingSelect name="managerRating" scale={scale} required defaultValue={r.managerRating} placeholder={t('selectRating')} />
-              </Field>
-              <Field label={t('overallRatingLabel')}>
-                <RatingSelect name="overallRating" scale={scale} required defaultValue={r.overallRating} placeholder={t('selectRating')} />
-              </Field>
-            </div>
-            <Field label={t('commentsOptionalLabel')}>
-              <textarea name="managerComments" rows={3} className={inputCls} defaultValue={r.managerComments ?? ''} />
-            </Field>
-            <div className="rounded-xl border border-border bg-muted/30 p-3">
-              <p className="text-xs font-medium text-muted-foreground">{t('payRecommendationHint')}</p>
-              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label={t('meritIncreaseLabel')}>
-                  <input
-                    name="recommendedMeritPct"
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    className={inputCls}
-                    defaultValue={r.recommendedMeritPct ?? ''}
-                    placeholder={t('meritIncreasePlaceholder')}
-                  />
-                </Field>
-                <Field label={t('oneOffBonusLabel')}>
-                  <input
-                    name="recommendedBonus"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={inputCls}
-                    defaultValue={r.recommendedBonus ?? ''}
-                    placeholder={t('oneOffBonusPlaceholder')}
-                  />
-                </Field>
-              </div>
-            </div>
-            <Button type="submit">{t('finalizeReview')}</Button>
-          </form>
+          <ManagerReviewForm
+            reviewId={r.id}
+            scale={scale}
+            managerRating={r.managerRating}
+            overallRating={r.overallRating}
+            managerComments={r.managerComments}
+            recommendedMeritPct={r.recommendedMeritPct}
+            recommendedBonus={r.recommendedBonus}
+            aiEnabled={isAiConfigured()}
+          />
         ) : r.managerRating != null || r.overallRating != null ? (
           <dl className="mt-3 space-y-2 text-sm">
             <Row label={t('managerRatingLabel')} value={ratingLabel(scale, r.managerRating)} />

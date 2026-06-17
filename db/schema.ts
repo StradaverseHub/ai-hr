@@ -92,6 +92,14 @@ export const compActionStatusEnum = pgEnum('comp_action_status', [
   'enacted',
   'declined',
 ]);
+// Goal lifecycle (ADR-0022, Phase B). Continuous: a goal lives independent of any cycle.
+export const goalStatusEnum = pgEnum('goal_status', ['active', 'achieved', 'missed', 'dropped']);
+// Manager 1:1 check-in lifecycle (ADR-0022, Phase B slice 2).
+export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'completed', 'cancelled']);
+// 360 peer-feedback request lifecycle (ADR-0022, Phase B slice 3).
+export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
+// Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
+export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -811,6 +819,178 @@ export const performanceReview = pgTable(
     index('performance_review_employment_idx').on(t.employmentId),
     index('performance_review_reviewer_idx').on(t.reviewerEmploymentId),
   ],
+);
+
+// Goals / OKRs (ADR-0022, Phase B). Owned by an employment; cycle_id is NULLABLE — a goal lives
+// continuously and optionally binds to a review cycle. RLS = can_see_employment (subject + admin-line
+// manager + admin can read/write). Goals are reference signal only; they NEVER compute a rating or pay.
+export const performanceGoal = pgTable(
+  'performance_goal',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    cycleId: uuid('cycle_id').references(() => reviewCycle.id), // null = continuous (no cycle)
+    title: text('title').notNull(),
+    description: text('description'),
+    metric: text('metric'), // free-form measure, e.g. "NPS" or "deals closed"
+    target: text('target'), // free-form target, e.g. "> 50" or "12"
+    weight: numeric('weight', { precision: 5, scale: 2 }), // optional relative weight
+    progress: integer('progress').notNull().default(0), // 0–100
+    status: goalStatusEnum('status').notNull().default('active'),
+    dueOn: date('due_on'),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('performance_goal_employment_idx').on(t.employmentId),
+    index('performance_goal_cycle_idx').on(t.cycleId),
+  ],
+);
+
+// Join: which goals a manager referenced on a given review (the goalsSummary text hook, structured).
+export const reviewGoal = pgTable(
+  'review_goal',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    goalId: uuid('goal_id')
+      .notNull()
+      .references(() => performanceGoal.id),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('review_goal_review_goal_uq').on(t.reviewId, t.goalId)],
+);
+
+// Manager 1:1 check-ins (ADR-0022, Phase B slice 2). A lightweight recurring touchpoint between a
+// manager and a report — continuous (no cycle required). RLS = can_see_employment(subject) so the
+// subject, their admin-line manager and admins see it; the service enforces who may schedule/complete.
+export const performanceCheckin = pgTable(
+  'performance_checkin',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // The manager conducting the 1:1 (the subject's admin-line manager at schedule time), or null.
+    managerEmploymentId: uuid('manager_employment_id').references(() => employment.id),
+    scheduledOn: date('scheduled_on').notNull(),
+    status: checkinStatusEnum('status').notNull().default('scheduled'),
+    notes: text('notes'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('performance_checkin_subject_idx').on(t.subjectEmploymentId),
+    index('performance_checkin_manager_idx').on(t.managerEmploymentId),
+  ],
+);
+
+// 360 peer feedback (ADR-0022, Phase B slice 3). A manager/admin invites peers to give feedback on a
+// subject for a review. ANONYMITY (ADR-0022 default): authorship lives ONLY here on the request —
+// peer_feedback itself carries no author, so the subject (who is denied this table by RLS) sees feedback
+// content without attribution. The peer responds to their own request; the subject never sees the
+// requester list.
+export const peerFeedbackRequest = pgTable(
+  'peer_feedback_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    peerEmploymentId: uuid('peer_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // Display names denormalized at request time (resolved by the inviting manager, who can see both):
+    // a 360 crosses RLS name-visibility boundaries, so the peer/manager can't re-resolve these later.
+    subjectName: text('subject_name').notNull(),
+    peerName: text('peer_name').notNull(),
+    cycleName: text('cycle_name'),
+    status: feedbackRequestStatusEnum('status').notNull().default('pending'),
+    requestedByUserId: uuid('requested_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('peer_feedback_request_review_peer_uq').on(t.reviewId, t.peerEmploymentId),
+    index('peer_feedback_request_subject_idx').on(t.subjectEmploymentId),
+    index('peer_feedback_request_peer_idx').on(t.peerEmploymentId),
+  ],
+);
+
+// The feedback content. Carries a denormalized subject_employment_id so RLS = can_see_employment(subject)
+// is a direct check (the subject + their manager + admin read CONTENT). It deliberately has NO author
+// column — the peer identity is on the request, which the subject's RLS denies → anonymous-by-construction.
+// `named` records that the peer opted to be identifiable (surfaced to the manager, not the subject in v1).
+export const peerFeedback = pgTable(
+  'peer_feedback',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => peerFeedbackRequest.id),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    strengths: text('strengths'),
+    improvements: text('improvements'),
+    named: boolean('named').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('peer_feedback_request_uq').on(t.requestId),
+    index('peer_feedback_subject_idx').on(t.subjectEmploymentId),
+  ],
+);
+
+// Calibration (ADR-0022, slice 4). A session over a cycle in 'calibration' status; participants propose
+// adjusted overall ratings, an admin COMMITS them (writes performance_review.overall_rating + an event).
+// Advisory by default — a proposal never mutates a rating until the explicit commit. Admin-scoped (the
+// session belongs to a cycle whose writes are already admin-gated); RLS = tenant isolation.
+export const calibrationSession = pgTable(
+  'calibration_session',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    cycleId: uuid('cycle_id')
+      .notNull()
+      .references(() => reviewCycle.id),
+    status: calibrationStatusEnum('status').notNull().default('open'),
+    committedAt: timestamp('committed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('calibration_session_cycle_idx').on(t.cycleId)],
+);
+
+export const calibrationEntry = pgTable(
+  'calibration_entry',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => calibrationSession.id),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    proposedRating: integer('proposed_rating'),
+    committedRating: integer('committed_rating'),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('calibration_entry_session_review_uq').on(t.sessionId, t.reviewId)],
 );
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
