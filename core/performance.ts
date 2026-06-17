@@ -23,6 +23,7 @@ import {
   employment,
   payrollBatch,
   payrollInput,
+  performanceCheckin,
   performanceGoal,
   performanceReview,
   person,
@@ -1209,5 +1210,181 @@ export function reviewGoals(ctx: SessionContext, reviewId: string): Promise<{ li
       linked: linkedRows.map(toGoalRow),
       linkable: allRows.filter((g) => !linkedIds.has(g.id)).map(toGoalRow),
     };
+  });
+}
+
+// ─────────────────────── Manager 1:1 check-ins (ADR-0022, slice 2) ───────────────────────
+//
+// A continuous touchpoint between a manager and a report — no cycle required. The manager (or admin)
+// schedules and completes; the subject reads their own. RLS scopes to can_see_employment(subject);
+// the service bans self-scheduling (assertCanDecide) so a check-in is always manager↔report.
+
+export type CheckinStatus = 'scheduled' | 'completed' | 'cancelled';
+export type CheckinRow = {
+  id: string;
+  subjectEmploymentId: string;
+  subject: string;
+  manager: string | null;
+  scheduledOn: string;
+  status: CheckinStatus;
+  notes: string | null;
+  completedAt: string | null;
+};
+
+/** Schedule a 1:1 with a report. Manager-or-admin only (assertCanDecide bans self). The manager is
+ *  resolved to the subject's current administrative manager. */
+export async function scheduleCheckIn(
+  ctx: SessionContext,
+  p: { subjectEmploymentId: string; scheduledOn: string; notes?: string },
+): Promise<{ id: string }> {
+  if (!p.scheduledOn) throw new PerfError('A check-in needs a date');
+  return withTenant(ctx, async (tx) => {
+    await assertCanDecide(tx, ctx, p.subjectEmploymentId, 'check-in');
+    const managerEmploymentId = await currentAdminManager(tx, ctx.tenantId, p.subjectEmploymentId);
+    const [row] = await tx
+      .insert(performanceCheckin)
+      .values({
+        tenantId: ctx.tenantId,
+        subjectEmploymentId: p.subjectEmploymentId,
+        managerEmploymentId,
+        scheduledOn: p.scheduledOn,
+        notes: p.notes?.trim() || null,
+        createdByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: performanceCheckin.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-checkin',
+      aggregateId: row.id,
+      eventType: 'performance-checkin.scheduled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.subjectEmploymentId,
+      payload: { scheduledOn: p.scheduledOn },
+    });
+    return { id: row.id };
+  });
+}
+
+async function loadCheckin(tx: Tx, checkinId: string) {
+  const [c] = await tx.select().from(performanceCheckin).where(eq(performanceCheckin.id, checkinId)).limit(1);
+  if (!c) throw new PerfError('Check-in not found');
+  return c;
+}
+
+/** Mark a scheduled check-in completed, capturing the shared notes. Manager-or-admin. */
+export async function completeCheckIn(ctx: SessionContext, p: { checkinId: string; notes?: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const c = await loadCheckin(tx, p.checkinId);
+    if (c.status !== 'scheduled') throw new PerfError(`This check-in is ${c.status}`);
+    await assertCanDecide(tx, ctx, c.subjectEmploymentId, 'check-in');
+    await tx
+      .update(performanceCheckin)
+      .set({ status: 'completed', completedAt: new Date(), notes: p.notes?.trim() ?? c.notes })
+      .where(eq(performanceCheckin.id, c.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-checkin',
+      aggregateId: c.id,
+      eventType: 'performance-checkin.completed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.subjectEmploymentId,
+    });
+  });
+}
+
+/** Cancel a scheduled check-in. Manager-or-admin. */
+export async function cancelCheckIn(ctx: SessionContext, p: { checkinId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const c = await loadCheckin(tx, p.checkinId);
+    if (c.status !== 'scheduled') throw new PerfError(`This check-in is ${c.status}`);
+    await assertCanDecide(tx, ctx, c.subjectEmploymentId, 'check-in');
+    await tx.update(performanceCheckin).set({ status: 'cancelled' }).where(eq(performanceCheckin.id, c.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-checkin',
+      aggregateId: c.id,
+      eventType: 'performance-checkin.cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.subjectEmploymentId,
+    });
+  });
+}
+
+const checkinSelect = () => ({
+  id: performanceCheckin.id,
+  subjectEmploymentId: performanceCheckin.subjectEmploymentId,
+  managerEmploymentId: performanceCheckin.managerEmploymentId,
+  scheduledOn: performanceCheckin.scheduledOn,
+  status: performanceCheckin.status,
+  notes: performanceCheckin.notes,
+  completedAt: performanceCheckin.completedAt,
+});
+type RawCheckin = {
+  id: string; subjectEmploymentId: string; managerEmploymentId: string | null; scheduledOn: string;
+  status: CheckinStatus; notes: string | null; completedAt: Date | null;
+};
+const toCheckinRow = (r: RawCheckin, names: Map<string, string>): CheckinRow => ({
+  id: r.id,
+  subjectEmploymentId: r.subjectEmploymentId,
+  subject: names.get(r.subjectEmploymentId) ?? '—',
+  manager: r.managerEmploymentId ? (names.get(r.managerEmploymentId) ?? null) : null,
+  scheduledOn: r.scheduledOn,
+  status: r.status,
+  notes: r.notes,
+  completedAt: r.completedAt ? r.completedAt.toISOString() : null,
+});
+
+async function hydrateCheckins(tx: Tx, rows: RawCheckin[]): Promise<CheckinRow[]> {
+  const ids = rows.flatMap((r) => [r.subjectEmploymentId, r.managerEmploymentId].filter(Boolean) as string[]);
+  const names = await namesForEmployments(tx, ids);
+  return rows.map((r) => toCheckinRow(r, names));
+}
+
+/** The signed-in person's own check-ins (as the subject) — the /me surface. */
+export function myCheckIns(ctx: SessionContext): Promise<CheckinRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const ids = mine.map((m) => m.id);
+    if (ids.length === 0) return [];
+    const rows = await tx
+      .select(checkinSelect())
+      .from(performanceCheckin)
+      .where(inArray(performanceCheckin.subjectEmploymentId, ids))
+      .orderBy(desc(performanceCheckin.scheduledOn));
+    return hydrateCheckins(tx, rows as RawCheckin[]);
+  });
+}
+
+/** Check-ins the signed-in manager runs (they are the manager) + their direct reports for scheduling. */
+export function managerCheckIns(ctx: SessionContext): Promise<{ checkins: CheckinRow[]; reports: { employmentId: string; name: string }[] }> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return { checkins: [], reports: [] };
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const myIds = mine.map((m) => m.id);
+    if (myIds.length === 0) return { checkins: [], reports: [] };
+    const rows = await tx
+      .select(checkinSelect())
+      .from(performanceCheckin)
+      .where(inArray(performanceCheckin.managerEmploymentId, myIds))
+      .orderBy(desc(performanceCheckin.scheduledOn));
+    const checkins = await hydrateCheckins(tx, rows as RawCheckin[]);
+    // The manager's current direct admin-line reports (the schedule picker).
+    const reportRows = await tx
+      .select({ employmentId: reportingLine.subordinateEmploymentId, name: person.fullName })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.subordinateEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          inArray(reportingLine.managerEmploymentId, myIds),
+          eq(reportingLine.lineType, 'administrative'),
+          lte(reportingLine.validFrom, sql`current_date`),
+          or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .orderBy(person.fullName);
+    return { checkins, reports: reportRows };
   });
 }

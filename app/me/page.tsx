@@ -12,7 +12,7 @@ import {
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
-import { myGoals, myReviews } from '@/core/performance';
+import { myCheckIns, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   myCheckIn,
@@ -91,7 +91,7 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
-  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals] =
+  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins] =
     await Promise.all([
       leaveBalances(s, me.employmentId),
       leaveRequestsFor(s, me.employmentId),
@@ -103,6 +103,7 @@ export default async function MePage({
       myProfileChangeRequests(s, me.employmentId),
       myReviews(s),
       myGoals(s),
+      myCheckIns(s),
     ]);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
@@ -640,6 +641,34 @@ export default async function MePage({
           </div>
         </form>
       </Card>
+
+      {/* My 1:1 check-ins (ADR-0022) — read-only; the manager schedules from /performance */}
+      {checkins.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('checkinsTitle')} count={checkins.length} />
+          <ul className="divide-y divide-border">
+            {checkins.map((c) => (
+              <li key={c.id} className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium tabular-nums">{c.scheduledOn}</span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      c.status === 'completed'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                        : c.status === 'cancelled'
+                          ? 'bg-muted text-muted-foreground'
+                          : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400'
+                    }`}
+                  >
+                    {t(`checkinStatus_${c.status}`)}
+                  </span>
+                </div>
+                {c.notes && <p className="mt-1 text-xs text-muted-foreground">{c.notes}</p>}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
       <Card className="p-5">

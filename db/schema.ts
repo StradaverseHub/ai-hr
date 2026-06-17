@@ -94,6 +94,8 @@ export const compActionStatusEnum = pgEnum('comp_action_status', [
 ]);
 // Goal lifecycle (ADR-0022, Phase B). Continuous: a goal lives independent of any cycle.
 export const goalStatusEnum = pgEnum('goal_status', ['active', 'achieved', 'missed', 'dropped']);
+// Manager 1:1 check-in lifecycle (ADR-0022, Phase B slice 2).
+export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'completed', 'cancelled']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -860,6 +862,32 @@ export const reviewGoal = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('review_goal_review_goal_uq').on(t.reviewId, t.goalId)],
+);
+
+// Manager 1:1 check-ins (ADR-0022, Phase B slice 2). A lightweight recurring touchpoint between a
+// manager and a report — continuous (no cycle required). RLS = can_see_employment(subject) so the
+// subject, their admin-line manager and admins see it; the service enforces who may schedule/complete.
+export const performanceCheckin = pgTable(
+  'performance_checkin',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // The manager conducting the 1:1 (the subject's admin-line manager at schedule time), or null.
+    managerEmploymentId: uuid('manager_employment_id').references(() => employment.id),
+    scheduledOn: date('scheduled_on').notNull(),
+    status: checkinStatusEnum('status').notNull().default('scheduled'),
+    notes: text('notes'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('performance_checkin_subject_idx').on(t.subjectEmploymentId),
+    index('performance_checkin_manager_idx').on(t.managerEmploymentId),
+  ],
 );
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────

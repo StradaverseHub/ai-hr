@@ -5,7 +5,9 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
   acknowledgeReview,
+  cancelCheckIn,
   closeCycle,
+  completeCheckIn,
   createCycle,
   declineCompAction,
   enactCompAction,
@@ -13,6 +15,7 @@ import {
   moveCycleToCalibration,
   openCycle,
   releaseCycle,
+  scheduleCheckIn,
   submitManagerReview,
   submitSelfReview,
   unlinkGoalFromReview,
@@ -153,6 +156,43 @@ export async function unlinkGoalAction(formData: FormData) {
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Goal unlinked')}`);
+}
+
+export async function scheduleCheckInAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await scheduleCheckIn(s, {
+      subjectEmploymentId: String(formData.get('subjectEmploymentId')),
+      scheduledOn: String(formData.get('scheduledOn')),
+      notes: str(formData.get('notes')),
+    });
+  } catch (e) {
+    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/performance');
+  redirect(`/performance?toast=${encodeURIComponent('Check-in scheduled')}`);
+}
+
+export async function completeCheckInAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await completeCheckIn(s, { checkinId: String(formData.get('checkinId')), notes: str(formData.get('notes')) });
+  } catch (e) {
+    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/performance');
+  redirect(`/performance?toast=${encodeURIComponent('Check-in completed')}`);
+}
+
+export async function cancelCheckInAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await cancelCheckIn(s, { checkinId: String(formData.get('checkinId')) });
+  } catch (e) {
+    redirect(`/performance?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/performance');
+  redirect(`/performance?toast=${encodeURIComponent('Check-in cancelled')}`);
 }
 
 export async function enactAction(formData: FormData) {
