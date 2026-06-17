@@ -213,7 +213,17 @@
       "epfModeExempt": "豁免（不缴纳）",
       "epfEmployeeRate": "员工费率 %",
       "epfEmployerRate": "雇主费率 %",
-      "epfElectionHint": "自愿额外缴纳（i-Topup，KWSP 表格 17A/18A）设定不低于法定 11%/13% 的费率；留空的一方维持法定费率。仅限费率——KWSP 无固定金额选项。豁免仅适用于确实可豁免的员工。"
+      "epfElectionHint": "自愿额外缴纳（i-Topup，KWSP 表格 17A/18A）设定不低于法定 11%/13% 的费率；留空的一方维持法定费率。仅限费率——KWSP 无固定金额选项。豁免仅适用于确实可豁免的员工。",
+      "terminationType": "离职类型",
+      "terminationTypeUnspecified": "— 未指定 —",
+      "terminationVoluntary": "自愿（辞职）",
+      "terminationInvoluntary": "非自愿（解雇）",
+      "terminationRetired": "退休",
+      "terminationContractEnd": "合同结束",
+      "terminationDeath": "死亡",
+      "terminationOther": "其他",
+      "terminationReason": "原因（可选）",
+      "terminationReasonHint": "例如更好的机会、裁员"
     },
     "import": {
       "title": "导入员工",

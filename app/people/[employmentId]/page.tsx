@@ -475,6 +475,20 @@ export default async function EmployeePage({
               <Field label={t('terminationDate')}>
                 <input name="terminationDate" type="date" required defaultValue={today} className={inputCls} />
               </Field>
+              <Field label={t('terminationType')}>
+                <select name="terminationType" defaultValue="" className={inputCls}>
+                  <option value="">{t('terminationTypeUnspecified')}</option>
+                  <option value="voluntary">{t('terminationVoluntary')}</option>
+                  <option value="involuntary">{t('terminationInvoluntary')}</option>
+                  <option value="retired">{t('terminationRetired')}</option>
+                  <option value="contract_end">{t('terminationContractEnd')}</option>
+                  <option value="death">{t('terminationDeath')}</option>
+                  <option value="other">{t('terminationOther')}</option>
+                </select>
+              </Field>
+              <Field label={t('terminationReason')}>
+                <input name="terminationReason" maxLength={200} placeholder={t('terminationReasonHint')} className={`${inputCls} sm:col-span-2`} />
+              </Field>
               <div className="sm:col-span-2">
                 <ConfirmSubmit
                   title={t('terminateConfirmTitle')}

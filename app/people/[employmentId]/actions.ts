@@ -27,9 +27,17 @@ export async function terminateAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));
   try {
+    const rawType = String(formData.get('terminationType') ?? '');
+    const terminationType = (
+      ['voluntary', 'involuntary', 'retired', 'contract_end', 'death', 'other'] as const
+    ).includes(rawType as never)
+      ? (rawType as 'voluntary' | 'involuntary' | 'retired' | 'contract_end' | 'death' | 'other')
+      : undefined;
     await terminateEmployment(s, {
       employmentId,
       terminationDate: String(formData.get('terminationDate')),
+      terminationType,
+      terminationReason: (formData.get('terminationReason') as string) || undefined,
     });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);

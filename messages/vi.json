@@ -213,7 +213,17 @@
       "epfModeExempt": "Miễn (không đóng)",
       "epfEmployeeRate": "Tỷ lệ nhân viên %",
       "epfEmployerRate": "Tỷ lệ người sử dụng lao động %",
-      "epfElectionHint": "Đóng vượt tự nguyện (i-Topup, Mẫu KWSP 17A/18A) đặt tỷ lệ bằng hoặc cao hơn mức luật định 11%/13%; bên để trống giữ mức luật định. Chỉ theo tỷ lệ — KWSP không có lựa chọn số tiền cố định. Miễn chỉ dành cho nhân viên thực sự được miễn."
+      "epfElectionHint": "Đóng vượt tự nguyện (i-Topup, Mẫu KWSP 17A/18A) đặt tỷ lệ bằng hoặc cao hơn mức luật định 11%/13%; bên để trống giữ mức luật định. Chỉ theo tỷ lệ — KWSP không có lựa chọn số tiền cố định. Miễn chỉ dành cho nhân viên thực sự được miễn.",
+      "terminationType": "Loại chấm dứt",
+      "terminationTypeUnspecified": "— Không xác định —",
+      "terminationVoluntary": "Tự nguyện (từ chức)",
+      "terminationInvoluntary": "Không tự nguyện (sa thải)",
+      "terminationRetired": "Nghỉ hưu",
+      "terminationContractEnd": "Hết hợp đồng",
+      "terminationDeath": "Tử vong",
+      "terminationOther": "Khác",
+      "terminationReason": "Lý do (tùy chọn)",
+      "terminationReasonHint": "vd. cơ hội tốt hơn, cắt giảm"
     },
     "import": {
       "title": "Nhập nhân viên",

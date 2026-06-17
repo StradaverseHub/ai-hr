@@ -213,7 +213,17 @@
       "epfModeExempt": "Dikecualikan (tiada caruman)",
       "epfEmployeeRate": "Kadar pekerja %",
       "epfEmployerRate": "Kadar majikan %",
-      "epfElectionHint": "Lebihan sukarela (i-Topup, Borang KWSP 17A/18A) menetapkan kadar pada atau melebihi kadar berkanun 11%/13%; bahagian kosong kekal berkanun. Kadar sahaja — KWSP tiada pilihan jumlah tetap. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja."
+      "epfElectionHint": "Lebihan sukarela (i-Topup, Borang KWSP 17A/18A) menetapkan kadar pada atau melebihi kadar berkanun 11%/13%; bahagian kosong kekal berkanun. Kadar sahaja — KWSP tiada pilihan jumlah tetap. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja.",
+      "terminationType": "Jenis penamatan",
+      "terminationTypeUnspecified": "— Tidak dinyatakan —",
+      "terminationVoluntary": "Sukarela (peletakan jawatan)",
+      "terminationInvoluntary": "Tidak sukarela (pemecatan)",
+      "terminationRetired": "Persaraan",
+      "terminationContractEnd": "Tamat kontrak",
+      "terminationDeath": "Kematian",
+      "terminationOther": "Lain-lain",
+      "terminationReason": "Sebab (pilihan)",
+      "terminationReasonHint": "cth. tawaran lebih baik, pemberhentian"
     },
     "import": {
       "title": "Import pekerja",
