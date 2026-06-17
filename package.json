@@ -23,6 +23,7 @@
     "statutory:sync": "node --env-file=.env.local --import tsx scripts/statutory-sync.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-label": "^2.1.8",

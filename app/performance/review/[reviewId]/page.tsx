@@ -2,12 +2,13 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { peerFeedbackForReview, reviewForViewer, reviewGoals } from '@/core/performance';
+import { isAiConfigured } from '@/lib/ai';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
+import { ManagerReviewForm } from './manager-review-form';
 import {
   acknowledgeAction,
   linkGoalAction,
   requestPeerFeedbackAction,
-  submitManagerAction,
   submitSelfAction,
   unlinkGoalAction,
 } from '../../actions';
@@ -232,48 +233,16 @@ export default async function ReviewPage({
       <Card className="p-5">
         <h2 className="text-sm font-semibold">{t('managerReviewTitle')}</h2>
         {r.canManagerSubmit ? (
-          <form action={submitManagerAction} className="mt-3 space-y-4">
-            <input type="hidden" name="reviewId" value={r.id} />
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label={t('managerRatingLabel')}>
-                <RatingSelect name="managerRating" scale={scale} required defaultValue={r.managerRating} placeholder={t('selectRating')} />
-              </Field>
-              <Field label={t('overallRatingLabel')}>
-                <RatingSelect name="overallRating" scale={scale} required defaultValue={r.overallRating} placeholder={t('selectRating')} />
-              </Field>
-            </div>
-            <Field label={t('commentsOptionalLabel')}>
-              <textarea name="managerComments" rows={3} className={inputCls} defaultValue={r.managerComments ?? ''} />
-            </Field>
-            <div className="rounded-xl border border-border bg-muted/30 p-3">
-              <p className="text-xs font-medium text-muted-foreground">{t('payRecommendationHint')}</p>
-              <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Field label={t('meritIncreaseLabel')}>
-                  <input
-                    name="recommendedMeritPct"
-                    type="number"
-                    min="0"
-                    step="0.1"
-                    className={inputCls}
-                    defaultValue={r.recommendedMeritPct ?? ''}
-                    placeholder={t('meritIncreasePlaceholder')}
-                  />
-                </Field>
-                <Field label={t('oneOffBonusLabel')}>
-                  <input
-                    name="recommendedBonus"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className={inputCls}
-                    defaultValue={r.recommendedBonus ?? ''}
-                    placeholder={t('oneOffBonusPlaceholder')}
-                  />
-                </Field>
-              </div>
-            </div>
-            <Button type="submit">{t('finalizeReview')}</Button>
-          </form>
+          <ManagerReviewForm
+            reviewId={r.id}
+            scale={scale}
+            managerRating={r.managerRating}
+            overallRating={r.overallRating}
+            managerComments={r.managerComments}
+            recommendedMeritPct={r.recommendedMeritPct}
+            recommendedBonus={r.recommendedBonus}
+            aiEnabled={isAiConfigured()}
+          />
         ) : r.managerRating != null || r.overallRating != null ? (
           <dl className="mt-3 space-y-2 text-sm">
             <Row label={t('managerRatingLabel')} value={ratingLabel(scale, r.managerRating)} />

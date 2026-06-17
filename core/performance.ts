@@ -38,6 +38,7 @@ import {
 import { setCompensation } from './comp';
 import { setPayrollInput } from './payroll';
 import { assertCanDecide } from './approvals';
+import { aiModel, generateDraft, isAiConfigured, redactPII } from '../lib/ai';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -1831,4 +1832,137 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
       reviewerLeniency,
     };
   });
+}
+
+// ─────────────────── AI-assisted review drafting (ADR-0022 slice 5, ADR-0007) ───────────────────
+//
+// Draft-only, human-in-the-loop. A manager asks for a STARTING draft; we gather the signals already
+// on the review (the employee's self-assessment, linked goals, prior overall ratings, anonymized 360
+// feedback), redact direct identifiers, and ask the governed gateway (lib/ai) for prose. We never
+// write a rating, a comment, or pay — the text lands in the manager's editable textarea and only a
+// human `submitManagerReview` changes state. The single write here is an audit event noting that a
+// draft was generated. Graceful degradation: with no API key the feature is OFF (PerfError), so the
+// build and tests never need a live key — gate the UI on `isAiConfigured()`.
+
+export type DraftSignals = { hasSelf: boolean; goals: number; priorRatings: number; peerNotes: number };
+
+export async function draftManagerReview(
+  ctx: SessionContext,
+  p: { reviewId: string },
+): Promise<{ draft: string; signals: DraftSignals }> {
+  if (!isAiConfigured()) throw new PerfError('AI drafting is not configured on this instance.');
+
+  // 1) Authorize + gather signals in a short read transaction. NO LLM call inside the tx — we must
+  //    not hold a pooled connection open across a multi-second network call.
+  const gathered = await withTenant(ctx, async (tx) => {
+    const { review, cycle } = await loadReview(tx, p.reviewId);
+    if (cycle.status !== 'open') {
+      throw new PerfError(`The cycle is ${cycle.status}; a draft can only be prepared while it is open`);
+    }
+    if (review.status !== 'manager_review' && review.status !== 'self_review') {
+      throw new PerfError(`Manager review is not open (status: ${review.status})`);
+    }
+    // Same gate as submitManagerReview: reviewer-or-admin, never self.
+    await assertCanDecide(tx, ctx, review.employmentId, 'AI review draft');
+
+    const scale = cycle.ratingScale as RatingScale;
+
+    const goals = await tx
+      .select({
+        title: performanceGoal.title,
+        description: performanceGoal.description,
+        progress: performanceGoal.progress,
+        status: performanceGoal.status,
+        weight: performanceGoal.weight,
+      })
+      .from(reviewGoal)
+      .innerJoin(performanceGoal, eq(performanceGoal.id, reviewGoal.goalId))
+      .where(eq(reviewGoal.reviewId, review.id));
+
+    const prior = await tx
+      .select({ overall: performanceReview.overallRating })
+      .from(performanceReview)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
+      .where(
+        and(
+          eq(performanceReview.employmentId, review.employmentId),
+          sql`${performanceReview.id} <> ${review.id}`,
+          sql`${performanceReview.overallRating} is not null`,
+        ),
+      )
+      .orderBy(desc(reviewCycle.periodEnd))
+      .limit(5);
+
+    // 360 notes carry no author column and we read no peer identity → inherently anonymous.
+    const peers = await tx
+      .select({ strengths: peerFeedback.strengths, improvements: peerFeedback.improvements })
+      .from(peerFeedback)
+      .where(eq(peerFeedback.subjectEmploymentId, review.employmentId));
+
+    return { review, cycle, scale, goals, prior, peers };
+  });
+
+  // 2) Build a redacted prompt — the employee is referred to generically; peer notes are anonymous.
+  const { review, cycle, scale, goals, prior, peers } = gathered;
+  const lines: string[] = [
+    `Review cycle: ${redactPII(cycle.name)} (${cycle.periodStart} to ${cycle.periodEnd}).`,
+    `Rating scale: ${scale.map((s) => `${s.value}=${s.label}`).join(', ')}.`,
+  ];
+  if (review.selfRating != null) lines.push(`Employee self-rating: ${review.selfRating}.`);
+  if (review.selfComments) lines.push(`Employee self-assessment: ${redactPII(review.selfComments)}`);
+  if (review.goalsSummary) lines.push(`Goals the employee referenced: ${redactPII(review.goalsSummary)}`);
+  if (goals.length) {
+    lines.push('Linked goals (title — progress — status):');
+    for (const g of goals) {
+      const weight = g.weight != null ? ` (weight ${Number(g.weight)})` : '';
+      const desc = g.description ? `: ${redactPII(g.description)}` : '';
+      lines.push(`- ${redactPII(g.title)} — ${g.progress}% — ${g.status}${weight}${desc}`);
+    }
+  }
+  if (prior.length) lines.push(`Prior overall ratings (most recent first): ${prior.map((x) => x.overall).join(', ')}.`);
+  const peerNotes = peers.filter((n) => n.strengths || n.improvements);
+  if (peerNotes.length) {
+    lines.push('Anonymous peer (360) feedback:');
+    for (const n of peerNotes) {
+      if (n.strengths) lines.push(`- Strength: ${redactPII(n.strengths)}`);
+      if (n.improvements) lines.push(`- To improve: ${redactPII(n.improvements)}`);
+    }
+  }
+  if (lines.length <= 2) {
+    lines.push(
+      '(No self-assessment, goals, prior ratings, or peer feedback are available yet — write a brief, neutral starting draft the manager can expand.)',
+    );
+  }
+
+  const system = [
+    'You are assisting a manager writing a performance review for one of their direct reports at a Malaysian company.',
+    'Write a balanced, specific, professional manager-review narrative in British English.',
+    'Ground every statement in the signals provided. Do not invent achievements, numbers, or incidents.',
+    'Cover overall contribution, strengths evidenced by the goals and feedback, and concrete areas to develop.',
+    'Refer to the person as "the employee" — you are not given their name.',
+    'This is a DRAFT for the manager to edit: do not state a final rating or any pay decision.',
+    'Output only the review prose — no preamble, headings, bullet labels, or meta-commentary.',
+  ].join(' ');
+
+  // 3) Call the gateway OUTSIDE any DB transaction.
+  const draft = await generateDraft({ system, prompt: `Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`, maxTokens: 1536 });
+
+  // 4) Audit that a draft was generated (AGENT actor, PII-free payload). No state was changed.
+  await withTenant(ctx, async (tx) => {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-review.ai-draft-generated',
+      // AGENT actor with no id — actor_id is a uuid column; the model is recorded in the payload.
+      actor: { type: 'agent' },
+      subjectEmploymentId: review.employmentId,
+      payload: { cycleId: review.cycleId, model: aiModel() },
+    });
+  });
+
+  return {
+    draft,
+    signals: { hasSelf: review.selfRating != null, goals: goals.length, priorRatings: prior.length, peerNotes: peerNotes.length },
+  };
 }

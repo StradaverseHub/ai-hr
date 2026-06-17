@@ -11,6 +11,7 @@ import {
   completeCheckIn,
   createCycle,
   declineCompAction,
+  draftManagerReview,
   enactCompAction,
   linkGoalToReview,
   openCalibrationSession,
@@ -136,6 +137,21 @@ export async function acknowledgeAction(formData: FormData) {
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Acknowledged')}`);
+}
+
+/**
+ * AI draft (ADR-0022 slice 5) — RPC-shaped, NOT a redirecting form action: the generated prose must
+ * return to the client so it can land in the manager's editable textarea. Draft-only; nothing is
+ * persisted to the review here. Errors (incl. "AI not configured") come back as a string to toast.
+ */
+export async function draftManagerReviewAction(reviewId: string): Promise<{ draft?: string; error?: string }> {
+  const s = await getSession();
+  try {
+    const { draft } = await draftManagerReview(s, { reviewId });
+    return { draft };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
 }
 
 export async function linkGoalAction(formData: FormData) {
