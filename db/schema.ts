@@ -100,6 +100,7 @@ export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'complet
 export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
 // Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
 export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
+export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -991,6 +992,31 @@ export const calibrationEntry = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('calibration_entry_session_review_uq').on(t.sessionId, t.reviewId)],
+);
+
+// ─────────────────────── AI provider configuration (ADR-0023) ───────────────────────
+// Per-tenant BYOK config for the AI gateway: each row is one provider this tenant has set up with an
+// encrypted key. `api_key_ciphertext` is AES-256-GCM (tenant id as AAD) — NEVER selected for the UI
+// (column SELECT is REVOKEd from the app role in the RLS migration; reads go through a SECURITY
+// DEFINER resolver). Exactly one row may be `is_active` per tenant (partial-unique index, RLS
+// migration). Writes are admin-only (RLS WITH CHECK app.is_admin()).
+export const aiProviderConfig = pgTable(
+  'ai_provider_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    provider: aiProviderEnum('provider').notNull(),
+    model: text('model').notNull(),
+    // Encrypted at rest; opaque base64url token. Never returned to the client.
+    apiKeyCiphertext: text('api_key_ciphertext').notNull(),
+    keyLast4: text('key_last4').notNull(),
+    isActive: boolean('is_active').notNull().default(false),
+    createdByUserId: uuid('created_by_user_id'),
+    updatedByUserId: uuid('updated_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('ai_provider_config_tenant_provider_uq').on(t.tenantId, t.provider)],
 );
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────

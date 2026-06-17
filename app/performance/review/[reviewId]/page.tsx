@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { peerFeedbackForReview, reviewForViewer, reviewGoals } from '@/core/performance';
-import { isAiConfigured } from '@/lib/ai';
+import { isAiConfigured } from '@/core/ai-config';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { ManagerReviewForm } from './manager-review-form';
 import {
@@ -63,6 +63,7 @@ export default async function ReviewPage({
   const backHref = r.isSubject && !r.canManage ? '/me' : '/performance';
   const { linked: linkedGoals, linkable: linkableGoals } = await reviewGoals(s, reviewId);
   const f360 = await peerFeedbackForReview(s, reviewId);
+  const aiEnabled = r.canManagerSubmit ? await isAiConfigured(s) : false;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -241,7 +242,7 @@ export default async function ReviewPage({
             managerComments={r.managerComments}
             recommendedMeritPct={r.recommendedMeritPct}
             recommendedBonus={r.recommendedBonus}
-            aiEnabled={isAiConfigured()}
+            aiEnabled={aiEnabled}
           />
         ) : r.managerRating != null || r.overallRating != null ? (
           <dl className="mt-3 space-y-2 text-sm">

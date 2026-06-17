@@ -6,8 +6,9 @@
  *   - PII redaction: emails / IC numbers in free text are scrubbed before they reach the gateway;
  *   - auditability: a generated draft appends a `performance-review.ai-draft-generated` event.
  *
- * The LLM boundary (lib/ai) is mocked — these tests never touch the SDK, the network, or a real key.
- * redactPII + aiModel stay REAL (via importActual) so the redaction contract is genuinely exercised.
+ * The provider gateway (lib/ai generateDraft) and the config resolver (core/ai-config
+ * resolveActiveAiConfig) are mocked — these tests never touch any SDK, the network, or a real key.
+ * redactPII stays REAL (via importActual) so the redaction contract is genuinely exercised.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,15 +16,23 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 vi.mock('../lib/ai', async (importActual) => {
   const actual = await importActual<typeof import('../lib/ai')>();
   return {
-    ...actual, // keep redactPII + aiModel + AiNotConfiguredError real
-    isAiConfigured: vi.fn(() => true),
+    ...actual, // keep redactPII + registry + types real
     generateDraft: vi.fn(async () => 'DRAFT: the employee performed well this period.'),
+  };
+});
+
+vi.mock('../core/ai-config', async (importActual) => {
+  const actual = await importActual<typeof import('../core/ai-config')>();
+  return {
+    ...actual,
+    resolveActiveAiConfig: vi.fn(async () => ({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' })),
   };
 });
 
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
-import { generateDraft, isAiConfigured } from '../lib/ai';
+import { generateDraft } from '../lib/ai';
+import { resolveActiveAiConfig } from '../core/ai-config';
 import {
   createCycle,
   createGoal,
@@ -54,8 +63,10 @@ describe('ADR-0022 — AI-assisted review drafting', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    vi.mocked(isAiConfigured).mockReset().mockReturnValue(true);
     vi.mocked(generateDraft).mockReset().mockResolvedValue('DRAFT: the employee performed well this period.');
+    vi.mocked(resolveActiveAiConfig)
+      .mockReset()
+      .mockResolvedValue({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' });
   });
   afterAll(async () => {
     await closeAll();
@@ -112,7 +123,7 @@ describe('ADR-0022 — AI-assisted review drafting', () => {
 
     // The gateway saw redacted free text + the structured signals — and NOT the raw PII.
     expect(generateDraft).toHaveBeenCalledTimes(1);
-    const { prompt } = vi.mocked(generateDraft).mock.calls[0][0];
+    const { prompt } = vi.mocked(generateDraft).mock.calls[0][1];
     expect(prompt).toContain('[email]');
     expect(prompt).toContain('[id]');
     expect(prompt).not.toContain('jane@acme.test');
@@ -130,9 +141,9 @@ describe('ADR-0022 — AI-assisted review drafting', () => {
     expect(await eventTypesFor(base.tenantId, reviewId)).toContain('performance-review.ai-draft-generated');
   });
 
-  it('is OFF when the gateway is unconfigured (PerfError, no LLM call)', async () => {
+  it('is OFF when no AI config resolves (PerfError, no LLM call)', async () => {
     const { mCtx, reviewId } = await setup();
-    vi.mocked(isAiConfigured).mockReturnValue(false);
+    vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);
     await expect(draftManagerReview(mCtx, { reviewId })).rejects.toBeInstanceOf(PerfError);
     expect(generateDraft).not.toHaveBeenCalled();
   });

@@ -28,7 +28,8 @@
     "home": "Laman utama AI HR",
     "knowledgeBase": "Pusat Pengetahuan",
     "claimsConfig": "Konfigurasi tuntutan",
-    "claims": "Tuntutan"
+    "claims": "Tuntutan",
+    "aiConfig": "AI"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1104,6 +1105,28 @@
       "markPaid": "Tandakan terpilih sebagai dibayar",
       "missingBankWarning": "{count, plural, one {# penuntut tiada butiran bank dalam rekod — tambahkannya sebelum mengeksport.} other {# penuntut tiada butiran bank dalam rekod — tambahkannya sebelum mengeksport.}}",
       "footnote": "CSV ialah senarai neutral untuk muat naik manual, bukan fail giro bank tepat-bait. Menandakan tuntutan sebagai dibayar tidak boleh diundurkan dan merekodkan satu peristiwa domain."
+    },
+    "ai": {
+      "title": "Konfigurasi AI",
+      "subtitle": "Pilih penyedia dan model AI serta simpan kunci API anda, untuk menggerakkan Draf dengan AI pada penilaian prestasi.",
+      "secretMissing": "Tetapkan AI_CONFIG_SECRET pada pelayan untuk menyimpan kunci API dengan selamat. Sehingga itu, kunci tidak boleh disimpan di sini.",
+      "usingEnv": "Tiada penyedia aktif untuk organisasi anda — draf menggunakan lalai platform ({provider} · {model}).",
+      "privacyNote": "Draf dengan AI menghantar konteks penilaian yang disunting — tiada nama, e-mel atau nombor ID — kepada penyedia pilihan anda. Ia hanya mencadangkan teks; pengurus sentiasa menyunting dan menghantarnya.",
+      "active": "Aktif",
+      "envKeyPresent": "Kunci platform tersedia",
+      "model": "Model",
+      "apiKey": "Kunci API",
+      "apiKeyPlaceholder": "Tampal kunci API anda",
+      "notStorable": "Penyimpanan kunci dilumpuhkan sehingga AI_CONFIG_SECRET ditetapkan pada pelayan.",
+      "makeActive": "Guna penyedia ini untuk drafan AI",
+      "save": "Simpan",
+      "test": "Uji sambungan",
+      "testing": "Menguji…",
+      "testOk": "Sambungan berfungsi.",
+      "testFail": "Sambungan gagal.",
+      "useThis": "Guna penyedia ini",
+      "remove": "Buang",
+      "turnOff": "Matikan drafan AI"
     }
   },
   "topbar": {
