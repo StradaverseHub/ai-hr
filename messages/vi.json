@@ -29,7 +29,8 @@
     "knowledgeBase": "Cơ sở tri thức",
     "claimsConfig": "Cấu hình khoản chi",
     "claims": "Khoản chi",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "Thông báo"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

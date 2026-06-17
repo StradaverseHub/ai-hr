@@ -29,7 +29,8 @@
     "knowledgeBase": "知识库",
     "claimsConfig": "报销配置",
     "claims": "报销",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "通知"
   },
   "dashboard": {
     "title": "仪表盘",

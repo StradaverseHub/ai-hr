@@ -21,6 +21,8 @@ import { listPrincipals } from '@/lib/principals';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
+import { pendingApprovalsCount } from '@/core/approvals-inbox';
+import { NotificationBell } from '@/components/notification-bell';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
@@ -38,6 +40,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
+  // Notification bell shows the approvals queue — only managers/admins have one.
+  const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
+  const pendingApprovals = canApprove ? await pendingApprovalsCount(session, scopeIds) : 0;
   return (
     <html
       lang={locale}
@@ -68,6 +73,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <div className="flex items-center gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
+                  {canApprove && <NotificationBell count={pendingApprovals} />}
                   <span data-tour="language">
                     <LanguageSwitcher />
                   </span>

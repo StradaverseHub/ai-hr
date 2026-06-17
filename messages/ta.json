@@ -29,7 +29,8 @@
     "knowledgeBase": "அறிவுத் தளம்",
     "claimsConfig": "கோரிக்கை அமைப்பு",
     "claims": "கோரிக்கைகள்",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "அறிவிப்புகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

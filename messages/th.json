@@ -29,7 +29,8 @@
     "knowledgeBase": "ฐานความรู้",
     "claimsConfig": "ตั้งค่าการเบิก",
     "claims": "การเบิก",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "การแจ้งเตือน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

@@ -29,7 +29,8 @@
     "knowledgeBase": "Pusat Pengetahuan",
     "claimsConfig": "Konfigurasi tuntutan",
     "claims": "Tuntutan",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "Pemberitahuan"
   },
   "dashboard": {
     "title": "Papan pemuka",

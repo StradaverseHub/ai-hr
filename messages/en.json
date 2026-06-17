@@ -29,7 +29,8 @@
     "knowledgeBase": "Knowledge Base",
     "claimsConfig": "Claims config",
     "claims": "Claims",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "Notifications"
   },
   "dashboard": {
     "title": "Dashboard",
