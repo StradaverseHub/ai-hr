@@ -29,7 +29,8 @@
     "knowledgeBase": "知识库",
     "claimsConfig": "报销配置",
     "claims": "报销",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "通知"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -248,7 +249,7 @@
   },
   "leave": {
     "title": "休假",
-    "description": "申请休假并审批待办申请",
+    "description": "查看您的假期余额、申请休假并跟踪您的请求。",
     "chipRequested": "已申请",
     "chipApproved": "已批准",
     "chipPending": "待审",
@@ -286,7 +287,8 @@
     "fieldEndDate": "结束日期",
     "fieldReason": "原因（选填）",
     "reasonPlaceholder": "家庭出游",
-    "submitRequest": "提交申请"
+    "submitRequest": "提交申请",
+    "myRequestsTitle": "我的请假记录"
   },
   "attendance": {
     "title": "考勤",
@@ -511,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "他们在哪些方面可以改进？",
     "feedbackNamed": "允许被评估者看到我的姓名",
     "feedbackSubmit": "提交反馈",
-    "feedbackDecline": "婉拒"
+    "feedbackDecline": "婉拒",
+    "secOverview": "概览",
+    "secProfile": "个人资料",
+    "secPay": "薪资",
+    "secPerformance": "绩效",
+    "secDocuments": "文档"
   },
   "approvals": {
     "title": "审批",

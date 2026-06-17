@@ -14,6 +14,7 @@ import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { SectionJumpNav } from '@/components/section-jump-nav';
 import {
   myCheckIn,
   myCheckOut,
@@ -124,6 +125,18 @@ export default async function MePage({
 
       <ErrorBanner message={error} />
 
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <SectionJumpNav
+          sections={[
+            { id: 'overview', label: t('secOverview') },
+            { id: 'profile', label: t('secProfile') },
+            { id: 'pay', label: t('secPay') },
+            { id: 'performance', label: t('secPerformance') },
+            { id: 'documents', label: t('secDocuments') },
+          ]}
+        />
+        <div className="min-w-0 flex-1 space-y-6">
+          <section id="overview" className="scroll-mt-4">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Attendance */}
         <Card className="p-5" data-tour="me-attendance">
@@ -336,7 +349,9 @@ export default async function MePage({
           </ul>
         </Card>
       </div>
+          </section>
 
+          <section id="profile" className="scroll-mt-4">
       {/* My details — contact self-edit (direct) + pay-affecting changes (approval-gated, ADR-0012) */}
       <Card className="p-5">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -447,7 +462,9 @@ export default async function MePage({
           </div>
         </div>
       </Card>
+          </section>
 
+          <section id="pay" className="scroll-mt-4">
       {/* Payslips */}
       <Card className="overflow-hidden" data-tour="me-payslips">
         <SectionHeader title={t('myPayslips')} count={payslips.length} />
@@ -489,7 +506,9 @@ export default async function MePage({
           </table>
         </div>
       </Card>
+          </section>
 
+          <section id="performance" className="scroll-mt-4 space-y-6">
       {/* Performance reviews */}
       {reviews.length > 0 && (
         <Card className="overflow-hidden">
@@ -714,7 +733,9 @@ export default async function MePage({
           </ul>
         </Card>
       )}
+          </section>
 
+          <section id="documents" className="scroll-mt-4">
       {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
       <Card className="p-5">
         <SectionHeader title={t('taxStatementEa')} />
@@ -738,6 +759,9 @@ export default async function MePage({
           ))}
         </ul>
       </Card>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

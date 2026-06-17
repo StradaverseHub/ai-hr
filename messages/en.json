@@ -29,7 +29,8 @@
     "knowledgeBase": "Knowledge Base",
     "claimsConfig": "Claims config",
     "claims": "Claims",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "Notifications"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -248,7 +249,7 @@
   },
   "leave": {
     "title": "Leave",
-    "description": "Request leave and approve pending requests",
+    "description": "Check your balance, apply for leave, and track your requests.",
     "chipRequested": "Requested",
     "chipApproved": "Approved",
     "chipPending": "Pending",
@@ -286,7 +287,8 @@
     "fieldEndDate": "End date",
     "fieldReason": "Reason (optional)",
     "reasonPlaceholder": "Family trip",
-    "submitRequest": "Submit request"
+    "submitRequest": "Submit request",
+    "myRequestsTitle": "My leave history"
   },
   "attendance": {
     "title": "Attendance",
@@ -511,7 +513,12 @@
       "employerContributionsHeading": "Employer contributions (not deducted from you)",
       "totalEmployerCost": "Total employer cost",
       "proratedNote": "Prorated on {days, plural, one {# day} other {# days}} worked in this period."
-    }
+    },
+    "secOverview": "Overview",
+    "secProfile": "Profile",
+    "secPay": "Pay",
+    "secPerformance": "Performance",
+    "secDocuments": "Documents"
   },
   "approvals": {
     "title": "Approvals",

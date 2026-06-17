@@ -68,17 +68,19 @@ export default async function EmployeePage({
   if (!emp) notFound();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [history, balances, requests, departments, reporting, employees, comp, statutory] =
-    await Promise.all([
-      assignmentHistory(s, employmentId),
-      leaveBalances(s, employmentId),
-      leaveRequestsFor(s, employmentId),
-      listDepartments(s),
-      reportingLinesFor(s, employmentId),
-      listEmployees(s),
-      currentCompensation(s, employmentId),
-      getStatutoryProfileMY(s, emp.personId),
-    ]);
+  const [history, balances, requests, departments, reporting, employees] = await Promise.all([
+    assignmentHistory(s, employmentId),
+    leaveBalances(s, employmentId),
+    leaveRequestsFor(s, employmentId),
+    listDepartments(s),
+    reportingLinesFor(s, employmentId),
+    listEmployees(s),
+  ]);
+  // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
+  // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
+  // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
+  const comp = admin ? await currentCompensation(s, employmentId) : null;
+  const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
@@ -151,6 +153,7 @@ export default async function EmployeePage({
         </div>
       </Card>
 
+      {admin && (
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <SectionHeader title={t('compensation')} />
@@ -280,6 +283,7 @@ export default async function EmployeePage({
           </form>
         </Card>
       </div>
+      )}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('assignmentHistory')} count={history.length} />

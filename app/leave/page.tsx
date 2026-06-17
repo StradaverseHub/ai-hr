@@ -1,63 +1,48 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { CalendarCheck2, CheckCircle2, Clock, XCircle, type LucideIcon } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import {
-  leaveBalancesAll,
-  listEmployees,
-  listLeaveTypes,
-  listLeaveRequests,
-  plannedAbsences,
-} from '@/core/read';
+import { leaveBalancesAll, listEmployees, listLeaveTypes, listLeaveRequests } from '@/core/read';
 import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
-import { PlannedAbsences, styleFor } from '@/components/planned-absences';
-import { TimelineNav } from '@/components/timeline-nav';
-import { decideLeaveAction, requestLeaveAction } from './actions';
+import { styleFor } from '@/components/planned-absences';
+import { requestLeaveAction } from './actions';
 
 const REQ_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
 };
-const STATUSES = ['pending', 'approved', 'rejected'] as const;
-type ReqStatus = (typeof STATUSES)[number];
 
+// Self-service Leave page (consultant feedback #8/#10): Balance + History + Apply only. Team
+// availability lives on the Dashboard (the "Planned absences" timeline); approvals live in the
+// Approvals inbox. So this page no longer carries the team-availability calendar, the status-filter
+// chips, or inline approve/reject — keeping the employee/manager view focused on their own leave.
 export default async function LeavePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; abs?: string; status?: string }>;
+  searchParams: Promise<{ error?: string }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const t = await getTranslations('leave');
   const admin = isAdmin(session);
   const today = new Date().toISOString().slice(0, 10);
   const sp = await searchParams;
-  const statusFilter = STATUSES.includes(sp.status as ReqStatus) ? (sp.status as ReqStatus) : null;
 
-  // Same 14-day window semantics as the dashboard: default starts 2 days before today,
-  // ?abs=YYYY-MM-DD (timeline nav) overrides the window start.
-  const now = new Date();
-  const todayMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const todayIso = new Date(todayMs).toISOString().slice(0, 10);
-  const ABS_DAYS = 14;
-  const absParam = sp.abs && /^\d{4}-\d{2}-\d{2}$/.test(sp.abs) ? sp.abs : null;
-  const startMs = absParam ? Date.parse(`${absParam}T00:00:00Z`) : todayMs - 2 * 86_400_000;
-  const absFrom = new Date(startMs).toISOString().slice(0, 10);
-  const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
-
-  const [employees, leaveTypes, requests, absences, balances] = await Promise.all([
+  const [employees, leaveTypes, requests, balances] = await Promise.all([
     listEmployees(session, scopeIds),
     listLeaveTypes(session),
     listLeaveRequests(session, scopeIds),
-    plannedAbsences(session, scopeIds, { from: absFrom, to: absTo }),
     leaveBalancesAll(session, scopeIds),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
 
-  // Balances are personal: admins see everyone in scope; everyone else sees ONLY their
-  // own (RLS already prevents reading peers; managers' reports are filtered out here too).
+  // Balances are personal: admins see everyone in scope; everyone else sees ONLY their own.
   const visibleBalances = admin ? balances : balances.filter((b) => b.personId === session.personId);
+
+  // History is personal too: a manager/employee sees only their OWN requests here (team requests and
+  // approvals are in the Approvals inbox). Admins keep the full list as an oversight read.
+  const history = admin
+    ? requests
+    : requests.filter((r) => session.personId != null && r.personId === session.personId);
 
   // Pivot balances: one row per employee, one column per leave type seen.
   const balTypes = [...new Map(visibleBalances.map((b) => [b.leaveTypeId, b.leaveType])).entries()].sort(
@@ -70,67 +55,17 @@ export default async function LeavePage({
     balByEmp.set(b.employmentId, e);
   }
 
-  // Status chips (reference-style) — counts over what the viewer may see; chips filter the table.
-  const counts = {
-    pending: requests.filter((r) => r.status === 'pending').length,
-    approved: requests.filter((r) => r.status === 'approved').length,
-    rejected: requests.filter((r) => r.status === 'rejected').length,
-  };
-  const chipHref = (status?: ReqStatus) => {
-    const q = new URLSearchParams();
-    if (absParam) q.set('abs', absParam);
-    if (status) q.set('status', status);
-    const qs = q.toString();
-    return qs ? `/leave?${qs}` : '/leave';
-  };
-  const chips: { key?: ReqStatus; label: string; count: number; Icon: LucideIcon; active: boolean }[] = [
-    { label: t('chipRequested'), count: requests.length, Icon: CalendarCheck2, active: !statusFilter },
-    { key: 'approved', label: t('chipApproved'), count: counts.approved, Icon: CheckCircle2, active: statusFilter === 'approved' },
-    { key: 'pending', label: t('chipPending'), count: counts.pending, Icon: Clock, active: statusFilter === 'pending' },
-    { key: 'rejected', label: t('chipRejected'), count: counts.rejected, Icon: XCircle, active: statusFilter === 'rejected' },
-  ];
-  const filtered = statusFilter ? requests.filter((r) => r.status === statusFilter) : requests;
-  const showActions = filtered.some(
-    (r) => r.status === 'pending' && (admin || (session.personId && r.personId !== session.personId)),
-  );
-
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div data-tour="leave-intro">
         <PageHeader title={t('title')} description={t('description')} />
       </div>
 
-      <PlannedAbsences
-        rows={absences}
-        from={absFrom}
-        days={ABS_DAYS}
-        todayIso={todayIso}
-        controls={<TimelineNav from={absFrom} isDefault={!absParam} basePath="/leave" />}
-      />
-
       {sp.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {sp.error}
         </div>
       )}
-
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {chips.map((c) => (
-          <Link
-            key={c.label}
-            href={chipHref(c.key)}
-            className={`rounded-[1.25rem] border bg-card p-4 shadow-[var(--shadow-card)] transition-colors ${
-              c.active ? 'border-primary/60 ring-1 ring-primary/40' : 'border-border hover:border-primary/40'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              <c.Icon className="size-3.5" />
-              {c.label}
-            </div>
-            <div className="mt-1 text-2xl font-semibold tabular-nums">{c.count}</div>
-          </Link>
-        ))}
-      </div>
 
       <Card className="overflow-hidden" data-tour="leave-balance">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
@@ -176,7 +111,6 @@ export default async function LeavePage({
                                 <span className="text-muted-foreground"> / {b.accrued}</span>
                               </>
                             ) : (
-                              // Non-accrued type (e.g. per-occurrence sick leave): no balance to show.
                               <span className="text-muted-foreground">—</span>
                             )}
                             {b.pending > 0 && (
@@ -207,12 +141,8 @@ export default async function LeavePage({
 
       <Card className="overflow-hidden" data-tour="leave-requests">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          {t('requestsTitle')}
-          <span className="ml-2 font-normal text-muted-foreground">
-            {statusFilter
-              ? t('requestsCountFiltered', { status: t(`status.${statusFilter}`), count: filtered.length })
-              : t('requestsCountTotal', { count: filtered.length })}
-          </span>
+          {admin ? t('requestsTitle') : t('myRequestsTitle')}
+          <span className="ml-2 font-normal text-muted-foreground">{t('requestsCountTotal', { count: history.length })}</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -224,15 +154,11 @@ export default async function LeavePage({
                 <th className="px-4 py-2 font-medium">{t('colDates')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                {showActions && <th className="px-4 py-2 text-right font-medium">{t('colAction')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {filtered.map((r) => {
+              {history.map((r) => {
                 const { chip, Icon } = styleFor(r.typeCode);
-                const canAct =
-                  r.status === 'pending' &&
-                  (admin || (session.personId != null && r.personId !== session.personId));
                 return (
                   <tr key={r.id}>
                     <td className="px-4 py-2.5">
@@ -259,37 +185,13 @@ export default async function LeavePage({
                         {t(`status.${r.status}`)}
                       </span>
                     </td>
-                    {showActions && (
-                      <td className="px-4 py-2.5">
-                        {canAct && (
-                          <div className="flex justify-end gap-2">
-                            <form action={decideLeaveAction}>
-                              <input type="hidden" name="leaveRequestId" value={r.id} />
-                              <input type="hidden" name="decision" value="approved" />
-                              <Button type="submit" size="sm">
-                                {t('approve')}
-                              </Button>
-                            </form>
-                            <form action={decideLeaveAction}>
-                              <input type="hidden" name="leaveRequestId" value={r.id} />
-                              <input type="hidden" name="decision" value="rejected" />
-                              <Button type="submit" size="sm" variant="outline">
-                                {t('reject')}
-                              </Button>
-                            </form>
-                          </div>
-                        )}
-                      </td>
-                    )}
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {history.length === 0 && (
                 <tr>
-                  <td colSpan={showActions ? 7 : 6} className="px-4 py-10 text-center text-muted-foreground">
-                    {statusFilter
-                      ? t('requestsEmptyFiltered', { status: t(`status.${statusFilter}`) })
-                      : t('requestsEmpty')}
+                  <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                    {t('requestsEmpty')}
                   </td>
                 </tr>
               )}

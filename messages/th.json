@@ -29,7 +29,8 @@
     "knowledgeBase": "ฐานความรู้",
     "claimsConfig": "ตั้งค่าการเบิก",
     "claims": "การเบิก",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "การแจ้งเตือน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -248,7 +249,7 @@
   },
   "leave": {
     "title": "การลา",
-    "description": "ขอลาและอนุมัติคำขอที่รออยู่",
+    "description": "ตรวจสอบยอดวันลา ยื่นลา และติดตามคำขอของคุณ",
     "chipRequested": "ขอแล้ว",
     "chipApproved": "อนุมัติแล้ว",
     "chipPending": "รออนุมัติ",
@@ -286,7 +287,8 @@
     "fieldEndDate": "วันที่สิ้นสุด",
     "fieldReason": "เหตุผล (ไม่บังคับ)",
     "reasonPlaceholder": "ไปเที่ยวกับครอบครัว",
-    "submitRequest": "ส่งคำขอ"
+    "submitRequest": "ส่งคำขอ",
+    "myRequestsTitle": "ประวัติการลาของฉัน"
   },
   "attendance": {
     "title": "การเข้างาน",
@@ -511,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "พวกเขาควรปรับปรุงในด้านใด",
     "feedbackNamed": "ให้ผู้ที่ถูกประเมินเห็นชื่อของฉัน",
     "feedbackSubmit": "ส่งความคิดเห็น",
-    "feedbackDecline": "ปฏิเสธ"
+    "feedbackDecline": "ปฏิเสธ",
+    "secOverview": "ภาพรวม",
+    "secProfile": "โปรไฟล์",
+    "secPay": "ค่าจ้าง",
+    "secPerformance": "ผลงาน",
+    "secDocuments": "เอกสาร"
   },
   "approvals": {
     "title": "การอนุมัติ",

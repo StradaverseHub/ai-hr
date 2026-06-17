@@ -29,7 +29,8 @@
     "knowledgeBase": "Cơ sở tri thức",
     "claimsConfig": "Cấu hình khoản chi",
     "claims": "Khoản chi",
-    "aiConfig": "AI"
+    "aiConfig": "AI",
+    "notifications": "Thông báo"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -248,7 +249,7 @@
   },
   "leave": {
     "title": "Nghỉ phép",
-    "description": "Yêu cầu nghỉ phép và phê duyệt các yêu cầu chờ xử lý",
+    "description": "Kiểm tra số dư phép, xin nghỉ và theo dõi các yêu cầu của bạn.",
     "chipRequested": "Đã yêu cầu",
     "chipApproved": "Đã duyệt",
     "chipPending": "Chờ duyệt",
@@ -286,7 +287,8 @@
     "fieldEndDate": "Ngày kết thúc",
     "fieldReason": "Lý do (tùy chọn)",
     "reasonPlaceholder": "Đi du lịch gia đình",
-    "submitRequest": "Gửi yêu cầu"
+    "submitRequest": "Gửi yêu cầu",
+    "myRequestsTitle": "Lịch sử nghỉ phép của tôi"
   },
   "attendance": {
     "title": "Chấm công",
@@ -511,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "Họ có thể cải thiện ở đâu?",
     "feedbackNamed": "Cho phép người được đánh giá thấy tên tôi",
     "feedbackSubmit": "Gửi phản hồi",
-    "feedbackDecline": "Từ chối"
+    "feedbackDecline": "Từ chối",
+    "secOverview": "Tổng quan",
+    "secProfile": "Hồ sơ",
+    "secPay": "Lương",
+    "secPerformance": "Hiệu suất",
+    "secDocuments": "Tài liệu"
   },
   "approvals": {
     "title": "Phê duyệt",
