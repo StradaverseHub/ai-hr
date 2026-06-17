@@ -11,11 +11,11 @@ Status legend: `todo` · `in progress` · `done` · `needs decision` (owner fork
 
 | # | Theme | Module | Item | By | Sev | Verified current state | Status |
 |---|---|---|---|---|---|---|---|
-| 5 | Access control | People / Perf | Manager can see subordinate **base compensation**; restrict to HR/Payroll/C&B/HRBP | Jess | High | People detail page renders `currentCompensation` (RLS visibility is downward → a manager can read a report's comp). The perf-review **merit/bonus recommendation** is a deliberate manager-authored exception. | todo (Wave 1) |
-| 8 | UX | Leave | Manager: "too many things on one page" — remove Team Availability calendar from Leave; keep it on the Dashboard | Jess | High | Leave page carries balances + team availability + requests in one screen | todo (Wave 1) |
-| 10 | UX | Leave | Same as #8 — Leave page should show only Balance + History + Apply; no team calendar/approval queue/team requests | Jess | Med | (duplicate of #8 — one task) | todo (Wave 1) |
-| 11 | UX | Approvals | A 🔔 notification bell (top-right) with a red badge for pending actions; approvals as actionable notifications | — | Low | Approvals live only in the `/approvals` inbox; no global indicator | todo (Wave 1) |
-| 4 | UX | People / Profile | Employee profile is one overloaded screen → introduce a **persistent sub-navigation** (sectioned tabs) | Jess | High | Profile pages render every section in one long scroll | todo (Wave 1) |
+| 5 | Access control | People / Perf | Manager can see subordinate **base compensation**; restrict to HR/Payroll/C&B/HRBP | Jess | High | People detail page renders `currentCompensation` (RLS visibility is downward → a manager can read a report's comp). The perf-review **merit/bonus recommendation** is a deliberate manager-authored exception. | done ✓ |
+| 8 | UX | Leave | Manager: "too many things on one page" — remove Team Availability calendar from Leave; keep it on the Dashboard | Jess | High | Leave page carries balances + team availability + requests in one screen | done ✓ |
+| 10 | UX | Leave | Same as #8 — Leave page should show only Balance + History + Apply; no team calendar/approval queue/team requests | Jess | Med | (duplicate of #8 — one task) | done ✓ |
+| 11 | UX | Approvals | A 🔔 notification bell (top-right) with a red badge for pending actions; approvals as actionable notifications | — | Low | Approvals live only in the `/approvals` inbox; no global indicator | done ✓ |
+| 4 | UX | People / Profile | Employee profile is one overloaded screen → introduce a **persistent sub-navigation** (sectioned tabs) | Jess | High | Profile pages render every section in one long scroll | done ✓ |
 | 7 | Payroll/statutory | Payroll | **HRDF (HRD Corp) levy** is missing — add config (rates + T&C) | Yi Wei | High | Not present anywhere | todo (Wave 2) · needs sourcing |
 | 2 | Payroll/statutory | Payroll (EPF) | EPF **contribution modes**: Auto / Manual-% / Manual-fixed / Semi-auto / No-contribution, admin-overridable | Yi Wei | High | Exact **auto** rates only (they acknowledge the rate is now correct) | todo (Wave 2) · needs sourcing (voluntary/special rates) |
 | 1 | Payroll/statutory | Payroll | Allow **multiple payroll cycles in the same month** (off-cycle / bonus / mid-month) | Yi Wei | High | Unique index `(company, 'YYYY-MM')` → exactly one batch per month | todo (Wave 2) · needs decision (period model + MTD aggregation) |
@@ -31,7 +31,7 @@ Status legend: `todo` · `in progress` · `done` · `needs decision` (owner fork
 
 ## Plan — four waves
 
-**Wave 1 — quick, high-trust wins (UX + the one security item).** ← *in progress*
+**Wave 1 — quick, high-trust wins (UX + the one security item).** ← *DONE (merged)*
 1. **#5** Access-control: audit where managers see base comp; restrict to admins (keep the perf merit/bonus recommendation the manager authors).
 2. **#8/#10** Leave page declutter → Balance + History + Apply; team availability lives on the Dashboard.
 3. **#11** Notification bell — global pending-approvals indicator.
