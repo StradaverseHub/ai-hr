@@ -7,11 +7,14 @@ import {
   acknowledgeReview,
   cancelCheckIn,
   closeCycle,
+  commitCalibration,
   completeCheckIn,
   createCycle,
   declineCompAction,
   enactCompAction,
   linkGoalToReview,
+  openCalibrationSession,
+  proposeCalibration,
   moveCycleToCalibration,
   openCycle,
   releaseCycle,
@@ -207,6 +210,47 @@ export async function requestPeerFeedbackAction(formData: FormData) {
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Feedback requested')}`);
+}
+
+export async function openCalibrationAction(formData: FormData) {
+  const s = await getSession();
+  const cycleId = String(formData.get('cycleId'));
+  try {
+    await openCalibrationSession(s, { cycleId });
+  } catch (e) {
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/${cycleId}`);
+  redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Calibration opened')}`);
+}
+
+export async function proposeCalibrationAction(formData: FormData) {
+  const s = await getSession();
+  const cycleId = String(formData.get('cycleId'));
+  const rating = num(formData.get('proposedRating'));
+  try {
+    await proposeCalibration(s, {
+      sessionId: String(formData.get('sessionId')),
+      reviewId: String(formData.get('reviewId')),
+      proposedRating: rating ?? null,
+    });
+  } catch (e) {
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/${cycleId}`);
+  redirect(`/performance/${cycleId}`);
+}
+
+export async function commitCalibrationAction(formData: FormData) {
+  const s = await getSession();
+  const cycleId = String(formData.get('cycleId'));
+  try {
+    await commitCalibration(s, { sessionId: String(formData.get('sessionId')) });
+  } catch (e) {
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/${cycleId}`);
+  redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Calibration committed')}`);
 }
 
 export async function enactAction(formData: FormData) {

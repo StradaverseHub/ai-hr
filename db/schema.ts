@@ -98,6 +98,8 @@ export const goalStatusEnum = pgEnum('goal_status', ['active', 'achieved', 'miss
 export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'completed', 'cancelled']);
 // 360 peer-feedback request lifecycle (ADR-0022, Phase B slice 3).
 export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
+// Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
+export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -951,6 +953,44 @@ export const peerFeedback = pgTable(
     uniqueIndex('peer_feedback_request_uq').on(t.requestId),
     index('peer_feedback_subject_idx').on(t.subjectEmploymentId),
   ],
+);
+
+// Calibration (ADR-0022, slice 4). A session over a cycle in 'calibration' status; participants propose
+// adjusted overall ratings, an admin COMMITS them (writes performance_review.overall_rating + an event).
+// Advisory by default — a proposal never mutates a rating until the explicit commit. Admin-scoped (the
+// session belongs to a cycle whose writes are already admin-gated); RLS = tenant isolation.
+export const calibrationSession = pgTable(
+  'calibration_session',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    cycleId: uuid('cycle_id')
+      .notNull()
+      .references(() => reviewCycle.id),
+    status: calibrationStatusEnum('status').notNull().default('open'),
+    committedAt: timestamp('committed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('calibration_session_cycle_idx').on(t.cycleId)],
+);
+
+export const calibrationEntry = pgTable(
+  'calibration_entry',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    sessionId: uuid('session_id')
+      .notNull()
+      .references(() => calibrationSession.id),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    proposedRating: integer('proposed_rating'),
+    committedRating: integer('committed_rating'),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('calibration_entry_session_review_uq').on(t.sessionId, t.reviewId)],
 );
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────

@@ -393,6 +393,20 @@
       "when": 1781672199785,
       "tag": "0055_slow_kabuki",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1781673425192,
+      "tag": "0056_shocking_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1781673425242,
+      "tag": "0057_calibration_rls",
+      "breakpoints": true
     }
   ]
 }

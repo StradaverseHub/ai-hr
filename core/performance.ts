@@ -19,6 +19,8 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
+  calibrationEntry,
+  calibrationSession,
   compensation,
   employment,
   payrollBatch,
@@ -1636,5 +1638,197 @@ export function peerFeedbackForReview(
       }
     }
     return { feedback, pending, canManage, invitable };
+  });
+}
+
+// ─────────────────────── Calibration + analytics (ADR-0022, slice 4) ───────────────────────
+//
+// Advisory calibration: an admin opens a session over a cycle (in 'calibration' status), proposes
+// adjusted overall ratings across the cohort against the live distribution, then COMMITS — only the
+// commit writes performance_review.overall_rating (+ a 'performance-review.calibrated' event). A proposal
+// never silently mutates a rating. Admin-only (RLS). The view also carries light analytics: the rating
+// distribution and per-reviewer leniency (average overall).
+
+/** Open (or reuse the open) calibration session for a cycle in 'calibration' status. Admin only. */
+export async function openCalibrationSession(ctx: SessionContext, p: { cycleId: string }): Promise<{ sessionId: string }> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  return withTenant(ctx, async (tx) => {
+    const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, p.cycleId)).limit(1);
+    if (!cycle) throw new PerfError('Cycle not found');
+    if (cycle.status !== 'calibration') throw new PerfError(`Calibration runs while the cycle is in calibration (it is ${cycle.status})`);
+    const [open] = await tx
+      .select({ id: calibrationSession.id })
+      .from(calibrationSession)
+      .where(and(eq(calibrationSession.cycleId, p.cycleId), eq(calibrationSession.status, 'open')))
+      .limit(1);
+    if (open) return { sessionId: open.id };
+    const [row] = await tx
+      .insert(calibrationSession)
+      .values({ tenantId: ctx.tenantId, cycleId: p.cycleId })
+      .returning({ id: calibrationSession.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'calibration-session',
+      aggregateId: row.id,
+      eventType: 'calibration-session.opened',
+      actor: actorOf(ctx),
+      payload: { cycleId: p.cycleId },
+    });
+    return { sessionId: row.id };
+  });
+}
+
+/** Propose an adjusted overall rating for one review in the session (a draft — no event, no rating write). */
+export async function proposeCalibration(
+  ctx: SessionContext,
+  p: { sessionId: string; reviewId: string; proposedRating: number | null; note?: string },
+): Promise<void> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  await withTenant(ctx, async (tx) => {
+    const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
+    if (!sess) throw new PerfError('Session not found');
+    if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
+    if (p.proposedRating != null) {
+      const [cycle] = await tx.select({ scale: reviewCycle.ratingScale }).from(reviewCycle).where(eq(reviewCycle.id, sess.cycleId)).limit(1);
+      assertRatingInScale(cycle.scale as RatingScale, p.proposedRating, 'Proposed rating');
+    }
+    // Draft upsert (no DomainEvent — calibration scratchpad; the COMMIT is the audited act).
+    const [existing] = await tx
+      .select({ id: calibrationEntry.id })
+      .from(calibrationEntry)
+      .where(and(eq(calibrationEntry.sessionId, p.sessionId), eq(calibrationEntry.reviewId, p.reviewId)))
+      .limit(1);
+    if (existing) {
+      await tx.update(calibrationEntry).set({ proposedRating: p.proposedRating, note: p.note?.trim() || null }).where(eq(calibrationEntry.id, existing.id));
+    } else {
+      await tx.insert(calibrationEntry).values({ tenantId: ctx.tenantId, sessionId: p.sessionId, reviewId: p.reviewId, proposedRating: p.proposedRating, note: p.note?.trim() || null });
+    }
+  });
+}
+
+/** Commit the session: write each proposed overall rating onto its review (+ event), close the session. */
+export async function commitCalibration(ctx: SessionContext, p: { sessionId: string }): Promise<{ applied: number }> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  return withTenant(ctx, async (tx) => {
+    const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
+    if (!sess) throw new PerfError('Session not found');
+    if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
+    const entries = await tx
+      .select({ id: calibrationEntry.id, reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating })
+      .from(calibrationEntry)
+      .where(eq(calibrationEntry.sessionId, p.sessionId));
+    let applied = 0;
+    for (const e of entries) {
+      if (e.proposed == null) continue;
+      const [rev] = await tx.select({ employmentId: performanceReview.employmentId }).from(performanceReview).where(eq(performanceReview.id, e.reviewId)).limit(1);
+      if (!rev) continue;
+      await tx.update(performanceReview).set({ overallRating: e.proposed }).where(eq(performanceReview.id, e.reviewId));
+      await tx.update(calibrationEntry).set({ committedRating: e.proposed }).where(eq(calibrationEntry.id, e.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'performance-review',
+        aggregateId: e.reviewId,
+        eventType: 'performance-review.calibrated',
+        actor: actorOf(ctx),
+        subjectEmploymentId: rev.employmentId,
+        payload: { sessionId: p.sessionId },
+      });
+      applied += 1;
+    }
+    await tx.update(calibrationSession).set({ status: 'committed', committedAt: new Date() }).where(eq(calibrationSession.id, p.sessionId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'calibration-session',
+      aggregateId: p.sessionId,
+      eventType: 'calibration-session.committed',
+      actor: actorOf(ctx),
+      payload: { applied },
+    });
+    return { applied };
+  });
+}
+
+export type CalibrationRow = {
+  reviewId: string;
+  employee: string;
+  reviewer: string | null;
+  overallRating: number | null;
+  proposedRating: number | null;
+};
+export type CalibrationView = {
+  sessionId: string | null;
+  status: 'open' | 'committed' | 'none';
+  ratingScale: RatingScale;
+  rows: CalibrationRow[];
+  distribution: { value: number; label: string; count: number }[];
+  reviewerLeniency: { reviewer: string; avg: number; count: number }[];
+};
+
+/** The calibration cockpit for a cycle (admin): roster + open-session proposals + distribution + per-
+ *  reviewer leniency. Returns rows ordered by employee. */
+export function calibrationView(ctx: SessionContext, cycleId: string): Promise<CalibrationView> {
+  return withTenant(ctx, async (tx) => {
+    const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, cycleId)).limit(1);
+    const scale = (cycle?.ratingScale ?? DEFAULT_RATING_SCALE) as RatingScale;
+    const [sess] = await tx
+      .select({ id: calibrationSession.id, status: calibrationSession.status })
+      .from(calibrationSession)
+      .where(eq(calibrationSession.cycleId, cycleId))
+      .orderBy(desc(calibrationSession.createdAt))
+      .limit(1);
+    const proposals = sess
+      ? await tx.select({ reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating }).from(calibrationEntry).where(eq(calibrationEntry.sessionId, sess.id))
+      : [];
+    const proposedByReview = new Map(proposals.map((p) => [p.reviewId, p.proposed]));
+
+    const rows = await tx
+      .select({
+        reviewId: performanceReview.id,
+        employmentId: performanceReview.employmentId,
+        reviewerEmploymentId: performanceReview.reviewerEmploymentId,
+        overallRating: performanceReview.overallRating,
+      })
+      .from(performanceReview)
+      .where(eq(performanceReview.cycleId, cycleId));
+    const names = await namesForEmployments(
+      tx,
+      rows.flatMap((r) => [r.employmentId, r.reviewerEmploymentId].filter(Boolean) as string[]),
+    );
+
+    const calRows: CalibrationRow[] = rows
+      .map((r) => ({
+        reviewId: r.reviewId,
+        employee: names.get(r.employmentId) ?? '—',
+        reviewer: r.reviewerEmploymentId ? (names.get(r.reviewerEmploymentId) ?? null) : null,
+        overallRating: r.overallRating,
+        proposedRating: proposedByReview.get(r.reviewId) ?? null,
+      }))
+      .sort((a, b) => a.employee.localeCompare(b.employee));
+
+    // Distribution over the EFFECTIVE rating (proposed if present, else committed overall).
+    const effective = (r: CalibrationRow) => r.proposedRating ?? r.overallRating;
+    const distribution = scale.map((s) => ({ value: s.value, label: s.label, count: calRows.filter((r) => effective(r) === s.value).length }));
+
+    // Per-reviewer leniency: average effective overall.
+    const byReviewer = new Map<string, number[]>();
+    for (const r of calRows) {
+      const v = effective(r);
+      if (r.reviewer == null || v == null) continue;
+      const arr = byReviewer.get(r.reviewer) ?? [];
+      arr.push(v);
+      byReviewer.set(r.reviewer, arr);
+    }
+    const reviewerLeniency = [...byReviewer.entries()]
+      .map(([rv, vals]) => ({ reviewer: rv, avg: round2(vals.reduce((a, b) => a + b, 0) / vals.length), count: vals.length }))
+      .sort((a, b) => b.avg - a.avg);
+
+    return {
+      sessionId: sess?.id ?? null,
+      status: sess?.status ?? 'none',
+      ratingScale: scale,
+      rows: calRows,
+      distribution,
+      reviewerLeniency,
+    };
   });
 }
