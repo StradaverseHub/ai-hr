@@ -205,7 +205,15 @@
         "approved": "approved",
         "rejected": "rejected",
         "cancelled": "cancelled"
-      }
+      },
+      "epfContribTitle": "EPF contribution",
+      "epfMode": "EPF mode",
+      "epfModeAuto": "Auto (statutory)",
+      "epfModeVoluntary": "Voluntary excess (i-Topup)",
+      "epfModeExempt": "Exempt (no contribution)",
+      "epfEmployeeRate": "Employee rate %",
+      "epfEmployerRate": "Employer rate %",
+      "epfElectionHint": "Voluntary excess (i-Topup, KWSP Form 17A/18A) sets a rate at or above the statutory 11%/13%; a blank side stays statutory. Rates only — KWSP has no fixed-amount election. Exempt is for legitimately-exempt employees only."
     },
     "import": {
       "title": "Import employees",

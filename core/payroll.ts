@@ -390,6 +390,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         numChildren: employeeStatutoryMy.numChildren,
         isResident: employeeStatutoryMy.isResident,
         eisEligible: employeeStatutoryMy.eisEligible,
+        epfMode: employeeStatutoryMy.epfMode,
+        epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
+        epfEmployerRate: employeeStatutoryMy.epfEmployerRate,
         dateOfBirth: person.dateOfBirth,
         tp3Year: employeeStatutoryMy.tp3Year,
         tp3Net: employeeStatutoryMy.tp3NetRemuneration,
@@ -554,6 +557,12 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
             socsoCategory: age != null && age >= 60 ? 2 : 1,
             eisEligible: (e.eisEligible ?? true) && (age == null || age < 60),
             resident: e.isResident ?? true,
+            // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
+            epfElection: {
+              mode: e.epfMode ?? 'auto',
+              employeeRate: e.epfEmployeeRate != null ? Number(e.epfEmployeeRate) : null,
+              employerRate: e.epfEmployerRate != null ? Number(e.epfEmployerRate) : null,
+            },
           },
           rules,
         ),
@@ -562,6 +571,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         zakat,
         // HRD Corp levy (employer-only). 0 when the company is not HRDF-registered.
         hrdf,
+        // EPF contribution mode applied (Wave 2B audit) — 'auto' unless an i-Topup/exempt election.
+        epfMode: e.epfMode ?? 'auto',
       };
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + unpaidDeduction);

@@ -205,7 +205,15 @@
         "approved": "diluluskan",
         "rejected": "ditolak",
         "cancelled": "dibatalkan"
-      }
+      },
+      "epfContribTitle": "Caruman KWSP",
+      "epfMode": "Mod KWSP",
+      "epfModeAuto": "Auto (berkanun)",
+      "epfModeVoluntary": "Lebihan sukarela (i-Topup)",
+      "epfModeExempt": "Dikecualikan (tiada caruman)",
+      "epfEmployeeRate": "Kadar pekerja %",
+      "epfEmployerRate": "Kadar majikan %",
+      "epfElectionHint": "Lebihan sukarela (i-Topup, Borang KWSP 17A/18A) menetapkan kadar pada atau melebihi kadar berkanun 11%/13%; bahagian kosong kekal berkanun. Kadar sahaja — KWSP tiada pilihan jumlah tetap. Pengecualian untuk pekerja yang benar-benar dikecualikan sahaja."
     },
     "import": {
       "title": "Import pekerja",

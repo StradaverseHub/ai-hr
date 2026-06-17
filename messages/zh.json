@@ -205,7 +205,15 @@
         "approved": "已批准",
         "rejected": "已驳回",
         "cancelled": "已取消"
-      }
+      },
+      "epfContribTitle": "EPF（公积金）缴纳",
+      "epfMode": "EPF 模式",
+      "epfModeAuto": "自动（法定）",
+      "epfModeVoluntary": "自愿额外缴纳（i-Topup）",
+      "epfModeExempt": "豁免（不缴纳）",
+      "epfEmployeeRate": "员工费率 %",
+      "epfEmployerRate": "雇主费率 %",
+      "epfElectionHint": "自愿额外缴纳（i-Topup，KWSP 表格 17A/18A）设定不低于法定 11%/13% 的费率；留空的一方维持法定费率。仅限费率——KWSP 无固定金额选项。豁免仅适用于确实可豁免的员工。"
     },
     "import": {
       "title": "导入员工",

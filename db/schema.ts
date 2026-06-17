@@ -450,6 +450,12 @@ export const compensation = pgTable(
   (t) => [index('compensation_employment_idx').on(t.employmentId, t.validFrom)],
 );
 
+// EPF contribution mode per employee (Wave 2B, statutory-aligned). auto = statutory Third Schedule;
+// voluntary_excess = i-Topup election (KWSP Form 17A/18A) at a rate AT OR ABOVE statutory, per side;
+// exempt = no contribution, valid ONLY for legitimately-exempt employees (never to drop a mandatory
+// employee below the s.43 floor). Sourced in docs/wave2-payroll-design.md.
+export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exempt']);
+
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
 export const employeeStatutoryMy = pgTable(
@@ -470,6 +476,12 @@ export const employeeStatutoryMy = pgTable(
     // Non-residents pay flat 30% MTD (LHDN spec §D.a) — no reliefs, no accumulator method.
     isResident: boolean('is_resident').notNull().default(true),
     eisEligible: boolean('eis_eligible').notNull().default(true),
+    // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,
+    // e.g. 0.1500 = 15%) apply AT OR ABOVE the statutory rate; null = that side stays statutory.
+    // 'exempt' zeroes both sides (legitimately-exempt employees only). 'auto' ignores the rates.
+    epfMode: epfModeEnum('epf_mode').notNull().default('auto'),
+    epfEmployeeRate: numeric('epf_employee_rate', { precision: 5, scale: 4 }),
+    epfEmployerRate: numeric('epf_employer_rate', { precision: 5, scale: 4 }),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),
     // TP3 / opening balances for PCB accumulators (ADR-0014): prior-employment (or pre-migration)

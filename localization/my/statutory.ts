@@ -6,12 +6,56 @@ import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { employeeStatutoryMy } from '../../db/schema';
+import { DEFAULT_MY_STATUTORY } from './statutory-tables';
+import type { EpfMode } from './payroll';
 
 export class InvalidICError extends Error {
   constructor() {
     super('Invalid Malaysian IC number (expected 12 digits)');
     this.name = 'InvalidICError';
   }
+}
+
+/** An i-Topup election tried to set a rate below the statutory Third Schedule floor, or out of range. */
+export class InvalidEpfElectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidEpfElectionError';
+  }
+}
+
+const EPF_EMPLOYEE_FLOOR = DEFAULT_MY_STATUTORY.epf.employeeRate; // 11%
+// Lowest statutory employer rate (12% for wages > RM5,000); the calculator bumps ≤RM5,000 to 13%.
+const EPF_EMPLOYER_FLOOR = Math.min(
+  DEFAULT_MY_STATUTORY.epf.employerRateLow,
+  DEFAULT_MY_STATUTORY.epf.employerRateHigh,
+);
+
+/** Resolve + validate the per-side EPF election (Wave 2B). i-Topup can only RAISE a rate, never
+ *  lower it below statutory; rates outside [floor, 1] are rejected. Rates are kept only for
+ *  'voluntary_excess'; 'auto'/'exempt' carry no rates. */
+function resolveEpfElection(p: {
+  epfMode?: EpfMode;
+  epfEmployeeRate?: number | null;
+  epfEmployerRate?: number | null;
+}): { epfMode: EpfMode; epfEmployeeRate: string | null; epfEmployerRate: string | null } {
+  const mode: EpfMode =
+    p.epfMode === 'voluntary_excess' || p.epfMode === 'exempt' ? p.epfMode : 'auto';
+  if (mode !== 'voluntary_excess') return { epfMode: mode, epfEmployeeRate: null, epfEmployerRate: null };
+  const side = (rate: number | null | undefined, floor: number, label: string): string | null => {
+    if (rate == null || Number.isNaN(Number(rate))) return null; // null = that side stays statutory
+    const r = Number(rate);
+    if (r < floor || r > 1)
+      throw new InvalidEpfElectionError(
+        `${label} EPF rate ${(r * 100).toFixed(2)}% must be at or above the statutory ${(floor * 100).toFixed(0)}% and at most 100% (i-Topup can only raise the rate).`,
+      );
+    return r.toFixed(4);
+  };
+  return {
+    epfMode: mode,
+    epfEmployeeRate: side(p.epfEmployeeRate, EPF_EMPLOYEE_FLOOR, 'Employee'),
+    epfEmployerRate: side(p.epfEmployerRate, EPF_EMPLOYER_FLOOR, 'Employer'),
+  };
 }
 
 export const normalizeIC = (ic: string): string => ic.replace(/\D/g, '');
@@ -28,6 +72,11 @@ export type StatutoryInput = {
   eisEligible?: boolean;
   /** Tax residency — non-residents pay flat 30% MTD (LHDN spec §D.a). Defaults to resident. */
   isResident?: boolean;
+  /** EPF contribution mode (Wave 2B). 'voluntary_excess' uses the elected per-side rates (decimals,
+   *  e.g. 0.15); a null rate keeps that side statutory. 'exempt' zeroes both (exempt employees only). */
+  epfMode?: EpfMode;
+  epfEmployeeRate?: number | null;
+  epfEmployerRate?: number | null;
   bankName?: string;
   bankAccountNo?: string;
   /** TP3 / opening balances for the PCB accumulators (ADR-0014) — YTD figures from a previous
@@ -45,6 +94,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   const numChildren = Math.max(0, Math.floor(Number(p.numChildren) || 0));
   const money = (v: number | null | undefined) =>
     v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
+  const epf = resolveEpfElection(p); // throws InvalidEpfElectionError on a below-floor election
   const values = {
     icNumber: normalizeIC(p.icNumber),
     epfNumber: p.epfNumber ?? null,
@@ -54,6 +104,9 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     numChildren,
     eisEligible: p.eisEligible ?? true,
     isResident: p.isResident ?? true,
+    epfMode: epf.epfMode,
+    epfEmployeeRate: epf.epfEmployeeRate,
+    epfEmployerRate: epf.epfEmployerRate,
     bankName: p.bankName ?? null,
     bankAccountNo: p.bankAccountNo ?? null,
     tp3Year: p.tp3Year ?? null,

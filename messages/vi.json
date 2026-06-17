@@ -205,7 +205,15 @@
         "approved": "đã duyệt",
         "rejected": "từ chối",
         "cancelled": "đã hủy"
-      }
+      },
+      "epfContribTitle": "Đóng góp EPF",
+      "epfMode": "Chế độ EPF",
+      "epfModeAuto": "Tự động (luật định)",
+      "epfModeVoluntary": "Đóng vượt tự nguyện (i-Topup)",
+      "epfModeExempt": "Miễn (không đóng)",
+      "epfEmployeeRate": "Tỷ lệ nhân viên %",
+      "epfEmployerRate": "Tỷ lệ người sử dụng lao động %",
+      "epfElectionHint": "Đóng vượt tự nguyện (i-Topup, Mẫu KWSP 17A/18A) đặt tỷ lệ bằng hoặc cao hơn mức luật định 11%/13%; bên để trống giữ mức luật định. Chỉ theo tỷ lệ — KWSP không có lựa chọn số tiền cố định. Miễn chỉ dành cho nhân viên thực sự được miễn."
     },
     "import": {
       "title": "Nhập nhân viên",
