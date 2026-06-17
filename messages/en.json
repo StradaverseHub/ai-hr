@@ -28,7 +28,8 @@
     "home": "AI HR home",
     "knowledgeBase": "Knowledge Base",
     "claimsConfig": "Claims config",
-    "claims": "Claims"
+    "claims": "Claims",
+    "aiConfig": "AI"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1104,6 +1105,28 @@
       "markPaid": "Mark selected paid",
       "missingBankWarning": "{count, plural, one {# claimant has no bank details on file — add them before exporting.} other {# claimants have no bank details on file — add them before exporting.}}",
       "footnote": "The CSV is a neutral list for manual upload, not a byte-exact bank giro file. Marking a claim paid is irreversible and records a domain event."
+    },
+    "ai": {
+      "title": "AI configuration",
+      "subtitle": "Choose an AI provider and model and store your API key, to power Draft with AI on performance reviews.",
+      "secretMissing": "Set AI_CONFIG_SECRET on the server to store API keys securely. Until then, keys cannot be saved here.",
+      "usingEnv": "No provider is active for your organization — drafts use the platform default ({provider} · {model}).",
+      "privacyNote": "Draft with AI sends redacted review context — no names, emails, or ID numbers — to your chosen provider. It only proposes text; a manager always edits and submits.",
+      "active": "Active",
+      "envKeyPresent": "Platform key available",
+      "model": "Model",
+      "apiKey": "API key",
+      "apiKeyPlaceholder": "Paste your API key",
+      "notStorable": "Key storage is disabled until AI_CONFIG_SECRET is set on the server.",
+      "makeActive": "Use this provider for AI drafting",
+      "save": "Save",
+      "test": "Test connection",
+      "testing": "Testing…",
+      "testOk": "Connection works.",
+      "testFail": "Connection failed.",
+      "useThis": "Use this provider",
+      "remove": "Remove",
+      "turnOff": "Turn off AI drafting"
     }
   },
   "topbar": {

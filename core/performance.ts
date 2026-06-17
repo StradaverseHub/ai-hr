@@ -38,7 +38,8 @@ import {
 import { setCompensation } from './comp';
 import { setPayrollInput } from './payroll';
 import { assertCanDecide } from './approvals';
-import { aiModel, generateDraft, isAiConfigured, redactPII } from '../lib/ai';
+import { generateDraft, redactPII } from '../lib/ai';
+import { resolveActiveAiConfig } from './ai-config';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -1850,10 +1851,8 @@ export async function draftManagerReview(
   ctx: SessionContext,
   p: { reviewId: string },
 ): Promise<{ draft: string; signals: DraftSignals }> {
-  if (!isAiConfigured()) throw new PerfError('AI drafting is not configured on this instance.');
-
-  // 1) Authorize + gather signals in a short read transaction. NO LLM call inside the tx — we must
-  //    not hold a pooled connection open across a multi-second network call.
+  // 1) Authorize, resolve the tenant's AI config, and gather signals in a short read transaction. NO
+  //    provider call inside the tx (decryption is CPU only; the multi-second network call is outside).
   const gathered = await withTenant(ctx, async (tx) => {
     const { review, cycle } = await loadReview(tx, p.reviewId);
     if (cycle.status !== 'open') {
@@ -1899,11 +1898,16 @@ export async function draftManagerReview(
       .from(peerFeedback)
       .where(eq(peerFeedback.subjectEmploymentId, review.employmentId));
 
-    return { review, cycle, scale, goals, prior, peers };
+    // The tenant's active AI provider/model + decrypted key (or platform env fallback). Fail closed
+    // when an active config is present but undecryptable — never fall through to a shared env key.
+    const aiCfg = await resolveActiveAiConfig(tx, ctx);
+    if (!aiCfg) throw new PerfError('AI drafting is not configured for this tenant.');
+
+    return { review, cycle, scale, goals, prior, peers, aiCfg };
   });
 
   // 2) Build a redacted prompt — the employee is referred to generically; peer notes are anonymous.
-  const { review, cycle, scale, goals, prior, peers } = gathered;
+  const { review, cycle, scale, goals, prior, peers, aiCfg } = gathered;
   const lines: string[] = [
     `Review cycle: ${redactPII(cycle.name)} (${cycle.periodStart} to ${cycle.periodEnd}).`,
     `Rating scale: ${scale.map((s) => `${s.value}=${s.label}`).join(', ')}.`,
@@ -1944,8 +1948,12 @@ export async function draftManagerReview(
     'Output only the review prose — no preamble, headings, bullet labels, or meta-commentary.',
   ].join(' ');
 
-  // 3) Call the gateway OUTSIDE any DB transaction.
-  const draft = await generateDraft({ system, prompt: `Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`, maxTokens: 1536 });
+  // 3) Call the gateway OUTSIDE any DB transaction, against the resolved provider/model.
+  const draft = await generateDraft(aiCfg, {
+    system,
+    prompt: `Draft a manager-review narrative from these signals:\n\n${lines.join('\n')}`,
+    maxTokens: 1536,
+  });
 
   // 4) Audit that a draft was generated (AGENT actor, PII-free payload). No state was changed.
   await withTenant(ctx, async (tx) => {
@@ -1954,10 +1962,10 @@ export async function draftManagerReview(
       aggregateType: 'performance-review',
       aggregateId: review.id,
       eventType: 'performance-review.ai-draft-generated',
-      // AGENT actor with no id — actor_id is a uuid column; the model is recorded in the payload.
+      // AGENT actor with no id — actor_id is a uuid column; provider/model are recorded in the payload.
       actor: { type: 'agent' },
       subjectEmploymentId: review.employmentId,
-      payload: { cycleId: review.cycleId, model: aiModel() },
+      payload: { cycleId: review.cycleId, provider: aiCfg.provider, model: aiCfg.model },
     });
   });
 

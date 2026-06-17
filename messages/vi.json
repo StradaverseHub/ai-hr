@@ -28,7 +28,8 @@
     "home": "Trang chủ AI HR",
     "knowledgeBase": "Cơ sở tri thức",
     "claimsConfig": "Cấu hình khoản chi",
-    "claims": "Khoản chi"
+    "claims": "Khoản chi",
+    "aiConfig": "AI"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1104,6 +1105,28 @@
       "markPaid": "Đánh dấu mục đã chọn là đã thanh toán",
       "missingBankWarning": "{count, plural, one {# người yêu cầu chưa có thông tin ngân hàng trong hồ sơ — hãy bổ sung trước khi xuất.} other {# người yêu cầu chưa có thông tin ngân hàng trong hồ sơ — hãy bổ sung trước khi xuất.}}",
       "footnote": "Tệp CSV là danh sách trung tính để tải lên thủ công, không phải tệp giro ngân hàng chính xác từng byte. Đánh dấu một khoản chi là đã thanh toán không thể hoàn tác và ghi lại một sự kiện miền."
+    },
+    "ai": {
+      "title": "Cấu hình AI",
+      "subtitle": "Chọn nhà cung cấp AI và mô hình rồi lưu khóa API của bạn để hỗ trợ Soạn thảo bằng AI trên các đánh giá hiệu suất.",
+      "secretMissing": "Đặt AI_CONFIG_SECRET trên máy chủ để lưu khóa API một cách an toàn. Cho đến lúc đó, không thể lưu khóa tại đây.",
+      "usingEnv": "Không có nhà cung cấp nào đang hoạt động cho tổ chức của bạn — bản nháp sử dụng mặc định của nền tảng ({provider} · {model}).",
+      "privacyNote": "Soạn thảo bằng AI gửi ngữ cảnh đánh giá đã được ẩn — không có tên, email hay số CMND/CCCD — đến nhà cung cấp bạn chọn. Nó chỉ đề xuất văn bản; người quản lý luôn chỉnh sửa và gửi.",
+      "active": "Đang hoạt động",
+      "envKeyPresent": "Có khóa nền tảng",
+      "model": "Mô hình",
+      "apiKey": "Khóa API",
+      "apiKeyPlaceholder": "Dán khóa API của bạn",
+      "notStorable": "Lưu trữ khóa bị tắt cho đến khi AI_CONFIG_SECRET được đặt trên máy chủ.",
+      "makeActive": "Dùng nhà cung cấp này để soạn thảo bằng AI",
+      "save": "Lưu",
+      "test": "Kiểm tra kết nối",
+      "testing": "Đang kiểm tra…",
+      "testOk": "Kết nối hoạt động.",
+      "testFail": "Kết nối thất bại.",
+      "useThis": "Dùng nhà cung cấp này",
+      "remove": "Xóa",
+      "turnOff": "Tắt soạn thảo bằng AI"
     }
   },
   "topbar": {

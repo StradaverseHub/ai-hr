@@ -28,7 +28,8 @@
     "home": "AI HR 首页",
     "knowledgeBase": "知识库",
     "claimsConfig": "报销配置",
-    "claims": "报销"
+    "claims": "报销",
+    "aiConfig": "AI"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1104,6 +1105,28 @@
       "markPaid": "将所选标记为已支付",
       "missingBankWarning": "{count, plural, one {# 名报销人没有存档的银行信息 — 请在导出前补充。} other {# 名报销人没有存档的银行信息 — 请在导出前补充。}}",
       "footnote": "该 CSV 是用于手动上传的中性列表，并非逐字节精确的银行 giro 文件。将报销标记为已支付不可撤销，并会记录一条域事件。"
+    },
+    "ai": {
+      "title": "AI 配置",
+      "subtitle": "选择 AI 提供商和模型并存储您的 API 密钥，以驱动绩效评估中的“用 AI 起草”。",
+      "secretMissing": "请在服务器上设置 AI_CONFIG_SECRET 以安全存储 API 密钥。在此之前，无法在此保存密钥。",
+      "usingEnv": "您的组织尚未启用任何提供商 — 草稿使用平台默认值（{provider} · {model}）。",
+      "privacyNote": "“用 AI 起草”会向您选择的提供商发送已脱敏的评估上下文 — 不含姓名、邮箱或证件号码。它仅提议文本；始终由管理者编辑并提交。",
+      "active": "启用中",
+      "envKeyPresent": "平台密钥可用",
+      "model": "模型",
+      "apiKey": "API 密钥",
+      "apiKeyPlaceholder": "粘贴您的 API 密钥",
+      "notStorable": "在服务器上设置 AI_CONFIG_SECRET 之前，密钥存储已禁用。",
+      "makeActive": "将此提供商用于 AI 起草",
+      "save": "保存",
+      "test": "测试连接",
+      "testing": "测试中…",
+      "testOk": "连接正常。",
+      "testFail": "连接失败。",
+      "useThis": "使用此提供商",
+      "remove": "移除",
+      "turnOff": "关闭 AI 起草"
     }
   },
   "topbar": {
