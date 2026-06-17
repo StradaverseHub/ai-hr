@@ -121,6 +121,13 @@ export async function setStatutoryAction(formData: FormData) {
       numChildren: Number(formData.get('numChildren')) || 0,
       eisEligible: formData.get('eisEligible') === 'on',
       isResident: formData.get('isResident') === 'on',
+      // EPF contribution mode (Wave 2B). Rates are entered as percentages → stored as decimals.
+      epfMode: (() => {
+        const m = String(formData.get('epfMode') ?? 'auto');
+        return m === 'voluntary_excess' || m === 'exempt' ? m : 'auto';
+      })(),
+      epfEmployeeRate: formData.get('epfEmployeeRate') ? Number(formData.get('epfEmployeeRate')) / 100 : null,
+      epfEmployerRate: formData.get('epfEmployerRate') ? Number(formData.get('epfEmployerRate')) / 100 : null,
       bankName: (formData.get('bankName') as string) || undefined,
       bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
       tp3Year: Number(formData.get('tp3Year')) || null,

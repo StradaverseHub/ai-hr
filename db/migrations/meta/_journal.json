@@ -435,6 +435,13 @@
       "when": 1781691282538,
       "tag": "0061_sleepy_nehzno",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1781692326991,
+      "tag": "0062_jittery_kronos",
+      "breakpoints": true
     }
   ]
 }

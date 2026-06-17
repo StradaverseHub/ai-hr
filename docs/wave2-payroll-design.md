@@ -5,8 +5,16 @@ Statutory facts below were sourced from official `.gov.my` pages and independent
 re-fetched from its cited URL). Vendor blogs and accounting-firm summaries were rejected as sources. Anything
 unverifiable is flagged, not guessed. As-of date: **2026-06-17**.
 
-Status: **2A HRDF SHIPPED (2026-06-17).** Build order: **2A HRDF ✅ → 2B EPF modes (next) → 2C multi-cycle (gated)**.
+Status: **2A HRDF + 2B EPF modes SHIPPED (2026-06-17).** Build order: **2A HRDF ✅ → 2B EPF modes ✅ → 2C multi-cycle (gated, next)**.
 Period model: **Option B (first-class `pay_period` parent)**. EPF scope: **statutory-aligned only**.
+
+> **2B — EPF contribution modes: DONE.** Per-employee standing election on `employee_statutory_my`
+> (`epf_mode` enum + `epf_employee_rate`/`epf_employer_rate`, mig 0062). `resolveEpfRates()` enforces the
+> statutory FLOOR (`max(elected, statutory)` — i-Topup only raises, never lowers); `auto` = statutory,
+> `voluntary_excess` = elected per-side rate ≥ statutory (covers Manual-% + Semi-auto), `exempt` = 0/0 for
+> exempt employees only. NO fixed-RM mode (no statutory basis). Service rejects below-floor elections;
+> kernel applies the election + snapshots `epfMode`. EPF-contribution section on the people statutory form;
+> i18n ×6; `test/epf-modes.test.ts` (8). 263/263; browser-verified (15% election persists, exempt = 0).
 
 > **2A — HRDF levy: DONE.** `hrdf_status` band on `company_statutory_my` (mig 0061); `MY_HRDF` pack constants +
 > `hrdfLevy()`; kernel folds an employer-only levy (base = basic + fixed allowance net of unpaid leave, NOT the

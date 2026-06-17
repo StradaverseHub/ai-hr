@@ -259,6 +259,45 @@ export default async function EmployeePage({
             </label>
             <div className="sm:col-span-2 border-t border-border pt-3">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('epfContribTitle')}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{t('epfElectionHint')}</p>
+            </div>
+            <Field label={t('epfMode')}>
+              <select name="epfMode" defaultValue={statutory?.epfMode ?? 'auto'} className={inputCls}>
+                <option value="auto">{t('epfModeAuto')}</option>
+                <option value="voluntary_excess">{t('epfModeVoluntary')}</option>
+                <option value="exempt">{t('epfModeExempt')}</option>
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('epfEmployeeRate')}>
+                <input
+                  name="epfEmployeeRate"
+                  type="number"
+                  min="11"
+                  max="100"
+                  step="0.01"
+                  defaultValue={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : ''}
+                  placeholder="11"
+                  className={inputCls}
+                />
+              </Field>
+              <Field label={t('epfEmployerRate')}>
+                <input
+                  name="epfEmployerRate"
+                  type="number"
+                  min="12"
+                  max="100"
+                  step="0.01"
+                  defaultValue={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : ''}
+                  placeholder="13"
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+            <div className="sm:col-span-2 border-t border-border pt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t('tp3SectionTitle')}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">

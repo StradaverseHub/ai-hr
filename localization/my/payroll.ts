@@ -43,16 +43,56 @@ export class StatutoryRulesetMalformedError extends Error {
 export type TaxProfile = { category?: TaxCategory; children?: number };
 
 /**
- * EPF: employee 11%; employer 13% (wage ≤ RM5000) or 12% (> RM5000). Each rounded up to RM1.
- * A bonus (`additional`) is subject to EPF too: KWSP fixes the employer rate by the NORMAL monthly
- * wage — a ≤RM5000 earner stays at 13% even when the bonus pushes the month over — then applies it
- * to the full wage incl. the bonus.
+ * Per-employee EPF contribution mode (Wave 2B, statutory-aligned). The only above-statutory
+ * mechanism KWSP recognises is i-Topup (Form 17A/18A (AHL)) — a RATE election, never a fixed RM
+ * amount — and it can only raise the rate, never lower it below the Third Schedule (EPF Act s.43).
+ *  - 'auto'             — statutory rates both sides (default).
+ *  - 'voluntary_excess' — i-Topup: an elected rate AT OR ABOVE statutory, per side. A null elected
+ *                         rate on a side keeps that side statutory (this is the "semi-auto" case).
+ *  - 'exempt'           — no contribution, for legitimately-exempt employees ONLY (never a way to
+ *                         drop a mandatory employee below the floor).
  */
-export function epf(wage: number, additional = 0, cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf) {
-  const employerRate = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
+export type EpfMode = 'auto' | 'voluntary_excess' | 'exempt';
+export type EpfElection = { mode: EpfMode; employeeRate?: number | null; employerRate?: number | null };
+
+/**
+ * Effective EPF rates for a wage given an election, enforcing the statutory FLOOR: an elected rate
+ * is `max(elected, statutory)` so i-Topup can only raise it. 'exempt' is 0/0. The statutory employer
+ * rate is wage-banded (13% ≤ threshold, else 12%).
+ */
+export function resolveEpfRates(
+  wage: number,
+  cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
+  election?: EpfElection,
+): { employeeRate: number; employerRate: number } {
+  const statutoryEmployer = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
+  const mode = election?.mode ?? 'auto';
+  if (mode === 'exempt') return { employeeRate: 0, employerRate: 0 };
+  const elect = (elected: number | null | undefined, floor: number) =>
+    mode === 'voluntary_excess' && elected != null ? Math.max(elected, floor) : floor;
+  return {
+    employeeRate: elect(election?.employeeRate, cfg.employeeRate),
+    employerRate: elect(election?.employerRate, statutoryEmployer),
+  };
+}
+
+/**
+ * EPF: statutory employee 11%; employer 13% (wage ≤ RM5000) or 12% (> RM5000), each rounded up to
+ * RM1 — unless an `election` raises a side (i-Topup) or exempts the employee. A bonus (`additional`)
+ * is subject to EPF too: KWSP fixes the employer rate by the NORMAL monthly wage — a ≤RM5000 earner
+ * stays at 13% even when the bonus pushes the month over — then applies it to the full wage incl. the
+ * bonus. The round-up-to-ringgit applies to the total (incl. any voluntary excess).
+ */
+export function epf(
+  wage: number,
+  additional = 0,
+  cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
+  election?: EpfElection,
+) {
+  const { employeeRate, employerRate } = resolveEpfRates(wage, cfg, election);
   const base = wage + Math.max(0, additional);
   return {
-    employee: ceilRinggit(base * cfg.employeeRate),
+    employee: ceilRinggit(base * employeeRate),
     employer: ceilRinggit(base * employerRate),
   };
 }
@@ -264,19 +304,21 @@ export function statutory(
    *  month's TP1 deduction / zakat inputs. Defaults to January-with-no-priors. */
   pcbCtx?: { month?: number; acc?: PcbAccumulators; lpCurrent?: number; zakatCurrent?: number },
   /** Employee attributes the engine derives: SOCSO category (2 = age 60+, employer-only),
-   *  EIS eligibility (false at 60+, or the profile flag), residency (non-residents: flat 30%). */
-  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean },
+   *  EIS eligibility (false at 60+, or the profile flag), residency (non-residents: flat 30%),
+   *  and the EPF contribution-mode election (Wave 2B; i-Topup / exempt). */
+  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean; epfElection?: EpfElection },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
-  const e = epf(wage, additional, rules.epf); // bonus IS subject to EPF; overtime is NOT
+  const e = epf(wage, additional, rules.epf, opts?.epfElection); // bonus IS subject to EPF; overtime is NOT
   const s = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
   const eisOn = opts?.eisEligible ?? true;
   const i = eisOn ? eis(cashWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
-  // EPF relief split: the employee share on the bonus (Kₜ) is the rate on the bonus alone; the
-  // remainder of the month's actual EPF belongs to normal remuneration (K₁).
-  const epfOnBonus = additional > 0 ? ceilRinggit(additional * rules.epf.employeeRate) : 0;
+  // EPF relief split: the employee share on the bonus (Kₜ) is the EFFECTIVE rate (incl. any i-Topup
+  // excess, or 0 when exempt) on the bonus alone; the remainder of the month's EPF is normal (K₁).
+  const effEmployeeRate = resolveEpfRates(wage, rules.epf, opts?.epfElection).employeeRate;
+  const epfOnBonus = additional > 0 ? ceilRinggit(additional * effEmployeeRate) : 0;
   if (opts?.resident === false) {
     // Non-resident MTD (spec §D.a): flat 30% of taxable remuneration, no reliefs/accumulators.
     const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * 0.3)));
