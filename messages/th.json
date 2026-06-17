@@ -31,7 +31,8 @@
     "claims": "การเบิก",
     "aiConfig": "AI",
     "notifications": "การแจ้งเตือน",
-    "analytics": "การวิเคราะห์"
+    "analytics": "การวิเคราะห์",
+    "payComponents": "องค์ประกอบเงินเดือน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -224,7 +225,13 @@
       "terminationDeath": "เสียชีวิต",
       "terminationOther": "อื่นๆ",
       "terminationReason": "เหตุผล (ไม่บังคับ)",
-      "terminationReasonHint": "เช่น ข้อเสนอที่ดีกว่า การปลดพนักงาน"
+      "terminationReasonHint": "เช่น ข้อเสนอที่ดีกว่า การปลดพนักงาน",
+      "payComponentsTitle": "องค์ประกอบเงินเดือน",
+      "payComponent": "องค์ประกอบ",
+      "payComponentAmount": "จำนวน",
+      "payComponentEffectiveFrom": "มีผลตั้งแต่",
+      "payComponentSave": "เพิ่ม",
+      "payComponentsHint": "องค์ประกอบประจำของพนักงานคนนี้ จะใช้กับเงินเดือนเมื่อเปิดใช้องค์ประกอบแบบมีชนิด"
     },
     "import": {
       "title": "นำเข้าพนักงาน",
@@ -1586,5 +1593,28 @@
     "exportWithoutComp": "รายชื่อ (ไม่มีค่าตอบแทน)",
     "exportWithComp": "รายชื่อ + ค่าตอบแทน",
     "exportAll": "ทั้งหมดรวมผู้เลิกจ้าง + ค่าตอบแทน"
+  },
+  "payComponents": {
+    "title": "องค์ประกอบเงินเดือน",
+    "description": "กำหนดองค์ประกอบเงินเดือนที่กำหนดค่าได้และการปฏิบัติตามกฎหมาย (EPF / SOCSO / PCB / HRDF)",
+    "previewNotice": "ตัวอย่าง แค็ตตาล็อกพร้อมใช้งาน เงินเดือนจะเปลี่ยนไปใช้องค์ประกอบแบบมีชนิดเมื่อเปิดใช้งานเท่านั้น (TYPED_PAY_COMPONENTS_ENABLED) จนกว่าจะถึงตอนนั้น เงินเดือนจะคำนวณจากฐาน + เบี้ยเลี้ยง + ล่วงเวลา + โบนัสเหมือนปัจจุบัน",
+    "catalogTitle": "แค็ตตาล็อก",
+    "seedDefaults": "โหลดค่าเริ่มต้นมาเลเซีย",
+    "colCode": "รหัส",
+    "colName": "ชื่อ",
+    "colKind": "ประเภท",
+    "colProrates": "ตามสัดส่วน",
+    "kind_allowance": "เบี้ยเลี้ยง",
+    "kind_deduction": "การหัก",
+    "kind_contribution": "การสมทบ",
+    "kind_non_payable": "ไม่จ่ายเงินสด (BIK)",
+    "archiveTitle": "เก็บองค์ประกอบ?",
+    "archiveDescription": "เก็บ {code}? จะไม่สามารถเพิ่มได้อีก",
+    "archive": "เก็บ",
+    "empty": "ยังไม่มีองค์ประกอบ — โหลดค่าเริ่มต้นมาเลเซียเพื่อเริ่ม",
+    "addTitle": "เพิ่ม / แก้ไของค์ประกอบ",
+    "namePlaceholder": "เช่น เบี้ยเลี้ยงที่พัก",
+    "flagsHint": "แฟล็กกำหนดว่าองค์ประกอบเข้าฐานตามกฎหมายใด ไม่จ่ายเงินสด (BIK) และรายได้ PCB เท่านั้นไม่ถูกคำนวณในเวอร์ชันนี้",
+    "saveComponent": "บันทึกองค์ประกอบ"
   }
 }

@@ -63,6 +63,32 @@ const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis
   prorates: c.prorates,
 });
 
+/** Current (open) recurring components for an employee, joined with the catalog (for the people page). */
+export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: employmentPayComponent.id,
+        componentId: payComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        kind: payComponent.kind,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, employmentId),
+          isNull(employmentPayComponent.validTo),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .orderBy(payComponent.code),
+  );
+}
+
 export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);

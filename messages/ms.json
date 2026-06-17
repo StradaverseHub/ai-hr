@@ -31,7 +31,8 @@
     "claims": "Tuntutan",
     "aiConfig": "AI",
     "notifications": "Pemberitahuan",
-    "analytics": "Analitik"
+    "analytics": "Analitik",
+    "payComponents": "Komponen gaji"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -224,7 +225,13 @@
       "terminationDeath": "Kematian",
       "terminationOther": "Lain-lain",
       "terminationReason": "Sebab (pilihan)",
-      "terminationReasonHint": "cth. tawaran lebih baik, pemberhentian"
+      "terminationReasonHint": "cth. tawaran lebih baik, pemberhentian",
+      "payComponentsTitle": "Komponen gaji",
+      "payComponent": "Komponen",
+      "payComponentAmount": "Jumlah",
+      "payComponentEffectiveFrom": "Berkuat kuasa dari",
+      "payComponentSave": "Tambah",
+      "payComponentsHint": "Komponen berulang untuk pekerja ini. Digunakan pada gaji apabila komponen bertaip diaktifkan."
     },
     "import": {
       "title": "Import pekerja",
@@ -1586,5 +1593,28 @@
     "exportWithoutComp": "Senarai (tanpa gaji)",
     "exportWithComp": "Senarai + gaji",
     "exportAll": "Semua termasuk tamat + gaji"
+  },
+  "payComponents": {
+    "title": "Komponen gaji",
+    "description": "Tentukan komponen gaji yang boleh dikonfigurasi dan layanan berkanunnya (KWSP / PERKESO / PCB / HRDF).",
+    "previewNotice": "Pratonton. Katalog sedia digunakan; gaji bertukar kepada komponen bertaip hanya apabila diaktifkan (TYPED_PAY_COMPONENTS_ENABLED). Sehingga itu, gaji berjalan atas asas + elaun + kerja lebih masa + bonus seperti sekarang.",
+    "catalogTitle": "Katalog",
+    "seedDefaults": "Muatkan lalai Malaysia",
+    "colCode": "Kod",
+    "colName": "Nama",
+    "colKind": "Jenis",
+    "colProrates": "Prorata",
+    "kind_allowance": "Elaun",
+    "kind_deduction": "Potongan",
+    "kind_contribution": "Caruman",
+    "kind_non_payable": "Tak boleh bayar (BIK)",
+    "archiveTitle": "Arkibkan komponen?",
+    "archiveDescription": "Arkibkan {code}? Ia tidak lagi tersedia untuk ditambah.",
+    "archive": "Arkib",
+    "empty": "Tiada komponen lagi — muatkan lalai Malaysia untuk bermula.",
+    "addTitle": "Tambah / edit komponen",
+    "namePlaceholder": "cth. Elaun perumahan",
+    "flagsHint": "Bendera menentukan asas berkanun yang disuap oleh komponen. Tak boleh bayar (BIK) dan pendapatan PCB-sahaja tidak dikira dalam versi ini.",
+    "saveComponent": "Simpan komponen"
   }
 }

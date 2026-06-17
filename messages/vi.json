@@ -31,7 +31,8 @@
     "claims": "Khoản chi",
     "aiConfig": "AI",
     "notifications": "Thông báo",
-    "analytics": "Phân tích"
+    "analytics": "Phân tích",
+    "payComponents": "Thành phần lương"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -224,7 +225,13 @@
       "terminationDeath": "Tử vong",
       "terminationOther": "Khác",
       "terminationReason": "Lý do (tùy chọn)",
-      "terminationReasonHint": "vd. cơ hội tốt hơn, cắt giảm"
+      "terminationReasonHint": "vd. cơ hội tốt hơn, cắt giảm",
+      "payComponentsTitle": "Thành phần lương",
+      "payComponent": "Thành phần",
+      "payComponentAmount": "Số tiền",
+      "payComponentEffectiveFrom": "Hiệu lực từ",
+      "payComponentSave": "Thêm",
+      "payComponentsHint": "Các thành phần định kỳ cho nhân viên này. Áp dụng vào lương khi bật thành phần có kiểu."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1586,5 +1593,28 @@
     "exportWithoutComp": "Danh sách (không lương)",
     "exportWithComp": "Danh sách + lương",
     "exportAll": "Tất cả gồm đã nghỉ + lương"
+  },
+  "payComponents": {
+    "title": "Thành phần lương",
+    "description": "Xác định các thành phần lương có thể cấu hình và cách xử lý luật định (EPF / SOCSO / PCB / HRDF).",
+    "previewNotice": "Xem trước. Danh mục đã sẵn sàng; lương chỉ chuyển sang thành phần có kiểu khi được bật (TYPED_PAY_COMPONENTS_ENABLED). Cho đến lúc đó lương vẫn tính trên cơ bản + phụ cấp + làm thêm + thưởng như hiện nay.",
+    "catalogTitle": "Danh mục",
+    "seedDefaults": "Nạp mặc định Malaysia",
+    "colCode": "Mã",
+    "colName": "Tên",
+    "colKind": "Loại",
+    "colProrates": "Theo tỷ lệ",
+    "kind_allowance": "Phụ cấp",
+    "kind_deduction": "Khấu trừ",
+    "kind_contribution": "Đóng góp",
+    "kind_non_payable": "Không trả tiền (BIK)",
+    "archiveTitle": "Lưu trữ thành phần?",
+    "archiveDescription": "Lưu trữ {code}? Sẽ không còn để thêm được nữa.",
+    "archive": "Lưu trữ",
+    "empty": "Chưa có thành phần — nạp mặc định Malaysia để bắt đầu.",
+    "addTitle": "Thêm / sửa thành phần",
+    "namePlaceholder": "vd. Phụ cấp nhà ở",
+    "flagsHint": "Cờ quyết định thành phần vào cơ sở luật định nào. Không trả tiền (BIK) và thu nhập chỉ-PCB không được tính trong phiên bản này.",
+    "saveComponent": "Lưu thành phần"
   }
 }

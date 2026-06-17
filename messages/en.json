@@ -31,7 +31,8 @@
     "claims": "Claims",
     "aiConfig": "AI",
     "notifications": "Notifications",
-    "analytics": "Analytics"
+    "analytics": "Analytics",
+    "payComponents": "Pay components"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -224,7 +225,13 @@
       "terminationDeath": "Death",
       "terminationOther": "Other",
       "terminationReason": "Reason (optional)",
-      "terminationReasonHint": "e.g. better offer, redundancy"
+      "terminationReasonHint": "e.g. better offer, redundancy",
+      "payComponentsTitle": "Pay components",
+      "payComponent": "Component",
+      "payComponentAmount": "Amount",
+      "payComponentEffectiveFrom": "Effective from",
+      "payComponentSave": "Add",
+      "payComponentsHint": "Recurring components for this employee. Applied to payroll once typed components are enabled."
     },
     "import": {
       "title": "Import employees",
@@ -1586,5 +1593,28 @@
     "exportWithoutComp": "Roster (no pay)",
     "exportWithComp": "Roster + compensation",
     "exportAll": "All incl. terminated + comp"
+  },
+  "payComponents": {
+    "title": "Pay components",
+    "description": "Define configurable pay components and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
+    "previewNotice": "Preview. The catalog is ready to use; payroll switches to typed components only when enabled (TYPED_PAY_COMPONENTS_ENABLED). Until then payroll runs on basic + allowance + overtime + bonus as today.",
+    "catalogTitle": "Catalog",
+    "seedDefaults": "Seed Malaysia defaults",
+    "colCode": "Code",
+    "colName": "Name",
+    "colKind": "Kind",
+    "colProrates": "Prorates",
+    "kind_allowance": "Allowance",
+    "kind_deduction": "Deduction",
+    "kind_contribution": "Contribution",
+    "kind_non_payable": "Non-payable (BIK)",
+    "archiveTitle": "Archive component?",
+    "archiveDescription": "Archive {code}? It will no longer be available to add.",
+    "archive": "Archive",
+    "empty": "No components yet — seed the Malaysia defaults to start.",
+    "addTitle": "Add / edit component",
+    "namePlaceholder": "e.g. Housing allowance",
+    "flagsHint": "Flags decide which statutory base the component feeds. Non-payable (BIK) and PCB-only earnings are not computed in this version.",
+    "saveComponent": "Save component"
   }
 }

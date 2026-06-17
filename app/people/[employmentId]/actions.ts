@@ -5,7 +5,25 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { endReportingLine, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
 import { setCompensation } from '@/core/comp';
+import { setEmploymentPayComponent } from '@/core/pay-components';
 import { packFor } from '@/localization/registry';
+
+export async function setEmploymentComponentAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await setEmploymentPayComponent(s, {
+      employmentId,
+      componentId: String(formData.get('componentId')),
+      amount: Number(formData.get('amount')) || 0,
+      effectiveFrom: String(formData.get('effectiveFrom')),
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
 
 export async function transferAction(formData: FormData) {
   const s = await getSession();
