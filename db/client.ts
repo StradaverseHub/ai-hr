@@ -40,6 +40,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
 
   /** Run `fn` in a transaction scoped to the session's tenant/user/roles. */
   async function withTenant<T>(ctx: SessionContext, fn: (tx: Tx) => Promise<T>): Promise<T> {
+    // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
+    // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
+    if (!ctx || !ctx.tenantId) {
+      throw new Error('withTenant was called without a valid session context (missing tenantId).');
+    }
     // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
     const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
     const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
