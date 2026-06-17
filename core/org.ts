@@ -197,14 +197,27 @@ export async function transferEmployee(
   });
 }
 
+export type TerminationType =
+  | 'voluntary'
+  | 'involuntary'
+  | 'retired'
+  | 'contract_end'
+  | 'death'
+  | 'other';
+
 export async function terminateEmployment(
   ctx: SessionContext,
-  p: { employmentId: string; terminationDate: string },
+  p: { employmentId: string; terminationDate: string; terminationType?: TerminationType; terminationReason?: string },
 ) {
   return withTenant(ctx, async (tx) => {
     await tx
       .update(employment)
-      .set({ terminatedOn: p.terminationDate })
+      .set({
+        terminatedOn: p.terminationDate,
+        // Wave 4A: capture the turnover classification (null when not provided).
+        terminationType: p.terminationType ?? null,
+        terminationReason: p.terminationReason?.trim() || null,
+      })
       .where(eq(employment.id, p.employmentId));
     const [cur] = await tx
       .select()
@@ -227,7 +240,11 @@ export async function terminateEmployment(
       eventType: 'employment.terminated',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { terminationDate: p.terminationDate },
+      payload: {
+        terminationDate: p.terminationDate,
+        terminationType: p.terminationType ?? null,
+        terminationReason: p.terminationReason?.trim() || null,
+      },
     });
   });
 }

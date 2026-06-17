@@ -248,6 +248,17 @@ export const costCenter = pgTable(
   (t) => [index('cost_center_company_idx').on(t.companyId)],
 );
 
+// Termination classification (Wave 4A) — powers the Terminations + Turnover analytics breakdown.
+// Nullable: legacy/active employments have none; set when an employment is terminated.
+export const terminationTypeEnum = pgEnum('termination_type', [
+  'voluntary',
+  'involuntary',
+  'retired',
+  'contract_end',
+  'death',
+  'other',
+]);
+
 // employment = the durable Person↔Company relationship. Multiple concurrent = multi-company.
 export const employment = pgTable(
   'employment',
@@ -263,6 +274,9 @@ export const employment = pgTable(
     employeeCode: text('employee_code'),
     hiredOn: date('hired_on').notNull(),
     terminatedOn: date('terminated_on'),
+    // Termination classification (Wave 4A). Captured at termination for turnover analytics.
+    terminationType: terminationTypeEnum('termination_type'),
+    terminationReason: text('termination_reason'),
     // Inter-company cost split for shared-services staff (ADR-0009): [{ companyId, percent }].
     costAllocation: jsonb('cost_allocation'),
     createdAt: createdAt(),
@@ -563,6 +577,17 @@ export const attendanceCorrectionStatusEnum = pgEnum('attendance_correction_stat
   'rejected',
 ]);
 
+// Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
+// absenteeism analytics can categorise unplanned absence (planned absence is already typed via leave).
+export const absenceReasonEnum = pgEnum('absence_reason', [
+  'sick',
+  'casual',
+  'medical',
+  'unpaid',
+  'emergency',
+  'other',
+]);
+
 // One row per employee per day. Absence is derived (no row); we store present/late/half_day.
 export const attendance = pgTable(
   'attendance',
@@ -576,6 +601,8 @@ export const attendance = pgTable(
     checkInAt: time('check_in_at'),
     checkOutAt: time('check_out_at'),
     status: attendanceStatusEnum('status').notNull().default('present'),
+    // Reason when status='absent' (Wave 4A). Null for present/late/half_day or unclassified.
+    absenceReason: absenceReasonEnum('absence_reason'),
     // Set at check-in (frozen against later policy/calendar edits); minutes derived at check-out (ADR-0011).
     dayType: attendanceDayTypeEnum('day_type'),
     workedMinutes: integer('worked_minutes'),

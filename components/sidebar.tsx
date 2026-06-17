@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import {
+  BarChart3,
   BookOpen,
   Building2,
   CalendarDays,
@@ -61,6 +62,7 @@ const GROUPS: Group[] = [
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
+      { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },
       { href: '/admin/users', labelKey: 'usersRoles', icon: ShieldCheck },
