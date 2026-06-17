@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { reviewForViewer, reviewGoals } from '@/core/performance';
+import { peerFeedbackForReview, reviewForViewer, reviewGoals } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import {
   acknowledgeAction,
   linkGoalAction,
+  requestPeerFeedbackAction,
   submitManagerAction,
   submitSelfAction,
   unlinkGoalAction,
@@ -60,6 +61,7 @@ export default async function ReviewPage({
   const scale = r.ratingScale;
   const backHref = r.isSubject && !r.canManage ? '/me' : '/performance';
   const { linked: linkedGoals, linkable: linkableGoals } = await reviewGoals(s, reviewId);
+  const f360 = await peerFeedbackForReview(s, reviewId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -160,6 +162,67 @@ export default async function ReviewPage({
               <Button type="submit" variant="secondary">
                 {t('goalLink')}
               </Button>
+            </form>
+          )}
+        </Card>
+      )}
+
+      {/* 360 peer feedback (ADR-0022) — manager invites + sees attributed; subject sees anonymized after release */}
+      {(f360.canManage || f360.feedback.length > 0) && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('feedback360Title')}</h2>
+          {f360.canManage && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('feedback360ManagerHint')}</p>
+          )}
+          {!f360.canManage && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('feedback360SubjectHint')}</p>
+          )}
+
+          {f360.feedback.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {f360.canManage && f360.pending > 0 ? t('feedback360Pending', { count: f360.pending }) : t('feedback360Empty')}
+            </p>
+          ) : (
+            <ul className="mt-3 space-y-3">
+              {f360.feedback.map((fb) => (
+                <li key={fb.id} className="rounded-xl border border-border bg-muted/20 p-3 text-sm">
+                  <div className="text-xs font-medium text-muted-foreground">
+                    {fb.peer ? fb.peer : t('feedback360Anonymous')}
+                  </div>
+                  {fb.strengths && (
+                    <p className="mt-1">
+                      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{t('feedbackStrengths')}: </span>
+                      {fb.strengths}
+                    </p>
+                  )}
+                  {fb.improvements && (
+                    <p className="mt-1">
+                      <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{t('feedbackImprovements')}: </span>
+                      {fb.improvements}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {f360.canManage && f360.invitable.length > 0 && (
+            <form action={requestPeerFeedbackAction} className="mt-4 border-t border-border pt-3">
+              <input type="hidden" name="reviewId" value={r.id} />
+              <p className="mb-2 text-xs font-medium text-muted-foreground">{t('feedback360Invite')}</p>
+              <div className="flex flex-wrap gap-3">
+                {f360.invitable.map((p) => (
+                  <label key={p.employmentId} className="flex items-center gap-1.5 text-sm">
+                    <input type="checkbox" name="peerEmploymentId" value={p.employmentId} className="size-4" />
+                    {p.name}
+                  </label>
+                ))}
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button type="submit" variant="secondary">
+                  {t('feedback360Request')}
+                </Button>
+              </div>
             </form>
           )}
         </Card>

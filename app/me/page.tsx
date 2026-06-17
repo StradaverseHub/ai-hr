@@ -12,15 +12,17 @@ import {
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
-import { myCheckIns, myGoals, myReviews } from '@/core/performance';
+import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   myCheckIn,
   myCheckOut,
   myCreateGoal,
+  myDeclinePeerFeedback,
   myRequestCorrection,
   myRequestLeave,
   myRequestProfileChange,
+  mySubmitPeerFeedback,
   myUpdateContact,
   myUpdateGoalProgress,
 } from './actions';
@@ -91,7 +93,7 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
-  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins] =
+  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests] =
     await Promise.all([
       leaveBalances(s, me.employmentId),
       leaveRequestsFor(s, me.employmentId),
@@ -104,6 +106,7 @@ export default async function MePage({
       myReviews(s),
       myGoals(s),
       myCheckIns(s),
+      myFeedbackRequests(s),
     ]);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
@@ -641,6 +644,48 @@ export default async function MePage({
           </div>
         </form>
       </Card>
+
+      {/* 360 feedback requests (ADR-0022) — the peer responds; their identity stays with HR/manager */}
+      {feedbackRequests.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('feedbackTitle')} count={feedbackRequests.length} />
+          <p className="px-4 pt-3 text-xs text-muted-foreground">{t('feedbackIntro')}</p>
+          <ul className="divide-y divide-border">
+            {feedbackRequests.map((fr) => (
+              <li key={fr.requestId} className="px-4 py-4">
+                <div className="text-sm font-medium">
+                  {t('feedbackOn', { name: fr.subject })}
+                  {fr.cycleName && <span className="ml-2 text-xs text-muted-foreground">{fr.cycleName}</span>}
+                </div>
+                <form action={mySubmitPeerFeedback} className="mt-3 space-y-3">
+                  <input type="hidden" name="requestId" value={fr.requestId} />
+                  <Field label={t('feedbackStrengths')}>
+                    <textarea name="strengths" rows={2} className={inputCls} placeholder={t('feedbackStrengthsPlaceholder')} />
+                  </Field>
+                  <Field label={t('feedbackImprovements')}>
+                    <textarea name="improvements" rows={2} className={inputCls} placeholder={t('feedbackImprovementsPlaceholder')} />
+                  </Field>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <input type="checkbox" name="named" className="size-4" />
+                    {t('feedbackNamed')}
+                  </label>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button type="submit" size="sm">
+                      {t('feedbackSubmit')}
+                    </Button>
+                  </div>
+                </form>
+                <form action={myDeclinePeerFeedback} className="mt-1 flex justify-end">
+                  <input type="hidden" name="requestId" value={fr.requestId} />
+                  <Button type="submit" size="sm" variant="ghost">
+                    {t('feedbackDecline')}
+                  </Button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {/* My 1:1 check-ins (ADR-0022) — read-only; the manager schedules from /performance */}
       {checkins.length > 0 && (

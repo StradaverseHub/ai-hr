@@ -7,7 +7,14 @@ import { myEmployment } from '@/core/read';
 import { requestLeave } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
-import { createGoal, updateGoal, updateGoalProgress, type GoalStatus } from '@/core/performance';
+import {
+  createGoal,
+  declinePeerFeedback,
+  submitPeerFeedback,
+  updateGoal,
+  updateGoalProgress,
+  type GoalStatus,
+} from '@/core/performance';
 
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {
@@ -161,6 +168,33 @@ export async function myUpdateGoalProgress(formData: FormData) {
   }
   revalidatePath('/me');
   redirect('/me?toast=Goal+updated');
+}
+
+export async function mySubmitPeerFeedback(formData: FormData) {
+  const s = await getSession();
+  try {
+    await submitPeerFeedback(s, {
+      requestId: String(formData.get('requestId')),
+      strengths: strOrUndef(formData.get('strengths')),
+      improvements: strOrUndef(formData.get('improvements')),
+      named: formData.get('named') === 'on',
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Feedback+submitted');
+}
+
+export async function myDeclinePeerFeedback(formData: FormData) {
+  const s = await getSession();
+  try {
+    await declinePeerFeedback(s, { requestId: String(formData.get('requestId')) });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Declined');
 }
 
 export async function myEditGoal(formData: FormData) {

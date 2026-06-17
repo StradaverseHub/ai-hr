@@ -96,6 +96,8 @@ export const compActionStatusEnum = pgEnum('comp_action_status', [
 export const goalStatusEnum = pgEnum('goal_status', ['active', 'achieved', 'missed', 'dropped']);
 // Manager 1:1 check-in lifecycle (ADR-0022, Phase B slice 2).
 export const checkinStatusEnum = pgEnum('checkin_status', ['scheduled', 'completed', 'cancelled']);
+// 360 peer-feedback request lifecycle (ADR-0022, Phase B slice 3).
+export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pending', 'submitted', 'declined']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -887,6 +889,67 @@ export const performanceCheckin = pgTable(
   (t) => [
     index('performance_checkin_subject_idx').on(t.subjectEmploymentId),
     index('performance_checkin_manager_idx').on(t.managerEmploymentId),
+  ],
+);
+
+// 360 peer feedback (ADR-0022, Phase B slice 3). A manager/admin invites peers to give feedback on a
+// subject for a review. ANONYMITY (ADR-0022 default): authorship lives ONLY here on the request —
+// peer_feedback itself carries no author, so the subject (who is denied this table by RLS) sees feedback
+// content without attribution. The peer responds to their own request; the subject never sees the
+// requester list.
+export const peerFeedbackRequest = pgTable(
+  'peer_feedback_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    peerEmploymentId: uuid('peer_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // Display names denormalized at request time (resolved by the inviting manager, who can see both):
+    // a 360 crosses RLS name-visibility boundaries, so the peer/manager can't re-resolve these later.
+    subjectName: text('subject_name').notNull(),
+    peerName: text('peer_name').notNull(),
+    cycleName: text('cycle_name'),
+    status: feedbackRequestStatusEnum('status').notNull().default('pending'),
+    requestedByUserId: uuid('requested_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('peer_feedback_request_review_peer_uq').on(t.reviewId, t.peerEmploymentId),
+    index('peer_feedback_request_subject_idx').on(t.subjectEmploymentId),
+    index('peer_feedback_request_peer_idx').on(t.peerEmploymentId),
+  ],
+);
+
+// The feedback content. Carries a denormalized subject_employment_id so RLS = can_see_employment(subject)
+// is a direct check (the subject + their manager + admin read CONTENT). It deliberately has NO author
+// column — the peer identity is on the request, which the subject's RLS denies → anonymous-by-construction.
+// `named` records that the peer opted to be identifiable (surfaced to the manager, not the subject in v1).
+export const peerFeedback = pgTable(
+  'peer_feedback',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    requestId: uuid('request_id')
+      .notNull()
+      .references(() => peerFeedbackRequest.id),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    strengths: text('strengths'),
+    improvements: text('improvements'),
+    named: boolean('named').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('peer_feedback_request_uq').on(t.requestId),
+    index('peer_feedback_subject_idx').on(t.subjectEmploymentId),
   ],
 );
 

@@ -15,6 +15,7 @@ import {
   moveCycleToCalibration,
   openCycle,
   releaseCycle,
+  requestPeerFeedback,
   scheduleCheckIn,
   submitManagerReview,
   submitSelfReview,
@@ -193,6 +194,19 @@ export async function cancelCheckInAction(formData: FormData) {
   }
   revalidatePath('/performance');
   redirect(`/performance?toast=${encodeURIComponent('Check-in cancelled')}`);
+}
+
+export async function requestPeerFeedbackAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  const peerEmploymentIds = formData.getAll('peerEmploymentId').map(String).filter(Boolean);
+  try {
+    await requestPeerFeedback(s, { reviewId, peerEmploymentIds });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Feedback requested')}`);
 }
 
 export async function enactAction(formData: FormData) {

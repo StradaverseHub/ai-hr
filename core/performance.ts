@@ -23,6 +23,8 @@ import {
   employment,
   payrollBatch,
   payrollInput,
+  peerFeedback,
+  peerFeedbackRequest,
   performanceCheckin,
   performanceGoal,
   performanceReview,
@@ -1386,5 +1388,253 @@ export function managerCheckIns(ctx: SessionContext): Promise<{ checkins: Checki
       )
       .orderBy(person.fullName);
     return { checkins, reports: reportRows };
+  });
+}
+
+// ─────────────────────── 360 peer feedback (ADR-0022, slice 3) ───────────────────────
+//
+// A manager/admin invites peers to give feedback on a subject for a review; each peer responds to their
+// OWN request. Anonymity (ADR-0022 default): the subject sees feedback content without authorship and
+// never the requester list — enforced by RLS (peer_feedback carries no author; the identity is on the
+// request, which the subject's RLS denies). The manager sees attributed feedback for accountability.
+
+/** Invite peers to give 360 feedback on a review's subject. Manager/admin only (assertCanDecide). */
+export async function requestPeerFeedback(
+  ctx: SessionContext,
+  p: { reviewId: string; peerEmploymentIds: string[] },
+): Promise<{ created: number }> {
+  return withTenant(ctx, async (tx) => {
+    const { review, cycle } = await loadReview(tx, p.reviewId);
+    await assertCanDecide(tx, ctx, review.employmentId, 'peer feedback');
+    const existing = await tx
+      .select({ peer: peerFeedbackRequest.peerEmploymentId })
+      .from(peerFeedbackRequest)
+      .where(eq(peerFeedbackRequest.reviewId, p.reviewId));
+    const already = new Set(existing.map((e) => e.peer));
+    // Names resolved by the inviting manager (who can see the subject + the picked peers) and denormalized
+    // onto the request — a 360 crosses RLS name-visibility, so they can't be re-resolved by peer/manager later.
+    const names = await namesForEmployments(tx, [review.employmentId, ...p.peerEmploymentIds]);
+    const subjectName = names.get(review.employmentId) ?? '—';
+    let created = 0;
+    for (const peerEmploymentId of [...new Set(p.peerEmploymentIds)]) {
+      if (peerEmploymentId === review.employmentId) continue; // never the subject themselves
+      if (already.has(peerEmploymentId)) continue; // idempotent per (review, peer)
+      const [row] = await tx
+        .insert(peerFeedbackRequest)
+        .values({
+          tenantId: ctx.tenantId,
+          reviewId: p.reviewId,
+          subjectEmploymentId: review.employmentId,
+          peerEmploymentId,
+          subjectName,
+          peerName: names.get(peerEmploymentId) ?? '—',
+          cycleName: cycle.name,
+          requestedByUserId: ctx.userId ?? null,
+        })
+        .returning({ id: peerFeedbackRequest.id });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'peer-feedback-request',
+        aggregateId: row.id,
+        eventType: 'peer-feedback-request.created',
+        actor: actorOf(ctx),
+        subjectEmploymentId: review.employmentId,
+        payload: { reviewId: p.reviewId },
+      });
+      created += 1;
+    }
+    return { created };
+  });
+}
+
+/** The peer submits their feedback for one of their own pending requests. RLS guarantees the writer is
+ *  the peer; the service guards the pending state + carries the denormalized subject for RLS. */
+export async function submitPeerFeedback(
+  ctx: SessionContext,
+  p: { requestId: string; strengths?: string; improvements?: string; named?: boolean },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
+    if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
+    if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
+    await tx.insert(peerFeedback).values({
+      tenantId: ctx.tenantId,
+      requestId: rq.id,
+      subjectEmploymentId: rq.subjectEmploymentId,
+      strengths: p.strengths?.trim() || null,
+      improvements: p.improvements?.trim() || null,
+      named: p.named ?? false,
+    });
+    await tx.update(peerFeedbackRequest).set({ status: 'submitted' }).where(eq(peerFeedbackRequest.id, rq.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'peer-feedback-request',
+      aggregateId: rq.id,
+      eventType: 'peer-feedback-request.submitted',
+      actor: actorOf(ctx),
+      subjectEmploymentId: rq.subjectEmploymentId,
+    });
+  });
+}
+
+/** The peer declines a request. */
+export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
+    if (!rq) throw new PerfError('Feedback request not found');
+    if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
+    await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'peer-feedback-request',
+      aggregateId: rq.id,
+      eventType: 'peer-feedback-request.declined',
+      actor: actorOf(ctx),
+      subjectEmploymentId: rq.subjectEmploymentId,
+    });
+  });
+}
+
+export type FeedbackRequestRow = { requestId: string; subject: string; cycleName: string };
+
+/** The signed-in peer's pending feedback requests — "give 360 feedback". */
+export function myFeedbackRequests(ctx: SessionContext): Promise<FeedbackRequestRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const ids = mine.map((m) => m.id);
+    if (ids.length === 0) return [];
+    // Names are denormalized on the request — the peer can't re-resolve the subject's name via RLS.
+    const rows = await tx
+      .select({
+        requestId: peerFeedbackRequest.id,
+        subject: peerFeedbackRequest.subjectName,
+        cycleName: peerFeedbackRequest.cycleName,
+      })
+      .from(peerFeedbackRequest)
+      .where(and(inArray(peerFeedbackRequest.peerEmploymentId, ids), eq(peerFeedbackRequest.status, 'pending')))
+      .orderBy(desc(peerFeedbackRequest.createdAt));
+    return rows.map((r) => ({ requestId: r.requestId, subject: r.subject, cycleName: r.cycleName ?? '' }));
+  });
+}
+
+export type FeedbackRow = {
+  id: string;
+  strengths: string | null;
+  improvements: string | null;
+  // Attributed peer name — present for the manager/admin view, null (anonymous) for the subject.
+  peer: string | null;
+};
+
+/** Viewer flags for a review, at the tx level (canManage / isSubject / released). Returns null if the
+ *  review is not visible to the caller. */
+async function reviewViewerFlags(
+  tx: Tx,
+  ctx: SessionContext,
+  reviewId: string,
+): Promise<{ canManage: boolean; isSubject: boolean; released: boolean } | null> {
+  let loaded: Awaited<ReturnType<typeof loadReview>>;
+  try {
+    loaded = await loadReview(tx, reviewId);
+  } catch {
+    return null;
+  }
+  const { review, cycle, subjectPersonId } = loaded;
+  let reviewerPersonId: string | null = null;
+  if (review.reviewerEmploymentId) {
+    const [rv] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, review.reviewerEmploymentId))
+      .limit(1);
+    reviewerPersonId = rv?.personId ?? null;
+  }
+  const admin = isAdminCtx(ctx);
+  const isSubject = ctx.personId != null && ctx.personId === subjectPersonId;
+  const isReviewer = ctx.personId != null && ctx.personId === reviewerPersonId;
+  return { canManage: admin || isReviewer, isSubject, released: cycle.releasedAt != null };
+}
+
+/** 360 feedback gathered on a review. Shaped for the viewer: the manager/admin sees attributed feedback;
+ *  the subject sees it anonymized AND only after the cycle is released. Also reports the pending count
+ *  for the manager. */
+export function peerFeedbackForReview(
+  ctx: SessionContext,
+  reviewId: string,
+): Promise<{ feedback: FeedbackRow[]; pending: number; canManage: boolean; invitable: { employmentId: string; name: string }[] }> {
+  return withTenant(ctx, async (tx) => {
+    const view = await reviewViewerFlags(tx, ctx, reviewId);
+    if (!view) return { feedback: [], pending: 0, canManage: false, invitable: [] };
+    const { canManage, isSubject, released } = view;
+    // The subject sees nothing until release (and never attribution).
+    if (isSubject && !canManage && !released) return { feedback: [], pending: 0, canManage: false, invitable: [] };
+
+    const rows = await tx
+      .select({
+        id: peerFeedback.id,
+        strengths: peerFeedback.strengths,
+        improvements: peerFeedback.improvements,
+        named: peerFeedback.named,
+        requestId: peerFeedback.requestId,
+      })
+      .from(peerFeedback)
+      .innerJoin(performanceReview, eq(performanceReview.id, reviewId))
+      .where(eq(peerFeedback.subjectEmploymentId, performanceReview.employmentId))
+      .orderBy(desc(peerFeedback.createdAt));
+
+    let feedback: FeedbackRow[];
+    if (canManage) {
+      // Manager/admin: attribute via the denormalized peer_name on the request (they have RLS access).
+      const reqIds = rows.map((r) => r.requestId);
+      const peers =
+        reqIds.length > 0
+          ? await tx
+              .select({ requestId: peerFeedbackRequest.id, name: peerFeedbackRequest.peerName })
+              .from(peerFeedbackRequest)
+              .where(inArray(peerFeedbackRequest.id, reqIds))
+          : [];
+      const peerByReq = new Map(peers.map((x) => [x.requestId, x.name]));
+      feedback = rows.map((r) => ({ id: r.id, strengths: r.strengths, improvements: r.improvements, peer: peerByReq.get(r.requestId) ?? null }));
+    } else {
+      // Subject (released): anonymized — never the author.
+      feedback = rows.map((r) => ({ id: r.id, strengths: r.strengths, improvements: r.improvements, peer: null }));
+    }
+
+    let pending = 0;
+    let invitable: { employmentId: string; name: string }[] = [];
+    if (canManage) {
+      const reqs = await tx
+        .select({ peer: peerFeedbackRequest.peerEmploymentId, status: peerFeedbackRequest.status })
+        .from(peerFeedbackRequest)
+        .where(eq(peerFeedbackRequest.reviewId, reviewId));
+      pending = reqs.filter((r) => r.status === 'pending').length;
+      // Invitable peers = the subject's teammates (the reviewer's other admin-line reports), minus
+      // the subject and anyone already invited.
+      const [rev] = await tx
+        .select({ reviewer: performanceReview.reviewerEmploymentId, subject: performanceReview.employmentId })
+        .from(performanceReview)
+        .where(eq(performanceReview.id, reviewId))
+        .limit(1);
+      const invited = new Set(reqs.map((r) => r.peer));
+      if (rev?.reviewer) {
+        const teammates = await tx
+          .select({ employmentId: reportingLine.subordinateEmploymentId, name: person.fullName })
+          .from(reportingLine)
+          .innerJoin(employment, eq(employment.id, reportingLine.subordinateEmploymentId))
+          .innerJoin(person, eq(person.id, employment.personId))
+          .where(
+            and(
+              eq(reportingLine.managerEmploymentId, rev.reviewer),
+              eq(reportingLine.lineType, 'administrative'),
+              lte(reportingLine.validFrom, sql`current_date`),
+              or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+              isNull(reportingLine.supersededAt),
+            ),
+          )
+          .orderBy(person.fullName);
+        invitable = teammates.filter((tm) => tm.employmentId !== rev.subject && !invited.has(tm.employmentId));
+      }
+    }
+    return { feedback, pending, canManage, invitable };
   });
 }
