@@ -1,0 +1,260 @@
+/**
+ * Typed pay-component services (Wave 3 #9, ADR-0025). Catalog management (admin), per-employment
+ * recurring values (effective-dated like compensation), per-batch one-off values, plus backfill
+ * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
+ * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
+ */
+import { and, eq, isNull } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import {
+  compensation,
+  employmentPayComponent,
+  payComponent,
+  payrollBatchComponent,
+  payrollInput,
+} from '../db/schema';
+import { MY_DEFAULT_PAY_COMPONENTS, BACKFILL_COMPONENT_CODES, type PayComponentSeed } from '../localization/my/pay-components';
+
+const money = (v: number) => Number(v).toFixed(2);
+
+async function componentIdByCode(tx: Tx, tenantId: string, code: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: payComponent.id })
+    .from(payComponent)
+    .where(and(eq(payComponent.tenantId, tenantId), eq(payComponent.code, code)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+// ───────────────────────── Catalog ─────────────────────────
+
+/** Idempotently upsert the Malaysia default catalog (by code). Admin-only via RLS. */
+export function seedPayComponentCatalog(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    let created = 0;
+    for (const c of MY_DEFAULT_PAY_COMPONENTS) {
+      const existing = await componentIdByCode(tx, ctx.tenantId, c.code);
+      if (existing) {
+        await tx.update(payComponent).set(flagsOf(c)).where(eq(payComponent.id, existing));
+      } else {
+        await tx.insert(payComponent).values({ tenantId: ctx.tenantId, code: c.code, name: c.name, kind: c.kind, ...flagsOf(c) });
+        created += 1;
+      }
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: ctx.tenantId, // catalog-level op keyed to the tenant
+      eventType: 'pay-component.catalog.seeded',
+      actor: actorOf(ctx),
+      payload: { total: MY_DEFAULT_PAY_COMPONENTS.length, created },
+    });
+    return { total: MY_DEFAULT_PAY_COMPONENTS.length, created };
+  });
+}
+
+const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis' | 'includedInPcb' | 'includedInHrdfBase' | 'isNonPayable' | 'prorates'>) => ({
+  includedInEpf: c.includedInEpf,
+  includedInSocsoEis: c.includedInSocsoEis,
+  includedInPcb: c.includedInPcb,
+  includedInHrdfBase: c.includedInHrdfBase,
+  isNonPayable: c.isNonPayable,
+  prorates: c.prorates,
+});
+
+export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
+    return opts.includeArchived ? rows : rows.filter((r) => r.archivedAt == null);
+  });
+}
+
+export type PayComponentInput = {
+  code: string;
+  name: string;
+  kind: 'allowance' | 'deduction' | 'contribution' | 'non_payable';
+  includedInEpf: boolean;
+  includedInSocsoEis: boolean;
+  includedInPcb: boolean;
+  includedInHrdfBase: boolean;
+  isNonPayable: boolean;
+  prorates: boolean;
+};
+
+/** Admin upsert of a single catalog component (by code). */
+export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
+  return withTenant(ctx, async (tx) => {
+    const existing = await componentIdByCode(tx, ctx.tenantId, p.code);
+    let id: string;
+    if (existing) {
+      await tx.update(payComponent).set({ name: p.name, kind: p.kind, ...flagsOf(p) }).where(eq(payComponent.id, existing));
+      id = existing;
+    } else {
+      const [row] = await tx
+        .insert(payComponent)
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, kind: p.kind, ...flagsOf(p) })
+        .returning({ id: payComponent.id });
+      id = row.id;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: id,
+      eventType: existing ? 'pay-component.updated' : 'pay-component.created',
+      actor: actorOf(ctx),
+      payload: { code: p.code },
+    });
+    return { id };
+  });
+}
+
+export function archivePayComponent(ctx: SessionContext, id: string) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(payComponent).set({ archivedAt: new Date() }).where(eq(payComponent.id, id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: id,
+      eventType: 'pay-component.archived',
+      actor: actorOf(ctx),
+    });
+    return { id };
+  });
+}
+
+// ───────────────────── Per-employment recurring ─────────────────────
+
+/** Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation). */
+export function setEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { employmentId: string; componentId: string; amount: number; effectiveFrom: string },
+  outerTx?: Tx,
+) {
+  const run = async (tx: Tx) => {
+    const [cur] = await tx
+      .select({ id: employmentPayComponent.id })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          eq(employmentPayComponent.componentId, p.componentId),
+          isNull(employmentPayComponent.validTo),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (cur) {
+      await tx.update(employmentPayComponent).set({ validTo: p.effectiveFrom }).where(eq(employmentPayComponent.id, cur.id));
+    }
+    const [row] = await tx
+      .insert(employmentPayComponent)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        componentId: p.componentId,
+        amount: money(p.amount),
+        validFrom: p.effectiveFrom,
+        validTo: null,
+      })
+      .returning({ id: employmentPayComponent.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-pay-component',
+      aggregateId: row.id,
+      eventType: 'employment-pay-component.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { employmentId: p.employmentId, componentId: p.componentId, amount: p.amount, effectiveFrom: p.effectiveFrom },
+    });
+    return { id: row.id };
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+// ───────────────────── Per-batch one-off ─────────────────────
+
+/** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
+export function setPayrollBatchComponent(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; componentId: string; amount: number; notes?: string },
+  outerTx?: Tx,
+) {
+  const run = async (tx: Tx) => {
+    const [cur] = await tx
+      .select({ id: payrollBatchComponent.id })
+      .from(payrollBatchComponent)
+      .where(
+        and(
+          eq(payrollBatchComponent.batchId, p.batchId),
+          eq(payrollBatchComponent.employmentId, p.employmentId),
+          eq(payrollBatchComponent.componentId, p.componentId),
+        ),
+      )
+      .limit(1);
+    let id: string;
+    if (cur) {
+      await tx.update(payrollBatchComponent).set({ amount: money(p.amount), notes: p.notes ?? null }).where(eq(payrollBatchComponent.id, cur.id));
+      id = cur.id;
+    } else {
+      const [row] = await tx
+        .insert(payrollBatchComponent)
+        .values({ tenantId: ctx.tenantId, batchId: p.batchId, employmentId: p.employmentId, componentId: p.componentId, amount: money(p.amount), notes: p.notes ?? null })
+        .returning({ id: payrollBatchComponent.id });
+      id = row.id;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch-component',
+      aggregateId: id,
+      eventType: 'payroll-batch-component.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { batchId: p.batchId, componentId: p.componentId, amount: p.amount },
+    });
+    return { id };
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+// ───────────────────── Backfill (legacy → components) ─────────────────────
+
+/** Seed BASIC + ALLOWANCE recurring components from every open compensation row. Idempotent-ish:
+ *  setEmploymentPayComponent supersedes the prior open value, so re-running just re-states it. */
+export function backfillEmploymentComponentsFromCompensation(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const basicId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.basic);
+    const allowId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.allowance);
+    if (!basicId || !allowId) throw new Error('Pay-component catalog not seeded — run seedPayComponentCatalog first.');
+    const comps = await tx
+      .select()
+      .from(compensation)
+      .where(and(isNull(compensation.validTo), isNull(compensation.supersededAt)));
+    let count = 0;
+    for (const c of comps) {
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: basicId, amount: Number(c.basicSalary), effectiveFrom: c.validFrom }, tx);
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: allowId, amount: Number(c.monthlyAllowance ?? 0), effectiveFrom: c.validFrom }, tx);
+      count += 1;
+    }
+    return { employments: count };
+  });
+}
+
+/** Seed OVERTIME / BONUS / CLAIM one-off components for a draft batch from its payroll_input rows. */
+export function backfillBatchComponentsFromInput(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async (tx) => {
+    const otId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.overtime);
+    const bonusId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.bonus);
+    const claimId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.claim);
+    if (!otId || !bonusId || !claimId) throw new Error('Pay-component catalog not seeded.');
+    const inputs = await tx.select().from(payrollInput).where(eq(payrollInput.batchId, batchId));
+    let count = 0;
+    for (const i of inputs) {
+      if (Number(i.overtimeAmount) > 0) await setPayrollBatchComponent(ctx, { batchId, employmentId: i.employmentId, componentId: otId, amount: Number(i.overtimeAmount) }, tx);
+      if (Number(i.bonusAmount) > 0) await setPayrollBatchComponent(ctx, { batchId, employmentId: i.employmentId, componentId: bonusId, amount: Number(i.bonusAmount) }, tx);
+      if (Number(i.claimAllowance) > 0) await setPayrollBatchComponent(ctx, { batchId, employmentId: i.employmentId, componentId: claimId, amount: Number(i.claimAllowance) }, tx);
+      count += 1;
+    }
+    return { inputs: count };
+  });
+}
