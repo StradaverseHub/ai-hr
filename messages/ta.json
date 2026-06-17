@@ -913,7 +913,8 @@
       "colPcb": "PCB",
       "colNet": "நிகரம்",
       "proratedDays": "விகிதாசாரம் · {worked}/{total} நாட்கள்",
-      "noPayslips": "இந்தத் தொகுதியில் ஊதியச் சீட்டுகள் இல்லை."
+      "noPayslips": "இந்தத் தொகுதியில் ஊதியச் சீட்டுகள் இல்லை.",
+      "totalHrdf": "HRD Corp வரி"
     }
   },
   "admin": {
@@ -972,7 +973,12 @@
       "positionPlaceholder": "மூத்த பொறியாளர்",
       "costCenterCodePlaceholder": "HQ",
       "costCenterNamePlaceholder": "தலைமையகம்",
-      "add": "சேர்"
+      "add": "சேர்",
+      "hrdfStatusLabel": "HRD Corp (HRDF) வரி",
+      "hrdfNotRegistered": "பதிவு செய்யப்படவில்லை",
+      "hrdfMandatory": "கட்டாயம் — 10+ ஊழியர்கள் (1%)",
+      "hrdfOptional": "விருப்பம் — 5–9 ஊழியர்கள் (0.5%)",
+      "hrdfHint": "அடிப்படை + நிலையான கொடுப்பனவுகள் மீது முதலாளி மட்டுமே செலுத்தும் வரி (போனஸ், கமிஷன், கூடுதல் நேரம் தவிர்த்து). 10+ மலேசிய ஊழியர்களுக்கு கட்டாயம், 5–9 பேருக்கு விருப்பம்."
     },
     "leave": {
       "pageTitle": "விடுப்பு அமைப்பு",

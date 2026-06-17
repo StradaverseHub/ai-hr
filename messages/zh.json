@@ -913,7 +913,8 @@
       "colPcb": "PCB",
       "colNet": "实发",
       "proratedDays": "按比例 · {worked}/{total} 天",
-      "noPayslips": "此批次中无工资单。"
+      "noPayslips": "此批次中无工资单。",
+      "totalHrdf": "HRD Corp 征费"
     }
   },
   "admin": {
@@ -972,7 +973,12 @@
       "positionPlaceholder": "高级工程师",
       "costCenterCodePlaceholder": "HQ",
       "costCenterNamePlaceholder": "总部",
-      "add": "添加"
+      "add": "添加",
+      "hrdfStatusLabel": "HRD Corp（HRDF）征费",
+      "hrdfNotRegistered": "未注册",
+      "hrdfMandatory": "强制 — 10名以上员工（1%）",
+      "hrdfOptional": "可选 — 5–9名员工（0.5%）",
+      "hrdfHint": "仅由雇主缴纳，按基本工资 + 固定津贴计算（不含奖金、佣金、加班费）。10名以上马来西亚员工为强制，5–9名为可选。"
     },
     "leave": {
       "pageTitle": "休假配置",

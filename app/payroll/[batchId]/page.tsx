@@ -224,23 +224,31 @@ export default async function BatchPage({
         </Card>
       )}
 
-      {batch.status !== 'draft' && (
-        <div className="grid grid-cols-2 divide-x divide-border rounded-lg border border-border sm:grid-cols-4">
-          {(
-            [
-              ['totalGross', totals.gross],
-              ['totalDeductions', totals.deductions],
-              ['totalNet', totals.net],
-              ['totalEmployerCost', totals.employerCost],
-            ] as const
-          ).map(([key, v]) => (
-            <div key={key} className="p-4">
-              <div className="text-xs text-muted-foreground">{t(key)}</div>
-              <div className="text-lg font-semibold tabular-nums">{rm(v)}</div>
+      {batch.status !== 'draft' &&
+        (() => {
+          // HRD Corp levy is an employer-only cost; show its tile only when the company is registered.
+          const tiles: [string, number][] = [
+            ['totalGross', totals.gross],
+            ['totalDeductions', totals.deductions],
+            ['totalNet', totals.net],
+          ];
+          if (Number(totals.hrdfEmployer) > 0) tiles.push(['totalHrdf', totals.hrdfEmployer]);
+          tiles.push(['totalEmployerCost', totals.employerCost]);
+          return (
+            <div
+              className={`grid grid-cols-2 divide-x divide-border rounded-lg border border-border ${
+                tiles.length === 5 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'
+              }`}
+            >
+              {tiles.map(([key, v]) => (
+                <div key={key} className="p-4">
+                  <div className="text-xs text-muted-foreground">{t(key)}</div>
+                  <div className="text-lg font-semibold tabular-nums">{rm(v)}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })()}
 
       <Card className="overflow-hidden">
         <SectionHeader title={t('payslipsTitle')} count={slips.length} />

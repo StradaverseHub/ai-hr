@@ -24,6 +24,7 @@ export type PanelStatutory = {
   lhdnEmployerNo: string | null;
   myinvoisTin: string | null;
   ssmRegistrationNo: string | null;
+  hrdfStatus: 'not_registered' | 'mandatory' | 'optional' | null;
 } | null;
 export type ChildRow = {
   id: string;
@@ -254,10 +255,22 @@ export function CompanyPanel({
                     className={inputCls}
                   />
                 </Field>
+                <Field label={t('hrdfStatusLabel')}>
+                  <select
+                    name="hrdfStatus"
+                    defaultValue={statutory?.hrdfStatus ?? 'not_registered'}
+                    className={inputCls}
+                  >
+                    <option value="not_registered">{t('hrdfNotRegistered')}</option>
+                    <option value="mandatory">{t('hrdfMandatory')}</option>
+                    <option value="optional">{t('hrdfOptional')}</option>
+                  </select>
+                </Field>
               </div>
               <p className="text-xs text-muted-foreground">
                 {t('statutoryFilingsHint')}
               </p>
+              <p className="text-xs text-muted-foreground">{t('hrdfHint')}</p>
               <Button type="submit" size="sm">
                 {t('saveStatutoryIdentity')}
               </Button>

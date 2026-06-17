@@ -1,0 +1,2 @@
+CREATE TYPE "public"."hrdf_status" AS ENUM('not_registered', 'mandatory', 'optional');--> statement-breakpoint
+ALTER TABLE "company_statutory_my" ADD COLUMN "hrdf_status" "hrdf_status" DEFAULT 'not_registered' NOT NULL;

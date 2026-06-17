@@ -11,6 +11,7 @@ import {
   attendance,
   claimRequest,
   company,
+  companyStatutoryMy,
   compensation,
   employeeStatutoryMy,
   employment,
@@ -352,6 +353,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const pack = packFor(co?.country);
     if (!pack) throw new Error(`No localization pack for ${co?.country ?? 'company'}`);
 
+    // HRD Corp levy registration band for this employer (Wave 2A). Default not_registered = no levy,
+    // so a company that hasn't set its band produces byte-identical payroll to pre-HRDF.
+    const [coStat] = await tx
+      .select({ hrdfStatus: companyStatutoryMy.hrdfStatus })
+      .from(companyStatutoryMy)
+      .where(eq(companyStatutoryMy.companyId, batch.companyId))
+      .limit(1);
+    const hrdfStatus = coStat?.hrdfStatus ?? 'not_registered';
+
     // Active employees with current compensation.
     const { payPeriod } = batch;
     const [pYear, pMonth] = payPeriod.split('-').map(Number);
@@ -500,7 +510,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
 
     const totals = {
       gross: 0, net: 0, epfEmployee: 0, epfEmployer: 0, socsoEmployee: 0,
-      socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0, deductions: 0, employerCost: 0,
+      socsoEmployer: 0, eisEmployee: 0, eisEmployer: 0, pcb: 0, hrdfEmployer: 0,
+      deductions: 0, employerCost: 0,
     };
 
     for (const e of emps) {
@@ -525,6 +536,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const lp = round2(tp1ByEmp.get(e.employmentId) ?? 0);
       const zakat = round2(zakatByEmp.get(e.employmentId) ?? 0);
       const age = ageAt(e.dateOfBirth);
+      // HRD Corp levy (Wave 2A) — employer-only. Base = basic + FIXED allowance net of unpaid leave;
+      // it is NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claim allowances are excluded).
+      const fixedAllowance = round2(Number(e.allowance ?? 0) * factor);
+      const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
+      const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus);
       const st = {
         ...pack.payroll.statutory(
           wagesExOt,
@@ -544,13 +560,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
         zakat,
+        // HRD Corp levy (employer-only). 0 when the company is not HRDF-registered.
+        hrdf,
       };
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + unpaidDeduction);
       const grossPay = round2(normalWage + bonus); // total earnings before deductions
       const net = round2(grossPay - totalDeductions);
       const employerCost = round2(
-        wagesExOt + overtime + bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer,
+        wagesExOt + overtime + bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf,
       );
 
       await tx.insert(payslip).values({
@@ -579,6 +597,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       totals.eisEmployee += st.eisEmployee;
       totals.eisEmployer += st.eisEmployer;
       totals.pcb += st.pcb;
+      totals.hrdfEmployer += hrdf;
       totals.deductions += totalDeductions;
       totals.employerCost += employerCost;
     }

@@ -81,6 +81,9 @@ export async function setCompanyStatutoryAction(formData: FormData) {
   try {
     const pack = packFor(country);
     if (!pack?.companyStatutory) throw new Error(`No statutory pack for ${country}`);
+    const hrdfRaw = String(formData.get('hrdfStatus') ?? '');
+    const hrdfStatus =
+      hrdfRaw === 'not_registered' || hrdfRaw === 'mandatory' || hrdfRaw === 'optional' ? hrdfRaw : undefined;
     await pack.companyStatutory.set(s, {
       companyId: String(formData.get('companyId')),
       epfEmployerNo: (formData.get('epfEmployerNo') as string) || undefined,
@@ -88,6 +91,7 @@ export async function setCompanyStatutoryAction(formData: FormData) {
       lhdnEmployerNo: (formData.get('lhdnEmployerNo') as string) || undefined,
       myinvoisTin: (formData.get('myinvoisTin') as string) || undefined,
       ssmRegistrationNo: (formData.get('ssmRegistrationNo') as string) || undefined,
+      hrdfStatus,
     });
   } catch (e) {
     fail(ORG, e);

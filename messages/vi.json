@@ -913,7 +913,8 @@
       "colPcb": "PCB",
       "colNet": "Thực lãnh",
       "proratedDays": "tính theo tỷ lệ · {worked}/{total} ngày",
-      "noPayslips": "Không có phiếu lương trong đợt này."
+      "noPayslips": "Không có phiếu lương trong đợt này.",
+      "totalHrdf": "Thuế HRD Corp"
     }
   },
   "admin": {
@@ -972,7 +973,12 @@
       "positionPlaceholder": "Kỹ sư cao cấp",
       "costCenterCodePlaceholder": "HQ",
       "costCenterNamePlaceholder": "Trụ sở chính",
-      "add": "Thêm"
+      "add": "Thêm",
+      "hrdfStatusLabel": "Thuế HRD Corp (HRDF)",
+      "hrdfNotRegistered": "Chưa đăng ký",
+      "hrdfMandatory": "Bắt buộc — 10+ nhân viên (1%)",
+      "hrdfOptional": "Tùy chọn — 5–9 nhân viên (0.5%)",
+      "hrdfHint": "Khoản thu chỉ do người sử dụng lao động trả trên lương cơ bản + phụ cấp cố định (không gồm thưởng, hoa hồng, làm thêm giờ). Bắt buộc khi có 10+ nhân viên Malaysia, tùy chọn khi 5–9."
     },
     "leave": {
       "pageTitle": "Cấu hình nghỉ phép",
