@@ -513,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "Di manakah mereka boleh bertambah baik?",
     "feedbackNamed": "Benarkan orang yang dinilai melihat nama saya",
     "feedbackSubmit": "Hantar maklum balas",
-    "feedbackDecline": "Tolak"
+    "feedbackDecline": "Tolak",
+    "secOverview": "Ringkasan",
+    "secProfile": "Profil",
+    "secPay": "Gaji",
+    "secPerformance": "Prestasi",
+    "secDocuments": "Dokumen"
   },
   "approvals": {
     "title": "Kelulusan",

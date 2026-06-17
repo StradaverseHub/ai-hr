@@ -513,7 +513,12 @@
       "employerContributionsHeading": "Employer contributions (not deducted from you)",
       "totalEmployerCost": "Total employer cost",
       "proratedNote": "Prorated on {days, plural, one {# day} other {# days}} worked in this period."
-    }
+    },
+    "secOverview": "Overview",
+    "secProfile": "Profile",
+    "secPay": "Pay",
+    "secPerformance": "Performance",
+    "secDocuments": "Documents"
   },
   "approvals": {
     "title": "Approvals",

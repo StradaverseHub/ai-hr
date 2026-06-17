@@ -513,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "அவர்கள் எங்கே மேம்படலாம்?",
     "feedbackNamed": "மதிப்பாய்வு செய்யப்படும் நபர் என் பெயரைப் பார்க்க அனுமதி",
     "feedbackSubmit": "கருத்தைச் சமர்ப்பி",
-    "feedbackDecline": "மறு"
+    "feedbackDecline": "மறு",
+    "secOverview": "கண்ணோட்டம்",
+    "secProfile": "சுயவிவரம்",
+    "secPay": "ஊதியம்",
+    "secPerformance": "செயல்திறன்",
+    "secDocuments": "ஆவணங்கள்"
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",

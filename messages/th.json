@@ -513,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "พวกเขาควรปรับปรุงในด้านใด",
     "feedbackNamed": "ให้ผู้ที่ถูกประเมินเห็นชื่อของฉัน",
     "feedbackSubmit": "ส่งความคิดเห็น",
-    "feedbackDecline": "ปฏิเสธ"
+    "feedbackDecline": "ปฏิเสธ",
+    "secOverview": "ภาพรวม",
+    "secProfile": "โปรไฟล์",
+    "secPay": "ค่าจ้าง",
+    "secPerformance": "ผลงาน",
+    "secDocuments": "เอกสาร"
   },
   "approvals": {
     "title": "การอนุมัติ",

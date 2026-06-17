@@ -513,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "Họ có thể cải thiện ở đâu?",
     "feedbackNamed": "Cho phép người được đánh giá thấy tên tôi",
     "feedbackSubmit": "Gửi phản hồi",
-    "feedbackDecline": "Từ chối"
+    "feedbackDecline": "Từ chối",
+    "secOverview": "Tổng quan",
+    "secProfile": "Hồ sơ",
+    "secPay": "Lương",
+    "secPerformance": "Hiệu suất",
+    "secDocuments": "Tài liệu"
   },
   "approvals": {
     "title": "Phê duyệt",

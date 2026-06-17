@@ -513,7 +513,12 @@
     "feedbackImprovementsPlaceholder": "他们在哪些方面可以改进？",
     "feedbackNamed": "允许被评估者看到我的姓名",
     "feedbackSubmit": "提交反馈",
-    "feedbackDecline": "婉拒"
+    "feedbackDecline": "婉拒",
+    "secOverview": "概览",
+    "secProfile": "个人资料",
+    "secPay": "薪资",
+    "secPerformance": "绩效",
+    "secDocuments": "文档"
   },
   "approvals": {
     "title": "审批",
