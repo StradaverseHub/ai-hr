@@ -638,7 +638,17 @@
       "statusLabel": "Status",
       "enactFromCyclePage": "This recommendation is enacted from the cycle page.",
       "acknowledgeHint": "Acknowledge that you have read and discussed this released review.",
-      "acknowledge": "Acknowledge"
+      "acknowledge": "Acknowledge",
+      "goalsCardTitle": "Goals",
+      "goalsCardEmpty": "No goals linked to this review yet.",
+      "goalUnlink": "Remove",
+      "goalLinkLabel": "Link a goal",
+      "goalLinkPlaceholder": "Choose a goal…",
+      "goalLink": "Link",
+      "goalStatus_active": "Active",
+      "goalStatus_achieved": "Achieved",
+      "goalStatus_missed": "Missed",
+      "goalStatus_dropped": "Dropped"
     }
   },
   "payroll": {

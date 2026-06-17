@@ -1,9 +1,15 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { reviewForViewer } from '@/core/performance';
+import { reviewForViewer, reviewGoals } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
-import { acknowledgeAction, submitManagerAction, submitSelfAction } from '../../actions';
+import {
+  acknowledgeAction,
+  linkGoalAction,
+  submitManagerAction,
+  submitSelfAction,
+  unlinkGoalAction,
+} from '../../actions';
 
 function RatingSelect({
   name,
@@ -53,6 +59,7 @@ export default async function ReviewPage({
   if (!r) notFound();
   const scale = r.ratingScale;
   const backHref = r.isSubject && !r.canManage ? '/me' : '/performance';
+  const { linked: linkedGoals, linkable: linkableGoals } = await reviewGoals(s, reviewId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -101,6 +108,62 @@ export default async function ReviewPage({
           <p className="mt-3 text-sm text-muted-foreground">{t('notSubmittedYet')}</p>
         )}
       </Card>
+
+      {/* Goals referenced (ADR-0022) — the manager links the subject's goals onto this review */}
+      {(linkedGoals.length > 0 || r.canManage) && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{t('goalsCardTitle')}</h2>
+          {linkedGoals.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">{t('goalsCardEmpty')}</p>
+          ) : (
+            <ul className="mt-3 space-y-2.5">
+              {linkedGoals.map((g) => (
+                <li key={g.id} className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium">{g.title}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{t(`goalStatus_${g.status}`)}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${g.progress}%` }} />
+                    </div>
+                  </div>
+                  <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{g.progress}%</span>
+                  {r.canManage && (
+                    <form action={unlinkGoalAction}>
+                      <input type="hidden" name="reviewId" value={r.id} />
+                      <input type="hidden" name="goalId" value={g.id} />
+                      <Button type="submit" size="sm" variant="ghost">
+                        {t('goalUnlink')}
+                      </Button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {r.canManage && linkableGoals.length > 0 && (
+            <form action={linkGoalAction} className="mt-4 flex items-end gap-2 border-t border-border pt-3">
+              <input type="hidden" name="reviewId" value={r.id} />
+              <Field label={t('goalLinkLabel')}>
+                <select name="goalId" required className={inputCls} defaultValue="">
+                  <option value="" disabled>
+                    {t('goalLinkPlaceholder')}
+                  </option>
+                  {linkableGoals.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Button type="submit" variant="secondary">
+                {t('goalLink')}
+              </Button>
+            </form>
+          )}
+        </Card>
+      )}
 
       {/* Manager review */}
       <Card className="p-5">

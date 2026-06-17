@@ -9,11 +9,13 @@ import {
   createCycle,
   declineCompAction,
   enactCompAction,
+  linkGoalToReview,
   moveCycleToCalibration,
   openCycle,
   releaseCycle,
   submitManagerReview,
   submitSelfReview,
+  unlinkGoalFromReview,
   type MeritBudget,
 } from '@/core/performance';
 
@@ -127,6 +129,30 @@ export async function acknowledgeAction(formData: FormData) {
   }
   revalidatePath(`/performance/review/${reviewId}`);
   redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Acknowledged')}`);
+}
+
+export async function linkGoalAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    await linkGoalToReview(s, { reviewId, goalId: String(formData.get('goalId')) });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Goal linked')}`);
+}
+
+export async function unlinkGoalAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    await unlinkGoalFromReview(s, { reviewId, goalId: String(formData.get('goalId')) });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent('Goal unlinked')}`);
 }
 
 export async function enactAction(formData: FormData) {

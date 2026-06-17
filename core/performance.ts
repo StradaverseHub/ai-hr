@@ -1181,3 +1181,33 @@ export function goalsForReview(ctx: SessionContext, reviewId: string): Promise<G
     return rows.map(toGoalRow);
   });
 }
+
+/** For the review page: the goals already linked + the subject's other goals available to link. */
+export function reviewGoals(ctx: SessionContext, reviewId: string): Promise<{ linked: GoalRow[]; linkable: GoalRow[] }> {
+  return withTenant(ctx, async (tx) => {
+    const [r] = await tx
+      .select({ employmentId: performanceReview.employmentId })
+      .from(performanceReview)
+      .where(eq(performanceReview.id, reviewId))
+      .limit(1);
+    if (!r) return { linked: [], linkable: [] };
+    const linkedRows = await tx
+      .select(goalSelect())
+      .from(reviewGoal)
+      .innerJoin(performanceGoal, eq(performanceGoal.id, reviewGoal.goalId))
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(reviewGoal.reviewId, reviewId))
+      .orderBy(desc(performanceGoal.createdAt));
+    const allRows = await tx
+      .select(goalSelect())
+      .from(performanceGoal)
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(performanceGoal.employmentId, r.employmentId))
+      .orderBy(desc(performanceGoal.createdAt));
+    const linkedIds = new Set(linkedRows.map((g) => g.id));
+    return {
+      linked: linkedRows.map(toGoalRow),
+      linkable: allRows.filter((g) => !linkedIds.has(g.id)).map(toGoalRow),
+    };
+  });
+}
