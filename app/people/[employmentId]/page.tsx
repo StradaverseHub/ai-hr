@@ -20,6 +20,7 @@ import {
   addReportingLineAction,
   endReportingLineAction,
   setCompensationAction,
+  setEmploymentComponentAction,
   setPersonAction,
   setStatutoryAction,
   terminateAction,
@@ -27,6 +28,7 @@ import {
 } from './actions';
 import { currentCompensation } from '@/core/comp';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
+import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 
 const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -81,6 +83,9 @@ export default async function EmployeePage({
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
   const comp = admin ? await currentCompensation(s, employmentId) : null;
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
+  // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
+  const payComps = admin ? await listEmploymentPayComponents(s, employmentId) : [];
+  const componentCatalog = admin ? await listPayComponents(s) : [];
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
@@ -123,6 +128,43 @@ export default async function EmployeePage({
               <button className={btnPrimary}>{t('saveDetails')}</button>
             </div>
           </form>
+        </Card>
+      )}
+
+      {admin && componentCatalog.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
+          {payComps.length > 0 && (
+            <table className="w-full text-sm">
+              <tbody className="divide-y divide-border">
+                {payComps.map((pc) => (
+                  <tr key={pc.id}>
+                    <td className="px-4 py-2.5 font-mono text-xs">{pc.code}</td>
+                    <td className="px-4 py-2.5">{pc.name}</td>
+                    <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(pc.amount).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <form action={setEmploymentComponentAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={t('payComponent')}>
+              <select name="componentId" required className={inputCls}>
+                {componentCatalog.map((c) => (
+                  <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('payComponentAmount')}>
+              <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
+            </Field>
+            <Field label={t('payComponentEffectiveFrom')}>
+              <input name="effectiveFrom" type="date" required defaultValue={emp.hiredOn} className={inputCls} />
+            </Field>
+            <button className={btnPrimary}>{t('payComponentSave')}</button>
+          </form>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
         </Card>
       )}
 

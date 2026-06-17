@@ -769,6 +769,86 @@ export const payrollInput = pgTable(
   (t) => [uniqueIndex('payroll_input_batch_emp_uq').on(t.batchId, t.employmentId)],
 );
 
+// ─────────────── Typed pay components (Wave 3 #9, ADR-0025) ───────────────
+// GATED behind TYPED_PAY_COMPONENTS_ENABLED — the kernel only reads these when the flag is on.
+export const payComponentKindEnum = pgEnum('pay_component_kind', [
+  'allowance',
+  'deduction',
+  'contribution',
+  'non_payable',
+]);
+
+// Tenant catalog of pay components with per-component statutory treatment flags (defaults seeded from
+// docs/architecture/MY-pay-component-treatment-matrix.md). Admin-write, tenant-read (like leave_type).
+export const payComponent = pgTable(
+  'pay_component',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    kind: payComponentKindEnum('kind').notNull(),
+    // Treatment flags — which statutory base the component feeds (the four MY "wages" definitions).
+    includedInEpf: boolean('included_in_epf').notNull().default(false),
+    includedInSocsoEis: boolean('included_in_socso_eis').notNull().default(false),
+    includedInPcb: boolean('included_in_pcb').notNull().default(true),
+    includedInHrdfBase: boolean('included_in_hrdf_base').notNull().default(false),
+    // BIK/perquisite: taxable (PCB) but not paid in cash, so excluded from cash gross/net.
+    isNonPayable: boolean('is_non_payable').notNull().default(false),
+    // Whether the amount prorates for a mid-period joiner/leaver.
+    prorates: boolean('prorates').notNull().default(true),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('pay_component_code_uq').on(t.tenantId, t.code)],
+);
+
+// Recurring per-employment component values, effective-dated like compensation. RLS: admin-or-self
+// (amounts are pay — Wave 1 #5).
+export const employmentPayComponent = pgTable(
+  'employment_pay_component',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    componentId: uuid('component_id')
+      .notNull()
+      .references(() => payComponent.id),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    validFrom: date('valid_from').notNull(),
+    validTo: date('valid_to'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('employment_pay_component_idx').on(t.employmentId, t.validFrom)],
+);
+
+// One-off per-batch component values (an off-cycle allowance/deduction for this run). RLS: admin-only
+// (like payroll_input).
+export const payrollBatchComponent = pgTable(
+  'payroll_batch_component',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    componentId: uuid('component_id')
+      .notNull()
+      .references(() => payComponent.id),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    notes: text('notes'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('payroll_batch_component_uq').on(t.batchId, t.employmentId, t.componentId)],
+);
+
 // Statutory / compliance report artefact (ADR-0010). Append-only record of a generated filing —
 // derived from payslips but persisted for audit/idempotency (who generated what, against which
 // statutory-table version). Filed per legal entity (company_id); never mutated after submission.

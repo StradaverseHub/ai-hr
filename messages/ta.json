@@ -31,7 +31,8 @@
     "claims": "கோரிக்கைகள்",
     "aiConfig": "AI",
     "notifications": "அறிவிப்புகள்",
-    "analytics": "பகுப்பாய்வு"
+    "analytics": "பகுப்பாய்வு",
+    "payComponents": "ஊதிய கூறுகள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -224,7 +225,13 @@
       "terminationDeath": "மரணம்",
       "terminationOther": "மற்றவை",
       "terminationReason": "காரணம் (விருப்பம்)",
-      "terminationReasonHint": "எ.கா. சிறந்த வாய்ப்பு, பணிநீக்கம்"
+      "terminationReasonHint": "எ.கா. சிறந்த வாய்ப்பு, பணிநீக்கம்",
+      "payComponentsTitle": "ஊதிய கூறுகள்",
+      "payComponent": "கூறு",
+      "payComponentAmount": "தொகை",
+      "payComponentEffectiveFrom": "அமலுக்கு வரும் தேதி",
+      "payComponentSave": "சேர்",
+      "payComponentsHint": "இந்த ஊழியருக்கான தொடர் கூறுகள். வகைப்படுத்தப்பட்ட கூறுகள் இயக்கப்பட்டதும் ஊதியத்தில் பயன்படுத்தப்படும்."
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",
@@ -1586,5 +1593,28 @@
     "exportWithoutComp": "பட்டியல் (ஊதியம் இல்லை)",
     "exportWithComp": "பட்டியல் + ஊதியம்",
     "exportAll": "நீக்கப்பட்டவை + ஊதியம் உட்பட அனைத்தும்"
+  },
+  "payComponents": {
+    "title": "ஊதிய கூறுகள்",
+    "description": "கட்டமைக்கக்கூடிய ஊதியக் கூறுகளையும் அவற்றின் சட்டப்பூர்வ நடைமுறையையும் (EPF / SOCSO / PCB / HRDF) வரையறுக்கவும்.",
+    "previewNotice": "முன்னோட்டம். பட்டியல் பயன்படுத்தத் தயார்; இயக்கப்பட்டால் மட்டுமே (TYPED_PAY_COMPONENTS_ENABLED) ஊதியம் வகைப்படுத்தப்பட்ட கூறுகளுக்கு மாறும். அதுவரை ஊதியம் அடிப்படை + கொடுப்பனவு + கூடுதல் நேரம் + போனஸ் என இப்போது போல் இயங்கும்.",
+    "catalogTitle": "பட்டியல்",
+    "seedDefaults": "மலேசிய இயல்புநிலையை ஏற்று",
+    "colCode": "குறியீடு",
+    "colName": "பெயர்",
+    "colKind": "வகை",
+    "colProrates": "விகிதாசாரம்",
+    "kind_allowance": "கொடுப்பனவு",
+    "kind_deduction": "கழிவு",
+    "kind_contribution": "பங்களிப்பு",
+    "kind_non_payable": "பணமில்லா (BIK)",
+    "archiveTitle": "கூறை காப்பகப்படுத்தவா?",
+    "archiveDescription": "{code} ஐ காப்பகப்படுத்தவா? இனி சேர்க்க கிடைக்காது.",
+    "archive": "காப்பகம்",
+    "empty": "இன்னும் கூறுகள் இல்லை — தொடங்க மலேசிய இயல்புநிலையை ஏற்றவும்.",
+    "addTitle": "கூறு சேர் / திருத்து",
+    "namePlaceholder": "எ.கா. வீட்டுக் கொடுப்பனவு",
+    "flagsHint": "கொடிகள் கூறு எந்த சட்டப்பூர்வ அடிப்படையை சேர்க்கிறது என்பதைத் தீர்மானிக்கின்றன. பணமில்லா (BIK) மற்றும் PCB-மட்டும் வருமானம் இந்த பதிப்பில் கணக்கிடப்படவில்லை.",
+    "saveComponent": "கூறைச் சேமி"
   }
 }

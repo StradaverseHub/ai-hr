@@ -15,6 +15,9 @@ import {
   compensation,
   employeeStatutoryMy,
   employment,
+  employmentPayComponent,
+  payComponent,
+  payrollBatchComponent,
   leaveLedger,
   leaveRequest,
   leaveType,
@@ -28,6 +31,15 @@ export class BatchNotDraftError extends Error {
   constructor() {
     super('Payslips can only be generated for a draft batch');
     this.name = 'BatchNotDraftError';
+  }
+}
+
+/** A typed pay component that v1 cannot compute correctly (a non-payable/BIK or PCB-only taxable
+ *  earning) reached payroll generation. Fail-closed rather than silently under-tax (ADR-0025 §5). */
+export class UnsupportedPayComponentError extends Error {
+  constructor(code: string) {
+    super(`Pay component "${code}" is taxable but not supported in this version (non-payable/PCB-only). Remove it from payroll or wait for a later release.`);
+    this.name = 'UnsupportedPayComponentError';
   }
 }
 
@@ -496,6 +508,100 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
     }
 
+    // ── Typed pay components (Wave 3 #9, ADR-0025) ──
+    // GATED: only when TYPED_PAY_COMPONENTS_ENABLED do we read the component tables as the earnings
+    // source instead of compensation + payroll_input. The seeded component flags reproduce the legacy
+    // agency split exactly, so a back-filled batch is byte-identical (proven by the compat test).
+    const typedComponents = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+    type CompRow = {
+      code: string; kind: string; amount: number;
+      epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
+    };
+    const recurringByEmp = new Map<string, CompRow[]>();
+    const batchCompByEmp = new Map<string, CompRow[]>();
+    if (typedComponents && empIds.length) {
+      const cols = {
+        employmentId: employmentPayComponent.employmentId,
+        amount: employmentPayComponent.amount,
+        code: payComponent.code,
+        kind: payComponent.kind,
+        epf: payComponent.includedInEpf,
+        socso: payComponent.includedInSocsoEis,
+        pcb: payComponent.includedInPcb,
+        hrdf: payComponent.includedInHrdfBase,
+        nonPayable: payComponent.isNonPayable,
+        prorates: payComponent.prorates,
+      };
+      const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string } & Omit<CompRow, 'amount'>) => {
+        const list = map.get(r.employmentId) ?? [];
+        list.push({ ...r, amount: Number(r.amount) });
+        map.set(r.employmentId, list);
+      };
+      const rec = await tx
+        .select(cols)
+        .from(employmentPayComponent)
+        .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+        .where(
+          and(
+            inArray(employmentPayComponent.employmentId, empIds),
+            isNull(employmentPayComponent.validTo),
+            isNull(employmentPayComponent.supersededAt),
+          ),
+        );
+      for (const r of rec) push(recurringByEmp, r);
+      const bat = await tx
+        .select({ ...cols, employmentId: payrollBatchComponent.employmentId, amount: payrollBatchComponent.amount })
+        .from(payrollBatchComponent)
+        .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
+        .where(eq(payrollBatchComponent.batchId, p.batchId));
+      for (const r of bat) push(batchCompByEmp, r);
+    }
+
+    /** Per-employee earnings, from the typed components (flag on) or the legacy comp+input (flag off).
+     *  Returns the exact variables the loop already used so the rest of the kernel is unchanged. */
+    const earningsOf = (
+      e: { employmentId: string; basic: unknown; allowance: unknown },
+      factor: number,
+    ): {
+      basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
+      overtime: number; bonus: number; reimburse: number; deduct: number;
+    } => {
+      if (!typedComponents) {
+        const basicRaw = Number(e.basic);
+        const allowRaw = Number(e.allowance ?? 0);
+        const claim = round2(claimAllowanceByEmp.get(e.employmentId) ?? 0);
+        return {
+          basicRaw,
+          basicGross: round2(basicRaw * factor),
+          allowanceApplied: round2(allowRaw * factor + claim),
+          hrdfAllowApplied: round2(allowRaw * factor),
+          overtime: round2(overtimeByEmp.get(e.employmentId) ?? 0),
+          bonus: round2(bonusByEmp.get(e.employmentId) ?? 0),
+          reimburse: 0,
+          deduct: 0,
+        };
+      }
+      let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
+      const comps = [...(recurringByEmp.get(e.employmentId) ?? []), ...(batchCompByEmp.get(e.employmentId) ?? [])];
+      for (const c of comps) {
+        const applied = c.prorates ? round2(c.amount * factor) : round2(c.amount);
+        if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
+        // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable amount that the v1 calculator can't place in a cash
+        // bucket — a non-payable/BIK, or a PCB-only earning (not EPF and not SOCSO) — would be SILENTLY
+        // under-taxed. v1 does not compute these, so reject rather than produce a wrong payslip.
+        if (c.pcb && (c.nonPayable || (!c.epf && !c.socso))) {
+          throw new UnsupportedPayComponentError(c.code);
+        }
+        if (c.nonPayable) continue; // a non-payable, non-taxable record line — nothing to compute
+        if (c.code === 'BASIC') { basicRaw += c.amount; basicGross = round2(basicGross + applied); continue; }
+        if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
+        else if (!c.epf && c.socso) ot = round2(ot + applied);
+        else if (c.epf && !c.socso) bonusAmt = round2(bonusAmt + applied);
+        else reimburse = round2(reimburse + applied); // all-false earning: paid but untaxed (e.g. receipted reimbursement)
+      }
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct };
+    };
+
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
     const ageAt = (dob: string | null): number | null => {
       if (!dob) return null;
@@ -522,26 +628,29 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // Allowance prorates with basic — EA-1955 incomplete-month treats fixed monthly wages as a whole.
       const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn);
       const daysWorked = Math.round(factor * dim); // proration basis surfaced on the payslip
-      const basic = round2(Number(e.basic) * factor);
-      // Contractual allowance prorates; an approved taxable claim allowance is a fixed reimbursed amount
-      // (not prorated) folded into the same taxable allowance line (ADR-0021).
-      const claimAllow = round2(claimAllowanceByEmp.get(e.employmentId) ?? 0);
-      const allowance = round2(Number(e.allowance ?? 0) * factor + claimAllow);
-      const overtime = round2(overtimeByEmp.get(e.employmentId) ?? 0);
-      const bonus = round2(bonusByEmp.get(e.employmentId) ?? 0);
+      // Earnings come from the typed components (flag on) or compensation + payroll_input (flag off).
+      // Either way these reproduce the same variables, so the agency-base math below is unchanged.
+      const en = earningsOf(e, factor);
+      const basic = en.basicGross;
+      // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
+      // "reimbursement" earning (paid but untaxed). Claim/reimbursement do not prorate (ADR-0021/0025).
+      const allowance = round2(en.allowanceApplied + en.reimburse);
+      const overtime = en.overtime;
+      const bonus = en.bonus;
       // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / days in month).
-      const unpaidDeduction = round2((Number(e.basic) / dim) * (unpaidByEmp.get(e.employmentId) ?? 0));
+      const unpaidDeduction = round2((en.basicRaw / dim) * (unpaidByEmp.get(e.employmentId) ?? 0));
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
-      // include it — so the calculator takes wages ex-OT and the OT separately.
-      const wagesExOt = Math.max(0, round2(basic + allowance - unpaidDeduction));
+      // include it — so the calculator takes wages ex-OT and the OT separately. The all-false
+      // reimbursement is paid (in `allowance`/gross) but NOT in any statutory base.
+      const wagesExOt = Math.max(0, round2(basic + en.allowanceApplied - unpaidDeduction));
       // Bonus is additional remuneration: EPF + PCB (difference method), excluded from SOCSO/EIS.
       const lp = round2(tp1ByEmp.get(e.employmentId) ?? 0);
       const zakat = round2(zakatByEmp.get(e.employmentId) ?? 0);
       const age = ageAt(e.dateOfBirth);
-      // HRD Corp levy (Wave 2A) — employer-only. Base = basic + FIXED allowance net of unpaid leave;
-      // it is NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claim allowances are excluded).
-      const fixedAllowance = round2(Number(e.allowance ?? 0) * factor);
+      // HRD Corp levy (Wave 2A) — employer-only. Base = basic + FIXED (HRDF-flagged) allowance net of
+      // unpaid leave; NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claims are excluded).
+      const fixedAllowance = en.hrdfAllowApplied;
       const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
       const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus);
       const st = {
@@ -575,11 +684,12 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         epfMode: e.epfMode ?? 'auto',
       };
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
-      const totalDeductions = round2(statDeductions + unpaidDeduction);
-      const grossPay = round2(normalWage + bonus); // total earnings before deductions
+      // en.deduct: typed deduction components (0 on the legacy/back-filled path).
+      const totalDeductions = round2(statDeductions + unpaidDeduction + en.deduct);
+      const grossPay = round2(normalWage + bonus); // total earnings before deductions (incl. reimbursement)
       const net = round2(grossPay - totalDeductions);
       const employerCost = round2(
-        wagesExOt + overtime + bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf,
+        wagesExOt + overtime + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf,
       );
 
       await tx.insert(payslip).values({
@@ -593,7 +703,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         daysWorked: String(daysWorked),
         grossPay: grossPay.toFixed(2),
         statutory: { ...st, ...statutoryProvenance }, // `version` + (when source=pack) packVersion/signedKeyId snapshot
-        otherDeductions: unpaidDeduction.toFixed(2),
+        otherDeductions: round2(unpaidDeduction + en.deduct).toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
