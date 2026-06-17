@@ -47,7 +47,11 @@ recurring + one-off components and derives the statutory bases **from the flags*
 `epfWage = Σ(included_in_epf earnings)`, `socsoEisWage = Σ(included_in_socso_eis)`,
 `pcbWage = Σ(included_in_pcb)`, `hrdfBase = Σ(included_in_hrdf_base)` — preserving the exact agency split
 the calculator already encodes (EPF excludes OT, SOCSO includes OT, HRDF = basic + fixed allowances).
-`is_non_payable` components add to the PCB base but not to cash gross/net. Deductions reduce net only.
+Deductions reduce net only. **`is_non_payable` (BIK) and PCB-only taxable earnings are recognised in the
+catalog but NOT computed in v1** — the conceptually-correct treatment is "add to the PCB base only", but
+the v1 calculator has no parameter for a taxable amount outside the cash buckets, so the kernel
+**fail-closes** (throws `UnsupportedPayComponentError`) if one reaches payroll generation rather than
+silently under-tax. They are deliberately not seeded; full support is a later iteration (§5).
 With the flag **off**, the kernel reads `compensation` + `payroll_input` exactly as today.
 
 ## 3. Treatment-flag defaults (seeded catalog)
@@ -83,11 +87,14 @@ amounts stay a documented open item, not auto-applied (see the matrix caveats).
 
 ## 5. Scope for v1 / out of scope
 
-- **In:** earning components (the byte-identical path), the catalog + flags, recurring + one-off values,
-  the admin UI. Deductions reduce net; non-payable adds to the PCB base only.
-- **Out (later):** GL-account / cost-center per component, per-component proration policy beyond the
-  `prorates` flag, the Schedule-6 conditional-exemption amounts (documented in the matrix), and treating
-  a component differently per company.
+- **In:** earning components that map to the calculator's normal-wage / overtime / additional buckets
+  (the byte-identical path), all-false "reimbursement" earnings (paid but untaxed), deductions (reduce
+  net), the catalog + flags, recurring + one-off values, the admin UI.
+- **Out (later) — kernel fail-closes if used:** non-payable/BIK and PCB-only taxable earnings (the v1
+  calculator can't tax a non-cash-bucket amount; `UnsupportedPayComponentError` is thrown rather than
+  under-tax — these are not seeded). Also: GL-account / cost-center per component, per-component
+  proration policy beyond the `prorates` flag, the Schedule-6 conditional-exemption amounts (documented
+  in the matrix), and treating a component differently per company.
 
 ## 6. Consequences
 
