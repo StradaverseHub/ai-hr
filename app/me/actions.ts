@@ -7,6 +7,7 @@ import { myEmployment } from '@/core/read';
 import { requestLeave } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
+import { createGoal, updateGoal, updateGoalProgress, type GoalStatus } from '@/core/performance';
 
 /** Resolve the caller's own employment from the session — never from a form field. */
 async function resolveMe() {
@@ -116,4 +117,64 @@ export async function myCheckOut() {
   }
   revalidatePath('/me');
   redirect('/me?toast=Checked+out');
+}
+
+// ── Goals (ADR-0022) — the employee's own continuous goals ──
+
+const strOrUndef = (v: FormDataEntryValue | null) => {
+  const s = String(v ?? '').trim();
+  return s === '' ? undefined : s;
+};
+
+export async function myCreateGoal(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const title = String(formData.get('title') ?? '').trim();
+  const weightRaw = strOrUndef(formData.get('weight'));
+  try {
+    await createGoal(s, {
+      employmentId,
+      title,
+      description: strOrUndef(formData.get('description')),
+      metric: strOrUndef(formData.get('metric')),
+      target: strOrUndef(formData.get('target')),
+      dueOn: strOrUndef(formData.get('dueOn')) ?? null,
+      weight: weightRaw != null ? Number(weightRaw) : null,
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Goal+added');
+}
+
+export async function myUpdateGoalProgress(formData: FormData) {
+  const s = await getSession();
+  const goalId = String(formData.get('goalId'));
+  try {
+    await updateGoalProgress(s, {
+      goalId,
+      progress: Number(formData.get('progress')) || 0,
+      status: String(formData.get('status')) as GoalStatus,
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Goal+updated');
+}
+
+export async function myEditGoal(formData: FormData) {
+  const s = await getSession();
+  const goalId = String(formData.get('goalId'));
+  try {
+    await updateGoal(s, {
+      goalId,
+      title: strOrUndef(formData.get('title')),
+      description: strOrUndef(formData.get('description')) ?? '',
+    });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Goal+updated');
 }

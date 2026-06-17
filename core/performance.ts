@@ -23,10 +23,12 @@ import {
   employment,
   payrollBatch,
   payrollInput,
+  performanceGoal,
   performanceReview,
   person,
   reportingLine,
   reviewCycle,
+  reviewGoal,
 } from '../db/schema';
 import { setCompensation } from './comp';
 import { setPayrollInput } from './payroll';
@@ -921,4 +923,261 @@ async function currentAdminManager(tx: Tx, tenantId: string, subjectEmploymentId
     )
     .limit(1);
   return mgr?.id ?? null;
+}
+
+// ─────────────────────────── Goals / OKRs (ADR-0022, Phase B) ───────────────────────────
+//
+// Continuous + cycle-linkable: a goal is owned by an employment and may bind to a cycle (cycle_id)
+// or live standalone (null). RLS (can_see_employment) scopes who can read/write — the subject, their
+// admin-line manager, and admins co-own. Goals are REFERENCE SIGNAL ONLY: nothing here computes a
+// rating or pay (ADR-0022 principle 1). Lifecycle is a status (active → achieved/missed/dropped)
+// plus a 0–100 progress.
+
+export type GoalStatus = 'active' | 'achieved' | 'missed' | 'dropped';
+export type GoalRow = {
+  id: string;
+  employmentId: string;
+  cycleId: string | null;
+  cycleName: string | null;
+  title: string;
+  description: string | null;
+  metric: string | null;
+  target: string | null;
+  weight: number | null;
+  progress: number;
+  status: GoalStatus;
+  dueOn: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const clampProgress = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
+
+const goalSelect = () => ({
+  id: performanceGoal.id,
+  employmentId: performanceGoal.employmentId,
+  cycleId: performanceGoal.cycleId,
+  cycleName: reviewCycle.name,
+  title: performanceGoal.title,
+  description: performanceGoal.description,
+  metric: performanceGoal.metric,
+  target: performanceGoal.target,
+  weight: performanceGoal.weight,
+  progress: performanceGoal.progress,
+  status: performanceGoal.status,
+  dueOn: performanceGoal.dueOn,
+  createdAt: performanceGoal.createdAt,
+  updatedAt: performanceGoal.updatedAt,
+});
+type RawGoal = {
+  id: string; employmentId: string; cycleId: string | null; cycleName: string | null;
+  title: string; description: string | null; metric: string | null; target: string | null;
+  weight: string | null; progress: number; status: GoalStatus; dueOn: string | null;
+  createdAt: Date; updatedAt: Date;
+};
+const toGoalRow = (r: RawGoal): GoalRow => ({
+  id: r.id, employmentId: r.employmentId, cycleId: r.cycleId, cycleName: r.cycleName,
+  title: r.title, description: r.description, metric: r.metric, target: r.target,
+  weight: r.weight == null ? null : Number(r.weight),
+  progress: r.progress, status: r.status, dueOn: r.dueOn,
+  createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
+});
+
+/** Create a goal for an employment (continuous, optionally bound to a cycle). RLS WITH CHECK ensures
+ *  only the subject / their manager / an admin can — a peer cannot create a goal for someone else. */
+export async function createGoal(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    cycleId?: string | null;
+    title: string;
+    description?: string;
+    metric?: string;
+    target?: string;
+    weight?: number | null;
+    dueOn?: string | null;
+  },
+): Promise<{ id: string }> {
+  const title = p.title.trim();
+  if (!title) throw new PerfError('A goal needs a title');
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(performanceGoal)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        cycleId: p.cycleId ?? null,
+        title,
+        description: p.description?.trim() || null,
+        metric: p.metric?.trim() || null,
+        target: p.target?.trim() || null,
+        weight: p.weight != null ? money(p.weight) : null,
+        dueOn: p.dueOn || null,
+        createdByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: performanceGoal.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: row.id,
+      eventType: 'performance-goal.created',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { cycleId: p.cycleId ?? null },
+    });
+    return { id: row.id };
+  });
+}
+
+async function loadGoal(tx: Tx, goalId: string) {
+  const [g] = await tx.select().from(performanceGoal).where(eq(performanceGoal.id, goalId)).limit(1);
+  if (!g) throw new PerfError('Goal not found'); // RLS-invisible goals read as not-found
+  return g;
+}
+
+/** Edit a goal's descriptive fields (not its progress/status — that's updateGoalProgress). */
+export async function updateGoal(
+  ctx: SessionContext,
+  p: { goalId: string; title?: string; description?: string; metric?: string; target?: string; weight?: number | null; dueOn?: string | null },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const g = await loadGoal(tx, p.goalId);
+    const title = p.title?.trim();
+    if (p.title != null && !title) throw new PerfError('A goal needs a title');
+    await tx
+      .update(performanceGoal)
+      .set({
+        title: title ?? g.title,
+        description: p.description !== undefined ? (p.description?.trim() || null) : g.description,
+        metric: p.metric !== undefined ? (p.metric?.trim() || null) : g.metric,
+        target: p.target !== undefined ? (p.target?.trim() || null) : g.target,
+        weight: p.weight !== undefined ? (p.weight != null ? money(p.weight) : null) : g.weight,
+        dueOn: p.dueOn !== undefined ? (p.dueOn || null) : g.dueOn,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(performanceGoal.id, g.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: g.id,
+      eventType: 'performance-goal.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: g.employmentId,
+    });
+  });
+}
+
+/** Track progress (0–100) and/or move the lifecycle (active → achieved/missed/dropped). */
+export async function updateGoalProgress(
+  ctx: SessionContext,
+  p: { goalId: string; progress?: number; status?: GoalStatus },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const g = await loadGoal(tx, p.goalId);
+    const progress = p.progress != null ? clampProgress(p.progress) : g.progress;
+    const status = p.status ?? g.status;
+    await tx
+      .update(performanceGoal)
+      .set({ progress, status, updatedAt: sql`now()` })
+      .where(eq(performanceGoal.id, g.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: g.id,
+      eventType: 'performance-goal.progressed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: g.employmentId,
+      payload: { status }, // progress value omitted (tenant-wide event log)
+    });
+  });
+}
+
+/** Link a goal onto a review so the manager can reference what was worked on. The goal and review
+ *  must belong to the same subject. RLS scopes visibility; this is reversible reference, not a decision. */
+export async function linkGoalToReview(ctx: SessionContext, p: { reviewId: string; goalId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const { review } = await loadReview(tx, p.reviewId);
+    const goal = await loadGoal(tx, p.goalId);
+    if (goal.employmentId !== review.employmentId) {
+      throw new PerfError('That goal belongs to a different employee');
+    }
+    const [existing] = await tx
+      .select({ id: reviewGoal.id })
+      .from(reviewGoal)
+      .where(and(eq(reviewGoal.reviewId, p.reviewId), eq(reviewGoal.goalId, p.goalId)))
+      .limit(1);
+    if (existing) return; // idempotent
+    await tx.insert(reviewGoal).values({ tenantId: ctx.tenantId, reviewId: p.reviewId, goalId: p.goalId });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: p.reviewId,
+      eventType: 'performance-review.goal-linked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { goalId: p.goalId },
+    });
+  });
+}
+
+export async function unlinkGoalFromReview(ctx: SessionContext, p: { reviewId: string; goalId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const { review } = await loadReview(tx, p.reviewId);
+    await tx.delete(reviewGoal).where(and(eq(reviewGoal.reviewId, p.reviewId), eq(reviewGoal.goalId, p.goalId)));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: p.reviewId,
+      eventType: 'performance-review.goal-unlinked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { goalId: p.goalId },
+    });
+  });
+}
+
+// ── Goal reads (RLS scopes each to the viewer) ──
+
+/** Goals for one employment, newest first (manager viewing a report; admin; self). */
+export function listGoalsForEmployment(ctx: SessionContext, employmentId: string): Promise<GoalRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select(goalSelect())
+      .from(performanceGoal)
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(performanceGoal.employmentId, employmentId))
+      .orderBy(desc(performanceGoal.createdAt));
+    return rows.map(toGoalRow);
+  });
+}
+
+/** The signed-in person's own goals across their employment(s) — the /me surface. */
+export function myGoals(ctx: SessionContext): Promise<GoalRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const mine = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, ctx.personId));
+    const ids = mine.map((m) => m.id);
+    if (ids.length === 0) return [];
+    const rows = await tx
+      .select(goalSelect())
+      .from(performanceGoal)
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(inArray(performanceGoal.employmentId, ids))
+      .orderBy(desc(performanceGoal.createdAt));
+    return rows.map(toGoalRow);
+  });
+}
+
+/** Goals linked onto a review (shown on the review page). */
+export function goalsForReview(ctx: SessionContext, reviewId: string): Promise<GoalRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select(goalSelect())
+      .from(reviewGoal)
+      .innerJoin(performanceGoal, eq(performanceGoal.id, reviewGoal.goalId))
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(eq(reviewGoal.reviewId, reviewId))
+      .orderBy(desc(performanceGoal.createdAt));
+    return rows.map(toGoalRow);
+  });
 }

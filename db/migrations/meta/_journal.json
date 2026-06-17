@@ -344,6 +344,20 @@
       "when": 1781585858300,
       "tag": "0048_claims_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1781669998010,
+      "tag": "0049_bored_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781669998060,
+      "tag": "0050_performance_goal_rls",
+      "breakpoints": true
     }
   ]
 }

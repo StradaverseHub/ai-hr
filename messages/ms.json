@@ -477,7 +477,26 @@
       "employerContributionsHeading": "Caruman majikan (tidak dipotong daripada anda)",
       "totalEmployerCost": "Jumlah kos majikan",
       "proratedNote": "Diprorata pada {days, plural, one {# hari} other {# hari}} bekerja dalam tempoh ini."
-    }
+    },
+    "goalsTitle": "Matlamat saya",
+    "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",
+    "goalNewTitle": "Matlamat baharu",
+    "goalTitleLabel": "Matlamat",
+    "goalTitlePlaceholder": "cth. Lancarkan reka bentuk semula",
+    "goalDescriptionLabel": "Nota (pilihan)",
+    "goalMetricLabel": "Metrik",
+    "goalMetricPlaceholder": "cth. NPS",
+    "goalTargetLabel": "Sasaran",
+    "goalTargetPlaceholder": "cth. > 50",
+    "goalDueLabel": "Tarikh akhir",
+    "goalDueShort": "tarikh akhir {date}",
+    "goalProgressLabel": "Kemajuan",
+    "goalSave": "Simpan",
+    "goalAdd": "Tambah matlamat",
+    "goalStatus_active": "Aktif",
+    "goalStatus_achieved": "Dicapai",
+    "goalStatus_missed": "Terlepas",
+    "goalStatus_dropped": "Digugurkan"
   },
   "approvals": {
     "title": "Kelulusan",

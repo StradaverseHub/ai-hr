@@ -12,15 +12,17 @@ import {
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
-import { myReviews } from '@/core/performance';
+import { myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   myCheckIn,
   myCheckOut,
+  myCreateGoal,
   myRequestCorrection,
   myRequestLeave,
   myRequestProfileChange,
   myUpdateContact,
+  myUpdateGoalProgress,
 } from './actions';
 
 const rm = (n: unknown) =>
@@ -89,7 +91,7 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
-  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews] =
+  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals] =
     await Promise.all([
       leaveBalances(s, me.employmentId),
       leaveRequestsFor(s, me.employmentId),
@@ -100,6 +102,7 @@ export default async function MePage({
       myProfile(s),
       myProfileChangeRequests(s, me.employmentId),
       myReviews(s),
+      myGoals(s),
     ]);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
@@ -540,6 +543,103 @@ export default async function MePage({
           </table>
         </Card>
       )}
+
+      {/* My goals (ADR-0022) — continuous, employee-owned objectives */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('goalsTitle')} count={goals.length} />
+        {goals.length === 0 ? (
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('goalsEmpty')}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {goals.map((g) => {
+              const statusTone =
+                g.status === 'achieved'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                  : g.status === 'missed'
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400'
+                    : g.status === 'dropped'
+                      ? 'bg-muted text-muted-foreground'
+                      : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-400';
+              return (
+                <li key={g.id} className="px-4 py-3.5">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">{g.title}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusTone}`}>
+                          {t(`goalStatus_${g.status}`)}
+                        </span>
+                        {g.cycleName && (
+                          <span className="text-[10px] text-muted-foreground">· {g.cycleName}</span>
+                        )}
+                      </div>
+                      {g.description && <p className="mt-0.5 text-xs text-muted-foreground">{g.description}</p>}
+                      {(g.metric || g.target) && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {[g.metric, g.target].filter(Boolean).join(' · ')}
+                          {g.dueOn ? ` · ${t('goalDueShort', { date: g.dueOn })}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${g.progress}%` }} />
+                    </div>
+                    <span className="w-9 shrink-0 text-right text-xs tabular-nums text-muted-foreground">{g.progress}%</span>
+                  </div>
+                  <form action={myUpdateGoalProgress} className="mt-2 flex flex-wrap items-center justify-end gap-2">
+                    <input type="hidden" name="goalId" value={g.id} />
+                    <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
+                      {t('goalProgressLabel')}
+                      <input
+                        name="progress"
+                        type="number"
+                        min="0"
+                        max="100"
+                        defaultValue={g.progress}
+                        className={`${inputCls} w-20 text-right`}
+                      />
+                    </label>
+                    <select name="status" defaultValue={g.status} className={`${inputCls} w-32`}>
+                      <option value="active">{t('goalStatus_active')}</option>
+                      <option value="achieved">{t('goalStatus_achieved')}</option>
+                      <option value="missed">{t('goalStatus_missed')}</option>
+                      <option value="dropped">{t('goalStatus_dropped')}</option>
+                    </select>
+                    <Button type="submit" size="sm" variant="secondary">
+                      {t('goalSave')}
+                    </Button>
+                  </form>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <form action={myCreateGoal} className="space-y-3 border-t border-border bg-muted/20 px-4 py-4">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('goalNewTitle')}</h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('goalTitleLabel')}>
+              <input name="title" required placeholder={t('goalTitlePlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('goalDueLabel')}>
+              <input name="dueOn" type="date" className={inputCls} />
+            </Field>
+            <Field label={t('goalMetricLabel')}>
+              <input name="metric" placeholder={t('goalMetricPlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('goalTargetLabel')}>
+              <input name="target" placeholder={t('goalTargetPlaceholder')} className={inputCls} />
+            </Field>
+          </div>
+          <Field label={t('goalDescriptionLabel')}>
+            <textarea name="description" rows={2} className={inputCls} />
+          </Field>
+          <div className="flex justify-end">
+            <Button type="submit">{t('goalAdd')}</Button>
+          </div>
+        </form>
+      </Card>
 
       {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
       <Card className="p-5">

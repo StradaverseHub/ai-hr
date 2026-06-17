@@ -477,7 +477,26 @@
       "employerContributionsHeading": "เงินสมทบนายจ้าง (ไม่หักจากคุณ)",
       "totalEmployerCost": "ต้นทุนนายจ้างทั้งหมด",
       "proratedNote": "คำนวณตามสัดส่วน {days, plural, one {# วัน} other {# วัน}} ที่ทำงานในงวดนี้"
-    }
+    },
+    "goalsTitle": "เป้าหมายของฉัน",
+    "goalsEmpty": "ยังไม่มีเป้าหมาย เพิ่มเป้าหมายเพื่อติดตามสิ่งที่คุณกำลังมุ่งทำ",
+    "goalNewTitle": "เป้าหมายใหม่",
+    "goalTitleLabel": "เป้าหมาย",
+    "goalTitlePlaceholder": "เช่น ส่งมอบการออกแบบใหม่",
+    "goalDescriptionLabel": "บันทึก (ไม่บังคับ)",
+    "goalMetricLabel": "ตัวชี้วัด",
+    "goalMetricPlaceholder": "เช่น NPS",
+    "goalTargetLabel": "ค่าเป้าหมาย",
+    "goalTargetPlaceholder": "เช่น > 50",
+    "goalDueLabel": "กำหนดส่ง",
+    "goalDueShort": "กำหนด {date}",
+    "goalProgressLabel": "ความคืบหน้า",
+    "goalSave": "บันทึก",
+    "goalAdd": "เพิ่มเป้าหมาย",
+    "goalStatus_active": "กำลังดำเนินการ",
+    "goalStatus_achieved": "สำเร็จ",
+    "goalStatus_missed": "ไม่สำเร็จ",
+    "goalStatus_dropped": "ยกเลิก"
   },
   "approvals": {
     "title": "การอนุมัติ",

@@ -477,7 +477,26 @@
       "employerContributionsHeading": "Đóng góp của người sử dụng lao động (không khấu trừ từ bạn)",
       "totalEmployerCost": "Tổng chi phí người sử dụng lao động",
       "proratedNote": "Tính theo tỷ lệ trên {days, plural, one {# ngày} other {# ngày}} làm việc trong kỳ này."
-    }
+    },
+    "goalsTitle": "Mục tiêu của tôi",
+    "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",
+    "goalNewTitle": "Mục tiêu mới",
+    "goalTitleLabel": "Mục tiêu",
+    "goalTitlePlaceholder": "ví dụ Hoàn thành thiết kế lại",
+    "goalDescriptionLabel": "Ghi chú (tùy chọn)",
+    "goalMetricLabel": "Chỉ số",
+    "goalMetricPlaceholder": "ví dụ NPS",
+    "goalTargetLabel": "Mục tiêu đề ra",
+    "goalTargetPlaceholder": "ví dụ > 50",
+    "goalDueLabel": "Hạn",
+    "goalDueShort": "đến hạn {date}",
+    "goalProgressLabel": "Tiến độ",
+    "goalSave": "Lưu",
+    "goalAdd": "Thêm mục tiêu",
+    "goalStatus_active": "Đang hoạt động",
+    "goalStatus_achieved": "Đã đạt",
+    "goalStatus_missed": "Không đạt",
+    "goalStatus_dropped": "Đã bỏ"
   },
   "approvals": {
     "title": "Phê duyệt",

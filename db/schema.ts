@@ -92,6 +92,8 @@ export const compActionStatusEnum = pgEnum('comp_action_status', [
   'enacted',
   'declined',
 ]);
+// Goal lifecycle (ADR-0022, Phase B). Continuous: a goal lives independent of any cycle.
+export const goalStatusEnum = pgEnum('goal_status', ['active', 'achieved', 'missed', 'dropped']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -811,6 +813,53 @@ export const performanceReview = pgTable(
     index('performance_review_employment_idx').on(t.employmentId),
     index('performance_review_reviewer_idx').on(t.reviewerEmploymentId),
   ],
+);
+
+// Goals / OKRs (ADR-0022, Phase B). Owned by an employment; cycle_id is NULLABLE — a goal lives
+// continuously and optionally binds to a review cycle. RLS = can_see_employment (subject + admin-line
+// manager + admin can read/write). Goals are reference signal only; they NEVER compute a rating or pay.
+export const performanceGoal = pgTable(
+  'performance_goal',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    cycleId: uuid('cycle_id').references(() => reviewCycle.id), // null = continuous (no cycle)
+    title: text('title').notNull(),
+    description: text('description'),
+    metric: text('metric'), // free-form measure, e.g. "NPS" or "deals closed"
+    target: text('target'), // free-form target, e.g. "> 50" or "12"
+    weight: numeric('weight', { precision: 5, scale: 2 }), // optional relative weight
+    progress: integer('progress').notNull().default(0), // 0–100
+    status: goalStatusEnum('status').notNull().default('active'),
+    dueOn: date('due_on'),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    index('performance_goal_employment_idx').on(t.employmentId),
+    index('performance_goal_cycle_idx').on(t.cycleId),
+  ],
+);
+
+// Join: which goals a manager referenced on a given review (the goalsSummary text hook, structured).
+export const reviewGoal = pgTable(
+  'review_goal',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    goalId: uuid('goal_id')
+      .notNull()
+      .references(() => performanceGoal.id),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('review_goal_review_goal_uq').on(t.reviewId, t.goalId)],
 );
 
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
