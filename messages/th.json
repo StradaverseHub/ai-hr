@@ -248,7 +248,7 @@
   },
   "leave": {
     "title": "การลา",
-    "description": "ขอลาและอนุมัติคำขอที่รออยู่",
+    "description": "ตรวจสอบยอดวันลา ยื่นลา และติดตามคำขอของคุณ",
     "chipRequested": "ขอแล้ว",
     "chipApproved": "อนุมัติแล้ว",
     "chipPending": "รออนุมัติ",
@@ -286,7 +286,8 @@
     "fieldEndDate": "วันที่สิ้นสุด",
     "fieldReason": "เหตุผล (ไม่บังคับ)",
     "reasonPlaceholder": "ไปเที่ยวกับครอบครัว",
-    "submitRequest": "ส่งคำขอ"
+    "submitRequest": "ส่งคำขอ",
+    "myRequestsTitle": "ประวัติการลาของฉัน"
   },
   "attendance": {
     "title": "การเข้างาน",

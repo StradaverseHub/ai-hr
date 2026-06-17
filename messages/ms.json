@@ -248,7 +248,7 @@
   },
   "leave": {
     "title": "Cuti",
-    "description": "Mohon cuti dan luluskan permohonan tertangguh",
+    "description": "Semak baki cuti anda, mohon cuti, dan jejaki permohonan anda.",
     "chipRequested": "Dimohon",
     "chipApproved": "Diluluskan",
     "chipPending": "Tertangguh",
@@ -286,7 +286,8 @@
     "fieldEndDate": "Tarikh tamat",
     "fieldReason": "Sebab (pilihan)",
     "reasonPlaceholder": "Perjalanan keluarga",
-    "submitRequest": "Hantar permohonan"
+    "submitRequest": "Hantar permohonan",
+    "myRequestsTitle": "Sejarah cuti saya"
   },
   "attendance": {
     "title": "Kehadiran",

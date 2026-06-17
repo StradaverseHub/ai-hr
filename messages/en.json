@@ -248,7 +248,7 @@
   },
   "leave": {
     "title": "Leave",
-    "description": "Request leave and approve pending requests",
+    "description": "Check your balance, apply for leave, and track your requests.",
     "chipRequested": "Requested",
     "chipApproved": "Approved",
     "chipPending": "Pending",
@@ -286,7 +286,8 @@
     "fieldEndDate": "End date",
     "fieldReason": "Reason (optional)",
     "reasonPlaceholder": "Family trip",
-    "submitRequest": "Submit request"
+    "submitRequest": "Submit request",
+    "myRequestsTitle": "My leave history"
   },
   "attendance": {
     "title": "Attendance",

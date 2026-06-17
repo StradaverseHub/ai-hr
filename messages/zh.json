@@ -248,7 +248,7 @@
   },
   "leave": {
     "title": "休假",
-    "description": "申请休假并审批待办申请",
+    "description": "查看您的假期余额、申请休假并跟踪您的请求。",
     "chipRequested": "已申请",
     "chipApproved": "已批准",
     "chipPending": "待审",
@@ -286,7 +286,8 @@
     "fieldEndDate": "结束日期",
     "fieldReason": "原因（选填）",
     "reasonPlaceholder": "家庭出游",
-    "submitRequest": "提交申请"
+    "submitRequest": "提交申请",
+    "myRequestsTitle": "我的请假记录"
   },
   "attendance": {
     "title": "考勤",

@@ -248,7 +248,7 @@
   },
   "leave": {
     "title": "Nghỉ phép",
-    "description": "Yêu cầu nghỉ phép và phê duyệt các yêu cầu chờ xử lý",
+    "description": "Kiểm tra số dư phép, xin nghỉ và theo dõi các yêu cầu của bạn.",
     "chipRequested": "Đã yêu cầu",
     "chipApproved": "Đã duyệt",
     "chipPending": "Chờ duyệt",
@@ -286,7 +286,8 @@
     "fieldEndDate": "Ngày kết thúc",
     "fieldReason": "Lý do (tùy chọn)",
     "reasonPlaceholder": "Đi du lịch gia đình",
-    "submitRequest": "Gửi yêu cầu"
+    "submitRequest": "Gửi yêu cầu",
+    "myRequestsTitle": "Lịch sử nghỉ phép của tôi"
   },
   "attendance": {
     "title": "Chấm công",
