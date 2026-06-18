@@ -46,6 +46,20 @@ export class UnsupportedPayComponentError extends Error {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// Wave 2C (ADR-0024): an additional same-month run's statutory contribution is the INCREMENT of the
+// cumulative month — re-run the month with/without this run's additional remuneration and take the
+// delta (clamped ≥ 0, §6). Non-contribution fields (version, …) carry from `now`.
+const DELTA_KEYS = [
+  'epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'eisEmployee', 'eisEmployer', 'pcb', 'pcbBonus',
+] as const;
+function deltaStat<T extends Record<string, unknown>>(now: T, before: T): T {
+  const out = { ...now };
+  for (const k of DELTA_KEYS) {
+    (out as Record<string, unknown>)[k] = Math.max(0, round2(Number(now[k] ?? 0) - Number(before[k] ?? 0)));
+  }
+  return out;
+}
+
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 function daysInMonth(year: number, month1: number): number {
   if (month1 === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
@@ -164,6 +178,59 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       eventType: 'payroll-batch.created',
       actor: actorOf(ctx),
       payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: periodId, runSeq: 1, runType: 'regular' },
+    });
+    return { batchId: row.id };
+  });
+}
+
+/**
+ * Wave 2C (ADR-0024) — create an ADDITIONAL same-month run (bonus / off-cycle / adjustment) under the
+ * existing pay_period. GATED behind MULTI_CYCLE_PAYROLL_ENABLED, and the regular run must already exist.
+ * The run is computed as additional remuneration (the increment method) at generatePayslips.
+ */
+export async function createAdditionalRun(
+  ctx: SessionContext,
+  p: { companyId: string; payPeriod: string; runType: 'off_cycle' | 'bonus' | 'adjustment' },
+) {
+  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
+    throw new Error('Multiple payroll runs per month are not enabled.');
+  }
+  return withTenant(ctx, async (tx) => {
+    const [period] = await tx
+      .select({ id: payPeriod.id, status: payPeriod.status })
+      .from(payPeriod)
+      .where(and(eq(payPeriod.companyId, p.companyId), eq(payPeriod.period, p.payPeriod)))
+      .limit(1);
+    if (!period) throw new Error('No pay period for this month yet — create the regular run first.');
+    if (period.status === 'closed') throw new Error('This pay period is closed.');
+    const runs = await tx
+      .select({ runSeq: payrollBatch.runSeq, runType: payrollBatch.runType })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.payPeriodId, period.id));
+    if (!runs.some((r) => r.runType === 'regular')) {
+      throw new Error('Create the regular run for this month before adding a run.');
+    }
+    const nextSeq = Math.max(...runs.map((r) => r.runSeq)) + 1;
+    const [row] = await tx
+      .insert(payrollBatch)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId: p.companyId,
+        payPeriodId: period.id,
+        runSeq: nextSeq,
+        runType: p.runType,
+        payPeriod: p.payPeriod,
+        batchDate: `${p.payPeriod}-28`,
+        status: 'draft',
+      })
+      .returning({ id: payrollBatch.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: row.id,
+      eventType: 'payroll-batch.run-added',
+      actor: actorOf(ctx),
+      payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: period.id, runSeq: nextSeq, runType: p.runType },
     });
     return { batchId: row.id };
   });
@@ -542,6 +609,33 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       acc.lpAccumulated = round2(acc.lpAccumulated + Number(st.lp ?? 0));
     }
 
+    // ── Multi-cycle (Wave 2C, ADR-0024) ──
+    // For an ADDITIONAL run (run_type != regular), this run is additional remuneration computed by the
+    // increment method (re-run the cumulative month, take the delta). Gather the additional remuneration
+    // paid in earlier runs of this period + the month's overtime (carried by the regular run). The normal
+    // wage (Y1) is recomputed per employee from compensation below — identical to the regular run's, so
+    // the runs sum to the single-batch month by construction.
+    const isAdditionalRun = batch.runType !== 'regular';
+    const earlierRunByEmp = new Map<string, { additional: number; overtime: number }>();
+    if (isAdditionalRun) {
+      const earlier = await tx
+        .select({
+          employmentId: payslip.employmentId,
+          bonus: payslip.bonus,
+          ot: payslip.overtimePay,
+          runType: payrollBatch.runType,
+        })
+        .from(payslip)
+        .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+        .where(and(eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
+      for (const r of earlier) {
+        const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0 };
+        cur.additional = round2(cur.additional + Number(r.bonus));
+        if (r.runType === 'regular') cur.overtime = round2(cur.overtime + Number(r.ot));
+        earlierRunByEmp.set(r.employmentId, cur);
+      }
+    }
+
     // ── Typed pay components (Wave 3 #9, ADR-0025) ──
     // GATED: only when TYPED_PAY_COMPONENTS_ENABLED do we read the component tables as the earnings
     // source instead of compensation + payroll_input. The seeded component flags reproduce the legacy
@@ -687,57 +781,79 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const fixedAllowance = en.hrdfAllowApplied;
       const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
       const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus);
-      const st = {
-        ...pack.payroll.statutory(
+      // Statutory contribution. Regular run: computed directly as today (byte-identical). Additional run
+      // (Wave 2C): the INCREMENT of the cumulative month — re-run with/without this run's additional
+      // remuneration and take the delta, so the normal wage's SOCSO/EPF (already charged by the regular
+      // run) cancels, SOCSO/EIS add 0, and PCB nets against earlier same-month MTD (ADR-0024 §4).
+      const taxProfile = { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 };
+      const stOpts = {
+        // Age 60+: SOCSO Second Category (employer-only) and EIS coverage ends (Act 800, 18–60). The
+        // 57+-no-prior-contribution EIS exemption maps to the eisEligible flag.
+        socsoCategory: (age != null && age >= 60 ? 2 : 1) as 1 | 2,
+        eisEligible: (e.eisEligible ?? true) && (age == null || age < 60),
+        resident: e.isResident ?? true,
+        // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
+        epfElection: {
+          mode: e.epfMode ?? 'auto',
+          employeeRate: e.epfEmployeeRate != null ? Number(e.epfEmployeeRate) : null,
+          employerRate: e.epfEmployerRate != null ? Number(e.epfEmployerRate) : null,
+        },
+      };
+      const computeMonth = (additional: number, ot: number) =>
+        pack.payroll.statutory(
           wagesExOt,
-          { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 },
-          bonus,
-          overtime,
+          taxProfile,
+          additional,
+          ot,
           { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent: zakat },
-          {
-            // Age 60+: SOCSO Second Category (employer-only) and EIS coverage ends (Act 800,
-            // 18–60). The 57+-no-prior-contribution EIS exemption maps to the eisEligible flag.
-            socsoCategory: age != null && age >= 60 ? 2 : 1,
-            eisEligible: (e.eisEligible ?? true) && (age == null || age < 60),
-            resident: e.isResident ?? true,
-            // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
-            epfElection: {
-              mode: e.epfMode ?? 'auto',
-              employeeRate: e.epfEmployeeRate != null ? Number(e.epfEmployeeRate) : null,
-              employerRate: e.epfEmployerRate != null ? Number(e.epfEmployerRate) : null,
-            },
-          },
+          stOpts,
           rules,
-        ),
+        );
+      const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
+      const stCore = isAdditionalRun
+        ? deltaStat(
+            computeMonth(earlierRun.additional + bonus, earlierRun.overtime),
+            computeMonth(earlierRun.additional, earlierRun.overtime),
+          )
+        : computeMonth(bonus, overtime);
+      const st = {
+        ...stCore,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
         zakat,
-        // HRD Corp levy (employer-only). 0 when the company is not HRDF-registered.
-        hrdf,
+        // HRD Corp levy rides the normal wage (regular run only); a bonus/off-cycle run adds none.
+        hrdf: isAdditionalRun ? 0 : hrdf,
         // EPF contribution mode applied (Wave 2B audit) — 'auto' unless an i-Topup/exempt election.
         epfMode: e.epfMode ?? 'auto',
       };
+
+      // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,
+      // allowance and OT were paid by the regular run — so basic/allowance/OT are 0 and gross = the bonus.
+      const slipBasic = isAdditionalRun ? 0 : basic;
+      const slipAllowance = isAdditionalRun ? 0 : allowance;
+      const slipOvertime = isAdditionalRun ? 0 : overtime;
+      const slipUnpaid = isAdditionalRun ? 0 : unpaidDeduction;
+      const slipExtraDeduct = isAdditionalRun ? 0 : en.deduct;
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
-      // en.deduct: typed deduction components (0 on the legacy/back-filled path).
-      const totalDeductions = round2(statDeductions + unpaidDeduction + en.deduct);
-      const grossPay = round2(normalWage + bonus); // total earnings before deductions (incl. reimbursement)
+      const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct);
+      const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
       const net = round2(grossPay - totalDeductions);
-      const employerCost = round2(
-        wagesExOt + overtime + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf,
-      );
+      const employerCost = isAdditionalRun
+        ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
+        : round2(wagesExOt + overtime + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
 
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
         batchId: p.batchId,
         employmentId: e.employmentId,
-        basicSalary: basic.toFixed(2),
-        allowance: allowance.toFixed(2),
-        overtimePay: overtime.toFixed(2),
+        basicSalary: slipBasic.toFixed(2),
+        allowance: slipAllowance.toFixed(2),
+        overtimePay: slipOvertime.toFixed(2),
         bonus: bonus.toFixed(2),
-        daysWorked: String(daysWorked),
+        daysWorked: isAdditionalRun ? null : String(daysWorked),
         grossPay: grossPay.toFixed(2),
         statutory: { ...st, ...statutoryProvenance }, // `version` + (when source=pack) packVersion/signedKeyId snapshot
-        otherDeductions: round2(unpaidDeduction + en.deduct).toFixed(2),
+        otherDeductions: round2(slipUnpaid + slipExtraDeduct).toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
@@ -752,7 +868,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       totals.eisEmployee += st.eisEmployee;
       totals.eisEmployer += st.eisEmployer;
       totals.pcb += st.pcb;
-      totals.hrdfEmployer += hrdf;
+      totals.hrdfEmployer += isAdditionalRun ? 0 : hrdf;
       totals.deductions += totalDeductions;
       totals.employerCost += employerCost;
     }
