@@ -694,6 +694,37 @@ export const profileChangeRequest = pgTable(
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
 
+// ─────────────── Multi-cycle payroll (Wave 2C, ADR-0024) — GATED ───────────────
+// GATED behind MULTI_CYCLE_PAYROLL_ENABLED: the schema + backfill exist, but the kernel still
+// rejects a 2nd run per (company, month) until the flag is on (post accountant sign-off, ADR-0024 §7).
+export const payPeriodStatusEnum = pgEnum('pay_period_status', ['open', 'closed']);
+export const payrollRunTypeEnum = pgEnum('payroll_run_type', [
+  'regular', // normal remuneration (Y1) — exactly one per period (ADR-0024 §6)
+  'off_cycle',
+  'bonus',
+  'adjustment',
+]);
+
+// The statutory month (Act 4 s.6(7)) as a first-class entity owning one or more runs (payroll_batch).
+// The single monthly SOCSO/EIS contribution, the single monthly MTD computation, and the month-level
+// ruleset snapshot belong here rather than being inferred from sibling batch scans.
+export const payPeriod = pgTable(
+  'pay_period',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    period: text('period').notNull(), // 'YYYY-MM'
+    status: payPeriodStatusEnum('status').notNull().default('open'),
+    // One ruleset version for the whole month (ADR-0024 D7). Null on legacy backfilled periods.
+    statutoryVersion: text('statutory_version'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('pay_period_company_period_uq').on(t.companyId, t.period)],
+);
+
 export const payrollBatch = pgTable(
   'payroll_batch',
   {
@@ -702,7 +733,14 @@ export const payrollBatch = pgTable(
     companyId: uuid('company_id')
       .notNull()
       .references(() => company.id),
-    payPeriod: text('pay_period').notNull(), // 'YYYY-MM'
+    // ADR-0024 (Wave 2C): a "run" within a pay_period. Backfilled so every existing batch is
+    // run_seq=1, run_type='regular' under one parent per (company, month) — behaviour-preserving.
+    payPeriodId: uuid('pay_period_id')
+      .notNull()
+      .references(() => payPeriod.id),
+    runSeq: integer('run_seq').notNull().default(1),
+    runType: payrollRunTypeEnum('run_type').notNull().default('regular'),
+    payPeriod: text('pay_period').notNull(), // 'YYYY-MM' — denormalized (== parent.period); read paths use it
     batchDate: date('batch_date').notNull(),
     status: payrollStatusEnum('status').notNull().default('draft'),
     employeeCount: integer('employee_count').notNull().default(0),
@@ -710,7 +748,15 @@ export const payrollBatch = pgTable(
     remarks: text('remarks'),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('payroll_batch_period_uq').on(t.companyId, t.payPeriod)],
+  (t) => [
+    uniqueIndex('payroll_batch_period_run_uq').on(t.payPeriodId, t.runSeq),
+    // ADR-0024 §6: at most one regular run per period (the others are additional remuneration). Since
+    // pay_period is unique per (company, month), this preserves "≤1 regular batch per company-month" at
+    // the DB level even though the old (company_id, pay_period) unique index is dropped.
+    uniqueIndex('payroll_batch_one_regular_uq')
+      .on(t.payPeriodId)
+      .where(sql`run_type = 'regular'`),
+  ],
 );
 
 export const payslip = pgTable(

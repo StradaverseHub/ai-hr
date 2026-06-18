@@ -21,6 +21,7 @@ import {
   leaveLedger,
   leaveRequest,
   leaveType,
+  payPeriod,
   payrollBatch,
   payrollInput,
   payslip,
@@ -107,17 +108,50 @@ async function unpaidDaysByEmployment(
 
 export async function createBatch(ctx: SessionContext, p: { companyId: string; payPeriod: string }) {
   return withTenant(ctx, async (tx) => {
+    // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month). Reject a second one exactly
+    // as before — with MULTI_CYCLE_PAYROLL_ENABLED off there is still one run per month. Additional
+    // same-month runs are a separate, gated path (2C-4); this function always creates run_seq=1/regular.
     const [existing] = await tx
       .select({ id: payrollBatch.id })
       .from(payrollBatch)
       .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.payPeriod)))
       .limit(1);
     if (existing) throw new Error('A payroll batch already exists for this period');
+
+    // Every batch belongs to a pay_period parent (the statutory month). Find-or-create it; a period
+    // row may already exist (e.g. an earlier draft run was deleted) — reuse it. The month-level
+    // ruleset version is snapshotted onto the period when payslips are first generated (2C-4), so it
+    // is left null here.
+    const [existingPeriod] = await tx
+      .select({ id: payPeriod.id })
+      .from(payPeriod)
+      .where(and(eq(payPeriod.companyId, p.companyId), eq(payPeriod.period, p.payPeriod)))
+      .limit(1);
+    let periodId = existingPeriod?.id;
+    if (!periodId) {
+      const [createdPeriod] = await tx
+        .insert(payPeriod)
+        .values({ tenantId: ctx.tenantId, companyId: p.companyId, period: p.payPeriod, status: 'open' })
+        .returning({ id: payPeriod.id });
+      periodId = createdPeriod.id;
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'pay-period',
+        aggregateId: periodId,
+        eventType: 'pay-period.opened',
+        actor: actorOf(ctx),
+        payload: { companyId: p.companyId, period: p.payPeriod },
+      });
+    }
+
     const [row] = await tx
       .insert(payrollBatch)
       .values({
         tenantId: ctx.tenantId,
         companyId: p.companyId,
+        payPeriodId: periodId,
+        runSeq: 1,
+        runType: 'regular',
         payPeriod: p.payPeriod,
         batchDate: `${p.payPeriod}-28`,
         status: 'draft',
@@ -129,7 +163,7 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       aggregateId: row.id,
       eventType: 'payroll-batch.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, payPeriod: p.payPeriod },
+      payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: periodId, runSeq: 1, runType: 'regular' },
     });
     return { batchId: row.id };
   });
