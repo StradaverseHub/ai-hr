@@ -1,0 +1,24 @@
+# AI HR — systemd unit for the gated demo. Install at /etc/systemd/system/aihr.service.
+# EDIT the paths marked CHANGE-ME for your server (the app dir, the user, and the node/pnpm location).
+#   sudo cp deploy/aihr.service /etc/systemd/system/aihr.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now aihr
+#   sudo systemctl status aihr   ·   journalctl -u aihr -f   (logs)
+
+[Unit]
+Description=AI HR (password-gated demo)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=aihr
+WorkingDirectory=/opt/ai-hr
+EnvironmentFile=/opt/ai-hr/.env.production
+# A login shell so corepack/pnpm + node are on PATH. PORT comes from the EnvironmentFile.
+ExecStart=/usr/bin/env bash -lc 'exec corepack pnpm exec next start -H 0.0.0.0 -p ${PORT}'
+Restart=on-failure
+RestartSec=3
+# Keep it alive across reboots; restart if it crashes.
+
+[Install]
+WantedBy=multi-user.target
