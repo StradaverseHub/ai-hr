@@ -1,5 +1,5 @@
 # AI HR — systemd unit for the gated demo. Install at /etc/systemd/system/aihr.service.
-# EDIT the paths marked CHANGE-ME for your server (the app dir, the user, and the node/pnpm location).
+# EDIT the CHANGE-ME lines for your server (the user, the Node path, and the bind address).
 #   sudo cp deploy/aihr.service /etc/systemd/system/aihr.service
 #   sudo systemctl daemon-reload && sudo systemctl enable --now aihr
 #   sudo systemctl status aihr   ·   journalctl -u aihr -f   (logs)
@@ -11,14 +11,31 @@ Wants=postgresql.service
 
 [Service]
 Type=simple
+# CHANGE-ME: a non-root user that owns the app dir and the Node install.
 User=aihr
 WorkingDirectory=/opt/ai-hr
 EnvironmentFile=/opt/ai-hr/.env.production
-# A login shell so corepack/pnpm + node are on PATH. PORT comes from the EnvironmentFile.
-ExecStart=/usr/bin/env bash -lc 'exec corepack pnpm exec next start -H 0.0.0.0 -p ${PORT}'
+# CHANGE-ME: put your Node bin dir first so the app (and any child `env node`) uses the right
+# runtime. When co-locating on a host that already has a different system Node, install an
+# ISOLATED Node (e.g. unpack the official tarball to /opt/node20) and point here — never replace
+# the system Node out from under other services.
+Environment=PATH=/opt/node20/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+# Bind address — pick ONE:
+#   -H 0.0.0.0    reachable on the LAN (then open PORT in the firewall), OR
+#   -H 127.0.0.1  loopback only — use this when a tunnel (cloudflared) fronts the app, so the
+#                 app is never exposed on the network and you touch no firewall/nginx config.
+# CHANGE-ME: invoke `next` through your Node binary directly (most robust under systemd).
+ExecStart=/opt/node20/bin/node /opt/ai-hr/node_modules/next/dist/bin/next start -H 127.0.0.1 -p ${PORT}
 Restart=on-failure
 RestartSec=3
-# Keep it alive across reboots; restart if it crashes.
+# Memory cap — IMPORTANT when co-locating with other services (e.g. a production app on the same
+# box): under memory pressure the kernel kills THIS unit, not its neighbours. Tune to your box;
+# drop these two lines if AI HR is the only thing running.
+MemoryHigh=1G
+MemoryMax=1536M
+NoNewPrivileges=true
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

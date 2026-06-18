@@ -4,6 +4,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Use the isolated Node toolchain if present (keeps the host's system Node untouched, and means
+# pnpm/node are found even when /opt/node20/bin isn't on the invoking shell's PATH).
+[ -d /opt/node20/bin ] && export PATH="/opt/node20/bin:$PATH"
+
 [ -f .env.production ] || { echo "✗ Missing .env.production — copy deploy/.env.production.example, fill it in, and re-run."; exit 1; }
 # Load the production env so db:migrate (MIGRATION_DATABASE_URL) and the seed pick it up.
 set -a; . ./.env.production; set +a

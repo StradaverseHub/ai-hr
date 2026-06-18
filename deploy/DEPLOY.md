@@ -8,6 +8,31 @@ A native (no-Docker) deployment for **demo/testing on a public-IP server**. The 
 > with a public IP and **no TLS**, the Basic-auth password travels over plain HTTP — use a throwaway
 > password, rotate it after the test, and consider the HTTPS upgrade note at the bottom.
 
+## Co-locating safely on a shared / production host
+
+If this box already runs something important (e.g. another app behind nginx), keep AI HR fully
+isolated so it can never disturb the incumbent:
+
+- **Isolated Node** — do NOT replace the system Node. Unpack the official Node 20 tarball into its
+  own dir and own it as the app user:
+  ```bash
+  V=$(curl -fsSL https://nodejs.org/dist/index.tab | awk -F'\t' '$1 ~ /^v20\./{print $1; exit}')
+  sudo mkdir -p /opt/node20 && curl -fsSL "https://nodejs.org/dist/$V/node-$V-linux-x64.tar.gz" \
+    | sudo tar -xz -C /opt/node20 --strip-components=1
+  sudo chown -R "$USER":"$USER" /opt/node20
+  /opt/node20/bin/corepack enable --install-directory /opt/node20/bin
+  /opt/node20/bin/corepack prepare pnpm@10 --activate
+  ```
+  Point `aihr.service` at `/opt/node20/bin`; `deploy.sh` already prepends it automatically when present.
+- **Separate database** — the local Postgres created here is used only by AI HR. If the incumbent
+  has its own (or a remote) Postgres, the two never touch.
+- **No firewall / proxy changes** — prefer a `cloudflared` tunnel (see the HTTPS section) and bind
+  the app to loopback (`-H 127.0.0.1` in `aihr.service`). The app stays off the LAN entirely; you
+  open no ports and leave the incumbent's nginx untouched.
+- **Memory cap** — keep the `MemoryHigh`/`MemoryMax` lines in `aihr.service` so that under memory
+  pressure the kernel kills AI HR, never the neighbour. Cap the one-time build too:
+  `NODE_OPTIONS=--max-old-space-size=2048 nice -n 10 pnpm build`.
+
 ## 0. Prerequisites on the server
 
 - **Linux** with `sudo`, a non-root user to run the app (examples use `aihr`).

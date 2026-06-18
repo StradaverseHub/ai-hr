@@ -19,13 +19,21 @@
 -- append-only domain_event). The default-privileges approach + the migrations' own REVOKEs are correct.
 \set ON_ERROR_STOP on
 
+-- Stash the passwords in session GUCs first: psql ':var' substitution does NOT happen
+-- inside a dollar-quoted DO body, so the DO block reads them via current_setting() instead.
+-- (These are session-local on the postgres superuser connection and vanish when it closes.)
+\o /dev/null
+SELECT set_config('aihr_bootstrap.owner_pw', :'owner_pw', false);
+SELECT set_config('aihr_bootstrap.app_pw',   :'app_pw',   false);
+\o
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_hr_owner') THEN
-    EXECUTE format('CREATE ROLE ai_hr_owner LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE', :'owner_pw');
+    EXECUTE format('CREATE ROLE ai_hr_owner LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE', current_setting('aihr_bootstrap.owner_pw'));
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ai_hr_app') THEN
-    EXECUTE format('CREATE ROLE ai_hr_app LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS', :'app_pw');
+    EXECUTE format('CREATE ROLE ai_hr_app LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS', current_setting('aihr_bootstrap.app_pw'));
   END IF;
 END $$;
 
