@@ -798,7 +798,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status })
+      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
@@ -813,6 +813,24 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
       actor: actorOf(ctx),
       payload: {},
     });
+
+    // Wave 2C (ADR-0024): close the parent pay_period once ALL its runs are closed, so the statutory
+    // month becomes immutable. A single-run month closes its period when that run closes.
+    const siblings = await tx
+      .select({ status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.payPeriodId, batch.payPeriodId));
+    if (siblings.every((s) => s.status === 'closed')) {
+      await tx.update(payPeriod).set({ status: 'closed' }).where(eq(payPeriod.id, batch.payPeriodId));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'pay-period',
+        aggregateId: batch.payPeriodId,
+        eventType: 'pay-period.closed',
+        actor: actorOf(ctx),
+        payload: {},
+      });
+    }
   });
 }
 

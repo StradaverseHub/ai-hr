@@ -13,7 +13,7 @@
  *
  * Line terminator: CRLF — ⚠ not specified by Exhibit 4; confirm on first live upload.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import {
   companyStatutoryMy,
@@ -139,12 +139,16 @@ export function cp39FileForBatch(
   p: { companyId: string; periodKey: string },
 ): Promise<Cp39File & { statutoryVersion: string }> {
   return withTenant(ctx, async (tx) => {
-    const [b] = await tx
+    // Wave 2C (ADR-0024): aggregate the month's MTD across ALL runs of the period — CP39 is one monthly
+    // filing, so each employee's row is the SUM of their regular + bonus/off-cycle MTD. With a single
+    // run this is byte-identical to before.
+    const batches = await tx
       .select({ id: payrollBatch.id })
       .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.periodKey)))
-      .limit(1);
-    if (!b) throw new Cp39NotReadyError(`No payroll batch for ${p.periodKey} — generate payslips first.`);
+      .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.periodKey)));
+    if (batches.length === 0)
+      throw new Cp39NotReadyError(`No payroll batch for ${p.periodKey} — generate payslips first.`);
+    const batchIds = batches.map((x) => x.id);
     const [co] = await tx
       .select({ eNo: companyStatutoryMy.lhdnEmployerNo })
       .from(companyStatutoryMy)
@@ -155,6 +159,7 @@ export function cp39FileForBatch(
     }
     const slips = await tx
       .select({
+        employmentId: payslip.employmentId,
         name: person.fullName,
         tin: employeeStatutoryMy.taxNumber,
         ic: employeeStatutoryMy.icNumber,
@@ -165,9 +170,24 @@ export function cp39FileForBatch(
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(eq(payslip.batchId, b.id))
+      .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
-    const missing = slips.filter((s) => !s.tin || !digits(s.tin)).map((s) => s.name);
+    // One CP39 row per employee: sum MTD across the period's runs (= the month's total MTD).
+    type Agg = { name: string; tin: string | null; ic: string | null; employeeNo: string | null; mtd: number };
+    const byEmp = new Map<string, Agg>();
+    const versionSet = new Set<string>();
+    for (const s of slips) {
+      const v = (s.statutory as { version?: string } | null)?.version;
+      if (v) versionSet.add(v);
+      let r = byEmp.get(s.employmentId);
+      if (!r) {
+        r = { name: s.name, tin: s.tin, ic: s.ic, employeeNo: s.employeeNo, mtd: 0 };
+        byEmp.set(s.employmentId, r);
+      }
+      r.mtd = Math.round((r.mtd + Number((s.statutory as { pcb?: number } | null)?.pcb ?? 0)) * 100) / 100;
+    }
+    const empRows = [...byEmp.values()];
+    const missing = empRows.filter((r) => !r.tin || !digits(r.tin)).map((r) => r.name);
     if (missing.length) {
       throw new Cp39NotReadyError(
         `TIN is mandatory for the CP39 file — missing for: ${missing.join(', ')}`,
@@ -178,21 +198,17 @@ export function cp39FileForBatch(
       employerNo: co.eNo,
       year: yy,
       month: mm,
-      rows: slips.map((s) => ({
-        tin: s.tin!,
-        name: s.name,
-        newIc: s.ic,
-        mtd: Number((s.statutory as { pcb?: number } | null)?.pcb ?? 0),
-        employeeNo: s.employeeNo,
+      rows: empRows.map((r) => ({
+        tin: r.tin!,
+        name: r.name,
+        newIc: r.ic,
+        mtd: r.mtd,
+        employeeNo: r.employeeNo,
       })),
     });
     // ADR-0020: stamp the version(s) the payslips were ACTUALLY computed with (the snapshot in each
     // payslip's `statutory` blob), not the code constant — so the file filed to LHDN reports the real figures.
-    const versions = [
-      ...new Set(
-        slips.map((s) => (s.statutory as { version?: string } | null)?.version).filter((v): v is string => !!v),
-      ),
-    ].sort();
+    const versions = [...versionSet].sort();
     return { ...file, statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION };
   });
 }

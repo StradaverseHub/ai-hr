@@ -677,14 +677,39 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
 
     // Aggregate payroll totals are admin-only — never surface them to employees/managers.
     const isAdmin = ctx.roles?.some((r) => r === 'hr_admin' || r === 'super_admin') ?? false;
-    const [latestPayroll] = isAdmin
+    // Wave 2C (ADR-0024): the latest month may hold multiple runs (regular + bonus/off-cycle). Pick the
+    // latest (company, period) and SUM its runs' net — runs store delta totals, so summing yields the
+    // month's net; with a single run this is identical to before.
+    const latestRows = isAdmin
       ? await tx
-          .select({ payPeriod: payrollBatch.payPeriod, status: payrollBatch.status, totals: payrollBatch.totals })
+          .select({
+            companyId: payrollBatch.companyId,
+            payPeriod: payrollBatch.payPeriod,
+            status: payrollBatch.status,
+            totals: payrollBatch.totals,
+          })
           .from(payrollBatch)
           .where(scope(payrollBatch.companyId))
           .orderBy(desc(payrollBatch.payPeriod))
-          .limit(1)
       : [];
+    const head = latestRows[0];
+    const latestPayroll = head
+      ? (() => {
+          const runs = latestRows.filter(
+            (r) => r.payPeriod === head.payPeriod && r.companyId === head.companyId,
+          );
+          const net =
+            Math.round(
+              runs.reduce((s, r) => s + Number((r.totals as { net?: number } | null)?.net ?? 0), 0) * 100,
+            ) / 100;
+          const status = runs.every((r) => r.status === 'closed')
+            ? 'closed'
+            : runs.some((r) => r.status === 'draft')
+              ? 'draft'
+              : 'processed';
+          return { payPeriod: head.payPeriod, status, totals: { net } };
+        })()
+      : undefined;
 
     return {
       headcount: headcount?.n ?? 0,
