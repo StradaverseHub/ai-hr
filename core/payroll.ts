@@ -957,6 +957,8 @@ export function listBatches(ctx: SessionContext, companyIds?: string[]) {
         id: payrollBatch.id,
         company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
         employeeCount: payrollBatch.employeeCount,
         totals: payrollBatch.totals,
@@ -964,7 +966,7 @@ export function listBatches(ctx: SessionContext, companyIds?: string[]) {
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined)
-      .orderBy(desc(payrollBatch.payPeriod)),
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
   );
 }
 

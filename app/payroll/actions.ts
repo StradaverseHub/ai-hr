@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
   closeBatch,
+  createAdditionalRun,
   createBatch,
   generatePayslips,
   prefillOvertimeFromAttendance,
@@ -19,6 +20,23 @@ export async function createBatchAction(formData: FormData) {
   let batchId = '';
   try {
     ({ batchId } = await createBatch(s, { companyId, payPeriod }));
+  } catch (e) {
+    redirect(`/payroll?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll');
+  redirect(`/payroll/${batchId}`);
+}
+
+/** Wave 2C (ADR-0024) — add an additional same-month run. Gated: createAdditionalRun throws unless
+ *  MULTI_CYCLE_PAYROLL_ENABLED, and the gated form that posts here is only rendered under the same flag. */
+export async function addRunAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId'));
+  const payPeriod = String(formData.get('payPeriod'));
+  const runType = String(formData.get('runType')) as 'off_cycle' | 'bonus' | 'adjustment';
+  let batchId = '';
+  try {
+    ({ batchId } = await createAdditionalRun(s, { companyId, payPeriod, runType }));
   } catch (e) {
     redirect(`/payroll?error=${encodeURIComponent((e as Error).message)}`);
   }

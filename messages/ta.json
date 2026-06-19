@@ -749,6 +749,14 @@
       "company": "நிறுவனம்",
       "payPeriod": "ஊதியக் காலம்",
       "createBatch": "தொகுதியை உருவாக்கு",
+      "runTypeLabel": "இயக்க வகை",
+      "addRun": "இயக்கம் சேர்",
+      "runType": {
+        "regular": "வழக்கமான",
+        "off_cycle": "சுழற்சிக்கு வெளியே",
+        "bonus": "போனஸ்",
+        "adjustment": "சரிசெய்தல்"
+      },
       "status": {
         "draft": "வரைவு",
         "processed": "செயலாக்கப்பட்டது",

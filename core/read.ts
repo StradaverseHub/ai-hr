@@ -970,6 +970,8 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
         id: payslip.id,
         company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
         gross: payslip.grossPay,
         deductions: payslip.totalDeductions,
@@ -980,7 +982,7 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(inArray(payslip.employmentId, employmentIds))
-      .orderBy(desc(payrollBatch.payPeriod));
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
   });
 }
 
