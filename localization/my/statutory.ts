@@ -72,6 +72,9 @@ export type StatutoryInput = {
   eisEligible?: boolean;
   /** Tax residency — non-residents pay flat 30% MTD (LHDN spec §D.a). Defaults to resident. */
   isResident?: boolean;
+  /** EPF citizenship status — selects the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
+   *  Defaults to 'citizen'. (Distinct from tax residency: a non-citizen can be tax-resident.) */
+  epfCitizenship?: 'citizen' | 'pr' | 'non_citizen';
   /** EPF contribution mode (Wave 2B). 'voluntary_excess' uses the elected per-side rates (decimals,
    *  e.g. 0.15); a null rate keeps that side statutory. 'exempt' zeroes both (exempt employees only). */
   epfMode?: EpfMode;
@@ -104,6 +107,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     numChildren,
     eisEligible: p.eisEligible ?? true,
     isResident: p.isResident ?? true,
+    epfCitizenship: p.epfCitizenship ?? 'citizen',
     epfMode: epf.epfMode,
     epfEmployeeRate: epf.epfEmployeeRate,
     epfEmployerRate: epf.epfEmployerRate,

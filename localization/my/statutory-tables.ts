@@ -112,6 +112,26 @@ function buildEpfThirdSchedulePartA(): ContribBand[] {
 /** EPF Third Schedule Part A — citizen/PR < 60, wages ≤ RM20,000 (verified band table; #95). */
 export const MY_EPF_THIRD_SCHEDULE_PART_A: ContribBand[] = buildEpfThirdSchedulePartA();
 
+// EPF age cutovers: a Malaysian citizen aged 60–<75 contributes on the reduced Part E schedule
+// (employee 0%, employer 4%); from age 75 there is no mandatory EPF. Source: KWSP Jadual Ketiga
+// (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026, slides 7–9).
+export const EPF_SENIOR_AGE = 60;
+export const EPF_NO_CONTRIB_AGE = 75;
+
+// EPF Third Schedule PART E (Malaysian citizen, age 60–<75): employee 0%, employer 4% — same band
+// structure as Part A (amount = ceil(4% × band-upper), RM20 then RM100 bands; NIL first band; exact
+// 4% above RM20,000). Verified against the deck's banded sample (22,300.80 × 4% = 892.032 → RM893).
+function buildEpfThirdSchedulePartE(): ContribBand[] {
+  const ceil = (x: number) => Math.ceil(x);
+  const bands: ContribBand[] = [{ upTo: 10, employer: 0, employee: 0 }];
+  for (let upper = 20; upper <= 5000; upper += 20) bands.push({ upTo: upper, employee: 0, employer: ceil(0.04 * upper) });
+  for (let upper = 5100; upper <= EPF_SCHEDULE_MAX; upper += 100) bands.push({ upTo: upper, employee: 0, employer: ceil(0.04 * upper) });
+  return bands;
+}
+
+/** EPF Third Schedule Part E — Malaysian citizen 60–<75 (employee 0% / employer 4% banded). */
+export const MY_EPF_THIRD_SCHEDULE_PART_E: ContribBand[] = buildEpfThirdSchedulePartE();
+
 export const MY_EPF = {
   employeeRate: 0.11,
   /** Employer pays 13% when monthly wage ≤ RM5000, else 12%. */
@@ -122,6 +142,14 @@ export const MY_EPF = {
   partA: MY_EPF_THIRD_SCHEDULE_PART_A,
   /** Last wage (RM) the band table covers; above this the exact percentage applies. */
   scheduleMax: EPF_SCHEDULE_MAX,
+  /** Part E — Malaysian citizen 60–<75: employee 0%, employer 4% (banded). */
+  partE: MY_EPF_THIRD_SCHEDULE_PART_E,
+  /** Employer flat rate for the Part E senior schedule (4%) — used for the >RM20,000 tail. */
+  seniorEmployerRate: 0.04,
+  /** Non-citizen mandatory EPF (post-1998 / new rule, eff 1 Oct 2025): employee 2% / employer 2%,
+   *  flat on the wage, round up to RM1. (Pre-1998 legacy 5.5%/6–6.5% is rare — see STATUTORY-SOURCES §2.) */
+  nonCitizenEmployeeRate: 0.02,
+  nonCitizenEmployerRate: 0.02,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -399,6 +427,13 @@ export type StatutoryRuleset = {
     partA?: ContribBand[];
     /** Last wage (RM) the band table covers; above it the exact percentage applies. Default 20,000. */
     scheduleMax?: number;
+    /** Part E band table — Malaysian citizen 60–<75 (employee 0% / employer 4%). Optional fallback. */
+    partE?: ContribBand[];
+    /** Employer rate for the Part E senior schedule (>RM20,000 tail). Default 0.04. */
+    seniorEmployerRate?: number;
+    /** Non-citizen mandatory EPF rates (post-1998, eff 1 Oct 2025). Default 0.02 / 0.02. */
+    nonCitizenEmployeeRate?: number;
+    nonCitizenEmployerRate?: number;
   };
   /** Display: the SOCSO/EIS contribution wage ceiling (the band tables already encode it). */
   contribCeiling: number;

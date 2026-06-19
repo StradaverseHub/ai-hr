@@ -6,7 +6,7 @@
  * must be re-confirmed against the live KWSP calculator (see STATUTORY-SOURCES.md §2 sign-off).
  */
 import { describe, expect, it } from 'vitest';
-import { epf } from '../localization/my/payroll';
+import { epf, epfContribution } from '../localization/my/payroll';
 import { MY_EPF_THIRD_SCHEDULE_PART_A } from '../localization/my/statutory-tables';
 
 describe('EPF Third Schedule Part A (#95)', () => {
@@ -62,5 +62,37 @@ describe('EPF Third Schedule Part A (#95)', () => {
     expect(t[0]).toEqual({ upTo: 10, employer: 0, employee: 0 });
     expect(t[t.length - 1]).toEqual({ upTo: 20000, employee: 2200, employer: 2400 });
     for (let i = 1; i < t.length; i++) expect(t[i].upTo).toBeGreaterThan(t[i - 1].upTo);
+  });
+});
+
+describe('EPF by age + citizenship (Part E / non-citizen; deck slides 7–9)', () => {
+  const ee = (r: { employee: number; employer: number }) => ({ employee: r.employee, employer: r.employer });
+
+  it('citizen < 60 → Part A (default)', () => {
+    expect(ee(epfContribution(3000, 0, undefined, undefined, { age: 35, citizenship: 'citizen' }))).toEqual({ employee: 330, employer: 390 });
+    expect(ee(epfContribution(3000))).toEqual({ employee: 330, employer: 390 }); // no selection = citizen <60
+  });
+
+  it('Malaysian citizen 60–<75 → Part E (employee 0%, employer 4% banded)', () => {
+    expect(ee(epfContribution(3000, 0, undefined, undefined, { age: 62, citizenship: 'citizen' }))).toEqual({ employee: 0, employer: 120 }); // ceil(0.04*3000)
+    expect(ee(epfContribution(5000, 0, undefined, undefined, { age: 65, citizenship: 'citizen' }))).toEqual({ employee: 0, employer: 200 });
+    // >RM20,000 tail: deck sample 22,300.80 × 4% = 892.032 → RM893
+    expect(epfContribution(22300.8, 0, undefined, undefined, { age: 65, citizenship: 'citizen' }).employer).toBe(893);
+  });
+
+  it('non-citizen → flat 2% / 2% round up (deck sample 2,800.60 × 2% → RM57)', () => {
+    expect(ee(epfContribution(2800.6, 0, undefined, undefined, { age: 30, citizenship: 'non_citizen' }))).toEqual({ employee: 57, employer: 57 });
+    expect(ee(epfContribution(5000, 0, undefined, undefined, { age: 40, citizenship: 'non_citizen' }))).toEqual({ employee: 100, employer: 100 });
+  });
+
+  it('age ≥ 75 → no mandatory EPF', () => {
+    expect(ee(epfContribution(8000, 0, undefined, undefined, { age: 76, citizenship: 'citizen' }))).toEqual({ employee: 0, employer: 0 });
+  });
+
+  it('bonus follows the selected rule (Part E employer 4%, non-citizen 2% both sides)', () => {
+    // senior citizen, wage 3000 (employer 120) + bonus 1000 (employer ceil(0.04*1000)=40)
+    expect(ee(epfContribution(3000, 1000, undefined, undefined, { age: 62, citizenship: 'citizen' }))).toEqual({ employee: 0, employer: 160 });
+    // non-citizen, wage 5000 (100/100) + bonus 1000 (20/20)
+    expect(ee(epfContribution(5000, 1000, undefined, undefined, { age: 30, citizenship: 'non_citizen' }))).toEqual({ employee: 120, employer: 120 });
   });
 });

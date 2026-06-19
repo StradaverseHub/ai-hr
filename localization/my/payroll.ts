@@ -18,8 +18,11 @@
  */
 import {
   DEFAULT_MY_STATUTORY,
+  EPF_NO_CONTRIB_AGE,
   EPF_SCHEDULE_MAX,
+  EPF_SENIOR_AGE,
   MY_EPF_THIRD_SCHEDULE_PART_A,
+  MY_EPF_THIRD_SCHEDULE_PART_E,
   MY_HRDF,
   MY_OT_WAGE_CEILING,
   type ContribBand,
@@ -120,6 +123,72 @@ export function epf(
     employee: wageEmployee + (bonus > 0 ? ceilRinggit(bonus * rEe) : 0),
     employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * rEr) : 0),
   };
+}
+
+export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
+
+/** Flat-rate EPF side (non-citizen 2%/2%), round up to RM1; respects exempt / i-Topup excess. */
+function epfFlatSide(base: number, statRate: number, electedRate: number | null | undefined, mode: string): number {
+  if (mode === 'exempt' || statRate === 0 || base <= 0) return 0;
+  const rate = mode === 'voluntary_excess' && electedRate != null ? Math.max(electedRate, statRate) : statRate;
+  return ceilRinggit(base * rate);
+}
+
+/**
+ * EPF contribution by employee age + citizenship (Third Schedule rule selection; #95 follow-on):
+ *  - citizen / PR, age < 60        → Part A (`epf()`)
+ *  - Malaysian citizen 60–<75      → Part E (employee 0%, employer 4% banded)
+ *  - age ≥ 75                      → no mandatory EPF
+ *  - non-citizen (and PR aged 60+) → flat 2% / 2% (post-1998 mandatory, eff 1 Oct 2025)
+ * Returns the month total plus the employee EPF attributable to the bonus (for the PCB relief split Kₜ).
+ * Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026, slides 7–9).
+ */
+export function epfContribution(
+  wage: number,
+  additional = 0,
+  cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
+  election?: EpfElection,
+  sel?: { age?: number | null; citizenship?: EpfCitizenship },
+): { employee: number; employer: number; employeeOnBonus: number } {
+  const age = sel?.age ?? null;
+  const citizenship = sel?.citizenship ?? 'citizen';
+  const mode = election?.mode ?? 'auto';
+  const bonus = Math.max(0, additional);
+
+  if (age != null && age >= EPF_NO_CONTRIB_AGE) return { employee: 0, employer: 0, employeeOnBonus: 0 };
+  const senior = age != null && age >= EPF_SENIOR_AGE;
+
+  // Non-citizen (and PR aged 60+): flat 2% / 2%, round up to RM1, on wage and bonus alike.
+  if (citizenship === 'non_citizen' || (citizenship === 'pr' && senior)) {
+    const eeRate = cfg.nonCitizenEmployeeRate ?? 0.02;
+    const erRate = cfg.nonCitizenEmployerRate ?? 0.02;
+    const employeeOnBonus = epfFlatSide(bonus, eeRate, election?.employeeRate, mode);
+    return {
+      employee: epfFlatSide(wage, eeRate, election?.employeeRate, mode) + employeeOnBonus,
+      employer: epfFlatSide(wage, erRate, election?.employerRate, mode) + epfFlatSide(bonus, erRate, election?.employerRate, mode),
+      employeeOnBonus,
+    };
+  }
+
+  // Malaysian citizen 60–<75: Part E (employee 0%, employer 4% banded; bonus employer 4%).
+  if (citizenship === 'citizen' && senior) {
+    if (mode === 'exempt') return { employee: 0, employer: 0, employeeOnBonus: 0 };
+    const partE = cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E;
+    const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
+    const erRate = cfg.seniorEmployerRate ?? 0.04;
+    const band = wage <= scheduleMax ? bandFor(partE, wage) : null;
+    const wageEmployer = band ? band.employer : ceilRinggit(wage * erRate);
+    return {
+      employee: 0,
+      employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * erRate) : 0),
+      employeeOnBonus: 0,
+    };
+  }
+
+  // Citizen / PR < 60: standard Part A.
+  const e = epf(wage, additional, cfg, election);
+  const { employeeRate } = resolveEpfRates(wage, cfg, election);
+  return { employee: e.employee, employer: e.employer, employeeOnBonus: bonus > 0 ? ceilRinggit(bonus * employeeRate) : 0 };
 }
 
 /**
@@ -331,19 +400,32 @@ export function statutory(
   /** Employee attributes the engine derives: SOCSO category (2 = age 60+, employer-only),
    *  EIS eligibility (false at 60+, or the profile flag), residency (non-residents: flat 30%),
    *  and the EPF contribution-mode election (Wave 2B; i-Topup / exempt). */
-  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean; epfElection?: EpfElection },
+  opts?: {
+    socsoCategory?: 1 | 2;
+    eisEligible?: boolean;
+    resident?: boolean;
+    epfElection?: EpfElection;
+    /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
+    epfAge?: number | null;
+    epfCitizenship?: EpfCitizenship;
+  },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
-  const e = epf(wage, additional, rules.epf, opts?.epfElection); // bonus IS subject to EPF; overtime is NOT
+  // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
+  // EPF; overtime is NOT.
+  const eC = epfContribution(wage, additional, rules.epf, opts?.epfElection, {
+    age: opts?.epfAge,
+    citizenship: opts?.epfCitizenship,
+  });
+  const e = { employee: eC.employee, employer: eC.employer };
   const s = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
   const eisOn = opts?.eisEligible ?? true;
   const i = eisOn ? eis(cashWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
-  // EPF relief split: the employee share on the bonus (Kₜ) is the EFFECTIVE rate (incl. any i-Topup
-  // excess, or 0 when exempt) on the bonus alone; the remainder of the month's EPF is normal (K₁).
-  const effEmployeeRate = resolveEpfRates(wage, rules.epf, opts?.epfElection).employeeRate;
-  const epfOnBonus = additional > 0 ? ceilRinggit(additional * effEmployeeRate) : 0;
+  // EPF relief split: the employee share on the bonus (Kₜ) — 0 for seniors (Part E) and the flat
+  // non-citizen rate; for citizens < 60 it is the effective (incl. i-Topup) employee rate on the bonus.
+  const epfOnBonus = eC.employeeOnBonus;
   if (opts?.resident === false) {
     // Non-resident MTD (spec §D.a): flat 30% of taxable remuneration, no reliefs/accumulators.
     const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * 0.3)));

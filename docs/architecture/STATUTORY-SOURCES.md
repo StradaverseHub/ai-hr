@@ -81,14 +81,15 @@ to these tables is traceable to the exact runs it affects.
 - **🔴 Accountant sign-off (G1 gate, before any real Chin Hin pay run):**
   - [ ] Part A in force unchanged: bands/rates above; spot-check 3–5 rows vs the live KWSP calculator
         (`secure.kwsp.gov.my`, the authoritative API).
-  - [ ] **Part F — non-citizen 2% / 2% effective 1 Oct 2025** (highest-risk for Chin Hin's foreign
-        construction headcount): confirm the exact effective date for the tenant's periods, whether it is
-        a flat 2% (round-up) or itself banded, the wage base, and that the OLD flat-RM5-employer/11% Part B
-        is **not** used from Oct-2025. **Not yet implemented** — needs the citizenship flag plumbed +
-        official transcription.
-  - [ ] **Part E — age 60+ citizen** (employee 0% / employer ~4%, **not** formula-derivable — transcribe
-        verbatim) and the PR/foreigner 60+ variants (Parts C/D); confirm the age-cutover basis matches how
-        SOCSO Category 2 is selected. **Not yet implemented.**
+  - [x] **Part F — non-citizen 2% / 2% (eff 1 Oct 2025)** — IMPLEMENTED (flat 2%/2%, round up to RM1),
+        gated by the new `employee_statutory_my.epf_citizenship = 'non_citizen'`. Sourced from KWSP Jadual
+        Ketiga (1 Oct 2025) + YiWei Law deck (slide 9). _Sign-off:_ confirm the effective date for the
+        tenant's periods, flat-vs-banded, and the wage base; pre-1998 legacy (5.5% / 6–6.5%) is **not**
+        auto-applied (rare — flag if any such grandfathered member exists).
+  - [x] **Part E — Malaysian citizen 60–<75** (employee 0% / employer 4% banded) + **age ≥ 75 → no EPF**
+        — IMPLEMENTED (`MY_EPF_THIRD_SCHEDULE_PART_E`), age derived from `date_of_birth` (same basis as
+        SOCSO Category 2). Sourced from the deck (slides 7–8). _Sign-off:_ confirm the 4% employer rate +
+        the age-75 cutoff; PR 60+ is treated as non-citizen 2%/2% pending the Parts C/D variants.
   - [ ] Bonus/additional combination rule (band on the base wage + percentage on the excess) matches KWSP
         guidance; >RM20,000 percentage tail confirmed; round-up direction (up to RM1) confirmed.
   - Reviewer: __________________  Date: __________  KWSP doc version verified: __________
