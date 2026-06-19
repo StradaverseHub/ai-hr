@@ -78,6 +78,7 @@ export default async function MePage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const t = await getTranslations('me');
+  const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
   const { error } = await searchParams;
   const me = await myEmployment(s);
@@ -487,6 +488,11 @@ export default async function MePage({
                     <Link href={`/me/payslip/${p.id}`} className="text-primary hover:underline">
                       {p.payPeriod}
                     </Link>
+                    {p.runType !== 'regular' && (
+                      <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                        {tRun(p.runType)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{p.company}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{rm(p.gross)}</td>

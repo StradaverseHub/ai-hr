@@ -749,6 +749,14 @@
       "company": "บริษัท",
       "payPeriod": "งวดจ่าย",
       "createBatch": "สร้างชุด",
+      "runTypeLabel": "ประเภทรอบจ่าย",
+      "addRun": "เพิ่มรอบจ่าย",
+      "runType": {
+        "regular": "ปกติ",
+        "off_cycle": "นอกรอบ",
+        "bonus": "โบนัส",
+        "adjustment": "การปรับปรุง"
+      },
       "status": {
         "draft": "ร่าง",
         "processed": "ประมวลผลแล้ว",

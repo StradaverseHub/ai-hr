@@ -5,7 +5,7 @@ import { listBatches } from '@/core/payroll';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
-import { createBatchAction } from './actions';
+import { addRunAction, createBatchAction } from './actions';
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -21,6 +21,8 @@ export default async function PayrollPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.list');
   const thisMonth = new Date().toISOString().slice(0, 7); // current YYYY-MM
+  // Wave 2C (ADR-0024): the "add run" control is gated — only shown when multi-cycle is enabled.
+  const multiCycle = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
   const { error } = await searchParams;
   const [batches, companies] = await Promise.all([listBatches(s, scopeIds), listCompanies(s)]);
 
@@ -53,6 +55,11 @@ export default async function PayrollPage({
                     <Link href={`/payroll/${b.id}`} className="font-medium hover:text-primary">
                       {b.payPeriod}
                     </Link>
+                    {b.runType !== 'regular' && (
+                      <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                        {t(`runType.${b.runType}`)}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{b.company}</td>
                   <td className="px-4 py-2.5 tabular-nums">{b.employeeCount}</td>
@@ -93,6 +100,32 @@ export default async function PayrollPage({
             <Button type="submit" data-tour="payroll-create">{t('createBatch')}</Button>
           </div>
         </form>
+        {multiCycle && (
+          <form action={addRunAction} className="grid grid-cols-1 items-end gap-3 border-t border-border bg-muted/30 p-4 sm:grid-cols-4">
+            <Field label={t('company')}>
+              <select name="companyId" required className={inputCls}>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('payPeriod')}>
+              <input name="payPeriod" required placeholder="2026-05" defaultValue={thisMonth} pattern="[0-9]{4}-(0[1-9]|1[0-2])" title="YYYY-MM" className={inputCls} />
+            </Field>
+            <Field label={t('runTypeLabel')}>
+              <select name="runType" required className={inputCls}>
+                <option value="bonus">{t('runType.bonus')}</option>
+                <option value="off_cycle">{t('runType.off_cycle')}</option>
+                <option value="adjustment">{t('runType.adjustment')}</option>
+              </select>
+            </Field>
+            <div>
+              <Button type="submit">{t('addRun')}</Button>
+            </div>
+          </form>
+        )}
       </Card>
     </div>
   );

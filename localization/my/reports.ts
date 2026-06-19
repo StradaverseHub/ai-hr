@@ -3,7 +3,7 @@
  * payslips, per legal entity. Each ReportDef is registered on the pack; the generic core
  * (core/reporting.ts) lists / previews / records them without naming any MY-specific report.
  */
-import { and, eq, like } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';
 import {
   company,
@@ -60,20 +60,33 @@ type BatchRow = {
   epfNo: string | null;
   socsoNo: string | null;
   gross: number;
+  /** Ruleset version the runs were computed with (ADR-0024 D7: one per month). Carried for report meta. */
+  version?: string | null;
   st: Stat;
 };
 type LoadedBatch = { hasBatch: boolean; batchStatus?: string; rows: BatchRow[] };
 
 async function loadBatchRows(ctx: SessionContext, params: ReportParams): Promise<LoadedBatch> {
   return withTenant(ctx, async (tx) => {
-    const [batch] = await tx
+    // Wave 2C (ADR-0024): a (company, month) may now hold multiple runs (regular + bonus/off-cycle).
+    // The monthly statutory return is ONE filing for the month, so aggregate across ALL runs of the
+    // period. Runs store delta figures, so summing per employee yields the exact monthly total — with a
+    // single run this is byte-identical to before. (Mirrors loadYearRows, scoped to one month.)
+    const batches = await tx
       .select({ id: payrollBatch.id, status: payrollBatch.status })
       .from(payrollBatch)
       .where(
         and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, params.periodKey)),
-      )
-      .limit(1);
-    if (!batch) return { hasBatch: false, rows: [] };
+      );
+    if (batches.length === 0) return { hasBatch: false, rows: [] };
+    const batchIds = batches.map((b) => b.id);
+    // Period-level status for the report header: closed only if every run is closed; draft if any run
+    // is still a draft; otherwise processed.
+    const batchStatus = batches.every((b) => b.status === 'closed')
+      ? 'closed'
+      : batches.some((b) => b.status === 'draft')
+        ? 'draft'
+        : 'processed';
     const slips = await tx
       .select({
         employmentId: payslip.employmentId,
@@ -89,21 +102,36 @@ async function loadBatchRows(ctx: SessionContext, params: ReportParams): Promise
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(eq(payslip.batchId, batch.id))
+      .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
+    // One row per employee: sum gross + every statutory delta across the period's runs.
+    const byEmp = new Map<string, BatchRow>();
+    for (const s of slips) {
+      const st = (s.statutory ?? {}) as Stat & { version?: string };
+      let r = byEmp.get(s.employmentId);
+      if (!r) {
+        r = {
+          employmentId: s.employmentId,
+          name: s.name,
+          ic: s.ic,
+          taxNo: s.taxNo,
+          epfNo: s.epfNo,
+          socsoNo: s.socsoNo,
+          gross: 0,
+          version: st.version ?? null,
+          st: {},
+        };
+        byEmp.set(s.employmentId, r);
+      }
+      r.gross = round2(r.gross + num(s.gross));
+      for (const [k, v] of Object.entries(st)) {
+        if (typeof v === 'number') r.st[k] = round2((r.st[k] ?? 0) + v);
+      }
+    }
     return {
       hasBatch: true,
-      batchStatus: batch.status,
-      rows: slips.map((s) => ({
-        employmentId: s.employmentId,
-        name: s.name,
-        ic: s.ic,
-        taxNo: s.taxNo,
-        epfNo: s.epfNo,
-        socsoNo: s.socsoNo,
-        gross: num(s.gross),
-        st: (s.statutory ?? {}) as Stat,
-      })),
+      batchStatus,
+      rows: [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name)),
     };
   });
 }
@@ -152,7 +180,7 @@ function versionOf(blobs: unknown[]): string {
 const meta = (b: LoadedBatch) => ({
   hasBatch: b.hasBatch,
   batchStatus: b.batchStatus,
-  statutoryVersion: versionOf(b.rows.map((r) => r.st)),
+  statutoryVersion: versionOf(b.rows.map((r) => ({ version: r.version }))),
 });
 
 const empty = (columns: ReportColumn[], b: LoadedBatch): ReportResult => ({

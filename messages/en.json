@@ -749,6 +749,14 @@
       "company": "Company",
       "payPeriod": "Pay period",
       "createBatch": "Create batch",
+      "runTypeLabel": "Run type",
+      "addRun": "Add run",
+      "runType": {
+        "regular": "Regular",
+        "off_cycle": "Off-cycle",
+        "bonus": "Bonus",
+        "adjustment": "Adjustment"
+      },
       "status": {
         "draft": "Draft",
         "processed": "Processed",

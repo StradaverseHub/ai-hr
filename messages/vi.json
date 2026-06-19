@@ -749,6 +749,14 @@
       "company": "Công ty",
       "payPeriod": "Kỳ lương",
       "createBatch": "Tạo đợt",
+      "runTypeLabel": "Loại đợt chạy",
+      "addRun": "Thêm đợt chạy",
+      "runType": {
+        "regular": "Thường kỳ",
+        "off_cycle": "Ngoài chu kỳ",
+        "bonus": "Thưởng",
+        "adjustment": "Điều chỉnh"
+      },
       "status": {
         "draft": "Nháp",
         "processed": "Đã xử lý",

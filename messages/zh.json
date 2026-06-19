@@ -749,6 +749,14 @@
       "company": "公司",
       "payPeriod": "发薪周期",
       "createBatch": "创建批次",
+      "runTypeLabel": "运行类型",
+      "addRun": "添加运行",
+      "runType": {
+        "regular": "常规",
+        "off_cycle": "周期外",
+        "bonus": "奖金",
+        "adjustment": "调整"
+      },
       "status": {
         "draft": "草稿",
         "processed": "已处理",

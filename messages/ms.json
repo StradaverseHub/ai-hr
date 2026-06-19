@@ -749,6 +749,14 @@
       "company": "Syarikat",
       "payPeriod": "Tempoh gaji",
       "createBatch": "Cipta kelompok",
+      "runTypeLabel": "Jenis larian",
+      "addRun": "Tambah larian",
+      "runType": {
+        "regular": "Biasa",
+        "off_cycle": "Luar kitaran",
+        "bonus": "Bonus",
+        "adjustment": "Pelarasan"
+      },
       "status": {
         "draft": "Draf",
         "processed": "Diproses",
