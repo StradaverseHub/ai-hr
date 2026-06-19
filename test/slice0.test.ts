@@ -560,10 +560,13 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
     expect(eis(9000)).toEqual({ employer: 11.9, employee: 11.9 });
   });
 
-  it('EPF rounds up to the next ringgit and splits the employer rate at RM5000', () => {
-    expect(epf(4567)).toEqual({ employee: 503, employer: 594 }); // 502.37→503, 593.71→594
-    expect(epf(5000).employer).toBe(650); // 13% at the threshold
-    expect(epf(5001).employer).toBe(601); // 12% above (600.12→601)
+  it('EPF follows the Third Schedule Part A band table, not a rate on the exact wage (#95)', () => {
+    // Wage 4567 sits in band 4560.01–4580: ceil(0.11*4580)=504, ceil(0.13*4580)=596.
+    // (The prior rate-on-exact-wage approximation gave 503/594 — the bug this gate fixes.)
+    expect(epf(4567)).toEqual({ employee: 504, employer: 596 });
+    expect(epf(5000).employer).toBe(650); // last 13% band: ceil(0.13*5000)
+    expect(epf(5001).employer).toBe(612); // first 12% band (5000.01–5100): ceil(0.12*5100) — the real step
+    expect(epf(10).employee).toBe(0); // statutory NIL first band (RM0.01–10)
   });
 
   it('freezes a closed batch and its payslips at the DB level', async () => {

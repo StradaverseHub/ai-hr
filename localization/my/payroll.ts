@@ -18,6 +18,8 @@
  */
 import {
   DEFAULT_MY_STATUTORY,
+  EPF_SCHEDULE_MAX,
+  MY_EPF_THIRD_SCHEDULE_PART_A,
   MY_HRDF,
   MY_OT_WAGE_CEILING,
   type ContribBand,
@@ -77,11 +79,14 @@ export function resolveEpfRates(
 }
 
 /**
- * EPF: statutory employee 11%; employer 13% (wage ≤ RM5000) or 12% (> RM5000), each rounded up to
- * RM1 — unless an `election` raises a side (i-Topup) or exempts the employee. A bonus (`additional`)
- * is subject to EPF too: KWSP fixes the employer rate by the NORMAL monthly wage — a ≤RM5000 earner
- * stays at 13% even when the bonus pushes the month over — then applies it to the full wage incl. the
- * bonus. The round-up-to-ringgit applies to the total (incl. any voluntary excess).
+ * EPF. The contribution on the NORMAL monthly wage is the exact EPF Act 1991 **Third Schedule Part A**
+ * band amount (≤ RM20,000; #95) — not a flat percentage of the exact wage — or, above RM20,000 where the
+ * schedule ends, the exact percentage rounded up to RM1 (employee 11%, employer 12%). A bonus
+ * (`additional`) is **additional remuneration**: KWSP fixes the employer rate by the NORMAL monthly wage
+ * (a ≤RM5,000 earner stays 13% even when the bonus pushes the month over) and applies the percentage to
+ * the bonus, rounded up to RM1 on its own. An `election` can RAISE a side above the statutory floor
+ * (i-Topup) or `exempt` the employee (0/0). The normal-wage statutory floor here matches the existing
+ * `epfOnBonus` split in `statutory()` (so `employee − epfOnBonus` is exactly the schedule wage-amount).
  */
 export function epf(
   wage: number,
@@ -89,11 +94,31 @@ export function epf(
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
   election?: EpfElection,
 ) {
-  const { employeeRate, employerRate } = resolveEpfRates(wage, cfg, election);
-  const base = wage + Math.max(0, additional);
+  if ((election?.mode ?? 'auto') === 'exempt') return { employee: 0, employer: 0 };
+
+  const partA = cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
+  const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
+  const statEmployerRate = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
+
+  // Statutory floor on the normal monthly wage: exact Third Schedule band (incl. the NIL first band),
+  // or the percentage rounded up where the schedule ends (> RM20,000).
+  const band = wage <= scheduleMax ? bandFor(partA, wage) : null;
+  let wageEmployee = band ? band.employee : ceilRinggit(wage * cfg.employeeRate);
+  let wageEmployer = band ? band.employer : ceilRinggit(wage * statEmployerRate);
+
+  // i-Topup / voluntary excess can only RAISE a side above the statutory floor.
+  if ((election?.mode ?? 'auto') === 'voluntary_excess') {
+    if (election?.employeeRate != null) wageEmployee = Math.max(wageEmployee, ceilRinggit(wage * election.employeeRate));
+    if (election?.employerRate != null) wageEmployer = Math.max(wageEmployer, ceilRinggit(wage * election.employerRate));
+  }
+
+  // Additional remuneration (bonus): percentage by the resolved rate (employer rate fixed by the normal
+  // wage band), each rounded up to RM1 on its own.
+  const bonus = Math.max(0, additional);
+  const { employeeRate: rEe, employerRate: rEr } = resolveEpfRates(wage, cfg, election);
   return {
-    employee: ceilRinggit(base * employeeRate),
-    employer: ceilRinggit(base * employerRate),
+    employee: wageEmployee + (bonus > 0 ? ceilRinggit(bonus * rEe) : 0),
+    employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * rEr) : 0),
   };
 }
 

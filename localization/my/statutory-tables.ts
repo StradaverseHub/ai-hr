@@ -9,7 +9,7 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.1';
+export const MY_STATUTORY_VERSION = '2026.2';
 // 2026.1 (2026-06-11): SOCSO bands extended to the RM6,000 ceiling and EIS Second Schedule
 //   band amounts encoded, both verbatim from PERKESO's official Nov-2024 rate PDFs (replacing
 //   the rate-based approximations above RM5,000 / for EIS). EPF unchanged.
@@ -77,12 +77,51 @@ export type TaxCategory = 1 | 2 | 3;
 // matches at typical salary levels. Low-wage band exactness is flagged in STATUTORY-SOURCES.md.
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type ContribBand = { upTo: number; employer: number; employee: number };
+
+// EPF Act 1991 THIRD SCHEDULE (Part A — Malaysian citizen / PR, under age 60). #95.
+// For monthly wages ≤ RM20,000 the contribution is NOT a flat percentage of the exact wage — it is a
+// table of wage BANDS, each band's amount = the rate applied to the band's UPPER LIMIT, rounded UP to
+// the next whole ringgit. Band widths: RM20 for wages 0.01–5,000, then RM100 for 5,000.01–20,000. The
+// employee rate is 11% throughout; the employer rate steps from 13% (≤RM5,000) to 12% (>RM5,000). The
+// first band (RM0.01–10) is a statutory NIL/NIL exception. Above RM20,000 the schedule ends and the
+// exact percentage applies (employee 11%, employer 12%), still rounded up to the next ringgit.
+//
+// This REPLACES the prior rate-on-exact-wage approximation, which under/over-stated by ≤RM1/side inside a
+// band (e.g. wage RM2,990 → approximation 329/389, schedule 330/390). At Chin Hin's scale that is a real
+// LHDN/KWSP filing mismatch across thousands of payslips. The amounts here are the published derivation
+// rule, cross-checked against the official KWSP "Jadual Ketiga" PDF anchors (RM1,000→110/130,
+// RM3,000→330/390, RM5,000→550/650, RM5,100→561/612, RM10,000→1,100/1,200, RM20,000→2,200/2,400).
+// Source: EPF Act 1991 Third Schedule, https://www.kwsp.gov.my/en/epf-act-1991-third-schedule
+// (KWSP "Jadual Ketiga BI" PDF; direct fetch returns HTTP 403, transcribed via Internet Archive mirror).
+// Sign-off (Part A + the age-60 Part E and non-citizen 2%/2% Part F gaps): see STATUTORY-SOURCES.md §2.
+export const EPF_SCHEDULE_MAX = 20000;
+
+function buildEpfThirdSchedulePartA(): ContribBand[] {
+  const ceil = (x: number) => Math.ceil(x);
+  const bands: ContribBand[] = [{ upTo: 10, employer: 0, employee: 0 }]; // statutory NIL first band
+  for (let upper = 20; upper <= 5000; upper += 20) {
+    bands.push({ upTo: upper, employee: ceil(0.11 * upper), employer: ceil(0.13 * upper) });
+  }
+  for (let upper = 5100; upper <= EPF_SCHEDULE_MAX; upper += 100) {
+    bands.push({ upTo: upper, employee: ceil(0.11 * upper), employer: ceil(0.12 * upper) }); // employer steps to 12%
+  }
+  return bands;
+}
+
+/** EPF Third Schedule Part A — citizen/PR < 60, wages ≤ RM20,000 (verified band table; #95). */
+export const MY_EPF_THIRD_SCHEDULE_PART_A: ContribBand[] = buildEpfThirdSchedulePartA();
+
 export const MY_EPF = {
   employeeRate: 0.11,
   /** Employer pays 13% when monthly wage ≤ RM5000, else 12%. */
   employerRateLow: 0.13,
   employerRateHigh: 0.12,
   employerThreshold: 5000,
+  /** Exact Third Schedule Part A band table (the statutory floor on the normal monthly wage). */
+  partA: MY_EPF_THIRD_SCHEDULE_PART_A,
+  /** Last wage (RM) the band table covers; above this the exact percentage applies. */
+  scheduleMax: EPF_SCHEDULE_MAX,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,8 +139,6 @@ export const MY_CONTRIB_CEILING = 6000;
 // All 64 bands below are VERIFIED verbatim from that PDF (rows 1–64); its row 65 prescribes
 // that wages exceeding RM6,000 contribute at the top band — the calculator applies the last
 // band for any wage above the table.
-
-export type ContribBand = { upTo: number; employer: number; employee: number };
 
 /** Last wage (RM) for which SOCSO band amounts are officially verified. */
 export const MY_SOCSO_VERIFIED_UP_TO = 6000;
@@ -352,7 +389,17 @@ export const MY_HRDF = { mandatoryRate: 0.01, optionalRate: 0.005 } as const;
 
 export type StatutoryRuleset = {
   version: string;
-  epf: { employeeRate: number; employerRateLow: number; employerRateHigh: number; employerThreshold: number };
+  epf: {
+    employeeRate: number;
+    employerRateLow: number;
+    employerRateHigh: number;
+    employerThreshold: number;
+    /** EPF Third Schedule Part A band table (#95). Optional: DB overrides predating 2026.2 omit it,
+     *  and the calculator falls back to the built-in MY_EPF_THIRD_SCHEDULE_PART_A. */
+    partA?: ContribBand[];
+    /** Last wage (RM) the band table covers; above it the exact percentage applies. Default 20,000. */
+    scheduleMax?: number;
+  };
   /** Display: the SOCSO/EIS contribution wage ceiling (the band tables already encode it). */
   contribCeiling: number;
   socso: {
