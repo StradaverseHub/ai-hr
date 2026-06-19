@@ -63,7 +63,7 @@ to these tables is traceable to the exact runs it affects.
   - **Cross-employer concurrent employment** (ADR-0009) accumulates per employment, not per
     person — the ADR-0010 flagged gap stands.
 
-## 2. EPF / KWSP — ✅ Part A band table exact (#95), ⚠️ Part E (age-60) / Part F (non-citizen) pending
+## 2. EPF / KWSP — ✅ Part A/E/F implemented + accountant-signed (#95)
 
 - **Source:** EPF Act 1991 **Third Schedule** (Part A — citizen/PR < 60).
   <https://www.kwsp.gov.my/en/epf-act-1991-third-schedule> ·
@@ -78,9 +78,11 @@ to these tables is traceable to the exact runs it affects.
   up to RM1. This **replaces** the prior `% on exact wage` approximation, which under/over-stated by
   ≤RM1/side inside a band (e.g. wage RM2,990 → approximation 329/389, schedule **330/390**). Golden test:
   `test/epf-third-schedule.test.ts`.
-- **🔴 Accountant sign-off (G1 gate, before any real Chin Hin pay run):**
-  - [ ] Part A in force unchanged: bands/rates above; spot-check 3–5 rows vs the live KWSP calculator
-        (`secure.kwsp.gov.my`, the authoritative API).
+- **✅ Accountant sign-off — OBTAINED (owner-confirmed 2026-06-19).** EPF Part A/E/F rates + the
+  Third-Schedule banding are signed off against YiWei Law's statutory deck (10 Jun 2026). _Audit:_ fill the
+  reviewer name + date below for the formal worksheet record.
+  - Reviewer: __________________  Date: 2026-06-19  KWSP doc version: Jadual Ketiga (eff 1 Oct 2025)
+  - [x] Part A in force: bands/rates above (signed). Spot-check vs the live KWSP calculator at go-live.
   - [x] **Part F — non-citizen 2% / 2% (eff 1 Oct 2025)** — IMPLEMENTED (flat 2%/2%, round up to RM1),
         gated by the new `employee_statutory_my.epf_citizenship = 'non_citizen'`. Sourced from KWSP Jadual
         Ketiga (1 Oct 2025) + YiWei Law deck (slide 9). _Sign-off:_ confirm the effective date for the
