@@ -1,7 +1,7 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.2` (see `MY_STATUTORY_VERSION`)
-**Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A, #95)
+**Statutory-table version:** `2026.3` (see `MY_STATUTORY_VERSION`)
+**Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
 > ⚠️ **These figures are encoded from official sources to the best of our ability, but they are
@@ -96,9 +96,23 @@ to these tables is traceable to the exact runs it affects.
         guidance; >RM20,000 percentage tail confirmed; round-up direction (up to RM1) confirmed.
   - Reviewer: __________________  Date: __________  KWSP doc version verified: __________
 
-## 3. SOCSO / PERKESO (Act 4) — ✅ Verified to the RM6,000 ceiling (2026.1)
+## 3. SOCSO / PERKESO (Act 4) — ✅ Verified to RM6,000 + SKBBK / Lindung 24 Jam (2026.3, #155)
 
-- **Source:** PERKESO _Rate of contribution for Employees' Social Security Act 1969 (Act 4)_ —
+- **🆕 Lindung 24 Jam / SKBBK (Akta A1788) — MANDATORY from 1 Jun 2026.** A new **employee-paid** leg
+  (Phase 1 = **0.75%**, gazetted per band) added **on top of** the existing SOCSO — the employer and
+  employee (Invalidity) columns are **unchanged**. 60+ and **foreign** workers (Category 2) pay it too.
+  Encoded as `MY_SOCSO_SKBBK_PHASE1` (64 values) overlaid onto both categories
+  (`MY_SOCSO_CATEGORY1_SKBBK` / `..._2_SKBBK`); `socso()` returns `{ employer, employee, skbbk }` and the
+  kernel deducts SKBBK from net pay. Golden test: `test/socso-skbbk.test.ts`.
+  Sources (sourced 2026-06-19, cross-checked across 3 PDFs): PERKESO
+  <https://www.perkeso.gov.my/images/lindung/lindung-24-jam/NewContributionRateIncludingSKBBK.pdf> ·
+  Pekeliling Majikan Bil. 02/2026 · Lindung-24-Jam FAQ.
+  **🔴 Sign-off before go-live:** (1) Phase-1 0.75% still current / no Phase-2 date inside the first run;
+  (2) category by **entry age** (Cat 1 entered <55; Cat 2 entered 55+ / reached 60) — we currently select
+  by *current* age ≥60 + non-citizen (approximation; confirm against Chin Hin's records); (3) payslip
+  shows the SKBBK line (circular 5.8) — **display line still TODO**; (4) new combined SOCSO+EIS textfile
+  (mandatory 1 Oct 2026) — Phase P (#73).
+- **Source (base table):** PERKESO _Rate of contribution for Employees' Social Security Act 1969 (Act 4)_ —
   the post-Oct-2024-ceiling PDF (file dated 15 Nov 2024), retrieved **2026-06-11**:
   <https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%204.pdf>
 - **What we encoded:** `MY_SOCSO_CATEGORY1` = the official First Category band table **verbatim,

@@ -373,7 +373,8 @@ describe('Slice 4 — payroll', () => {
     // EPF: employer drops to 12% above RM5000.
     expect(epf(6000)).toEqual({ employee: 660, employer: 720 });
     // SOCSO/EIS: wages above RM6,000 contribute at the schedules' top band (row 65), not a %.
-    expect(socso(8000)).toEqual({ employer: 104.15, employee: 29.75 });
+    // SOCSO now carries the employee-paid SKBBK leg (Lindung 24 Jam, eff 1 Jun 2026).
+    expect(socso(8000)).toEqual({ employer: 104.15, employee: 29.75, skbbk: 44.65 });
     expect(eis(8000)).toEqual({ employer: 11.9, employee: 11.9 });
   });
 
@@ -394,7 +395,7 @@ describe('Slice 4 — payroll', () => {
     const st = slip.statutory as Record<string, number>;
     expect(Number(slip.gross)).toBe(4000);
     expect(st.epfEmployee).toBe(440); // 4000 * 0.11
-    const expectedNet = 4000 - (st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
+    const expectedNet = 4000 - (st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
     expect(Number(slip.net)).toBeCloseTo(expectedNet, 2);
 
     expect(await eventTypesFor(base.tenantId, batchId)).toContain('payroll-batch.processed');
@@ -507,6 +508,7 @@ describe('Slice 4 — payroll', () => {
     expect((ps.statutory as Record<string, number>).epfEmployee).toBe(319);
     expect(Number(ps.netPay)).toBeCloseTo(3600 - 200 - (ps.statutory as Record<string, number>).epfEmployee
       - (ps.statutory as Record<string, number>).socsoEmployee
+      - (ps.statutory as Record<string, number>).socsoSkbbk
       - (ps.statutory as Record<string, number>).eisEmployee
       - (ps.statutory as Record<string, number>).pcb, 2);
   });
@@ -538,15 +540,16 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
   });
 
   it('SOCSO First Category matches the official Act 4 schedule to the RM6,000 ceiling', () => {
-    expect(socso(3000)).toEqual({ employer: 51.65, employee: 14.75 });
-    expect(socso(100)).toEqual({ employer: 1.5, employee: 0.4 });
-    expect(socso(5000)).toEqual({ employer: 86.65, employee: 24.75 });
+    // employer/employee = Nov-2024 Act 4 schedule (unchanged); skbbk = the Lindung-24-Jam leg (1 Jun 2026).
+    expect(socso(3000)).toEqual({ employer: 51.65, employee: 14.75, skbbk: 22.15 });
+    expect(socso(100)).toEqual({ employer: 1.5, employee: 0.4, skbbk: 0.65 });
+    expect(socso(5000)).toEqual({ employer: 86.65, employee: 24.75, skbbk: 37.15 });
     // The RM5,000–6,000 bands (rows 55–64 of the Nov-2024 PERKESO PDF) — previously rate-based.
-    expect(socso(5050)).toEqual({ employer: 88.35, employee: 25.25 });
-    expect(socso(5800)).toEqual({ employer: 100.65, employee: 28.75 });
-    expect(socso(6000)).toEqual({ employer: 104.15, employee: 29.75 });
+    expect(socso(5050)).toEqual({ employer: 88.35, employee: 25.25, skbbk: 37.85 });
+    expect(socso(5800)).toEqual({ employer: 100.65, employee: 28.75, skbbk: 43.15 });
+    expect(socso(6000)).toEqual({ employer: 104.15, employee: 29.75, skbbk: 44.65 });
     // Row 65: wages exceeding RM6,000 stay at the top band.
-    expect(socso(9000)).toEqual({ employer: 104.15, employee: 29.75 });
+    expect(socso(9000)).toEqual({ employer: 104.15, employee: 29.75, skbbk: 44.65 });
   });
 
   it('EIS matches the official Act 800 Second Schedule (fixed band amounts, not 0.2%)', () => {
@@ -1766,9 +1769,10 @@ describe('Payroll compliance round — zakat §E.5, Category 2, EIS rules, non-r
   });
 
   it('SOCSO Second Category (60+) pays employer-only schedule amounts', () => {
-    expect(socso(3000, 2)).toEqual({ employer: 36.9, employee: 0 }); // row 34 of the Act 4 PDF
-    expect(socso(6000, 2)).toEqual({ employer: 74.4, employee: 0 }); // top band
-    expect(socso(9000, 2)).toEqual({ employer: 74.4, employee: 0 }); // above ceiling → top band
+    // Cat 2 = employer Injury-only + the SAME employee SKBBK leg as Cat 1 (60+/foreign pay SKBBK too).
+    expect(socso(3000, 2)).toEqual({ employer: 36.9, employee: 0, skbbk: 22.15 }); // row 34 of the Act 4 PDF
+    expect(socso(6000, 2)).toEqual({ employer: 74.4, employee: 0, skbbk: 44.65 }); // top band
+    expect(socso(9000, 2)).toEqual({ employer: 74.4, employee: 0, skbbk: 44.65 }); // above ceiling → top band
     expect(socso(3000, 1).employee).toBeGreaterThan(0); // Category 1 unchanged
   });
 

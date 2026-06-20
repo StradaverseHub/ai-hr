@@ -26,6 +26,7 @@ import {
   MY_HRDF,
   MY_OT_WAGE_CEILING,
   type ContribBand,
+  type SocsoBand,
   type HrdfStatus,
   type PcbBand,
   type StatutoryRuleset,
@@ -219,8 +220,10 @@ function bandFor(bands: ContribBand[], wage: number): ContribBand {
  *  Employment Injury + Invalidity (< 60); Category 2 = Employment Injury only, employer-only
  *  (age 60+). */
 export function socso(wage: number, category: 1 | 2 = 1, cfg: StatutoryRuleset['socso'] = DEFAULT_MY_STATUTORY.socso) {
-  const band = bandFor(category === 2 ? cfg.category2 : cfg.category1, wage);
-  return { employer: band.employer, employee: band.employee };
+  const band = bandFor(category === 2 ? cfg.category2 : cfg.category1, wage) as SocsoBand;
+  // SKBBK (Lindung 24 Jam, eff 1 Jun 2026) — employee-paid leg on top of the standard SOCSO; 0 for any
+  // pre-2026.3 ruleset/DB override that lacks the column.
+  return { employer: band.employer, employee: band.employee, skbbk: band.skbbk ?? 0 };
 }
 
 /** EIS — exact Act 800 Second Schedule amounts (verified to the RM6,000 ceiling). */
@@ -435,6 +438,7 @@ export function statutory(
       epfEmployer: e.employer,
       socsoEmployee: s.employee,
       socsoEmployer: s.employer,
+      socsoSkbbk: s.skbbk,
       eisEmployee: i.employee,
       eisEmployer: i.employer,
       pcb: pcbAll,
@@ -460,6 +464,7 @@ export function statutory(
     epfEmployer: e.employer,
     socsoEmployee: s.employee,
     socsoEmployer: s.employer,
+    socsoSkbbk: s.skbbk,
     eisEmployee: i.employee,
     eisEmployer: i.employer,
     pcb: m.total,

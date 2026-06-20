@@ -9,7 +9,7 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.2';
+export const MY_STATUTORY_VERSION = '2026.3';
 // 2026.1 (2026-06-11): SOCSO bands extended to the RM6,000 ceiling and EIS Second Schedule
 //   band amounts encoded, both verbatim from PERKESO's official Nov-2024 rate PDFs (replacing
 //   the rate-based approximations above RM5,000 / for EIS). EPF unchanged.
@@ -313,6 +313,38 @@ export const MY_SOCSO_CATEGORY2: ContribBand[] = [
   { upTo: 6000, employer: 74.4, employee: 0 },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SKBBK — "Skim Bukan Bencana Kerja" / Lindung 24 Jam (Act 4, Akta A1788), MANDATORY from 1 Jun 2026.
+// A new, employee-paid leg (Phase 1 = 0.75%) added ON TOP of the existing SOCSO contribution; the
+// employer and employee (Invalidity) columns above are UNCHANGED. SKBBK is identical for Category 1 and
+// Category 2 (employees aged 60+ and foreign workers pay it too). The amounts are gazetted per wage band
+// (NOT % × wage — use the band lookup). Source: PERKESO NewContributionRateIncludingSKBBK.pdf + Pekeliling
+// Majikan 02/2026 + Lindung-24-Jam FAQ, cross-checked across all three (sourced 2026-06-19, HIGH conf.).
+// Phase 1 only — SKBBK rises to 1.00% then 1.25% on dates PERKESO will announce (re-version then).
+// ─────────────────────────────────────────────────────────────────────────────
+export type SocsoBand = ContribBand & { skbbk: number };
+
+/** Employee-side SKBBK amount per wage band (Phase 1, 0.75%), in MY_SOCSO_CATEGORY1/2 band order. */
+export const MY_SOCSO_SKBBK_PHASE1: number[] = [
+  0.2, 0.3, 0.5, 0.65, 0.9, 1.25, 1.85, 2.65, 3.35, 4.15, 4.85, 5.65, 6.35, 7.15, 7.85, 8.65, 9.35, 10.15,
+  10.85, 11.65, 12.35, 13.15, 13.85, 14.65, 15.35, 16.15, 16.85, 17.65, 18.35, 19.15, 19.85, 20.65, 21.35,
+  22.15, 22.85, 23.65, 24.35, 25.15, 25.85, 26.65, 27.35, 28.15, 28.85, 29.65, 30.35, 31.15, 31.85, 32.65,
+  33.35, 34.15, 34.85, 35.65, 36.35, 37.15, 37.85, 38.65, 39.35, 40.15, 40.85, 41.65, 42.35, 43.15, 43.85, 44.65,
+];
+
+/** Attach the SKBBK employee leg to a SOCSO band table (employer/employee columns untouched). */
+function withSkbbk(bands: ContribBand[], skbbk: number[]): SocsoBand[] {
+  if (bands.length !== skbbk.length) {
+    throw new Error(`SKBBK column (${skbbk.length}) must align with the SOCSO band table (${bands.length})`);
+  }
+  return bands.map((b, i) => ({ ...b, skbbk: skbbk[i] }));
+}
+
+/** SOCSO Category 1 (Malaysian 18–<60) WITH the mandatory SKBBK leg (eff 1 Jun 2026). */
+export const MY_SOCSO_CATEGORY1_SKBBK: SocsoBand[] = withSkbbk(MY_SOCSO_CATEGORY1, MY_SOCSO_SKBBK_PHASE1);
+/** SOCSO Category 2 (age 60+ / foreign — employer Injury-only) WITH the same SKBBK employee leg. */
+export const MY_SOCSO_CATEGORY2_SKBBK: SocsoBand[] = withSkbbk(MY_SOCSO_CATEGORY2, MY_SOCSO_SKBBK_PHASE1);
+
 // EIS / SIP — Employment Insurance System, Act 800, Second Schedule.
 // Source: "Rate of Contribution Employment Insurance System (Act 800)" — PERKESO official PDF
 //   (post-Oct-2024 ceiling, file dated 15 Nov 2024), retrieved 2026-06-11:
@@ -438,8 +470,8 @@ export type StatutoryRuleset = {
   /** Display: the SOCSO/EIS contribution wage ceiling (the band tables already encode it). */
   contribCeiling: number;
   socso: {
-    category1: ContribBand[];
-    category2: ContribBand[];
+    category1: SocsoBand[];
+    category2: SocsoBand[];
     /** Display/cross-check only — the calculator uses the exact band tables. */
     rates: { employer: number; employee: number };
     verifiedUpTo: number;
@@ -458,8 +490,8 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
   epf: MY_EPF,
   contribCeiling: MY_CONTRIB_CEILING,
   socso: {
-    category1: MY_SOCSO_CATEGORY1,
-    category2: MY_SOCSO_CATEGORY2,
+    category1: MY_SOCSO_CATEGORY1_SKBBK,
+    category2: MY_SOCSO_CATEGORY2_SKBBK,
     rates: MY_SOCSO_RATES,
     verifiedUpTo: MY_SOCSO_VERIFIED_UP_TO,
   },
