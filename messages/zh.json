@@ -796,6 +796,8 @@
       "reportFallback": "报表",
       "cp39DownloadTitle": "e-Data PCB 上传文件（LHDN 附件 4）。在通过 e-PCB Plus 验证前为草稿。",
       "cp39DownloadLabel": "CP39 .txt — 草稿，不可提交",
+      "socsoEisDownloadLabel": "PERKESO 文本文件",
+      "socsoEisDownloadTitle": "合并 SOCSO + EIS 缴款文本文件（ASSIST，v2.0 含 SKBBK）",
       "recordGeneration": "记录生成",
       "noPayslips": "此批次中无工资单。",
       "recentTitle": "近期生成记录",

@@ -796,6 +796,8 @@
       "reportFallback": "รายงาน",
       "cp39DownloadTitle": "ไฟล์อัปโหลด e-Data PCB (LHDN Exhibit 4) ฉบับร่างจนกว่าจะตรวจสอบกับ e-PCB Plus",
       "cp39DownloadLabel": "CP39 .txt — ฉบับร่าง ยังไม่สำหรับยื่น",
+      "socsoEisDownloadLabel": "ไฟล์ข้อความ PERKESO",
+      "socsoEisDownloadTitle": "ไฟล์ข้อความเงินสมทบ SOCSO + EIS รวม (ASSIST, v2.0 พร้อม SKBBK)",
       "recordGeneration": "บันทึกการสร้าง",
       "noPayslips": "ไม่มีสลิปเงินเดือนในชุดนี้",
       "recentTitle": "การสร้างล่าสุด",

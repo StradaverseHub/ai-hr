@@ -796,6 +796,8 @@
       "reportFallback": "Báo cáo",
       "cp39DownloadTitle": "Tệp tải lên e-Data PCB (LHDN Exhibit 4). NHÁP cho đến khi được xác minh với e-PCB Plus.",
       "cp39DownloadLabel": "CP39 .txt — NHÁP, không dùng để nộp",
+      "socsoEisDownloadLabel": "Tệp văn bản PERKESO",
+      "socsoEisDownloadTitle": "Tệp văn bản đóng góp SOCSO + EIS kết hợp (ASSIST, v2.0 với SKBBK)",
       "recordGeneration": "Ghi nhận lần tạo",
       "noPayslips": "Không có phiếu lương trong đợt này.",
       "recentTitle": "Các lần tạo gần đây",

@@ -796,6 +796,8 @@
       "reportFallback": "அறிக்கை",
       "cp39DownloadTitle": "e-Data PCB பதிவேற்றக் கோப்பு (LHDN Exhibit 4). e-PCB Plus உடன் சரிபார்க்கப்படும் வரை DRAFT.",
       "cp39DownloadLabel": "CP39 .txt — DRAFT, சமர்ப்பிப்புக்கு அல்ல",
+      "socsoEisDownloadLabel": "PERKESO உரைக் கோப்பு",
+      "socsoEisDownloadTitle": "ஒருங்கிணைந்த SOCSO + EIS பங்களிப்பு உரைக் கோப்பு (ASSIST, v2.0 SKBBK உடன்)",
       "recordGeneration": "உருவாக்கத்தைப் பதிவு செய்",
       "noPayslips": "இந்தத் தொகுதியில் ஊதியச் சீட்டுகள் இல்லை.",
       "recentTitle": "சமீபத்திய உருவாக்கங்கள்",

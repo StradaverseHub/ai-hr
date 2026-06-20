@@ -845,6 +845,8 @@
       "reportFallback": "Report",
       "cp39DownloadTitle": "e-Data PCB upload file (LHDN Exhibit 4). DRAFT until verified against e-PCB Plus.",
       "cp39DownloadLabel": "CP39 .txt — DRAFT, not for submission",
+      "socsoEisDownloadLabel": "PERKESO textfile",
+      "socsoEisDownloadTitle": "Combined SOCSO + EIS contribution textfile (ASSIST, v2.0 with SKBBK)",
       "recordGeneration": "Record generation",
       "noPayslips": "No payslips in this batch.",
       "recentTitle": "Recent generations",

@@ -796,6 +796,8 @@
       "reportFallback": "Laporan",
       "cp39DownloadTitle": "Fail muat naik e-Data PCB (LHDN Exhibit 4). DRAF sehingga disahkan dengan e-PCB Plus.",
       "cp39DownloadLabel": "CP39 .txt — DRAF, bukan untuk penyerahan",
+      "socsoEisDownloadLabel": "Fail teks PERKESO",
+      "socsoEisDownloadTitle": "Fail teks caruman SOCSO + EIS gabungan (ASSIST, v2.0 dengan SKBBK)",
       "recordGeneration": "Rekod penjanaan",
       "noPayslips": "Tiada slip gaji dalam kelompok ini.",
       "recentTitle": "Penjanaan terkini",
