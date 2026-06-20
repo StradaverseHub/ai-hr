@@ -8,9 +8,13 @@ import { PdpaErasureForm } from '@/components/pdpa-erasure-form';
  * Data Privacy & Audit Integrity — the DPO surface for ADR-0030. Shows the tamper-evidence verdict over
  * the append-only event log and runs the retention-guarded PII erasure. Admin/DPO-only.
  */
-export default async function PrivacyPage() {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export default async function PrivacyPage({ searchParams }: { searchParams: Promise<{ subject?: string }> }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.privacy');
+  const { subject } = await searchParams;
+  const initialEmploymentId = subject && UUID.test(subject) ? subject : '';
   const chain = await verifyTenantChain(s);
 
   return (
@@ -42,7 +46,8 @@ export default async function PrivacyPage() {
       <Card className="space-y-3 p-4">
         <h2 className="text-sm font-semibold">{t('erasureTitle')}</h2>
         <p className="text-sm text-muted-foreground">{t('erasureNote')}</p>
-        <PdpaErasureForm />
+        {initialEmploymentId && <p className="text-xs text-muted-foreground">{t('prefilled')}</p>}
+        <PdpaErasureForm initialEmploymentId={initialEmploymentId} />
       </Card>
     </div>
   );

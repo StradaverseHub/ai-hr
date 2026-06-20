@@ -19,9 +19,9 @@ const SCOPE_KEY: Record<(typeof SCOPES)[number], string> = {
   all: 'scopeAll',
 };
 
-export function PdpaErasureForm() {
+export function PdpaErasureForm({ initialEmploymentId = '' }: { initialEmploymentId?: string }) {
   const t = useTranslations('admin.privacy');
-  const [employmentId, setEmploymentId] = useState('');
+  const [employmentId, setEmploymentId] = useState(initialEmploymentId);
   const [scope, setScope] = useState<(typeof SCOPES)[number]>('contact');
   const [reason, setReason] = useState('');
   const [requestRef, setRequestRef] = useState('');
