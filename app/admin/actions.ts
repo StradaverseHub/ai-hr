@@ -34,6 +34,7 @@ import {
   updatePosition,
 } from '@/core/admin';
 import { openLeaveYear } from '@/core/leave';
+import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
@@ -96,6 +97,37 @@ export async function setCompanyStatutoryAction(formData: FormData) {
       ssmRegistrationNo: (formData.get('ssmRegistrationNo') as string) || undefined,
       hrdfStatus,
     });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+const DISBURSEMENT_BANKS: DisbursementBank[] = ['maybank', 'cimb', 'public_bank', 'rhb'];
+
+export async function setCompanyBankProfileAction(formData: FormData) {
+  const s = await getSession();
+  const bank = String(formData.get('bank') ?? '');
+  try {
+    if (!DISBURSEMENT_BANKS.includes(bank as DisbursementBank)) throw new Error('Select a supported bank');
+    await upsertCompanyBankProfile(s, {
+      companyId: String(formData.get('companyId')),
+      bank: bank as DisbursementBank,
+      corporateId: String(formData.get('corporateId') ?? ''),
+      debitAccountNo: String(formData.get('debitAccountNo') ?? ''),
+      orgName: (formData.get('orgName') as string) || null,
+      txnType: (formData.get('txnType') as string) || null,
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function removeCompanyBankProfileAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await removeCompanyBankProfile(s, { id: String(formData.get('id')) });
   } catch (e) {
     fail(ORG, e);
   }

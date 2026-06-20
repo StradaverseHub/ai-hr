@@ -531,6 +531,11 @@ export const employeeStatutoryMy = pgTable(
 // optional = 5–9 who opt to register (0.5%). Sourced in docs/wave2-payroll-design.md.
 export const hrdfStatusEnum = pgEnum('hrdf_status', ['not_registered', 'mandatory', 'optional']);
 
+// Banks ai-hr can emit bulk salary-disbursement files for (ADR-0031). CIMB + Public Bank share the IBG
+// Autopay layout; Maybank (M2E-RC) and RHB (Reflex) are distinct formats. The file format is derived from
+// the bank in code, not stored.
+export const disbursementBankEnum = pgEnum('disbursement_bank', ['maybank', 'cimb', 'public_bank', 'rhb']);
+
 // MY company-level statutory identity (ADR-0009): each entity files under its own registrations.
 export const companyStatutoryMy = pgTable(
   'company_statutory_my',
@@ -551,6 +556,32 @@ export const companyStatutoryMy = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex('company_statutory_my_company_uq').on(t.companyId)],
+);
+
+// Per-entity, per-bank disbursement profile (ADR-0031). Holds the BANK-ISSUED corporate/organisation ID
+// + employer debit account needed in every bulk-payment file header. One row per (company, bank). These
+// are sensitive employer credentials — RLS restricts both read and write to company-scoped admins.
+export const companyBankProfile = pgTable(
+  'company_bank_profile',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    bank: disbursementBankEnum('bank').notNull(),
+    // Bank-issued: Maybank Corporate ID / CIMB 5-digit Autopay Org Code / RHB 6-digit Corporate ID /
+    // Public Bank 3-char Org Code. Free text — each bank's shape differs; validated at file-build time.
+    corporateId: text('corporate_id').notNull(),
+    debitAccountNo: text('debit_account_no').notNull(),
+    // Organisation name as registered with the bank (header field). Falls back to the company name in UI.
+    orgName: text('org_name'),
+    // Default transaction rail; RENTAS only matters for ≥ RM10k single payments (rare in payroll).
+    txnType: text('txn_type').notNull().default('IBG'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('company_bank_profile_company_bank_uq').on(t.companyId, t.bank)],
 );
 
 // ─────────────── Per-tenant counters (generic, e.g. employee codes) ───────────────

@@ -26,6 +26,20 @@ export type PanelStatutory = {
   ssmRegistrationNo: string | null;
   hrdfStatus: 'not_registered' | 'mandatory' | 'optional' | null;
 } | null;
+export type PanelBankProfile = {
+  id: string;
+  bank: 'maybank' | 'cimb' | 'public_bank' | 'rhb';
+  corporateId: string;
+  debitAccountNo: string;
+  orgName: string | null;
+  txnType: string;
+};
+const BANK_LABEL: Record<PanelBankProfile['bank'], string> = {
+  maybank: 'Maybank',
+  cimb: 'CIMB',
+  public_bank: 'Public Bank',
+  rhb: 'RHB',
+};
 export type ChildRow = {
   id: string;
   display: string;
@@ -56,6 +70,7 @@ export function CompanyPanel({
   company,
   companies,
   statutory,
+  bankProfiles,
   departments,
   positions,
   costCenters,
@@ -64,6 +79,7 @@ export function CompanyPanel({
   company: PanelCompany;
   companies: { id: string; name: string }[];
   statutory: PanelStatutory;
+  bankProfiles: PanelBankProfile[];
   departments: ChildRow[];
   positions: ChildRow[];
   costCenters: ChildRow[];
@@ -73,6 +89,8 @@ export function CompanyPanel({
     deleteCompany: Action;
     setParent: Action;
     setStatutory: Action;
+    setBankProfile: Action;
+    removeBankProfile: Action;
     createDepartment: Action;
     updateDepartment: Action;
     archiveDepartment: Action;
@@ -279,6 +297,73 @@ export function CompanyPanel({
             <p className="rounded-lg bg-background p-3 text-xs text-muted-foreground">
               {t('noStatutoryPack', { country: c.country })}
             </p>
+          )}
+
+          {/* Bank disbursement profiles (ADR-0031) — bank-issued corporate ID + employer debit account */}
+          {isMY && (
+            <div className="space-y-2.5 rounded-lg bg-background p-3">
+              <SubHeader>{t('bankProfilesTitle')}</SubHeader>
+              {bankProfiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t('noBankProfiles')}</p>
+              ) : (
+                <ul className="divide-y divide-border/60">
+                  {bankProfiles.map((bp) => (
+                    <li key={bp.id} className="flex items-center justify-between gap-2 py-1.5">
+                      <div className="min-w-0 text-sm">
+                        <span className="font-medium">{BANK_LABEL[bp.bank]}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          {bp.corporateId} · ••••{bp.debitAccountNo.slice(-4)} · {bp.txnType}
+                        </span>
+                      </div>
+                      <form action={actions.removeBankProfile}>
+                        <input type="hidden" name="id" value={bp.id} />
+                        <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                          {t('bankProfileRemove')}
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <form action={actions.setBankProfile} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <input type="hidden" name="companyId" value={c.id} />
+                <Field label={t('bankLabel')}>
+                  <select name="bank" defaultValue="" required className={inputCls}>
+                    <option value="" disabled>
+                      {t('bankSelect')}
+                    </option>
+                    {(Object.keys(BANK_LABEL) as PanelBankProfile['bank'][]).map((b) => (
+                      <option key={b} value={b}>
+                        {BANK_LABEL[b]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('bankTxnType')}>
+                  <select name="txnType" defaultValue="IBG" className={inputCls}>
+                    <option value="IBG">IBG</option>
+                    <option value="RENTAS">RENTAS</option>
+                  </select>
+                </Field>
+                <Field label={t('bankCorporateId')}>
+                  <input name="corporateId" required className={inputCls} placeholder={t('bankCorporateIdHint')} />
+                </Field>
+                <Field label={t('bankDebitAccount')}>
+                  <input name="debitAccountNo" required className={inputCls} />
+                </Field>
+                <div className="sm:col-span-2">
+                  <Field label={t('bankOrgName')}>
+                    <input name="orgName" defaultValue={c.name} className={inputCls} />
+                  </Field>
+                </div>
+                <div className="sm:col-span-2">
+                  <Button type="submit" size="sm">
+                    {t('bankProfileSave')}
+                  </Button>
+                </div>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
+            </div>
           )}
 
           {/* Children: departments / positions / cost centers — scoped to this company */}

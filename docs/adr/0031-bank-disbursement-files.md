@@ -1,6 +1,6 @@
 # ADR-0031 — Bank salary-disbursement (IBG bulk-payment) files
 
-- **Status:** Proposed (foundation implemented; byte-exact builders gated on go-live inputs)
+- **Status:** Proposed (foundation + data-entry implemented; byte-exact file builders gated on go-live inputs)
 - **Date:** 2026-06-20
 - **Context tags:** payroll, Layer-B, disbursement, Chin Hin go-live, #73 (P-73c)
 
@@ -22,11 +22,10 @@ The sourcing established that **CIMB and Public Bank both consume the Malaysian 
 
 `localization/my/bank-files/bnm-codes.ts` maps a free-text bank name → 2-digit BNM code via exact normalized match, **hard-failing on any unmapped name** (`UnknownBankError`). No fuzzy contains-match (it could mis-route "Public Investment Bank" → Public Bank). `tryBnmCodeForBankName` powers a batch readiness list of every employee whose bank can't be resolved. Golden-tested.
 
-### 3. Schema prerequisites (NOT yet built — block byte-correct output)
+### 3. Schema prerequisites
 
-1. **Per-employee bank code.** `employeeStatutoryMy` has free-text `bankName` + `bankAccountNo` but no normalized code. The `bnm-codes.ts` map derives the code at file-gen time and hard-fails on unmapped names — acceptable for slice 1. If Chin Hin's imported `bankName` values prove too messy, add an explicit `employeeStatutoryMy.bankCode` column populated at import.
-2. **Per-company bank profile (NEW table required).** Every header needs a **bank-issued corporate/organisation ID** and **employer debit account**, per entity per bank — none exist in `companyStatutoryMy` today. With ~60 entities × up to 4 banks this needs its own table:
-   `companyBankProfile(companyId, bank, corporateId, debitAccountNo, txnTypeDefault, orgName)`.
+1. **Per-employee bank code.** `employeeStatutoryMy` has free-text `bankName` + `bankAccountNo` but no normalized code. The `bnm-codes.ts` map derives the code at file-gen time and hard-fails on unmapped names — acceptable for slice 1. If Chin Hin's imported `bankName` values prove too messy, add an explicit `employeeStatutoryMy.bankCode` column populated at import. *(Still pending.)*
+2. **Per-company bank profile — IMPLEMENTED (slice 2, migration 0072).** `companyBankProfile(companyId, bank, corporateId, debitAccountNo, orgName, txnType)`, unique per (company, bank), RLS-restricted to company-scoped admins (sensitive credentials), service `core/bank-profile.ts` with redacted DomainEvents, admin data-entry on the Organization page. This is where Chin Hin enters the bank-issued IDs as they arrive — the file builders read from it.
 
 ### 4. Go-live gate (DRAFT until cleared)
 
