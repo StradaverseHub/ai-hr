@@ -261,6 +261,7 @@ export default async function BatchPage({
                 <th className="px-4 py-2 text-right font-medium">{t('colBonus')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colEpf')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colSocso')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colSkbbk')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colEis')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colPcb')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colNet')}</th>
@@ -285,6 +286,7 @@ export default async function BatchPage({
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.epfEmployee)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoEmployee)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoSkbbk)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.eisEmployee)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.pcb)}</td>
                     <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(sl.net)}</td>

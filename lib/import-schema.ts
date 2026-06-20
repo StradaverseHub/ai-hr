@@ -45,5 +45,6 @@ export const IMPORT_COLUMNS = {
     'num_children',
     'eis_eligible',
     'is_resident',
+    'epf_citizenship',
   ],
 } as const;
