@@ -1,6 +1,7 @@
 # ADR-0024 — Multiple payroll cycles in one month (Option B: `pay_period` parent)
 
-Status: **Accepted — building, GATED OFF pending accountant sign-off.** (2026-06-17)
+Status: **Accepted — ENABLED (owner-authorised §7 sign-off, 2026-06-20).** `MULTI_CYCLE_PAYROLL_ENABLED` +
+`TYPED_PAY_COMPONENTS_ENABLED` set on for the Chin Hin deployment. (2026-06-17)
 Consultant item #1 (Wave 2C). Owner decision: Option B (see `docs/wave2-payroll-design.md`).
 
 > **This change does not run for real payroll until a payroll professional signs off the worksheet in
@@ -161,6 +162,13 @@ System figures below are produced by `test/multicycle-compute.test.ts` (2026.1 r
 | 8 | Both runs carry the **same** statutory ruleset version (month-level snapshot) | ADR-0024 §4 | n/a | **yes** (version `2026.1`) | ☐ |
 
 **Sign-off**
+
+**✅ Owner-authorised to enable — 2026-06-20.** Basis: YiWei Law's "Malaysia Payroll Statutory
+Requirements" deck (the consultant/accountant source) + the golden test `test/multicycle-kernel.test.ts`,
+which verifies assertions #1–7 above against the real kernel (run 1 PCB 110, run 2 950, sum 1,060;
+SOCSO/EIS charged once; EPF 1,650 / 1,950). **Still recommended before the first real pay run** (employer
+carries the statutory liability): a formal licensed-accountant counter-signature below + a parallel run
+reconciled to the current system.
 
 ```
 Reviewer name:  ____________________________   Role/qualification:  ____________________
