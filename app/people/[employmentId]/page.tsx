@@ -416,6 +416,18 @@ export default async function EmployeePage({
         </Card>
       )}
 
+      {admin && (
+        <Card className="border-rose-200 dark:border-rose-500/30">
+          <SectionHeader title={t('dataPrivacyTitle')} />
+          <div className="space-y-2 p-4">
+            <p className="text-sm text-muted-foreground">{t('dataPrivacyNote')}</p>
+            <Link href={`/admin/privacy?subject=${emp.employmentId}`} className={btnPrimary}>
+              {t('dataPrivacyLink')}
+            </Link>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <SectionHeader title={t('reportingLines')} />
         <div className="grid grid-cols-1 divide-border sm:grid-cols-2 sm:divide-x">
