@@ -526,6 +526,13 @@
       "when": 1781775046561,
       "tag": "0074_audit_hash_chain",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1781775046562,
+      "tag": "0075_shift_roster",
+      "breakpoints": true
     }
   ]
 }

@@ -729,6 +729,57 @@ export const attendanceCorrection = pgTable(
   (t) => [index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate)],
 );
 
+// ── Phase C: shift rosters (ADR-0032) ──────────────────────────────
+// A configurable (NON-statutory) shift-differential pay rule. EA 1955 mandates no shift premium, so this
+// is employer policy; the value feeds a typed pay-component (C5), never a sourced statutory rate.
+export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_shift'; value: number };
+
+// A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
+export const shift = pgTable(
+  'shift',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    name: text('name').notNull(),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    breakMinutes: integer('break_minutes').notNull().default(0),
+    crossesMidnight: boolean('crosses_midnight').notNull().default(false),
+    differential: jsonb('differential').$type<ShiftDifferential | null>(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('shift_company_name_uq').on(t.tenantId, t.companyId, t.name).where(sql`archived_at is null`)],
+);
+
+// The per-employee "expected" schedule the time engine consumes (C2). One concrete (employment, date) →
+// a shift OR an explicit rest day; no row = not rostered ⇒ company-policy fallback. A DB CHECK
+// (migration 0075) enforces the shift-xor-rest invariant.
+export const rosterAssignment = pgTable(
+  'roster_assignment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    shiftDate: date('shift_date').notNull(),
+    shiftId: uuid('shift_id').references(() => shift.id),
+    isRestDay: boolean('is_rest_day').notNull().default(false),
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('roster_assignment_emp_date_uq').on(t.tenantId, t.employmentId, t.shiftDate),
+    index('roster_assignment_date_idx').on(t.tenantId, t.shiftDate),
+  ],
+);
+
 export const profileChangeStatusEnum = pgEnum('profile_change_status', [
   'pending',
   'approved',
