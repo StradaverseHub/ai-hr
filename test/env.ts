@@ -20,3 +20,4 @@ process.env.MIGRATION_DATABASE_URL = process.env.TEST_MIGRATION_DATABASE_URL;
 delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
 delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
 delete process.env.GROUP_PCB_COORDINATION_ENABLED;
+delete process.env.AUDIT_HASH_CHAIN_ENABLED; // ADR-0030 Layer 2 gate; the hash-chain test opts in per-run

@@ -439,10 +439,17 @@ export const domainEvent = pgTable(
     payload: jsonb('payload'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).defaultNow().notNull(),
     sequence: bigserial('sequence', { mode: 'number' }).notNull(),
+    // ADR-0030 Layer 2: per-tenant tamper-evidence hash chain. NULL unless AUDIT_HASH_CHAIN_ENABLED — set
+    // by a BEFORE INSERT trigger (migration 0074), never by appendEvent. chain_seq is contiguous per tenant
+    // (a gap = a deleted row); hash = sha256(prev_hash ‖ canonical row); prev_hash links to the prior row.
+    chainSeq: bigint('chain_seq', { mode: 'number' }),
+    prevHash: text('prev_hash'),
+    hash: text('hash'),
   },
   (t) => [
     index('domain_event_aggregate_idx').on(t.tenantId, t.aggregateType, t.aggregateId),
     index('domain_event_subject_idx').on(t.tenantId, t.subjectEmploymentId),
+    index('domain_event_chain_idx').on(t.tenantId, t.chainSeq),
   ],
 );
 

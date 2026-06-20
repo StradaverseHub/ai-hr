@@ -54,6 +54,11 @@ export function createDb(connectionString: string, options?: { max?: number }) {
       await tx.execute(sql`select set_config('app.user_id', ${ctx.userId ?? ''}, true)`);
       await tx.execute(sql`select set_config('app.roles', ${roleNames.join(',')}, true)`);
       await tx.execute(sql`select set_config('app.grants', ${JSON.stringify(grants)}, true)`);
+      // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
+      // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
+      if (process.env.AUDIT_HASH_CHAIN_ENABLED) {
+        await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
+      }
       return fn(tx);
     });
   }

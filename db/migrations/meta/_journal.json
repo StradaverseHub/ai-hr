@@ -519,6 +519,13 @@
       "when": 1781775046560,
       "tag": "0073_pii_key",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1781775046561,
+      "tag": "0074_audit_hash_chain",
+      "breakpoints": true
     }
   ]
 }
