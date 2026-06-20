@@ -201,6 +201,16 @@ export default async function ReportsPage({
                     ⬇ {t('cp39DownloadLabel')}
                   </a>
                 )}
+                {reportId === 'my.socso-eis' && result.readiness.length === 0 && (
+                  /* PERKESO ASSIST combined SOCSO+EIS textfile (v2.0 with SKBBK). */
+                  <a
+                    href={`/payroll/reports/socso-eis-file?companyId=${companyId}&periodKey=${periodKey}`}
+                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                    title={t('socsoEisDownloadTitle')}
+                  >
+                    ⬇ {t('socsoEisDownloadLabel')}
+                  </a>
+                )}
                 <DownloadCsv
                   columns={result.columns}
                   rows={result.rows}

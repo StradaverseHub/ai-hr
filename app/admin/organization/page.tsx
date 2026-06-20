@@ -3,8 +3,9 @@ import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies, listDepartments } from '@/core/read';
 import { listCostCenters, listPositions } from '@/core/admin';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
+import { listAllCompanyBankProfiles } from '@/core/bank-profile';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { CompanyPanel, type ChildRow } from '@/components/company-panel';
+import { CompanyPanel, type ChildRow, type PanelBankProfile } from '@/components/company-panel';
 import {
   archiveCompanyAction,
   archiveCostCenterAction,
@@ -18,6 +19,8 @@ import {
   deleteCostCenterAction,
   deleteDepartmentAction,
   deletePositionAction,
+  removeCompanyBankProfileAction,
+  setCompanyBankProfileAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
   updateCompanyAction,
@@ -62,15 +65,22 @@ export default async function OrganizationPage({
   const t = await getTranslations('admin.organization');
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
   // the active company context, since they are now the per-company management surface.
-  const [companies, departments, positions, costCenters, tree, statutory] = await Promise.all([
+  const [companies, departments, positions, costCenters, tree, statutory, bankProfiles] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
     listDepartments(s, { includeArchived: true }),
     listPositions(s, { includeArchived: true }),
     listCostCenters(s, { includeArchived: true }),
     companyTree(s),
     listCompanyStatutoryMY(s),
+    listAllCompanyBankProfiles(s),
   ]);
   const statBy = new Map(statutory.map((r) => [r.companyId, r]));
+  const bankBy = new Map<string, PanelBankProfile[]>();
+  for (const bp of bankProfiles) {
+    const list = bankBy.get(bp.companyId) ?? [];
+    list.push({ id: bp.id, bank: bp.bank, corporateId: bp.corporateId, debitAccountNo: bp.debitAccountNo, orgName: bp.orgName, txnType: bp.txnType });
+    bankBy.set(bp.companyId, list);
+  }
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
   const scoped = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
 
@@ -119,6 +129,8 @@ export default async function OrganizationPage({
     deleteCompany: deleteCompanyAction,
     setParent: setCompanyParentAction,
     setStatutory: setCompanyStatutoryAction,
+    setBankProfile: setCompanyBankProfileAction,
+    removeBankProfile: removeCompanyBankProfileAction,
     createDepartment: createDepartmentAction,
     updateDepartment: updateDepartmentAction,
     archiveDepartment: archiveDepartmentAction,
@@ -173,6 +185,7 @@ export default async function OrganizationPage({
               }}
               companies={companies}
               statutory={statBy.get(c.id) ?? null}
+              bankProfiles={bankBy.get(c.id) ?? []}
               departments={deptRows(c.id)}
               positions={posRows(c.id)}
               costCenters={ccRows(c.id)}

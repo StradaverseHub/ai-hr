@@ -505,6 +505,13 @@
       "when": 1781775046558,
       "tag": "0071_pay_component_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1781775046559,
+      "tag": "0072_company_bank_profile",
+      "breakpoints": true
     }
   ]
 }
