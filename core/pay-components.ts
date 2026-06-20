@@ -191,7 +191,8 @@ export function setEmploymentPayComponent(
       eventType: 'employment-pay-component.set',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, componentId: p.componentId, amount: p.amount, effectiveFrom: p.effectiveFrom },
+      // ADR-0030 Layer 0: amount lives on employment_pay_component[aggregateId]; reference, not cleartext.
+      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom },
     });
     return { id: row.id };
   };
@@ -236,7 +237,8 @@ export function setPayrollBatchComponent(
       eventType: 'payroll-batch-component.set',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { batchId: p.batchId, componentId: p.componentId, amount: p.amount },
+      // ADR-0030 Layer 0: amount lives on payroll_batch_component[aggregateId]; reference, not cleartext.
+      payload: { batchId: p.batchId, componentId: p.componentId },
     });
     return { id };
   };

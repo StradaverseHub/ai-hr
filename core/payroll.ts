@@ -268,6 +268,7 @@ export async function setPayrollInput(
       .from(payrollInput)
       .where(and(eq(payrollInput.batchId, p.batchId), eq(payrollInput.employmentId, p.employmentId)))
       .limit(1);
+    let payrollInputId: string;
     if (existing) {
       await tx
         .update(payrollInput)
@@ -279,16 +280,21 @@ export async function setPayrollInput(
           updatedAt: sql`now()`,
         })
         .where(eq(payrollInput.id, existing.id));
+      payrollInputId = existing.id;
     } else {
-      await tx.insert(payrollInput).values({
-        tenantId: ctx.tenantId,
-        batchId: p.batchId,
-        employmentId: p.employmentId,
-        overtimeAmount: overtimeAmount.toFixed(2),
-        bonusAmount: bonusAmount.toFixed(2),
-        tp1Deduction: tp1Deduction.toFixed(2),
-        zakat: zakat.toFixed(2),
-      });
+      const [row] = await tx
+        .insert(payrollInput)
+        .values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId: p.employmentId,
+          overtimeAmount: overtimeAmount.toFixed(2),
+          bonusAmount: bonusAmount.toFixed(2),
+          tp1Deduction: tp1Deduction.toFixed(2),
+          zakat: zakat.toFixed(2),
+        })
+        .returning({ id: payrollInput.id });
+      payrollInputId = row.id;
     }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -296,7 +302,8 @@ export async function setPayrollInput(
       aggregateId: p.batchId,
       eventType: 'payroll-batch.input-set',
       actor: actorOf(ctx),
-      payload: { employmentId: p.employmentId, overtimeAmount, bonusAmount, tp1Deduction, zakat },
+      // ADR-0030 Layer 0: the figures live on payroll_input[payrollInputId]; reference, not cleartext pay.
+      payload: { employmentId: p.employmentId, payrollInputId, fieldsChanged: ['overtimeAmount', 'bonusAmount', 'tp1Deduction', 'zakat'] },
     });
     return { ok: true };
   };
