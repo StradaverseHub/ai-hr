@@ -230,7 +230,9 @@ export default async function EmployeePage({
               className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3"
             >
               <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <input type="hidden" name="effectiveFrom" value="2026-06-05" />
+              <Field label={t('effectiveDate')}>
+                <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
+              </Field>
               <Field label={t('basicSalaryMyr')}>
                 <input
                   name="basicSalary"

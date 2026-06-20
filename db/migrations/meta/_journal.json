@@ -498,6 +498,13 @@
       "when": 1781775046557,
       "tag": "0070_drop_paymaster_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1781775046558,
+      "tag": "0071_pay_component_grants",
+      "breakpoints": true
     }
   ]
 }
