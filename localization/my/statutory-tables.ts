@@ -9,7 +9,7 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.1';
+export const MY_STATUTORY_VERSION = '2026.3';
 // 2026.1 (2026-06-11): SOCSO bands extended to the RM6,000 ceiling and EIS Second Schedule
 //   band amounts encoded, both verbatim from PERKESO's official Nov-2024 rate PDFs (replacing
 //   the rate-based approximations above RM5,000 / for EIS). EPF unchanged.
@@ -77,12 +77,79 @@ export type TaxCategory = 1 | 2 | 3;
 // matches at typical salary levels. Low-wage band exactness is flagged in STATUTORY-SOURCES.md.
 // ─────────────────────────────────────────────────────────────────────────────
 
+export type ContribBand = { upTo: number; employer: number; employee: number };
+
+// EPF Act 1991 THIRD SCHEDULE (Part A — Malaysian citizen / PR, under age 60). #95.
+// For monthly wages ≤ RM20,000 the contribution is NOT a flat percentage of the exact wage — it is a
+// table of wage BANDS, each band's amount = the rate applied to the band's UPPER LIMIT, rounded UP to
+// the next whole ringgit. Band widths: RM20 for wages 0.01–5,000, then RM100 for 5,000.01–20,000. The
+// employee rate is 11% throughout; the employer rate steps from 13% (≤RM5,000) to 12% (>RM5,000). The
+// first band (RM0.01–10) is a statutory NIL/NIL exception. Above RM20,000 the schedule ends and the
+// exact percentage applies (employee 11%, employer 12%), still rounded up to the next ringgit.
+//
+// This REPLACES the prior rate-on-exact-wage approximation, which under/over-stated by ≤RM1/side inside a
+// band (e.g. wage RM2,990 → approximation 329/389, schedule 330/390). At Chin Hin's scale that is a real
+// LHDN/KWSP filing mismatch across thousands of payslips. The amounts here are the published derivation
+// rule, cross-checked against the official KWSP "Jadual Ketiga" PDF anchors (RM1,000→110/130,
+// RM3,000→330/390, RM5,000→550/650, RM5,100→561/612, RM10,000→1,100/1,200, RM20,000→2,200/2,400).
+// Source: EPF Act 1991 Third Schedule, https://www.kwsp.gov.my/en/epf-act-1991-third-schedule
+// (KWSP "Jadual Ketiga BI" PDF; direct fetch returns HTTP 403, transcribed via Internet Archive mirror).
+// Sign-off (Part A + the age-60 Part E and non-citizen 2%/2% Part F gaps): see STATUTORY-SOURCES.md §2.
+export const EPF_SCHEDULE_MAX = 20000;
+
+function buildEpfThirdSchedulePartA(): ContribBand[] {
+  const ceil = (x: number) => Math.ceil(x);
+  const bands: ContribBand[] = [{ upTo: 10, employer: 0, employee: 0 }]; // statutory NIL first band
+  for (let upper = 20; upper <= 5000; upper += 20) {
+    bands.push({ upTo: upper, employee: ceil(0.11 * upper), employer: ceil(0.13 * upper) });
+  }
+  for (let upper = 5100; upper <= EPF_SCHEDULE_MAX; upper += 100) {
+    bands.push({ upTo: upper, employee: ceil(0.11 * upper), employer: ceil(0.12 * upper) }); // employer steps to 12%
+  }
+  return bands;
+}
+
+/** EPF Third Schedule Part A — citizen/PR < 60, wages ≤ RM20,000 (verified band table; #95). */
+export const MY_EPF_THIRD_SCHEDULE_PART_A: ContribBand[] = buildEpfThirdSchedulePartA();
+
+// EPF age cutovers: a Malaysian citizen aged 60–<75 contributes on the reduced Part E schedule
+// (employee 0%, employer 4%); from age 75 there is no mandatory EPF. Source: KWSP Jadual Ketiga
+// (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026, slides 7–9).
+export const EPF_SENIOR_AGE = 60;
+export const EPF_NO_CONTRIB_AGE = 75;
+
+// EPF Third Schedule PART E (Malaysian citizen, age 60–<75): employee 0%, employer 4% — same band
+// structure as Part A (amount = ceil(4% × band-upper), RM20 then RM100 bands; NIL first band; exact
+// 4% above RM20,000). Verified against the deck's banded sample (22,300.80 × 4% = 892.032 → RM893).
+function buildEpfThirdSchedulePartE(): ContribBand[] {
+  const ceil = (x: number) => Math.ceil(x);
+  const bands: ContribBand[] = [{ upTo: 10, employer: 0, employee: 0 }];
+  for (let upper = 20; upper <= 5000; upper += 20) bands.push({ upTo: upper, employee: 0, employer: ceil(0.04 * upper) });
+  for (let upper = 5100; upper <= EPF_SCHEDULE_MAX; upper += 100) bands.push({ upTo: upper, employee: 0, employer: ceil(0.04 * upper) });
+  return bands;
+}
+
+/** EPF Third Schedule Part E — Malaysian citizen 60–<75 (employee 0% / employer 4% banded). */
+export const MY_EPF_THIRD_SCHEDULE_PART_E: ContribBand[] = buildEpfThirdSchedulePartE();
+
 export const MY_EPF = {
   employeeRate: 0.11,
   /** Employer pays 13% when monthly wage ≤ RM5000, else 12%. */
   employerRateLow: 0.13,
   employerRateHigh: 0.12,
   employerThreshold: 5000,
+  /** Exact Third Schedule Part A band table (the statutory floor on the normal monthly wage). */
+  partA: MY_EPF_THIRD_SCHEDULE_PART_A,
+  /** Last wage (RM) the band table covers; above this the exact percentage applies. */
+  scheduleMax: EPF_SCHEDULE_MAX,
+  /** Part E — Malaysian citizen 60–<75: employee 0%, employer 4% (banded). */
+  partE: MY_EPF_THIRD_SCHEDULE_PART_E,
+  /** Employer flat rate for the Part E senior schedule (4%) — used for the >RM20,000 tail. */
+  seniorEmployerRate: 0.04,
+  /** Non-citizen mandatory EPF (post-1998 / new rule, eff 1 Oct 2025): employee 2% / employer 2%,
+   *  flat on the wage, round up to RM1. (Pre-1998 legacy 5.5%/6–6.5% is rare — see STATUTORY-SOURCES §2.) */
+  nonCitizenEmployeeRate: 0.02,
+  nonCitizenEmployerRate: 0.02,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,8 +167,6 @@ export const MY_CONTRIB_CEILING = 6000;
 // All 64 bands below are VERIFIED verbatim from that PDF (rows 1–64); its row 65 prescribes
 // that wages exceeding RM6,000 contribute at the top band — the calculator applies the last
 // band for any wage above the table.
-
-export type ContribBand = { upTo: number; employer: number; employee: number };
 
 /** Last wage (RM) for which SOCSO band amounts are officially verified. */
 export const MY_SOCSO_VERIFIED_UP_TO = 6000;
@@ -248,6 +313,38 @@ export const MY_SOCSO_CATEGORY2: ContribBand[] = [
   { upTo: 6000, employer: 74.4, employee: 0 },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SKBBK — "Skim Bukan Bencana Kerja" / Lindung 24 Jam (Act 4, Akta A1788), MANDATORY from 1 Jun 2026.
+// A new, employee-paid leg (Phase 1 = 0.75%) added ON TOP of the existing SOCSO contribution; the
+// employer and employee (Invalidity) columns above are UNCHANGED. SKBBK is identical for Category 1 and
+// Category 2 (employees aged 60+ and foreign workers pay it too). The amounts are gazetted per wage band
+// (NOT % × wage — use the band lookup). Source: PERKESO NewContributionRateIncludingSKBBK.pdf + Pekeliling
+// Majikan 02/2026 + Lindung-24-Jam FAQ, cross-checked across all three (sourced 2026-06-19, HIGH conf.).
+// Phase 1 only — SKBBK rises to 1.00% then 1.25% on dates PERKESO will announce (re-version then).
+// ─────────────────────────────────────────────────────────────────────────────
+export type SocsoBand = ContribBand & { skbbk: number };
+
+/** Employee-side SKBBK amount per wage band (Phase 1, 0.75%), in MY_SOCSO_CATEGORY1/2 band order. */
+export const MY_SOCSO_SKBBK_PHASE1: number[] = [
+  0.2, 0.3, 0.5, 0.65, 0.9, 1.25, 1.85, 2.65, 3.35, 4.15, 4.85, 5.65, 6.35, 7.15, 7.85, 8.65, 9.35, 10.15,
+  10.85, 11.65, 12.35, 13.15, 13.85, 14.65, 15.35, 16.15, 16.85, 17.65, 18.35, 19.15, 19.85, 20.65, 21.35,
+  22.15, 22.85, 23.65, 24.35, 25.15, 25.85, 26.65, 27.35, 28.15, 28.85, 29.65, 30.35, 31.15, 31.85, 32.65,
+  33.35, 34.15, 34.85, 35.65, 36.35, 37.15, 37.85, 38.65, 39.35, 40.15, 40.85, 41.65, 42.35, 43.15, 43.85, 44.65,
+];
+
+/** Attach the SKBBK employee leg to a SOCSO band table (employer/employee columns untouched). */
+function withSkbbk(bands: ContribBand[], skbbk: number[]): SocsoBand[] {
+  if (bands.length !== skbbk.length) {
+    throw new Error(`SKBBK column (${skbbk.length}) must align with the SOCSO band table (${bands.length})`);
+  }
+  return bands.map((b, i) => ({ ...b, skbbk: skbbk[i] }));
+}
+
+/** SOCSO Category 1 (Malaysian 18–<60) WITH the mandatory SKBBK leg (eff 1 Jun 2026). */
+export const MY_SOCSO_CATEGORY1_SKBBK: SocsoBand[] = withSkbbk(MY_SOCSO_CATEGORY1, MY_SOCSO_SKBBK_PHASE1);
+/** SOCSO Category 2 (age 60+ / foreign — employer Injury-only) WITH the same SKBBK employee leg. */
+export const MY_SOCSO_CATEGORY2_SKBBK: SocsoBand[] = withSkbbk(MY_SOCSO_CATEGORY2, MY_SOCSO_SKBBK_PHASE1);
+
 // EIS / SIP — Employment Insurance System, Act 800, Second Schedule.
 // Source: "Rate of Contribution Employment Insurance System (Act 800)" — PERKESO official PDF
 //   (post-Oct-2024 ceiling, file dated 15 Nov 2024), retrieved 2026-06-11:
@@ -352,12 +449,29 @@ export const MY_HRDF = { mandatoryRate: 0.01, optionalRate: 0.005 } as const;
 
 export type StatutoryRuleset = {
   version: string;
-  epf: { employeeRate: number; employerRateLow: number; employerRateHigh: number; employerThreshold: number };
+  epf: {
+    employeeRate: number;
+    employerRateLow: number;
+    employerRateHigh: number;
+    employerThreshold: number;
+    /** EPF Third Schedule Part A band table (#95). Optional: DB overrides predating 2026.2 omit it,
+     *  and the calculator falls back to the built-in MY_EPF_THIRD_SCHEDULE_PART_A. */
+    partA?: ContribBand[];
+    /** Last wage (RM) the band table covers; above it the exact percentage applies. Default 20,000. */
+    scheduleMax?: number;
+    /** Part E band table — Malaysian citizen 60–<75 (employee 0% / employer 4%). Optional fallback. */
+    partE?: ContribBand[];
+    /** Employer rate for the Part E senior schedule (>RM20,000 tail). Default 0.04. */
+    seniorEmployerRate?: number;
+    /** Non-citizen mandatory EPF rates (post-1998, eff 1 Oct 2025). Default 0.02 / 0.02. */
+    nonCitizenEmployeeRate?: number;
+    nonCitizenEmployerRate?: number;
+  };
   /** Display: the SOCSO/EIS contribution wage ceiling (the band tables already encode it). */
   contribCeiling: number;
   socso: {
-    category1: ContribBand[];
-    category2: ContribBand[];
+    category1: SocsoBand[];
+    category2: SocsoBand[];
     /** Display/cross-check only — the calculator uses the exact band tables. */
     rates: { employer: number; employee: number };
     verifiedUpTo: number;
@@ -376,8 +490,8 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
   epf: MY_EPF,
   contribCeiling: MY_CONTRIB_CEILING,
   socso: {
-    category1: MY_SOCSO_CATEGORY1,
-    category2: MY_SOCSO_CATEGORY2,
+    category1: MY_SOCSO_CATEGORY1_SKBBK,
+    category2: MY_SOCSO_CATEGORY2_SKBBK,
     rates: MY_SOCSO_RATES,
     verifiedUpTo: MY_SOCSO_VERIFIED_UP_TO,
   },

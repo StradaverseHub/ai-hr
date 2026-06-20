@@ -286,6 +286,36 @@ export async function setReportingLine(
         throw new ReportingCycleError();
       }
     }
+    // A subordinate has at most one *active* line per type (one admin manager, one functional, …).
+    // There is no DB exclusion constraint, so adding a second of the same type would silently leave
+    // two open edges — the org chart would then draw two parents. Supersede the prior active line of
+    // this type (CLOSE + INSERT, the same bitemporal pattern as transfer) so the new manager replaces
+    // the old one cleanly. validTo can't precede the prior line's own validFrom, so clamp it.
+    const [prior] = await tx
+      .select({ id: reportingLine.id, validFrom: reportingLine.validFrom })
+      .from(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, p.subordinateEmploymentId),
+          eq(reportingLine.lineType, p.lineType),
+          isNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (prior) {
+      const closeAt = prior.validFrom > p.validFrom ? prior.validFrom : p.validFrom;
+      await tx.update(reportingLine).set({ validTo: closeAt }).where(eq(reportingLine.id, prior.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'reporting-line',
+        aggregateId: prior.id,
+        eventType: 'reporting-line.superseded',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.subordinateEmploymentId,
+        payload: { endDate: closeAt, supersededBy: { lineType: p.lineType, managerEmploymentId: p.managerEmploymentId } },
+      });
+    }
     const [row] = await tx
       .insert(reportingLine)
       .values({
@@ -418,5 +448,53 @@ export async function updatePerson(
       payload: { before, after },
     });
     return { id: p.personId };
+  });
+}
+
+/**
+ * ADR-0029 scope-out — designate the single "paymaster" employment through which a person's taxable
+ * remuneration runs for PCB when they hold concurrent employments across the group. The paymaster must be
+ * one of the person's own ACTIVE employments. Pass `null` to clear. App-validated soft reference (no DB FK).
+ */
+export async function setDesignatedPaymaster(
+  ctx: SessionContext,
+  p: { personId: string; designatedPaymasterEmploymentId: string | null },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ current: person.designatedPaymasterEmploymentId })
+      .from(person)
+      .where(eq(person.id, p.personId))
+      .limit(1);
+    if (!before) throw new Error('Person not found');
+    if (p.designatedPaymasterEmploymentId != null) {
+      const [emp] = await tx
+        .select({ id: employment.id })
+        .from(employment)
+        .where(
+          and(
+            eq(employment.id, p.designatedPaymasterEmploymentId),
+            eq(employment.personId, p.personId),
+            isNull(employment.terminatedOn),
+          ),
+        )
+        .limit(1);
+      if (!emp) throw new Error("The paymaster must be one of this person's active employments");
+    }
+    await tx
+      .update(person)
+      .set({ designatedPaymasterEmploymentId: p.designatedPaymasterEmploymentId })
+      .where(eq(person.id, p.personId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'person',
+      aggregateId: p.personId,
+      eventType: 'person.paymaster.designated',
+      actor: actorOf(ctx),
+      subjectEmploymentId:
+        p.designatedPaymasterEmploymentId ?? (await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId)),
+      payload: { before: before.current, after: p.designatedPaymasterEmploymentId },
+    });
+    return { id: p.personId, designatedPaymasterEmploymentId: p.designatedPaymasterEmploymentId };
   });
 }

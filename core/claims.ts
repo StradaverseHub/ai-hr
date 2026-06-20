@@ -259,7 +259,8 @@ export async function submitClaim(
       eventType: 'claim-request.submitted',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { claimTypeId: p.claimTypeId, amount: p.amount, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
+      // ADR-0030 Layer 0: amount lives on claim_request[aggregateId]; reference, not cleartext in the log.
+      payload: { claimTypeId: p.claimTypeId, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
     });
     return { id: row.id };
   });
@@ -297,7 +298,7 @@ export async function decideClaim(
         eventType: 'claim-request.approved',
         actor: actorOf(ctx),
         subjectEmploymentId: claim.employmentId,
-        payload: { amount: Number(claim.amount), taxable, payoutMethod: taxable ? 'payroll' : 'reimbursement' },
+        payload: { taxable, payoutMethod: taxable ? 'payroll' : 'reimbursement' }, // amount on claim_request[aggregateId] (ADR-0030)
       });
     } else {
       await tx
@@ -611,7 +612,7 @@ export async function prefillClaimsForBatch(
         eventType: 'claim-request.queued-for-payroll',
         actor: actorOf(ctx),
         subjectEmploymentId: c.employmentId,
-        payload: { batchId: p.batchId, amount: Number(c.amount) },
+        payload: { batchId: p.batchId }, // amount on claim_request[aggregateId] (ADR-0030)
       });
     }
     return { applied: sumByEmp.size, claims: due.length, total: total / 100 };
@@ -721,7 +722,7 @@ export async function markReimbursementsPaid(
         eventType: 'claim-request.paid',
         actor: actorOf(ctx),
         subjectEmploymentId: c.employmentId,
-        payload: { via: 'reimbursement', amount: Number(c.amount), payoutRef: p.payoutRef ?? 'reimbursement' },
+        payload: { via: 'reimbursement', payoutRef: p.payoutRef ?? 'reimbursement' }, // amount on claim_request[aggregateId] (ADR-0030)
       });
     }
     return { paid: paid.length };

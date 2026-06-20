@@ -162,7 +162,7 @@ export default async function PeoplePage({
                     <Avatar name={e.name} />
                     <div className="min-w-0">
                       <Link
-                        href={`/people/${e.employmentId}`}
+                        href={`/people/${e.employmentId}?from=people`}
                         className="font-medium text-foreground hover:text-primary"
                       >
                         {e.name}

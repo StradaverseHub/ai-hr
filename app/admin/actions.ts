@@ -13,9 +13,11 @@ import {
   createCompany,
   createCostCenter,
   createDepartment,
+  createHoliday,
   createLeavePolicy,
   createLeaveType,
   createPosition,
+  deleteHoliday,
   deleteLeavePolicy,
   deleteCompany,
   deleteCostCenter,
@@ -37,6 +39,7 @@ import { packFor } from '@/localization/registry';
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
 const USERS = '/admin/users';
+const HOLIDAYS = '/admin/holidays';
 
 function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
@@ -225,6 +228,44 @@ export async function deleteLeavePolicyAction(formData: FormData) {
     fail(LEAVE, e);
   }
   ok(LEAVE);
+}
+
+// ── Public holidays ──
+/** Preserve the active country/year filter across the redirect so the admin stays in context. */
+function holidaysPath(formData: FormData): string {
+  const sp = new URLSearchParams();
+  const country = String(formData.get('filterCountry') ?? '').trim();
+  const year = String(formData.get('filterYear') ?? '').trim();
+  if (country) sp.set('country', country);
+  if (year) sp.set('year', year);
+  const qs = sp.toString();
+  return qs ? `${HOLIDAYS}?${qs}` : HOLIDAYS;
+}
+
+export async function createHolidayAction(formData: FormData) {
+  const s = await getSession();
+  const path = holidaysPath(formData);
+  try {
+    await createHoliday(s, {
+      country: String(formData.get('country') ?? 'MY'),
+      holidayDate: String(formData.get('holidayDate') ?? ''),
+      name: String(formData.get('name') ?? ''),
+    });
+  } catch (e) {
+    fail(path, e);
+  }
+  ok(path);
+}
+
+export async function deleteHolidayAction(formData: FormData) {
+  const s = await getSession();
+  const path = holidaysPath(formData);
+  try {
+    await deleteHoliday(s, { id: String(formData.get('id')) });
+  } catch (e) {
+    fail(path, e);
+  }
+  ok(path);
 }
 
 export async function openLeaveYearAction(formData: FormData) {

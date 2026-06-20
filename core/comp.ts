@@ -50,7 +50,9 @@ export async function setCompensation(
       eventType: 'compensation.set',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, basicSalary: p.basicSalary, effectiveFrom: p.effectiveFrom },
+      // PDPA redact-to-reference (ADR-0030 Layer 0): the salary lives on compensation[aggregateId];
+      // the event keeps who/what/when + a reference, never cleartext pay in the append-only log.
+      payload: { employmentId: p.employmentId, effectiveFrom: p.effectiveFrom, fieldsChanged: ['basicSalary', 'monthlyAllowance'] },
     });
     return { compensationId: row.id };
   };

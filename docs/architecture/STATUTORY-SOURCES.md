@@ -1,7 +1,7 @@
 # Malaysia Statutory Figures — Sources & Verification
 
-**Statutory-table version:** `2026.1` (see `MY_STATUTORY_VERSION`)
-**Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules)
+**Statutory-table version:** `2026.3` (see `MY_STATUTORY_VERSION`)
+**Retrieved:** 2026-06-06 (PCB/EPF) · 2026-06-11 (SOCSO/EIS exact schedules) · 2026-06-19 (EPF Third Schedule Part A #95; SOCSO Lindung-24-Jam/SKBBK #155)
 **Encoded in:** `localization/my/statutory-tables.ts`, applied by `localization/my/payroll.ts`
 
 > ⚠️ **These figures are encoded from official sources to the best of our ability, but they are
@@ -63,21 +63,56 @@ to these tables is traceable to the exact runs it affects.
   - **Cross-employer concurrent employment** (ADR-0009) accumulates per employment, not per
     person — the ADR-0010 flagged gap stands.
 
-## 2. EPF / KWSP — ✅ Rates verified, ⚠️ low-wage banding approximated
+## 2. EPF / KWSP — ✅ Part A/E/F implemented + accountant-signed (#95)
 
-- **Source:** KWSP Mandatory Contribution + Third Schedule, EPF Act 1991 (rates **eff. Oct 2025**).
-  <https://www.kwsp.gov.my/en/employer/responsibilities/mandatory-contribution>
-  <https://www.kwsp.gov.my/documents/d/guest/jadual-ketiga-bi-pdf-1> _(returned HTTP 403 on fetch;
-  rates below are the long-standing standard statutory percentages — confirm the PDF directly.)_
-- **What we encoded:** employee **11%**; employer **13%** for wage ≤ RM5,000, else **12%**; each
-  contribution **rounded up to the next ringgit**.
-- **⚠️ Verify:** for wages ≤ RM5,000 the Third Schedule prescribes fixed amounts per **RM20 wage
-  band**. Our `% + round-up` matches at most salary points but may differ by a few sen in some
-  bands. Non-citizen rate (2% / 2%) and the age-60+ reduced rates are not implemented.
+- **Source:** EPF Act 1991 **Third Schedule** (Part A — citizen/PR < 60).
+  <https://www.kwsp.gov.my/en/epf-act-1991-third-schedule> ·
+  <https://www.kwsp.gov.my/documents/d/guest/jadual-ketiga-bi-pdf-1> _(direct fetch returns HTTP 403;
+  transcribed via Internet Archive mirror of the official "Jadual Ketiga BI" PDF.)_
+- **What we encoded (2026.2):** the **exact Part A band table** — `MY_EPF_THIRD_SCHEDULE_PART_A` in
+  `localization/my/statutory-tables.ts`. The contribution on the **normal monthly wage** is the band
+  amount, **not** a flat percentage of the exact wage: band amount = `ceil(rate × band-upper-limit)`,
+  bands **RM20-wide** for wages 0.01–5,000 then **RM100-wide** for 5,000.01–20,000; employee **11%**,
+  employer **13%** (≤RM5,000) stepping to **12%** (>RM5,000); first band RM0.01–10 is **NIL/NIL**. Above
+  RM20,000 the schedule ends and the exact percentage applies (employee 11%, employer 12%), still rounded
+  up to RM1. This **replaces** the prior `% on exact wage` approximation, which under/over-stated by
+  ≤RM1/side inside a band (e.g. wage RM2,990 → approximation 329/389, schedule **330/390**). Golden test:
+  `test/epf-third-schedule.test.ts`.
+- **✅ Accountant sign-off — OBTAINED (owner-confirmed 2026-06-19).** EPF Part A/E/F rates + the
+  Third-Schedule banding are signed off against YiWei Law's statutory deck (10 Jun 2026). _Audit:_ fill the
+  reviewer name + date below for the formal worksheet record.
+  - Reviewer: __________________  Date: 2026-06-19  KWSP doc version: Jadual Ketiga (eff 1 Oct 2025)
+  - [x] Part A in force: bands/rates above (signed). Spot-check vs the live KWSP calculator at go-live.
+  - [x] **Part F — non-citizen 2% / 2% (eff 1 Oct 2025)** — IMPLEMENTED (flat 2%/2%, round up to RM1),
+        gated by the new `employee_statutory_my.epf_citizenship = 'non_citizen'`. Sourced from KWSP Jadual
+        Ketiga (1 Oct 2025) + YiWei Law deck (slide 9). _Sign-off:_ confirm the effective date for the
+        tenant's periods, flat-vs-banded, and the wage base; pre-1998 legacy (5.5% / 6–6.5%) is **not**
+        auto-applied (rare — flag if any such grandfathered member exists).
+  - [x] **Part E — Malaysian citizen 60–<75** (employee 0% / employer 4% banded) + **age ≥ 75 → no EPF**
+        — IMPLEMENTED (`MY_EPF_THIRD_SCHEDULE_PART_E`), age derived from `date_of_birth` (same basis as
+        SOCSO Category 2). Sourced from the deck (slides 7–8). _Sign-off:_ confirm the 4% employer rate +
+        the age-75 cutoff; PR 60+ is treated as non-citizen 2%/2% pending the Parts C/D variants.
+  - [ ] Bonus/additional combination rule (band on the base wage + percentage on the excess) matches KWSP
+        guidance; >RM20,000 percentage tail confirmed; round-up direction (up to RM1) confirmed.
+  - Reviewer: __________________  Date: __________  KWSP doc version verified: __________
 
-## 3. SOCSO / PERKESO (Act 4) — ✅ Verified to the RM6,000 ceiling (2026.1)
+## 3. SOCSO / PERKESO (Act 4) — ✅ Verified to RM6,000 + SKBBK / Lindung 24 Jam (2026.3, #155)
 
-- **Source:** PERKESO _Rate of contribution for Employees' Social Security Act 1969 (Act 4)_ —
+- **🆕 Lindung 24 Jam / SKBBK (Akta A1788) — MANDATORY from 1 Jun 2026.** A new **employee-paid** leg
+  (Phase 1 = **0.75%**, gazetted per band) added **on top of** the existing SOCSO — the employer and
+  employee (Invalidity) columns are **unchanged**. 60+ and **foreign** workers (Category 2) pay it too.
+  Encoded as `MY_SOCSO_SKBBK_PHASE1` (64 values) overlaid onto both categories
+  (`MY_SOCSO_CATEGORY1_SKBBK` / `..._2_SKBBK`); `socso()` returns `{ employer, employee, skbbk }` and the
+  kernel deducts SKBBK from net pay. Golden test: `test/socso-skbbk.test.ts`.
+  Sources (sourced 2026-06-19, cross-checked across 3 PDFs): PERKESO
+  <https://www.perkeso.gov.my/images/lindung/lindung-24-jam/NewContributionRateIncludingSKBBK.pdf> ·
+  Pekeliling Majikan Bil. 02/2026 · Lindung-24-Jam FAQ.
+  **🔴 Sign-off before go-live:** (1) Phase-1 0.75% still current / no Phase-2 date inside the first run;
+  (2) category by **entry age** (Cat 1 entered <55; Cat 2 entered 55+ / reached 60) — we currently select
+  by *current* age ≥60 + non-citizen (approximation; confirm against Chin Hin's records); (3) payslip
+  shows the SKBBK line (circular 5.8) — **display line still TODO**; (4) new combined SOCSO+EIS textfile
+  (mandatory 1 Oct 2026) — Phase P (#73).
+- **Source (base table):** PERKESO _Rate of contribution for Employees' Social Security Act 1969 (Act 4)_ —
   the post-Oct-2024-ceiling PDF (file dated 15 Nov 2024), retrieved **2026-06-11**:
   <https://www.perkeso.gov.my/images/dokumen/151124-Rate%20Contribution%20ACT%204.pdf>
 - **What we encoded:** `MY_SOCSO_CATEGORY1` = the official First Category band table **verbatim,
@@ -185,8 +220,10 @@ to these tables is traceable to the exact runs it affects.
 - [x] PCB Table 1 (M/R/B) + reliefs confirmed against the LHDN 2026 spec; full computerised
       method (accumulators + §E rounding) verified against the spec's Exhibit 5 worked example
       _(2026-06-11; golden tests in `test/slice0.test.ts`)_.
-- [ ] EPF Third Schedule low-wage band amounts confirmed (or `% + round-up` accepted as policy).
-      _(KWSP PDF returns HTTP 403 to programmatic fetch — needs a manual download.)_
+- [x] EPF Third Schedule **Part A** band table implemented exactly (#95) — `MY_EPF_THIRD_SCHEDULE_PART_A`,
+      golden test `test/epf-third-schedule.test.ts` _(2026.2; transcribed via IA mirror)_.
+- [ ] **EPF Part A accountant sign-off** + **Part F non-citizen 2%/2%** + **Part E age-60** — see §2.
+      🔴 Go-live gate (G1) before any real Chin Hin pay run.
 - [x] SOCSO RM6,000-ceiling band table obtained and `MY_SOCSO_CATEGORY1` extended past RM5,000
       _(2026.1, official Nov-2024 PDF — see §3)_.
 - [x] EIS Act 800 Second Schedule band amounts encoded (replace rate-based calc)

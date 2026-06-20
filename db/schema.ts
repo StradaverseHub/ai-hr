@@ -195,6 +195,10 @@ export const person = pgTable(
     dateOfBirth: date('date_of_birth'),
     emergencyContactName: text('emergency_contact_name'),
     emergencyContactPhone: text('emergency_contact_phone'),
+    // ADR-0029 scope-out: the single "paymaster" employment through which this person's taxable
+    // remuneration runs for PCB when they hold concurrent employments across the group's companies.
+    // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
+    designatedPaymasterEmploymentId: uuid('designated_paymaster_employment_id'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
@@ -472,6 +476,11 @@ export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exem
 
 // ───────────── Employee statutory profile — Malaysia pack (per-person) ─────────────
 // Pack-owned (localization/my). Statutory identity is per Person, not per Employment.
+// EPF citizenship status — selects the contribution rule (Third Schedule). 'citizen'/'pr' < 60 use
+// Part A; 'citizen' 60–<75 uses Part E (0%/4%); 'non_citizen' uses the new mandatory 2%/2% (eff 1 Oct
+// 2025). Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026).
+export const epfCitizenshipEnum = pgEnum('epf_citizenship', ['citizen', 'pr', 'non_citizen']);
+
 export const employeeStatutoryMy = pgTable(
   'employee_statutory_my',
   {
@@ -490,6 +499,8 @@ export const employeeStatutoryMy = pgTable(
     // Non-residents pay flat 30% MTD (LHDN spec §D.a) — no reliefs, no accumulator method.
     isResident: boolean('is_resident').notNull().default(true),
     eisEligible: boolean('eis_eligible').notNull().default(true),
+    // EPF citizenship status — drives the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
+    epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen'),
     // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,
     // e.g. 0.1500 = 15%) apply AT OR ABOVE the statutory rate; null = that side stays statutory.
     // 'exempt' zeroes both sides (legitimately-exempt employees only). 'auto' ignores the rates.

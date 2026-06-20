@@ -20,6 +20,7 @@
     "admin": "Quản trị",
     "organization": "Tổ chức",
     "leaveConfig": "Cấu hình nghỉ phép",
+    "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
     "auditTrail": "Nhật ký kiểm toán",
     "usersRoles": "Người dùng & vai trò",
@@ -129,6 +130,7 @@
     },
     "detail": {
       "backToPeople": "Nhân sự",
+      "backToOrg": "Sơ đồ tổ chức",
       "headerDescription": "{code} · {email} · {company} · tuyển ngày {hiredOn}",
       "personalDetails": "Thông tin cá nhân",
       "fullName": "Họ và tên",
@@ -190,6 +192,7 @@
       "lineTypeDotted": "Tuyến nét đứt",
       "lineTypeDottedBadge": "tuyến nét đứt",
       "addReportingLine": "Thêm tuyến báo cáo",
+      "reportingLineEffectiveFrom": "Hiệu lực từ",
       "transferTitle": "Điều chuyển (theo ngày hiệu lực)",
       "newDepartment": "Phòng ban mới",
       "effectiveDate": "Ngày hiệu lực",
@@ -498,6 +501,7 @@
       "deductionsHeading": "Khấu trừ (phần của bạn)",
       "epf": "EPF / KWSP",
       "socso": "SOCSO / PERKESO",
+      "skbbk": "SKBBK / Lindung 24 Jam",
       "eis": "EIS / SIP",
       "pcb": "PCB / MTD (thuế thu nhập)",
       "otherDeductions": "Khấu trừ khác",
@@ -1066,6 +1070,25 @@
       "add": "Thêm",
       "addEntitlement": "+ Thêm mức hưởng"
     },
+    "holidays": {
+      "pageTitle": "Ngày lễ",
+      "pageDescription": "Ngày lễ dùng cho việc tính ngày làm việc của nghỉ phép và chấm công",
+      "filtersTitle": "Lọc",
+      "countryLabel": "Quốc gia",
+      "allCountries": "Tất cả quốc gia",
+      "yearLabel": "Năm",
+      "allYears": "Tất cả các năm",
+      "applyFilter": "Áp dụng",
+      "listTitle": "Ngày lễ",
+      "empty": "Không có ngày lễ nào khớp với bộ lọc này.",
+      "remove": "Xóa",
+      "addTitle": "Thêm ngày lễ",
+      "dateLabel": "Ngày",
+      "nameLabel": "Tên",
+      "namePlaceholder": "Hari Raya Aidilfitri",
+      "addHoliday": "Thêm ngày lễ",
+      "addHint": "Ngày lễ được khớp theo quốc gia và ngày. Ngày được đánh dấu ở đây sẽ bị loại khỏi việc tính ngày nghỉ làm việc và phân loại chấm công là ngày lễ."
+    },
     "users": {
       "title": "Người dùng & vai trò",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
@@ -1189,7 +1212,9 @@
       "viewAll": "Xem tất cả",
       "empty": "Không có nhân viên trong phạm vi.",
       "employees": "Nhân viên",
-      "pillTitle": "{type} · {start} đến {end} · {status}"
+      "pillTitle": "{type} · {start} đến {end} · {status}",
+      "showAll": "Hiển thị tất cả {count}",
+      "showLess": "Thu gọn"
     },
     "timelineNav": {
       "previous": "{unit} trước",

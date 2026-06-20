@@ -18,9 +18,15 @@
  */
 import {
   DEFAULT_MY_STATUTORY,
+  EPF_NO_CONTRIB_AGE,
+  EPF_SCHEDULE_MAX,
+  EPF_SENIOR_AGE,
+  MY_EPF_THIRD_SCHEDULE_PART_A,
+  MY_EPF_THIRD_SCHEDULE_PART_E,
   MY_HRDF,
   MY_OT_WAGE_CEILING,
   type ContribBand,
+  type SocsoBand,
   type HrdfStatus,
   type PcbBand,
   type StatutoryRuleset,
@@ -77,11 +83,14 @@ export function resolveEpfRates(
 }
 
 /**
- * EPF: statutory employee 11%; employer 13% (wage ≤ RM5000) or 12% (> RM5000), each rounded up to
- * RM1 — unless an `election` raises a side (i-Topup) or exempts the employee. A bonus (`additional`)
- * is subject to EPF too: KWSP fixes the employer rate by the NORMAL monthly wage — a ≤RM5000 earner
- * stays at 13% even when the bonus pushes the month over — then applies it to the full wage incl. the
- * bonus. The round-up-to-ringgit applies to the total (incl. any voluntary excess).
+ * EPF. The contribution on the NORMAL monthly wage is the exact EPF Act 1991 **Third Schedule Part A**
+ * band amount (≤ RM20,000; #95) — not a flat percentage of the exact wage — or, above RM20,000 where the
+ * schedule ends, the exact percentage rounded up to RM1 (employee 11%, employer 12%). A bonus
+ * (`additional`) is **additional remuneration**: KWSP fixes the employer rate by the NORMAL monthly wage
+ * (a ≤RM5,000 earner stays 13% even when the bonus pushes the month over) and applies the percentage to
+ * the bonus, rounded up to RM1 on its own. An `election` can RAISE a side above the statutory floor
+ * (i-Topup) or `exempt` the employee (0/0). The normal-wage statutory floor here matches the existing
+ * `epfOnBonus` split in `statutory()` (so `employee − epfOnBonus` is exactly the schedule wage-amount).
  */
 export function epf(
   wage: number,
@@ -89,12 +98,98 @@ export function epf(
   cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
   election?: EpfElection,
 ) {
-  const { employeeRate, employerRate } = resolveEpfRates(wage, cfg, election);
-  const base = wage + Math.max(0, additional);
+  if ((election?.mode ?? 'auto') === 'exempt') return { employee: 0, employer: 0 };
+
+  const partA = cfg.partA ?? MY_EPF_THIRD_SCHEDULE_PART_A;
+  const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
+  const statEmployerRate = wage <= cfg.employerThreshold ? cfg.employerRateLow : cfg.employerRateHigh;
+
+  // Statutory floor on the normal monthly wage: exact Third Schedule band (incl. the NIL first band),
+  // or the percentage rounded up where the schedule ends (> RM20,000).
+  const band = wage <= scheduleMax ? bandFor(partA, wage) : null;
+  let wageEmployee = band ? band.employee : ceilRinggit(wage * cfg.employeeRate);
+  let wageEmployer = band ? band.employer : ceilRinggit(wage * statEmployerRate);
+
+  // i-Topup / voluntary excess can only RAISE a side above the statutory floor.
+  if ((election?.mode ?? 'auto') === 'voluntary_excess') {
+    if (election?.employeeRate != null) wageEmployee = Math.max(wageEmployee, ceilRinggit(wage * election.employeeRate));
+    if (election?.employerRate != null) wageEmployer = Math.max(wageEmployer, ceilRinggit(wage * election.employerRate));
+  }
+
+  // Additional remuneration (bonus): percentage by the resolved rate (employer rate fixed by the normal
+  // wage band), each rounded up to RM1 on its own.
+  const bonus = Math.max(0, additional);
+  const { employeeRate: rEe, employerRate: rEr } = resolveEpfRates(wage, cfg, election);
   return {
-    employee: ceilRinggit(base * employeeRate),
-    employer: ceilRinggit(base * employerRate),
+    employee: wageEmployee + (bonus > 0 ? ceilRinggit(bonus * rEe) : 0),
+    employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * rEr) : 0),
   };
+}
+
+export type EpfCitizenship = 'citizen' | 'pr' | 'non_citizen';
+
+/** Flat-rate EPF side (non-citizen 2%/2%), round up to RM1; respects exempt / i-Topup excess. */
+function epfFlatSide(base: number, statRate: number, electedRate: number | null | undefined, mode: string): number {
+  if (mode === 'exempt' || statRate === 0 || base <= 0) return 0;
+  const rate = mode === 'voluntary_excess' && electedRate != null ? Math.max(electedRate, statRate) : statRate;
+  return ceilRinggit(base * rate);
+}
+
+/**
+ * EPF contribution by employee age + citizenship (Third Schedule rule selection; #95 follow-on):
+ *  - citizen / PR, age < 60        → Part A (`epf()`)
+ *  - Malaysian citizen 60–<75      → Part E (employee 0%, employer 4% banded)
+ *  - age ≥ 75                      → no mandatory EPF
+ *  - non-citizen (and PR aged 60+) → flat 2% / 2% (post-1998 mandatory, eff 1 Oct 2025)
+ * Returns the month total plus the employee EPF attributable to the bonus (for the PCB relief split Kₜ).
+ * Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026, slides 7–9).
+ */
+export function epfContribution(
+  wage: number,
+  additional = 0,
+  cfg: StatutoryRuleset['epf'] = DEFAULT_MY_STATUTORY.epf,
+  election?: EpfElection,
+  sel?: { age?: number | null; citizenship?: EpfCitizenship },
+): { employee: number; employer: number; employeeOnBonus: number } {
+  const age = sel?.age ?? null;
+  const citizenship = sel?.citizenship ?? 'citizen';
+  const mode = election?.mode ?? 'auto';
+  const bonus = Math.max(0, additional);
+
+  if (age != null && age >= EPF_NO_CONTRIB_AGE) return { employee: 0, employer: 0, employeeOnBonus: 0 };
+  const senior = age != null && age >= EPF_SENIOR_AGE;
+
+  // Non-citizen (and PR aged 60+): flat 2% / 2%, round up to RM1, on wage and bonus alike.
+  if (citizenship === 'non_citizen' || (citizenship === 'pr' && senior)) {
+    const eeRate = cfg.nonCitizenEmployeeRate ?? 0.02;
+    const erRate = cfg.nonCitizenEmployerRate ?? 0.02;
+    const employeeOnBonus = epfFlatSide(bonus, eeRate, election?.employeeRate, mode);
+    return {
+      employee: epfFlatSide(wage, eeRate, election?.employeeRate, mode) + employeeOnBonus,
+      employer: epfFlatSide(wage, erRate, election?.employerRate, mode) + epfFlatSide(bonus, erRate, election?.employerRate, mode),
+      employeeOnBonus,
+    };
+  }
+
+  // Malaysian citizen 60–<75: Part E (employee 0%, employer 4% banded; bonus employer 4%).
+  if (citizenship === 'citizen' && senior) {
+    if (mode === 'exempt') return { employee: 0, employer: 0, employeeOnBonus: 0 };
+    const partE = cfg.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E;
+    const scheduleMax = cfg.scheduleMax ?? EPF_SCHEDULE_MAX;
+    const erRate = cfg.seniorEmployerRate ?? 0.04;
+    const band = wage <= scheduleMax ? bandFor(partE, wage) : null;
+    const wageEmployer = band ? band.employer : ceilRinggit(wage * erRate);
+    return {
+      employee: 0,
+      employer: wageEmployer + (bonus > 0 ? ceilRinggit(bonus * erRate) : 0),
+      employeeOnBonus: 0,
+    };
+  }
+
+  // Citizen / PR < 60: standard Part A.
+  const e = epf(wage, additional, cfg, election);
+  const { employeeRate } = resolveEpfRates(wage, cfg, election);
+  return { employee: e.employee, employer: e.employer, employeeOnBonus: bonus > 0 ? ceilRinggit(bonus * employeeRate) : 0 };
 }
 
 /**
@@ -125,8 +220,10 @@ function bandFor(bands: ContribBand[], wage: number): ContribBand {
  *  Employment Injury + Invalidity (< 60); Category 2 = Employment Injury only, employer-only
  *  (age 60+). */
 export function socso(wage: number, category: 1 | 2 = 1, cfg: StatutoryRuleset['socso'] = DEFAULT_MY_STATUTORY.socso) {
-  const band = bandFor(category === 2 ? cfg.category2 : cfg.category1, wage);
-  return { employer: band.employer, employee: band.employee };
+  const band = bandFor(category === 2 ? cfg.category2 : cfg.category1, wage) as SocsoBand;
+  // SKBBK (Lindung 24 Jam, eff 1 Jun 2026) — employee-paid leg on top of the standard SOCSO; 0 for any
+  // pre-2026.3 ruleset/DB override that lacks the column.
+  return { employer: band.employer, employee: band.employee, skbbk: band.skbbk ?? 0 };
 }
 
 /** EIS — exact Act 800 Second Schedule amounts (verified to the RM6,000 ceiling). */
@@ -287,6 +384,103 @@ export function pcbMonth(p: {
 }
 
 /**
+ * ADR-0029 group-PCB allocation. When one person holds concurrent employments across the group's
+ * companies, their month is taxed ONCE on the combined remuneration (a single `pcbMonth`), then the
+ * resulting `total` / `additional` MTD is split back across the employments pro-rata to each one's
+ * taxable share (normal: Y₁−K₁; bonus: Yₜ). §E rounding is already applied to the person total by
+ * `pcbMonth`; here each slice is rounded to 2dp and the **residual is pinned to the largest-share
+ * employment** so the slices sum to the combined total to the sen. Pure + golden-tested; the kernel calls
+ * this only when `pcb_aggregation_mode = 'group_coordinated'` (gated, default off — Slice 2 wires it).
+ */
+export function allocatePcb(
+  total: number,
+  additional: number,
+  shares: { employmentId: string; normalShare: number; bonusShare: number }[],
+): Map<string, { pcb: number; pcbBonus: number }> {
+  const split = (amount: number, weightOf: (s: (typeof shares)[number]) => number): Map<string, number> => {
+    const out = new Map<string, number>();
+    if (shares.length === 0) return out;
+    const weights = shares.map((s) => ({ id: s.employmentId, w: Math.max(0, weightOf(s)) }));
+    const totalW = weights.reduce((a, b) => a + b.w, 0);
+    // The employment carrying the rounding residual: largest weight (first, when all weights are 0).
+    let residualId = weights[0].id;
+    let maxW = -1;
+    for (const x of weights) if (x.w > maxW) { maxW = x.w; residualId = x.id; }
+    let assigned = 0;
+    for (const x of weights) {
+      if (x.id === residualId) { out.set(x.id, 0); continue; }
+      const v = totalW > 0 ? round2((amount * x.w) / totalW) : 0;
+      out.set(x.id, v);
+      assigned = round2(assigned + v);
+    }
+    out.set(residualId, round2(amount - assigned));
+    return out;
+  };
+  const pcbBy = split(total, (s) => s.normalShare);
+  const bonusBy = split(additional, (s) => s.bonusShare);
+  const result = new Map<string, { pcb: number; pcbBonus: number }>();
+  for (const s of shares) {
+    result.set(s.employmentId, { pcb: pcbBy.get(s.employmentId) ?? 0, pcbBonus: bonusBy.get(s.employmentId) ?? 0 });
+  }
+  return result;
+}
+
+/**
+ * ADR-0029 group coordinator (gated, default off — the kernel calls this only under the coordination flag;
+ * the in-kernel peer-slip read + fail-closed wiring is the integration slice). Tax a person's month ONCE
+ * on the COMBINED remuneration across their concurrent employments (one `pcbMonth`), then allocate the
+ * resulting MTD back per employment (`allocatePcb`). The combined MTD is ≥ the sum of the per-employment
+ * MTDs (progressive tax), so per-employer filing UNDER-deducts — this returns the correct combined-month
+ * figure, split so the slices sum to it. The EPF relief K is capped ONCE on the combined inputs inside
+ * `pcbMonth`. EPF/SOCSO/EIS are NOT coordinated (correctly per-employer); only `pcb`/`pcbBonus` change.
+ */
+export function coordinatedPcbForPerson(
+  employments: {
+    employmentId: string;
+    monthlyWage: number;
+    epfMonthly: number;
+    additional?: number;
+    epfOnAdditional?: number;
+    acc?: PcbAccumulators;
+    lpCurrent?: number;
+    zakatCurrent?: number;
+  }[],
+  shared: { month: number; profile?: TaxProfile; pcb?: StatutoryRuleset['pcb'] },
+): { combinedMtd: number; combinedAdditional: number; byEmployment: Map<string, { pcb: number; pcbBonus: number }> } {
+  const sum = (f: (e: (typeof employments)[number]) => number | undefined) =>
+    employments.reduce((a, e) => a + (f(e) ?? 0), 0);
+  const combinedAcc: PcbAccumulators = {
+    netRemuneration: sum((e) => e.acc?.netRemuneration),
+    epfClaimed: sum((e) => e.acc?.epfClaimed), // K capped ONCE at the annual relief inside pcbMonth
+    pcbPaid: sum((e) => e.acc?.pcbPaid),
+    zakatPaid: sum((e) => e.acc?.zakatPaid),
+    lpAccumulated: sum((e) => e.acc?.lpAccumulated),
+  };
+  const m = pcbMonth({
+    monthlyWage: sum((e) => e.monthlyWage),
+    epfMonthly: sum((e) => e.epfMonthly),
+    month: shared.month,
+    profile: shared.profile,
+    acc: combinedAcc,
+    additional: sum((e) => e.additional),
+    epfOnAdditional: sum((e) => e.epfOnAdditional),
+    lpCurrent: sum((e) => e.lpCurrent),
+    zakatCurrent: sum((e) => e.zakatCurrent),
+    pcb: shared.pcb,
+  });
+  const shares = employments.map((e) => ({
+    employmentId: e.employmentId,
+    normalShare: Math.max(0, e.monthlyWage - e.epfMonthly),
+    bonusShare: Math.max(0, e.additional ?? 0),
+  }));
+  return {
+    combinedMtd: m.total,
+    combinedAdditional: m.additional,
+    byEmployment: allocatePcb(m.total, m.additional, shares),
+  };
+}
+
+/**
  * All statutory contributions for a monthly wage. `profile` defaults to Category 1 (single).
  * `additional` is a bonus / additional remuneration paid this month: subject to EPF (rate by the
  * normal wage) and PCB (difference method), but EXCLUDED from SOCSO and EIS.
@@ -306,19 +500,32 @@ export function statutory(
   /** Employee attributes the engine derives: SOCSO category (2 = age 60+, employer-only),
    *  EIS eligibility (false at 60+, or the profile flag), residency (non-residents: flat 30%),
    *  and the EPF contribution-mode election (Wave 2B; i-Topup / exempt). */
-  opts?: { socsoCategory?: 1 | 2; eisEligible?: boolean; resident?: boolean; epfElection?: EpfElection },
+  opts?: {
+    socsoCategory?: 1 | 2;
+    eisEligible?: boolean;
+    resident?: boolean;
+    epfElection?: EpfElection;
+    /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
+    epfAge?: number | null;
+    epfCitizenship?: EpfCitizenship;
+  },
   /** The active statutory ruleset (ADR-0019); defaults to the verified built-in set. */
   rules: StatutoryRuleset = DEFAULT_MY_STATUTORY,
 ) {
   const cashWage = round2(wage + Math.max(0, overtime)); // wages incl. OT (SOCSO/EIS/PCB base)
-  const e = epf(wage, additional, rules.epf, opts?.epfElection); // bonus IS subject to EPF; overtime is NOT
+  // EPF by age + citizenship (Part A / Part E senior / non-citizen 2%/2%; #95). Bonus IS subject to
+  // EPF; overtime is NOT.
+  const eC = epfContribution(wage, additional, rules.epf, opts?.epfElection, {
+    age: opts?.epfAge,
+    citizenship: opts?.epfCitizenship,
+  });
+  const e = { employee: eC.employee, employer: eC.employer };
   const s = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
   const eisOn = opts?.eisEligible ?? true;
   const i = eisOn ? eis(cashWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
-  // EPF relief split: the employee share on the bonus (Kₜ) is the EFFECTIVE rate (incl. any i-Topup
-  // excess, or 0 when exempt) on the bonus alone; the remainder of the month's EPF is normal (K₁).
-  const effEmployeeRate = resolveEpfRates(wage, rules.epf, opts?.epfElection).employeeRate;
-  const epfOnBonus = additional > 0 ? ceilRinggit(additional * effEmployeeRate) : 0;
+  // EPF relief split: the employee share on the bonus (Kₜ) — 0 for seniors (Part E) and the flat
+  // non-citizen rate; for citizens < 60 it is the effective (incl. i-Topup) employee rate on the bonus.
+  const epfOnBonus = eC.employeeOnBonus;
   if (opts?.resident === false) {
     // Non-resident MTD (spec §D.a): flat 30% of taxable remuneration, no reliefs/accumulators.
     const pcbAll = rm10Floor(ceil5sen(trunc2((cashWage + additional) * 0.3)));
@@ -328,6 +535,7 @@ export function statutory(
       epfEmployer: e.employer,
       socsoEmployee: s.employee,
       socsoEmployer: s.employer,
+      socsoSkbbk: s.skbbk,
       eisEmployee: i.employee,
       eisEmployer: i.employer,
       pcb: pcbAll,
@@ -353,6 +561,7 @@ export function statutory(
     epfEmployer: e.employer,
     socsoEmployee: s.employee,
     socsoEmployer: s.employer,
+    socsoSkbbk: s.skbbk,
     eisEmployee: i.employee,
     eisEmployer: i.employer,
     pcb: m.total,

@@ -14,7 +14,8 @@ import {
   payslip,
   person,
 } from '../../db/schema';
-import { MY_STATUTORY_VERSION } from './statutory-tables';
+import { MY_STATUTORY_VERSION, DEFAULT_MY_STATUTORY } from './statutory-tables';
+import { coordinatedPcbForPerson } from './payroll';
 
 export type ReportColumn = { key: string; label: string; numeric?: boolean };
 export type ReportRow = Record<string, string | number | null>;
@@ -594,3 +595,94 @@ export const MY_REPORTS: ReportDef[] = [
   { id: 'my.socso-eis', label: 'SOCSO + EIS (PERKESO)', cadence: 'monthly', scope: 'batch', periodKind: 'month', generate: socsoEis },
   { id: 'my.cp8d', label: 'Form E / CP8D — annual (LHDN)', cadence: 'annual', scope: 'year', periodKind: 'year', generate: cp8d },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADR-0029 — cross-employer PCB exposure (read-only diagnostic, G2 Slice 2c).
+// For each person with payslips in ≥2 of the tenant's companies for a period, compare the SUMMED filed
+// MTD (what per-employer filing deducts) against the COMBINED-month MTD (`coordinatedPcbForPerson`, taxed
+// once). The positive delta is the monthly under-deduction the employee will face at annual assessment —
+// Compliance uses it to decide a designated paymaster (scope-out) or to enable coordination. EXACT for
+// no-bonus months (the dominant case); months with a bonus are indicative (the K₁/Kₜ split is approximated
+// from the slip). Never mutates payroll.
+// ─────────────────────────────────────────────────────────────────────────────
+export type CrossEmployerPcbRow = {
+  personId: string;
+  personName: string;
+  summedMtd: number;
+  combinedMtd: number;
+  delta: number;
+  indicative: boolean; // true when any employment had a bonus this month (K split approximated)
+  employments: { employmentId: string; company: string; filedPcb: number }[];
+};
+
+export async function crossEmployerPcbExposure(ctx: SessionContext, period: string): Promise<CrossEmployerPcbRow[]> {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const month = Math.min(12, Math.max(1, parseInt(period.slice(5, 7), 10) || 1));
+  return withTenant(ctx, async (tx) => {
+    const slips = await tx
+      .select({
+        personId: employment.personId,
+        personName: person.fullName,
+        employmentId: payslip.employmentId,
+        company: company.legalName,
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        category: employeeStatutoryMy.taxCategory,
+        children: employeeStatutoryMy.numChildren,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(eq(payrollBatch.payPeriod, period));
+
+    type Acc = { personId: string; personName: string; category: number | null; children: number | null;
+      inputs: { employmentId: string; monthlyWage: number; epfMonthly: number; additional: number; epfOnAdditional: number;
+        acc: { netRemuneration: number; epfClaimed: number; pcbPaid: number } }[];
+      filed: { employmentId: string; company: string; filedPcb: number }[]; indicative: boolean };
+    const byPerson = new Map<string, Acc>();
+    for (const s of slips) {
+      const st = (s.statutory ?? {}) as { epfEmployee?: number; pcb?: number; pcbMeta?: { ytdNet?: number; epfClaimed?: number; pcbPaid?: number } };
+      const bonus = Number(s.bonus) || 0;
+      let p = byPerson.get(s.personId);
+      if (!p) p = { personId: s.personId, personName: s.personName, category: s.category, children: s.children, inputs: [], filed: [], indicative: false };
+      p.inputs.push({
+        employmentId: s.employmentId,
+        monthlyWage: (Number(s.basic) || 0) + (Number(s.allowance) || 0) + (Number(s.overtime) || 0),
+        epfMonthly: Number(st.epfEmployee) || 0, // K₁ — exact when no bonus
+        additional: bonus,
+        epfOnAdditional: 0,
+        acc: { netRemuneration: Number(st.pcbMeta?.ytdNet) || 0, epfClaimed: Number(st.pcbMeta?.epfClaimed) || 0, pcbPaid: Number(st.pcbMeta?.pcbPaid) || 0 },
+      });
+      p.filed.push({ employmentId: s.employmentId, company: s.company, filedPcb: Number(st.pcb) || 0 });
+      if (bonus > 0) p.indicative = true;
+      byPerson.set(s.personId, p);
+    }
+
+    const out: CrossEmployerPcbRow[] = [];
+    for (const p of byPerson.values()) {
+      if (p.inputs.length < 2) continue; // only concurrent-employment people
+      const summedMtd = r2(p.filed.reduce((a, b) => a + b.filedPcb, 0));
+      const coord = coordinatedPcbForPerson(p.inputs, {
+        month,
+        profile: { category: (p.category ?? 1) as 1 | 2 | 3, children: p.children ?? 0 },
+        pcb: DEFAULT_MY_STATUTORY.pcb,
+      });
+      out.push({
+        personId: p.personId,
+        personName: p.personName,
+        summedMtd,
+        combinedMtd: coord.combinedMtd,
+        delta: r2(coord.combinedMtd - summedMtd),
+        indicative: p.indicative,
+        employments: p.filed,
+      });
+    }
+    return out.sort((a, b) => b.delta - a.delta);
+  });
+}

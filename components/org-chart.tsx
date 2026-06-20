@@ -167,7 +167,7 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
     return (
       <Link
         ref={setNode(id)}
-        href={`/people/${id}`}
+        href={`/people/${id}?from=org`}
         className={cn(
           'relative z-10 flex w-52 flex-col gap-2 rounded-2xl border border-border bg-card p-3 shadow-[var(--shadow-card)] transition-colors hover:border-primary',
           hit && 'border-transparent ring-2 ring-primary',

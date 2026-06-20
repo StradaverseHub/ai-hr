@@ -282,6 +282,51 @@ describe('reporting lines — valid edge', () => {
     const mgr = await reportingLinesFor(a, M.employmentId);
     expect(mgr.reports.map((r) => r.employmentId)).toContain(E.employmentId);
   });
+
+  it('adding a second active line of the same type supersedes the first (no duplicate parent)', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Subo');
+    const M1 = await hire(a, base, 'BossOne');
+    const M2 = await hire(a, base, 'BossTwo');
+
+    const first = await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M1.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-06-05',
+    });
+    // Second admin manager on a later date → replaces the first; only one active admin line remains.
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M2.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-06-20',
+    });
+
+    const lines = await reportingLinesFor(a, E.employmentId);
+    const admins = lines.managers.filter((m) => m.lineType === 'administrative');
+    expect(admins).toHaveLength(1);
+    expect(admins[0].employmentId).toBe(M2.employmentId);
+
+    // The prior line was closed (valid_to set) and a supersede event recorded.
+    const [old] = await withTenant(a, (tx) =>
+      tx.select().from(schema.reportingLine).where(eq(schema.reportingLine.id, first.reportingLineId)),
+    );
+    expect(old.validTo).toBe('2026-06-20');
+    const evs = await eventTypesFor(base.tenantId, first.reportingLineId);
+    expect(evs).toContain('reporting-line.set');
+    expect(evs).toContain('reporting-line.superseded');
+
+    // A different line type coexists with the active administrative one.
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M1.employmentId,
+      lineType: 'functional',
+      validFrom: '2026-06-20',
+    });
+    const after = await reportingLinesFor(a, E.employmentId);
+    expect(after.managers.map((m) => m.lineType).sort()).toEqual(['administrative', 'functional']);
+  });
 });
 
 describe('hardening — role-gated writes', () => {
@@ -373,7 +418,8 @@ describe('Slice 4 — payroll', () => {
     // EPF: employer drops to 12% above RM5000.
     expect(epf(6000)).toEqual({ employee: 660, employer: 720 });
     // SOCSO/EIS: wages above RM6,000 contribute at the schedules' top band (row 65), not a %.
-    expect(socso(8000)).toEqual({ employer: 104.15, employee: 29.75 });
+    // SOCSO now carries the employee-paid SKBBK leg (Lindung 24 Jam, eff 1 Jun 2026).
+    expect(socso(8000)).toEqual({ employer: 104.15, employee: 29.75, skbbk: 44.65 });
     expect(eis(8000)).toEqual({ employer: 11.9, employee: 11.9 });
   });
 
@@ -394,7 +440,7 @@ describe('Slice 4 — payroll', () => {
     const st = slip.statutory as Record<string, number>;
     expect(Number(slip.gross)).toBe(4000);
     expect(st.epfEmployee).toBe(440); // 4000 * 0.11
-    const expectedNet = 4000 - (st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
+    const expectedNet = 4000 - (st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
     expect(Number(slip.net)).toBeCloseTo(expectedNet, 2);
 
     expect(await eventTypesFor(base.tenantId, batchId)).toContain('payroll-batch.processed');
@@ -507,6 +553,7 @@ describe('Slice 4 — payroll', () => {
     expect((ps.statutory as Record<string, number>).epfEmployee).toBe(319);
     expect(Number(ps.netPay)).toBeCloseTo(3600 - 200 - (ps.statutory as Record<string, number>).epfEmployee
       - (ps.statutory as Record<string, number>).socsoEmployee
+      - (ps.statutory as Record<string, number>).socsoSkbbk
       - (ps.statutory as Record<string, number>).eisEmployee
       - (ps.statutory as Record<string, number>).pcb, 2);
   });
@@ -538,15 +585,16 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
   });
 
   it('SOCSO First Category matches the official Act 4 schedule to the RM6,000 ceiling', () => {
-    expect(socso(3000)).toEqual({ employer: 51.65, employee: 14.75 });
-    expect(socso(100)).toEqual({ employer: 1.5, employee: 0.4 });
-    expect(socso(5000)).toEqual({ employer: 86.65, employee: 24.75 });
+    // employer/employee = Nov-2024 Act 4 schedule (unchanged); skbbk = the Lindung-24-Jam leg (1 Jun 2026).
+    expect(socso(3000)).toEqual({ employer: 51.65, employee: 14.75, skbbk: 22.15 });
+    expect(socso(100)).toEqual({ employer: 1.5, employee: 0.4, skbbk: 0.65 });
+    expect(socso(5000)).toEqual({ employer: 86.65, employee: 24.75, skbbk: 37.15 });
     // The RM5,000–6,000 bands (rows 55–64 of the Nov-2024 PERKESO PDF) — previously rate-based.
-    expect(socso(5050)).toEqual({ employer: 88.35, employee: 25.25 });
-    expect(socso(5800)).toEqual({ employer: 100.65, employee: 28.75 });
-    expect(socso(6000)).toEqual({ employer: 104.15, employee: 29.75 });
+    expect(socso(5050)).toEqual({ employer: 88.35, employee: 25.25, skbbk: 37.85 });
+    expect(socso(5800)).toEqual({ employer: 100.65, employee: 28.75, skbbk: 43.15 });
+    expect(socso(6000)).toEqual({ employer: 104.15, employee: 29.75, skbbk: 44.65 });
     // Row 65: wages exceeding RM6,000 stay at the top band.
-    expect(socso(9000)).toEqual({ employer: 104.15, employee: 29.75 });
+    expect(socso(9000)).toEqual({ employer: 104.15, employee: 29.75, skbbk: 44.65 });
   });
 
   it('EIS matches the official Act 800 Second Schedule (fixed band amounts, not 0.2%)', () => {
@@ -560,10 +608,13 @@ describe('Slice 5 — payroll compliance (official MY statutory tables)', () => 
     expect(eis(9000)).toEqual({ employer: 11.9, employee: 11.9 });
   });
 
-  it('EPF rounds up to the next ringgit and splits the employer rate at RM5000', () => {
-    expect(epf(4567)).toEqual({ employee: 503, employer: 594 }); // 502.37→503, 593.71→594
-    expect(epf(5000).employer).toBe(650); // 13% at the threshold
-    expect(epf(5001).employer).toBe(601); // 12% above (600.12→601)
+  it('EPF follows the Third Schedule Part A band table, not a rate on the exact wage (#95)', () => {
+    // Wage 4567 sits in band 4560.01–4580: ceil(0.11*4580)=504, ceil(0.13*4580)=596.
+    // (The prior rate-on-exact-wage approximation gave 503/594 — the bug this gate fixes.)
+    expect(epf(4567)).toEqual({ employee: 504, employer: 596 });
+    expect(epf(5000).employer).toBe(650); // last 13% band: ceil(0.13*5000)
+    expect(epf(5001).employer).toBe(612); // first 12% band (5000.01–5100): ceil(0.12*5100) — the real step
+    expect(epf(10).employee).toBe(0); // statutory NIL first band (RM0.01–10)
   });
 
   it('freezes a closed batch and its payslips at the DB level', async () => {
@@ -1763,9 +1814,10 @@ describe('Payroll compliance round — zakat §E.5, Category 2, EIS rules, non-r
   });
 
   it('SOCSO Second Category (60+) pays employer-only schedule amounts', () => {
-    expect(socso(3000, 2)).toEqual({ employer: 36.9, employee: 0 }); // row 34 of the Act 4 PDF
-    expect(socso(6000, 2)).toEqual({ employer: 74.4, employee: 0 }); // top band
-    expect(socso(9000, 2)).toEqual({ employer: 74.4, employee: 0 }); // above ceiling → top band
+    // Cat 2 = employer Injury-only + the SAME employee SKBBK leg as Cat 1 (60+/foreign pay SKBBK too).
+    expect(socso(3000, 2)).toEqual({ employer: 36.9, employee: 0, skbbk: 22.15 }); // row 34 of the Act 4 PDF
+    expect(socso(6000, 2)).toEqual({ employer: 74.4, employee: 0, skbbk: 44.65 }); // top band
+    expect(socso(9000, 2)).toEqual({ employer: 74.4, employee: 0, skbbk: 44.65 }); // above ceiling → top band
     expect(socso(3000, 1).employee).toBeGreaterThan(0); // Category 1 unchanged
   });
 

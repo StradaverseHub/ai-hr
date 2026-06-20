@@ -14,6 +14,7 @@ type Stat = {
   epfEmployer?: number;
   socsoEmployee?: number;
   socsoEmployer?: number;
+  socsoSkbbk?: number;
   eisEmployee?: number;
   eisEmployer?: number;
   pcb?: number;
@@ -81,6 +82,7 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           </h2>
           <Row label={t('epf')} value={rm(st.epfEmployee)} />
           <Row label={t('socso')} value={rm(st.socsoEmployee)} />
+          {Number(st.socsoSkbbk) > 0 && <Row label={t('skbbk')} value={rm(st.socsoSkbbk)} />}
           <Row label={t('eis')} value={rm(st.eisEmployee)} />
           <Row label={t('pcb')} value={rm(st.pcb)} />
           {Number(p.otherDeductions) > 0 && <Row label={t('otherDeductions')} value={rm(p.otherDeductions)} />}

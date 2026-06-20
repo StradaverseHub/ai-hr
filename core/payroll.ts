@@ -50,7 +50,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 // cumulative month — re-run the month with/without this run's additional remuneration and take the
 // delta (clamped ≥ 0, §6). Non-contribution fields (version, …) carry from `now`.
 const DELTA_KEYS = [
-  'epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'eisEmployee', 'eisEmployer', 'pcb', 'pcbBonus',
+  'epfEmployee', 'epfEmployer', 'socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer', 'pcb', 'pcbBonus',
 ] as const;
 function deltaStat<T extends Record<string, unknown>>(now: T, before: T): T {
   const out = { ...now };
@@ -268,6 +268,7 @@ export async function setPayrollInput(
       .from(payrollInput)
       .where(and(eq(payrollInput.batchId, p.batchId), eq(payrollInput.employmentId, p.employmentId)))
       .limit(1);
+    let payrollInputId: string;
     if (existing) {
       await tx
         .update(payrollInput)
@@ -279,16 +280,21 @@ export async function setPayrollInput(
           updatedAt: sql`now()`,
         })
         .where(eq(payrollInput.id, existing.id));
+      payrollInputId = existing.id;
     } else {
-      await tx.insert(payrollInput).values({
-        tenantId: ctx.tenantId,
-        batchId: p.batchId,
-        employmentId: p.employmentId,
-        overtimeAmount: overtimeAmount.toFixed(2),
-        bonusAmount: bonusAmount.toFixed(2),
-        tp1Deduction: tp1Deduction.toFixed(2),
-        zakat: zakat.toFixed(2),
-      });
+      const [row] = await tx
+        .insert(payrollInput)
+        .values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId: p.employmentId,
+          overtimeAmount: overtimeAmount.toFixed(2),
+          bonusAmount: bonusAmount.toFixed(2),
+          tp1Deduction: tp1Deduction.toFixed(2),
+          zakat: zakat.toFixed(2),
+        })
+        .returning({ id: payrollInput.id });
+      payrollInputId = row.id;
     }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -296,7 +302,8 @@ export async function setPayrollInput(
       aggregateId: p.batchId,
       eventType: 'payroll-batch.input-set',
       actor: actorOf(ctx),
-      payload: { employmentId: p.employmentId, overtimeAmount, bonusAmount, tp1Deduction, zakat },
+      // ADR-0030 Layer 0: the figures live on payroll_input[payrollInputId]; reference, not cleartext pay.
+      payload: { employmentId: p.employmentId, payrollInputId, fieldsChanged: ['overtimeAmount', 'bonusAmount', 'tp1Deduction', 'zakat'] },
     });
     return { ok: true };
   };
@@ -503,6 +510,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         numChildren: employeeStatutoryMy.numChildren,
         isResident: employeeStatutoryMy.isResident,
         eisEligible: employeeStatutoryMy.eisEligible,
+        epfCitizenship: employeeStatutoryMy.epfCitizenship,
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
         epfEmployerRate: employeeStatutoryMy.epfEmployerRate,
@@ -787,11 +795,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // run) cancels, SOCSO/EIS add 0, and PCB nets against earlier same-month MTD (ADR-0024 §4).
       const taxProfile = { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 };
       const stOpts = {
-        // Age 60+: SOCSO Second Category (employer-only) and EIS coverage ends (Act 800, 18–60). The
-        // 57+-no-prior-contribution EIS exemption maps to the eisEligible flag.
-        socsoCategory: (age != null && age >= 60 ? 2 : 1) as 1 | 2,
-        eisEligible: (e.eisEligible ?? true) && (age == null || age < 60),
+        // SOCSO Second Category (employer Injury-only) for age 60+ AND foreign workers (#156); both
+        // still pay the employee SKBBK leg. EIS (Act 800) is Malaysian 18–60 only — not 60+, not foreign.
+        socsoCategory: ((age != null && age >= 60) || (e.epfCitizenship ?? 'citizen') === 'non_citizen' ? 2 : 1) as 1 | 2,
+        eisEligible:
+          (e.eisEligible ?? true) && (age == null || age < 60) && (e.epfCitizenship ?? 'citizen') !== 'non_citizen',
         resident: e.isResident ?? true,
+        // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
+        epfAge: age,
+        epfCitizenship: e.epfCitizenship ?? 'citizen',
         // EPF contribution mode (Wave 2B): i-Topup excess / exempt. Rates are decimals; null = statutory.
         epfElection: {
           mode: e.epfMode ?? 'auto',
@@ -834,7 +846,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const slipOvertime = isAdditionalRun ? 0 : overtime;
       const slipUnpaid = isAdditionalRun ? 0 : unpaidDeduction;
       const slipExtraDeduct = isAdditionalRun ? 0 : en.deduct;
-      const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.eisEmployee + st.pcb);
+      const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct);
       const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
       const net = round2(grossPay - totalDeductions);

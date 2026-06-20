@@ -13,6 +13,7 @@ import {
   costCenter,
   department,
   employment,
+  holiday,
   leaveLedger,
   leavePolicy,
   leaveRequest,
@@ -433,6 +434,90 @@ export function listLeavePolicies(ctx: SessionContext) {
       .innerJoin(leaveType, eq(leaveType.id, leavePolicy.leaveTypeId))
       .orderBy(leaveType.name),
   );
+}
+
+// ───────────────────────── Public holiday calendar ─────────────────────────
+// Holidays are country-scoped (the attendance/leave working-day counters match on company.country),
+// not company-scoped — the table is keyed (tenant, country, holiday_date). Admin-only writes (RLS 0006).
+
+/** List holidays for the tenant, newest first. Optionally filter by country and/or calendar year. */
+export function listHolidays(ctx: SessionContext, opts: { country?: string; year?: number } = {}) {
+  return withTenant(ctx, (tx) => {
+    const filters = [
+      opts.country ? eq(holiday.country, opts.country) : undefined,
+      opts.year ? sql`extract(year from ${holiday.holidayDate}) = ${opts.year}` : undefined,
+    ].filter(Boolean);
+    return tx
+      .select({
+        id: holiday.id,
+        country: holiday.country,
+        holidayDate: holiday.holidayDate,
+        name: holiday.name,
+      })
+      .from(holiday)
+      .where(filters.length ? and(...filters) : undefined)
+      .orderBy(holiday.holidayDate);
+  });
+}
+
+/** Distinct years that have at least one holiday — drives the year filter UI. */
+export function listHolidayYears(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ year: sql<number>`extract(year from ${holiday.holidayDate})::int` })
+      .from(holiday)
+      .groupBy(sql`extract(year from ${holiday.holidayDate})`)
+      .orderBy(sql`extract(year from ${holiday.holidayDate}) desc`);
+    return rows.map((r) => r.year);
+  });
+}
+
+export async function createHoliday(
+  ctx: SessionContext,
+  p: { country: string; holidayDate: string; name: string },
+) {
+  const country = isoCode(p.country, 'MY', 'Country');
+  const name = cleanName(p.name, 'Holiday name');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) throw new Error('Holiday date must be YYYY-MM-DD');
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(holiday)
+      .values({ tenantId: ctx.tenantId, country, holidayDate: p.holidayDate, name })
+      .returning({ id: holiday.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) {
+          throw new DuplicateError(`A ${country} holiday on ${p.holidayDate} already exists.`);
+        }
+        throw e;
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'holiday',
+      aggregateId: row.id,
+      eventType: 'holiday.created',
+      actor: actorOf(ctx),
+      payload: { country, holidayDate: p.holidayDate, name },
+    });
+    return row;
+  });
+}
+
+export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [deleted] = await tx
+      .delete(holiday)
+      .where(eq(holiday.id, p.id))
+      .returning({ country: holiday.country, holidayDate: holiday.holidayDate, name: holiday.name });
+    if (!deleted) return;
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'holiday',
+      aggregateId: p.id,
+      eventType: 'holiday.deleted',
+      actor: actorOf(ctx),
+      payload: { ...deleted },
+    });
+  });
 }
 
 export function listUsers(ctx: SessionContext) {
