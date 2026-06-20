@@ -484,6 +484,20 @@
       "when": 1781775046555,
       "tag": "0068_epf_citizenship",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1781775046556,
+      "tag": "0069_designated_paymaster",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1781775046557,
+      "tag": "0070_drop_paymaster_fk",
+      "breakpoints": true
     }
   ]
 }

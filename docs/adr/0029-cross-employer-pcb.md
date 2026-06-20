@@ -137,6 +137,15 @@ multi-entity premise + case (b)).
 - [ ] CP38 top-up is the right instrument when running `per_employer` with a known combined shortfall.
 - Reviewer: __________________  Date: __________  Source MTD spec version: __________
 
+## 7a. Implementation status
+- **Slice 1 (done):** scope-out field `person.designated_paymaster_employment_id` (migration 0069, app-validated
+  soft reference — no DB FK, to avoid a person↔employment cycle that deadlocks the harness TRUNCATE); the pure
+  **`allocatePcb(total, additional, shares)`** helper (golden-tested — slices always sum to the combined total).
+- **Slice 2 (next):** `pcb_aggregation_mode` flag (tenant statutory config, default `per_employer`); the gated
+  in-kernel coordinator in `generatePayslips` (per-person aggregate → one `pcbMonth` → `allocatePcb` back, only
+  `pcb`/`pcbBonus`/`pcbMeta` overridden; tenant-scoped cross-company read gated by `has_role_for`, fail-closed to
+  per_employer with an event); the compliance-visibility combined-vs-summed delta; compat + cross-band + fail-closed tests.
+
 ## 7. Sources
 hasil.gov.my — *Spesifikasi Kaedah Pengiraan Berkomputer PCB 2026/2023*; hasil.gov.my employer
 responsibilities; EY MY tax alert (Deduction from Remuneration amendment); CCS operational guidelines on

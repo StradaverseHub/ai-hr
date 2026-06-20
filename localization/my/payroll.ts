@@ -384,6 +384,48 @@ export function pcbMonth(p: {
 }
 
 /**
+ * ADR-0029 group-PCB allocation. When one person holds concurrent employments across the group's
+ * companies, their month is taxed ONCE on the combined remuneration (a single `pcbMonth`), then the
+ * resulting `total` / `additional` MTD is split back across the employments pro-rata to each one's
+ * taxable share (normal: Y₁−K₁; bonus: Yₜ). §E rounding is already applied to the person total by
+ * `pcbMonth`; here each slice is rounded to 2dp and the **residual is pinned to the largest-share
+ * employment** so the slices sum to the combined total to the sen. Pure + golden-tested; the kernel calls
+ * this only when `pcb_aggregation_mode = 'group_coordinated'` (gated, default off — Slice 2 wires it).
+ */
+export function allocatePcb(
+  total: number,
+  additional: number,
+  shares: { employmentId: string; normalShare: number; bonusShare: number }[],
+): Map<string, { pcb: number; pcbBonus: number }> {
+  const split = (amount: number, weightOf: (s: (typeof shares)[number]) => number): Map<string, number> => {
+    const out = new Map<string, number>();
+    if (shares.length === 0) return out;
+    const weights = shares.map((s) => ({ id: s.employmentId, w: Math.max(0, weightOf(s)) }));
+    const totalW = weights.reduce((a, b) => a + b.w, 0);
+    // The employment carrying the rounding residual: largest weight (first, when all weights are 0).
+    let residualId = weights[0].id;
+    let maxW = -1;
+    for (const x of weights) if (x.w > maxW) { maxW = x.w; residualId = x.id; }
+    let assigned = 0;
+    for (const x of weights) {
+      if (x.id === residualId) { out.set(x.id, 0); continue; }
+      const v = totalW > 0 ? round2((amount * x.w) / totalW) : 0;
+      out.set(x.id, v);
+      assigned = round2(assigned + v);
+    }
+    out.set(residualId, round2(amount - assigned));
+    return out;
+  };
+  const pcbBy = split(total, (s) => s.normalShare);
+  const bonusBy = split(additional, (s) => s.bonusShare);
+  const result = new Map<string, { pcb: number; pcbBonus: number }>();
+  for (const s of shares) {
+    result.set(s.employmentId, { pcb: pcbBy.get(s.employmentId) ?? 0, pcbBonus: bonusBy.get(s.employmentId) ?? 0 });
+  }
+  return result;
+}
+
+/**
  * All statutory contributions for a monthly wage. `profile` defaults to Category 1 (single).
  * `additional` is a bonus / additional remuneration paid this month: subject to EPF (rate by the
  * normal wage) and PCB (difference method), but EXCLUDED from SOCSO and EIS.

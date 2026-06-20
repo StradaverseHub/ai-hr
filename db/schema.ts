@@ -195,6 +195,10 @@ export const person = pgTable(
     dateOfBirth: date('date_of_birth'),
     emergencyContactName: text('emergency_contact_name'),
     emergencyContactPhone: text('emergency_contact_phone'),
+    // ADR-0029 scope-out: the single "paymaster" employment through which this person's taxable
+    // remuneration runs for PCB when they hold concurrent employments across the group's companies.
+    // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
+    designatedPaymasterEmploymentId: uuid('designated_paymaster_employment_id'),
     createdAt: createdAt(),
   },
   (t) => [index('person_tenant_idx').on(t.tenantId)],
