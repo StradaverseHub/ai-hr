@@ -961,6 +961,59 @@ export function myEmployments(ctx: SessionContext) {
   });
 }
 
+export type ConcurrentEmploymentPerson = {
+  personId: string;
+  personName: string;
+  designatedPaymasterEmploymentId: string | null;
+  employments: { employmentId: string; companyId: string; company: string; isPaymaster: boolean }[];
+};
+
+/**
+ * ADR-0029 diagnostic (read-only) — persons holding ≥2 ACTIVE employments across the tenant's companies:
+ * the population whose monthly PCB may under-deduct unless a designated paymaster is set (scope-out) or
+ * group coordination is enabled. Surfaced on Compliance so payroll can see the cross-entity exposure
+ * (e.g. shared-services staff) and assign a paymaster. Tenant-scoped; orders by name.
+ */
+export function concurrentEmploymentPersons(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        personId: employment.personId,
+        personName: person.fullName,
+        designatedPaymasterEmploymentId: person.designatedPaymasterEmploymentId,
+        employmentId: employment.id,
+        companyId: employment.companyId,
+        company: company.legalName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(isNull(employment.terminatedOn))
+      .orderBy(person.fullName);
+
+    const byPerson = new Map<string, ConcurrentEmploymentPerson>();
+    for (const r of rows) {
+      let p = byPerson.get(r.personId);
+      if (!p) {
+        p = {
+          personId: r.personId,
+          personName: r.personName,
+          designatedPaymasterEmploymentId: r.designatedPaymasterEmploymentId,
+          employments: [],
+        };
+        byPerson.set(r.personId, p);
+      }
+      p.employments.push({
+        employmentId: r.employmentId,
+        companyId: r.companyId,
+        company: r.company,
+        isPaymaster: r.employmentId === r.designatedPaymasterEmploymentId,
+      });
+    }
+    return [...byPerson.values()].filter((p) => p.employments.length >= 2);
+  });
+}
+
 /** The current principal's payslips (RLS already restricts to own employment). */
 export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
   return withTenant(ctx, async (tx) => {
