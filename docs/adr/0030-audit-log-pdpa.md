@@ -4,6 +4,12 @@ Status: **Accepted.** (2026) Go-live gate **G3** (product plan v2). Closes secur
 
 > **Layer 0 (redact-to-reference) ships in the gate slice** — it closes S1 with **no crypto**. Layer 1
 > (per-subject crypto-shredding) and Layer 2 (per-tenant hash chain) are a follow-up hardening slice.
+>
+> **Implementation status (#159):** Layer 1 crypto-shred vault (`pii_key` + `lib/pii/vault.ts` +
+> `core/pii-vault.ts`) and the `erasePersonPii` retention-guarded service (`core/pdpa.ts`) are **shipped
+> and tested**. Still pending: Layer 2 hash chain, and the one-time owner-only historical-event redaction
+> migration (§3). The vault's master key is still the env-derived envelope — swap to KMS/HSM before sealing
+> real payroll PII at volume.
 
 ---
 
