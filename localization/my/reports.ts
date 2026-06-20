@@ -297,6 +297,7 @@ const SOCSO_COLS: ReportColumn[] = [
   { key: 'ic', label: 'IC' },
   { key: 'socsoEmployee', label: 'SOCSO (EE)', numeric: true },
   { key: 'socsoEmployer', label: 'SOCSO (ER)', numeric: true },
+  { key: 'socsoSkbbk', label: 'SKBBK (EE)', numeric: true },
   { key: 'eisEmployee', label: 'EIS (EE)', numeric: true },
   { key: 'eisEmployer', label: 'EIS (ER)', numeric: true },
 ];
@@ -311,13 +312,14 @@ async function socsoEis(ctx: SessionContext, params: ReportParams): Promise<Repo
     ic: r.ic,
     socsoEmployee: num(r.st.socsoEmployee),
     socsoEmployer: num(r.st.socsoEmployer),
+    socsoSkbbk: num(r.st.socsoSkbbk), // Lindung 24 Jam / SKBBK — employee-paid leg (eff 1 Jun 2026)
     eisEmployee: num(r.st.eisEmployee),
     eisEmployer: num(r.st.eisEmployer),
   }));
   return {
     columns: SOCSO_COLS,
     rows,
-    totals: sumTotals(rows, ['socsoEmployee', 'socsoEmployer', 'eisEmployee', 'eisEmployer']),
+    totals: sumTotals(rows, ['socsoEmployee', 'socsoEmployer', 'socsoSkbbk', 'eisEmployee', 'eisEmployer']),
     readiness: readinessFor(b.rows, [{ field: 'socsoNo', label: 'SOCSO no' }]),
     meta: meta(b),
   };
