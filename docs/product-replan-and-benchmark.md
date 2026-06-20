@@ -105,6 +105,18 @@ Concise current → target. (Performance/talent targets exist in v1 history but 
 
 ---
 
-## 8. Open input
+## 8. Anchor workforce shape (resolved — "Headcount as at 31 May")
 
-**Chin Hin workforce shape** — total headcount, number of subsidiaries/entities, and the **deskless/site vs office split** — to finalise the **P-vs-A** ordering and the scale targets (batch sizes, attendance volume, multi-entity payroll runs).
+**~4,498 employees across ~60 Sdn Bhd entities**, grouped into divisions (GCHBM building-materials ~2,038;
+GCHCE construction-engineering ~1,009; GSIG Signature furniture ~368; GFM Fiamma ~330; GSAG ~258; GCHGP
+property ~229; corporate ~266 incl. Stradaverse). **Heavily deskless/industrial** (cement/concrete/AAC
+plants, glass, roofing, construction sites, logistics, furniture works) with material **foreign-worker**
+headcount. A 97-person **shared-services** entity confirms cross-entity staff → cross-employer PCB (G2) is live.
+
+**P-vs-A decision: P (payroll operational) leads; A (native attendance) follows.** Rationale: the
+immediate driver is getting a correct, multi-entity, statutory-current payroll for 4,498 people off the
+current system + disbursing + filing per entity. The deskless majority's hours come in via
+**biometric-terminal import** (server-to-server, deck slide 16) as the bridge for the first runs; the
+**native attendance app** (Phase A) then rolls out plant-by-plant to replace/augment the terminals.
+Scale targets: per-entity batches (~60), batch-by-division, thousands of payslips/run, bulk GIRO + agency
+files per entity. Map the divisions (GCHBM/GCHCE/…) onto the existing company hierarchy (ADR-0009).
