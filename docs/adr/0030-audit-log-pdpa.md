@@ -6,10 +6,14 @@ Status: **Accepted.** (2026) Go-live gate **G3** (product plan v2). Closes secur
 > (per-subject crypto-shredding) and Layer 2 (per-tenant hash chain) are a follow-up hardening slice.
 >
 > **Implementation status (#159):** Layer 1 crypto-shred vault (`pii_key` + `lib/pii/vault.ts` +
-> `core/pii-vault.ts`) and the `erasePersonPii` retention-guarded service (`core/pdpa.ts`) are **shipped
-> and tested**. Still pending: Layer 2 hash chain, and the one-time owner-only historical-event redaction
-> migration (§3). The vault's master key is still the env-derived envelope — swap to KMS/HSM before sealing
-> real payroll PII at volume.
+> `core/pii-vault.ts`), the `erasePersonPii` retention-guarded service (`core/pdpa.ts`), and the Layer 2
+> per-tenant hash chain (`domain_event.chain_seq/prev_hash/hash` + the migration-0074 trigger + GUC gate
+> `AUDIT_HASH_CHAIN_ENABLED` + `core/audit-chain.ts` `verifyTenantChain`) are **shipped and tested**. Still
+> pending: the **one-time owner-only historical-event redaction migration** (§3), which must also **backfill
+> the hash chain over the post-redaction payloads** before the chain is complete on an existing tenant. The
+> vault's master key is still the env-derived envelope — swap to KMS/HSM before sealing real payroll PII at
+> volume. The plain SHA-256 chain is tamper-EVIDENT given a trusted head; anchor the head hash externally
+> (or move to an HMAC keyed by a non-DB secret) for evidence against an attacker with DB write access.
 
 ---
 
