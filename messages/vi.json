@@ -8,6 +8,7 @@
     "search": "Tìm kiếm"
   },
   "nav": {
+    "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
     "myWorkspace": "Không gian của tôi",
     "people": "Nhân sự",
@@ -963,6 +964,35 @@
     }
   },
   "admin": {
+    "privacy": {
+      "title": "Quyền riêng tư dữ liệu & Tính toàn vẹn kiểm toán",
+      "subtitle": "Xác minh khả năng chống giả mạo của nhật ký kiểm toán và chạy yêu cầu xóa dữ liệu PDPA.",
+      "integrityTitle": "Tính toàn vẹn của nhật ký kiểm toán",
+      "chainDisabled": "Chuỗi băm chống giả mạo chưa được bật. Các sự kiện mới sẽ được liên kết khi AUDIT_HASH_CHAIN_ENABLED được bật.",
+      "chainIntact": "Nguyên vẹn — đã xác minh {n} sự kiện, không phát hiện giả mạo.",
+      "chainBroken": "Chuỗi bị đứt từ sự kiện #{seq} — nhật ký có thể đã bị thay đổi.",
+      "issueLine": "Sự kiện #{seq}: {problem}",
+      "integrityNote": "Mỗi sự kiện được liên kết băm với sự kiện trước đó, vì vậy có thể phát hiện hàng được chèn, xóa, sắp xếp lại hoặc thay đổi.",
+      "erasureTitle": "Xóa dữ liệu PDPA",
+      "erasureNote": "Malaysia không có quyền xóa toàn diện — thao tác này hủy những gì có thể và giữ lại bất kỳ thứ gì thuộc diện lưu giữ theo luật (≈7 năm cho thuế/EPF/SOCSO), báo cáo cả hai.",
+      "fieldEmploymentId": "ID việc làm",
+      "fieldEmploymentIdHint": "từ trang chi tiết nhân viên",
+      "fieldScope": "Phạm vi",
+      "fieldRef": "Tham chiếu yêu cầu DPO",
+      "fieldReason": "Lý do",
+      "scopeContact": "Thông tin liên hệ",
+      "scopeFinancial": "Ngân hàng / tài chính",
+      "scopeIdentity": "Danh tính (NRIC, ngày sinh)",
+      "scopeStatutoryIds": "ID theo luật (EPF/SOCSO/thuế)",
+      "scopeAll": "Mọi thứ trong phạm vi",
+      "confirmLabel": "Tôi hiểu rằng thao tác này hủy vĩnh viễn dữ liệu đã chọn và không thể hoàn tác.",
+      "running": "Đang xóa…",
+      "runErasure": "Chạy xóa",
+      "errorPrefix": "Không thể xóa",
+      "resultDone": "Hoàn tất xóa — đã hủy {shredded} khóa mã hóa.",
+      "resultErased": "Đã xóa",
+      "resultWithheld": "Giữ lại theo quy định lưu giữ"
+    },
     "organization": {
       "pageTitle": "Tổ chức",
       "pageDescription": "Mỗi công ty quản lý thông tin, danh tính pháp lý, phòng ban, chức vụ và trung tâm chi phí của mình",

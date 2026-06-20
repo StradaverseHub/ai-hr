@@ -8,6 +8,7 @@
     "search": "Search"
   },
   "nav": {
+    "dataPrivacy": "Data Privacy",
     "dashboard": "Dashboard",
     "myWorkspace": "My workspace",
     "people": "People",
@@ -963,6 +964,35 @@
     }
   },
   "admin": {
+    "privacy": {
+      "title": "Data Privacy & Audit Integrity",
+      "subtitle": "Verify the tamper-evidence of the audit log and run PDPA data-erasure requests.",
+      "integrityTitle": "Audit-log integrity",
+      "chainDisabled": "The tamper-evidence hash chain is not enabled. New events will chain once AUDIT_HASH_CHAIN_ENABLED is on.",
+      "chainIntact": "Intact — {n} events verified, no tampering detected.",
+      "chainBroken": "Chain broken from event #{seq} — the log may have been altered.",
+      "issueLine": "Event #{seq}: {problem}",
+      "integrityNote": "Each event is hash-linked to the previous one, so an inserted, deleted, reordered or mutated row is detectable.",
+      "erasureTitle": "PDPA data erasure",
+      "erasureNote": "Malaysia has no blanket erasure right — this destroys what it can and withholds anything under statutory retention (≈7 years for tax/EPF/SOCSO), reporting both.",
+      "fieldEmploymentId": "Employment ID",
+      "fieldEmploymentIdHint": "from the employee's detail page",
+      "fieldScope": "Scope",
+      "fieldRef": "DPO request reference",
+      "fieldReason": "Reason",
+      "scopeContact": "Contact details",
+      "scopeFinancial": "Bank / financial",
+      "scopeIdentity": "Identity (NRIC, DOB)",
+      "scopeStatutoryIds": "Statutory IDs (EPF/SOCSO/tax)",
+      "scopeAll": "Everything in scope",
+      "confirmLabel": "I understand this permanently destroys the selected data and cannot be undone.",
+      "running": "Erasing…",
+      "runErasure": "Run erasure",
+      "errorPrefix": "Could not erase",
+      "resultDone": "Erasure complete — {shredded} encryption key(s) destroyed.",
+      "resultErased": "Erased",
+      "resultWithheld": "Withheld under retention"
+    },
     "organization": {
       "pageTitle": "Organization",
       "pageDescription": "Each company manages its details, statutory identity, departments, positions and cost centres",
