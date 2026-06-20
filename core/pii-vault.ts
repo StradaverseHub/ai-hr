@@ -10,7 +10,7 @@
  * Fail-closed: if the master key is unavailable, sealing is refused so cleartext is never silently stored.
  */
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { piiKey } from '../db/schema';
 import {
@@ -86,6 +86,33 @@ export async function unsealForSubject(ctx: SessionContext, subjectEmploymentId:
   });
 }
 
+/** Crypto-shred inside an existing transaction — destroy every active wrapped DEK (NULL + destroyed_at),
+ *  append pii.key.destroyed. For composing into a larger atomic erasure (core/pdpa.ts erasePersonPii). */
+export async function shredSubjectInTx(
+  tx: Tx,
+  ctx: SessionContext,
+  subjectEmploymentId: string,
+  reason: string,
+): Promise<{ shredded: number }> {
+  const rows = await tx
+    .update(piiKey)
+    .set({ wrappedDek: null, destroyedAt: new Date() })
+    .where(and(eq(piiKey.subjectEmploymentId, subjectEmploymentId), isNull(piiKey.destroyedAt)))
+    .returning({ kid: piiKey.kid });
+  if (rows.length > 0) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pii-key',
+      aggregateId: subjectEmploymentId,
+      eventType: 'pii.key.destroyed',
+      actor: actorOf(ctx),
+      subjectEmploymentId,
+      payload: { subjectEmploymentId, kids: rows.map((r) => r.kid), reason },
+    });
+  }
+  return { shredded: rows.length };
+}
+
 /** Crypto-shred a subject: destroy every active wrapped DEK (NULL + destroyed_at). Idempotent. Appends a
  *  pii.key.destroyed event (no PII payload). Returns how many keys were destroyed. */
 export async function shredSubject(
@@ -93,25 +120,7 @@ export async function shredSubject(
   subjectEmploymentId: string,
   reason: string,
 ): Promise<{ shredded: number }> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .update(piiKey)
-      .set({ wrappedDek: null, destroyedAt: new Date() })
-      .where(and(eq(piiKey.subjectEmploymentId, subjectEmploymentId), isNull(piiKey.destroyedAt)))
-      .returning({ kid: piiKey.kid });
-    if (rows.length > 0) {
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'pii-key',
-        aggregateId: subjectEmploymentId,
-        eventType: 'pii.key.destroyed',
-        actor: actorOf(ctx),
-        subjectEmploymentId,
-        payload: { subjectEmploymentId, kids: rows.map((r) => r.kid), reason },
-      });
-    }
-    return { shredded: rows.length };
-  });
+  return withTenant(ctx, (tx) => shredSubjectInTx(tx, ctx, subjectEmploymentId, reason));
 }
 
 /** Whether the subject currently has a usable (non-shredded) key — for readiness checks / erasePersonPii. */
