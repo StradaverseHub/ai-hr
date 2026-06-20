@@ -8,6 +8,7 @@
     "search": "Cari"
   },
   "nav": {
+    "dataPrivacy": "Privasi Data",
     "dashboard": "Papan pemuka",
     "myWorkspace": "Ruang kerja saya",
     "people": "Kakitangan",
@@ -963,6 +964,35 @@
     }
   },
   "admin": {
+    "privacy": {
+      "title": "Privasi Data & Integriti Audit",
+      "subtitle": "Sahkan bukti-gangguan log audit dan jalankan permintaan pemadaman data PDPA.",
+      "integrityTitle": "Integriti log audit",
+      "chainDisabled": "Rantaian cincang bukti-gangguan belum didayakan. Peristiwa baharu akan dirantai sebaik AUDIT_HASH_CHAIN_ENABLED dihidupkan.",
+      "chainIntact": "Utuh — {n} peristiwa disahkan, tiada gangguan dikesan.",
+      "chainBroken": "Rantaian putus dari peristiwa #{seq} — log mungkin telah diubah.",
+      "issueLine": "Peristiwa #{seq}: {problem}",
+      "integrityNote": "Setiap peristiwa dipaut-cincang ke yang sebelumnya, jadi baris yang disisip, dipadam, disusun semula atau diubah boleh dikesan.",
+      "erasureTitle": "Pemadaman data PDPA",
+      "erasureNote": "Malaysia tiada hak pemadaman menyeluruh — ini memusnahkan apa yang boleh dan menahan apa-apa di bawah pengekalan berkanun (≈7 tahun untuk cukai/EPF/SOCSO), melaporkan kedua-duanya.",
+      "fieldEmploymentId": "ID Pekerjaan",
+      "fieldEmploymentIdHint": "dari halaman butiran pekerja",
+      "fieldScope": "Skop",
+      "fieldRef": "Rujukan permintaan DPO",
+      "fieldReason": "Sebab",
+      "scopeContact": "Butiran perhubungan",
+      "scopeFinancial": "Bank / kewangan",
+      "scopeIdentity": "Identiti (NRIC, tarikh lahir)",
+      "scopeStatutoryIds": "ID berkanun (EPF/SOCSO/cukai)",
+      "scopeAll": "Semua dalam skop",
+      "confirmLabel": "Saya faham ini memusnahkan data terpilih secara kekal dan tidak boleh dibatalkan.",
+      "running": "Memadam…",
+      "runErasure": "Jalankan pemadaman",
+      "errorPrefix": "Tidak dapat memadam",
+      "resultDone": "Pemadaman selesai — {shredded} kunci penyulitan dimusnahkan.",
+      "resultErased": "Dipadam",
+      "resultWithheld": "Ditahan di bawah pengekalan"
+    },
     "organization": {
       "pageTitle": "Organisasi",
       "pageDescription": "Setiap syarikat menguruskan butirannya, identiti berkanun, jabatan, jawatan dan pusat kos",

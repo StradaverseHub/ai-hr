@@ -8,6 +8,7 @@
     "search": "搜索"
   },
   "nav": {
+    "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
     "myWorkspace": "我的工作台",
     "people": "员工",
@@ -963,6 +964,35 @@
     }
   },
   "admin": {
+    "privacy": {
+      "title": "数据隐私与审计完整性",
+      "subtitle": "验证审计日志的防篡改性并执行 PDPA 数据删除请求。",
+      "integrityTitle": "审计日志完整性",
+      "chainDisabled": "防篡改哈希链尚未启用。启用 AUDIT_HASH_CHAIN_ENABLED 后，新事件将进行链接。",
+      "chainIntact": "完整 — 已验证 {n} 个事件，未检测到篡改。",
+      "chainBroken": "链在事件 #{seq} 处断裂 — 日志可能已被更改。",
+      "issueLine": "事件 #{seq}：{problem}",
+      "integrityNote": "每个事件都通过哈希与前一个事件链接，因此可检测到插入、删除、重排或篡改的行。",
+      "erasureTitle": "PDPA 数据删除",
+      "erasureNote": "马来西亚没有全面删除权——此操作会销毁可销毁的部分，并保留法定保留期内的数据（税务/EPF/SOCSO 约 7 年），并报告两者。",
+      "fieldEmploymentId": "雇佣 ID",
+      "fieldEmploymentIdHint": "来自员工详情页",
+      "fieldScope": "范围",
+      "fieldRef": "DPO 请求参考",
+      "fieldReason": "原因",
+      "scopeContact": "联系方式",
+      "scopeFinancial": "银行/财务",
+      "scopeIdentity": "身份（身份证、出生日期）",
+      "scopeStatutoryIds": "法定编号（EPF/SOCSO/税务）",
+      "scopeAll": "范围内的全部",
+      "confirmLabel": "我了解此操作将永久销毁所选数据且无法撤销。",
+      "running": "正在删除…",
+      "runErasure": "执行删除",
+      "errorPrefix": "无法删除",
+      "resultDone": "删除完成 — 已销毁 {shredded} 个加密密钥。",
+      "resultErased": "已删除",
+      "resultWithheld": "因保留而保留"
+    },
     "organization": {
       "pageTitle": "组织",
       "pageDescription": "每家公司管理自己的详情、法定身份、部门、职位和成本中心",
