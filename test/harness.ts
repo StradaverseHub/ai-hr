@@ -13,7 +13,7 @@ const ALL_TABLES = [
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
-  'attendance', 'attendance_policy',
+  'holiday', 'attendance', 'attendance_policy',
   'payroll_batch', 'payslip', 'payroll_input', 'company_statutory_my',
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',

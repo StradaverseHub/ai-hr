@@ -282,6 +282,51 @@ describe('reporting lines — valid edge', () => {
     const mgr = await reportingLinesFor(a, M.employmentId);
     expect(mgr.reports.map((r) => r.employmentId)).toContain(E.employmentId);
   });
+
+  it('adding a second active line of the same type supersedes the first (no duplicate parent)', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Subo');
+    const M1 = await hire(a, base, 'BossOne');
+    const M2 = await hire(a, base, 'BossTwo');
+
+    const first = await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M1.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-06-05',
+    });
+    // Second admin manager on a later date → replaces the first; only one active admin line remains.
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M2.employmentId,
+      lineType: 'administrative',
+      validFrom: '2026-06-20',
+    });
+
+    const lines = await reportingLinesFor(a, E.employmentId);
+    const admins = lines.managers.filter((m) => m.lineType === 'administrative');
+    expect(admins).toHaveLength(1);
+    expect(admins[0].employmentId).toBe(M2.employmentId);
+
+    // The prior line was closed (valid_to set) and a supersede event recorded.
+    const [old] = await withTenant(a, (tx) =>
+      tx.select().from(schema.reportingLine).where(eq(schema.reportingLine.id, first.reportingLineId)),
+    );
+    expect(old.validTo).toBe('2026-06-20');
+    const evs = await eventTypesFor(base.tenantId, first.reportingLineId);
+    expect(evs).toContain('reporting-line.set');
+    expect(evs).toContain('reporting-line.superseded');
+
+    // A different line type coexists with the active administrative one.
+    await setReportingLine(a, {
+      subordinateEmploymentId: E.employmentId,
+      managerEmploymentId: M1.employmentId,
+      lineType: 'functional',
+      validFrom: '2026-06-20',
+    });
+    const after = await reportingLinesFor(a, E.employmentId);
+    expect(after.managers.map((m) => m.lineType).sort()).toEqual(['administrative', 'functional']);
+  });
 });
 
 describe('hardening — role-gated writes', () => {

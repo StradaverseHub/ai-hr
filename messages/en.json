@@ -20,6 +20,7 @@
     "admin": "Admin",
     "organization": "Organization",
     "leaveConfig": "Leave config",
+    "holidays": "Holidays",
     "payroll": "Payroll",
     "auditTrail": "Audit trail",
     "usersRoles": "Users & roles",
@@ -129,6 +130,7 @@
     },
     "detail": {
       "backToPeople": "People",
+      "backToOrg": "Org chart",
       "headerDescription": "{code} · {email} · {company} · hired {hiredOn}",
       "personalDetails": "Personal details",
       "fullName": "Full name",
@@ -190,6 +192,7 @@
       "lineTypeDotted": "Dotted-line",
       "lineTypeDottedBadge": "dotted-line",
       "addReportingLine": "Add reporting line",
+      "reportingLineEffectiveFrom": "Effective from",
       "transferTitle": "Transfer (effective-dated)",
       "newDepartment": "New department",
       "effectiveDate": "Effective date",
@@ -1067,6 +1070,25 @@
       "add": "Add",
       "addEntitlement": "+ Add entitlement"
     },
+    "holidays": {
+      "pageTitle": "Public holidays",
+      "pageDescription": "Holidays used by leave and attendance working-day counting",
+      "filtersTitle": "Filter",
+      "countryLabel": "Country",
+      "allCountries": "All countries",
+      "yearLabel": "Year",
+      "allYears": "All years",
+      "applyFilter": "Apply",
+      "listTitle": "Holidays",
+      "empty": "No holidays match this filter.",
+      "remove": "Remove",
+      "addTitle": "Add a holiday",
+      "dateLabel": "Date",
+      "nameLabel": "Name",
+      "namePlaceholder": "Hari Raya Aidilfitri",
+      "addHoliday": "Add holiday",
+      "addHint": "Holidays are matched by country and date. A day marked here is excluded from working-day leave counts and classifies attendance as a public holiday."
+    },
     "users": {
       "title": "Users & roles",
       "userCount": "{count, plural, one {# user} other {# users}}",
@@ -1190,7 +1212,9 @@
       "viewAll": "View all",
       "empty": "No employees in scope.",
       "employees": "Employees",
-      "pillTitle": "{type} · {start} to {end} · {status}"
+      "pillTitle": "{type} · {start} to {end} · {status}",
+      "showAll": "Show all {count}",
+      "showLess": "Show less"
     },
     "timelineNav": {
       "previous": "Previous {unit}",

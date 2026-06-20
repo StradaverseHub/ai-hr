@@ -20,6 +20,7 @@
     "admin": "Pentadbir",
     "organization": "Organisasi",
     "leaveConfig": "Konfigurasi cuti",
+    "holidays": "Cuti umum",
     "payroll": "Gaji",
     "auditTrail": "Jejak audit",
     "usersRoles": "Pengguna & peranan",
@@ -129,6 +130,7 @@
     },
     "detail": {
       "backToPeople": "Kakitangan",
+      "backToOrg": "Carta organisasi",
       "headerDescription": "{code} · {email} · {company} · diambil {hiredOn}",
       "personalDetails": "Butiran peribadi",
       "fullName": "Nama penuh",
@@ -190,6 +192,7 @@
       "lineTypeDotted": "Garis putus-putus",
       "lineTypeDottedBadge": "garis putus-putus",
       "addReportingLine": "Tambah garis pelaporan",
+      "reportingLineEffectiveFrom": "Berkuat kuasa dari",
       "transferTitle": "Pindah (berkuat kuasa tarikh)",
       "newDepartment": "Jabatan baharu",
       "effectiveDate": "Tarikh berkuat kuasa",
@@ -1067,6 +1070,25 @@
       "add": "Tambah",
       "addEntitlement": "+ Tambah kelayakan"
     },
+    "holidays": {
+      "pageTitle": "Cuti umum",
+      "pageDescription": "Cuti yang digunakan untuk pengiraan hari bekerja cuti dan kehadiran",
+      "filtersTitle": "Tapis",
+      "countryLabel": "Negara",
+      "allCountries": "Semua negara",
+      "yearLabel": "Tahun",
+      "allYears": "Semua tahun",
+      "applyFilter": "Guna",
+      "listTitle": "Cuti umum",
+      "empty": "Tiada cuti sepadan dengan tapisan ini.",
+      "remove": "Buang",
+      "addTitle": "Tambah cuti",
+      "dateLabel": "Tarikh",
+      "nameLabel": "Nama",
+      "namePlaceholder": "Hari Raya Aidilfitri",
+      "addHoliday": "Tambah cuti",
+      "addHint": "Cuti dipadankan mengikut negara dan tarikh. Hari yang ditanda di sini dikecualikan daripada pengiraan cuti hari bekerja dan mengkelaskan kehadiran sebagai cuti umum."
+    },
     "users": {
       "title": "Pengguna & peranan",
       "userCount": "{count, plural, one {# pengguna} other {# pengguna}}",
@@ -1190,7 +1212,9 @@
       "viewAll": "Lihat semua",
       "empty": "Tiada pekerja dalam skop.",
       "employees": "Pekerja",
-      "pillTitle": "{type} · {start} hingga {end} · {status}"
+      "pillTitle": "{type} · {start} hingga {end} · {status}",
+      "showAll": "Tunjukkan semua {count}",
+      "showLess": "Tunjukkan kurang"
     },
     "timelineNav": {
       "previous": "{unit} sebelumnya",

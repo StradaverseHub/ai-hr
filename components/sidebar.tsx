@@ -61,6 +61,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
+      { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays },
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/admin/pay-components', labelKey: 'payComponents', icon: Coins },

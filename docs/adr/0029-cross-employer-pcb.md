@@ -141,10 +141,18 @@ multi-entity premise + case (b)).
 - **Slice 1 (done):** scope-out field `person.designated_paymaster_employment_id` (migration 0069, app-validated
   soft reference — no DB FK, to avoid a person↔employment cycle that deadlocks the harness TRUNCATE); the pure
   **`allocatePcb(total, additional, shares)`** helper (golden-tested — slices always sum to the combined total).
-- **Slice 2 (next):** `pcb_aggregation_mode` flag (tenant statutory config, default `per_employer`); the gated
-  in-kernel coordinator in `generatePayslips` (per-person aggregate → one `pcbMonth` → `allocatePcb` back, only
-  `pcb`/`pcbBonus`/`pcbMeta` overridden; tenant-scoped cross-company read gated by `has_role_for`, fail-closed to
-  per_employer with an event); the compliance-visibility combined-vs-summed delta; compat + cross-band + fail-closed tests.
+- **Slice 2a (done):** the scope-out **substrate** — `setDesignatedPaymaster` (validated: must be one of the
+  person's own active employments; appends `person.paymaster.designated`) + the read-only
+  `concurrentEmploymentPersons` detector (the cross-entity population, with paymaster status). DB-tested.
+- **Slice 2b (done):** the coordinator **computation** — `coordinatedPcbForPerson(employments, shared)` composes
+  `pcbMonth` (combined, K capped once) + `allocatePcb` (split). Golden-tested through the real `pcbMonth`:
+  combined MTD ≥ Σ per-employment MTD (the under-deduction), slices sum to the combined to the sen, single-
+  employment is a no-op. **Not yet wired into the live kernel** — pure + dormant until 2c.
+- **Slice 2c (next):** the gated in-kernel **integration** — the `GROUP_PCB_COORDINATION_ENABLED` flag (default
+  off; per-tenant DB flag is the productisation form), the cross-company peer-slip read inside `generatePayslips`
+  gated by `has_role_for` with fail-closed→`per_employer` + a `payroll-batch.pcb.coordinated` event, the
+  `pcbMeta.coordination` stamp, the compliance-visibility combined-vs-summed delta surface, and the
+  byte-identical compat + DB cross-band + fail-closed tests. The single highest-risk step (mutates real filed MTD).
 
 ## 7. Sources
 hasil.gov.my — *Spesifikasi Kaedah Pengiraan Berkomputer PCB 2026/2023*; hasil.gov.my employer

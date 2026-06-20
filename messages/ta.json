@@ -20,6 +20,7 @@
     "admin": "நிர்வாகம்",
     "organization": "நிறுவனம்",
     "leaveConfig": "விடுப்பு அமைப்பு",
+    "holidays": "விடுமுறை நாட்கள்",
     "payroll": "ஊதியம்",
     "auditTrail": "தணிக்கைப் பதிவு",
     "usersRoles": "பயனர்கள் & பாத்திரங்கள்",
@@ -129,6 +130,7 @@
     },
     "detail": {
       "backToPeople": "பணியாளர்கள்",
+      "backToOrg": "நிறுவன அமைப்பு",
       "headerDescription": "{code} · {email} · {company} · {hiredOn} அன்று சேர்ந்தார்",
       "personalDetails": "தனிப்பட்ட விவரங்கள்",
       "fullName": "முழுப் பெயர்",
@@ -190,6 +192,7 @@
       "lineTypeDotted": "புள்ளி-வரி",
       "lineTypeDottedBadge": "புள்ளி-வரி",
       "addReportingLine": "அறிக்கையிடல் வரிசையைச் சேர்",
+      "reportingLineEffectiveFrom": "அமலுக்கு வரும் தேதி",
       "transferTitle": "இடமாற்றம் (செயல்பாட்டுத் தேதியுடன்)",
       "newDepartment": "புதிய துறை",
       "effectiveDate": "செயல்பாட்டுத் தேதி",
@@ -1067,6 +1070,25 @@
       "add": "சேர்",
       "addEntitlement": "+ உரிமையைச் சேர்"
     },
+    "holidays": {
+      "pageTitle": "பொது விடுமுறைகள்",
+      "pageDescription": "விடுப்பு மற்றும் வருகை வேலைநாள் கணக்கீட்டில் பயன்படுத்தப்படும் விடுமுறைகள்",
+      "filtersTitle": "வடிகட்டு",
+      "countryLabel": "நாடு",
+      "allCountries": "அனைத்து நாடுகள்",
+      "yearLabel": "ஆண்டு",
+      "allYears": "அனைத்து ஆண்டுகள்",
+      "applyFilter": "பயன்படுத்து",
+      "listTitle": "விடுமுறைகள்",
+      "empty": "இந்த வடிப்பானுக்கு பொருந்தும் விடுமுறைகள் இல்லை.",
+      "remove": "அகற்று",
+      "addTitle": "விடுமுறை சேர்",
+      "dateLabel": "தேதி",
+      "nameLabel": "பெயர்",
+      "namePlaceholder": "Hari Raya Aidilfitri",
+      "addHoliday": "விடுமுறை சேர்",
+      "addHint": "விடுமுறைகள் நாடு மற்றும் தேதி மூலம் பொருத்தப்படுகின்றன. இங்கு குறிக்கப்படும் நாள் வேலைநாள் விடுப்பு கணக்கீட்டிலிருந்து விலக்கப்பட்டு வருகையை பொது விடுமுறையாக வகைப்படுத்தும்."
+    },
     "users": {
       "title": "பயனர்கள் & பாத்திரங்கள்",
       "userCount": "{count, plural, one {# பயனர்} other {# பயனர்கள்}}",
@@ -1190,7 +1212,9 @@
       "viewAll": "அனைத்தையும் காண்",
       "empty": "எல்லைக்குள் பணியாளர்கள் இல்லை.",
       "employees": "பணியாளர்கள்",
-      "pillTitle": "{type} · {start} முதல் {end} வரை · {status}"
+      "pillTitle": "{type} · {start} முதல் {end} வரை · {status}",
+      "showAll": "அனைத்தையும் காட்டு ({count})",
+      "showLess": "குறைவாகக் காட்டு"
     },
     "timelineNav": {
       "previous": "முந்தைய {unit}",

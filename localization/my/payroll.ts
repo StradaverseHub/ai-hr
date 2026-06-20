@@ -426,6 +426,61 @@ export function allocatePcb(
 }
 
 /**
+ * ADR-0029 group coordinator (gated, default off — the kernel calls this only under the coordination flag;
+ * the in-kernel peer-slip read + fail-closed wiring is the integration slice). Tax a person's month ONCE
+ * on the COMBINED remuneration across their concurrent employments (one `pcbMonth`), then allocate the
+ * resulting MTD back per employment (`allocatePcb`). The combined MTD is ≥ the sum of the per-employment
+ * MTDs (progressive tax), so per-employer filing UNDER-deducts — this returns the correct combined-month
+ * figure, split so the slices sum to it. The EPF relief K is capped ONCE on the combined inputs inside
+ * `pcbMonth`. EPF/SOCSO/EIS are NOT coordinated (correctly per-employer); only `pcb`/`pcbBonus` change.
+ */
+export function coordinatedPcbForPerson(
+  employments: {
+    employmentId: string;
+    monthlyWage: number;
+    epfMonthly: number;
+    additional?: number;
+    epfOnAdditional?: number;
+    acc?: PcbAccumulators;
+    lpCurrent?: number;
+    zakatCurrent?: number;
+  }[],
+  shared: { month: number; profile?: TaxProfile; pcb?: StatutoryRuleset['pcb'] },
+): { combinedMtd: number; combinedAdditional: number; byEmployment: Map<string, { pcb: number; pcbBonus: number }> } {
+  const sum = (f: (e: (typeof employments)[number]) => number | undefined) =>
+    employments.reduce((a, e) => a + (f(e) ?? 0), 0);
+  const combinedAcc: PcbAccumulators = {
+    netRemuneration: sum((e) => e.acc?.netRemuneration),
+    epfClaimed: sum((e) => e.acc?.epfClaimed), // K capped ONCE at the annual relief inside pcbMonth
+    pcbPaid: sum((e) => e.acc?.pcbPaid),
+    zakatPaid: sum((e) => e.acc?.zakatPaid),
+    lpAccumulated: sum((e) => e.acc?.lpAccumulated),
+  };
+  const m = pcbMonth({
+    monthlyWage: sum((e) => e.monthlyWage),
+    epfMonthly: sum((e) => e.epfMonthly),
+    month: shared.month,
+    profile: shared.profile,
+    acc: combinedAcc,
+    additional: sum((e) => e.additional),
+    epfOnAdditional: sum((e) => e.epfOnAdditional),
+    lpCurrent: sum((e) => e.lpCurrent),
+    zakatCurrent: sum((e) => e.zakatCurrent),
+    pcb: shared.pcb,
+  });
+  const shares = employments.map((e) => ({
+    employmentId: e.employmentId,
+    normalShare: Math.max(0, e.monthlyWage - e.epfMonthly),
+    bonusShare: Math.max(0, e.additional ?? 0),
+  }));
+  return {
+    combinedMtd: m.total,
+    combinedAdditional: m.additional,
+    byEmployment: allocatePcb(m.total, m.additional, shares),
+  };
+}
+
+/**
  * All statutory contributions for a monthly wage. `profile` defaults to Category 1 (single).
  * `additional` is a bonus / additional remuneration paid this month: subject to EPF (rate by the
  * normal wage) and PCB (difference method), but EXCLUDED from SOCSO and EIS.

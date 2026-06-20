@@ -20,6 +20,7 @@
     "admin": "管理后台",
     "organization": "组织",
     "leaveConfig": "休假配置",
+    "holidays": "公共假期",
     "payroll": "薪资",
     "auditTrail": "审计日志",
     "usersRoles": "用户与角色",
@@ -129,6 +130,7 @@
     },
     "detail": {
       "backToPeople": "员工",
+      "backToOrg": "组织架构图",
       "headerDescription": "{code} · {email} · {company} · 入职于 {hiredOn}",
       "personalDetails": "个人信息",
       "fullName": "全名",
@@ -190,6 +192,7 @@
       "lineTypeDotted": "虚线汇报",
       "lineTypeDottedBadge": "虚线",
       "addReportingLine": "添加汇报关系",
+      "reportingLineEffectiveFrom": "生效日期",
       "transferTitle": "调动（按生效日期）",
       "newDepartment": "新部门",
       "effectiveDate": "生效日期",
@@ -1067,6 +1070,25 @@
       "add": "添加",
       "addEntitlement": "+ 添加应享"
     },
+    "holidays": {
+      "pageTitle": "公共假期",
+      "pageDescription": "用于假期与考勤工作日计算的假期",
+      "filtersTitle": "筛选",
+      "countryLabel": "国家",
+      "allCountries": "所有国家",
+      "yearLabel": "年份",
+      "allYears": "所有年份",
+      "applyFilter": "应用",
+      "listTitle": "公共假期",
+      "empty": "没有符合此筛选条件的假期。",
+      "remove": "移除",
+      "addTitle": "添加假期",
+      "dateLabel": "日期",
+      "nameLabel": "名称",
+      "namePlaceholder": "Hari Raya Aidilfitri",
+      "addHoliday": "添加假期",
+      "addHint": "假期按国家和日期匹配。此处标记的日期将从工作日假期计算中排除，并将考勤归类为公共假期。"
+    },
     "users": {
       "title": "用户与角色",
       "userCount": "{count, plural, one {# 名用户} other {# 名用户}}",
@@ -1190,7 +1212,9 @@
       "viewAll": "查看全部",
       "empty": "范围内无员工。",
       "employees": "员工",
-      "pillTitle": "{type} · {start} 至 {end} · {status}"
+      "pillTitle": "{type} · {start} 至 {end} · {status}",
+      "showAll": "显示全部 {count} 人",
+      "showLess": "收起"
     },
     "timelineNav": {
       "previous": "上一{unit}",

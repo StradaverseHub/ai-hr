@@ -58,13 +58,19 @@ export default async function EmployeePage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; from?: string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('people.detail');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error } = await searchParams;
+  const { error, from } = await searchParams;
+  // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
+  // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
+  const back =
+    from === 'org'
+      ? { href: '/org', label: t('backToOrg') }
+      : { href: '/people', label: t('backToPeople') };
 
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
@@ -93,7 +99,7 @@ export default async function EmployeePage({
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader
-        back={{ href: '/people', label: t('backToPeople') }}
+        back={back}
         title={emp.name}
         description={t('headerDescription', {
           code: emp.employeeCode ?? '—',
@@ -424,7 +430,7 @@ export default async function EmployeePage({
                     <form action={endReportingLineAction}>
                       <input type="hidden" name="employmentId" value={emp.employmentId} />
                       <input type="hidden" name="reportingLineId" value={m.id} />
-                      <input type="hidden" name="endDate" value="2026-06-05" />
+                      <input type="hidden" name="endDate" value={today} />
                       <button type="submit" title={t('endReportingLine')} className="text-muted-foreground transition-colors hover:text-red-500">
                         ×
                       </button>
@@ -461,7 +467,6 @@ export default async function EmployeePage({
             className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <input type="hidden" name="validFrom" value="2026-06-05" />
             <Field label={t('manager')}>
               <select name="managerEmploymentId" required className={inputCls}>
                 {others.map((o) => (
@@ -479,7 +484,10 @@ export default async function EmployeePage({
                 <option value="dotted">{t('lineTypeDotted')}</option>
               </select>
             </Field>
-            <div className="sm:col-span-2">
+            <Field label={t('reportingLineEffectiveFrom')}>
+              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
+            </Field>
+            <div>
               <button className={btnPrimary}>{t('addReportingLine')}</button>
             </div>
           </form>

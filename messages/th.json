@@ -20,6 +20,7 @@
     "admin": "ผู้ดูแลระบบ",
     "organization": "องค์กร",
     "leaveConfig": "ตั้งค่าการลา",
+    "holidays": "วันหยุด",
     "payroll": "เงินเดือน",
     "auditTrail": "บันทึกการตรวจสอบ",
     "usersRoles": "ผู้ใช้และบทบาท",
@@ -129,6 +130,7 @@
     },
     "detail": {
       "backToPeople": "พนักงาน",
+      "backToOrg": "ผังองค์กร",
       "headerDescription": "{code} · {email} · {company} · จ้างเมื่อ {hiredOn}",
       "personalDetails": "ข้อมูลส่วนตัว",
       "fullName": "ชื่อ-นามสกุล",
@@ -190,6 +192,7 @@
       "lineTypeDotted": "สายประ",
       "lineTypeDottedBadge": "สายประ",
       "addReportingLine": "เพิ่มสายการรายงาน",
+      "reportingLineEffectiveFrom": "มีผลตั้งแต่",
       "transferTitle": "โอนย้าย (ตามวันที่มีผล)",
       "newDepartment": "แผนกใหม่",
       "effectiveDate": "วันที่มีผล",
@@ -1067,6 +1070,25 @@
       "add": "เพิ่ม",
       "addEntitlement": "+ เพิ่มสิทธิ์"
     },
+    "holidays": {
+      "pageTitle": "วันหยุดราชการ",
+      "pageDescription": "วันหยุดที่ใช้ในการนับวันทำงานของการลาและการเข้างาน",
+      "filtersTitle": "กรอง",
+      "countryLabel": "ประเทศ",
+      "allCountries": "ทุกประเทศ",
+      "yearLabel": "ปี",
+      "allYears": "ทุกปี",
+      "applyFilter": "ใช้",
+      "listTitle": "วันหยุด",
+      "empty": "ไม่มีวันหยุดที่ตรงกับตัวกรองนี้",
+      "remove": "นำออก",
+      "addTitle": "เพิ่มวันหยุด",
+      "dateLabel": "วันที่",
+      "nameLabel": "ชื่อ",
+      "namePlaceholder": "Hari Raya Aidilfitri",
+      "addHoliday": "เพิ่มวันหยุด",
+      "addHint": "วันหยุดจะจับคู่ตามประเทศและวันที่ วันที่ทำเครื่องหมายไว้ที่นี่จะถูกยกเว้นจากการนับวันลาทำงานและจัดประเภทการเข้างานเป็นวันหยุดราชการ"
+    },
     "users": {
       "title": "ผู้ใช้และบทบาท",
       "userCount": "{count, plural, one {# ผู้ใช้} other {# ผู้ใช้}}",
@@ -1190,7 +1212,9 @@
       "viewAll": "ดูทั้งหมด",
       "empty": "ไม่มีพนักงานในขอบเขต",
       "employees": "พนักงาน",
-      "pillTitle": "{type} · {start} ถึง {end} · {status}"
+      "pillTitle": "{type} · {start} ถึง {end} · {status}",
+      "showAll": "แสดงทั้งหมด {count} รายการ",
+      "showLess": "แสดงน้อยลง"
     },
     "timelineNav": {
       "previous": "{unit}ก่อนหน้า",
