@@ -584,6 +584,25 @@ export const companyBankProfile = pgTable(
   (t) => [uniqueIndex('company_bank_profile_company_bank_uq').on(t.companyId, t.bank)],
 );
 
+// Per-subject crypto-shred key custody (ADR-0030 Layer 1). Each subject has a data-encryption key (DEK)
+// wrapped by the master key (KMS/HSM in prod; env-derived interim). "Destruction" = NULL wrapped_dek + set
+// destroyed_at → every value sealed under that DEK becomes unrecoverable across the append-only log without
+// deleting any event row. subject_employment_id is a SOFT reference (no FK — avoids the person↔employment
+// cascade-deadlock that bit migration 0069; validated in the service).
+export const piiKey = pgTable(
+  'pii_key',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    subjectEmploymentId: uuid('subject_employment_id').notNull(),
+    kid: text('kid').notNull(),
+    wrappedDek: text('wrapped_dek'), // NULL once shredded
+    createdAt: createdAt(),
+    destroyedAt: timestamp('destroyed_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('pii_key_subject_kid_uq').on(t.tenantId, t.subjectEmploymentId, t.kid)],
+);
+
 // ─────────────── Per-tenant counters (generic, e.g. employee codes) ───────────────
 export const tenantCounter = pgTable(
   'tenant_counter',
