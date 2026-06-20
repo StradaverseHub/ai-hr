@@ -55,6 +55,7 @@ type ResolvedRow = {
     numChildren?: number;
     eisEligible?: boolean;
     isResident?: boolean;
+    epfCitizenship?: 'citizen' | 'pr' | 'non_citizen';
     bankName?: string;
     bankAccountNo?: string;
   };
@@ -202,6 +203,16 @@ async function analyze(
     };
     const eisEligible = boolField(rec.eis_eligible, 'eis_eligible');
     const isResident = boolField(rec.is_resident, 'is_resident');
+    // EPF citizenship (#157) — drives the Third Schedule rule. Default citizen; accepts common synonyms.
+    const epfCitizenship = ((): 'citizen' | 'pr' | 'non_citizen' | undefined => {
+      const c = norm(rec.epf_citizenship).toLowerCase().replace(/[\s-]+/g, '_');
+      if (!c) return undefined;
+      if (c === 'citizen' || c === 'malaysian') return 'citizen';
+      if (c === 'pr' || c === 'permanent_resident') return 'pr';
+      if (['non_citizen', 'noncitizen', 'foreign', 'foreigner', 'foreign_worker'].includes(c)) return 'non_citizen';
+      errors.push(`Invalid epf_citizenship "${rec.epf_citizenship}" (use citizen / pr / non_citizen)`);
+      return undefined;
+    })();
 
     // Bank: both or neither (mirrors the ESS validation)
     const bankName = norm(rec.bank_name) || undefined;
@@ -231,6 +242,7 @@ async function analyze(
         numChildren,
         eisEligible,
         isResident,
+        epfCitizenship,
         bankName,
         bankAccountNo,
       },

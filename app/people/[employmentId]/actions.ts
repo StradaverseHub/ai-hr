@@ -147,6 +147,10 @@ export async function setStatutoryAction(formData: FormData) {
       numChildren: Number(formData.get('numChildren')) || 0,
       eisEligible: formData.get('eisEligible') === 'on',
       isResident: formData.get('isResident') === 'on',
+      epfCitizenship: (() => {
+        const c = String(formData.get('epfCitizenship') ?? 'citizen');
+        return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
+      })(),
       // EPF contribution mode (Wave 2B). Rates are entered as percentages → stored as decimals.
       epfMode: (() => {
         const m = String(formData.get('epfMode') ?? 'auto');

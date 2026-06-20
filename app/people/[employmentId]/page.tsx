@@ -313,6 +313,13 @@ export default async function EmployeePage({
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{t('epfElectionHint')}</p>
             </div>
+            <Field label={t('epfCitizenship')}>
+              <select name="epfCitizenship" defaultValue={statutory?.epfCitizenship ?? 'citizen'} className={inputCls}>
+                <option value="citizen">{t('epfCitizenshipCitizen')}</option>
+                <option value="pr">{t('epfCitizenshipPr')}</option>
+                <option value="non_citizen">{t('epfCitizenshipNonCitizen')}</option>
+              </select>
+            </Field>
             <Field label={t('epfMode')}>
               <select name="epfMode" defaultValue={statutory?.epfMode ?? 'auto'} className={inputCls}>
                 <option value="auto">{t('epfModeAuto')}</option>
