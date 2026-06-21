@@ -57,6 +57,9 @@ export const MY_DEFAULT_PAY_COMPONENTS: PayComponentSeed[] = [
   earn('HOUSING', 'Housing allowance (fixed)', true, true, true, true, true),
   earn('COLA', 'Cost-of-living allowance', true, true, true, true, true),
   earn('SHIFT', 'Shift allowance', true, true, true, false, true),
+  // Variable shift premium computed from worked differential shifts (ADR-0032 C5). Wages for EPF/SOCSO +
+  // taxable for PCB; NOT HRDF base (variable, not a fixed allowance); prorates=false (already from actuals).
+  earn('SHIFT_DIFFERENTIAL', 'Shift differential', true, true, true, false, false),
   earn('ATTENDANCE', 'Attendance allowance', true, true, true, false, true),
   earn('COMMISSION', 'Commission', true, true, true, false, false),
   earn('OVERTIME', 'Overtime', false, true, true, false, false),

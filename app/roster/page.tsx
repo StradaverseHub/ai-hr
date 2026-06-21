@@ -2,7 +2,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
-import { listShifts, rosterForRange } from '@/core/roster';
+import { listShifts, rosterForRange, rosterVariance } from '@/core/roster';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
 import { archiveShiftAction, createShiftAction } from './actions';
@@ -42,11 +42,25 @@ export default async function RosterPage({
   const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : todayIso);
   const weekEnd = addDays(weekStart, 6);
 
-  const [employees, shifts, roster] = await Promise.all([
+  const [employees, shifts, roster, variance] = await Promise.all([
     listEmployees(s, [companyId]),
     listShifts(s, companyId),
     rosterForRange(s, { from: weekStart, to: weekEnd }),
+    rosterVariance(s, { from: weekStart, to: weekEnd, companyIds: [companyId], today: todayIso }),
   ]);
+  const exceptions = variance.filter((v) => v.kind !== 'on_track');
+  const kindBadge: Record<string, string> = {
+    no_show: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
+    late: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
+    short: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400',
+    rest_worked: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-400',
+  };
+  const kindLabel: Record<string, string> = {
+    no_show: t('kindNoShow'),
+    late: t('kindLate'),
+    short: t('kindShort'),
+    rest_worked: t('kindRestWorked'),
+  };
   const activeEmployees = employees.filter((e) => !e.terminatedOn);
   const empIds = new Set(activeEmployees.map((e) => e.employmentId));
 
@@ -135,6 +149,13 @@ export default async function RosterPage({
             <input name="startTime" type="time" required defaultValue="09:00" className={inputCls} aria-label={t('start')} />
             <input name="endTime" type="time" required defaultValue="18:00" className={inputCls} aria-label={t('end')} />
             <input name="breakMinutes" type="number" min={0} defaultValue={60} className={`${inputCls} w-20`} aria-label={t('breakMins')} />
+            <select name="differentialKind" defaultValue="" className={inputCls} aria-label={t('diffLabel')}>
+              <option value="">{t('diffNone')}</option>
+              <option value="percent">{t('diffPercent')}</option>
+              <option value="flat_hourly">{t('diffFlatHourly')}</option>
+              <option value="flat_per_shift">{t('diffPerShift')}</option>
+            </select>
+            <input name="differentialValue" type="number" min={0} step="0.01" placeholder={t('diffValue')} className={`${inputCls} w-24`} aria-label={t('diffValue')} />
             <button className={btnPrimary}>{t('addShift')}</button>
           </form>
           <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
@@ -158,6 +179,26 @@ export default async function RosterPage({
           )}
         </div>
       </Card>
+
+      {exceptions.length > 0 && (
+        <Card>
+          <SectionHeader title={t('varianceTitle')} count={exceptions.length} />
+          <ul className="divide-y divide-border">
+            {exceptions.map((v) => (
+              <li key={`${v.employmentId}|${v.shiftDate}`} className="flex items-center justify-between gap-2 px-4 py-2 text-sm">
+                <div className="min-w-0">
+                  <span className="font-medium">{v.name}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {v.shiftDate} · {v.shiftName ?? t('rest')}
+                  </span>
+                </div>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${kindBadge[v.kind]}`}>{kindLabel[v.kind]}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="px-4 pb-3 pt-1 text-xs text-muted-foreground">{t('varianceHint')}</p>
+        </Card>
+      )}
     </div>
   );
 }

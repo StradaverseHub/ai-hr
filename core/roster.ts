@@ -6,7 +6,7 @@
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { rosterAssignment, shift, type ShiftDifferential } from '../db/schema';
+import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type ShiftDifferential } from '../db/schema';
 
 const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
 
@@ -235,5 +235,132 @@ export function rosterForRange(ctx: SessionContext, p: { employmentIds?: string[
       .from(rosterAssignment)
       .where(and(...conds))
       .orderBy(asc(rosterAssignment.shiftDate));
+  });
+}
+
+// ── Roster vs actual (ADR-0032 C4) ──────────────────────────────────
+
+export type RosterVarianceKind = 'no_show' | 'late' | 'short' | 'on_track' | 'rest_worked';
+export type RosterVarianceRow = {
+  employmentId: string;
+  name: string;
+  shiftDate: string;
+  shiftName: string | null;
+  isRestDay: boolean;
+  expectedMinutes: number | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  workedMinutes: number | null;
+  status: string | null;
+  kind: RosterVarianceKind;
+};
+
+const toMin = (t: string): number => {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
+
+/**
+ * Compare the roster (expected) to attendance (actual) over a date range. For each rostered shift: a
+ * no-show (rostered, no attendance, not on leave, date ≤ today), a late check-in, short hours (worked <
+ * the shift's scheduled minutes), or on-track. A rostered rest day with an attendance row is rest_worked.
+ * RLS scopes which employees are visible. Read-only.
+ */
+export function rosterVariance(
+  ctx: SessionContext,
+  p: { from: string; to: string; companyIds?: string[]; today?: string },
+): Promise<RosterVarianceRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const today = p.today ?? new Date().toISOString().slice(0, 10);
+    const ras = await tx
+      .select({
+        employmentId: rosterAssignment.employmentId,
+        name: person.fullName,
+        shiftDate: rosterAssignment.shiftDate,
+        isRestDay: rosterAssignment.isRestDay,
+        shiftName: shift.name,
+        start: shift.startTime,
+        end: shift.endTime,
+        brk: shift.breakMinutes,
+        crosses: shift.crossesMidnight,
+      })
+      .from(rosterAssignment)
+      .innerJoin(employment, eq(employment.id, rosterAssignment.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(
+        and(
+          gte(rosterAssignment.shiftDate, p.from),
+          lte(rosterAssignment.shiftDate, p.to),
+          p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+        ),
+      );
+    if (ras.length === 0) return [];
+    const empIds = [...new Set(ras.map((r) => r.employmentId))];
+
+    const [atts, leaves] = await Promise.all([
+      tx
+        .select({
+          employmentId: attendance.employmentId,
+          date: attendance.attendanceDate,
+          checkInAt: attendance.checkInAt,
+          checkOutAt: attendance.checkOutAt,
+          workedMinutes: attendance.workedMinutes,
+          status: attendance.status,
+        })
+        .from(attendance)
+        .where(and(inArray(attendance.employmentId, empIds), gte(attendance.attendanceDate, p.from), lte(attendance.attendanceDate, p.to))),
+      tx
+        .select({ employmentId: leaveRequest.employmentId, startDate: leaveRequest.startDate, endDate: leaveRequest.endDate })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.status, 'approved'),
+            inArray(leaveRequest.employmentId, empIds),
+            lte(leaveRequest.startDate, p.to),
+            gte(leaveRequest.endDate, p.from),
+          ),
+        ),
+    ]);
+    const attBy = new Map(atts.map((a) => [`${a.employmentId}|${a.date}`, a]));
+    const onLeave = (emp: string, d: string) => leaves.some((l) => l.employmentId === emp && l.startDate <= d && d <= l.endDate);
+
+    const out: RosterVarianceRow[] = [];
+    for (const r of ras) {
+      const att = attBy.get(`${r.employmentId}|${r.shiftDate}`) ?? null;
+      const expectedMinutes =
+        r.isRestDay || !r.start || !r.end
+          ? null
+          : Math.max(0, (r.crosses ? toMin(r.end) + 1440 - toMin(r.start) : toMin(r.end) - toMin(r.start)) - (r.brk ?? 0));
+      let kind: RosterVarianceKind;
+      if (r.isRestDay) {
+        if (!att) continue; // rest day with no work is expected
+        kind = 'rest_worked';
+      } else if (!att) {
+        if (onLeave(r.employmentId, r.shiftDate)) continue; // leave is not a no-show
+        if (r.shiftDate > today) continue; // future shift, not yet due
+        kind = 'no_show';
+      } else if (att.status === 'late') {
+        kind = 'late';
+      } else if (att.workedMinutes != null && expectedMinutes != null && att.workedMinutes < expectedMinutes) {
+        kind = 'short';
+      } else {
+        kind = 'on_track';
+      }
+      out.push({
+        employmentId: r.employmentId,
+        name: r.name,
+        shiftDate: r.shiftDate,
+        shiftName: r.shiftName,
+        isRestDay: r.isRestDay,
+        expectedMinutes,
+        checkInAt: att?.checkInAt ?? null,
+        checkOutAt: att?.checkOutAt ?? null,
+        workedMinutes: att?.workedMinutes ?? null,
+        status: att?.status ?? null,
+        kind,
+      });
+    }
+    return out.sort((a, b) => a.shiftDate.localeCompare(b.shiftDate) || a.name.localeCompare(b.name));
   });
 }
