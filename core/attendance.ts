@@ -20,6 +20,8 @@ import {
   holiday,
   leaveRequest,
   person,
+  rosterAssignment,
+  shift,
 } from '../db/schema';
 
 export class AlreadyCheckedInError extends Error {
@@ -80,16 +82,6 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
   };
 }
 
-async function dayTypeFor(tx: Tx, pol: Policy, date: string): Promise<DayType> {
-  const [hol] = await tx
-    .select({ id: holiday.id })
-    .from(holiday)
-    .where(and(eq(holiday.holidayDate, date), eq(holiday.country, pol.country)))
-    .limit(1);
-  if (hol) return 'holiday';
-  return pol.workingDays.includes(isoWeekday(date)) ? 'workday' : 'rest_day';
-}
-
 /** Net scheduled minutes of a normal working day (span minus break). */
 const scheduledMinutes = (pol: Policy) =>
   Math.max(0, toMinutes(pol.workEnd) - toMinutes(pol.workStart) - pol.breakMinutes);
@@ -101,23 +93,109 @@ const scheduledMinutes = (pol: Policy) =>
 const workedFromSpan = (spanMinutes: number, breakMinutes: number) =>
   Math.max(0, spanMinutes - (spanMinutes >= 360 ? breakMinutes : 0));
 
-/** Derive status + worked/OT minutes for a full or partial day — the shared rule that
- *  check-in/out apply incrementally and a correction applies in one shot. */
+const MINS_PER_DAY = 1440;
+const fmtTime = (mins: number): string =>
+  `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}:00`;
+const addGrace = (t: string, grace: number): string => fmtTime((toMinutes(t) + grace) % MINS_PER_DAY);
+
+/** In→out span in minutes, cross-midnight aware: a check-out time-of-day earlier than check-in means the
+ *  shift ran past midnight (e.g. 22:00 → 06:00 = 480m), so add a day. For same-day spans this is identical
+ *  to (out − in), so non-rostered days are unchanged. */
+const spanMinutes = (checkInAt: string, checkOutAt: string): number => {
+  const ci = toMinutes(checkInAt);
+  const co = toMinutes(checkOutAt);
+  return co >= ci ? co - ci : co + MINS_PER_DAY - ci;
+};
+
+const shiftSpan = (start: string, end: string, crosses: boolean): number =>
+  crosses ? toMinutes(end) + MINS_PER_DAY - toMinutes(start) : toMinutes(end) - toMinutes(start);
+
+// ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
+// employee's roster when present, else the company policy (today's behaviour, byte-identical).
+type ResolvedSchedule = {
+  dayType: DayType;
+  lateAfter: string; // time-of-day after which check-in is "late" (shift start + policy grace, or policy)
+  halfDayBefore: string; // checkout before this on a workday ⇒ half-day (policy / shift midpoint)
+  scheduledMinutes: number; // net scheduled work minutes (workday OT = worked − this)
+  breakMinutes: number;
+  crossesMidnight: boolean;
+  source: 'policy' | 'roster-shift' | 'roster-rest';
+};
+
+/** Resolve the schedule for one employee+date: holiday (calendar) > rostered shift/rest-day > company
+ *  policy. No roster row ⇒ the policy branch, which reproduces the pre-Phase-C engine exactly. */
+async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<ResolvedSchedule> {
+  const pol = await policyFor(tx, employmentId);
+  const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
+  const [hol] = await tx
+    .select({ id: holiday.id })
+    .from(holiday)
+    .where(and(eq(holiday.holidayDate, date), eq(holiday.country, pol.country)))
+    .limit(1);
+  const [ra] = await tx
+    .select({
+      isRestDay: rosterAssignment.isRestDay,
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      crosses: shift.crossesMidnight,
+    })
+    .from(rosterAssignment)
+    .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+    .where(and(eq(rosterAssignment.employmentId, employmentId), eq(rosterAssignment.shiftDate, date)))
+    .limit(1);
+
+  const policyBranch = (dayType: DayType): ResolvedSchedule => ({
+    dayType,
+    lateAfter: pol.lateAfter,
+    halfDayBefore: pol.halfDayBefore,
+    scheduledMinutes: scheduledMinutes(pol),
+    breakMinutes: pol.breakMinutes,
+    crossesMidnight: false,
+    source: 'policy',
+  });
+
+  // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
+  // from the calendar (holiday) so OT is classified at the right premium.
+  if (ra && !ra.isRestDay && ra.start && ra.end) {
+    const sched = Math.max(0, shiftSpan(ra.start, ra.end, ra.crosses!) - ra.brk!);
+    return {
+      dayType: hol ? 'holiday' : 'workday',
+      lateAfter: addGrace(ra.start, grace),
+      halfDayBefore: fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
+      scheduledMinutes: sched,
+      breakMinutes: ra.brk!,
+      crossesMidnight: ra.crosses!,
+      source: 'roster-shift',
+    };
+  }
+  if (hol) return policyBranch('holiday');
+  if (ra?.isRestDay) return { ...policyBranch('rest_day'), source: 'roster-rest' };
+  // No roster for this employee+date ⇒ company policy (working-days → workday/rest_day).
+  return policyBranch(pol.workingDays.includes(isoWeekday(date)) ? 'workday' : 'rest_day');
+}
+
+/** Derive status + worked/OT minutes against a resolved schedule — the shared rule that check-in/out apply
+ *  incrementally and a correction applies in one shot. Cross-midnight aware via spanMinutes(). */
 function deriveAttendance(
-  pol: Policy,
-  dayType: DayType,
+  s: ResolvedSchedule,
   checkInAt: string,
   checkOutAt: string | null,
 ): { status: 'present' | 'late' | 'half_day'; workedMinutes: number | null; otMinutes: number | null } {
   let status: 'present' | 'late' | 'half_day' =
-    dayType === 'workday' && toMinutes(checkInAt) > toMinutes(pol.lateAfter) ? 'late' : 'present';
+    s.dayType === 'workday' && toMinutes(checkInAt) > toMinutes(s.lateAfter) ? 'late' : 'present';
   if (!checkOutAt) return { status, workedMinutes: null, otMinutes: null };
-  if (dayType === 'workday' && status !== 'late' && toMinutes(checkOutAt) < toMinutes(pol.halfDayBefore)) {
+  // Half-day is a day-shift concept; skip it for cross-midnight shifts (checkout time-of-day is next-day).
+  if (
+    s.dayType === 'workday' &&
+    !s.crossesMidnight &&
+    status !== 'late' &&
+    toMinutes(checkOutAt) < toMinutes(s.halfDayBefore)
+  ) {
     status = 'half_day';
   }
-  const workedMinutes = workedFromSpan(toMinutes(checkOutAt) - toMinutes(checkInAt), pol.breakMinutes);
-  const otMinutes =
-    dayType === 'workday' ? Math.max(0, workedMinutes - scheduledMinutes(pol)) : workedMinutes;
+  const workedMinutes = workedFromSpan(spanMinutes(checkInAt, checkOutAt), s.breakMinutes);
+  const otMinutes = s.dayType === 'workday' ? Math.max(0, workedMinutes - s.scheduledMinutes) : workedMinutes;
   return { status, workedMinutes, otMinutes };
 }
 
@@ -133,11 +211,11 @@ export async function checkIn(
       .limit(1);
     if (existing) throw new AlreadyCheckedInError();
 
-    const pol = await policyFor(tx, p.employmentId);
-    const dayType = await dayTypeFor(tx, pol, p.date);
+    const sched = await scheduleFor(tx, p.employmentId, p.date);
+    const dayType = sched.dayType;
     // "Late" only means something against a schedule — rest-day/holiday work is just present.
     const status =
-      dayType === 'workday' && toMinutes(p.time) > toMinutes(pol.lateAfter) ? 'late' : 'present';
+      dayType === 'workday' && toMinutes(p.time) > toMinutes(sched.lateAfter) ? 'late' : 'present';
     const [row] = await tx
       .insert(attendance)
       .values({
@@ -174,24 +252,24 @@ export async function checkOut(
       .limit(1);
     if (!rec) throw new Error('No check-in recorded for this day');
     if (rec.checkOutAt) throw new Error('Already checked out');
-    if (rec.checkInAt && toMinutes(p.time) <= toMinutes(rec.checkInAt)) {
+    const checkInAt = rec.checkInAt ?? p.time;
+
+    // Resolve the roster/policy schedule, then freeze the day-type stamped at check-in (tolerating legacy
+    // rows). On a non-cross-midnight schedule check-out must be after check-in; a cross-midnight shift may
+    // legitimately check out at an earlier time-of-day (next day) — but never at the exact check-in time.
+    const sched0 = await scheduleFor(tx, p.employmentId, p.date);
+    const sched: ResolvedSchedule = rec.dayType ? { ...sched0, dayType: rec.dayType } : sched0;
+    if (!sched.crossesMidnight && toMinutes(p.time) <= toMinutes(checkInAt)) {
       throw new Error('Check-out must be after check-in');
     }
-
-    const pol = await policyFor(tx, p.employmentId);
-    // Tolerate legacy rows that pre-date day-type stamping.
-    const dayType: DayType = rec.dayType ?? (await dayTypeFor(tx, pol, p.date));
-    let status = rec.status;
-    if (dayType === 'workday' && status !== 'late' && toMinutes(p.time) < toMinutes(pol.halfDayBefore)) {
-      status = 'half_day';
+    if (toMinutes(p.time) === toMinutes(checkInAt)) {
+      throw new Error('Check-out must differ from check-in');
     }
 
-    const span = toMinutes(p.time) - toMinutes(rec.checkInAt ?? p.time);
-    const workedMinutes = workedFromSpan(span, pol.breakMinutes);
-    // Workday OT = beyond the scheduled net day; rest-day/holiday work is OT-class in full
-    // (EA 1955 pays it at premium rates — classification here, monetization in payroll).
-    const otMinutes =
-      dayType === 'workday' ? Math.max(0, workedMinutes - scheduledMinutes(pol)) : workedMinutes;
+    // Workday OT = beyond the scheduled net day; rest-day/holiday work is OT-class in full (EA 1955 pays it
+    // at premium rates — classification here, monetization in payroll). spanMinutes() is cross-midnight aware.
+    const { status, workedMinutes, otMinutes } = deriveAttendance(sched, checkInAt, p.time);
+    const dayType = sched.dayType;
 
     await tx
       .update(attendance)
@@ -534,9 +612,9 @@ export async function decideAttendanceCorrection(
     await assertCanDecide(tx, ctx, cor.employmentId, 'attendance correction');
 
     if (p.decision === 'approved') {
-      const pol = await policyFor(tx, cor.employmentId);
-      const dayType = await dayTypeFor(tx, pol, cor.attendanceDate);
-      const d = deriveAttendance(pol, dayType, cor.proposedCheckIn, cor.proposedCheckOut);
+      const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
+      const dayType = sched.dayType;
+      const d = deriveAttendance(sched, cor.proposedCheckIn, cor.proposedCheckOut);
       const [amended] = await tx
         .insert(attendance)
         .values({
