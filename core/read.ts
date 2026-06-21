@@ -391,7 +391,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string) {
         .select({
           leaveTypeId: leaveType.id,
           leaveType: leaveType.name,
-          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'accrual'), 0)`,
+          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual', 'in_lieu_accrual')), 0)`,
           taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
           balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
         })
@@ -460,7 +460,7 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
           name: person.fullName,
           leaveTypeId: leaveType.id,
           leaveType: leaveType.name,
-          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'accrual'), 0)`,
+          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual', 'in_lieu_accrual')), 0)`,
           taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
           balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
         })

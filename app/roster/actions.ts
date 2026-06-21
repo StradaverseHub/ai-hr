@@ -4,8 +4,23 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { archiveShift, assignShift, assignShiftBulk, clearRoster, createShift, setRestDay } from '@/core/roster';
+import { accrueToil } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
+
+export type AccrueToilResult = { ok: true; daysCredited: number; warning?: string } | { ok: false; error: string };
+
+/** ADR-0033 — bank a worked rest day as time in lieu from the roster variance card. */
+export async function accrueToilAction(input: { employmentId: string; workedDate: string }): Promise<AccrueToilResult> {
+  const s = await getSession();
+  try {
+    const r = await accrueToil(s, input);
+    revalidatePath('/roster');
+    return { ok: true, daysCredited: r.daysCredited, warning: r.complianceWarning };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
 
 const normTime = (t: string) => (/^\d{2}:\d{2}$/.test(t) ? `${t}:00` : t);
 

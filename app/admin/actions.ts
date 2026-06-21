@@ -35,6 +35,8 @@ import {
 } from '@/core/admin';
 import { openLeaveYear } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
+import { setToilPolicy, runToilExpiry } from '@/core/toil';
+import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { packFor } from '@/localization/registry';
 
@@ -43,6 +45,7 @@ const LEAVE = '/admin/leave';
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 const ATTENDANCE_POLICY = '/admin/attendance';
+const TOIL_POLICY = '/admin/toil';
 
 function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
@@ -423,6 +426,38 @@ export async function deleteLeaveTypeAction(fd: FormData) {
   const s = await getSession();
   try { await deleteLeaveType(s, { id: String(fd.get('id')) }); } catch (e) { fail(LEAVE, e); }
   ok(LEAVE);
+}
+
+// ADR-0033 33-4 — run the TOIL expiry sweep for today (manual; a scheduled job will do this later).
+export async function runToilExpiryAction() {
+  const s = await getSession();
+  const today = new Date().toISOString().slice(0, 10);
+  let result;
+  try {
+    result = await runToilExpiry(s, { today });
+  } catch (e) {
+    fail(TOIL_POLICY, e);
+  }
+  revalidatePath(TOIL_POLICY);
+  redirect(`${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}`);
+}
+
+// ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.
+export async function setToilPolicyAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await setToilPolicy(s, {
+      companyId: String(fd.get('companyId') ?? ''),
+      enabled: fd.get('enabled') === 'on',
+      accrualBasis: String(fd.get('accrualBasis') ?? 'hours_worked') as ToilAccrualBasis,
+      expiryDays: Number(fd.get('expiryDays') ?? 90),
+      onExpiry: String(fd.get('onExpiry') ?? 'convert_to_pay') as ToilExpiryAction,
+      allowFirstScheduleEligible: fd.get('allowFirstScheduleEligible') === 'on',
+    });
+  } catch (e) {
+    fail(TOIL_POLICY, e);
+  }
+  ok(TOIL_POLICY);
 }
 
 // ADR-0032 C7 — upsert one company's attendance policy (the no-roster default schedule).

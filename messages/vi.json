@@ -39,7 +39,10 @@
     "bulkDone": "Đã lập lịch cho {n} nhân viên",
     "employee": "Nhân viên",
     "noRest": "Không nghỉ",
-    "noRestWarningHint": "Xếp lịch mỗi ngày trong tuần này — EA 1955 mục 59 yêu cầu một ngày nghỉ mỗi tuần."
+    "noRestWarningHint": "Xếp lịch mỗi ngày trong tuần này — EA 1955 mục 59 yêu cầu một ngày nghỉ mỗi tuần.",
+    "bankInLieu": "Lưu nghỉ bù",
+    "bankInLieuPending": "Đang lưu…",
+    "bankInLieuDone": "Đã lưu {days, plural, other {# ngày}}"
   },
   "common": {
     "appName": "AI HR",
@@ -78,7 +81,8 @@
     "notifications": "Thông báo",
     "analytics": "Phân tích",
     "payComponents": "Thành phần lương",
-    "attendancePolicy": "Chính sách chấm công"
+    "attendancePolicy": "Chính sách chấm công",
+    "toilPolicy": "Nghỉ bù"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1354,6 +1358,32 @@
       "save": "Lưu chính sách",
       "lateHint": "Chấm vào sau “trễ sau” bị đánh dấu trễ; chấm ra trước “nửa ngày trước” tính là nửa ngày.",
       "rosterNote": "Nhân viên có phân ca sẽ dùng ca đã xếp thay cho lịch này. Ngày lễ luôn ghi đè loại ngày."
+    },
+    "toilPolicy": {
+      "pageTitle": "Nghỉ bù",
+      "pageDescription": "Cho phép công việc vào ngày nghỉ, ngày lễ hoặc tăng ca được lưu thành ngày nghỉ bù thay vì trả tiền mặt, theo từng công ty. Theo hợp đồng, không theo luật định: một ngày đã làm được trả tiền hoặc lưu bù, không phải cả hai.",
+      "envGateOff": "Nghỉ bù đang tắt trên toàn nền tảng (TOIL_ENABLED). Bạn có thể cấu hình chính sách tại đây, nhưng sẽ không có thời gian nào được lưu cho đến khi bật.",
+      "noCompanies": "Không có công ty trong phạm vi.",
+      "on": "Bật",
+      "off": "Tắt",
+      "enabledLabel": "Bật nghỉ bù cho công ty này",
+      "enabledHint": "Khi bật, quản lý có thể lưu một ngày nghỉ hoặc ngày lễ đã làm thành ngày nghỉ bù từ lịch ca.",
+      "accrualBasis": "Cơ sở tích lũy",
+      "basisHoursWorked": "Giờ đã làm (1:1)",
+      "basisPremiumEquivalent": "Tương đương phụ trội (× hệ số)",
+      "expiryDays": "Hết hạn (ngày)",
+      "onExpiry": "Khi hết hạn",
+      "expiryConvertToPay": "Chuyển thành tiền",
+      "expiryLapse": "Mất hiệu lực",
+      "allowEligibleLabel": "Cho phép nhân viên Biểu thứ nhất (≤ trần)",
+      "allowEligibleHint": "Tiền tăng ca theo luật thường áp dụng cho những nhân viên này. Nếu bật, việc lưu bù được phép nhưng thời gian chưa dùng luôn chuyển thành tiền khi hết hạn (không bao giờ mất hiệu lực), và hiển thị ghi chú tuân thủ. Hãy xác nhận với luật sư.",
+      "save": "Lưu chính sách",
+      "footnote": "Lấy ngày nghỉ bù là một đơn xin nghỉ bình thường theo loại Nghỉ bù. Ngày lễ và lịch ca không bị ảnh hưởng.",
+      "processTitle": "Hết hạn",
+      "processButton": "Xử lý hết hạn",
+      "processHint": "Chuyển thành tiền hoặc cho mất hiệu lực ngày nghỉ bù đã quá hạn, theo quy tắc cố định của từng khoản. Chạy cho hôm nay; một tác vụ theo lịch sẽ tự động hóa việc này sau.",
+      "processedBanner": "Đã xử lý {processed} khoản hết hạn: {converted} chuyển thành tiền, {lapsed} mất hiệu lực.",
+      "processedNone": "Không có ngày nghỉ bù nào đến hạn hết hiệu lực."
     }
   },
   "topbar": {

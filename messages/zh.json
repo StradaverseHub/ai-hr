@@ -39,7 +39,10 @@
     "bulkDone": "已为 {n} 名员工排班",
     "employee": "员工",
     "noRest": "无休息",
-    "noRestWarningHint": "本周每天都排班——《1955年雇佣法》第59条要求每周一天休息。"
+    "noRestWarningHint": "本周每天都排班——《1955年雇佣法》第59条要求每周一天休息。",
+    "bankInLieu": "存为调休",
+    "bankInLieuPending": "存入中…",
+    "bankInLieuDone": "已存 {days, plural, other {# 天}}"
   },
   "common": {
     "appName": "AI HR",
@@ -78,7 +81,8 @@
     "notifications": "通知",
     "analytics": "分析",
     "payComponents": "薪资组件",
-    "attendancePolicy": "考勤政策"
+    "attendancePolicy": "考勤政策",
+    "toilPolicy": "调休"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1354,6 +1358,32 @@
       "save": "保存政策",
       "lateHint": "在“迟到时间”之后打卡标记为迟到；在“半天界限”之前下班记为半天。",
       "rosterNote": "已分配排班的员工使用其排定班次而非此时间表。公共假期始终覆盖日期类型。"
+    },
+    "toilPolicy": {
+      "pageTitle": "调休",
+      "pageDescription": "允许将休息日、公共假期或加班的工作存为调休假，而非支付现金，按公司设置。属合同约定而非法定：已工作的一天要么支付，要么存休，不可两者兼得。",
+      "envGateOff": "调休已在整个平台关闭（TOIL_ENABLED）。你可以在此配置政策，但在启用之前不会存入任何时间。",
+      "noCompanies": "范围内没有公司。",
+      "on": "开",
+      "off": "关",
+      "enabledLabel": "为此公司启用调休",
+      "enabledHint": "启用后，管理者可从排班将已工作的休息日或假期存为调休假。",
+      "accrualBasis": "累计基准",
+      "basisHoursWorked": "工作小时（1:1）",
+      "basisPremiumEquivalent": "加成等值（× 倍率）",
+      "expiryDays": "有效期（天）",
+      "onExpiry": "到期时",
+      "expiryConvertToPay": "转为支付",
+      "expiryLapse": "失效",
+      "allowEligibleLabel": "允许第一附表（≤ 上限）员工",
+      "allowEligibleHint": "这些员工通常适用法定加班费。如启用，可存休，但未使用的时间在到期时始终转为支付（绝不失效），并显示合规提示。请与法律顾问确认。",
+      "save": "保存政策",
+      "footnote": "使用调休是针对调休假类型的普通请假申请。公共假期和排班不受影响。",
+      "processTitle": "到期处理",
+      "processButton": "处理到期",
+      "processHint": "按每笔记录的固定规则，将逾期的调休转为支付或作失效处理。针对今天运行；日后将由计划任务自动执行。",
+      "processedBanner": "已处理 {processed} 笔到期：{converted} 转为支付，{lapsed} 失效。",
+      "processedNone": "没有到期的调休。"
     }
   },
   "topbar": {

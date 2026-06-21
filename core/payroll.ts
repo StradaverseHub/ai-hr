@@ -351,6 +351,12 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
 
     // Per-day classified OT minutes within the pay period (per-day matters: the
     // rest-day ½/1-day rule cannot be computed from monthly aggregates).
+    // ADR-0033: when TOIL is on, a day already banked as time-in-lieu is excluded here — the worked OT is
+    // compensated once, as cash XOR leave. Flag off ⇒ no clause ⇒ byte-identical.
+    const excludeToilDays =
+      process.env.TOIL_ENABLED === 'true'
+        ? sql`not exists (select 1 from toil_accrual ta where ta.employment_id = ${attendance.employmentId} and ta.worked_date = ${attendance.attendanceDate} and ta.status <> 'lapsed')`
+        : undefined;
     const otRows = await tx
       .select({
         employmentId: attendance.employmentId,
@@ -365,6 +371,7 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           gte(attendance.attendanceDate, periodStart),
           lte(attendance.attendanceDate, periodEnd),
           gt(attendance.otMinutes, 0),
+          excludeToilDays,
         ),
       );
     if (otRows.length === 0) return { applied: 0, ineligible: 0 };
