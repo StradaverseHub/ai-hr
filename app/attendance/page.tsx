@@ -70,13 +70,26 @@ export default async function AttendancePage({
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
   ]);
   const monthHref = (m: string) => `/attendance?date=${date}&month=${m}`;
+  const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div data-tour="attendance-intro">
         <PageHeader
           title={t('title')}
-          actions={<TimelineNav from={date} isDefault={date === todayIso} basePath="/attendance" param="date" stepDays={1} />}
+          actions={
+            <div className="flex items-center gap-3">
+              {isAdmin && (
+                <Link
+                  href="/attendance/import"
+                  className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+                >
+                  {t('importPunches')}
+                </Link>
+              )}
+              <TimelineNav from={date} isDefault={date === todayIso} basePath="/attendance" param="date" stepDays={1} />
+            </div>
+          }
         />
       </div>
       <ErrorBanner message={sp.error} />

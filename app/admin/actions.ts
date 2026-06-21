@@ -34,6 +34,7 @@ import {
   updatePosition,
 } from '@/core/admin';
 import { openLeaveYear } from '@/core/leave';
+import { setAttendancePolicy } from '@/core/attendance';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { packFor } from '@/localization/registry';
 
@@ -41,6 +42,7 @@ const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
+const ATTENDANCE_POLICY = '/admin/attendance';
 
 function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
@@ -421,4 +423,23 @@ export async function deleteLeaveTypeAction(fd: FormData) {
   const s = await getSession();
   try { await deleteLeaveType(s, { id: String(fd.get('id')) }); } catch (e) { fail(LEAVE, e); }
   ok(LEAVE);
+}
+
+// ADR-0032 C7 — upsert one company's attendance policy (the no-roster default schedule).
+export async function setAttendancePolicyAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await setAttendancePolicy(s, {
+      companyId: String(fd.get('companyId') ?? ''),
+      workStart: String(fd.get('workStart') ?? ''),
+      workEnd: String(fd.get('workEnd') ?? ''),
+      breakMinutes: Number(fd.get('breakMinutes') ?? 0),
+      lateAfter: String(fd.get('lateAfter') ?? ''),
+      halfDayBefore: String(fd.get('halfDayBefore') ?? ''),
+      workingDays: fd.getAll('workingDays').map((d) => Number(d)),
+    });
+  } catch (e) {
+    fail(ATTENDANCE_POLICY, e);
+  }
+  ok(ATTENDANCE_POLICY);
 }

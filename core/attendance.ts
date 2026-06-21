@@ -16,6 +16,7 @@ import {
   attendanceCorrection,
   attendancePolicy,
   company,
+  employeeStatutoryMy,
   employment,
   holiday,
   leaveRequest,
@@ -23,6 +24,7 @@ import {
   rosterAssignment,
   shift,
 } from '../db/schema';
+import { parseAttendanceCsv } from '../lib/attendance-csv';
 
 export class AlreadyCheckedInError extends Error {
   constructor() {
@@ -736,4 +738,332 @@ export function myAttendanceCorrections(ctx: SessionContext, employmentId: strin
       .orderBy(desc(attendanceCorrection.createdAt))
       .limit(limit),
   );
+}
+
+// ─── ADR-0032 C7 · attendance policy (the no-roster default schedule the engine resolves against) ─────
+export type AttendancePolicyView = {
+  companyId: string;
+  workStart: string;
+  workEnd: string;
+  breakMinutes: number;
+  lateAfter: string;
+  halfDayBefore: string;
+  workingDays: number[];
+  isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
+};
+
+/** Each requested company's saved attendance policy, falling back to the engine defaults (DEFAULTS) where
+ *  none exists yet — so the editor always renders a complete, sensible schedule to start from. */
+export function listAttendancePolicies(
+  ctx: SessionContext,
+  companyIds: string[],
+): Promise<AttendancePolicyView[]> {
+  return withTenant(ctx, async (tx) => {
+    if (companyIds.length === 0) return [];
+    const rows = await tx
+      .select({
+        companyId: attendancePolicy.companyId,
+        workStart: attendancePolicy.workStart,
+        workEnd: attendancePolicy.workEnd,
+        breakMinutes: attendancePolicy.breakMinutes,
+        lateAfter: attendancePolicy.lateAfter,
+        halfDayBefore: attendancePolicy.halfDayBefore,
+        workingDays: attendancePolicy.workingDays,
+      })
+      .from(attendancePolicy)
+      .where(inArray(attendancePolicy.companyId, companyIds));
+    const byCompany = new Map(rows.map((r) => [r.companyId, r]));
+    return companyIds.map((companyId) => {
+      const r = byCompany.get(companyId);
+      return r
+        ? { ...r, isDefault: false }
+        : {
+            companyId,
+            workStart: DEFAULTS.workStart,
+            workEnd: DEFAULTS.workEnd,
+            breakMinutes: DEFAULTS.breakMinutes,
+            lateAfter: DEFAULTS.lateAfter,
+            halfDayBefore: DEFAULTS.halfDayBefore,
+            workingDays: DEFAULTS.workingDays,
+            isDefault: true,
+          };
+    });
+  });
+}
+
+const asTime = (v: string, label: string): string => {
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(v)) throw new Error(`${label} must be HH:MM.`);
+  return v.length === 5 ? `${v}:00` : v;
+};
+
+/** Upsert one company's attendance policy (one row per company; RLS gates write to admins of that company).
+ *  Validates the schedule is coherent, then appends attendance-policy.updated. This is the fallback schedule
+ *  the time engine uses whenever an employee has no roster row for a date. */
+export async function setAttendancePolicy(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    workStart: string;
+    workEnd: string;
+    breakMinutes: number;
+    lateAfter: string;
+    halfDayBefore: string;
+    workingDays: number[];
+  },
+) {
+  const workStart = asTime(p.workStart, 'Work start');
+  const workEnd = asTime(p.workEnd, 'Work end');
+  const lateAfter = asTime(p.lateAfter, 'Late-after');
+  const halfDayBefore = asTime(p.halfDayBefore, 'Half-day-before');
+  if (toMinutes(workEnd) <= toMinutes(workStart)) throw new Error('Work end must be after work start.');
+  if (toMinutes(lateAfter) < toMinutes(workStart)) throw new Error('Late-after must be at or after work start.');
+  const breakMinutes = Math.trunc(p.breakMinutes);
+  if (!Number.isFinite(breakMinutes) || breakMinutes < 0 || breakMinutes > 480)
+    throw new Error('Break minutes must be between 0 and 480.');
+  if (toMinutes(workEnd) - toMinutes(workStart) <= breakMinutes)
+    throw new Error('The working span must exceed the break.');
+  const workingDays = [...new Set(p.workingDays)].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7).sort();
+  if (workingDays.length === 0) throw new Error('Select at least one working day.');
+
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(attendancePolicy)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId: p.companyId,
+        workStart,
+        workEnd,
+        breakMinutes,
+        lateAfter,
+        halfDayBefore,
+        workingDays,
+      })
+      .onConflictDoUpdate({
+        target: attendancePolicy.companyId,
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays },
+      })
+      .returning({ id: attendancePolicy.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-policy',
+      aggregateId: row.id,
+      eventType: 'attendance-policy.updated',
+      actor: actorOf(ctx),
+      payload: { companyId: p.companyId, workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays },
+    });
+    return row;
+  });
+}
+
+// ─── ADR-0032 C6 · biometric / terminal punch import ──────────────────────────────────────────────────
+// Reconcile raw clock punches (CSV) into attendance rows. Roster-aware: a rostered shift defines a window
+// (shift start..end, +1 day when it crosses midnight, ± a buffer) and every punch inside it belongs to that
+// shift's business day — so a 22:00→06:00 night shift becomes ONE row keyed to the shift's start date with
+// check-in 22:00 / check-out 06:00 (the engine's spanMinutes() handles the wrap). Employees with no roster
+// fall back to calendar-day grouping (the pre-Phase-C behaviour). check-in = earliest punch by full datetime,
+// check-out = latest; a lone punch records check-in only. Dry-run computes the same preview without writing.
+const PUNCH_WINDOW_BUFFER_MIN = 180; // ± window around a rostered shift to still attribute an early/late punch
+const dayIndex = (date: string): number => Math.round(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
+const addDays = (date: string, n: number): string =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const dtMinutes = (date: string, time: string): number => dayIndex(date) * MINS_PER_DAY + toMinutes(time);
+const onlyDigits = (s: string): string => s.replace(/\D/g, '');
+
+export type PunchImportPreviewRow = {
+  employmentId: string;
+  name: string;
+  date: string;
+  checkIn: string;
+  checkOut: string | null;
+  status: 'present' | 'late' | 'half_day';
+  dayType: DayType;
+  workedMinutes: number | null;
+  otMinutes: number | null;
+  punchCount: number;
+  source: ResolvedSchedule['source'];
+};
+export type PunchImportResult = {
+  parseErrors: string[];
+  unmatchedRefs: string[];
+  matchedPunches: number;
+  reconciledDays: number;
+  imported: number;
+  dryRun: boolean;
+  preview: PunchImportPreviewRow[];
+};
+
+export async function importAttendancePunches(
+  ctx: SessionContext,
+  p: { csvText: string; dryRun: boolean },
+): Promise<PunchImportResult> {
+  const parsed = parseAttendanceCsv(p.csvText);
+  return withTenant(ctx, async (tx) => {
+    // 1 · Match keys for every active employee the caller may see (RLS-scoped): employee code + IC number.
+    const emps = await tx
+      .select({
+        id: employment.id,
+        code: employment.employeeCode,
+        name: person.fullName,
+        ic: employeeStatutoryMy.icNumber,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(isNull(employment.terminatedOn));
+    const byRef = new Map<string, { id: string; name: string }>();
+    for (const e of emps) {
+      if (e.code) byRef.set(e.code.toLowerCase(), { id: e.id, name: e.name });
+      if (e.ic) byRef.set(onlyDigits(e.ic), { id: e.id, name: e.name });
+    }
+    const matchRef = (ref: string) =>
+      byRef.get(ref.toLowerCase()) ?? (onlyDigits(ref) ? byRef.get(onlyDigits(ref)) : undefined);
+
+    // 2 · Match punches → employments; unmatched refs are reported, never guessed.
+    type MP = { employmentId: string; name: string; date: string; time: string };
+    const matched: MP[] = [];
+    const unmatched = new Set<string>();
+    for (const pu of parsed.punches) {
+      const m = matchRef(pu.employeeRef);
+      if (!m) {
+        unmatched.add(pu.employeeRef);
+        continue;
+      }
+      matched.push({ employmentId: m.id, name: m.name, date: pu.date, time: pu.time });
+    }
+    const empty: PunchImportResult = {
+      parseErrors: parsed.errors,
+      unmatchedRefs: [...unmatched],
+      matchedPunches: 0,
+      reconciledDays: 0,
+      imported: 0,
+      dryRun: p.dryRun,
+      preview: [],
+    };
+    if (matched.length === 0) return empty;
+
+    // 3 · Rostered shift windows for the matched employees over the punch range (± a day for cross-midnight
+    //     tails). Each window maps a real-time span to one business day; sort by start so the earlier shift
+    //     claims a boundary punch (a night-shift checkout at 06:00 belongs to the prior day, not that morning).
+    const dates = matched.map((m) => m.date).sort();
+    const from = addDays(dates[0], -1);
+    const to = addDays(dates[dates.length - 1], 1);
+    const empIds = [...new Set(matched.map((m) => m.employmentId))];
+    const ras = await tx
+      .select({
+        employmentId: rosterAssignment.employmentId,
+        shiftDate: rosterAssignment.shiftDate,
+        start: shift.startTime,
+        end: shift.endTime,
+        crosses: shift.crossesMidnight,
+      })
+      .from(rosterAssignment)
+      .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(
+        and(
+          inArray(rosterAssignment.employmentId, empIds),
+          gte(rosterAssignment.shiftDate, from),
+          lte(rosterAssignment.shiftDate, to),
+        ),
+      );
+    type Win = { day: string; startDt: number; endDt: number };
+    const windowsByEmp = new Map<string, Win[]>();
+    for (const r of ras) {
+      const endDay = r.crosses ? addDays(r.shiftDate, 1) : r.shiftDate;
+      const arr = windowsByEmp.get(r.employmentId) ?? [];
+      arr.push({
+        day: r.shiftDate,
+        startDt: dtMinutes(r.shiftDate, r.start) - PUNCH_WINDOW_BUFFER_MIN,
+        endDt: dtMinutes(endDay, r.end) + PUNCH_WINDOW_BUFFER_MIN,
+      });
+      windowsByEmp.set(r.employmentId, arr);
+    }
+    for (const arr of windowsByEmp.values()) arr.sort((a, b) => a.startDt - b.startDt);
+
+    // 4 · Assign each punch to a business day: the rostered window it falls in, else its own calendar day.
+    type Grp = { employmentId: string; name: string; day: string; punches: { time: string; dt: number }[] };
+    const groups = new Map<string, Grp>();
+    for (const m of matched) {
+      const pDt = dtMinutes(m.date, m.time);
+      const win = (windowsByEmp.get(m.employmentId) ?? []).find((w) => pDt >= w.startDt && pDt <= w.endDt);
+      const day = win ? win.day : m.date;
+      const key = `${m.employmentId}|${day}`;
+      const g = groups.get(key) ?? { employmentId: m.employmentId, name: m.name, day, punches: [] };
+      g.punches.push({ time: m.time, dt: pDt });
+      groups.set(key, g);
+    }
+
+    // 5 · Per (employee, business day): earliest punch = check-in, latest = check-out (ordered by full
+    //     datetime, so a cross-midnight pair orders correctly). Derive against the schedule, then upsert.
+    const preview: PunchImportPreviewRow[] = [];
+    let imported = 0;
+    for (const g of groups.values()) {
+      const ordered = [...g.punches].sort((a, b) => a.dt - b.dt);
+      const checkIn = ordered[0].time;
+      const checkOut = ordered.length > 1 ? ordered[ordered.length - 1].time : null;
+      const sched = await scheduleFor(tx, g.employmentId, g.day);
+      const d = deriveAttendance(sched, checkIn, checkOut);
+      preview.push({
+        employmentId: g.employmentId,
+        name: g.name,
+        date: g.day,
+        checkIn,
+        checkOut,
+        status: d.status,
+        dayType: sched.dayType,
+        workedMinutes: d.workedMinutes,
+        otMinutes: d.otMinutes,
+        punchCount: g.punches.length,
+        source: sched.source,
+      });
+      if (!p.dryRun) {
+        const [row] = await tx
+          .insert(attendance)
+          .values({
+            tenantId: ctx.tenantId,
+            employmentId: g.employmentId,
+            attendanceDate: g.day,
+            checkInAt: checkIn,
+            checkOutAt: checkOut,
+            status: d.status,
+            dayType: sched.dayType,
+            workedMinutes: d.workedMinutes,
+            otMinutes: d.otMinutes,
+            remarks: 'Imported (terminal)',
+          })
+          .onConflictDoUpdate({
+            target: [attendance.employmentId, attendance.attendanceDate],
+            set: {
+              checkInAt: checkIn,
+              checkOutAt: checkOut,
+              status: d.status,
+              dayType: sched.dayType,
+              workedMinutes: d.workedMinutes,
+              otMinutes: d.otMinutes,
+              remarks: 'Imported (terminal)',
+            },
+          })
+          .returning({ id: attendance.id });
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'attendance',
+          aggregateId: row.id,
+          eventType: 'attendance.imported',
+          actor: actorOf(ctx),
+          subjectEmploymentId: g.employmentId,
+          payload: { date: g.day, checkIn, checkOut, source: 'terminal', punchCount: g.punches.length },
+        });
+        imported += 1;
+      }
+    }
+    preview.sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+    return {
+      parseErrors: parsed.errors,
+      unmatchedRefs: [...unmatched],
+      matchedPunches: matched.length,
+      reconciledDays: groups.size,
+      imported,
+      dryRun: p.dryRun,
+      preview,
+    };
+  });
 }
