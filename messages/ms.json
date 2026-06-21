@@ -39,7 +39,10 @@
     "bulkDone": "{n} pekerja diroster",
     "employee": "Pekerja",
     "noRest": "Tiada rehat",
-    "noRestWarningHint": "Dijadualkan setiap hari minggu ini — EA 1955 s.59 memerlukan satu hari rehat seminggu."
+    "noRestWarningHint": "Dijadualkan setiap hari minggu ini — EA 1955 s.59 memerlukan satu hari rehat seminggu.",
+    "bankInLieu": "Simpan cuti ganti",
+    "bankInLieuPending": "Menyimpan…",
+    "bankInLieuDone": "Disimpan {days, plural, other {# hari}}"
   },
   "common": {
     "appName": "AI HR",
@@ -78,7 +81,8 @@
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
     "payComponents": "Komponen gaji",
-    "attendancePolicy": "Dasar kehadiran"
+    "attendancePolicy": "Dasar kehadiran",
+    "toilPolicy": "Cuti ganti"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1354,6 +1358,27 @@
       "save": "Simpan dasar",
       "lateHint": "Daftar masuk selepas “lewat selepas” ditanda lewat; daftar keluar sebelum “setengah hari sebelum” ialah setengah hari.",
       "rosterNote": "Pekerja yang mempunyai jadual syif menggunakan syif berjadual mereka, bukan jadual ini. Cuti umum sentiasa mengatasi jenis hari."
+    },
+    "toilPolicy": {
+      "pageTitle": "Cuti ganti",
+      "pageDescription": "Benarkan kerja pada hari rehat, cuti umum atau lebih masa disimpan sebagai cuti ganti dan bukan dibayar tunai, mengikut syarikat. Kontraktual, bukan statutori: hari yang dikerjakan dibayar atau disimpan, tidak kedua-duanya.",
+      "envGateOff": "Cuti ganti dimatikan untuk seluruh platform (TOIL_ENABLED). Anda boleh mengkonfigurasi dasar di sini, tetapi tiada masa akan disimpan sehingga ia diaktifkan.",
+      "noCompanies": "Tiada syarikat dalam skop.",
+      "on": "Hidup",
+      "off": "Mati",
+      "enabledLabel": "Aktifkan cuti ganti untuk syarikat ini",
+      "enabledHint": "Apabila hidup, pengurus boleh menyimpan hari rehat atau cuti umum yang dikerjakan sebagai cuti ganti dari jadual.",
+      "accrualBasis": "Asas terkumpul",
+      "basisHoursWorked": "Jam bekerja (1:1)",
+      "basisPremiumEquivalent": "Setara premium (× kadar)",
+      "expiryDays": "Tamat tempoh (hari)",
+      "onExpiry": "Apabila tamat tempoh",
+      "expiryConvertToPay": "Tukar kepada bayaran",
+      "expiryLapse": "Luput",
+      "allowEligibleLabel": "Benarkan pekerja Jadual Pertama (≤ siling)",
+      "allowEligibleHint": "Bayaran lebih masa statutori biasanya terpakai kepada pekerja ini. Jika diaktifkan, penyimpanan dibenarkan tetapi masa yang tidak digunakan sentiasa ditukar kepada bayaran apabila tamat tempoh (tidak pernah luput), dan nota pematuhan ditunjukkan. Sahkan dengan peguam.",
+      "save": "Simpan dasar",
+      "footnote": "Mengambil cuti ganti ialah permohonan cuti biasa terhadap jenis Cuti Ganti. Cuti umum dan jadual tidak terjejas."
     }
   },
   "topbar": {

@@ -3,8 +3,10 @@ import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listShifts, rosterForRange, rosterVariance } from '@/core/roster';
+import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
+import { ToilElectButton } from '@/components/toil-elect-button';
 import { archiveShiftAction, createShiftAction } from './actions';
 
 const DAY = 86_400_000;
@@ -42,13 +44,16 @@ export default async function RosterPage({
   const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : todayIso);
   const weekEnd = addDays(weekStart, 6);
 
-  const [employees, shifts, roster, variance] = await Promise.all([
+  const [employees, shifts, roster, variance, toilPolicies] = await Promise.all([
     listEmployees(s, [companyId]),
     listShifts(s, companyId),
     rosterForRange(s, { from: weekStart, to: weekEnd }),
     rosterVariance(s, { from: weekStart, to: weekEnd, companyIds: [companyId], today: todayIso }),
+    listToilPolicies(s, [companyId]),
   ]);
   const exceptions = variance.filter((v) => v.kind !== 'on_track');
+  // "Bank in lieu" appears on rest-worked rows only when TOIL is on (env kill-switch AND company policy).
+  const toilOn = process.env.TOIL_ENABLED === 'true' && (toilPolicies[0]?.enabled ?? false);
   const kindBadge: Record<string, string> = {
     no_show: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
     late: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
@@ -192,7 +197,12 @@ export default async function RosterPage({
                     {v.shiftDate} · {v.shiftName ?? t('rest')}
                   </span>
                 </div>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${kindBadge[v.kind]}`}>{kindLabel[v.kind]}</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${kindBadge[v.kind]}`}>{kindLabel[v.kind]}</span>
+                  {toilOn && v.kind === 'rest_worked' && (
+                    <ToilElectButton employmentId={v.employmentId} workedDate={v.shiftDate} />
+                  )}
+                </span>
               </li>
             ))}
           </ul>

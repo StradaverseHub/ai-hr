@@ -39,7 +39,10 @@
     "bulkDone": "Rostered {n} employees",
     "employee": "Employee",
     "noRest": "No rest",
-    "noRestWarningHint": "Scheduled every day this week — EA 1955 s.59 requires one rest day per week."
+    "noRestWarningHint": "Scheduled every day this week — EA 1955 s.59 requires one rest day per week.",
+    "bankInLieu": "Bank in lieu",
+    "bankInLieuPending": "Banking…",
+    "bankInLieuDone": "Banked {days, plural, =1 {# day} other {# days}}"
   },
   "common": {
     "appName": "AI HR",
@@ -78,7 +81,8 @@
     "notifications": "Notifications",
     "analytics": "Analytics",
     "payComponents": "Pay components",
-    "attendancePolicy": "Attendance policy"
+    "attendancePolicy": "Attendance policy",
+    "toilPolicy": "Time off in lieu"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1354,6 +1358,27 @@
       "save": "Save policy",
       "lateHint": "Check-in after “late after” is flagged late; check-out before “half-day before” is a half-day.",
       "rosterNote": "Employees with a roster assignment use their rostered shift instead of this schedule. Public holidays always override the day type."
+    },
+    "toilPolicy": {
+      "pageTitle": "Time off in lieu",
+      "pageDescription": "Let rest-day, holiday, or overtime work be banked as replacement leave instead of paid as cash, per company. Contractual, not statutory: a worked day is paid or banked, never both.",
+      "envGateOff": "Time off in lieu is switched off platform-wide (TOIL_ENABLED). You can configure policies here, but no time will be banked until it is enabled.",
+      "noCompanies": "No companies in scope.",
+      "on": "On",
+      "off": "Off",
+      "enabledLabel": "Enable time off in lieu for this company",
+      "enabledHint": "When on, managers can bank a worked rest day or holiday as replacement leave from the roster.",
+      "accrualBasis": "Accrual basis",
+      "basisHoursWorked": "Hours worked (1:1)",
+      "basisPremiumEquivalent": "Premium-equivalent (× rate)",
+      "expiryDays": "Expiry (days)",
+      "onExpiry": "On expiry",
+      "expiryConvertToPay": "Convert to pay",
+      "expiryLapse": "Lapse",
+      "allowEligibleLabel": "Allow First-Schedule (≤ ceiling) employees",
+      "allowEligibleHint": "Statutory overtime pay normally applies to these employees. If enabled, banking is allowed but unused time always converts to pay on expiry (never lapses), and a compliance note is shown. Confirm with counsel.",
+      "save": "Save policy",
+      "footnote": "Taking time in lieu is a normal leave request against the Replacement Leave type. Public holidays and rosters are unaffected."
     }
   },
   "topbar": {
