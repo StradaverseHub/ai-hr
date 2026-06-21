@@ -75,5 +75,10 @@ Each accrual writes **both** a `toil_accrual` row **and** a `leaveLedger { entry
 - **Negative / risks:** TOIL's lawfulness for First-Schedule employees is genuinely contested — mitigated by warn + forced-convert-on-expiry + counsel deferral, never an assertion by the system. Mutual-exclusion with OT pay adds a cross-check both code paths must honour (covered by 33-6). `premium_equivalent` accrual interacts with ORP and is opt-in, not default.
 - **Reversible:** flag-gated; off ⇒ byte-identical; the register is additive.
 
-## 6. Open question for the customer (pre-33-3)
-One decision the system cannot make: for First-Schedule-eligible (≤ RM4,000) staff, does the customer's policy + counsel permit TOIL **at all** (with forced convert-on-expiry), or should TOIL be **restricted to > RM4,000** employees only? The engine supports both via `allowFirstScheduleEligible`; the default ships **false** (TOIL offered only where no statutory OT entitlement exists) as the conservative posture.
+## 6. Resolved — `allowFirstScheduleEligible` is a per-company toggle (decision 2026-06-21)
+The customer asked for **both paths, switchable**, rather than a hard-coded stance. So `toil_policy.allowFirstScheduleEligible` is an admin-facing per-company toggle:
+
+- **OFF (default):** First-Schedule-eligible (≤ RM4,000) staff **cannot elect TOIL** — statutory cash OT only; `accrueToil` refuses with a clear reason. Employees > RM4,000 are always eligible.
+- **ON:** ≤ RM4,000 staff **may elect TOIL**, but the statutory-floor protections stay welded on — a compliance warning is surfaced at election, and unused TOIL **force-converts to pay on expiry, never lapses** (regardless of `onExpiry`). Employees > RM4,000: free choice, lapse permitted.
+
+The toggle governs *eligibility to elect* only; it never disables the floor protections (no-double-pay, forced-convert-for-eligible, explicit agreement). This keeps the conservative posture as the default while letting a customer whose counsel permits it opt in per company.
