@@ -740,6 +740,121 @@ export function myAttendanceCorrections(ctx: SessionContext, employmentId: strin
   );
 }
 
+// ─── ADR-0032 C7 · attendance policy (the no-roster default schedule the engine resolves against) ─────
+export type AttendancePolicyView = {
+  companyId: string;
+  workStart: string;
+  workEnd: string;
+  breakMinutes: number;
+  lateAfter: string;
+  halfDayBefore: string;
+  workingDays: number[];
+  isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
+};
+
+/** Each requested company's saved attendance policy, falling back to the engine defaults (DEFAULTS) where
+ *  none exists yet — so the editor always renders a complete, sensible schedule to start from. */
+export function listAttendancePolicies(
+  ctx: SessionContext,
+  companyIds: string[],
+): Promise<AttendancePolicyView[]> {
+  return withTenant(ctx, async (tx) => {
+    if (companyIds.length === 0) return [];
+    const rows = await tx
+      .select({
+        companyId: attendancePolicy.companyId,
+        workStart: attendancePolicy.workStart,
+        workEnd: attendancePolicy.workEnd,
+        breakMinutes: attendancePolicy.breakMinutes,
+        lateAfter: attendancePolicy.lateAfter,
+        halfDayBefore: attendancePolicy.halfDayBefore,
+        workingDays: attendancePolicy.workingDays,
+      })
+      .from(attendancePolicy)
+      .where(inArray(attendancePolicy.companyId, companyIds));
+    const byCompany = new Map(rows.map((r) => [r.companyId, r]));
+    return companyIds.map((companyId) => {
+      const r = byCompany.get(companyId);
+      return r
+        ? { ...r, isDefault: false }
+        : {
+            companyId,
+            workStart: DEFAULTS.workStart,
+            workEnd: DEFAULTS.workEnd,
+            breakMinutes: DEFAULTS.breakMinutes,
+            lateAfter: DEFAULTS.lateAfter,
+            halfDayBefore: DEFAULTS.halfDayBefore,
+            workingDays: DEFAULTS.workingDays,
+            isDefault: true,
+          };
+    });
+  });
+}
+
+const asTime = (v: string, label: string): string => {
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(v)) throw new Error(`${label} must be HH:MM.`);
+  return v.length === 5 ? `${v}:00` : v;
+};
+
+/** Upsert one company's attendance policy (one row per company; RLS gates write to admins of that company).
+ *  Validates the schedule is coherent, then appends attendance-policy.updated. This is the fallback schedule
+ *  the time engine uses whenever an employee has no roster row for a date. */
+export async function setAttendancePolicy(
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    workStart: string;
+    workEnd: string;
+    breakMinutes: number;
+    lateAfter: string;
+    halfDayBefore: string;
+    workingDays: number[];
+  },
+) {
+  const workStart = asTime(p.workStart, 'Work start');
+  const workEnd = asTime(p.workEnd, 'Work end');
+  const lateAfter = asTime(p.lateAfter, 'Late-after');
+  const halfDayBefore = asTime(p.halfDayBefore, 'Half-day-before');
+  if (toMinutes(workEnd) <= toMinutes(workStart)) throw new Error('Work end must be after work start.');
+  if (toMinutes(lateAfter) < toMinutes(workStart)) throw new Error('Late-after must be at or after work start.');
+  const breakMinutes = Math.trunc(p.breakMinutes);
+  if (!Number.isFinite(breakMinutes) || breakMinutes < 0 || breakMinutes > 480)
+    throw new Error('Break minutes must be between 0 and 480.');
+  if (toMinutes(workEnd) - toMinutes(workStart) <= breakMinutes)
+    throw new Error('The working span must exceed the break.');
+  const workingDays = [...new Set(p.workingDays)].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7).sort();
+  if (workingDays.length === 0) throw new Error('Select at least one working day.');
+
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(attendancePolicy)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId: p.companyId,
+        workStart,
+        workEnd,
+        breakMinutes,
+        lateAfter,
+        halfDayBefore,
+        workingDays,
+      })
+      .onConflictDoUpdate({
+        target: attendancePolicy.companyId,
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays },
+      })
+      .returning({ id: attendancePolicy.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-policy',
+      aggregateId: row.id,
+      eventType: 'attendance-policy.updated',
+      actor: actorOf(ctx),
+      payload: { companyId: p.companyId, workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays },
+    });
+    return row;
+  });
+}
+
 // ─── ADR-0032 C6 · biometric / terminal punch import ──────────────────────────────────────────────────
 // Reconcile raw clock punches (CSV) into attendance rows. Roster-aware: a rostered shift defines a window
 // (shift start..end, +1 day when it crosses midnight, ± a buffer) and every punch inside it belongs to that

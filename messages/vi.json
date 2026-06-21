@@ -77,7 +77,8 @@
     "aiConfig": "AI",
     "notifications": "Thông báo",
     "analytics": "Phân tích",
-    "payComponents": "Thành phần lương"
+    "payComponents": "Thành phần lương",
+    "attendancePolicy": "Chính sách chấm công"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1330,6 +1331,29 @@
       "useThis": "Dùng nhà cung cấp này",
       "remove": "Xóa",
       "turnOff": "Tắt soạn thảo bằng AI"
+    },
+    "attendancePolicy": {
+      "pageTitle": "Chính sách chấm công",
+      "pageDescription": "Lịch làm việc mặc định mỗi công ty áp dụng khi nhân viên không có lịch ca cho một ngày. Giờ tăng ca được tính trên số giờ theo lịch này; lịch ca đã lưu được ưu tiên.",
+      "noCompanies": "Không có công ty trong phạm vi.",
+      "usingDefaults": "Đang dùng mặc định",
+      "netScheduled": "Theo lịch thực {hours}",
+      "workStart": "Bắt đầu làm",
+      "workEnd": "Kết thúc làm",
+      "breakMinutes": "Nghỉ (phút)",
+      "lateAfter": "Trễ sau",
+      "halfDayBefore": "Nửa ngày trước",
+      "workingDays": "Ngày làm việc",
+      "dayMon": "T2",
+      "dayTue": "T3",
+      "dayWed": "T4",
+      "dayThu": "T5",
+      "dayFri": "T6",
+      "daySat": "T7",
+      "daySun": "CN",
+      "save": "Lưu chính sách",
+      "lateHint": "Chấm vào sau “trễ sau” bị đánh dấu trễ; chấm ra trước “nửa ngày trước” tính là nửa ngày.",
+      "rosterNote": "Nhân viên có phân ca sẽ dùng ca đã xếp thay cho lịch này. Ngày lễ luôn ghi đè loại ngày."
     }
   },
   "topbar": {

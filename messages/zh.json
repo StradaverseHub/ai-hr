@@ -77,7 +77,8 @@
     "aiConfig": "AI",
     "notifications": "通知",
     "analytics": "分析",
-    "payComponents": "薪资组件"
+    "payComponents": "薪资组件",
+    "attendancePolicy": "考勤政策"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1330,6 +1331,29 @@
       "useThis": "使用此提供商",
       "remove": "移除",
       "turnOff": "关闭 AI 起草"
+    },
+    "attendancePolicy": {
+      "pageTitle": "考勤政策",
+      "pageDescription": "当员工某天没有排班时，各公司采用的默认工作时间表。加班按此排定工时之上计算；已保存的排班优先。",
+      "noCompanies": "范围内没有公司。",
+      "usingDefaults": "使用默认值",
+      "netScheduled": "净排定 {hours}",
+      "workStart": "上班时间",
+      "workEnd": "下班时间",
+      "breakMinutes": "休息（分钟）",
+      "lateAfter": "迟到时间",
+      "halfDayBefore": "半天界限",
+      "workingDays": "工作日",
+      "dayMon": "一",
+      "dayTue": "二",
+      "dayWed": "三",
+      "dayThu": "四",
+      "dayFri": "五",
+      "daySat": "六",
+      "daySun": "日",
+      "save": "保存政策",
+      "lateHint": "在“迟到时间”之后打卡标记为迟到；在“半天界限”之前下班记为半天。",
+      "rosterNote": "已分配排班的员工使用其排定班次而非此时间表。公共假期始终覆盖日期类型。"
     }
   },
   "topbar": {

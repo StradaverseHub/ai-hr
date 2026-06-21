@@ -77,7 +77,8 @@
     "aiConfig": "AI",
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
-    "payComponents": "Komponen gaji"
+    "payComponents": "Komponen gaji",
+    "attendancePolicy": "Dasar kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1330,6 +1331,29 @@
       "useThis": "Guna penyedia ini",
       "remove": "Buang",
       "turnOff": "Matikan drafan AI"
+    },
+    "attendancePolicy": {
+      "pageTitle": "Dasar kehadiran",
+      "pageDescription": "Jadual kerja lalai yang digunakan setiap syarikat apabila pekerja tiada jadual syif untuk sesuatu tarikh. Kerja lebih masa dikira melebihi waktu berjadual ini; jadual syif yang disimpan diutamakan.",
+      "noCompanies": "Tiada syarikat dalam skop.",
+      "usingDefaults": "Menggunakan lalai",
+      "netScheduled": "Bersih berjadual {hours}",
+      "workStart": "Mula kerja",
+      "workEnd": "Tamat kerja",
+      "breakMinutes": "Rehat (minit)",
+      "lateAfter": "Lewat selepas",
+      "halfDayBefore": "Setengah hari sebelum",
+      "workingDays": "Hari bekerja",
+      "dayMon": "Isn",
+      "dayTue": "Sel",
+      "dayWed": "Rab",
+      "dayThu": "Kha",
+      "dayFri": "Jum",
+      "daySat": "Sab",
+      "daySun": "Ahd",
+      "save": "Simpan dasar",
+      "lateHint": "Daftar masuk selepas “lewat selepas” ditanda lewat; daftar keluar sebelum “setengah hari sebelum” ialah setengah hari.",
+      "rosterNote": "Pekerja yang mempunyai jadual syif menggunakan syif berjadual mereka, bukan jadual ini. Cuti umum sentiasa mengatasi jenis hari."
     }
   },
   "topbar": {

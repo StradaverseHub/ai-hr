@@ -77,7 +77,8 @@
     "aiConfig": "AI",
     "notifications": "Notifications",
     "analytics": "Analytics",
-    "payComponents": "Pay components"
+    "payComponents": "Pay components",
+    "attendancePolicy": "Attendance policy"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1330,6 +1331,29 @@
       "useThis": "Use this provider",
       "remove": "Remove",
       "turnOff": "Turn off AI drafting"
+    },
+    "attendancePolicy": {
+      "pageTitle": "Attendance policy",
+      "pageDescription": "The default working schedule each company falls back to when an employee has no roster for a date. Overtime is computed above these scheduled hours; a saved roster takes precedence.",
+      "noCompanies": "No companies in scope.",
+      "usingDefaults": "Using defaults",
+      "netScheduled": "Net scheduled {hours}",
+      "workStart": "Work start",
+      "workEnd": "Work end",
+      "breakMinutes": "Break (minutes)",
+      "lateAfter": "Late after",
+      "halfDayBefore": "Half-day before",
+      "workingDays": "Working days",
+      "dayMon": "Mon",
+      "dayTue": "Tue",
+      "dayWed": "Wed",
+      "dayThu": "Thu",
+      "dayFri": "Fri",
+      "daySat": "Sat",
+      "daySun": "Sun",
+      "save": "Save policy",
+      "lateHint": "Check-in after “late after” is flagged late; check-out before “half-day before” is a half-day.",
+      "rosterNote": "Employees with a roster assignment use their rostered shift instead of this schedule. Public holidays always override the day type."
     }
   },
   "topbar": {
