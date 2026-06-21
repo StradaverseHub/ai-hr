@@ -1,4 +1,34 @@
 {
+  "roster": {
+    "title": "Roster",
+    "subtitle": "Bina roster syif mingguan — tentukan syif, kemudian tugaskan kepada pasukan anda.",
+    "noCompanies": "Tiada syarikat dalam skop anda untuk diroster.",
+    "switch": "Tukar",
+    "prevWeek": "Minggu sebelumnya",
+    "nextWeek": "Minggu seterusnya",
+    "thisWeek": "Minggu ini",
+    "shifts": "Syif",
+    "removeShift": "Buang syif",
+    "shiftName": "Nama syif",
+    "start": "Mula",
+    "end": "Tamat",
+    "breakMins": "Rehat (min)",
+    "addShift": "Tambah syif",
+    "shiftHint": "Syif yang tamat pada atau sebelum waktu mula melepasi tengah malam (⊕). Jadual memacu OT kehadiran; tiada roster kembali kepada dasar syarikat.",
+    "weeklyRoster": "Roster mingguan",
+    "noEmployees": "Tiada pekerja aktif dalam syarikat ini.",
+    "createShiftFirst": "Cipta syif di atas untuk mula meroster.",
+    "brush": "Tugaskan",
+    "restDay": "Hari rehat",
+    "clear": "Kosongkan",
+    "rest": "Rehat",
+    "selectedCount": "{n} dipilih",
+    "applyToWeek": "Guna pada yang dipilih, sepanjang minggu",
+    "bulkDone": "{n} pekerja diroster",
+    "employee": "Pekerja",
+    "noRest": "Tiada rehat",
+    "noRestWarningHint": "Dijadualkan setiap hari minggu ini — EA 1955 s.59 memerlukan satu hari rehat seminggu."
+  },
   "common": {
     "appName": "AI HR",
     "language": "Bahasa",
@@ -8,6 +38,7 @@
     "search": "Cari"
   },
   "nav": {
+    "roster": "Roster",
     "dataPrivacy": "Privasi Data",
     "dashboard": "Papan pemuka",
     "myWorkspace": "Ruang kerja saya",

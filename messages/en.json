@@ -1,4 +1,34 @@
 {
+  "roster": {
+    "title": "Roster",
+    "subtitle": "Build the weekly shift roster — define shifts, then assign them across your team.",
+    "noCompanies": "No companies in your scope to roster.",
+    "switch": "Switch",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "thisWeek": "This week",
+    "shifts": "Shifts",
+    "removeShift": "Remove shift",
+    "shiftName": "Shift name",
+    "start": "Start",
+    "end": "End",
+    "breakMins": "Break (min)",
+    "addShift": "Add shift",
+    "shiftHint": "A shift ending at or before its start crosses midnight (⊕). The schedule drives attendance OT; no roster falls back to the company policy.",
+    "weeklyRoster": "Weekly roster",
+    "noEmployees": "No active employees in this company.",
+    "createShiftFirst": "Create a shift above to start rostering.",
+    "brush": "Assign",
+    "restDay": "Rest day",
+    "clear": "Clear",
+    "rest": "Rest",
+    "selectedCount": "{n} selected",
+    "applyToWeek": "Apply to selected, whole week",
+    "bulkDone": "Rostered {n} employees",
+    "employee": "Employee",
+    "noRest": "No rest",
+    "noRestWarningHint": "Scheduled every day this week — EA 1955 s.59 requires one rest day per week."
+  },
   "common": {
     "appName": "AI HR",
     "language": "Language",
@@ -8,6 +38,7 @@
     "search": "Search"
   },
   "nav": {
+    "roster": "Roster",
     "dataPrivacy": "Data Privacy",
     "dashboard": "Dashboard",
     "myWorkspace": "My workspace",

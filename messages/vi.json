@@ -1,4 +1,34 @@
 {
+  "roster": {
+    "title": "Lịch ca",
+    "subtitle": "Lập lịch ca hàng tuần — định nghĩa ca, rồi phân công cho nhóm của bạn.",
+    "noCompanies": "Không có công ty nào trong phạm vi của bạn để lập lịch.",
+    "switch": "Chuyển",
+    "prevWeek": "Tuần trước",
+    "nextWeek": "Tuần sau",
+    "thisWeek": "Tuần này",
+    "shifts": "Ca",
+    "removeShift": "Xóa ca",
+    "shiftName": "Tên ca",
+    "start": "Bắt đầu",
+    "end": "Kết thúc",
+    "breakMins": "Nghỉ (phút)",
+    "addShift": "Thêm ca",
+    "shiftHint": "Ca kết thúc bằng hoặc trước giờ bắt đầu sẽ qua nửa đêm (⊕). Lịch này điều khiển OT chấm công; không có lịch sẽ dùng chính sách công ty.",
+    "weeklyRoster": "Lịch ca tuần",
+    "noEmployees": "Không có nhân viên đang làm việc trong công ty này.",
+    "createShiftFirst": "Tạo một ca ở trên để bắt đầu lập lịch.",
+    "brush": "Phân công",
+    "restDay": "Ngày nghỉ",
+    "clear": "Xóa",
+    "rest": "Nghỉ",
+    "selectedCount": "Đã chọn {n}",
+    "applyToWeek": "Áp dụng cho mục đã chọn, cả tuần",
+    "bulkDone": "Đã lập lịch cho {n} nhân viên",
+    "employee": "Nhân viên",
+    "noRest": "Không nghỉ",
+    "noRestWarningHint": "Xếp lịch mỗi ngày trong tuần này — EA 1955 mục 59 yêu cầu một ngày nghỉ mỗi tuần."
+  },
   "common": {
     "appName": "AI HR",
     "language": "Ngôn ngữ",
@@ -8,6 +38,7 @@
     "search": "Tìm kiếm"
   },
   "nav": {
+    "roster": "Lịch ca",
     "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
     "myWorkspace": "Không gian của tôi",
