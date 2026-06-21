@@ -1378,7 +1378,12 @@
       "allowEligibleLabel": "Benarkan pekerja Jadual Pertama (≤ siling)",
       "allowEligibleHint": "Bayaran lebih masa statutori biasanya terpakai kepada pekerja ini. Jika diaktifkan, penyimpanan dibenarkan tetapi masa yang tidak digunakan sentiasa ditukar kepada bayaran apabila tamat tempoh (tidak pernah luput), dan nota pematuhan ditunjukkan. Sahkan dengan peguam.",
       "save": "Simpan dasar",
-      "footnote": "Mengambil cuti ganti ialah permohonan cuti biasa terhadap jenis Cuti Ganti. Cuti umum dan jadual tidak terjejas."
+      "footnote": "Mengambil cuti ganti ialah permohonan cuti biasa terhadap jenis Cuti Ganti. Cuti umum dan jadual tidak terjejas.",
+      "processTitle": "Tamat tempoh",
+      "processButton": "Proses tamat tempoh",
+      "processHint": "Tukar atau luputkan cuti ganti yang telah tamat tempoh, mengikut peraturan tetap setiap rekod. Dijalankan untuk hari ini; kerja berjadual akan mengautomasikannya kemudian.",
+      "processedBanner": "Diproses {processed} tamat tempoh: {converted} ditukar kepada bayaran, {lapsed} luput.",
+      "processedNone": "Tiada cuti ganti yang perlu ditamatkan tempoh."
     }
   },
   "topbar": {

@@ -1378,7 +1378,12 @@
       "allowEligibleLabel": "允许第一附表（≤ 上限）员工",
       "allowEligibleHint": "这些员工通常适用法定加班费。如启用，可存休，但未使用的时间在到期时始终转为支付（绝不失效），并显示合规提示。请与法律顾问确认。",
       "save": "保存政策",
-      "footnote": "使用调休是针对调休假类型的普通请假申请。公共假期和排班不受影响。"
+      "footnote": "使用调休是针对调休假类型的普通请假申请。公共假期和排班不受影响。",
+      "processTitle": "到期处理",
+      "processButton": "处理到期",
+      "processHint": "按每笔记录的固定规则，将逾期的调休转为支付或作失效处理。针对今天运行；日后将由计划任务自动执行。",
+      "processedBanner": "已处理 {processed} 笔到期：{converted} 转为支付，{lapsed} 失效。",
+      "processedNone": "没有到期的调休。"
     }
   },
   "topbar": {

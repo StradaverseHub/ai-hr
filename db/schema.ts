@@ -831,6 +831,9 @@ export const toilAccrual = pgTable(
     accrualBasis: toilAccrualBasisEnum('accrual_basis').notNull(),
     expiresOn: date('expires_on').notNull(),
     status: toilAccrualStatusEnum('status').notNull().default('active'),
+    // Frozen at accrual (ADR-0033 33-4): 'convert_to_pay' for a First-Schedule-eligible employee (floor
+    // protection), else the policy's on_expiry. The expiry sweep follows this, not a re-derivation.
+    expiryAction: toilExpiryActionEnum('expiry_action').notNull().default('convert_to_pay'),
     policyId: uuid('policy_id').references((): AnyPgColumn => toilPolicy.id),
     ledgerEntryId: uuid('ledger_entry_id').references((): AnyPgColumn => leaveLedger.id),
     takenByRequestId: uuid('taken_by_request_id').references((): AnyPgColumn => leaveRequest.id),

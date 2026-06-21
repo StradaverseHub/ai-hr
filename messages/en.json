@@ -1378,7 +1378,12 @@
       "allowEligibleLabel": "Allow First-Schedule (≤ ceiling) employees",
       "allowEligibleHint": "Statutory overtime pay normally applies to these employees. If enabled, banking is allowed but unused time always converts to pay on expiry (never lapses), and a compliance note is shown. Confirm with counsel.",
       "save": "Save policy",
-      "footnote": "Taking time in lieu is a normal leave request against the Replacement Leave type. Public holidays and rosters are unaffected."
+      "footnote": "Taking time in lieu is a normal leave request against the Replacement Leave type. Public holidays and rosters are unaffected.",
+      "processTitle": "Expirations",
+      "processButton": "Process expirations",
+      "processHint": "Convert or lapse time in lieu past its expiry, following each accrual's frozen rule. Runs for today; a scheduled job will automate this later.",
+      "processedBanner": "Processed {processed} expirations: {converted} converted to pay, {lapsed} lapsed.",
+      "processedNone": "No time in lieu was due for expiry."
     }
   },
   "topbar": {

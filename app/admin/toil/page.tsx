@@ -4,16 +4,16 @@ import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { setToilPolicyAction } from '../actions';
+import { setToilPolicyAction, runToilExpiryAction } from '../actions';
 
 export default async function ToilPolicyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; processed?: string; converted?: string; lapsed?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.toilPolicy');
-  const { error } = await searchParams;
+  const { error, processed, converted, lapsed } = await searchParams;
   const envOn = process.env.TOIL_ENABLED === 'true';
 
   const companies = await listCompanies(s);
@@ -26,6 +26,14 @@ export default async function ToilPolicyPage({
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
+
+      {processed !== undefined && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {Number(processed) === 0
+            ? t('processedNone')
+            : t('processedBanner', { processed: Number(processed), converted: Number(converted ?? 0), lapsed: Number(lapsed ?? 0) })}
+        </div>
+      )}
 
       {!envOn && (
         <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
@@ -100,6 +108,20 @@ export default async function ToilPolicyPage({
             </Card>
           );
         })
+      )}
+
+      {envOn && visible.length > 0 && (
+        <Card className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-foreground">{t('processTitle')}</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">{t('processHint')}</p>
+            </div>
+            <form action={runToilExpiryAction}>
+              <button className={btnPrimary}>{t('processButton')}</button>
+            </form>
+          </div>
+        </Card>
       )}
 
       <p className="px-1 text-xs text-muted-foreground">{t('footnote')}</p>

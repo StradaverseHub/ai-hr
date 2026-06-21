@@ -7,7 +7,7 @@
  * to convert unused TOIL to pay on expiry (never lapse). The same worked day is cash XOR TOIL — the OT-pay
  * prefill (core/payroll.ts) excludes any day with a non-lapsed accrual.
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -261,6 +261,8 @@ export async function accrueToil(
         accrualBasis: policy.accrualBasis,
         expiresOn,
         status: 'active',
+        // Floor protection: an eligible employee's unused TOIL always converts to pay, never lapses.
+        expiryAction: eligible ? 'convert_to_pay' : policy.onExpiry,
         policyId: policy.id,
         ledgerEntryId: ledger.id,
       })
@@ -285,5 +287,89 @@ export async function accrueToil(
         ? 'This employee is within the First Schedule (statutory overtime pay normally applies). Unused time in lieu will convert to pay on expiry, not lapse.'
         : undefined,
     };
+  });
+}
+
+// ─── expiry sweep (ADR-0033 33-4) ────────────────────────────────────────────────────────────────────
+const ORP_DIVISOR = 26; // EA-1955 ordinary rate of pay: monthly wages / 26 per day
+
+export type ToilExpiryResult = {
+  processed: number;
+  converted: number;
+  lapsed: number;
+  convertedDays: number;
+  convertedAmount: number;
+};
+
+/**
+ * Expire active TOIL accruals whose expiry date has arrived (gated). Each follows its FROZEN expiry_action:
+ * `convert_to_pay` debits the replacement-leave credit and records the owed ORP value as an event — there is
+ * NO auto-disbursement (the final-pay discipline: money owed is surfaced, never silently paid); `lapse` debits
+ * the credit and forfeits the day. Idempotent — only `status='active'` rows are touched, so re-running is safe.
+ * `today` is injected for deterministic tests.
+ */
+export async function runToilExpiry(ctx: SessionContext, p: { today: string }): Promise<ToilExpiryResult> {
+  if (!toilEnabled()) throw new ToilDisabledError();
+  return withTenant(ctx, async (tx) => {
+    const due = await tx
+      .select({
+        id: toilAccrual.id,
+        employmentId: toilAccrual.employmentId,
+        daysCredited: toilAccrual.daysCredited,
+        expiryAction: toilAccrual.expiryAction,
+        workedDate: toilAccrual.workedDate,
+      })
+      .from(toilAccrual)
+      .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today)));
+    if (due.length === 0) return { processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0 };
+
+    // Current s.2 wages for the employees whose TOIL converts to pay (ORP = wages / 26 per day).
+    const convertEmpIds = [...new Set(due.filter((d) => d.expiryAction === 'convert_to_pay').map((d) => d.employmentId))];
+    const wagesBy = new Map<string, number>();
+    if (convertEmpIds.length) {
+      const comps = await tx
+        .select({ employmentId: compensation.employmentId, basic: compensation.basicSalary, allowance: compensation.monthlyAllowance })
+        .from(compensation)
+        .where(and(inArray(compensation.employmentId, convertEmpIds), isNull(compensation.validTo), isNull(compensation.supersededAt)));
+      for (const c of comps) wagesBy.set(c.employmentId, round2(Number(c.basic) + Number(c.allowance ?? 0)));
+    }
+    const replacementTypeId = await ensureReplacementLeaveType(tx, ctx.tenantId);
+
+    let converted = 0;
+    let lapsed = 0;
+    let convertedDays = 0;
+    let convertedAmount = 0;
+    for (const a of due) {
+      const days = Number(a.daysCredited);
+      const convert = a.expiryAction === 'convert_to_pay';
+      // Debit the replacement-leave credit either way — the unused in-lieu day is gone (paid out or forfeited).
+      await tx.insert(leaveLedger).values({
+        tenantId: ctx.tenantId,
+        employmentId: a.employmentId,
+        leaveTypeId: replacementTypeId,
+        entryType: 'debit',
+        days: (-days).toFixed(2),
+        effectiveOn: p.today,
+      });
+      const amount = convert ? round2(days * ((wagesBy.get(a.employmentId) ?? 0) / ORP_DIVISOR)) : 0;
+      await tx.update(toilAccrual).set({ status: convert ? 'converted_to_pay' : 'lapsed' }).where(eq(toilAccrual.id, a.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'toil-accrual',
+        aggregateId: a.id,
+        eventType: convert ? 'toil.converted' : 'toil.lapsed',
+        actor: actorOf(ctx),
+        subjectEmploymentId: a.employmentId,
+        payload: { workedDate: a.workedDate, daysCredited: days, ...(convert ? { amountOwed: amount, orpDivisor: ORP_DIVISOR } : {}) },
+      });
+      if (convert) {
+        converted += 1;
+        convertedDays = round2(convertedDays + days);
+        convertedAmount = round2(convertedAmount + amount);
+      } else {
+        lapsed += 1;
+      }
+    }
+    return { processed: due.length, converted, lapsed, convertedDays, convertedAmount };
   });
 }

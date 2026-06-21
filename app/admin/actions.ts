@@ -35,7 +35,7 @@ import {
 } from '@/core/admin';
 import { openLeaveYear } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
-import { setToilPolicy } from '@/core/toil';
+import { setToilPolicy, runToilExpiry } from '@/core/toil';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { packFor } from '@/localization/registry';
@@ -426,6 +426,20 @@ export async function deleteLeaveTypeAction(fd: FormData) {
   const s = await getSession();
   try { await deleteLeaveType(s, { id: String(fd.get('id')) }); } catch (e) { fail(LEAVE, e); }
   ok(LEAVE);
+}
+
+// ADR-0033 33-4 — run the TOIL expiry sweep for today (manual; a scheduled job will do this later).
+export async function runToilExpiryAction() {
+  const s = await getSession();
+  const today = new Date().toISOString().slice(0, 10);
+  let result;
+  try {
+    result = await runToilExpiry(s, { today });
+  } catch (e) {
+    fail(TOIL_POLICY, e);
+  }
+  revalidatePath(TOIL_POLICY);
+  redirect(`${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}`);
 }
 
 // ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.

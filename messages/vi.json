@@ -1378,7 +1378,12 @@
       "allowEligibleLabel": "Cho phép nhân viên Biểu thứ nhất (≤ trần)",
       "allowEligibleHint": "Tiền tăng ca theo luật thường áp dụng cho những nhân viên này. Nếu bật, việc lưu bù được phép nhưng thời gian chưa dùng luôn chuyển thành tiền khi hết hạn (không bao giờ mất hiệu lực), và hiển thị ghi chú tuân thủ. Hãy xác nhận với luật sư.",
       "save": "Lưu chính sách",
-      "footnote": "Lấy ngày nghỉ bù là một đơn xin nghỉ bình thường theo loại Nghỉ bù. Ngày lễ và lịch ca không bị ảnh hưởng."
+      "footnote": "Lấy ngày nghỉ bù là một đơn xin nghỉ bình thường theo loại Nghỉ bù. Ngày lễ và lịch ca không bị ảnh hưởng.",
+      "processTitle": "Hết hạn",
+      "processButton": "Xử lý hết hạn",
+      "processHint": "Chuyển thành tiền hoặc cho mất hiệu lực ngày nghỉ bù đã quá hạn, theo quy tắc cố định của từng khoản. Chạy cho hôm nay; một tác vụ theo lịch sẽ tự động hóa việc này sau.",
+      "processedBanner": "Đã xử lý {processed} khoản hết hạn: {converted} chuyển thành tiền, {lapsed} mất hiệu lực.",
+      "processedNone": "Không có ngày nghỉ bù nào đến hạn hết hiệu lực."
     }
   },
   "topbar": {
