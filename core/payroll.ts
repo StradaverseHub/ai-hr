@@ -2,7 +2,7 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
@@ -26,7 +26,11 @@ import {
   payrollInput,
   payslip,
   person,
+  rosterAssignment,
+  shift,
 } from '../db/schema';
+import { setPayrollBatchComponent } from './pay-components';
+import type { ShiftDifferential } from '../db/schema';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -456,6 +460,84 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       applied += 1;
     }
     return { applied, ineligible };
+  });
+}
+
+/**
+ * Prefill the SHIFT_DIFFERENTIAL pay-component from worked differential shifts in the period (ADR-0032 C5).
+ * A shift's `differential` is a CONFIGURABLE employer premium (NOT statutory): flat_per_shift (RM/shift),
+ * flat_hourly (RM/worked hour), or percent (% uplift on the ORP hourly rate × worked hours). Rides the
+ * typed-pay-component path: gated by TYPED_PAY_COMPONENTS_ENABLED (off ⇒ no-op, since the kernel wouldn't
+ * read the batch component anyway). The component's flags (EPF/SOCSO/PCB yes, HRDF no) drive the statutory
+ * treatment when the payslip is generated.
+ */
+export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p: { batchId: string }) {
+  if (process.env.TYPED_PAY_COMPONENTS_ENABLED !== 'true') return { applied: 0, gated: true as const };
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+
+    const [comp] = await tx.select({ id: payComponent.id }).from(payComponent).where(eq(payComponent.code, 'SHIFT_DIFFERENTIAL')).limit(1);
+    if (!comp) throw new Error('SHIFT_DIFFERENTIAL pay-component is not seeded — run the catalog seed first');
+
+    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+
+    // Worked differential shifts in the period for this company (the actual attendance row joined to the
+    // rostered shift, keeping only shifts that carry a differential).
+    const rows = await tx
+      .select({ employmentId: attendance.employmentId, workedMinutes: attendance.workedMinutes, differential: shift.differential })
+      .from(attendance)
+      .innerJoin(employment, eq(employment.id, attendance.employmentId))
+      .innerJoin(
+        rosterAssignment,
+        and(eq(rosterAssignment.employmentId, attendance.employmentId), eq(rosterAssignment.shiftDate, attendance.attendanceDate)),
+      )
+      .innerJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          gte(attendance.attendanceDate, periodStart),
+          lte(attendance.attendanceDate, periodEnd),
+          gt(attendance.workedMinutes, 0),
+          isNotNull(shift.differential),
+        ),
+      );
+    if (rows.length === 0) return { applied: 0 };
+    const empIds = [...new Set(rows.map((r) => r.employmentId))];
+
+    // ORP hourly rate (s.2 wages / 26 / 8) — only needed for percent differentials.
+    const comps = await tx
+      .select({ employmentId: compensation.employmentId, basic: compensation.basicSalary, allowance: compensation.monthlyAllowance })
+      .from(compensation)
+      .where(and(inArray(compensation.employmentId, empIds), isNull(compensation.validTo), isNull(compensation.supersededAt)));
+    const hourlyBy = new Map(comps.map((c) => [c.employmentId, (Number(c.basic) + Number(c.allowance ?? 0)) / 26 / 8]));
+
+    const totalBy = new Map<string, number>();
+    for (const r of rows) {
+      const diff = r.differential as ShiftDifferential | null;
+      if (!diff) continue;
+      const hours = (r.workedMinutes ?? 0) / 60;
+      let amt = 0;
+      if (diff.kind === 'flat_per_shift') amt = diff.value;
+      else if (diff.kind === 'flat_hourly') amt = diff.value * hours;
+      else if (diff.kind === 'percent') amt = (hourlyBy.get(r.employmentId) ?? 0) * hours * (diff.value / 100);
+      totalBy.set(r.employmentId, (totalBy.get(r.employmentId) ?? 0) + amt);
+    }
+
+    let applied = 0;
+    for (const [employmentId, total] of totalBy) {
+      if (total <= 0) continue;
+      await setPayrollBatchComponent(ctx, { batchId: batch.id, employmentId, componentId: comp.id, amount: round2(total), notes: 'Shift differential (from roster)' }, tx);
+      applied += 1;
+    }
+    return { applied };
   });
 }
 

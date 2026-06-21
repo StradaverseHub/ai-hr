@@ -149,6 +149,13 @@ export default async function RosterPage({
             <input name="startTime" type="time" required defaultValue="09:00" className={inputCls} aria-label={t('start')} />
             <input name="endTime" type="time" required defaultValue="18:00" className={inputCls} aria-label={t('end')} />
             <input name="breakMinutes" type="number" min={0} defaultValue={60} className={`${inputCls} w-20`} aria-label={t('breakMins')} />
+            <select name="differentialKind" defaultValue="" className={inputCls} aria-label={t('diffLabel')}>
+              <option value="">{t('diffNone')}</option>
+              <option value="percent">{t('diffPercent')}</option>
+              <option value="flat_hourly">{t('diffFlatHourly')}</option>
+              <option value="flat_per_shift">{t('diffPerShift')}</option>
+            </select>
+            <input name="differentialValue" type="number" min={0} step="0.01" placeholder={t('diffValue')} className={`${inputCls} w-24`} aria-label={t('diffValue')} />
             <button className={btnPrimary}>{t('addShift')}</button>
           </form>
           <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>

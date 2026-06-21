@@ -49,9 +49,15 @@ export async function bulkAssignAction(input: {
   }
 }
 
+const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
+
 export async function createShiftAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
+  const dk = String(formData.get('differentialKind') ?? '');
+  const dv = Number(formData.get('differentialValue') ?? 0);
+  const differential =
+    DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
   try {
     await createShift(s, {
       companyId,
@@ -59,6 +65,7 @@ export async function createShiftAction(formData: FormData) {
       startTime: normTime(String(formData.get('startTime') ?? '')),
       endTime: normTime(String(formData.get('endTime') ?? '')),
       breakMinutes: Number(formData.get('breakMinutes') ?? 0),
+      differential,
     });
   } catch (e) {
     redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);

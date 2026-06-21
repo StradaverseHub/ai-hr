@@ -9,6 +9,7 @@ import {
   createBatch,
   generatePayslips,
   prefillOvertimeFromAttendance,
+  prefillShiftDifferentialFromRoster,
   setPayrollInput,
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
@@ -92,6 +93,27 @@ export async function prefillOvertimeAction(formData: FormData) {
       : `OT prefilled for ${applied} employee${applied === 1 ? '' : 's'}${
           ineligible ? ` (${ineligible} above RM4,000 — not statutorily entitled)` : ''
         }`;
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+export async function prefillShiftDifferentialAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  let applied = 0;
+  let gated = false;
+  try {
+    const r = await prefillShiftDifferentialFromRoster(s, { batchId });
+    applied = r.applied;
+    gated = 'gated' in r && r.gated === true;
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  const note = gated
+    ? 'Typed pay components are off — shift differential not applied'
+    : applied === 0
+      ? 'No shift differentials found for this period'
+      : `Shift differential prefilled for ${applied} employee${applied === 1 ? '' : 's'}`;
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
 }
 
