@@ -9,6 +9,7 @@ import {
   BookOpen,
   Building2,
   CalendarDays,
+  CalendarRange,
   Clock,
   Sparkles,
   LayoutDashboard,
@@ -53,6 +54,7 @@ const GROUPS: Group[] = [
     managerUp: true,
     items: [
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals' },
+      { href: '/roster', labelKey: 'roster', icon: CalendarRange },
       { href: '/performance', labelKey: 'performance', icon: Target },
     ],
   },

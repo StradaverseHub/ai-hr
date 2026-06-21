@@ -1,4 +1,34 @@
 {
+  "roster": {
+    "title": "排班",
+    "subtitle": "编排每周班次——先定义班次，再分配给团队。",
+    "noCompanies": "您的范围内没有可排班的公司。",
+    "switch": "切换",
+    "prevWeek": "上一周",
+    "nextWeek": "下一周",
+    "thisWeek": "本周",
+    "shifts": "班次",
+    "removeShift": "移除班次",
+    "shiftName": "班次名称",
+    "start": "开始",
+    "end": "结束",
+    "breakMins": "休息（分钟）",
+    "addShift": "添加班次",
+    "shiftHint": "结束时间等于或早于开始时间的班次表示跨午夜（⊕）。该排班驱动考勤加班；无排班则回退到公司政策。",
+    "weeklyRoster": "每周排班",
+    "noEmployees": "此公司没有在职员工。",
+    "createShiftFirst": "请先在上方创建班次以开始排班。",
+    "brush": "分配",
+    "restDay": "休息日",
+    "clear": "清除",
+    "rest": "休息",
+    "selectedCount": "已选 {n}",
+    "applyToWeek": "应用于所选（整周）",
+    "bulkDone": "已为 {n} 名员工排班",
+    "employee": "员工",
+    "noRest": "无休息",
+    "noRestWarningHint": "本周每天都排班——《1955年雇佣法》第59条要求每周一天休息。"
+  },
   "common": {
     "appName": "AI HR",
     "language": "语言",
@@ -8,6 +38,7 @@
     "search": "搜索"
   },
   "nav": {
+    "roster": "排班",
     "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
     "myWorkspace": "我的工作台",
