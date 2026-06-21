@@ -787,6 +787,9 @@ export const rosterAssignment = pgTable(
 export const toilAccrualBasisEnum = pgEnum('toil_accrual_basis', ['hours_worked', 'premium_equivalent']);
 export const toilExpiryActionEnum = pgEnum('toil_expiry_action', ['convert_to_pay', 'lapse']);
 export const toilAccrualStatusEnum = pgEnum('toil_accrual_status', ['active', 'taken', 'converted_to_pay', 'lapsed']);
+export type ToilAccrualBasis = (typeof toilAccrualBasisEnum.enumValues)[number];
+export type ToilExpiryAction = (typeof toilExpiryActionEnum.enumValues)[number];
+export type ToilAccrualStatus = (typeof toilAccrualStatusEnum.enumValues)[number];
 
 // One TOIL policy per company. allowFirstScheduleEligible is the per-company toggle (ADR-0033 §6): OFF ⇒
 // ≤RM4,000 staff cannot elect TOIL (cash only); ON ⇒ they may, but with a compliance warning + forced
