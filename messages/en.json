@@ -83,7 +83,8 @@
     "payComponents": "Pay components",
     "attendancePolicy": "Attendance policy",
     "toilPolicy": "Time off in lieu",
-    "payrollConfig": "Payroll config"
+    "payrollConfig": "Payroll config",
+    "leaveApproval": "Approval chain"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1933,5 +1934,21 @@
     "ssmRegistrationNo": "SSM registration no.",
     "hrdfHint": "HRDF band drives the employer-only HRD Corp levy in payroll. Registration numbers appear on statutory files and payslips.",
     "save": "Save"
+  },
+  "leaveApproval": {
+    "title": "Leave Approval Chain",
+    "description": "Choose who signs off on leave, and in what order, for each company.",
+    "emptyScope": "No companies in your scope.",
+    "enable": "Require multi-step approval",
+    "enableHint": "When off, a single approver decides each request.",
+    "chain": "Approval order",
+    "empty": "No steps yet — add at least one.",
+    "manager": "Direct manager",
+    "hr": "HR",
+    "add": "Add step",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "save": "Save chain"
   }
 }

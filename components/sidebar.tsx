@@ -30,6 +30,7 @@ import {
   UserRound,
   Users,
   Wallet,
+  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -67,6 +68,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
+      { href: '/admin/leave-approval', labelKey: 'leaveApproval', icon: Workflow },
       { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays },
       { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock },
       { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass },

@@ -51,6 +51,14 @@ async function main() {
       leaveMultiApproval: true, // 2B-1: demo the manager → HR chain
     })
     .returning({ id: schema.company.id });
+  // 2B-2 (ADR-0039): an explicit approval chain for the demo company (direct manager → HR), so the
+  // editor shows a configured policy. company.leaveMultiApproval is already true (set above).
+  await owner.db.insert(schema.leaveApprovalPolicy).values({
+    tenantId: DEV_TENANT_ID,
+    companyId: company.id,
+    leaveTypeId: null,
+    levels: ['direct_manager', 'hr_admin'],
+  });
   await owner.db.insert(schema.companyStatutoryMy).values({
     tenantId: DEV_TENANT_ID,
     companyId: company.id,

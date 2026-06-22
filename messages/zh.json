@@ -83,7 +83,8 @@
     "payComponents": "薪资组件",
     "attendancePolicy": "考勤政策",
     "toilPolicy": "调休",
-    "payrollConfig": "薪资配置"
+    "payrollConfig": "薪资配置",
+    "leaveApproval": "审批链"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1933,5 +1934,21 @@
     "ssmRegistrationNo": "SSM 注册号",
     "hrdfHint": "HRDF 等级决定薪资中仅由雇主缴纳的 HRD Corp 征费。注册编号会出现在法定文件和薪资单上。",
     "save": "保存"
+  },
+  "leaveApproval": {
+    "title": "请假审批链",
+    "description": "为每家公司选择由谁审批请假以及审批顺序。",
+    "emptyScope": "您的范围内没有公司。",
+    "enable": "需要多级审批",
+    "enableHint": "关闭时，由单个审批人决定每个申请。",
+    "chain": "审批顺序",
+    "empty": "暂无步骤 — 请至少添加一个。",
+    "manager": "直属经理",
+    "hr": "人力资源",
+    "add": "添加步骤",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "remove": "移除",
+    "save": "保存审批链"
   }
 }
