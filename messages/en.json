@@ -1836,5 +1836,11 @@
     "namePlaceholder": "e.g. Housing allowance",
     "flagsHint": "Flags decide which statutory base the component feeds. Non-payable (BIK) and PCB-only earnings are not computed in this version.",
     "saveComponent": "Save component"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "You're all caught up",
+    "aria": "Notifications, {count} unread"
   }
 }

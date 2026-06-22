@@ -1836,5 +1836,11 @@
     "namePlaceholder": "vd. Phụ cấp nhà ở",
     "flagsHint": "Cờ quyết định thành phần vào cơ sở luật định nào. Không trả tiền (BIK) và thu nhập chỉ-PCB không được tính trong phiên bản này.",
     "saveComponent": "Lưu thành phần"
+  },
+  "notifications": {
+    "title": "Thông báo",
+    "markAllRead": "Đánh dấu đã đọc tất cả",
+    "empty": "Không có thông báo mới",
+    "aria": "Thông báo, {count} chưa đọc"
   }
 }
