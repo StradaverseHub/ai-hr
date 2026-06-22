@@ -82,7 +82,8 @@
     "analytics": "Analytics",
     "payComponents": "Pay components",
     "attendancePolicy": "Attendance policy",
-    "toilPolicy": "Time off in lieu"
+    "toilPolicy": "Time off in lieu",
+    "payrollConfig": "Payroll config"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1865,5 +1866,29 @@
     "markAllRead": "Mark all read",
     "empty": "You're all caught up",
     "aria": "Notifications, {count} unread"
+  },
+  "payrollConfig": {
+    "title": "Payroll configuration",
+    "description": "Per-company payroll schedule and statutory employer identity.",
+    "emptyScope": "No companies in the current scope. Use the company switcher above.",
+    "scheduleTitle": "Payroll schedule",
+    "cutOffDay": "Cut-off day",
+    "payDay": "Pay day",
+    "paymentBasis": "Payment basis",
+    "basis_monthly": "Monthly",
+    "monthEnd": "Month-end",
+    "dayHint": "Day of month (1–31). Leave blank for month-end. Scheduling reference only — it does not change how the pay period is calculated.",
+    "statutoryTitle": "Statutory employer identity",
+    "hrdfStatus": "HRDF (HRD Corp) status",
+    "hrdf_not_registered": "Not registered",
+    "hrdf_mandatory": "Mandatory (1% levy)",
+    "hrdf_optional": "Optional (0.5% levy)",
+    "epfEmployerNo": "EPF employer no.",
+    "socsoEmployerCode": "SOCSO employer code",
+    "lhdnEmployerNo": "LHDN employer no. (E)",
+    "myinvoisTin": "MyInvois TIN",
+    "ssmRegistrationNo": "SSM registration no.",
+    "hrdfHint": "HRDF band drives the employer-only HRD Corp levy in payroll. Registration numbers appear on statutory files and payslips.",
+    "save": "Save"
   }
 }

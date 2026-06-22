@@ -1,0 +1,84 @@
+/**
+ * Per-company payroll scheduling config (ADR-0035 1B, #17). Cut-off day / pay day / payment basis are
+ * scheduling METADATA (display + future automation), NOT inputs to the period computation. Upsert keyed
+ * by company; RLS confines reads/writes to company-scoped admins. Every write appends a DomainEvent.
+ */
+import { eq, inArray, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { companyPayrollConfig } from '../db/schema';
+
+export const PAYMENT_BASES = ['monthly'] as const;
+export type PaymentBasis = (typeof PAYMENT_BASES)[number];
+
+// Day-of-month 1–31, or null = month-end. Out-of-range/blank ⇒ null so a bad value never silently sticks.
+const cleanDay = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) && n >= 1 && n <= 31 ? n : null;
+};
+const cleanBasis = (v: unknown): PaymentBasis => (PAYMENT_BASES.includes(v as PaymentBasis) ? (v as PaymentBasis) : 'monthly');
+
+export type PayrollConfigInput = {
+  companyId: string;
+  cutOffDay?: number | string | null;
+  payDay?: number | string | null;
+  paymentBasis?: string;
+};
+
+export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
+  const values = {
+    cutOffDay: cleanDay(p.cutOffDay),
+    payDay: cleanDay(p.payDay),
+    paymentBasis: cleanBasis(p.paymentBasis),
+  };
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({ id: companyPayrollConfig.id })
+      .from(companyPayrollConfig)
+      .where(eq(companyPayrollConfig.companyId, p.companyId))
+      .limit(1);
+    let id: string;
+    if (existing) {
+      await tx
+        .update(companyPayrollConfig)
+        .set({ ...values, updatedAt: sql`now()` })
+        .where(eq(companyPayrollConfig.id, existing.id));
+      id = existing.id;
+    } else {
+      const [row] = await tx
+        .insert(companyPayrollConfig)
+        .values({ tenantId: ctx.tenantId, companyId: p.companyId, ...values })
+        .returning({ id: companyPayrollConfig.id });
+      id = row.id;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company-payroll-config',
+      aggregateId: id,
+      eventType: existing ? 'company.payroll-config.updated' : 'company.payroll-config.created',
+      actor: actorOf(ctx),
+      payload: { companyId: p.companyId, ...values },
+    });
+    return { id };
+  });
+}
+
+export function getPayrollConfig(ctx: SessionContext, companyId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(companyPayrollConfig)
+      .where(eq(companyPayrollConfig.companyId, companyId))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+export function listPayrollConfigs(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, (tx) =>
+    companyIds && companyIds.length
+      ? tx.select().from(companyPayrollConfig).where(inArray(companyPayrollConfig.companyId, companyIds))
+      : tx.select().from(companyPayrollConfig),
+  );
+}
