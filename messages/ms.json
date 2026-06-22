@@ -291,7 +291,8 @@
       "payComponentAmount": "Jumlah",
       "payComponentEffectiveFrom": "Berkuat kuasa dari",
       "payComponentSave": "Tambah",
-      "payComponentsHint": "Komponen berulang untuk pekerja ini. Digunakan pada gaji apabila komponen bertaip diaktifkan."
+      "payComponentsHint": "Komponen berulang untuk pekerja ini. Digunakan pada gaji apabila komponen bertaip diaktifkan.",
+      "epfVoluntaryHint": "Masukkan kadar penuh setiap pihak pada atau melebihi paras berkanun (pekerja 11%, majikan 12–13%). Biar kosong untuk kekal berkanun."
     },
     "import": {
       "title": "Import pekerja",

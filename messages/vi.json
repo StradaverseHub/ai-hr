@@ -291,7 +291,8 @@
       "payComponentAmount": "Số tiền",
       "payComponentEffectiveFrom": "Hiệu lực từ",
       "payComponentSave": "Thêm",
-      "payComponentsHint": "Các thành phần định kỳ cho nhân viên này. Áp dụng vào lương khi bật thành phần có kiểu."
+      "payComponentsHint": "Các thành phần định kỳ cho nhân viên này. Áp dụng vào lương khi bật thành phần có kiểu.",
+      "epfVoluntaryHint": "Nhập tổng tỷ lệ của mỗi bên bằng hoặc cao hơn mức tối thiểu theo luật (người lao động 11%, người SDLĐ 12–13%). Để trống để giữ mức theo luật."
     },
     "import": {
       "title": "Nhập nhân viên",

@@ -16,6 +16,7 @@ import {
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { EpfElection } from '@/components/epf-election';
 import {
   addReportingLineAction,
   endReportingLineAction,
@@ -320,39 +321,12 @@ export default async function EmployeePage({
                 <option value="non_citizen">{t('epfCitizenshipNonCitizen')}</option>
               </select>
             </Field>
-            <Field label={t('epfMode')}>
-              <select name="epfMode" defaultValue={statutory?.epfMode ?? 'auto'} className={inputCls}>
-                <option value="auto">{t('epfModeAuto')}</option>
-                <option value="voluntary_excess">{t('epfModeVoluntary')}</option>
-                <option value="exempt">{t('epfModeExempt')}</option>
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={t('epfEmployeeRate')}>
-                <input
-                  name="epfEmployeeRate"
-                  type="number"
-                  min="11"
-                  max="100"
-                  step="0.01"
-                  defaultValue={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : ''}
-                  placeholder="11"
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('epfEmployerRate')}>
-                <input
-                  name="epfEmployerRate"
-                  type="number"
-                  min="12"
-                  max="100"
-                  step="0.01"
-                  defaultValue={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : ''}
-                  placeholder="13"
-                  className={inputCls}
-                />
-              </Field>
-            </div>
+            {/* EPF election (1C): rate fields appear only for voluntary_excess (client island). */}
+            <EpfElection
+              mode={statutory?.epfMode ?? null}
+              employeeRate={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : null}
+              employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
+            />
             <div className="sm:col-span-2 border-t border-border pt-3">
               <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t('tp3SectionTitle')}
