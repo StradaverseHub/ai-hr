@@ -37,17 +37,17 @@ Status legend: ✅ DONE (redeploy) · 🔒 GATED (enable flag) · 🟡 PARTIAL (
 | 16 | Org chart: expand/collapse on click + photo upload | ✅ DONE +🆕 | #79 shipped interactions (redeploy); add employee profile-photo upload (onboarding task) | A + F |
 | 17 | Payroll Config tab (cut-off methods, payment basis, OT/claim/leave/attendance/salary cut-offs) | 🆕 NEW | New Payroll Config tab under Payroll Policy | B |
 | 18 | Leave depth: cycle, category-by-grade, multi-level approver (≥3), holiday group by state, earned/lump-sum | 🆕 NEW (Blocker) | Leave configuration-depth slice + ADR | C |
-| 19 | EA-Form line missing (dup of #14) | 🔒 GATED | — see #14 | B |
-| 20 | Rounding method (dup of #15) | 🔒 GATED | — see #15 | B |
+| 19 | Fewer / job-function roles (Recruiting/Payroll/Comp/Performance Partner) | 🆕 NEW | RBAC role redesign + ADR | H |
+| 20 | (blank/incomplete entry — "Admin & Setup", no detail) | — | Confirm intent with reviewer | — |
 | 21 | Pay-component Edit/Delete (guard historical-use) | 🟡 PARTIAL | pay-components admin exists; add edit/delete + "used in history ⇒ cannot delete" guard | B |
 | 22 | Payslip templates + PDF + email + password (+ A5 print, TT) | 🆕 NEW | Payslip template engine + PDF render + email (34-5 adapter) + encryption + A5 | B |
 | 23 | Batch payroll by employee/department selection | 🟡 PARTIAL | Batches exist; add selection UI (group/dept/individual) before run | B |
-| 24 | Fewer / job-function roles (Recruiting/Payroll/Comp/Performance Partner) | 🆕 NEW | RBAC role redesign + ADR | H |
+| 24 | ESS personal-info change → approval workflow (marital/dependents) + HR task | 🟡 PARTIAL | Bank/PCB already approval-gated; extend to personal info + HR follow-up tasks | D |
 | 25 | Leave validation engine: maternity/paternity/sick/hospitalization eligibility + mandatory docs + workflow + notifications + audit | 🆕 NEW (large) | Leave validation + structured approval-workflow engine; ADR (statutory facts sourced) | C |
 | 26 | Visual analytics: charts + dashboards + filters + export | 🟡 PARTIAL | Extend Wave 4 analytics with chart layer + demographic/headcount/leave dashboards | E |
 | 27 | Data templates (download template + validating import) on every upload | 🆕 NEW | Per-module template download + validating importer (extends CSV importer #107) | F |
 | 28 | Performance full lifecycle (init→goals→MYR→YER→calibration→closure + attachments + 360) | 🟡 PARTIAL | ADR-0022 Phase B built goals/check-ins/360/calibration; assemble into guided lifecycle + per-step attachments + employee-set-KPI | G |
-| 29 | ESS personal-info change → approval workflow (marital/dependents) + HR task | 🟡 PARTIAL | Bank/PCB already approval-gated; extend to personal info + HR follow-up tasks | D |
+| 29 | Submit Resignation + offboarding workflow (manager ack → HR → offboarding → done) | 🆕 NEW | Resignation + offboarding workflow | D |
 | 30 | AI-assisted configurable payroll formula engine | 🆕 NEW (large) | Configurable formula engine + AI assist | K |
 | 31 | KB hierarchy (Spaces→Sections→Pages) + enforced role/grade visibility | 🟡 PARTIAL | `audience` field exists; add hierarchy + enforce visibility filter (fixes TT R34) | J |
 
@@ -83,8 +83,8 @@ Status legend: ✅ DONE (redeploy) · 🔒 GATED (enable flag) · 🟡 PARTIAL (
 - **Wave 1 — EPIC B · Payroll config & pay-components.** #2,6,7,9,12,14,15,17,21,22,23 + R10/R28/R31. Biggest cluster, mostly extends gated work. (Yi Wei's list.)
 - **Wave 2 — EPIC C · Leave 2.0.** #18 (Blocker) + #25 + R18/R19/R23/R37. Core MY HR; statutory facts sourced.
 - **Wave 3 — EPIC E · Reporting/analytics + EPIC F · People depth/templates.** #3,26,13,27,16-photo + R8/R13/R14.
-- **Wave 4 — EPIC D · ESS workflows + EPIC G · Performance lifecycle.** #29,34,28 + R11/R24/R26.
-- **Wave 5 — EPIC H · Roles/access + EPIC J · KB hierarchy + EPIC I · Attendance depth.** #24,31 + R21/R22/R32.
+- **Wave 4 — EPIC D · ESS workflows + EPIC G · Performance lifecycle.** #24 (personal-info approval), #29 (resignation/offboarding), #28 + R11/R24/R26.
+- **Wave 5 — EPIC H · Roles/access + EPIC J · KB hierarchy + EPIC I · Attendance depth.** #19 (job-function roles), #31 (KB hierarchy) + R21/R22/R32.
 - **Later — EPIC K · AI formula engine (#30/#35); mobile app (geofencing/mobile attendance).**
 
 ### Cross-cutting platform pieces (build once, reuse)
@@ -92,5 +92,5 @@ Status legend: ✅ DONE (redeploy) · 🔒 GATED (enable flag) · 🟡 PARTIAL (
 - **Attachment/document-upload** — recurs in #25/#28/#34.
 - **Notification engine** (shipped 34-x) — substrate for every "notify on submit/approve/reject" in #25/#29/#34. Ready; 34-5 email adapter unblocks payslip-by-email (#22).
 
-### Items #34 (resignation/offboarding) — note
-Not in the table above as a Feedback-Log number; it is item #34 row "Resignation": ESS "Submit Resignation" → Manager ack → HR → offboarding checklist (asset return, KT, exit interview, payroll clearance) → Completed. 🆕 NEW — EPIC D.
+### Wave 0 outcome (2026-06-22)
+Deployed `main` to the demo (CHGBAPP) + enabled NOTIFICATIONS / MULTI_CYCLE_PAYROLL / TYPED_PAY_COMPONENTS. Fixed R34 (KB audience clearance now enforced on every read; 425 tests green). Confirmed R16/R17/R20/R26 already correct in the current build (the demo was stale). **Pending:** the operator must `sudo systemctl restart aihr` for the new build + flags to take effect.
