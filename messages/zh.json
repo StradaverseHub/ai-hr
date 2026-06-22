@@ -291,7 +291,8 @@
       "payComponentAmount": "金额",
       "payComponentEffectiveFrom": "生效日期",
       "payComponentSave": "添加",
-      "payComponentsHint": "此员工的经常性组件。启用类型化组件后应用于薪资。"
+      "payComponentsHint": "此员工的经常性组件。启用类型化组件后应用于薪资。",
+      "epfVoluntaryHint": "输入每一方的总缴交率，须达到或高于法定下限（雇员 11%，雇主 12–13%）。留空则维持法定比率。"
     },
     "import": {
       "title": "导入员工",

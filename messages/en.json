@@ -291,7 +291,8 @@
       "payComponentAmount": "Amount",
       "payComponentEffectiveFrom": "Effective from",
       "payComponentSave": "Add",
-      "payComponentsHint": "Recurring components for this employee. Applied to payroll once typed components are enabled."
+      "payComponentsHint": "Recurring components for this employee. Applied to payroll once typed components are enabled.",
+      "epfVoluntaryHint": "Enter each side's total rate at or above the statutory floor (employee 11%, employer 12–13%). Leave a side blank to keep it statutory."
     },
     "import": {
       "title": "Import employees",
