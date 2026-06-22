@@ -859,7 +859,9 @@
         "draft": "Draft",
         "processed": "Processed",
         "closed": "Closed"
-      }
+      },
+      "scopeLabel": "Departments (optional)",
+      "scopeHint": "Select departments to run payroll for a subset. Leave all unchecked to include the whole company."
     },
     "batch": {
       "back": "Payroll",

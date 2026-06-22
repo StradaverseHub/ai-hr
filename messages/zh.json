@@ -859,7 +859,9 @@
         "draft": "草稿",
         "processed": "已处理",
         "closed": "已关闭"
-      }
+      },
+      "scopeLabel": "部门（可选）",
+      "scopeHint": "选择部门以仅为部分员工运行薪资。全部不勾选则包含整个公司。"
     },
     "reports": {
       "pageTitle": "薪资",

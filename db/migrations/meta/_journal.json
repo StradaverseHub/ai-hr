@@ -575,6 +575,13 @@
 			"when": 1781861450000,
 			"tag": "0081_company_payroll_config",
 			"breakpoints": true
+		},
+		{
+			"idx": 82,
+			"version": "7",
+			"when": 1781861460000,
+			"tag": "0082_payroll_batch_scope",
+			"breakpoints": true
 		}
 	]
 }
