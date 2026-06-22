@@ -18,6 +18,8 @@ const ALL_TABLES = [
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
   'performance_goal', 'review_goal', 'performance_checkin', 'peer_feedback_request', 'peer_feedback', 'calibration_session', 'calibration_entry',
+  'shift', 'roster_assignment', 'toil_policy', 'toil_accrual',
+  'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
 ];
 
 export async function migrateTestDb() {
