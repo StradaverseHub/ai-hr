@@ -105,7 +105,19 @@ export default async function ApprovalsPage({
               {pendingLeave.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2.5 font-medium">{r.employee}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{r.leaveType}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {r.leaveType}
+                    {r.hasDocument && (
+                      <a
+                        href={`/me/leave/attachment/${r.id}?inline=1`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-2 text-xs text-primary underline-offset-2 hover:underline"
+                      >
+                        {t('viewDocument')}
+                      </a>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.startDate} → {r.endDate}
                   </td>

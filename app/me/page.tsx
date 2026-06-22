@@ -283,6 +283,7 @@ export default async function MePage({
                 {leaveTypes.map((lt) => (
                   <option key={lt.id} value={lt.id}>
                     {lt.name}
+                    {lt.requiresDocument ? ` · ${t('documentRequired')}` : ''}
                   </option>
                 ))}
               </select>
@@ -295,6 +296,15 @@ export default async function MePage({
                 <input type="date" name="endDate" required className={inputCls} />
               </Field>
             </div>
+            <Field label={t('documentLabel')}>
+              <input
+                type="file"
+                name="document"
+                accept="image/*,application/pdf"
+                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{t('documentHint')}</p>
+            </Field>
             <Button type="submit" size="sm">
               {t('requestLeave')}
             </Button>
@@ -310,7 +320,19 @@ export default async function MePage({
                   <span className="truncate text-muted-foreground">
                     {r.leaveType} · {r.startDate}
                   </span>
-                  <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
+                  <div className="flex shrink-0 items-center gap-2">
+                    {r.hasDocument && (
+                      <a
+                        href={`/me/leave/attachment/${r.id}?inline=1`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary underline-offset-2 hover:underline"
+                      >
+                        {t('viewDocument')}
+                      </a>
+                    )}
+                    <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
+                  </div>
                 </li>
               ))}
               {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}

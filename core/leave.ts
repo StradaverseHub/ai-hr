@@ -3,7 +3,7 @@
  * (accrual +, debit −, adjustment ±). Approval checks projected balance and writes
  * the debit + status flip + event atomically in one transaction.
  */
-import { and, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -15,6 +15,7 @@ import {
   leaveLedger,
   leavePolicy,
   leaveRequest,
+  leaveRequestAttachment,
   leaveType,
   person,
 } from '../db/schema';
@@ -36,6 +37,16 @@ export class LeaveIneligibleError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'LeaveIneligibleError';
+  }
+}
+
+// ── Mandatory documents (ADR-0038 2A-2, #25) ─────────────────────────────────────────────────────
+// Some leave types need a supporting document (e.g. an MC for sick leave). When leave_type.requires_
+// document is set, requestLeave rejects a request that arrives without an attachment.
+export class LeaveDocumentRequiredError extends Error {
+  constructor() {
+    super('This leave type requires a supporting document (e.g. a medical certificate)');
+    this.name = 'LeaveDocumentRequiredError';
   }
 }
 
@@ -100,15 +111,29 @@ function workingDays(start: string, end: string, holidays: Set<string>): number 
 
 export async function requestLeave(
   ctx: SessionContext,
-  p: { employmentId: string; leaveTypeId: string; startDate: string; endDate: string; reason?: string },
+  p: {
+    employmentId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    hasDocument?: boolean; // 2A-2: asserts a supporting document accompanies this request
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
     const [lt] = await tx
-      .select({ counting: leaveType.counting, eligibility: leaveType.eligibility })
+      .select({
+        counting: leaveType.counting,
+        eligibility: leaveType.eligibility,
+        requiresDocument: leaveType.requiresDocument,
+      })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
+
+    // Mandatory-document gate (2A-2, #25) — fail fast before anything is created.
+    if (lt?.requiresDocument && !p.hasDocument) throw new LeaveDocumentRequiredError();
 
     // Eligibility gate (2A-1, #25) — fail fast before anything is created.
     const elig = (lt?.eligibility ?? null) as LeaveEligibility | null;
@@ -156,6 +181,68 @@ export async function requestLeave(
       payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days },
     });
     return { leaveRequestId: row.id, days };
+  });
+}
+
+/** Attach a supporting document to a pending leave request (2A-2). employment_id is denormalized from
+ *  the request so the attachment's RLS matches the request (subject + manager + admin). */
+export async function addLeaveAttachment(
+  ctx: SessionContext,
+  p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer },
+): Promise<{ id: string }> {
+  if (p.content.byteLength === 0) throw new Error('Empty file');
+  if (p.content.byteLength > 10 * 1024 * 1024) throw new Error('File exceeds 10 MB');
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx
+      .select({ employmentId: leaveRequest.employmentId, status: leaveRequest.status })
+      .from(leaveRequest)
+      .where(eq(leaveRequest.id, p.leaveRequestId))
+      .limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+    if (req.status !== 'pending') throw new Error('Documents can only be added while the request is pending');
+    const [row] = await tx
+      .insert(leaveRequestAttachment)
+      .values({
+        tenantId: ctx.tenantId,
+        leaveRequestId: p.leaveRequestId,
+        employmentId: req.employmentId,
+        content: p.content,
+        fileName: p.fileName,
+        mimeType: p.mimeType,
+        sizeBytes: p.content.byteLength,
+        uploadedByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: leaveRequestAttachment.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-request',
+      aggregateId: p.leaveRequestId,
+      eventType: 'leave-request.document.attached',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { fileName: p.fileName, sizeBytes: p.content.byteLength },
+    });
+    return { id: row.id };
+  });
+}
+
+/** Stream a leave request's supporting document. Runs under RLS (subject + manager + admin). */
+export async function getLeaveAttachment(
+  ctx: SessionContext,
+  leaveRequestId: string,
+): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        content: leaveRequestAttachment.content,
+        fileName: leaveRequestAttachment.fileName,
+        mimeType: leaveRequestAttachment.mimeType,
+      })
+      .from(leaveRequestAttachment)
+      .where(eq(leaveRequestAttachment.leaveRequestId, leaveRequestId))
+      .orderBy(desc(leaveRequestAttachment.createdAt))
+      .limit(1);
+    return row ? { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType } : null;
   });
 }
 

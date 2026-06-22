@@ -651,7 +651,11 @@
     "marital_single": "单身",
     "marital_married": "已婚",
     "marital_other": "其他",
-    "notSet": "— 未设置 —"
+    "notSet": "— 未设置 —",
+    "documentLabel": "证明文件",
+    "documentHint": "病假和住院假需提供（例如医生证明）。",
+    "documentRequired": "需要文件",
+    "viewDocument": "查看文件"
   },
   "approvals": {
     "title": "审批",
@@ -677,7 +681,8 @@
     "claims": "报销",
     "amount": "金额",
     "noPendingClaims": "无待您处理的报销。",
-    "receipt": "收据"
+    "receipt": "收据",
+    "viewDocument": "查看文件"
   },
   "performance": {
     "list": {

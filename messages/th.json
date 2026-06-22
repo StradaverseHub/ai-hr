@@ -651,7 +651,11 @@
     "marital_single": "โสด",
     "marital_married": "สมรส",
     "marital_other": "อื่น ๆ",
-    "notSet": "— ยังไม่ได้ตั้งค่า —"
+    "notSet": "— ยังไม่ได้ตั้งค่า —",
+    "documentLabel": "เอกสารประกอบ",
+    "documentHint": "จำเป็นสำหรับการลาป่วยและลานอนโรงพยาบาล (เช่น ใบรับรองแพทย์)",
+    "documentRequired": "ต้องมีเอกสาร",
+    "viewDocument": "ดูเอกสาร"
   },
   "approvals": {
     "title": "การอนุมัติ",
@@ -677,7 +681,8 @@
     "claims": "การเบิก",
     "amount": "จำนวนเงิน",
     "noPendingClaims": "ไม่มีการเบิกที่รอการตัดสินใจของคุณ",
-    "receipt": "ใบเสร็จ"
+    "receipt": "ใบเสร็จ",
+    "viewDocument": "ดูเอกสาร"
   },
   "performance": {
     "list": {

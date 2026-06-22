@@ -166,6 +166,7 @@ export function listLeaveTypes(ctx: SessionContext, opts: { includeArchived?: bo
         name: leaveType.name,
         paid: leaveType.paid,
         counting: leaveType.counting,
+        requiresDocument: leaveType.requiresDocument,
         archivedAt: leaveType.archivedAt,
         inUse: sql<boolean>`exists (select 1 from leave_request lr where lr.leave_type_id = leave_type.id) or exists (select 1 from leave_ledger ll where ll.leave_type_id = leave_type.id) or exists (select 1 from leave_policy lp where lp.leave_type_id = leave_type.id)`,
       })
@@ -191,6 +192,7 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         endDate: leaveRequest.endDate,
         days: leaveRequest.days,
         status: leaveRequest.status,
+        hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
       })
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
@@ -542,6 +544,7 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string) {
         endDate: leaveRequest.endDate,
         days: leaveRequest.days,
         status: leaveRequest.status,
+        hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))

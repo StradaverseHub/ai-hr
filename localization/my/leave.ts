@@ -7,12 +7,15 @@ export type MyLeaveTypeDef = {
   paid: boolean;
   counting: 'working_days' | 'calendar_days';
   eligibility?: LeaveEligibility; // ADR-0038 2A-1 — lawful gate (only where the Act restricts)
+  requiresDocument?: boolean; // ADR-0038 2A-2 — supporting document needed (e.g. MC)
 };
 
 export const MY_LEAVE_TYPES: MyLeaveTypeDef[] = [
   { code: 'ANNUAL', name: 'Annual Leave', paid: true, counting: 'working_days' },
-  { code: 'SICK', name: 'Sick Leave', paid: true, counting: 'calendar_days' },
-  { code: 'HOSPITALIZATION', name: 'Hospitalization Leave', paid: true, counting: 'calendar_days' },
+  // Paid sick & hospitalization leave is conditioned on certification by a registered medical
+  // practitioner / dental surgeon (EA-1955 s.60F(1)), so both require a supporting document.
+  { code: 'SICK', name: 'Sick Leave', paid: true, counting: 'calendar_days', requiresDocument: true },
+  { code: 'HOSPITALIZATION', name: 'Hospitalization Leave', paid: true, counting: 'calendar_days', requiresDocument: true },
   // Maternity — female employee (EA-1955 s.37, as amended by Act A1651 2022; 98 days).
   { code: 'MATERNITY', name: 'Maternity Leave', paid: true, counting: 'calendar_days', eligibility: { gender: 'female' } },
   // Paternity — married male employee, ≥12 months service (EA-1955 s.60FA, inserted by Act A1651 2022; 7 days).

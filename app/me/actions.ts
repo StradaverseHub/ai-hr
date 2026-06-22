@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
-import { requestLeave } from '@/core/leave';
+import { addLeaveAttachment, requestLeave } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import {
@@ -34,8 +34,24 @@ export async function myRequestLeave(formData: FormData) {
   const leaveTypeId = String(formData.get('leaveTypeId'));
   const startDate = String(formData.get('startDate'));
   const endDate = String(formData.get('endDate'));
+  const file = formData.get('document');
+  const hasFile = file instanceof File && file.size > 0;
   try {
-    await requestLeave(s, { employmentId, leaveTypeId, startDate, endDate });
+    const { leaveRequestId } = await requestLeave(s, {
+      employmentId,
+      leaveTypeId,
+      startDate,
+      endDate,
+      hasDocument: hasFile,
+    });
+    if (hasFile) {
+      await addLeaveAttachment(s, {
+        leaveRequestId,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        content: Buffer.from(await file.arrayBuffer()),
+      });
+    }
   } catch (e) {
     redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
   }

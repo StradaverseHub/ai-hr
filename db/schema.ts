@@ -360,6 +360,9 @@ export const leaveType = pgTable('leave_type', {
   // open to all. Enforced at requestLeave; mirrors only what the Act restricts (e.g. maternity is female-
   // only by EA s.37), so it never blocks a statutory entitlement.
   eligibility: jsonb('eligibility'),
+  // Wave 2 (ADR-0038 2A-2): require a supporting document (e.g. an MC for sick leave). When true,
+  // requestLeave rejects a request that has no attachment. Default false = no document needed.
+  requiresDocument: boolean('requires_document').notNull().default(false),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -423,6 +426,30 @@ export const leaveRequest = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('leave_request_employment_idx').on(t.employmentId)],
+);
+
+// Wave 2 (ADR-0038 2A-2): supporting documents for leave (e.g. MC). Mirrors claim_attachment:
+// employment_id is denormalized from the request so RLS uses can_see_employment(employment_id)
+// directly (same subject + manager + admin rule as leave_request, no per-row subquery).
+export const leaveRequestAttachment = pgTable(
+  'leave_request_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    leaveRequestId: uuid('leave_request_id')
+      .notNull()
+      .references(() => leaveRequest.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_request_attachment_request_idx').on(t.leaveRequestId)],
 );
 
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────
