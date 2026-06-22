@@ -48,6 +48,7 @@ async function main() {
       country: 'MY',
       currency: 'MYR',
       parentCompanyId: holding.id,
+      leaveMultiApproval: true, // 2B-1: demo the manager → HR chain
     })
     .returning({ id: schema.company.id });
   await owner.db.insert(schema.companyStatutoryMy).values({
@@ -286,6 +287,15 @@ async function main() {
           decision: 'approved',
           deciderEmploymentId: manager.employmentId,
         });
+        // 2B-1: a multi-step company needs a second (HR) approval to finalize. Harmless on single-step
+        // (the request is already approved, so this branch is skipped).
+        const [after] = await owner.db
+          .select({ status: schema.leaveRequest.status })
+          .from(schema.leaveRequest)
+          .where(eq(schema.leaveRequest.id, leaveRequestId));
+        if (after?.status === 'pending') {
+          await decideLeave(admin, { leaveRequestId, decision: 'approved' });
+        }
       } catch (e) {
         console.warn(`  (leave ${startDate} left pending: ${(e as Error).message})`);
       }

@@ -130,6 +130,10 @@ export const company = pgTable(
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2
     currency: text('currency').notNull().default('MYR'), // ISO-4217
     registrationNo: text('registration_no'),
+    // Wave 2 (ADR-0038 2B-1): when true, leave requests in this company route through a multi-step
+    // approval chain (direct manager → HR) instead of a single approval. Per-company; 2B-2 makes the
+    // chain itself configurable.
+    leaveMultiApproval: boolean('leave_multi_approval').notNull().default(false),
     // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
     parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -450,6 +454,31 @@ export const leaveRequestAttachment = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('leave_request_attachment_request_idx').on(t.leaveRequestId)],
+);
+
+// Wave 2 (ADR-0038 2B): instance approval steps generated for a leave request when its company runs a
+// multi-step chain. decideLeave advances the lowest-index pending step; the request is approved only
+// when the final step clears, and rejected if any step is rejected. subject_employment_id is
+// denormalized from the request so RLS reuses can_see_employment (same rule as leave_request).
+export const leaveApprovalStep = pgTable(
+  'leave_approval_step',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    leaveRequestId: uuid('leave_request_id')
+      .notNull()
+      .references(() => leaveRequest.id),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    stepIndex: integer('step_index').notNull(),
+    approverKind: text('approver_kind').notNull(), // 'direct_manager' | 'hr_admin' (2B-2: named roles)
+    status: leaveRequestStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_approval_step_request_idx').on(t.leaveRequestId, t.stepIndex)],
 );
 
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────

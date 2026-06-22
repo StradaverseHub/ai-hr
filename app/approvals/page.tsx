@@ -71,6 +71,10 @@ export default async function ApprovalsPage({
   ]);
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
+  // 2B-1: a request may sit at a manager step or an HR step. A manager step is decidable by the
+  // viewer the list already scoped to (manager/admin); an HR step only by an admin.
+  const stageLabel = (kind: string | null) =>
+    kind === 'hr_admin' ? t('stageHr') : kind === 'direct_manager' ? t('stageManager') : '';
   const total = pendingLeave.length + corrections.length + profileChanges.length + claims.length;
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
@@ -117,18 +121,25 @@ export default async function ApprovalsPage({
                         {t('viewDocument')}
                       </a>
                     )}
+                    {r.stepCount > 0 && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {stageLabel(r.currentStepKind)} ·{' '}
+                        {t('stepOfN', { n: (r.currentStepIndex ?? 0) + 1, total: r.stepCount })}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.startDate} → {r.endDate}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.days)}</td>
                   <td className="px-4 py-2.5">
-                    <DecideButtons
-                      action={approveLeaveAction}
-                      id={r.id}
-                      disabled={mine(r.personId)}
-                      labels={decideLabels}
-                    />
+                    {mine(r.personId) ? (
+                      <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>
+                    ) : r.currentStepKind === 'hr_admin' && !admin ? (
+                      <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
+                    ) : (
+                      <DecideButtons action={approveLeaveAction} id={r.id} labels={decideLabels} />
+                    )}
                   </td>
                 </tr>
               ))}

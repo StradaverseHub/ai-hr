@@ -596,6 +596,13 @@
 			"when": 1781861480000,
 			"tag": "0084_leave_mandatory_documents",
 			"breakpoints": true
+		},
+		{
+			"idx": 85,
+			"version": "7",
+			"when": 1781861490000,
+			"tag": "0085_leave_multi_approval",
+			"breakpoints": true
 		}
 	]
 }
