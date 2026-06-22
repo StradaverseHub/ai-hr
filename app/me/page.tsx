@@ -317,9 +317,16 @@ export default async function MePage({
             <ul className="space-y-1.5 text-sm">
               {requests.slice(0, 5).map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2">
-                  <span className="truncate text-muted-foreground">
-                    {r.leaveType} · {r.startDate}
-                  </span>
+                  <div className="min-w-0">
+                    <span className="block truncate text-muted-foreground">
+                      {r.leaveType} · {r.startDate}
+                    </span>
+                    {r.status === 'pending' && r.stepCount > 0 && (
+                      <span className="text-xs text-muted-foreground/80">
+                        {r.currentStepKind === 'hr_admin' ? t('stageHr') : t('stageManager')}
+                      </span>
+                    )}
+                  </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {r.hasDocument && (
                       <a

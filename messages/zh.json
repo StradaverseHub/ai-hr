@@ -655,7 +655,9 @@
     "documentLabel": "证明文件",
     "documentHint": "病假和住院假需提供（例如医生证明）。",
     "documentRequired": "需要文件",
-    "viewDocument": "查看文件"
+    "viewDocument": "查看文件",
+    "stageManager": "经理审批",
+    "stageHr": "人力资源审批"
   },
   "approvals": {
     "title": "审批",
@@ -682,7 +684,10 @@
     "amount": "金额",
     "noPendingClaims": "无待您处理的报销。",
     "receipt": "收据",
-    "viewDocument": "查看文件"
+    "viewDocument": "查看文件",
+    "stageManager": "经理审批",
+    "stageHr": "人力资源审批",
+    "stepOfN": "第 {n} / {total} 步"
   },
   "performance": {
     "list": {

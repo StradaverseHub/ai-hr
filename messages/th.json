@@ -655,7 +655,9 @@
     "documentLabel": "เอกสารประกอบ",
     "documentHint": "จำเป็นสำหรับการลาป่วยและลานอนโรงพยาบาล (เช่น ใบรับรองแพทย์)",
     "documentRequired": "ต้องมีเอกสาร",
-    "viewDocument": "ดูเอกสาร"
+    "viewDocument": "ดูเอกสาร",
+    "stageManager": "การพิจารณาของผู้จัดการ",
+    "stageHr": "การพิจารณาของ HR"
   },
   "approvals": {
     "title": "การอนุมัติ",
@@ -682,7 +684,10 @@
     "amount": "จำนวนเงิน",
     "noPendingClaims": "ไม่มีการเบิกที่รอการตัดสินใจของคุณ",
     "receipt": "ใบเสร็จ",
-    "viewDocument": "ดูเอกสาร"
+    "viewDocument": "ดูเอกสาร",
+    "stageManager": "การพิจารณาของผู้จัดการ",
+    "stageHr": "การพิจารณาของ HR",
+    "stepOfN": "{n} จาก {total}"
   },
   "performance": {
     "list": {

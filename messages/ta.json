@@ -655,7 +655,9 @@
     "documentLabel": "ஆதரவு ஆவணம்",
     "documentHint": "உடல்நலக் குறைவு & மருத்துவமனை விடுப்புக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்).",
     "documentRequired": "ஆவணம் தேவை",
-    "viewDocument": "ஆவணத்தைக் காண்க"
+    "viewDocument": "ஆவணத்தைக் காண்க",
+    "stageManager": "மேலாளர் மதிப்பாய்வு",
+    "stageHr": "HR மதிப்பாய்வு"
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
@@ -682,7 +684,10 @@
     "amount": "தொகை",
     "noPendingClaims": "உங்கள் முடிவுக்காகக் காத்திருக்கும் கோரிக்கைகள் இல்லை.",
     "receipt": "ரசீது",
-    "viewDocument": "ஆவணத்தைக் காண்க"
+    "viewDocument": "ஆவணத்தைக் காண்க",
+    "stageManager": "மேலாளர் மதிப்பாய்வு",
+    "stageHr": "HR மதிப்பாய்வு",
+    "stepOfN": "{total} இல் {n}"
   },
   "performance": {
     "list": {

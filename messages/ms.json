@@ -655,7 +655,9 @@
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk cuti sakit & kemasukan hospital (cth. sijil cuti sakit).",
     "documentRequired": "dokumen diperlukan",
-    "viewDocument": "Lihat dokumen"
+    "viewDocument": "Lihat dokumen",
+    "stageManager": "Semakan pengurus",
+    "stageHr": "Semakan HR"
   },
   "approvals": {
     "title": "Kelulusan",
@@ -682,7 +684,10 @@
     "amount": "Amaun",
     "noPendingClaims": "Tiada tuntutan menunggu keputusan anda.",
     "receipt": "resit",
-    "viewDocument": "Lihat dokumen"
+    "viewDocument": "Lihat dokumen",
+    "stageManager": "Semakan pengurus",
+    "stageHr": "Semakan HR",
+    "stepOfN": "{n} daripada {total}"
   },
   "performance": {
     "list": {

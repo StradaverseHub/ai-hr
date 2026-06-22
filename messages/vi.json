@@ -655,7 +655,9 @@
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc cho nghỉ ốm & nằm viện (ví dụ: giấy chứng nhận y tế).",
     "documentRequired": "cần tài liệu",
-    "viewDocument": "Xem tài liệu"
+    "viewDocument": "Xem tài liệu",
+    "stageManager": "Quản lý xét duyệt",
+    "stageHr": "HR xét duyệt"
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -682,7 +684,10 @@
     "amount": "Số tiền",
     "noPendingClaims": "Không có khoản chi nào đang chờ bạn quyết định.",
     "receipt": "biên lai",
-    "viewDocument": "Xem tài liệu"
+    "viewDocument": "Xem tài liệu",
+    "stageManager": "Quản lý xét duyệt",
+    "stageHr": "HR xét duyệt",
+    "stepOfN": "{n}/{total}"
   },
   "performance": {
     "list": {

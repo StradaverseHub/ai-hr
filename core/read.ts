@@ -193,6 +193,9 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         days: leaveRequest.days,
         status: leaveRequest.status,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
+        currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
       })
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
@@ -545,6 +548,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string) {
         days: leaveRequest.days,
         status: leaveRequest.status,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
+        currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))

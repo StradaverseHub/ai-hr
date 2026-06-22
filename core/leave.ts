@@ -3,7 +3,7 @@
  * (accrual +, debit −, adjustment ±). Approval checks projected balance and writes
  * the debit + status flip + event atomically in one transaction.
  */
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -12,12 +12,14 @@ import {
   company,
   employment,
   holiday,
+  leaveApprovalStep,
   leaveLedger,
   leavePolicy,
   leaveRequest,
   leaveRequestAttachment,
   leaveType,
   person,
+  reportingLine,
 } from '../db/schema';
 
 export class InsufficientLeaveBalanceError extends Error {
@@ -180,8 +182,48 @@ export async function requestLeave(
       subjectEmploymentId: p.employmentId,
       payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days },
     });
+    // 2B-1: if the company runs a multi-step chain, generate the instance approval steps.
+    await generateApprovalSteps(tx, ctx.tenantId, row.id, p.employmentId);
     return { leaveRequestId: row.id, days };
   });
+}
+
+/** Generate the approval chain for a new request when its company opts into multi-step approval.
+ *  2B-1 chain is fixed: direct manager (when one exists) then HR. 2B-2 will make this configurable. */
+async function generateApprovalSteps(tx: Tx, tenantId: string, leaveRequestId: string, employmentId: string) {
+  const [co] = await tx
+    .select({ multi: company.leaveMultiApproval })
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (!co?.multi) return; // single-step company — no chain
+
+  // Include a manager step only when the employee has a current administrative reporting line;
+  // otherwise the chain is HR-only (no dead step that nobody can clear).
+  const [mgr] = await tx
+    .select({ id: reportingLine.id })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        lte(reportingLine.validFrom, sql`current_date`),
+        or(isNull(reportingLine.validTo), sql`${reportingLine.validTo} > current_date`),
+      ),
+    )
+    .limit(1);
+
+  const kinds = [...(mgr ? ['direct_manager'] : []), 'hr_admin'];
+  await tx.insert(leaveApprovalStep).values(
+    kinds.map((approverKind, stepIndex) => ({
+      tenantId,
+      leaveRequestId,
+      subjectEmploymentId: employmentId,
+      stepIndex,
+      approverKind,
+    })),
+  );
 }
 
 /** Attach a supporting document to a pending leave request (2A-2). employment_id is denormalized from
@@ -246,50 +288,128 @@ export async function getLeaveAttachment(
   });
 }
 
+/** Only HR (hr_admin / super_admin) may clear an hr_admin step; an HR admin still cannot decide their
+ *  own request (mirrors assertCanDecide's self-ban). */
+async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId: string, label: string) {
+  const roles = ctx.roles ?? [];
+  const isSuper = roles.includes('super_admin');
+  if (!(isSuper || roles.includes('hr_admin'))) throw new Error(`Only HR can decide this ${label}`);
+  if (!isSuper && ctx.personId != null) {
+    const [subj] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, subjectEmploymentId))
+      .limit(1);
+    if (subj?.personId === ctx.personId) throw new Error(`You cannot decide your own ${label}`);
+  }
+}
+
+type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string };
+
+/** Final approval: balance gate + ledger debit + status flip + event. */
+async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: DecidableLeave, deciderEmploymentId?: string) {
+  const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
+  const need = Number(req.days);
+  if (balance - need < 0) throw new InsufficientLeaveBalanceError();
+  await tx.insert(leaveLedger).values({
+    tenantId: ctx.tenantId,
+    employmentId: req.employmentId,
+    leaveTypeId: req.leaveTypeId,
+    entryType: 'debit',
+    days: (-need).toFixed(2),
+    sourceRequestId: req.id,
+    effectiveOn: req.startDate,
+  });
+  await tx
+    .update(leaveRequest)
+    .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
+    .where(eq(leaveRequest.id, req.id));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'leave-request',
+    aggregateId: req.id,
+    eventType: 'leave-request.approved',
+    actor: actorOf(ctx),
+    subjectEmploymentId: req.employmentId,
+    payload: { decision: 'approved', deciderEmploymentId: deciderEmploymentId ?? null },
+  });
+}
+
+/** Terminal rejection: status flip + event (no ledger write). */
+async function finalizeLeaveRejection(
+  tx: Tx,
+  ctx: SessionContext,
+  req: DecidableLeave,
+  deciderEmploymentId?: string,
+  extra?: Record<string, unknown>,
+) {
+  await tx
+    .update(leaveRequest)
+    .set({ status: 'rejected', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
+    .where(eq(leaveRequest.id, req.id));
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'leave-request',
+    aggregateId: req.id,
+    eventType: 'leave-request.rejected',
+    actor: actorOf(ctx),
+    subjectEmploymentId: req.employmentId,
+    payload: { decision: 'rejected', deciderEmploymentId: deciderEmploymentId ?? null, ...(extra ?? {}) },
+  });
+}
+
+/** Decide a leave request. With a multi-step chain (2B-1) this advances the current step and only
+ *  finalizes when the last step clears; a rejection at any step is terminal. Without a chain it is a
+ *  single approval (the original behavior). */
 export async function decideLeave(
   ctx: SessionContext,
   p: { leaveRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
 ) {
   return withTenant(ctx, async (tx) => {
-    const [req] = await tx
-      .select()
-      .from(leaveRequest)
-      .where(eq(leaveRequest.id, p.leaveRequestId))
-      .limit(1);
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
 
-    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    const steps = await tx
+      .select()
+      .from(leaveApprovalStep)
+      .where(eq(leaveApprovalStep.leaveRequestId, req.id))
+      .orderBy(asc(leaveApprovalStep.stepIndex));
+    const current = steps.find((s) => s.status === 'pending');
 
-    if (p.decision === 'approved') {
-      const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
-      const need = Number(req.days);
-      if (balance - need < 0) throw new InsufficientLeaveBalanceError();
-      await tx.insert(leaveLedger).values({
-        tenantId: ctx.tenantId,
-        employmentId: req.employmentId,
-        leaveTypeId: req.leaveTypeId,
-        entryType: 'debit',
-        days: (-need).toFixed(2),
-        sourceRequestId: req.id,
-        effectiveOn: req.startDate,
-      });
+    // Multi-step chain: decide the current step.
+    if (steps.length > 0 && current) {
+      if (current.approverKind === 'hr_admin') await assertIsHrAdmin(tx, ctx, req.employmentId, 'leave request');
+      else await assertCanDecide(tx, ctx, req.employmentId, 'leave request'); // direct_manager
+      await tx
+        .update(leaveApprovalStep)
+        .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
+        .where(eq(leaveApprovalStep.id, current.id));
+      if (p.decision === 'rejected') {
+        await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind });
+        return { status: 'rejected' as const };
+      }
+      const next = steps.find((s) => s.stepIndex > current.stepIndex && s.status === 'pending');
+      if (next) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'leave-request',
+          aggregateId: req.id,
+          eventType: 'leave-request.step.approved',
+          actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
+          payload: { step: current.stepIndex, kind: current.approverKind, nextKind: next.approverKind },
+        });
+        return { status: 'pending' as const, advancedTo: next.approverKind };
+      }
+      await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
+      return { status: 'approved' as const };
     }
 
-    await tx
-      .update(leaveRequest)
-      .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
-      .where(eq(leaveRequest.id, req.id));
-
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-request',
-      aggregateId: req.id,
-      eventType: `leave-request.${p.decision}`,
-      actor: actorOf(ctx),
-      subjectEmploymentId: req.employmentId,
-      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null },
-    });
+    // Single-step (no chain) — original behavior.
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+    if (p.decision === 'approved') await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
+    else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId);
     return { status: p.decision };
   });
 }

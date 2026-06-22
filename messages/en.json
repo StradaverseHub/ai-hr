@@ -655,7 +655,9 @@
     "documentLabel": "Supporting document",
     "documentHint": "Required for sick & hospitalization leave (e.g. a medical certificate).",
     "documentRequired": "document required",
-    "viewDocument": "View document"
+    "viewDocument": "View document",
+    "stageManager": "Manager review",
+    "stageHr": "HR review"
   },
   "approvals": {
     "title": "Approvals",
@@ -682,7 +684,10 @@
     "amount": "Amount",
     "noPendingClaims": "No claims awaiting your decision.",
     "receipt": "receipt",
-    "viewDocument": "View document"
+    "viewDocument": "View document",
+    "stageManager": "Manager review",
+    "stageHr": "HR review",
+    "stepOfN": "{n} of {total}"
   },
   "performance": {
     "list": {
