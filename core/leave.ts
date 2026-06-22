@@ -16,12 +16,51 @@ import {
   leavePolicy,
   leaveRequest,
   leaveType,
+  person,
 } from '../db/schema';
 
 export class InsufficientLeaveBalanceError extends Error {
   constructor() {
     super('Leave rejected: insufficient balance');
     this.name = 'InsufficientLeaveBalanceError';
+  }
+}
+
+// ── Eligibility (ADR-0038 2A-1, #25) ──────────────────────────────────────────────────────────────
+// A lawful gate that mirrors what the Act restricts (maternity female-only EA s.37; paternity married-
+// male ≥12mo EA s.60FA). It NEVER blocks a statutory entitlement — types with no restriction carry no
+// eligibility, so everyone can request them.
+export type LeaveEligibility = { gender?: string; maritalStatus?: string; minServiceMonths?: number };
+
+export class LeaveIneligibleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaveIneligibleError';
+  }
+}
+
+/** Whole completed months from `start` to `asOf` (both ISO yyyy-mm-dd). */
+function monthsBetween(start: string, asOf: string): number {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = asOf.split('-').map(Number);
+  let months = (ey - sy) * 12 + (em - sm);
+  if (ed < sd) months -= 1; // the day-of-month hasn't come round yet
+  return Math.max(0, months);
+}
+
+function assertEligible(
+  elig: LeaveEligibility,
+  emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
+  asOf: string,
+): void {
+  if (elig.gender && emp?.gender !== elig.gender) {
+    throw new LeaveIneligibleError(`This leave type is available to ${elig.gender} employees only.`);
+  }
+  if (elig.maritalStatus && emp?.marital !== elig.maritalStatus) {
+    throw new LeaveIneligibleError(`This leave type requires marital status “${elig.maritalStatus}”.`);
+  }
+  if (elig.minServiceMonths && (!emp || monthsBetween(emp.hiredOn, asOf) < elig.minServiceMonths)) {
+    throw new LeaveIneligibleError(`This leave type requires at least ${elig.minServiceMonths} months of service.`);
   }
 }
 
@@ -66,10 +105,23 @@ export async function requestLeave(
   return withTenant(ctx, async (tx) => {
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
     const [lt] = await tx
-      .select({ counting: leaveType.counting })
+      .select({ counting: leaveType.counting, eligibility: leaveType.eligibility })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
+
+    // Eligibility gate (2A-1, #25) — fail fast before anything is created.
+    const elig = (lt?.eligibility ?? null) as LeaveEligibility | null;
+    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths)) {
+      const [emp] = await tx
+        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(eq(employment.id, p.employmentId))
+        .limit(1);
+      assertEligible(elig, emp, p.startDate);
+    }
+
     let days: number;
     if (lt?.counting === 'working_days') {
       const hols = await tx

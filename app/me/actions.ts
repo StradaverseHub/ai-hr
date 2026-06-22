@@ -71,6 +71,8 @@ export async function myUpdateContact(formData: FormData) {
       phone: String(formData.get('phone') ?? ''),
       address: String(formData.get('address') ?? ''),
       dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
+      gender: String(formData.get('gender') ?? ''),
+      maritalStatus: String(formData.get('maritalStatus') ?? ''),
       emergencyContactName: String(formData.get('emergencyContactName') ?? ''),
       emergencyContactPhone: String(formData.get('emergencyContactPhone') ?? ''),
     });

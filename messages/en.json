@@ -642,7 +642,16 @@
     "secProfile": "Profile",
     "secPay": "Pay",
     "secPerformance": "Performance",
-    "secDocuments": "Documents"
+    "secDocuments": "Documents",
+    "genderLabel": "Gender",
+    "gender_male": "Male",
+    "gender_female": "Female",
+    "gender_undisclosed": "Prefer not to say",
+    "maritalLabel": "Marital status",
+    "marital_single": "Single",
+    "marital_married": "Married",
+    "marital_other": "Other",
+    "notSet": "— Not set —"
   },
   "approvals": {
     "title": "Approvals",

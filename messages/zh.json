@@ -642,7 +642,16 @@
     "secProfile": "个人资料",
     "secPay": "薪资",
     "secPerformance": "绩效",
-    "secDocuments": "文档"
+    "secDocuments": "文档",
+    "genderLabel": "性别",
+    "gender_male": "男",
+    "gender_female": "女",
+    "gender_undisclosed": "不愿透露",
+    "maritalLabel": "婚姻状况",
+    "marital_single": "单身",
+    "marital_married": "已婚",
+    "marital_other": "其他",
+    "notSet": "— 未设置 —"
   },
   "approvals": {
     "title": "审批",

@@ -582,6 +582,13 @@
 			"when": 1781861460000,
 			"tag": "0082_payroll_batch_scope",
 			"breakpoints": true
+		},
+		{
+			"idx": 83,
+			"version": "7",
+			"when": 1781861470000,
+			"tag": "0083_leave_eligibility",
+			"breakpoints": true
 		}
 	]
 }

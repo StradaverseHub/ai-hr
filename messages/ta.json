@@ -642,7 +642,16 @@
     "secProfile": "சுயவிவரம்",
     "secPay": "ஊதியம்",
     "secPerformance": "செயல்திறன்",
-    "secDocuments": "ஆவணங்கள்"
+    "secDocuments": "ஆவணங்கள்",
+    "genderLabel": "பாலினம்",
+    "gender_male": "ஆண்",
+    "gender_female": "பெண்",
+    "gender_undisclosed": "வெளியிட விரும்பவில்லை",
+    "maritalLabel": "திருமண நிலை",
+    "marital_single": "திருமணமாகாதவர்",
+    "marital_married": "திருமணமானவர்",
+    "marital_other": "மற்றவை",
+    "notSet": "— அமைக்கப்படவில்லை —"
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",

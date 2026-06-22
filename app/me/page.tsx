@@ -375,6 +375,24 @@ export default async function MePage({
                 />
               </Field>
               <div className="grid grid-cols-2 gap-2">
+                <Field label={t('genderLabel')}>
+                  <select name="gender" defaultValue={profile?.person?.gender ?? ''} className={inputCls}>
+                    <option value="">{t('notSet')}</option>
+                    <option value="male">{t('gender_male')}</option>
+                    <option value="female">{t('gender_female')}</option>
+                    <option value="undisclosed">{t('gender_undisclosed')}</option>
+                  </select>
+                </Field>
+                <Field label={t('maritalLabel')}>
+                  <select name="maritalStatus" defaultValue={profile?.person?.maritalStatus ?? ''} className={inputCls}>
+                    <option value="">{t('notSet')}</option>
+                    <option value="single">{t('marital_single')}</option>
+                    <option value="married">{t('marital_married')}</option>
+                    <option value="other">{t('marital_other')}</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <Field label={t('emergencyContactLabel')}>
                   <input
                     name="emergencyContactName"

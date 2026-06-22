@@ -16,6 +16,12 @@ const clean = (v: unknown): string | null => {
   const s = String(v ?? '').trim();
   return s === '' ? null : s;
 };
+const oneOf = (v: unknown, allowed: readonly string[]): string | null => {
+  const s = clean(v);
+  return s && allowed.includes(s) ? s : null;
+};
+export const GENDERS = ['male', 'female', 'undisclosed'] as const;
+export const MARITAL_STATUSES = ['single', 'married', 'other'] as const;
 
 export type ProfileChangeProposed = {
   bankName?: string | null;
@@ -50,6 +56,8 @@ export function myProfile(ctx: SessionContext) {
         phone: person.phone,
         address: person.address,
         dateOfBirth: person.dateOfBirth,
+        gender: person.gender,
+        maritalStatus: person.maritalStatus,
         emergencyContactName: person.emergencyContactName,
         emergencyContactPhone: person.emergencyContactPhone,
       })
@@ -77,6 +85,8 @@ export async function updateOwnContact(
     phone?: string | null;
     address?: string | null;
     dateOfBirth?: string | null;
+    gender?: string | null;
+    maritalStatus?: string | null;
     emergencyContactName?: string | null;
     emergencyContactPhone?: string | null;
   },
@@ -90,6 +100,8 @@ export async function updateOwnContact(
         phone: clean(p.phone),
         address: clean(p.address),
         dateOfBirth: clean(p.dateOfBirth),
+        gender: oneOf(p.gender, GENDERS),
+        maritalStatus: oneOf(p.maritalStatus, MARITAL_STATUSES),
         emergencyContactName: clean(p.emergencyContactName),
         emergencyContactPhone: clean(p.emergencyContactPhone),
       })

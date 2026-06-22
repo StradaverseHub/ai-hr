@@ -642,7 +642,16 @@
     "secProfile": "โปรไฟล์",
     "secPay": "ค่าจ้าง",
     "secPerformance": "ผลงาน",
-    "secDocuments": "เอกสาร"
+    "secDocuments": "เอกสาร",
+    "genderLabel": "เพศ",
+    "gender_male": "ชาย",
+    "gender_female": "หญิง",
+    "gender_undisclosed": "ไม่ประสงค์ระบุ",
+    "maritalLabel": "สถานภาพสมรส",
+    "marital_single": "โสด",
+    "marital_married": "สมรส",
+    "marital_other": "อื่น ๆ",
+    "notSet": "— ยังไม่ได้ตั้งค่า —"
   },
   "approvals": {
     "title": "การอนุมัติ",
