@@ -651,7 +651,11 @@
     "marital_single": "திருமணமாகாதவர்",
     "marital_married": "திருமணமானவர்",
     "marital_other": "மற்றவை",
-    "notSet": "— அமைக்கப்படவில்லை —"
+    "notSet": "— அமைக்கப்படவில்லை —",
+    "documentLabel": "ஆதரவு ஆவணம்",
+    "documentHint": "உடல்நலக் குறைவு & மருத்துவமனை விடுப்புக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்).",
+    "documentRequired": "ஆவணம் தேவை",
+    "viewDocument": "ஆவணத்தைக் காண்க"
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
@@ -677,7 +681,8 @@
     "claims": "கோரிக்கைகள்",
     "amount": "தொகை",
     "noPendingClaims": "உங்கள் முடிவுக்காகக் காத்திருக்கும் கோரிக்கைகள் இல்லை.",
-    "receipt": "ரசீது"
+    "receipt": "ரசீது",
+    "viewDocument": "ஆவணத்தைக் காண்க"
   },
   "performance": {
     "list": {

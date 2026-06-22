@@ -651,7 +651,11 @@
     "marital_single": "Bujang",
     "marital_married": "Berkahwin",
     "marital_other": "Lain-lain",
-    "notSet": "— Tidak ditetapkan —"
+    "notSet": "— Tidak ditetapkan —",
+    "documentLabel": "Dokumen sokongan",
+    "documentHint": "Diperlukan untuk cuti sakit & kemasukan hospital (cth. sijil cuti sakit).",
+    "documentRequired": "dokumen diperlukan",
+    "viewDocument": "Lihat dokumen"
   },
   "approvals": {
     "title": "Kelulusan",
@@ -677,7 +681,8 @@
     "claims": "Tuntutan",
     "amount": "Amaun",
     "noPendingClaims": "Tiada tuntutan menunggu keputusan anda.",
-    "receipt": "resit"
+    "receipt": "resit",
+    "viewDocument": "Lihat dokumen"
   },
   "performance": {
     "list": {

@@ -9,7 +9,7 @@ import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
-import { requestLeave, decideLeave } from '../core/leave';
+import { requestLeave, decideLeave, addLeaveAttachment } from '../core/leave';
 import { createLeavePolicy } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -83,7 +83,7 @@ async function main() {
   for (const lt of myPack.leave.types) {
     const [row] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting, eligibility: lt.eligibility ?? null })
+      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting, eligibility: lt.eligibility ?? null, requiresDocument: lt.requiresDocument ?? false })
       .returning({ id: schema.leaveType.id });
     leaveTypeIds[lt.code] = row.id;
   }
@@ -258,10 +258,27 @@ async function main() {
 
   // Planned absences around 'today' (2026-06) so the dashboard timeline has shape.
   const manager = hired[1]; // Daniel — administrative manager of Aisyah and Arjun
-  const seedLeave = async (idx: number, leaveTypeId: string, startDate: string, endDate: string, approve: boolean) => {
+  // A tiny stand-in for an uploaded medical certificate, so document-gated demo leave is valid.
+  const demoMc = () => Buffer.from('%PDF-1.4\n% Demo medical certificate (seed data)\n');
+  const seedLeave = async (
+    idx: number,
+    leaveTypeId: string,
+    startDate: string,
+    endDate: string,
+    approve: boolean,
+    withDoc = false,
+  ) => {
     const { employmentId, session } = hired[idx];
     // Authored by the employee (the real-world actor), so the event carries their identity.
-    const { leaveRequestId } = await requestLeave(session, { employmentId, leaveTypeId, startDate, endDate });
+    const { leaveRequestId } = await requestLeave(session, { employmentId, leaveTypeId, startDate, endDate, hasDocument: withDoc });
+    if (withDoc) {
+      await addLeaveAttachment(session, {
+        leaveRequestId,
+        fileName: 'medical-certificate.pdf',
+        mimeType: 'application/pdf',
+        content: demoMc(),
+      });
+    }
     if (approve) {
       try {
         await decideLeave(manager.session, {
@@ -276,7 +293,7 @@ async function main() {
   };
   await seedLeave(0, annual.id, '2026-06-10', '2026-06-12', true); // Aisyah · annual · approved by Daniel
   await seedLeave(3, annual.id, '2026-06-16', '2026-06-18', true); // Arjun · annual · approved by Daniel
-  await seedLeave(2, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false); // Mei Ling · sick · pending
+  await seedLeave(2, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false, true); // Mei Ling · sick · pending · with MC
   await seedLeave(1, annual.id, '2026-06-11', '2026-06-11', false); // Daniel · annual · pending
   // One rejected request so the Leave page's status chips have every state.
   const rejected = await requestLeave(hired[3].session, {
@@ -284,6 +301,13 @@ async function main() {
     leaveTypeId: leaveTypeIds.SICK,
     startDate: '2026-06-19',
     endDate: '2026-06-19',
+    hasDocument: true,
+  });
+  await addLeaveAttachment(hired[3].session, {
+    leaveRequestId: rejected.leaveRequestId,
+    fileName: 'medical-certificate.pdf',
+    mimeType: 'application/pdf',
+    content: demoMc(),
   });
   await decideLeave(manager.session, {
     leaveRequestId: rejected.leaveRequestId,

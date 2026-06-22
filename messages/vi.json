@@ -651,7 +651,11 @@
     "marital_single": "Độc thân",
     "marital_married": "Đã kết hôn",
     "marital_other": "Khác",
-    "notSet": "— Chưa đặt —"
+    "notSet": "— Chưa đặt —",
+    "documentLabel": "Tài liệu hỗ trợ",
+    "documentHint": "Bắt buộc cho nghỉ ốm & nằm viện (ví dụ: giấy chứng nhận y tế).",
+    "documentRequired": "cần tài liệu",
+    "viewDocument": "Xem tài liệu"
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -677,7 +681,8 @@
     "claims": "Khoản chi",
     "amount": "Số tiền",
     "noPendingClaims": "Không có khoản chi nào đang chờ bạn quyết định.",
-    "receipt": "biên lai"
+    "receipt": "biên lai",
+    "viewDocument": "Xem tài liệu"
   },
   "performance": {
     "list": {

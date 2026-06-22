@@ -651,7 +651,11 @@
     "marital_single": "Single",
     "marital_married": "Married",
     "marital_other": "Other",
-    "notSet": "— Not set —"
+    "notSet": "— Not set —",
+    "documentLabel": "Supporting document",
+    "documentHint": "Required for sick & hospitalization leave (e.g. a medical certificate).",
+    "documentRequired": "document required",
+    "viewDocument": "View document"
   },
   "approvals": {
     "title": "Approvals",
@@ -677,7 +681,8 @@
     "claims": "Claims",
     "amount": "Amount",
     "noPendingClaims": "No claims awaiting your decision.",
-    "receipt": "receipt"
+    "receipt": "receipt",
+    "viewDocument": "View document"
   },
   "performance": {
     "list": {
