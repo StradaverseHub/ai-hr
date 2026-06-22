@@ -3,7 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archivePayComponent, seedPayComponentCatalog, upsertPayComponent } from '@/core/pay-components';
+import {
+  archivePayComponent,
+  deletePayComponent,
+  PayComponentInUseError,
+  seedPayComponentCatalog,
+  upsertPayComponent,
+} from '@/core/pay-components';
 
 const PAGE = '/admin/pay-components';
 const back = (toast: string) => redirect(`${PAGE}?toast=${encodeURIComponent(toast)}`);
@@ -39,6 +45,8 @@ export async function upsertComponentAction(formData: FormData) {
       includedInHrdfBase: bool(formData, 'includedInHrdfBase'),
       isNonPayable: kind === 'non_payable',
       prorates: bool(formData, 'prorates'),
+      eaFormLine: String(formData.get('eaFormLine') ?? '') || null,
+      roundingMethod: String(formData.get('roundingMethod') ?? 'none'),
     });
     revalidatePath(PAGE);
     back('Component saved');
@@ -56,4 +64,20 @@ export async function archiveComponentAction(formData: FormData) {
   } catch (e) {
     fail(e);
   }
+}
+
+/** Hard delete (guarded). Friendly message when the component is still referenced (#21). */
+export async function deleteComponentAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deletePayComponent(s, String(formData.get('id')));
+  } catch (e) {
+    const msg =
+      e instanceof PayComponentInUseError
+        ? `This component is used by ${e.refs} record(s) — archive it instead of deleting.`
+        : (e as Error).message;
+    return fail(new Error(msg));
+  }
+  revalidatePath(PAGE);
+  back('Component deleted');
 }
