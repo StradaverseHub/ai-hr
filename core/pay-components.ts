@@ -4,7 +4,7 @@
  * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
  * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -17,6 +17,30 @@ import {
 import { MY_DEFAULT_PAY_COMPONENTS, BACKFILL_COMPONENT_CODES, type PayComponentSeed } from '../localization/my/pay-components';
 
 const money = (v: number) => Number(v).toFixed(2);
+
+// ADR-0035 1A — constrained config vocabularies (stored as text, validated app-side).
+// EA-form lines map a component to a Borang EA / C.P.8A Part B line so EA totals reconcile (#14).
+export const EA_FORM_LINES = [
+  'gross_salary',          // B.1(a) salary, wages, leave pay
+  'bonus',                 // B.1(a) bonus / incentive (cash)
+  'commission',            // B.1(a) fees, commission
+  'allowance_taxable',     // B.1(a) taxable allowances
+  'allowance_exempt',      // tax-exempt allowance (reported, not taxed)
+  'bik',                   // B.2 benefit-in-kind / perquisite
+  'vola',                  // B.3 value of living accommodation
+  'esos',                  // B.1(c) ESOS / share scheme benefit
+  'gratuity_compensation', // B.1(d)/B.5 gratuity / compensation for loss of employment
+] as const;
+export type EaFormLine = (typeof EA_FORM_LINES)[number];
+
+// Per-component rounding of the payable amount (#15). 'none' = exact 2dp (legacy ⇒ byte-identical).
+export const ROUNDING_METHODS = ['none', 'up', 'down', 'nearest'] as const;
+export type RoundingMethod = (typeof ROUNDING_METHODS)[number];
+
+const cleanEaLine = (v: unknown): string | null =>
+  EA_FORM_LINES.includes(v as EaFormLine) ? (v as string) : null;
+const cleanRounding = (v: unknown): RoundingMethod =>
+  ROUNDING_METHODS.includes(v as RoundingMethod) ? (v as RoundingMethod) : 'none';
 
 async function componentIdByCode(tx: Tx, tenantId: string, code: string): Promise<string | null> {
   const [row] = await tx
@@ -106,7 +130,11 @@ export type PayComponentInput = {
   includedInHrdfBase: boolean;
   isNonPayable: boolean;
   prorates: boolean;
+  eaFormLine?: string | null;
+  roundingMethod?: string;
 };
+
+const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
 
 /** Admin upsert of a single catalog component (by code). */
 export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
@@ -114,12 +142,12 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
     const existing = await componentIdByCode(tx, ctx.tenantId, p.code);
     let id: string;
     if (existing) {
-      await tx.update(payComponent).set({ name: p.name, kind: p.kind, ...flagsOf(p) }).where(eq(payComponent.id, existing));
+      await tx.update(payComponent).set({ name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p) }).where(eq(payComponent.id, existing));
       id = existing;
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, kind: p.kind, ...flagsOf(p) })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p) })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -135,6 +163,7 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
   });
 }
 
+/** Soft-retire a component: stops new use, preserves every historical reference. Always safe. */
 export function archivePayComponent(ctx: SessionContext, id: string) {
   return withTenant(ctx, async (tx) => {
     await tx.update(payComponent).set({ archivedAt: new Date() }).where(eq(payComponent.id, id));
@@ -143,6 +172,44 @@ export function archivePayComponent(ctx: SessionContext, id: string) {
       aggregateType: 'pay-component',
       aggregateId: id,
       eventType: 'pay-component.archived',
+      actor: actorOf(ctx),
+    });
+    return { id };
+  });
+}
+
+/** Thrown when a hard-delete is refused because the component is referenced (#21). */
+export class PayComponentInUseError extends Error {
+  constructor(public readonly refs: number) {
+    super('pay-component-in-use');
+    this.name = 'PayComponentInUseError';
+  }
+}
+
+/**
+ * Hard-delete a catalog component (#21). GUARDED: refuse if referenced by any recurring per-employment
+ * value OR any batch line (draft or closed) — deleting would orphan those rows / past payslips. Callers
+ * should use archivePayComponent to retire an in-use component instead. RLS confines all reads/writes to
+ * the tenant + admin.
+ */
+export function deletePayComponent(ctx: SessionContext, id: string) {
+  return withTenant(ctx, async (tx) => {
+    const [rec] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(employmentPayComponent)
+      .where(eq(employmentPayComponent.componentId, id));
+    const [bat] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(payrollBatchComponent)
+      .where(eq(payrollBatchComponent.componentId, id));
+    const refs = (rec?.n ?? 0) + (bat?.n ?? 0);
+    if (refs > 0) throw new PayComponentInUseError(refs);
+    await tx.delete(payComponent).where(eq(payComponent.id, id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: id,
+      eventType: 'pay-component.deleted',
       actor: actorOf(ctx),
     });
     return { id };

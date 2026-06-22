@@ -1117,6 +1117,13 @@ export const payComponent = pgTable(
     isNonPayable: boolean('is_non_payable').notNull().default(false),
     // Whether the amount prorates for a mid-period joiner/leaver.
     prorates: boolean('prorates').notNull().default(true),
+    // Wave 1 (ADR-0035 1A): which annual EA-form (Borang EA / C.P.8A Part B) line this component maps to,
+    // so EA totals stay reconcilable (#14). Constrained app-side to EA_FORM_LINES; null = unmapped.
+    eaFormLine: text('ea_form_line'),
+    // Rounding applied to THIS component's payable amount before it enters gross (#15): none|up|down|
+    // nearest (whole ringgit). 'none' = exact 2dp (the legacy behaviour → byte-identical). NEVER touches
+    // statutory contribution rounding, which keeps its own legislated rules.
+    roundingMethod: text('rounding_method').notNull().default('none'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

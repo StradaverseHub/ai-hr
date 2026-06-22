@@ -50,6 +50,22 @@ export class UnsupportedPayComponentError extends Error {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
+// Per-component payable-amount rounding (ADR-0035 1A, #15). 'none' keeps exact 2dp (legacy ⇒ the gated
+// path stays byte-identical when no component opts in); up/down/nearest round to a whole ringgit. This
+// only shapes a component's own cash amount — statutory contribution rounding is untouched.
+const roundAmount = (n: number, method?: string | null): number => {
+  switch (method) {
+    case 'up':
+      return Math.ceil(round2(n));
+    case 'down':
+      return Math.floor(round2(n));
+    case 'nearest':
+      return Math.round(round2(n));
+    default:
+      return round2(n);
+  }
+};
+
 // Wave 2C (ADR-0024): an additional same-month run's statutory contribution is the INCREMENT of the
 // cumulative month — re-run the month with/without this run's additional remuneration and take the
 // delta (clamped ≥ 0, §6). Non-contribution fields (version, …) carry from `now`.
@@ -739,7 +755,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // agency split exactly, so a back-filled batch is byte-identical (proven by the compat test).
     const typedComponents = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
     type CompRow = {
-      code: string; kind: string; amount: number;
+      code: string; kind: string; amount: number; rounding: string;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
     };
     const recurringByEmp = new Map<string, CompRow[]>();
@@ -756,6 +772,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         hrdf: payComponent.includedInHrdfBase,
         nonPayable: payComponent.isNonPayable,
         prorates: payComponent.prorates,
+        rounding: payComponent.roundingMethod,
       };
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string } & Omit<CompRow, 'amount'>) => {
         const list = map.get(r.employmentId) ?? [];
@@ -809,7 +826,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
       const comps = [...(recurringByEmp.get(e.employmentId) ?? []), ...(batchCompByEmp.get(e.employmentId) ?? [])];
       for (const c of comps) {
-        const applied = c.prorates ? round2(c.amount * factor) : round2(c.amount);
+        const applied = roundAmount(c.prorates ? c.amount * factor : c.amount, c.rounding);
         if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable amount that the v1 calculator can't place in a cash
         // bucket — a non-payable/BIK, or a PCB-only earning (not EPF and not SOCSO) — would be SILENTLY
