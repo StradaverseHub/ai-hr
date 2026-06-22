@@ -33,9 +33,18 @@ else
 fi
 
 echo "▸ Restarting service…"
-if systemctl list-unit-files 2>/dev/null | grep -q '^aihr.service'; then
-  sudo systemctl restart aihr
-  echo "✅ Deployed. Logs: journalctl -u aihr -f"
+# Detect the unit directly. The old `list-unit-files | grep -q` form was fragile (under set -o
+# pipefail a SIGPIPE from the producer can flip the result); `systemctl cat` is a clean exit-code check.
+if systemctl cat aihr.service >/dev/null 2>&1; then
+  # `sudo -n` (non-interactive) so an automated deploy never blocks on a password prompt: it succeeds
+  # when the NOPASSWD rule (deploy/aihr-sudoers) is installed, else it falls through to a manual hint.
+  if sudo -n systemctl restart aihr 2>/dev/null; then
+    echo "✅ Deployed + restarted. Logs: journalctl -u aihr -f"
+  else
+    echo "⚠️  Build + migrations are done, but restarting the service needs privileges this shell lacks."
+    echo "    Finish with:  sudo systemctl restart aihr"
+    echo "    (or install deploy/aihr-sudoers once for passwordless restarts — see DEPLOY.md)"
+  fi
 else
   echo "ℹ️  No 'aihr' systemd service yet — install deploy/aihr.service (see DEPLOY.md), or run manually:"
   echo "     pnpm exec next start -H 0.0.0.0 -p \${PORT:-3000}"

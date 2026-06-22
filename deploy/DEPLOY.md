@@ -112,6 +112,17 @@ sudo systemctl daemon-reload && sudo systemctl enable --now aihr
 sudo systemctl status aihr                    # confirm running   ·   journalctl -u aihr -f  for logs
 ```
 
+### Passwordless restart (so `deploy.sh` finishes on its own)
+
+`deploy.sh` ends with `sudo -n systemctl restart aihr`. If the deploy user has no passwordless sudo, that step is skipped and the script prints the manual command to run. To let updates restart the service unattended, install the narrow `NOPASSWD` rule (only this one restart, nothing else):
+
+```bash
+sudo install -m 440 -o root -g root deploy/aihr-sudoers /etc/sudoers.d/aihr-restart
+sudo visudo -cf /etc/sudoers.d/aihr-restart   # must print "parsed OK"
+```
+
+Edit `deploy/aihr-sudoers` first if your deploy user isn't `ubuntu` or `systemctl` isn't at `/usr/bin/systemctl`. Without this, just run `sudo systemctl restart aihr` yourself after each `deploy.sh`.
+
 ## 6. Open the firewall + share
 
 ```bash
