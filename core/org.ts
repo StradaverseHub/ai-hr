@@ -451,6 +451,34 @@ export async function updatePerson(
   });
 }
 
+/** ADR-0038 2C — set the state an employment works in (drives which state public holidays apply). Pass
+ *  null to inherit the company's default work state. */
+export async function setEmploymentWorkState(
+  ctx: SessionContext,
+  p: { employmentId: string; workState: string | null },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ workState: employment.workState })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+    const workState = p.workState?.trim() || null;
+    await tx.update(employment).set({ workState }).where(eq(employment.id, p.employmentId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.work-state.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: before.workState, after: workState },
+    });
+    return { id: p.employmentId };
+  });
+}
+
 /**
  * ADR-0029 scope-out — designate the single "paymaster" employment through which a person's taxable
  * remuneration runs for PCB when they hold concurrent employments across the group. The paymaster must be

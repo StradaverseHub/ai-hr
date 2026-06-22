@@ -287,6 +287,7 @@ export async function createHolidayAction(formData: FormData) {
       country: String(formData.get('country') ?? 'MY'),
       holidayDate: String(formData.get('holidayDate') ?? ''),
       name: String(formData.get('name') ?? ''),
+      state: String(formData.get('state') ?? '') || null,
     });
   } catch (e) {
     fail(path, e);

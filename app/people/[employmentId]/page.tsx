@@ -29,6 +29,7 @@ import {
 } from './actions';
 import { currentCompensation } from '@/core/comp';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
+import { MY_STATES } from '@/localization/my/holidays';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 
 const LEAVE_STATUS: Record<string, string> = {
@@ -118,7 +119,7 @@ export default async function EmployeePage({
           <SectionHeader title={t('personalDetails')} />
           <form
             action={setPersonAction}
-            className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3"
+            className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <input type="hidden" name="personId" value={emp.personId} />
@@ -131,7 +132,17 @@ export default async function EmployeePage({
             <Field label={t('phone')}>
               <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
             </Field>
-            <div className="sm:col-span-3 flex justify-end">
+            <Field label={t('workState')}>
+              <select name="workState" defaultValue={emp.workState ?? ''} className={inputCls}>
+                <option value="">{t('workStateDefault')}</option>
+                {MY_STATES.map((st) => (
+                  <option key={st} value={st}>
+                    {st}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <div className="sm:col-span-4 flex justify-end">
               <button className={btnPrimary}>{t('saveDetails')}</button>
             </div>
           </form>

@@ -451,6 +451,7 @@ export function listHolidays(ctx: SessionContext, opts: { country?: string; year
       .select({
         id: holiday.id,
         country: holiday.country,
+        state: holiday.state,
         holidayDate: holiday.holidayDate,
         name: holiday.name,
       })
@@ -474,19 +475,22 @@ export function listHolidayYears(ctx: SessionContext) {
 
 export async function createHoliday(
   ctx: SessionContext,
-  p: { country: string; holidayDate: string; name: string },
+  p: { country: string; holidayDate: string; name: string; state?: string | null },
 ) {
   const country = isoCode(p.country, 'MY', 'Country');
   const name = cleanName(p.name, 'Holiday name');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) throw new Error('Holiday date must be YYYY-MM-DD');
+  const state = p.state?.trim() || null; // 2C: null = national (applies everywhere)
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(holiday)
-      .values({ tenantId: ctx.tenantId, country, holidayDate: p.holidayDate, name })
+      .values({ tenantId: ctx.tenantId, country, state, holidayDate: p.holidayDate, name })
       .returning({ id: holiday.id })
       .catch((e) => {
         if (isUniqueViolation(e)) {
-          throw new DuplicateError(`A ${country} holiday on ${p.holidayDate} already exists.`);
+          throw new DuplicateError(
+            `A ${country} ${state ? `${state} ` : ''}holiday on ${p.holidayDate} already exists.`,
+          );
         }
         throw e;
       });

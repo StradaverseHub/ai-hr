@@ -293,7 +293,9 @@
       "payComponentEffectiveFrom": "Berkuat kuasa dari",
       "payComponentSave": "Tambah",
       "payComponentsHint": "Komponen berulang untuk pekerja ini. Digunakan pada gaji apabila komponen bertaip diaktifkan.",
-      "epfVoluntaryHint": "Masukkan kadar penuh setiap pihak pada atau melebihi paras berkanun (pekerja 11%, majikan 12–13%). Biar kosong untuk kekal berkanun."
+      "epfVoluntaryHint": "Masukkan kadar penuh setiap pihak pada atau melebihi paras berkanun (pekerja 11%, majikan 12–13%). Biar kosong untuk kekal berkanun.",
+      "workState": "Negeri bekerja",
+      "workStateDefault": "Lalai syarikat"
     },
     "import": {
       "title": "Import pekerja",
@@ -1270,7 +1272,9 @@
       "nameLabel": "Nama",
       "namePlaceholder": "Hari Raya Aidilfitri",
       "addHoliday": "Tambah cuti",
-      "addHint": "Cuti dipadankan mengikut negara dan tarikh. Hari yang ditanda di sini dikecualikan daripada pengiraan cuti hari bekerja dan mengkelaskan kehadiran sebagai cuti umum."
+      "addHint": "Cuti dipadankan mengikut negara dan tarikh. Hari yang ditanda di sini dikecualikan daripada pengiraan cuti hari bekerja dan mengkelaskan kehadiran sebagai cuti umum.",
+      "stateLabel": "Negeri",
+      "national": "Kebangsaan"
     },
     "users": {
       "title": "Pengguna & peranan",

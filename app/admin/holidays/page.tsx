@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listHolidays, listHolidayYears } from '@/core/admin';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { MY_STATES } from '@/localization/my/holidays';
 import { createHolidayAction, deleteHolidayAction } from '../actions';
 
 export default async function HolidaysPage({
@@ -99,6 +100,9 @@ export default async function HolidaysPage({
                         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                           {h.country}
                         </span>
+                        <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {h.state ?? t('national')}
+                        </span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <form action={deleteHolidayAction} className="inline">
@@ -127,7 +131,7 @@ export default async function HolidaysPage({
         <SectionHeader title={t('addTitle')} />
         <form
           action={createHolidayAction}
-          className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4"
+          className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5"
         >
           {filterFields}
           <Field label={t('dateLabel')}>
@@ -142,6 +146,16 @@ export default async function HolidaysPage({
               {countries.map((c) => (
                 <option key={c} value={c}>
                   {c}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('stateLabel')}>
+            <select name="state" defaultValue="" className={inputCls}>
+              <option value="">{t('national')}</option>
+              {MY_STATES.map((st) => (
+                <option key={st} value={st}>
+                  {st}
                 </option>
               ))}
             </select>

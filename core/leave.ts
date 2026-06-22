@@ -152,10 +152,25 @@ export async function requestLeave(
 
     let days: number;
     if (lt?.counting === 'working_days') {
+      // 2C (ADR-0038): holidays apply per the employee's work state — national (state null) ∪ their
+      // effective state (work_state, falling back to the company default). National-only when unset.
+      const [loc] = await tx
+        .select({ ws: employment.workState, cds: company.defaultWorkState })
+        .from(employment)
+        .innerJoin(company, eq(company.id, employment.companyId))
+        .where(eq(employment.id, p.employmentId))
+        .limit(1);
+      const effState = loc?.ws ?? loc?.cds ?? null;
       const hols = await tx
         .select({ d: holiday.holidayDate })
         .from(holiday)
-        .where(and(gte(holiday.holidayDate, p.startDate), lte(holiday.holidayDate, p.endDate)));
+        .where(
+          and(
+            gte(holiday.holidayDate, p.startDate),
+            lte(holiday.holidayDate, p.endDate),
+            effState ? or(isNull(holiday.state), eq(holiday.state, effState)) : isNull(holiday.state),
+          ),
+        );
       days = workingDays(p.startDate, p.endDate, new Set(hols.map((h) => h.d)));
     } else {
       days = dayCount(p.startDate, p.endDate);

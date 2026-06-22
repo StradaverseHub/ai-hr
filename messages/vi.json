@@ -293,7 +293,9 @@
       "payComponentEffectiveFrom": "Hiệu lực từ",
       "payComponentSave": "Thêm",
       "payComponentsHint": "Các thành phần định kỳ cho nhân viên này. Áp dụng vào lương khi bật thành phần có kiểu.",
-      "epfVoluntaryHint": "Nhập tổng tỷ lệ của mỗi bên bằng hoặc cao hơn mức tối thiểu theo luật (người lao động 11%, người SDLĐ 12–13%). Để trống để giữ mức theo luật."
+      "epfVoluntaryHint": "Nhập tổng tỷ lệ của mỗi bên bằng hoặc cao hơn mức tối thiểu theo luật (người lao động 11%, người SDLĐ 12–13%). Để trống để giữ mức theo luật.",
+      "workState": "Bang làm việc",
+      "workStateDefault": "Mặc định công ty"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1270,7 +1272,9 @@
       "nameLabel": "Tên",
       "namePlaceholder": "Hari Raya Aidilfitri",
       "addHoliday": "Thêm ngày lễ",
-      "addHint": "Ngày lễ được khớp theo quốc gia và ngày. Ngày được đánh dấu ở đây sẽ bị loại khỏi việc tính ngày nghỉ làm việc và phân loại chấm công là ngày lễ."
+      "addHint": "Ngày lễ được khớp theo quốc gia và ngày. Ngày được đánh dấu ở đây sẽ bị loại khỏi việc tính ngày nghỉ làm việc và phân loại chấm công là ngày lễ.",
+      "stateLabel": "Bang",
+      "national": "Toàn quốc"
     },
     "users": {
       "title": "Người dùng & vai trò",
