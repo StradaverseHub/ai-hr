@@ -83,7 +83,7 @@ async function main() {
   for (const lt of myPack.leave.types) {
     const [row] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting })
+      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting, eligibility: lt.eligibility ?? null })
       .returning({ id: schema.leaveType.id });
     leaveTypeIds[lt.code] = row.id;
   }
@@ -118,10 +118,10 @@ async function main() {
   // max(floor, policy), so this is what every demo hire actually receives.
   await createLeavePolicy(admin, { leaveTypeId: annual.id, annualDays: 12, validFrom: '2026-01-01' });
   const people = [
-    { fullName: 'Aisyah Rahman', email: 'aisyah@demo.test', dept: finance.id, salary: 6500, ic: '900101011234', bank: 'Maybank' },
-    { fullName: 'Daniel Tan', email: 'daniel@demo.test', dept: eng.id, salary: 11000, ic: '850202022345', bank: 'CIMB' },
-    { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id, salary: 5800, ic: '920303033456', bank: 'Public Bank' },
-    { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id, salary: 7200, ic: '880404044567', bank: 'RHB' },
+    { fullName: 'Aisyah Rahman', email: 'aisyah@demo.test', dept: finance.id, salary: 6500, ic: '900101011234', bank: 'Maybank', gender: 'female', marital: 'married' },
+    { fullName: 'Daniel Tan', email: 'daniel@demo.test', dept: eng.id, salary: 11000, ic: '850202022345', bank: 'CIMB', gender: 'male', marital: 'married' },
+    { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id, salary: 5800, ic: '920303033456', bank: 'Public Bank', gender: 'female', marital: 'single' },
+    { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id, salary: 7200, ic: '880404044567', bank: 'RHB', gender: 'male', marital: 'married' },
   ];
   const hired: { employmentId: string; personId: string; session: SessionContext }[] = [];
   let danielPersonId = '';
@@ -136,6 +136,8 @@ async function main() {
       grantLeaveTypes: standingGrants,
     });
     if (i === 1) danielPersonId = personId;
+    // ADR-0038 2A-1: self-declared gender + marital so maternity/paternity eligibility is demonstrable.
+    await owner.db.update(schema.person).set({ gender: p.gender, maritalStatus: p.marital }).where(eq(schema.person.id, personId));
     // Local user record + role (login identity itself is provisioned by WorkOS later).
     const role = i === 1 ? 'manager' : 'employee';
     const [u] = await owner.db

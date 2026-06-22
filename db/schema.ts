@@ -193,6 +193,9 @@ export const person = pgTable(
     // Low-risk personal fields the employee self-maintains on /me (ADR-0012).
     address: text('address'),
     dateOfBirth: date('date_of_birth'),
+    // Wave 2 (ADR-0038 2A): self-declared; gate maternity (female) / paternity (married male) eligibility.
+    gender: text('gender'), // 'male' | 'female' | 'undisclosed'
+    maritalStatus: text('marital_status'), // 'single' | 'married' | 'other'
     emergencyContactName: text('emergency_contact_name'),
     emergencyContactPhone: text('emergency_contact_phone'),
     // ADR-0029 scope-out: the single "paymaster" employment through which this person's taxable
@@ -353,6 +356,10 @@ export const leaveType = pgTable('leave_type', {
   paid: boolean('paid').notNull().default(true),
   // 'working_days' (exclude weekends + holidays) | 'calendar_days' (consecutive)
   counting: text('counting').notNull().default('calendar_days'),
+  // Wave 2 (ADR-0038 2A): lawful eligibility gate — { gender?, maritalStatus?, minServiceMonths? }. null =
+  // open to all. Enforced at requestLeave; mirrors only what the Act restricts (e.g. maternity is female-
+  // only by EA s.37), so it never blocks a statutory entitlement.
+  eligibility: jsonb('eligibility'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

@@ -1,18 +1,22 @@
 /** Malaysia leave rules (Employment Act 1955). Part of the MY localization pack (ADR-0008). */
+import type { LeaveEligibility } from '../../core/leave';
 
 export type MyLeaveTypeDef = {
   code: string;
   name: string;
   paid: boolean;
   counting: 'working_days' | 'calendar_days';
+  eligibility?: LeaveEligibility; // ADR-0038 2A-1 — lawful gate (only where the Act restricts)
 };
 
 export const MY_LEAVE_TYPES: MyLeaveTypeDef[] = [
   { code: 'ANNUAL', name: 'Annual Leave', paid: true, counting: 'working_days' },
   { code: 'SICK', name: 'Sick Leave', paid: true, counting: 'calendar_days' },
   { code: 'HOSPITALIZATION', name: 'Hospitalization Leave', paid: true, counting: 'calendar_days' },
-  { code: 'MATERNITY', name: 'Maternity Leave', paid: true, counting: 'calendar_days' },
-  { code: 'PATERNITY', name: 'Paternity Leave', paid: true, counting: 'calendar_days' },
+  // Maternity — female employee (EA-1955 s.37, as amended by Act A1651 2022; 98 days).
+  { code: 'MATERNITY', name: 'Maternity Leave', paid: true, counting: 'calendar_days', eligibility: { gender: 'female' } },
+  // Paternity — married male employee, ≥12 months service (EA-1955 s.60FA, inserted by Act A1651 2022; 7 days).
+  { code: 'PATERNITY', name: 'Paternity Leave', paid: true, counting: 'calendar_days', eligibility: { gender: 'male', maritalStatus: 'married', minServiceMonths: 12 } },
   { code: 'UNPAID', name: 'Unpaid Leave', paid: false, counting: 'calendar_days' },
 ];
 

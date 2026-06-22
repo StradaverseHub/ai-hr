@@ -642,7 +642,16 @@
     "secProfile": "Hồ sơ",
     "secPay": "Lương",
     "secPerformance": "Hiệu suất",
-    "secDocuments": "Tài liệu"
+    "secDocuments": "Tài liệu",
+    "genderLabel": "Giới tính",
+    "gender_male": "Nam",
+    "gender_female": "Nữ",
+    "gender_undisclosed": "Không muốn nêu",
+    "maritalLabel": "Tình trạng hôn nhân",
+    "marital_single": "Độc thân",
+    "marital_married": "Đã kết hôn",
+    "marital_other": "Khác",
+    "notSet": "— Chưa đặt —"
   },
   "approvals": {
     "title": "Phê duyệt",

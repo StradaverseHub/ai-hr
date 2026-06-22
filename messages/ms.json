@@ -642,7 +642,16 @@
     "secProfile": "Profil",
     "secPay": "Gaji",
     "secPerformance": "Prestasi",
-    "secDocuments": "Dokumen"
+    "secDocuments": "Dokumen",
+    "genderLabel": "Jantina",
+    "gender_male": "Lelaki",
+    "gender_female": "Perempuan",
+    "gender_undisclosed": "Tidak mahu nyatakan",
+    "maritalLabel": "Status perkahwinan",
+    "marital_single": "Bujang",
+    "marital_married": "Berkahwin",
+    "marital_other": "Lain-lain",
+    "notSet": "— Tidak ditetapkan —"
   },
   "approvals": {
     "title": "Kelulusan",
