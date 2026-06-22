@@ -1040,6 +1040,9 @@ export const payrollBatch = pgTable(
     status: payrollStatusEnum('status').notNull().default('draft'),
     employeeCount: integer('employee_count').notNull().default(0),
     totals: jsonb('totals'), // { gross, net, epfEmployee, epfEmployer, ... }
+    // ADR-0035 1E (#23): optional subset selection — { departmentIds?, employmentIds? }. null/empty ⇒
+    // whole company (today's behaviour). Generation narrows the active-employee set to this scope.
+    scope: jsonb('scope'),
     remarks: text('remarks'),
     createdAt: createdAt(),
   },

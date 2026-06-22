@@ -8,6 +8,7 @@ import { actorOf, appendEvent } from '../db/events';
 import { packFor } from '../localization/registry';
 import { toCsv } from '../lib/csv';
 import {
+  assignment,
   attendance,
   claimRequest,
   company,
@@ -140,7 +141,18 @@ async function unpaidDaysByEmployment(
   return new Map(rows.map((r) => [r.employmentId, Number(r.days)]));
 }
 
-export async function createBatch(ctx: SessionContext, p: { companyId: string; payPeriod: string }) {
+/** Optional batch subset (ADR-0035 1E, #23). Empty/absent ⇒ the whole company. */
+export type BatchScope = { departmentIds?: string[]; employmentIds?: string[] };
+
+/** Drop empty arrays; null when nothing specific is selected (⇒ whole company). */
+function normalizeScope(scope?: BatchScope): BatchScope | null {
+  const departmentIds = (scope?.departmentIds ?? []).filter(Boolean);
+  const employmentIds = (scope?.employmentIds ?? []).filter(Boolean);
+  if (!departmentIds.length && !employmentIds.length) return null;
+  return { ...(departmentIds.length ? { departmentIds } : {}), ...(employmentIds.length ? { employmentIds } : {}) };
+}
+
+export async function createBatch(ctx: SessionContext, p: { companyId: string; payPeriod: string; scope?: BatchScope }) {
   return withTenant(ctx, async (tx) => {
     // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month). Reject a second one exactly
     // as before — with MULTI_CYCLE_PAYROLL_ENABLED off there is still one run per month. Additional
@@ -189,6 +201,7 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
         payPeriod: p.payPeriod,
         batchDate: `${p.payPeriod}-28`,
         status: 'draft',
+        scope: normalizeScope(p.scope),
       })
       .returning({ id: payrollBatch.id });
     await appendEvent(tx, {
@@ -197,7 +210,7 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       aggregateId: row.id,
       eventType: 'payroll-batch.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: periodId, runSeq: 1, runType: 'regular' },
+      payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: periodId, runSeq: 1, runType: 'regular', scope: normalizeScope(p.scope) },
     });
     return { batchId: row.id };
   });
@@ -602,6 +615,25 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const statutoryProvenance =
       resolved.source === 'pack' ? { packVersion: resolved.packVersion, signedKeyId: resolved.signedKeyId } : {};
 
+    // Subset selection (1E, #23): narrow the active set to the chosen departments / individuals; an
+    // absent/empty scope ⇒ the whole company (unchanged behaviour).
+    const sc = (batch.scope ?? null) as BatchScope | null;
+    const scopeDeptIds = sc?.departmentIds ?? [];
+    const scopeExplicitIds = sc?.employmentIds ?? [];
+    // Employment has no department column — the link is the effective-dated assignment. Resolve chosen
+    // departments → their current assignees, unioned with any explicitly-named individuals.
+    const deptAssignees = scopeDeptIds.length
+      ? await tx
+          .select({ id: assignment.employmentId })
+          .from(assignment)
+          .where(and(inArray(assignment.departmentId, scopeDeptIds), isNull(assignment.supersededAt)))
+      : [];
+    const scopeEmploymentIds = [...new Set([...deptAssignees.map((r) => r.id), ...scopeExplicitIds])];
+    const scopeFilter =
+      scopeDeptIds.length || scopeExplicitIds.length
+        ? inArray(employment.id, scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'])
+        : undefined;
+
     // Anyone employed for at least part of the period: hired on/before period end AND not
     // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.
     const emps = await tx
@@ -642,6 +674,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           eq(employment.companyId, batch.companyId),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+          scopeFilter,
         ),
       );
 

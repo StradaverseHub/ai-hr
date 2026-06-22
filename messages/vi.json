@@ -859,7 +859,9 @@
         "draft": "Nháp",
         "processed": "Đã xử lý",
         "closed": "Đã đóng"
-      }
+      },
+      "scopeLabel": "Phòng ban (tùy chọn)",
+      "scopeHint": "Chọn phòng ban để chạy lương cho một nhóm. Bỏ trống tất cả để bao gồm toàn công ty."
     },
     "reports": {
       "pageTitle": "Bảng lương",

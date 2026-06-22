@@ -859,7 +859,9 @@
         "draft": "Draf",
         "processed": "Diproses",
         "closed": "Ditutup"
-      }
+      },
+      "scopeLabel": "Jabatan (pilihan)",
+      "scopeHint": "Pilih jabatan untuk menjalankan gaji bagi subset. Biarkan semua tidak bertanda untuk seluruh syarikat."
     },
     "reports": {
       "pageTitle": "Gaji",

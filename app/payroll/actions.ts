@@ -18,9 +18,10 @@ export async function createBatchAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId'));
   const payPeriod = String(formData.get('payPeriod'));
+  const departmentIds = formData.getAll('departmentIds').map(String).filter(Boolean);
   let batchId = '';
   try {
-    ({ batchId } = await createBatch(s, { companyId, payPeriod }));
+    ({ batchId } = await createBatch(s, { companyId, payPeriod, scope: { departmentIds } }));
   } catch (e) {
     redirect(`/payroll?error=${encodeURIComponent((e as Error).message)}`);
   }

@@ -2,10 +2,11 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
-import { listCompanies } from '@/core/read';
+import { listCompanies, listDepartments } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
-import { addRunAction, createBatchAction } from './actions';
+import { BatchCreateForm } from './batch-create-form';
+import { addRunAction } from './actions';
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -24,7 +25,11 @@ export default async function PayrollPage({
   // Wave 2C (ADR-0024): the "add run" control is gated — only shown when multi-cycle is enabled.
   const multiCycle = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
   const { error } = await searchParams;
-  const [batches, companies] = await Promise.all([listBatches(s, scopeIds), listCompanies(s)]);
+  const [batches, companies, departments] = await Promise.all([
+    listBatches(s, scopeIds),
+    listCompanies(s),
+    listDepartments(s, { companyIds: scopeIds }),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -83,23 +88,7 @@ export default async function PayrollPage({
             )}
           </tbody>
         </table>
-        <form action={createBatchAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
-          <Field label={t('company')}>
-            <select name="companyId" required className={inputCls}>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('payPeriod')}>
-            <input name="payPeriod" required placeholder="2026-05" defaultValue={thisMonth} pattern="[0-9]{4}-(0[1-9]|1[0-2])" title="YYYY-MM" className={inputCls} />
-          </Field>
-          <div className="sm:col-span-2">
-            <Button type="submit" data-tour="payroll-create">{t('createBatch')}</Button>
-          </div>
-        </form>
+        <BatchCreateForm companies={companies} departments={departments} thisMonth={thisMonth} />
         {multiCycle && (
           <form action={addRunAction} className="grid grid-cols-1 items-end gap-3 border-t border-border bg-muted/30 p-4 sm:grid-cols-4">
             <Field label={t('company')}>
