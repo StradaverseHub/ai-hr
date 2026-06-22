@@ -1050,7 +1050,28 @@
       "colNet": "สุทธิ",
       "proratedDays": "คำนวณตามสัดส่วน · {worked}/{total} วัน",
       "noPayslips": "ไม่มีสลิปเงินเดือนในชุดจ่ายนี้",
-      "totalHrdf": "ภาษี HRD Corp"
+      "totalHrdf": "ภาษี HRD Corp",
+      "componentImport": {
+        "title": "นำเข้าองค์ประกอบเงินเดือน (CSV)",
+        "description": "เพิ่มเบี้ยเลี้ยง รายการหัก OT หรือโบนัสแบบครั้งเดียวลงในรอบฉบับร่างนี้จำนวนมาก คอลัมน์: employee (อีเมล), component (รหัส), amount, notes",
+        "csvData": "ข้อมูล CSV",
+        "placeholder": "employee,component,amount,notes",
+        "checking": "กำลังตรวจสอบ…",
+        "dryRun": "ดูตัวอย่าง",
+        "loadSample": "โหลดตัวอย่าง",
+        "matchHint": "จับคู่ด้วยอีเมลพนักงาน + รหัสองค์ประกอบ",
+        "importedCount": "นำเข้า {count} รายการแล้ว",
+        "importAnother": "นำเข้าอีก",
+        "preview": "ดูตัวอย่าง",
+        "validCount": "ถูกต้อง {count}",
+        "errorCount": "ผิดพลาด {count}",
+        "importing": "กำลังนำเข้า…",
+        "commit": "นำเข้า {count}",
+        "colEmployee": "พนักงาน",
+        "colComponent": "องค์ประกอบ",
+        "colAmount": "จำนวนเงิน",
+        "colStatus": "สถานะ"
+      }
     }
   },
   "admin": {

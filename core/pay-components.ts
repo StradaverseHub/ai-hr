@@ -9,12 +9,16 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   compensation,
+  employment,
   employmentPayComponent,
   payComponent,
+  payrollBatch,
   payrollBatchComponent,
   payrollInput,
+  person,
 } from '../db/schema';
 import { MY_DEFAULT_PAY_COMPONENTS, BACKFILL_COMPONENT_CODES, type PayComponentSeed } from '../localization/my/pay-components';
+import { parseCsvRecords } from '../lib/csv';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -351,5 +355,94 @@ export function backfillBatchComponentsFromInput(ctx: SessionContext, batchId: s
       count += 1;
     }
     return { inputs: count };
+  });
+}
+
+// ───────────────────── CSV import of one-off batch components (ADR-0035 1D, #12) ─────────────────────
+
+export type ComponentImportRow = {
+  line: number;
+  employee: string;
+  name: string | null;
+  code: string;
+  componentName: string | null;
+  amount: number | null;
+  notes: string | null;
+  ok: boolean;
+  error: string | null;
+};
+export type ComponentImportResult = { dryRun: boolean; rows: ComponentImportRow[]; valid: number; imported: number };
+
+/**
+ * Bulk-load one-off pay-component lines (allowance/deduction/OT/bonus — any catalog component) onto a DRAFT
+ * batch from CSV (columns: employee[/email], component[/code], amount, notes). Reconciles employee email →
+ * employment in the batch's company and component code → catalog; dry-run previews + flags every bad row,
+ * commit upserts via setPayrollBatchComponent (each event-logged). The server re-reconciles on commit — the
+ * client preview is never trusted. Only meaningful with TYPED_PAY_COMPONENTS_ENABLED (kernel reads these).
+ */
+export async function importBatchComponents(
+  ctx: SessionContext,
+  p: { batchId: string; csvText: string; dryRun: boolean },
+): Promise<ComponentImportResult> {
+  const { records } = parseCsvRecords(p.csvText);
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('Batch not found.');
+    if (batch.status !== 'draft') throw new Error('Components can only be imported into a draft batch.');
+
+    const emps = await tx
+      .select({ employmentId: employment.id, email: person.primaryEmail, name: person.fullName })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.companyId, batch.companyId));
+    const byEmail = new Map(emps.filter((e) => e.email).map((e) => [e.email!.toLowerCase(), e]));
+
+    const comps = await tx
+      .select({ id: payComponent.id, code: payComponent.code, name: payComponent.name })
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), isNull(payComponent.archivedAt)));
+    const byCode = new Map(comps.map((c) => [c.code.toUpperCase(), c]));
+
+    const rows: ComponentImportRow[] = records.map((rec, i) => {
+      const employee = rec.employee || rec.email || rec.employee_email || '';
+      const code = (rec.component || rec.component_code || rec.code || '').toUpperCase();
+      const amountRaw = rec.amount ?? '';
+      const emp = byEmail.get(employee.toLowerCase());
+      const comp = byCode.get(code);
+      const amount = amountRaw === '' ? NaN : Number(amountRaw);
+      let error: string | null = null;
+      if (!employee) error = 'Missing employee';
+      else if (!emp) error = `Unknown employee: ${employee}`;
+      else if (!code) error = 'Missing component';
+      else if (!comp) error = `Unknown component: ${code}`;
+      else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
+      return {
+        line: i + 2,
+        employee,
+        name: emp?.name ?? null,
+        code,
+        componentName: comp?.name ?? null,
+        amount: Number.isFinite(amount) ? amount : null,
+        notes: rec.notes || null,
+        ok: !error,
+        error,
+      };
+    });
+
+    let imported = 0;
+    if (!p.dryRun) {
+      for (const r of rows) {
+        if (!r.ok) continue;
+        const emp = byEmail.get(r.employee.toLowerCase())!;
+        const comp = byCode.get(r.code)!;
+        await setPayrollBatchComponent(ctx, { batchId: p.batchId, employmentId: emp.employmentId, componentId: comp.id, amount: r.amount!, notes: r.notes ?? undefined }, tx);
+        imported += 1;
+      }
+    }
+    return { dryRun: p.dryRun, rows, valid: rows.filter((r) => r.ok).length, imported };
   });
 }

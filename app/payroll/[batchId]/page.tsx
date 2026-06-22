@@ -5,6 +5,7 @@ import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { closeAction, generateAction, prefillClaimsAction, prefillOvertimeAction, prefillShiftDifferentialAction, setPayrollInputAction } from '../actions';
+import { ComponentImport } from './component-import';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -28,6 +29,8 @@ export default async function BatchPage({
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
+  // Bulk component import (1D) is only meaningful when the kernel reads typed components.
+  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -226,6 +229,16 @@ export default async function BatchPage({
                 )}
               </tbody>
             </table>
+          </div>
+        </Card>
+      )}
+
+      {batch.status === 'draft' && typedComponentsOn && (
+        <Card>
+          <SectionHeader title={t('componentImport.title')} />
+          <div className="px-4 pb-4">
+            <p className="mb-3 text-xs text-muted-foreground">{t('componentImport.description')}</p>
+            <ComponentImport batchId={batch.id} />
           </div>
         </Card>
       )}
