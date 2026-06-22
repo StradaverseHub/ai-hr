@@ -6,7 +6,7 @@
  * `content` (the file bytes) is selected ONLY by `getDownload` — never in list/detail reads, so the
  * library and viewer stay light.
  */
-import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { kbDocument } from '../db/schema';
@@ -17,6 +17,23 @@ export type KbAudience = 'all' | 'employee' | 'manager' | 'hr_admin';
 const AUDIENCES: KbAudience[] = ['all', 'employee', 'manager', 'hr_admin'];
 const cleanAudience = (v: unknown): KbAudience =>
   AUDIENCES.includes(v as KbAudience) ? (v as KbAudience) : 'all';
+
+// Audience is a clearance ladder, not a tag: a document is visible to a viewer whose role rank is at
+// least the document's. RLS is tenant-wide for reads (guides are shared), so this audience gate is what
+// stops an employee seeing — or deep-linking — a manager/HR-only guide (consultant feedback R34).
+const AUDIENCE_RANK: Record<KbAudience, number> = { all: 0, employee: 1, manager: 2, hr_admin: 3 };
+function viewerRank(ctx: SessionContext): number {
+  const roles = ctx.roles ?? [];
+  if (roles.some((r) => r === 'hr_admin' || r === 'super_admin')) return 3;
+  if (roles.includes('manager')) return 2;
+  return 1; // any authenticated employee sees 'all' + 'employee'
+}
+/** The audiences a viewer is cleared to see (their rank and below). */
+export function visibleAudiencesFor(ctx: SessionContext): KbAudience[] {
+  const rank = viewerRank(ctx);
+  return AUDIENCES.filter((a) => AUDIENCE_RANK[a] <= rank);
+}
+const canSeeAudience = (ctx: SessionContext, a: KbAudience): boolean => AUDIENCE_RANK[a] <= viewerRank(ctx);
 const cleanCategory = (v: unknown): string => {
   const s = String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
   return s || 'general';
@@ -77,6 +94,8 @@ export function listDocuments(
       .from(kbDocument)
       .where(
         and(
+          // Viewer clearance — always applied, independent of the UI filter below (R34).
+          inArray(kbDocument.audience, visibleAudiencesFor(ctx)),
           opts.includeArchived ? undefined : isNull(kbDocument.archivedAt),
           opts.category ? eq(kbDocument.category, opts.category) : undefined,
           opts.audience && opts.audience !== 'all' ? eq(kbDocument.audience, opts.audience) : undefined,
@@ -114,6 +133,7 @@ export function getDocument(ctx: SessionContext, id: string, locale?: string) {
       .where(eq(kbDocument.id, id))
       .limit(1);
     if (!row) return null;
+    if (!canSeeAudience(ctx, row.audience as KbAudience)) return null; // deep-link guard (R34)
     const { i18n, ...rest } = row;
     const { title, body } = localize(row, locale);
     // title/body are localized for DISPLAY; sourceTitle/sourceBody are the English source the inline
@@ -139,6 +159,7 @@ export function getDownload(ctx: SessionContext, id: string, locale?: string) {
         title: kbDocument.title,
         body: kbDocument.body,
         i18n: kbDocument.i18n,
+        audience: kbDocument.audience,
         fileName: kbDocument.fileName,
         mimeType: kbDocument.mimeType,
         content: kbDocument.content,
@@ -147,6 +168,7 @@ export function getDownload(ctx: SessionContext, id: string, locale?: string) {
       .where(eq(kbDocument.id, id))
       .limit(1);
     if (!row) return null;
+    if (!canSeeAudience(ctx, row.audience as KbAudience)) return null; // deep-link guard (R34)
     const { title, body } = localize(row, locale);
     return { kind: row.kind, title, body, fileName: row.fileName, mimeType: row.mimeType, content: row.content };
   });

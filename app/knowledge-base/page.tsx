@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { listDocuments, type KbAudience } from '@/core/knowledge-base';
+import { listDocuments, visibleAudiencesFor, type KbAudience } from '@/core/knowledge-base';
 import { Card, ErrorBanner, PageHeader, inputCls } from '@/components/ui';
 import { KbComposer } from '@/components/kb-composer';
 import { BookOpen, FileText, Paperclip, Search } from 'lucide-react';
@@ -25,6 +25,8 @@ export default async function KnowledgeBasePage({
 
   const locale = await getLocale();
   const docs = await listDocuments(s, { search: q || undefined, audience, locale });
+  // Only offer audience filters the viewer is actually cleared to see (R34).
+  const filterAudiences = visibleAudiencesFor(s).filter((a) => a !== 'all');
 
   // Group by category, preserving the service's (category, title) order.
   const groups = new Map<string, typeof docs>();
@@ -76,7 +78,7 @@ export default async function KnowledgeBasePage({
           >
             {t('filterAll')}
           </Link>
-          {(['employee', 'manager', 'hr_admin'] as const).map((a) => (
+          {filterAudiences.map((a) => (
             <Link
               key={a}
               href={qs({ audience: a })}
