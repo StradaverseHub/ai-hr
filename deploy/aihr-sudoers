@@ -1,0 +1,10 @@
+# AI HR — let the deploy user restart the demo service without a password, so ./deploy/deploy.sh
+# finishes on its own. Narrow by design: ONLY the restart of this one service, nothing else.
+#
+# Install once, as root (validate before trusting it):
+#   sudo install -m 440 -o root -g root deploy/aihr-sudoers /etc/sudoers.d/aihr-restart
+#   sudo visudo -cf /etc/sudoers.d/aihr-restart      # must print "parsed OK"
+#
+# Adjust the username if your deploy user isn't 'ubuntu', and the path if `command -v systemctl`
+# differs from /usr/bin/systemctl.
+ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl restart aihr, /usr/bin/systemctl restart aihr.service
