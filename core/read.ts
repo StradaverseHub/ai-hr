@@ -358,6 +358,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         company: company.legalName,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
+        workState: employment.workState,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))

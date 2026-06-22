@@ -14,6 +14,7 @@ import { createLeavePolicy } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
+import { MY_STATE_HOLIDAYS_2026 } from '../localization/my/holidays';
 import { seedGuides } from './seed-guides';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
@@ -49,6 +50,7 @@ async function main() {
       currency: 'MYR',
       parentCompanyId: holding.id,
       leaveMultiApproval: true, // 2B-1: demo the manager → HR chain
+      defaultWorkState: 'Selangor', // 2C: HQ default; employees without an explicit work_state inherit it
     })
     .returning({ id: schema.company.id });
   // 2B-2 (ADR-0039): an explicit approval chain for the demo company (direct manager → HR), so the
@@ -106,7 +108,13 @@ async function main() {
   for (const h of myPack.holidays) {
     await owner.db
       .insert(schema.holiday)
-      .values({ tenantId: DEV_TENANT_ID, country: 'MY', holidayDate: h.date, name: h.name });
+      .values({ tenantId: DEV_TENANT_ID, country: 'MY', state: null, holidayDate: h.date, name: h.name });
+  }
+  // 2C (ADR-0038): state-specific holidays (sourced fixed-date subset) — only apply in their state.
+  for (const h of MY_STATE_HOLIDAYS_2026) {
+    await owner.db
+      .insert(schema.holiday)
+      .values({ tenantId: DEV_TENANT_ID, country: 'MY', state: h.state ?? null, holidayDate: h.date, name: h.name });
   }
   // The dev admin is a real principal in the audit trail: link it to a person so its actions
   // resolve to a name ("HR Admin") instead of the bare actor type. No employment, so it never
@@ -126,10 +134,20 @@ async function main() {
   // Company policy more generous than the EA floor (12 vs 8 annual days): grants apply
   // max(floor, policy), so this is what every demo hire actually receives.
   await createLeavePolicy(admin, { leaveTypeId: annual.id, annualDays: 12, validFrom: '2026-01-01' });
-  const people = [
+  const people: {
+    fullName: string;
+    email: string;
+    dept: string;
+    salary: number;
+    ic: string;
+    bank: string;
+    gender: string;
+    marital: string;
+    workState?: string;
+  }[] = [
     { fullName: 'Aisyah Rahman', email: 'aisyah@demo.test', dept: finance.id, salary: 6500, ic: '900101011234', bank: 'Maybank', gender: 'female', marital: 'married' },
     { fullName: 'Daniel Tan', email: 'daniel@demo.test', dept: eng.id, salary: 11000, ic: '850202022345', bank: 'CIMB', gender: 'male', marital: 'married' },
-    { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id, salary: 5800, ic: '920303033456', bank: 'Public Bank', gender: 'female', marital: 'single' },
+    { fullName: 'Mei Ling', email: 'meiling@demo.test', dept: ops.id, salary: 5800, ic: '920303033456', bank: 'Public Bank', gender: 'female', marital: 'single', workState: 'Sarawak' },
     { fullName: 'Arjun Kumar', email: 'arjun@demo.test', dept: eng.id, salary: 7200, ic: '880404044567', bank: 'RHB', gender: 'male', marital: 'married' },
   ];
   const hired: { employmentId: string; personId: string; session: SessionContext }[] = [];
@@ -147,6 +165,10 @@ async function main() {
     if (i === 1) danielPersonId = personId;
     // ADR-0038 2A-1: self-declared gender + marital so maternity/paternity eligibility is demonstrable.
     await owner.db.update(schema.person).set({ gender: p.gender, maritalStatus: p.marital }).where(eq(schema.person.id, personId));
+    // ADR-0038 2C: work state (Mei Ling in Sarawak) so state-holiday differences are demonstrable.
+    if (p.workState) {
+      await owner.db.update(schema.employment).set({ workState: p.workState }).where(eq(schema.employment.id, employmentId));
+    }
     // Local user record + role (login identity itself is provisioned by WorkOS later).
     const role = i === 1 ? 'manager' : 'employee';
     const [u] = await owner.db

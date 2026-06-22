@@ -293,7 +293,9 @@
       "payComponentEffectiveFrom": "Effective from",
       "payComponentSave": "Add",
       "payComponentsHint": "Recurring components for this employee. Applied to payroll once typed components are enabled.",
-      "epfVoluntaryHint": "Enter each side's total rate at or above the statutory floor (employee 11%, employer 12–13%). Leave a side blank to keep it statutory."
+      "epfVoluntaryHint": "Enter each side's total rate at or above the statutory floor (employee 11%, employer 12–13%). Leave a side blank to keep it statutory.",
+      "workState": "Work state",
+      "workStateDefault": "Company default"
     },
     "import": {
       "title": "Import employees",
@@ -1270,7 +1272,9 @@
       "nameLabel": "Name",
       "namePlaceholder": "Hari Raya Aidilfitri",
       "addHoliday": "Add holiday",
-      "addHint": "Holidays are matched by country and date. A day marked here is excluded from working-day leave counts and classifies attendance as a public holiday."
+      "addHint": "Holidays are matched by country and date. A day marked here is excluded from working-day leave counts and classifies attendance as a public holiday.",
+      "stateLabel": "State",
+      "national": "National"
     },
     "users": {
       "title": "Users & roles",

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { endReportingLine, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
+import { endReportingLine, setEmploymentWorkState, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { setEmploymentPayComponent } from '@/core/pay-components';
 import { packFor } from '@/localization/registry';
@@ -123,6 +123,8 @@ export async function setPersonAction(formData: FormData) {
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: (formData.get('phone') as string) || null,
     });
+    // 2C: work state lives on the employment but is edited alongside personal details.
+    await setEmploymentWorkState(s, { employmentId, workState: String(formData.get('workState') ?? '') || null });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }

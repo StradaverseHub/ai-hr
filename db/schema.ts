@@ -134,6 +134,9 @@ export const company = pgTable(
     // approval chain (direct manager → HR) instead of a single approval. Per-company; 2B-2 makes the
     // chain itself configurable.
     leaveMultiApproval: boolean('leave_multi_approval').notNull().default(false),
+    // Wave 2 (ADR-0038 2C): the default state for employees with no explicit work_state — the holiday
+    // fallback for this company.
+    defaultWorkState: text('default_work_state'),
     // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
     parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -284,6 +287,9 @@ export const employment = pgTable(
       .references(() => company.id),
     employeeCode: text('employee_code'),
     hiredOn: date('hired_on').notNull(),
+    // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
+    // apply. Null falls back to the company's default_work_state, then national-only.
+    workState: text('work_state'),
     terminatedOn: date('terminated_on'),
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
@@ -739,11 +745,18 @@ export const holiday = pgTable(
     id: id(),
     tenantId: tenantId(),
     country: text('country').notNull(),
+    // Wave 2 (ADR-0038 2C): null = national (applies everywhere); set = a state-specific holiday that
+    // only applies to employees working in that state.
+    state: text('state'),
     holidayDate: date('holiday_date').notNull(),
     name: text('name').notNull(),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('holiday_uq').on(t.tenantId, t.country, t.holidayDate)],
+  // One holiday per (tenant, country, date, state-or-national). coalesce keeps the NULL (national) case
+  // unique on PG14 (no NULLS NOT DISTINCT).
+  (t) => [
+    uniqueIndex('holiday_uq').on(t.tenantId, t.country, t.holidayDate, sql`coalesce(${t.state}, '')`),
+  ],
 );
 
 // ──────────────────────── Attendance (generic) ────────────────────────

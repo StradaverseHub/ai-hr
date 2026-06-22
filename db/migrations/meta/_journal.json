@@ -610,6 +610,13 @@
 			"when": 1781861500000,
 			"tag": "0086_leave_approval_policy",
 			"breakpoints": true
+		},
+		{
+			"idx": 87,
+			"version": "7",
+			"when": 1781861510000,
+			"tag": "0087_state_holidays",
+			"breakpoints": true
 		}
 	]
 }
