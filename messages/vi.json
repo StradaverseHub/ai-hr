@@ -82,7 +82,8 @@
     "analytics": "Phân tích",
     "payComponents": "Thành phần lương",
     "attendancePolicy": "Chính sách chấm công",
-    "toilPolicy": "Nghỉ bù"
+    "toilPolicy": "Nghỉ bù",
+    "payrollConfig": "Cấu hình lương"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1865,5 +1866,29 @@
     "markAllRead": "Đánh dấu đã đọc tất cả",
     "empty": "Không có thông báo mới",
     "aria": "Thông báo, {count} chưa đọc"
+  },
+  "payrollConfig": {
+    "title": "Cấu hình lương",
+    "description": "Lịch trả lương và danh tính người sử dụng lao động theo luật cho từng công ty.",
+    "emptyScope": "Không có công ty nào trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
+    "scheduleTitle": "Lịch trả lương",
+    "cutOffDay": "Ngày chốt",
+    "payDay": "Ngày trả",
+    "paymentBasis": "Cơ sở trả",
+    "basis_monthly": "Hàng tháng",
+    "monthEnd": "Cuối tháng",
+    "dayHint": "Ngày trong tháng (1–31). Để trống cho cuối tháng. Chỉ là tham chiếu lịch trình — không thay đổi cách tính kỳ lương.",
+    "statutoryTitle": "Danh tính người sử dụng lao động theo luật",
+    "hrdfStatus": "Trạng thái HRDF (HRD Corp)",
+    "hrdf_not_registered": "Chưa đăng ký",
+    "hrdf_mandatory": "Bắt buộc (thuế 1%)",
+    "hrdf_optional": "Tự nguyện (thuế 0,5%)",
+    "epfEmployerNo": "Số người SDLĐ EPF",
+    "socsoEmployerCode": "Mã người SDLĐ SOCSO",
+    "lhdnEmployerNo": "Số người SDLĐ LHDN (E)",
+    "myinvoisTin": "MyInvois TIN",
+    "ssmRegistrationNo": "Số đăng ký SSM",
+    "hrdfHint": "Bậc HRDF quyết định khoản thuế HRD Corp chỉ do người SDLĐ đóng trong lương. Số đăng ký xuất hiện trên hồ sơ pháp lý và phiếu lương.",
+    "save": "Lưu"
   }
 }

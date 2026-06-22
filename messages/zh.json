@@ -82,7 +82,8 @@
     "analytics": "分析",
     "payComponents": "薪资组件",
     "attendancePolicy": "考勤政策",
-    "toilPolicy": "调休"
+    "toilPolicy": "调休",
+    "payrollConfig": "薪资配置"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1865,5 +1866,29 @@
     "markAllRead": "全部标为已读",
     "empty": "没有新通知",
     "aria": "通知，{count} 条未读"
+  },
+  "payrollConfig": {
+    "title": "薪资配置",
+    "description": "各公司的薪资周期与法定雇主身份。",
+    "emptyScope": "当前范围内没有公司。请使用上方的公司切换器。",
+    "scheduleTitle": "薪资周期",
+    "cutOffDay": "截止日",
+    "payDay": "发薪日",
+    "paymentBasis": "支付基准",
+    "basis_monthly": "每月",
+    "monthEnd": "月末",
+    "dayHint": "每月第几天（1–31）。留空表示月末。仅作排期参考——不会改变薪资期的计算方式。",
+    "statutoryTitle": "法定雇主身份",
+    "hrdfStatus": "HRDF（HRD Corp）状态",
+    "hrdf_not_registered": "未注册",
+    "hrdf_mandatory": "强制（1% 征费）",
+    "hrdf_optional": "自愿（0.5% 征费）",
+    "epfEmployerNo": "EPF 雇主编号",
+    "socsoEmployerCode": "SOCSO 雇主代码",
+    "lhdnEmployerNo": "LHDN 雇主编号（E）",
+    "myinvoisTin": "MyInvois 税号",
+    "ssmRegistrationNo": "SSM 注册号",
+    "hrdfHint": "HRDF 等级决定薪资中仅由雇主缴纳的 HRD Corp 征费。注册编号会出现在法定文件和薪资单上。",
+    "save": "保存"
   }
 }

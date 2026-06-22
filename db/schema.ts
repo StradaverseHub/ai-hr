@@ -565,6 +565,27 @@ export const companyStatutoryMy = pgTable(
   (t) => [uniqueIndex('company_statutory_my_company_uq').on(t.companyId)],
 );
 
+// Per-company payroll scheduling config (ADR-0035 1B, #17): cut-off day (when inputs close), pay day,
+// and payment basis. Scheduling METADATA in Wave 1 — drives display + future automation, NOT the period
+// computation. An absent row ⇒ today's month-end defaults. RLS: company-scoped admin (is_admin_for),
+// mirroring company_bank_profile.
+export const companyPayrollConfig = pgTable(
+  'company_payroll_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    cutOffDay: integer('cut_off_day'), // day of month payroll inputs close (1–31); null = month-end
+    payDay: integer('pay_day'), // day of month salary is paid (1–31); null = month-end
+    paymentBasis: text('payment_basis').notNull().default('monthly'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('company_payroll_config_company_uq').on(t.companyId)],
+);
+
 // Per-entity, per-bank disbursement profile (ADR-0031). Holds the BANK-ISSUED corporate/organisation ID
 // + employer debit account needed in every bulk-payment file header. One row per (company, bank). These
 // are sensitive employer credentials — RLS restricts both read and write to company-scoped admins.
