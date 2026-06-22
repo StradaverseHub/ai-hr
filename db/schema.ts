@@ -921,15 +921,15 @@ export const notificationDelivery = pgTable(
   (t) => [index('notification_delivery_pending_idx').on(t.tenantId, t.status)],
 );
 
-// Dispatcher state: the last domain_event (created_at, id) processed per tenant (the event log stays
-// append-only — no mutable column on domain_event).
+// Dispatcher state: the last domain_event.sequence (a monotonic bigserial — exact, unlike a timestamp which
+// loses sub-millisecond precision on the JS Date round-trip and would re-process events) processed per
+// tenant. The event log stays append-only — no mutable column on domain_event.
 export const notificationCursor = pgTable(
   'notification_cursor',
   {
     id: id(),
     tenantId: tenantId(),
-    lastEventCreatedAt: timestamp('last_event_created_at', { withTimezone: true }),
-    lastEventId: uuid('last_event_id'),
+    lastSequence: bigint('last_sequence', { mode: 'number' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
