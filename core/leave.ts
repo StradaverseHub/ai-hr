@@ -7,6 +7,7 @@ import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from '
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { resolveApprovalChain } from './leave-approval-policy';
 import { packFor } from '../localization/registry';
 import {
   company,
@@ -182,17 +183,23 @@ export async function requestLeave(
       subjectEmploymentId: p.employmentId,
       payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days },
     });
-    // 2B-1: if the company runs a multi-step chain, generate the instance approval steps.
-    await generateApprovalSteps(tx, ctx.tenantId, row.id, p.employmentId);
+    // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
+    await generateApprovalSteps(tx, ctx.tenantId, row.id, p.employmentId, p.leaveTypeId);
     return { leaveRequestId: row.id, days };
   });
 }
 
 /** Generate the approval chain for a new request when its company opts into multi-step approval.
  *  2B-1 chain is fixed: direct manager (when one exists) then HR. 2B-2 will make this configurable. */
-async function generateApprovalSteps(tx: Tx, tenantId: string, leaveRequestId: string, employmentId: string) {
+async function generateApprovalSteps(
+  tx: Tx,
+  tenantId: string,
+  leaveRequestId: string,
+  employmentId: string,
+  leaveTypeId: string,
+) {
   const [co] = await tx
-    .select({ multi: company.leaveMultiApproval })
+    .select({ multi: company.leaveMultiApproval, companyId: company.id })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .where(eq(employment.id, employmentId))
@@ -200,7 +207,7 @@ async function generateApprovalSteps(tx: Tx, tenantId: string, leaveRequestId: s
   if (!co?.multi) return; // single-step company — no chain
 
   // Include a manager step only when the employee has a current administrative reporting line;
-  // otherwise the chain is HR-only (no dead step that nobody can clear).
+  // otherwise direct_manager levels are dropped (no dead step that nobody can clear).
   const [mgr] = await tx
     .select({ id: reportingLine.id })
     .from(reportingLine)
@@ -213,8 +220,12 @@ async function generateApprovalSteps(tx: Tx, tenantId: string, leaveRequestId: s
       ),
     )
     .limit(1);
+  const hasManager = !!mgr;
 
-  const kinds = [...(mgr ? ['direct_manager'] : []), 'hr_admin'];
+  // 2B-2 (ADR-0039): the chain is data — resolve the company's configured levels.
+  const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId);
+  const kinds = chain.filter((k) => k !== 'direct_manager' || hasManager);
+  if (kinds.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
     kinds.map((approverKind, stepIndex) => ({
       tenantId,

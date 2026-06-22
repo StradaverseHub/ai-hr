@@ -83,7 +83,8 @@
     "payComponents": "Komponen gaji",
     "attendancePolicy": "Dasar kehadiran",
     "toilPolicy": "Cuti ganti",
-    "payrollConfig": "Konfigurasi gaji"
+    "payrollConfig": "Konfigurasi gaji",
+    "leaveApproval": "Rantaian kelulusan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1933,5 +1934,21 @@
     "ssmRegistrationNo": "No. pendaftaran SSM",
     "hrdfHint": "Jalur HRDF memacu levi HRD Corp (majikan sahaja) dalam gaji. Nombor pendaftaran muncul pada fail berkanun dan slip gaji.",
     "save": "Simpan"
+  },
+  "leaveApproval": {
+    "title": "Rantaian Kelulusan Cuti",
+    "description": "Pilih siapa yang meluluskan cuti, dan dalam susunan apa, bagi setiap syarikat.",
+    "emptyScope": "Tiada syarikat dalam skop anda.",
+    "enable": "Perlukan kelulusan berbilang langkah",
+    "enableHint": "Apabila dimatikan, seorang pelulus memutuskan setiap permohonan.",
+    "chain": "Susunan kelulusan",
+    "empty": "Tiada langkah lagi — tambah sekurang-kurangnya satu.",
+    "manager": "Pengurus langsung",
+    "hr": "HR",
+    "add": "Tambah langkah",
+    "moveUp": "Alih ke atas",
+    "moveDown": "Alih ke bawah",
+    "remove": "Buang",
+    "save": "Simpan rantaian"
   }
 }

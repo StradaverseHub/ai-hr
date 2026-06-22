@@ -481,6 +481,33 @@ export const leaveApprovalStep = pgTable(
   (t) => [index('leave_approval_step_request_idx').on(t.leaveRequestId, t.stepIndex)],
 );
 
+// Wave 2 (ADR-0039 2B-2): the configurable approval chain. `levels` is an ordered array of level kinds
+// ('direct_manager' | 'hr_admin'). A null leave_type_id is the company default; a non-null one overrides
+// for that type. Resolved at request time (type-specific → default → built-in fallback). Catalog RLS:
+// readable tenant-wide (the requester reads it to generate steps), writable by company admins.
+export const leaveApprovalPolicy = pgTable(
+  'leave_approval_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    leaveTypeId: uuid('leave_type_id').references(() => leaveType.id),
+    levels: jsonb('levels').notNull().default(sql`'[]'::jsonb`),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('leave_approval_policy_company_default_uq')
+      .on(t.companyId)
+      .where(sql`leave_type_id is null`),
+    uniqueIndex('leave_approval_policy_company_type_uq')
+      .on(t.companyId, t.leaveTypeId)
+      .where(sql`leave_type_id is not null`),
+  ],
+);
+
 // ─────────────────────── Audit substrate (ADR-0006) ───────────────────────
 // Append-only. No UPDATE/DELETE (enforced in the RLS/constraints migration).
 

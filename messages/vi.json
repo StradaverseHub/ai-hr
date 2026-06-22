@@ -83,7 +83,8 @@
     "payComponents": "Thành phần lương",
     "attendancePolicy": "Chính sách chấm công",
     "toilPolicy": "Nghỉ bù",
-    "payrollConfig": "Cấu hình lương"
+    "payrollConfig": "Cấu hình lương",
+    "leaveApproval": "Chuỗi phê duyệt"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1933,5 +1934,21 @@
     "ssmRegistrationNo": "Số đăng ký SSM",
     "hrdfHint": "Bậc HRDF quyết định khoản thuế HRD Corp chỉ do người SDLĐ đóng trong lương. Số đăng ký xuất hiện trên hồ sơ pháp lý và phiếu lương.",
     "save": "Lưu"
+  },
+  "leaveApproval": {
+    "title": "Chuỗi phê duyệt nghỉ phép",
+    "description": "Chọn ai phê duyệt nghỉ phép và theo thứ tự nào cho mỗi công ty.",
+    "emptyScope": "Không có công ty nào trong phạm vi của bạn.",
+    "enable": "Yêu cầu phê duyệt nhiều bước",
+    "enableHint": "Khi tắt, một người phê duyệt quyết định mỗi yêu cầu.",
+    "chain": "Thứ tự phê duyệt",
+    "empty": "Chưa có bước nào — thêm ít nhất một.",
+    "manager": "Quản lý trực tiếp",
+    "hr": "HR",
+    "add": "Thêm bước",
+    "moveUp": "Di chuyển lên",
+    "moveDown": "Di chuyển xuống",
+    "remove": "Xóa",
+    "save": "Lưu chuỗi"
   }
 }
