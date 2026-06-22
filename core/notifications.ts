@@ -108,13 +108,14 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
   });
 }
 
-// ─── recipient reads (RLS scopes every query to the caller's own notifications) ──────────────────────
-export function unreadNotificationCount(ctx: SessionContext, employmentId: string): Promise<number> {
+// ─── recipient reads (RLS scopes every query to the caller's own notifications, across all the person's
+// employments; pass employmentId only to narrow to one) ──────────────────────────────────────────────
+export function unreadNotificationCount(ctx: SessionContext, employmentId?: string): Promise<number> {
   return withTenant(ctx, async (tx) => {
     const [r] = await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(notification)
-      .where(and(eq(notification.recipientEmploymentId, employmentId), isNull(notification.readAt)));
+      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined));
     return r?.n ?? 0;
   });
 }
@@ -130,7 +131,7 @@ export type NotificationRow = {
   createdAt: Date;
 };
 
-export function listNotifications(ctx: SessionContext, employmentId: string, opts: { limit?: number } = {}): Promise<NotificationRow[]> {
+export function listNotifications(ctx: SessionContext, employmentId?: string, opts: { limit?: number } = {}): Promise<NotificationRow[]> {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -144,7 +145,7 @@ export function listNotifications(ctx: SessionContext, employmentId: string, opt
         createdAt: notification.createdAt,
       })
       .from(notification)
-      .where(eq(notification.recipientEmploymentId, employmentId))
+      .where(employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)
       .orderBy(desc(notification.createdAt))
       .limit(Math.min(Math.max(opts.limit ?? 20, 1), 100)),
   );
@@ -157,11 +158,11 @@ export async function markNotificationRead(ctx: SessionContext, notificationId: 
   );
 }
 
-export async function markAllNotificationsRead(ctx: SessionContext, employmentId: string): Promise<void> {
+export async function markAllNotificationsRead(ctx: SessionContext, employmentId?: string): Promise<void> {
   await withTenant(ctx, (tx) =>
     tx
       .update(notification)
       .set({ readAt: sql`now()` })
-      .where(and(eq(notification.recipientEmploymentId, employmentId), isNull(notification.readAt))),
+      .where(and(isNull(notification.readAt), employmentId ? eq(notification.recipientEmploymentId, employmentId) : undefined)),
   );
 }

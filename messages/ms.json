@@ -1836,5 +1836,11 @@
     "namePlaceholder": "cth. Elaun perumahan",
     "flagsHint": "Bendera menentukan asas berkanun yang disuap oleh komponen. Tak boleh bayar (BIK) dan pendapatan PCB-sahaja tidak dikira dalam versi ini.",
     "saveComponent": "Simpan komponen"
+  },
+  "notifications": {
+    "title": "Pemberitahuan",
+    "markAllRead": "Tanda semua dibaca",
+    "empty": "Tiada pemberitahuan baharu",
+    "aria": "Pemberitahuan, {count} belum dibaca"
   }
 }

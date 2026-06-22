@@ -23,6 +23,8 @@ import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { NotificationBell } from '@/components/notification-bell';
+import { NotificationCenter } from '@/components/notification-center';
+import { dispatchNotifications, listNotifications, unreadNotificationCount } from '@/core/notifications';
 import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
 
 const jakarta = Plus_Jakarta_Sans({ variable: '--font-jakarta', subsets: ['latin'], display: 'swap' });
@@ -43,6 +45,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Notification bell shows the approvals queue — only managers/admins have one.
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const pendingApprovals = canApprove ? await pendingApprovalsCount(session, scopeIds) : 0;
+  // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
+  // just the approvals queue. Opportunistic catch-up — an admin loading any page dispatches the tenant's new
+  // events (a cron is the production path, 34-4); non-admins can't dispatch (RLS), they read what exists.
+  const notifEnabled = process.env.NOTIFICATIONS_ENABLED === 'true';
+  if (notifEnabled && isAdmin(session)) await dispatchNotifications(session).catch(() => {});
+  const notifUnread = notifEnabled ? await unreadNotificationCount(session) : 0;
+  const notifItems = notifEnabled ? await listNotifications(session, undefined, { limit: 12 }) : [];
   return (
     <html
       lang={locale}
@@ -73,7 +82,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 <div className="flex items-center gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
                   <div className="h-5 w-px bg-border" />
-                  {canApprove && <NotificationBell count={pendingApprovals} />}
+                  {notifEnabled ? (
+                    <NotificationCenter unread={notifUnread} items={notifItems} />
+                  ) : (
+                    canApprove && <NotificationBell count={pendingApprovals} />
+                  )}
                   <span data-tour="language">
                     <LanguageSwitcher />
                   </span>

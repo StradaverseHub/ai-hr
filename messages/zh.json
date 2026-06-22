@@ -1836,5 +1836,11 @@
     "namePlaceholder": "例如 住房津贴",
     "flagsHint": "标志决定组件计入哪个法定基础。不付现（实物福利）和仅 PCB 收入在此版本中不计算。",
     "saveComponent": "保存组件"
+  },
+  "notifications": {
+    "title": "通知",
+    "markAllRead": "全部标为已读",
+    "empty": "没有新通知",
+    "aria": "通知，{count} 条未读"
   }
 }
