@@ -847,6 +847,94 @@ export const toilAccrual = pgTable(
   ],
 );
 
+// ── ADR-0034: notification engine. Gated (NOTIFICATIONS_ENABLED). A recipient-scoped notification model
+// derived from the domain-event log: a dispatch sweep maps events → notifications via a registry.
+// notification + notification_pref are recipient-only (RLS via app.is_self_person); notification_delivery +
+// notification_cursor are dispatcher-internal (app.is_admin). ────────────────────────────────────────────
+export const notificationSeverityEnum = pgEnum('notification_severity', ['info', 'action', 'warning']);
+export const notificationChannelEnum = pgEnum('notification_channel', ['in_app', 'email', 'whatsapp', 'push']);
+export const notificationDeliveryStatusEnum = pgEnum('notification_delivery_status', ['pending', 'sent', 'failed', 'skipped']);
+export type NotificationSeverity = (typeof notificationSeverityEnum.enumValues)[number];
+export type NotificationChannel = (typeof notificationChannelEnum.enumValues)[number];
+export type NotificationDeliveryStatus = (typeof notificationDeliveryStatusEnum.enumValues)[number];
+
+// One row per (recipient, notification). sourceEventId is a SOFT pointer to domain_event.id (no FK: the event
+// log is append-only + subject-RLS'd, and a notification is a derived projection with its own lifecycle).
+export const notification = pgTable(
+  'notification',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    recipientEmploymentId: uuid('recipient_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    linkPath: text('link_path'),
+    severity: notificationSeverityEnum('severity').notNull().default('info'),
+    sourceEventId: uuid('source_event_id'),
+    readAt: timestamp('read_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('notification_recipient_idx').on(t.tenantId, t.recipientEmploymentId, t.createdAt),
+    index('notification_unread_idx').on(t.tenantId, t.recipientEmploymentId).where(sql`read_at is null`),
+  ],
+);
+
+// Per (recipient, category, channel) toggle; an absent row means the channel default.
+export const notificationPref = pgTable(
+  'notification_pref',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    recipientEmploymentId: uuid('recipient_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    category: text('category').notNull(),
+    channel: notificationChannelEnum('channel').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('notification_pref_uq').on(t.tenantId, t.recipientEmploymentId, t.category, t.channel)],
+);
+
+// Out-of-app delivery attempts (in-app needs no row — the notification IS the in-app delivery).
+export const notificationDelivery = pgTable(
+  'notification_delivery',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    notificationId: uuid('notification_id')
+      .notNull()
+      .references((): AnyPgColumn => notification.id),
+    channel: notificationChannelEnum('channel').notNull(),
+    status: notificationDeliveryStatusEnum('status').notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('notification_delivery_pending_idx').on(t.tenantId, t.status)],
+);
+
+// Dispatcher state: the last domain_event (created_at, id) processed per tenant (the event log stays
+// append-only — no mutable column on domain_event).
+export const notificationCursor = pgTable(
+  'notification_cursor',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    lastEventCreatedAt: timestamp('last_event_created_at', { withTimezone: true }),
+    lastEventId: uuid('last_event_id'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('notification_cursor_tenant_uq').on(t.tenantId)],
+);
+
 export const profileChangeStatusEnum = pgEnum('profile_change_status', [
   'pending',
   'approved',
