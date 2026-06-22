@@ -1050,7 +1050,28 @@
       "colNet": "நிகரம்",
       "proratedDays": "விகிதாசாரம் · {worked}/{total} நாட்கள்",
       "noPayslips": "இந்தத் தொகுதியில் ஊதியச் சீட்டுகள் இல்லை.",
-      "totalHrdf": "HRD Corp வரி"
+      "totalHrdf": "HRD Corp வரி",
+      "componentImport": {
+        "title": "ஊதியக் கூறுகளை இறக்குமதி (CSV)",
+        "description": "இந்த வரைவுத் தொகுப்பில் ஒரு முறை படிகள், பிடித்தங்கள், OT அல்லது போனஸ்களை மொத்தமாக சேர்க்கவும். நெடுவரிசைகள்: employee (மின்னஞ்சல்), component (குறியீடு), amount, notes.",
+        "csvData": "CSV தரவு",
+        "placeholder": "employee,component,amount,notes",
+        "checking": "சரிபார்க்கிறது…",
+        "dryRun": "முன்னோட்டம்",
+        "loadSample": "மாதிரியை ஏற்று",
+        "matchHint": "பணியாளர் மின்னஞ்சல் + கூறு குறியீட்டால் பொருத்தப்பட்டது.",
+        "importedCount": "{count} கூறு வரிகள் இறக்குமதி செய்யப்பட்டன.",
+        "importAnother": "மற்றொன்றை இறக்குமதி செய்",
+        "preview": "முன்னோட்டம்",
+        "validCount": "{count} செல்லுபடியாகும்",
+        "errorCount": "{count} பிழைகளுடன்",
+        "importing": "இறக்குமதி செய்கிறது…",
+        "commit": "{count} இறக்குமதி செய்",
+        "colEmployee": "பணியாளர்",
+        "colComponent": "கூறு",
+        "colAmount": "தொகை",
+        "colStatus": "நிலை"
+      }
     }
   },
   "admin": {

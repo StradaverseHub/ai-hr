@@ -1050,7 +1050,28 @@
       "colNet": "Thực lãnh",
       "proratedDays": "tính theo tỷ lệ · {worked}/{total} ngày",
       "noPayslips": "Không có phiếu lương trong đợt này.",
-      "totalHrdf": "Thuế HRD Corp"
+      "totalHrdf": "Thuế HRD Corp",
+      "componentImport": {
+        "title": "Nhập thành phần lương (CSV)",
+        "description": "Thêm hàng loạt phụ cấp, khoản khấu trừ, OT hoặc thưởng một lần vào đợt nháp này. Cột: employee (email), component (mã), amount, notes.",
+        "csvData": "Dữ liệu CSV",
+        "placeholder": "employee,component,amount,notes",
+        "checking": "Đang kiểm tra…",
+        "dryRun": "Xem trước",
+        "loadSample": "Tải mẫu",
+        "matchHint": "Khớp theo email nhân viên + mã thành phần.",
+        "importedCount": "Đã nhập {count} dòng thành phần.",
+        "importAnother": "Nhập tiếp",
+        "preview": "Xem trước",
+        "validCount": "{count} hợp lệ",
+        "errorCount": "{count} có lỗi",
+        "importing": "Đang nhập…",
+        "commit": "Nhập {count}",
+        "colEmployee": "Nhân viên",
+        "colComponent": "Thành phần",
+        "colAmount": "Số tiền",
+        "colStatus": "Trạng thái"
+      }
     }
   },
   "admin": {

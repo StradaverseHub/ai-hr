@@ -909,7 +909,28 @@
       "colNet": "Net",
       "proratedDays": "prorated · {worked}/{total} days",
       "noPayslips": "No payslips in this batch.",
-      "totalHrdf": "HRD Corp levy"
+      "totalHrdf": "HRD Corp levy",
+      "componentImport": {
+        "title": "Import pay components (CSV)",
+        "description": "Bulk-add one-off allowances, deductions, OT or bonuses to this draft batch. Columns: employee (email), component (code), amount, notes.",
+        "csvData": "CSV data",
+        "placeholder": "employee,component,amount,notes",
+        "checking": "Checking…",
+        "dryRun": "Preview",
+        "loadSample": "Load sample",
+        "matchHint": "Matched by employee email + component code.",
+        "importedCount": "Imported {count} component line(s).",
+        "importAnother": "Import another",
+        "preview": "Preview",
+        "validCount": "{count} valid",
+        "errorCount": "{count} with errors",
+        "importing": "Importing…",
+        "commit": "Import {count}",
+        "colEmployee": "Employee",
+        "colComponent": "Component",
+        "colAmount": "Amount",
+        "colStatus": "Status"
+      }
     },
     "reports": {
       "pageTitle": "Payroll",

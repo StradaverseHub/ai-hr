@@ -1050,7 +1050,28 @@
       "colNet": "实发",
       "proratedDays": "按比例 · {worked}/{total} 天",
       "noPayslips": "此批次中无工资单。",
-      "totalHrdf": "HRD Corp 征费"
+      "totalHrdf": "HRD Corp 征费",
+      "componentImport": {
+        "title": "导入薪资项目（CSV）",
+        "description": "批量为此草稿批次添加一次性津贴、扣除、加班或花红。列：employee（邮箱）、component（代码）、amount、notes。",
+        "csvData": "CSV 数据",
+        "placeholder": "employee,component,amount,notes",
+        "checking": "检查中…",
+        "dryRun": "预览",
+        "loadSample": "载入示例",
+        "matchHint": "按员工邮箱 + 项目代码匹配。",
+        "importedCount": "已导入 {count} 条项目。",
+        "importAnother": "再导入",
+        "preview": "预览",
+        "validCount": "{count} 条有效",
+        "errorCount": "{count} 条有误",
+        "importing": "导入中…",
+        "commit": "导入 {count}",
+        "colEmployee": "员工",
+        "colComponent": "项目",
+        "colAmount": "金额",
+        "colStatus": "状态"
+      }
     }
   },
   "admin": {

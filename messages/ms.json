@@ -1050,7 +1050,28 @@
       "colNet": "Bersih",
       "proratedDays": "diprorata · {worked}/{total} hari",
       "noPayslips": "Tiada slip gaji dalam kelompok ini.",
-      "totalHrdf": "Levi HRD Corp"
+      "totalHrdf": "Levi HRD Corp",
+      "componentImport": {
+        "title": "Import komponen gaji (CSV)",
+        "description": "Tambah elaun, potongan, OT atau bonus sekali-gus ke kelompok draf ini. Lajur: employee (e-mel), component (kod), amount, notes.",
+        "csvData": "Data CSV",
+        "placeholder": "employee,component,amount,notes",
+        "checking": "Menyemak…",
+        "dryRun": "Pratonton",
+        "loadSample": "Muat contoh",
+        "matchHint": "Dipadan dengan e-mel pekerja + kod komponen.",
+        "importedCount": "{count} baris komponen diimport.",
+        "importAnother": "Import lagi",
+        "preview": "Pratonton",
+        "validCount": "{count} sah",
+        "errorCount": "{count} ada ralat",
+        "importing": "Mengimport…",
+        "commit": "Import {count}",
+        "colEmployee": "Pekerja",
+        "colComponent": "Komponen",
+        "colAmount": "Jumlah",
+        "colStatus": "Status"
+      }
     }
   },
   "admin": {
