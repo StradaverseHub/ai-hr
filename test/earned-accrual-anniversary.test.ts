@@ -70,19 +70,22 @@ describe('ADR-0040 2D-2 — anniversary earned-accrual cycle', () => {
     expect(await balanceOf(emp.employmentId)).toBe(4);
   });
 
-  it('is idempotent within a cycle and starts a fresh accrual window at the next anniversary', async () => {
+  it('is idempotent within a cycle and forfeits the uncapped carry at the next anniversary (2D-3)', async () => {
     await setCycle('anniversary');
     const emp = await hire('2024-07-15');
     await run('2025-06-30'); // full cycle 2024-07..2025-06 = 12
     expect(await balanceOf(emp.employmentId)).toBe(12);
-    const again = await run('2025-06-30'); // idempotent — nothing new
+    const again = await run('2025-06-30'); // idempotent — nothing new (no accrual, no forfeit)
     expect(again.granted).toBe(0);
+    expect(again.forfeits).toBe(0);
     expect(await balanceOf(emp.employmentId)).toBe(12);
-    const next = await run('2025-07-15'); // crossed the 2025 anniversary → new cycle's first month
-    expect(next.granted).toBe(1);
-    // The new cycle accrues 1 fresh day; the prior cycle's 12 still carry (cycle-boundary forfeit is the
-    // deferred 2D-3 — until then earned leave carries forward uncapped). So balance = 12 + 1.
-    expect(await balanceOf(emp.employmentId)).toBe(13);
+    const next = await run('2025-07-15'); // crossed the 2025 anniversary
+    expect(next.granted).toBe(1); // new cycle's first month accrues
+    expect(next.forfeits).toBe(1); // 2D-3: prior cycle's 12 days forfeit (this policy sets no carry cap)
+    expect(await balanceOf(emp.employmentId)).toBe(1); // 12 − 12 (forfeit) + 1 (new accrual)
+    const reRun = await run('2025-07-15'); // idempotent — forfeit not posted twice
+    expect(reRun.forfeits).toBe(0);
+    expect(await balanceOf(emp.employmentId)).toBe(1);
   });
 
   it('the calendar cycle (default) accrues from 1 Jan for the same hire — proving the switch matters', async () => {

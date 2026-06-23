@@ -680,7 +680,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       .from(leaveType)
       .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
     const typeIds = types.map((t) => t.id);
-    if (typeIds.length === 0) return { granted: 0 };
+    if (typeIds.length === 0) return { granted: 0, forfeits: 0 };
 
     const policies = await tx
       .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
@@ -704,7 +704,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
     const earnedTypeIds = [...policyByType.entries()]
       .filter(([, rows]) => rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method)))
       .map(([id]) => id);
-    if (earnedTypeIds.length === 0) return { granted: 0 };
+    if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0 };
 
     const emps = await tx
       .select({
@@ -722,7 +722,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
         ),
       );
-    if (emps.length === 0) return { granted: 0 };
+    if (emps.length === 0) return { granted: 0, forfeits: 0 };
     const empIds = emps.map((e) => e.employmentId);
 
     // 2D-2: the cycle start varies per employee (calendar = yearStart; anniversary = their hire-month
@@ -754,7 +754,54 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       else accrualRowsBy.set(k, [row]);
     }
 
+    // 2D-3 (ADR-0040): cap carried-forward earned leave at the cycle boundary. openLeaveYear skips earned
+    // types, so this is where their carry-forward cap lands. Group employees by their cycle start (≤12
+    // distinct month-starts for anniversary, 1 for calendar) so the prior-cycle balance + the "already
+    // forfeited this cycle" guard stay bounded queries, not one-per-employee.
+    const byCycleStart = new Map<string, string[]>();
+    for (const e of emps) {
+      const cs = earnedCycleStart(e.hiredOn, p.asOf, e.leaveCycle);
+      const arr = byCycleStart.get(cs);
+      if (arr) arr.push(e.employmentId);
+      else byCycleStart.set(cs, [e.employmentId]);
+    }
+    const priorBalanceBy = new Map<string, number>(); // emp|type -> balance carried into the current cycle
+    const forfeited = new Set<string>(); // emp|type that already has a boundary forfeit at its cycle start
+    for (const [cs, ids] of byCycleStart) {
+      const prior = await tx
+        .select({
+          employmentId: leaveLedger.employmentId,
+          leaveTypeId: leaveLedger.leaveTypeId,
+          sum: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+        })
+        .from(leaveLedger)
+        .where(
+          and(
+            inArray(leaveLedger.employmentId, ids),
+            inArray(leaveLedger.leaveTypeId, earnedTypeIds),
+            lt(leaveLedger.effectiveOn, cs),
+          ),
+        )
+        .groupBy(leaveLedger.employmentId, leaveLedger.leaveTypeId);
+      for (const r of prior) priorBalanceBy.set(`${r.employmentId}|${r.leaveTypeId}`, Number(r.sum));
+      // A boundary forfeit is an adjustment dated exactly at the cycle start; its presence means we've
+      // already rolled this (emp, type) over (idempotency — also skips if a manual adjustment lands there).
+      const adj = await tx
+        .select({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId })
+        .from(leaveLedger)
+        .where(
+          and(
+            inArray(leaveLedger.employmentId, ids),
+            inArray(leaveLedger.leaveTypeId, earnedTypeIds),
+            eq(leaveLedger.entryType, 'adjustment'),
+            eq(leaveLedger.effectiveOn, cs),
+          ),
+        );
+      for (const r of adj) forfeited.add(`${r.employmentId}|${r.leaveTypeId}`);
+    }
+
     let granted = 0;
+    let forfeits = 0;
     for (const e of emps) {
       const pack = packFor(e.country);
       if (!pack) continue;
@@ -770,6 +817,27 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         if (!isEarnedMethod(pol?.method)) continue;
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
+        // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
+        // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
+        const carryKey = `${e.employmentId}|${typeId}`;
+        if (!forfeited.has(carryKey)) {
+          const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
+          const cap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
+          const carry = Math.min(Math.max(priorBalance, 0), cap);
+          const forfeit = Math.round((priorBalance - carry) * 100) / 100;
+          if (forfeit > 0) {
+            await tx.insert(leaveLedger).values({
+              tenantId: ctx.tenantId,
+              employmentId: e.employmentId,
+              leaveTypeId: typeId,
+              entryType: 'adjustment',
+              days: (-forfeit).toFixed(2),
+              effectiveOn: cycleStart,
+            });
+            forfeited.add(carryKey);
+            forfeits += 1;
+          }
+        }
         const entitlement = Math.max(pack.leave.entitlement(type.code, years), pol!.days);
         if (entitlement <= 0) continue;
         const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
@@ -800,8 +868,8 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       aggregateId: ctx.tenantId,
       eventType: 'leave.earned-accrual.run',
       actor: actorOf(ctx),
-      payload: { asOf: p.asOf, granted },
+      payload: { asOf: p.asOf, granted, forfeits },
     });
-    return { granted };
+    return { granted, forfeits };
   });
 }

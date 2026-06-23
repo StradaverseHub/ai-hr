@@ -70,11 +70,22 @@ It remains idempotent and the floor invariant still holds (a full cycle accrues 
 with a SYSTEM context (no `userId`, so the event actor is `system`) at `asOf = today`. Monthly via the
 deploy host's cron. Being idempotent, an extra run grants nothing.
 
-### Deferred (2D-3): earned-type cycle-boundary forfeit
+## 2D-3 — earned-type cycle-boundary forfeit (accepted 2026-06-23)
 
-`openLeaveYear` skips earned types entirely, so the **carry-forward cap is not yet enforced on earned
-types at the cycle boundary** — unused earned leave currently carries forward uncapped (true for the
-calendar earned cycle 2D-1 shipped, and for anniversary here). This is a separable correctness refinement
-(it needs the per-employee cycle start applied to a balance-as-of query to stay scalable for large
-tenants) and does not affect within-cycle accrual or the demo (which runs inside a single 2026 cycle).
-Tracked as a follow-up; lump-sum types are unaffected (`openLeaveYear` still caps/forfeits those on 1 Jan).
+`openLeaveYear` skips earned types entirely, so until now their **carry-forward cap was not enforced at
+the cycle boundary** — unused earned leave carried forward uncapped (true for the calendar earned cycle
+2D-1 shipped, and for anniversary in 2D-2). `accrueEarnedLeave` now owns the *complete* earned lifecycle:
+at each employee's cycle start it caps what carries forward (ANNUAL up to its policy `carryForwardMax`;
+other earned types reset, cap 0) by posting a one-time `adjustment` dated at the cycle start, then accrues
+the new cycle as before. `openLeaveYear` is unchanged — it still owns lump-sum types (and still skips
+earned ones), so the two grant paths stay cleanly split.
+
+**Scalable + idempotent.** The forfeit needs each employee's balance carried into the cycle (sum of the
+ledger before their cycle start), and the cycle start varies per employee under the anniversary cycle. So
+employees are grouped by cycle start (≤12 distinct month-starts for anniversary, 1 for calendar) and the
+prior-cycle balance + the "already forfeited this cycle" check are two bounded grouped queries per group —
+never one-per-employee, so it scales to large tenants. The forfeit is posted once (guarded by the presence
+of an adjustment at the cycle start), so re-runs and the monthly cron never double-forfeit.
+
+Pinned by tests: calendar carry-cap (12 → cap 5 → forfeit 7), within-cap (no forfeit), idempotency, and
+the anniversary cross-boundary forfeit. The single-cycle demo is unaffected (no prior cycle to forfeit).

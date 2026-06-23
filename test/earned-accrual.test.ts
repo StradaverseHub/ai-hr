@@ -81,4 +81,35 @@ describe('ADR-0040 2D-1 — earned leave accrual', () => {
     expect(granted).toBe(0);
     expect(await balanceOf(emp.employmentId)).toBe(12);
   });
+
+  it('2D-3: caps carried-forward earned leave at the cycle boundary, honouring the carry cap', async () => {
+    await policy({ annualDays: 12, carryForwardMax: 5, method: 'earned_monthly' }); // active from 2026-01-01
+    const emp = await hire('2026-01-01');
+    await run('2026-12-31'); // full 2026 cycle → 12
+    expect(await balanceOf(emp.employmentId)).toBe(12);
+    const r = await run('2027-06-15'); // new cycle: forfeit (12 − cap 5) at 1 Jan, then accrue Jan–Jun
+    expect(r.forfeits).toBe(1);
+    expect(await balanceOf(emp.employmentId)).toBe(11); // 12 − 7 (forfeit) + 6 (2027 earned-to-date)
+    const again = await run('2027-06-15'); // idempotent — no second forfeit, no extra accrual
+    expect(again.forfeits).toBe(0);
+    expect(again.granted).toBe(0);
+    expect(await balanceOf(emp.employmentId)).toBe(11);
+  });
+
+  it('2D-3: a balance already within the carry cap is not forfeited', async () => {
+    await policy({ annualDays: 12, carryForwardMax: 8, method: 'earned_monthly' });
+    const emp = await hire('2026-01-01');
+    await run('2026-12-31'); // 12 earned in 2026
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: emp.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'debit',
+      days: '-6.00',
+      effectiveOn: '2026-08-01', // takes 6 → 2026 balance 6, within the 8-day cap
+    });
+    const r = await run('2027-06-15');
+    expect(r.forfeits).toBe(0); // 6 ≤ cap 8 → nothing forfeited
+    expect(await balanceOf(emp.employmentId)).toBe(12); // 6 carried + 6 accrued in 2027
+  });
 });
