@@ -204,6 +204,9 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+        // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
+        // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
+        applicantBalance: sql<string>`coalesce((select sum(ll.days) from leave_ledger ll where ll.employment_id = leave_request.employment_id and ll.leave_type_id = leave_request.leave_type_id), 0)`,
       })
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))

@@ -690,7 +690,10 @@
     "viewDocument": "ดูเอกสาร",
     "stageManager": "การพิจารณาของผู้จัดการ",
     "stageHr": "การพิจารณาของ HR",
-    "stepOfN": "{n} จาก {total}"
+    "stepOfN": "{n} จาก {total}",
+    "viewHistory": "ดูประวัติการลา",
+    "applicantBalance": "เหลือ {n} วัน",
+    "teamCalendar": "ปฏิทินทีม"
   },
   "performance": {
     "list": {

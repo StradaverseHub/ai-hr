@@ -690,7 +690,10 @@
     "viewDocument": "Xem tài liệu",
     "stageManager": "Quản lý xét duyệt",
     "stageHr": "HR xét duyệt",
-    "stepOfN": "{n}/{total}"
+    "stepOfN": "{n}/{total}",
+    "viewHistory": "Xem lịch sử nghỉ phép",
+    "applicantBalance": "còn {n} ngày",
+    "teamCalendar": "Lịch nhóm"
   },
   "performance": {
     "list": {

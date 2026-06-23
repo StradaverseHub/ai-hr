@@ -690,7 +690,10 @@
     "viewDocument": "ஆவணத்தைக் காண்க",
     "stageManager": "மேலாளர் மதிப்பாய்வு",
     "stageHr": "HR மதிப்பாய்வு",
-    "stepOfN": "{total} இல் {n}"
+    "stepOfN": "{total} இல் {n}",
+    "viewHistory": "விடுப்பு வரலாற்றைக் காண்க",
+    "applicantBalance": "மீதம் {n}நா",
+    "teamCalendar": "குழு நாட்காட்டி"
   },
   "performance": {
     "list": {

@@ -690,7 +690,10 @@
     "viewDocument": "View document",
     "stageManager": "Manager review",
     "stageHr": "HR review",
-    "stepOfN": "{n} of {total}"
+    "stepOfN": "{n} of {total}",
+    "viewHistory": "View leave history",
+    "applicantBalance": "{n}d left",
+    "teamCalendar": "Team calendar"
   },
   "performance": {
     "list": {
