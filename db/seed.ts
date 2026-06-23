@@ -9,7 +9,7 @@ import * as schema from './schema';
 import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
-import { requestLeave, decideLeave, addLeaveAttachment } from '../core/leave';
+import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
 import { createLeavePolicy } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
@@ -131,9 +131,15 @@ async function main() {
     .values({ tenantId: DEV_TENANT_ID, appUserId: DEV_ADMIN_USER_ID, role: 'hr_admin', companyId: null });
 
   const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
-  // Company policy more generous than the EA floor (12 vs 8 annual days): grants apply
-  // max(floor, policy), so this is what every demo hire actually receives.
-  await createLeavePolicy(admin, { leaveTypeId: annual.id, annualDays: 12, validFrom: '2026-01-01' });
+  // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
+  // through the year. Entitlement is max(EA floor 8, policy 12) = 12 → 1 day/month; the hire grant skips
+  // earned types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.
+  await createLeavePolicy(admin, {
+    leaveTypeId: annual.id,
+    annualDays: 12,
+    method: 'earned_monthly',
+    validFrom: '2026-01-01',
+  });
   const people: {
     fullName: string;
     email: string;
@@ -331,6 +337,9 @@ async function main() {
       }
     }
   };
+  // ADR-0040 (2D): grant everyone their earned-to-date ANNUAL share before any leave is taken below
+  // (~6 days by late June for a Jan joiner on a 12-day, earn-monthly policy). Idempotent.
+  await accrueEarnedLeave(admin, { asOf: '2026-06-23' });
   await seedLeave(0, annual.id, '2026-06-10', '2026-06-12', true); // Aisyah · annual · approved by Daniel
   await seedLeave(3, annual.id, '2026-06-16', '2026-06-18', true); // Arjun · annual · approved by Daniel
   await seedLeave(2, leaveTypeIds.SICK, '2026-06-09', '2026-06-10', false, true); // Mei Ling · sick · pending · with MC
