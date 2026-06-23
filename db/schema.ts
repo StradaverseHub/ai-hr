@@ -290,6 +290,9 @@ export const employment = pgTable(
       .references(() => company.id),
     employeeCode: text('employee_code'),
     hiredOn: date('hired_on').notNull(),
+    // Wave 2 (ADR-0041 2E): the employee's seniority grade — drives grade-scoped leave entitlements.
+    // Null = ungraded (falls to the company-default leave policy).
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
     // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
     // apply. Null falls back to the company's default_work_state, then national-only.
     workState: text('work_state'),
@@ -383,6 +386,23 @@ export const leaveType = pgTable('leave_type', {
   createdAt: createdAt(),
 });
 
+// Wave 2 (ADR-0041 2E): tenant grade catalog — seniority bands (Executive, Non-Executive, G1…).
+// `rank` orders them (1 = most senior). Employees and leave policies reference a grade; null = ungraded
+// / all-grades. RLS: tenant-read + admin-write (mirrors leave_type).
+export const jobGrade = pgTable(
+  'job_grade',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    rank: integer('rank').notNull().default(0),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('job_grade_code_uq').on(t.tenantId, t.code).where(sql`archived_at is null`)],
+);
+
 export const leavePolicy = pgTable(
   'leave_policy',
   {
@@ -391,6 +411,8 @@ export const leavePolicy = pgTable(
     leaveTypeId: uuid('leave_type_id')
       .notNull()
       .references(() => leaveType.id),
+    // Wave 2 (ADR-0041 2E): grade this policy applies to. null = all grades (the company default).
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
     // e.g. { annualDays: 16, method: 'grant_on_hire_prorated' }
     accrual: jsonb('accrual').notNull(),
     validFrom: date('valid_from').notNull(),

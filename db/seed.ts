@@ -10,7 +10,7 @@ import { hireEmployee, setCostAllocation, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection } from '../core/attendance';
 import { requestLeave, decideLeave, addLeaveAttachment, accrueEarnedLeave } from '../core/leave';
-import { createLeavePolicy } from '../core/admin';
+import { createLeavePolicy, createJobGrade } from '../core/admin';
 import { createCycle, openCycle, submitManagerReview, submitSelfReview } from '../core/performance';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
@@ -24,7 +24,7 @@ const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
 
 const TABLES = [
   'tenant', 'company', 'person', 'position', 'department', 'cost_center', 'employment',
-  'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
+  'assignment', 'reporting_line', 'job_grade', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
@@ -140,6 +140,17 @@ async function main() {
     method: 'earned_monthly',
     validFrom: '2026-01-01',
   });
+  // ADR-0041 (2E): grade catalog + a grade-scoped ANNUAL policy. Executives earn 18 annual days (vs the
+  // 12-day default), so a graded employee (Daniel, below) accrues more — grade-based entitlement, visible.
+  const execGrade = await createJobGrade(admin, { code: 'EXEC', name: 'Executive', rank: 1 });
+  await createJobGrade(admin, { code: 'NONEXEC', name: 'Non-Executive', rank: 2 });
+  await createLeavePolicy(admin, {
+    leaveTypeId: annual.id,
+    annualDays: 18,
+    method: 'earned_monthly',
+    gradeId: execGrade.id,
+    validFrom: '2026-01-01',
+  });
   const people: {
     fullName: string;
     email: string;
@@ -174,6 +185,11 @@ async function main() {
     // ADR-0038 2C: work state (Mei Ling in Sarawak) so state-holiday differences are demonstrable.
     if (p.workState) {
       await owner.db.update(schema.employment).set({ workState: p.workState }).where(eq(schema.employment.id, employmentId));
+    }
+    // ADR-0041 2E: Daniel (the manager) is an Executive, so his ANNUAL accrues on the 18-day grade policy
+    // (9 days by late June) vs the 12-day default (6 days) — grade-based accrual, visible in the demo.
+    if (i === 1) {
+      await owner.db.update(schema.employment).set({ gradeId: execGrade.id }).where(eq(schema.employment.id, employmentId));
     }
     // Local user record + role (login identity itself is provisioned by WorkOS later).
     const role = i === 1 ? 'manager' : 'employee';

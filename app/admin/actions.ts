@@ -27,6 +27,8 @@ import {
   revokeRole,
   setCompanyParent,
   setCompanyLeaveCycle,
+  createJobGrade,
+  archiveJobGrade,
   updateCompany,
   updateCostCenter,
   updateDepartment,
@@ -236,6 +238,7 @@ export async function createLeavePolicyAction(formData: FormData) {
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       method: String(formData.get('method') || '') || undefined,
+      gradeId: String(formData.get('gradeId') || '') || null,
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
@@ -252,6 +255,7 @@ export async function updateLeavePolicyAction(formData: FormData) {
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       method: String(formData.get('method') || '') || undefined,
+      gradeId: String(formData.get('gradeId') || '') || null,
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
@@ -280,6 +284,31 @@ export async function setCompanyLeaveCycleAction(formData: FormData) {
       companyId: String(formData.get('companyId')),
       cycle: String(formData.get('cycle') || 'calendar'),
     });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/** ADR-0041 (2E): grade catalog — create + archive. */
+export async function createJobGradeAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await createJobGrade(s, {
+      code: String(formData.get('code') ?? ''),
+      name: String(formData.get('name') ?? ''),
+      rank: Number(formData.get('rank')) || 0,
+    });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+export async function archiveJobGradeAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await archiveJobGrade(s, { id: String(formData.get('id')), archived: formData.get('archived') === 'true' });
   } catch (e) {
     fail(LEAVE, e);
   }

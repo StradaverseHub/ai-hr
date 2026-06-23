@@ -7,7 +7,7 @@ import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
-import { isEarnedMethod } from './leave';
+import { isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import {
   person,
@@ -37,6 +37,8 @@ export type HireParams = {
   costCenterId?: string;
   employmentType: EmploymentType;
   hiredOn: string; // 'YYYY-MM-DD'
+  /** Seniority grade (ADR-0041 2E) — drives grade-scoped leave entitlements. Optional; null = ungraded. */
+  gradeId?: string | null;
   /** Standing entitlements to grant on hire (pack-driven). Pass ANNUAL / SICK /
    *  HOSPITALIZATION; situational types (maternity etc.) are claimed per event, not granted. */
   grantLeaveTypes?: { id: string; code: string }[];
@@ -61,7 +63,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     const employeeCode = await nextEmployeeCode(tx, ctx.tenantId);
     const [emp] = await tx
       .insert(employment)
-      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode })
+      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null })
       .returning({ id: employment.id });
 
     await tx.insert(assignment).values({
@@ -88,7 +90,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       const pack = packFor(co?.country);
       if (pack) {
         const policies = await tx
-          .select({ leaveTypeId: leavePolicy.leaveTypeId, accrual: leavePolicy.accrual })
+          .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
           .from(leavePolicy)
           .where(
             and(
@@ -100,17 +102,17 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
               or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.hiredOn)),
             ),
           );
-        // Overlapping policies for a type: the most generous active one applies.
-        const policyBy = new Map<string, { days: number; method?: string }>();
+        // 2E (ADR-0041): group by type so the grant resolves the policy for the new hire's grade
+        // (grade-specific → company-default → floor); with no grade this is the old most-generous pick.
+        const policyByType = new Map<string, GradePolicyRow[]>();
         for (const pol of policies) {
-          const acc = pol.accrual as { annualDays?: number; method?: string } | null;
-          const d = Number(acc?.annualDays ?? 0);
-          const prev = policyBy.get(pol.leaveTypeId);
-          if (!prev || d > prev.days) policyBy.set(pol.leaveTypeId, { days: d, method: acc?.method });
+          const arr = policyByType.get(pol.leaveTypeId);
+          if (arr) arr.push(pol);
+          else policyByType.set(pol.leaveTypeId, [pol]);
         }
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
-          const polFor = policyBy.get(lt.id);
+          const polFor = resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null);
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);
@@ -480,6 +482,33 @@ export async function setEmploymentWorkState(
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
       payload: { before: before.workState, after: workState },
+    });
+    return { id: p.employmentId };
+  });
+}
+
+/** ADR-0041 2E: set an employment's seniority grade (drives grade-scoped leave entitlements). Pass null
+ *  to clear. The grade applies to future grants/accruals; past ledger entries are untouched. */
+export async function setEmploymentGrade(
+  ctx: SessionContext,
+  p: { employmentId: string; gradeId: string | null },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ gradeId: employment.gradeId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+    await tx.update(employment).set({ gradeId: p.gradeId }).where(eq(employment.id, p.employmentId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.grade.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: before.gradeId, after: p.gradeId },
     });
     return { id: p.employmentId };
   });

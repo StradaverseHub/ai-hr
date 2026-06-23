@@ -496,7 +496,12 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       .from(leaveType)
       .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
     const emps = await tx
-      .select({ employmentId: employment.id, hiredOn: employment.hiredOn, country: company.country })
+      .select({
+        employmentId: employment.id,
+        hiredOn: employment.hiredOn,
+        country: company.country,
+        gradeId: employment.gradeId,
+      })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(
@@ -522,9 +527,10 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       );
     const openedSet = new Set(already.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
 
-    // Most generous active policy per type as of Jan 1 — same resolution as the hire grant.
+    // 2E (ADR-0041): active policies per type as of Jan 1, grouped so each employee resolves the policy
+    // for their grade (resolveGradePolicy) — same resolution the hire grant uses.
     const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, accrual: leavePolicy.accrual })
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -533,18 +539,11 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, yearStart)),
         ),
       );
-    const policyBy = new Map<string, { days: number; carryMax: number; method?: string }>();
+    const policyByType = new Map<string, GradePolicyRow[]>();
     for (const pol of policies) {
-      const acc = pol.accrual as { annualDays?: number; carryForwardMax?: number; method?: string } | null;
-      const d = Number(acc?.annualDays ?? 0);
-      const prev = policyBy.get(pol.leaveTypeId);
-      if (!prev || d > prev.days) {
-        policyBy.set(pol.leaveTypeId, {
-          days: d,
-          carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
-          method: acc?.method,
-        });
-      }
+      const arr = policyByType.get(pol.leaveTypeId);
+      if (arr) arr.push(pol);
+      else policyByType.set(pol.leaveTypeId, [pol]);
     }
 
     const balances = await tx
@@ -571,7 +570,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           skipped += 1;
           continue;
         }
-        const pol = policyBy.get(t.id);
+        const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId);
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
         const days = Math.max(pack.leave.entitlement(t.code, years), pol?.days ?? 0);
@@ -645,6 +644,29 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
+// ── Grade-based policy resolution (ADR-0041 / 2E) ─────────────────────────────────────────────────
+export type GradePolicyRow = { gradeId: string | null; accrual: unknown };
+export type ResolvedPolicy = { days: number; carryMax: number; method?: string };
+/** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
+ *  policy scoped to the employee's grade, else the most-generous null-grade (all-grades) policy, else
+ *  null. With no grades assigned (employee + every policy null-grade) this is exactly the pre-2E
+ *  "most generous active policy" pick, so existing behavior is unchanged. */
+export function resolveGradePolicy(rows: GradePolicyRow[], employeeGradeId: string | null): ResolvedPolicy | null {
+  const pick = (subset: GradePolicyRow[]): ResolvedPolicy | null => {
+    let best: ResolvedPolicy | null = null;
+    for (const r of subset) {
+      const acc = r.accrual as { annualDays?: number; carryForwardMax?: number; method?: string } | null;
+      const days = Number(acc?.annualDays ?? 0);
+      if (!best || days > best.days) {
+        best = { days, carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)), method: acc?.method };
+      }
+    }
+    return best;
+  };
+  const graded = employeeGradeId ? pick(rows.filter((r) => r.gradeId === employeeGradeId)) : null;
+  return graded ?? pick(rows.filter((r) => r.gradeId == null));
+}
+
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
  *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
  *  The cycle is per company (`leave_cycle`): calendar (1 Jan, joiners pro-rate from their join month)
@@ -661,7 +683,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
     if (typeIds.length === 0) return { granted: 0 };
 
     const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, accrual: leavePolicy.accrual })
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -670,16 +692,19 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
           or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.asOf)),
         ),
       );
-    const earnedBy = new Map<string, { days: number; method: string }>();
+    // 2E (ADR-0041): group active policies per type so each employee resolves the policy for their grade.
+    // A type is "earned" if ANY of its active policies is earned — that tells us which ledger rows to read
+    // for the already-accrued sum; the per-employee resolution below decides what actually accrues.
+    const policyByType = new Map<string, GradePolicyRow[]>();
     for (const pol of policies) {
-      const acc = pol.accrual as { annualDays?: number; method?: string } | null;
-      if (!isEarnedMethod(acc?.method)) continue;
-      const days = Number(acc?.annualDays ?? 0);
-      const prev = earnedBy.get(pol.leaveTypeId);
-      if (!prev || days > prev.days) earnedBy.set(pol.leaveTypeId, { days, method: acc!.method! });
+      const arr = policyByType.get(pol.leaveTypeId);
+      if (arr) arr.push(pol);
+      else policyByType.set(pol.leaveTypeId, [pol]);
     }
-    if (earnedBy.size === 0) return { granted: 0 };
-    const earnedTypeIds = [...earnedBy.keys()];
+    const earnedTypeIds = [...policyByType.entries()]
+      .filter(([, rows]) => rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method)))
+      .map(([id]) => id);
+    if (earnedTypeIds.length === 0) return { granted: 0 };
 
     const emps = await tx
       .select({
@@ -687,6 +712,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         hiredOn: employment.hiredOn,
         country: company.country,
         leaveCycle: company.leaveCycle,
+        gradeId: employment.gradeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -737,15 +763,19 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       // accrue from their own cycle start (which, for a joiner, is their hire month).
       const cycleStart = earnedCycleStart(e.hiredOn, p.asOf, e.leaveCycle);
       const years = serviceYearsAt(e.hiredOn, cycleStart);
-      for (const [typeId, { days: polDays, method }] of earnedBy) {
+      for (const typeId of earnedTypeIds) {
+        // 2E: this employee's grade may resolve to a lump (or no) policy even when the type is earned for
+        // another grade — accrue only when THEIR resolved policy is earned.
+        const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId);
+        if (!isEarnedMethod(pol?.method)) continue;
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
-        const entitlement = Math.max(pack.leave.entitlement(type.code, years), polDays);
+        const entitlement = Math.max(pack.leave.entitlement(type.code, years), pol!.days);
         if (entitlement <= 0) continue;
-        const totalPeriods = method === 'earned_quarterly' ? 4 : 12;
+        const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
         const accrualStart =
           e.leaveCycle === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
-        const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, method));
+        const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
         const earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
         const rows = accrualRowsBy.get(`${e.employmentId}|${typeId}`) ?? [];
         const already = rows.reduce((s, r) => (r.effectiveOn >= cycleStart ? s + r.days : s), 0);

@@ -13,6 +13,7 @@ import {
   employeeStatutoryMy,
   employment,
   holiday,
+  jobGrade,
   leaveLedger,
   leaveRequest,
   leaveType,
@@ -371,14 +372,35 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
         workState: employment.workState,
+        gradeId: employment.gradeId,
+        gradeName: jobGrade.name,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .where(eq(employment.id, employmentId))
       .limit(1);
     return row ?? null;
   });
+}
+
+/** ADR-0041 2E: the tenant grade catalog, most-senior first (rank asc), then name. */
+export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: jobGrade.id,
+        code: jobGrade.code,
+        name: jobGrade.name,
+        rank: jobGrade.rank,
+        archivedAt: jobGrade.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id) or exists (select 1 from leave_policy lp where lp.grade_id = job_grade.id)`,
+      })
+      .from(jobGrade)
+      .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))
+      .orderBy(jobGrade.rank, jobGrade.name),
+  );
 }
 
 /** All effective-dated assignment versions (newest first) — the bitemporal history. */
