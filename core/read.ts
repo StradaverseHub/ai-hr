@@ -1,6 +1,7 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import { and, desc, eq, gte, inArray, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
+import { isLeaveEligible, type LeaveEligibility } from './leave';
 import {
   appUser,
   assignment,
@@ -446,6 +447,27 @@ export function leaveBalances(ctx: SessionContext, employmentId: string) {
         balance: 0,
         available: -pending,
       });
+      seen.add(p.leaveTypeId);
+    }
+    // 2F-1 (R18): surface every active leave type the employee is ELIGIBLE for — even with no activity
+    // yet — so the list is the full menu, not just types they've already accrued or requested.
+    const [types, [emp]] = await Promise.all([
+      tx
+        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility })
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      tx
+        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(eq(employment.id, employmentId))
+        .limit(1),
+    ]);
+    const today = new Date().toISOString().slice(0, 10);
+    for (const lt of types) {
+      if (seen.has(lt.id)) continue;
+      if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0 });
     }
     return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });

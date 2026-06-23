@@ -78,6 +78,20 @@ function assertEligible(
   }
 }
 
+/** Boolean form of the eligibility gate (assertEligible throws; this just answers). Used by reads to
+ *  show an employee only the leave types they could actually take (2F-1 / R18). */
+export function isLeaveEligible(
+  elig: LeaveEligibility | null | undefined,
+  emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
+  asOf: string,
+): boolean {
+  if (!elig) return true;
+  if (elig.gender && emp?.gender !== elig.gender) return false;
+  if (elig.maritalStatus && emp?.marital !== elig.maritalStatus) return false;
+  if (elig.minServiceMonths && (!emp || monthsBetween(emp.hiredOn, asOf) < elig.minServiceMonths)) return false;
+  return true;
+}
+
 export async function leaveBalance(tx: Tx, employmentId: string, leaveTypeId: string): Promise<number> {
   const [row] = await tx
     .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
