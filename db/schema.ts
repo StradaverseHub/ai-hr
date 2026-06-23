@@ -373,6 +373,9 @@ export const leaveType = pgTable('leave_type', {
   // Wave 2 (ADR-0038 2A-2): require a supporting document (e.g. an MC for sick leave). When true,
   // requestLeave rejects a request that has no attachment. Default false = no document needed.
   requiresDocument: boolean('requires_document').notNull().default(false),
+  // Wave 2 (ADR-0038 2F-2 / R37): per-locale display names, { ms: { name }, zh: { name }, ... }.
+  // Mirrors kb_document.i18n. Reads resolve to the viewer's locale, falling back to `name`.
+  i18n: jsonb('i18n').$type<Record<string, { name: string }>>(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
