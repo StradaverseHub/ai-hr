@@ -134,6 +134,9 @@ export const company = pgTable(
     // approval chain (direct manager → HR) instead of a single approval. Per-company; 2B-2 makes the
     // chain itself configurable.
     leaveMultiApproval: boolean('leave_multi_approval').notNull().default(false),
+    // Wave 2 (ADR-0040 2D-2): earned-accrual cycle — 'calendar' (1 Jan–31 Dec, default) or 'anniversary'
+    // (each employee accrues relative to their hire-month anniversary). Only earned policies read it.
+    leaveCycle: text('leave_cycle').notNull().default('calendar'),
     // Wave 2 (ADR-0038 2C): the default state for employees with no explicit work_state — the holiday
     // fallback for this company.
     defaultWorkState: text('default_work_state'),

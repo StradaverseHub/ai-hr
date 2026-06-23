@@ -37,8 +37,8 @@ test pins this: full-cycle earned total == `entitlement` and `entitlement ≥ fl
   admin method selector + a "run accrual" admin action, on a **calendar** cycle (1 Jan – 31 Dec). Demo
   seeds one type as earned so partial balances are visible. Gated by the per-policy method, so every
   existing lump-sum company is unaffected.
-- **2D-2 (follow-up):** the **join-date anniversary** cycle option, and a monthly cron that runs
-  `accrueEarnedLeave` unattended (reusing the same idempotent service the admin action calls).
+- **2D-2 (accepted 2026-06-23, below):** the **join-date anniversary** cycle option, and a monthly cron
+  that runs `accrueEarnedLeave` unattended (reusing the same idempotent service the admin action calls).
 
 ## Consequences
 
@@ -46,3 +46,35 @@ test pins this: full-cycle earned total == `entitlement` and `entitlement ≥ fl
   the behavior the consultant asked for. Lump-sum stays the default, so nothing regresses.
 - The ledger remains the single source of truth; `accrueEarnedLeave` only ever appends the shortfall,
   so it is safe to run any number of times (cron, admin button, or after a policy change).
+
+## 2D-2 — anniversary cycle + cron (accepted 2026-06-23)
+
+A new per-company `company.leave_cycle` ('calendar' default = the 2D-1 behavior, or 'anniversary')
+selects the earned-accrual cycle. Additive + defaulted, so every existing company keeps the calendar
+year and nothing regresses.
+
+- **calendar** — the cycle is 1 Jan – 31 Dec; mid-year joiners pro-rate from their join month (2D-1).
+- **anniversary** — each employee's cycle is anchored to their **hire-month anniversary**. The current
+  cycle starts at the most-recent hire-month anniversary on/before `asOf`, and earned-to-date is
+  `entitlement × periods(cycleStart → asOf) / periods_in_cycle`. Because the cycle is anchored to the
+  hire month, a joiner's first cycle starts at hire automatically — no separate pro-ration branch.
+
+`accrueEarnedLeave` resolves each employee's cycle start from their company's `leave_cycle`, and the
+"already accrued this cycle" guard is computed per-employee against that cycle start (the SQL fetches
+only the trailing ~12 months of accrual rows, so it stays a bulk query, not per-employee round-trips).
+It remains idempotent and the floor invariant still holds (a full cycle accrues exactly
+`max(EA-floor, policy days)`).
+
+**Cron.** `scripts/accrue-earned.ts` (the `leave:accrue` script) runs out-of-band like
+`statutory-sync.ts`: it enumerates tenants with the owner role, then runs `accrueEarnedLeave` per tenant
+with a SYSTEM context (no `userId`, so the event actor is `system`) at `asOf = today`. Monthly via the
+deploy host's cron. Being idempotent, an extra run grants nothing.
+
+### Deferred (2D-3): earned-type cycle-boundary forfeit
+
+`openLeaveYear` skips earned types entirely, so the **carry-forward cap is not yet enforced on earned
+types at the cycle boundary** — unused earned leave currently carries forward uncapped (true for the
+calendar earned cycle 2D-1 shipped, and for anniversary here). This is a separable correctness refinement
+(it needs the per-employee cycle start applied to a balance-as-of query to stay scalable for large
+tenants) and does not affect within-cycle accrual or the demo (which runs inside a single 2026 cycle).
+Tracked as a follow-up; lump-sum types are unaffected (`openLeaveYear` still caps/forfeits those on 1 Jan).

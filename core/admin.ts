@@ -680,6 +680,22 @@ export async function updateCompany(
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: 'company.updated', actor: actorOf(ctx), payload: { legalName: p.legalName } });
   });
 }
+/** ADR-0040 2D-2: set a company's earned-accrual cycle ('calendar' | 'anniversary'). RLS (the company
+ *  update policy) already requires admin-for-company, same as updateCompany. */
+export async function setCompanyLeaveCycle(ctx: SessionContext, p: { companyId: string; cycle: string }) {
+  const cycle = p.cycle === 'anniversary' ? 'anniversary' : 'calendar';
+  return withTenant(ctx, async (tx) => {
+    await tx.update(company).set({ leaveCycle: cycle }).where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.leave-cycle.set',
+      actor: actorOf(ctx),
+      payload: { cycle },
+    });
+  });
+}
 export function archiveCompany(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
     await tx.update(company).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(company.id, p.id));

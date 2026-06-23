@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listLeaveTypes } from '@/core/read';
+import { listLeaveTypes, listCompanies } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
 import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -13,6 +13,7 @@ import {
   deleteLeaveTypeAction,
   openLeaveYearAction,
   runEarnedAccrualAction,
+  setCompanyLeaveCycleAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
 } from '../actions';
@@ -25,9 +26,10 @@ export default async function LeaveConfigPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies] = await Promise.all([
+  const [types, policies, companies] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listLeavePolicies(s),
+    listCompanies(s),
   ]);
 
   // Statutory floor display (MY pack): sample the three service bands. 6 (not 5)
@@ -145,6 +147,34 @@ export default async function LeaveConfigPage({
             </Button>
           </form>
         </div>
+      </Card>
+
+      {/* ADR-0040 2D-2: per-company earned-accrual cycle (calendar vs hire anniversary). */}
+      <Card>
+        <SectionHeader title={t('leaveCycleTitle')} count={companies.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('leaveCycleHelp')}</p>
+        <ul className="divide-y divide-border">
+          {companies.map((c) => (
+            <li key={c.id} className="px-4 py-3">
+              <form
+                action={setCompanyLeaveCycleAction}
+                className="flex flex-wrap items-center justify-between gap-3"
+              >
+                <input type="hidden" name="companyId" value={c.id} />
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">{c.name}</span>
+                <div className="flex items-center gap-2">
+                  <select name="cycle" defaultValue={c.leaveCycle ?? 'calendar'} className={`${inputCls} w-44`}>
+                    <option value="calendar">{t('cycleCalendar')}</option>
+                    <option value="anniversary">{t('cycleAnniversary')}</option>
+                  </select>
+                  <Button type="submit" variant="outline" size="sm">
+                    {t('save')}
+                  </Button>
+                </div>
+              </form>
+            </li>
+          ))}
+        </ul>
       </Card>
     </div>
   );
