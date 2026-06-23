@@ -525,6 +525,7 @@
     "emergencyPhoneLabel": "紧急联系电话",
     "saveDetails": "保存信息",
     "bankAndTax": "银行与税务",
+    "approvalGatedHeading": "银行、税务与个人",
     "changesNeedApproval": "变更需经管理员批准后方可影响您的薪酬。",
     "bank": "银行",
     "account": "账号",

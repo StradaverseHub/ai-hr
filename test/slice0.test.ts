@@ -1444,19 +1444,39 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     return { tenantId: base.tenantId, userId: uid, personId, roles: ['employee'] };
   };
 
-  it('an employee edits their own contact fields directly (RLS allows the self-write)', async () => {
+  it('an employee edits their own low-risk contact fields directly (RLS allows the self-write)', async () => {
     const a = adminCtx(base);
     const E = await hire(a, base, 'Contacter');
     const emp = await empCtxFor(E.personId);
     await updateOwnContact(emp, {
       phone: '0123456789',
       address: '12 Jalan Test',
-      dateOfBirth: '1990-01-01',
+      emergencyContactName: 'Next of Kin',
     });
     const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
     expect(p.phone).toBe('0123456789');
     expect(p.address).toBe('12 Jalan Test');
-    expect(p.dateOfBirth).toBe('1990-01-01');
+    expect(p.emergencyContactName).toBe('Next of Kin');
+  });
+
+  it('#24: a date-of-birth / marital-status change applies to the person only after approval', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Identity');
+    const emp = await empCtxFor(E.personId);
+    const { requestId } = await requestProfileChange(emp, {
+      employmentId: E.employmentId,
+      proposed: { dateOfBirth: '1985-05-20', maritalStatus: 'married', gender: 'female' },
+    });
+    // Pending — the compliance-sensitive identity fields are NOT applied until an admin approves.
+    const [before] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
+    expect(before.dateOfBirth).toBeNull();
+    expect(before.maritalStatus).toBeNull();
+
+    await decideProfileChange(a, { requestId, decision: 'approved' });
+    const [after] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
+    expect(after.dateOfBirth).toBe('1985-05-20');
+    expect(after.maritalStatus).toBe('married');
+    expect(after.gender).toBe('female');
   });
 
   it('a bank change applies to the statutory profile only after approval', async () => {

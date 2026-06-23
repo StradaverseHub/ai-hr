@@ -525,6 +525,7 @@
     "emergencyPhoneLabel": "Emergency phone",
     "saveDetails": "Save details",
     "bankAndTax": "Bank & tax",
+    "approvalGatedHeading": "Bank, tax & personal",
     "changesNeedApproval": "Changes need admin approval before they affect your pay.",
     "bank": "Bank",
     "account": "Account",

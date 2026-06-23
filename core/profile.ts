@@ -24,10 +24,17 @@ export const GENDERS = ['male', 'female', 'undisclosed'] as const;
 export const MARITAL_STATUSES = ['single', 'married', 'other'] as const;
 
 export type ProfileChangeProposed = {
+  // Pay-affecting statutory fields (employee_statutory_my).
   bankName?: string | null;
   bankAccountNo?: string | null;
   taxCategory?: number;
   numChildren?: number;
+  // Compliance-sensitive identity fields on `person` (ADR-0012 §refinement, #24): date of birth drives
+  // age-based statutory (EPF senior/SOCSO/retirement), marital status drives the PCB category, and gender
+  // gates maternity/paternity eligibility — so a self-edit goes through approval, not a direct write.
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  maritalStatus?: string | null;
 };
 
 /** Keep only the recognised, sanitised keys — the bundle is a jsonb patch we later apply. */
@@ -41,6 +48,9 @@ function sanitizeProposed(raw: ProfileChangeProposed): ProfileChangeProposed {
   if (raw.numChildren !== undefined && Number.isFinite(Number(raw.numChildren))) {
     out.numChildren = Math.max(0, Math.floor(Number(raw.numChildren)));
   }
+  if (raw.dateOfBirth !== undefined) out.dateOfBirth = clean(raw.dateOfBirth);
+  if (raw.gender !== undefined) out.gender = oneOf(raw.gender, GENDERS);
+  if (raw.maritalStatus !== undefined) out.maritalStatus = oneOf(raw.maritalStatus, MARITAL_STATUSES);
   return out;
 }
 
@@ -78,15 +88,14 @@ export function myProfile(ctx: SessionContext) {
   });
 }
 
-/** Direct self-edit of low-risk contact fields on the caller's own person row. */
+/** Direct self-edit of low-risk contact fields on the caller's own person row. Genuinely low-risk only —
+ *  date of birth / gender / marital status are compliance-sensitive and go through the approval gate
+ *  (requestProfileChange), not here (#24). */
 export async function updateOwnContact(
   ctx: SessionContext,
   p: {
     phone?: string | null;
     address?: string | null;
-    dateOfBirth?: string | null;
-    gender?: string | null;
-    maritalStatus?: string | null;
     emergencyContactName?: string | null;
     emergencyContactPhone?: string | null;
   },
@@ -99,9 +108,6 @@ export async function updateOwnContact(
       .set({
         phone: clean(p.phone),
         address: clean(p.address),
-        dateOfBirth: clean(p.dateOfBirth),
-        gender: oneOf(p.gender, GENDERS),
-        maritalStatus: oneOf(p.maritalStatus, MARITAL_STATUSES),
         emergencyContactName: clean(p.emergencyContactName),
         emergencyContactPhone: clean(p.emergencyContactPhone),
       })
@@ -177,12 +183,13 @@ export async function decideProfileChange(
 
     if (p.decision === 'approved') {
       const proposed = (req.proposed ?? {}) as ProfileChangeProposed;
-      const set: Record<string, unknown> = {};
-      if (proposed.bankName !== undefined) set.bankName = proposed.bankName;
-      if (proposed.bankAccountNo !== undefined) set.bankAccountNo = proposed.bankAccountNo;
-      if (proposed.taxCategory !== undefined) set.taxCategory = proposed.taxCategory;
-      if (proposed.numChildren !== undefined) set.numChildren = proposed.numChildren;
-      if (Object.keys(set).length > 0) {
+      // Pay-affecting statutory fields → employee_statutory_my (needs a statutory profile to apply to).
+      const statSet: Record<string, unknown> = {};
+      if (proposed.bankName !== undefined) statSet.bankName = proposed.bankName;
+      if (proposed.bankAccountNo !== undefined) statSet.bankAccountNo = proposed.bankAccountNo;
+      if (proposed.taxCategory !== undefined) statSet.taxCategory = proposed.taxCategory;
+      if (proposed.numChildren !== undefined) statSet.numChildren = proposed.numChildren;
+      if (Object.keys(statSet).length > 0) {
         const [existing] = await tx
           .select({ id: employeeStatutoryMy.id })
           .from(employeeStatutoryMy)
@@ -193,7 +200,7 @@ export async function decideProfileChange(
         }
         await tx
           .update(employeeStatutoryMy)
-          .set({ ...set, updatedAt: sql`now()` })
+          .set({ ...statSet, updatedAt: sql`now()` })
           .where(eq(employeeStatutoryMy.id, existing.id));
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
@@ -202,7 +209,24 @@ export async function decideProfileChange(
           eventType: 'statutory.my.updated',
           actor: actorOf(ctx),
           subjectEmploymentId: req.employmentId,
-          payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(set) },
+          payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(statSet) },
+        });
+      }
+      // #24: compliance-sensitive identity fields → person (no statutory profile required).
+      const personSet: Record<string, unknown> = {};
+      if (proposed.dateOfBirth !== undefined) personSet.dateOfBirth = proposed.dateOfBirth;
+      if (proposed.gender !== undefined) personSet.gender = proposed.gender;
+      if (proposed.maritalStatus !== undefined) personSet.maritalStatus = proposed.maritalStatus;
+      if (Object.keys(personSet).length > 0) {
+        await tx.update(person).set(personSet).where(eq(person.id, req.personId));
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'person',
+          aggregateId: req.personId,
+          eventType: 'person.updated',
+          actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
+          payload: { via: 'profile-change', requestId: req.id, fields: Object.keys(personSet) },
         });
       }
     }
