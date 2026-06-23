@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
@@ -90,6 +91,14 @@ export default async function ApprovalsPage({
 
       <Card className="overflow-hidden" data-tour="approvals-leave">
         <SectionHeader title={t('leaveRequests')} count={pendingLeave.length} />
+        {pendingLeave.length > 0 && (
+          // R23: quick path to the team's planned absences, so an approver can check for clashes.
+          <div className="flex justify-end border-b border-border px-4 py-1.5">
+            <Link href="/leave" className="text-xs text-primary underline-offset-2 hover:underline">
+              {t('teamCalendar')}
+            </Link>
+          </div>
+        )}
         {pendingLeave.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingLeave')}</p>
         ) : (
@@ -108,7 +117,15 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {pendingLeave.map((r) => (
                 <tr key={r.id}>
-                  <td className="px-4 py-2.5 font-medium">{r.employee}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    <Link
+                      href={`/people/${r.employmentId}`}
+                      className="underline-offset-2 hover:text-primary hover:underline"
+                      title={t('viewHistory')}
+                    >
+                      {r.employee}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {r.leaveType}
                     {r.hasDocument && (
@@ -131,7 +148,12 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.startDate} → {r.endDate}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.days)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {Number(r.days)}
+                    <div className="text-xs font-normal text-muted-foreground">
+                      {t('applicantBalance', { n: Number(r.applicantBalance) })}
+                    </div>
+                  </td>
                   <td className="px-4 py-2.5">
                     {mine(r.personId) ? (
                       <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>

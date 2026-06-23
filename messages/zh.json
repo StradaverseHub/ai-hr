@@ -690,7 +690,10 @@
     "viewDocument": "查看文件",
     "stageManager": "经理审批",
     "stageHr": "人力资源审批",
-    "stepOfN": "第 {n} / {total} 步"
+    "stepOfN": "第 {n} / {total} 步",
+    "viewHistory": "查看请假记录",
+    "applicantBalance": "剩 {n} 天",
+    "teamCalendar": "团队日历"
   },
   "performance": {
     "list": {

@@ -690,7 +690,10 @@
     "viewDocument": "Lihat dokumen",
     "stageManager": "Semakan pengurus",
     "stageHr": "Semakan HR",
-    "stepOfN": "{n} daripada {total}"
+    "stepOfN": "{n} daripada {total}",
+    "viewHistory": "Lihat sejarah cuti",
+    "applicantBalance": "baki {n}h",
+    "teamCalendar": "Kalendar pasukan"
   },
   "performance": {
     "list": {
