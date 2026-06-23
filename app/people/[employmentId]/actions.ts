@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { endReportingLine, setEmploymentWorkState, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
+import { endReportingLine, setEmploymentGrade, setEmploymentWorkState, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { setEmploymentPayComponent } from '@/core/pay-components';
 import { packFor } from '@/localization/registry';
@@ -125,6 +125,8 @@ export async function setPersonAction(formData: FormData) {
     });
     // 2C: work state lives on the employment but is edited alongside personal details.
     await setEmploymentWorkState(s, { employmentId, workState: String(formData.get('workState') ?? '') || null });
+    // 2E (ADR-0041): seniority grade — same form, drives grade-scoped leave entitlements.
+    await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }

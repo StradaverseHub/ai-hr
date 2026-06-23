@@ -12,9 +12,14 @@ export type EntitlementPolicy = {
   /** Accrual cadence (ADR-0040): 'earned_monthly' | 'earned_quarterly' earn through the year; anything
    *  else is a lump grant at hire / year-open. */
   method?: string;
+  /** Grade this policy applies to (ADR-0041 2E); null = all grades (company default). */
+  gradeId?: string | null;
+  gradeName?: string | null;
   validFrom: string;
   validTo: string | null;
 };
+
+export type GradeOption = { id: string; name: string };
 
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
@@ -48,6 +53,7 @@ export function LeaveTypePanel({
   floorLabel,
   floor0,
   policies,
+  grades,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -64,6 +70,7 @@ export function LeaveTypePanel({
   floorLabel: string | null;
   floor0: number;
   policies: EntitlementPolicy[];
+  grades: GradeOption[];
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -235,6 +242,18 @@ export function LeaveTypePanel({
                       <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
                     </select>
                   </Field>
+                  {grades.length > 0 && (
+                    <Field label={t('gradeLabel')}>
+                      <select name="gradeId" defaultValue={p.gradeId ?? ''} className={`${inputCls} w-40`}>
+                        <option value="">{t('gradeAll')}</option>
+                        {grades.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  )}
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>
@@ -267,6 +286,7 @@ export function LeaveTypePanel({
                         {t(p.method === 'earned_quarterly' ? 'methodEarnedQuarterly' : 'methodEarnedMonthly')}
                       </span>
                     )}
+                    {p.gradeId && p.gradeName && <span className={badge.muted}>{p.gradeName}</span>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditingPolicyId(p.id)}>
@@ -333,6 +353,18 @@ export function LeaveTypePanel({
                   <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
                 </select>
               </Field>
+              {grades.length > 0 && (
+                <Field label={t('gradeLabel')}>
+                  <select name="gradeId" defaultValue="" className={`${inputCls} w-40`}>
+                    <option value="">{t('gradeAll')}</option>
+                    {grades.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Button type="submit" size="sm">
                 {t('add')}
               </Button>

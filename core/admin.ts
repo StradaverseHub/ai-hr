@@ -15,6 +15,7 @@ import {
   employment,
   holiday,
   leaveLedger,
+  jobGrade,
   leavePolicy,
   leaveRequest,
   leaveType,
@@ -236,6 +237,74 @@ export async function createLeaveType(
   });
 }
 
+// ── Job grades (ADR-0041 2E) ──────────────────────────────────────────────────────────────────────
+export async function createJobGrade(
+  ctx: SessionContext,
+  p: { code: string; name: string; rank?: number },
+) {
+  const code = cleanName(p.code, 'Grade code').toUpperCase().replace(/ /g, '_');
+  if (!/^[A-Z][A-Z0-9_]{0,31}$/.test(code)) {
+    throw new Error('Grade code must be letters, digits or underscores (e.g. EXEC, G1)');
+  }
+  const name = cleanName(p.name, 'Grade name');
+  const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(jobGrade)
+      .values({ tenantId: ctx.tenantId, code, name, rank })
+      .returning({ id: jobGrade.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A grade with code “${code}” already exists.`);
+        throw e;
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'job-grade',
+      aggregateId: row.id,
+      eventType: 'job-grade.created',
+      actor: actorOf(ctx),
+      payload: { code, name, rank },
+    });
+    return row;
+  });
+}
+
+export async function updateJobGrade(
+  ctx: SessionContext,
+  p: { id: string; name: string; rank?: number },
+) {
+  const name = cleanName(p.name, 'Grade name');
+  const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
+  return withTenant(ctx, async (tx) => {
+    await tx.update(jobGrade).set({ name, rank }).where(eq(jobGrade.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'job-grade',
+      aggregateId: p.id,
+      eventType: 'job-grade.updated',
+      actor: actorOf(ctx),
+      payload: { name, rank },
+    });
+  });
+}
+
+export async function archiveJobGrade(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx
+      .update(jobGrade)
+      .set({ archivedAt: p.archived ? sql`now()` : null })
+      .where(eq(jobGrade.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'job-grade',
+      aggregateId: p.id,
+      eventType: p.archived ? 'job-grade.archived' : 'job-grade.unarchived',
+      actor: actorOf(ctx),
+      payload: {},
+    });
+  });
+}
+
 export async function createLeavePolicy(
   ctx: SessionContext,
   p: {
@@ -244,6 +313,8 @@ export async function createLeavePolicy(
     /** Max unused ANNUAL days carried into the next leave year (default 0 = forfeit). */
     carryForwardMax?: number;
     method?: string;
+    /** ADR-0041 2E: grade this policy applies to. null/undefined = all grades (the company default). */
+    gradeId?: string | null;
     validFrom: string;
   },
 ) {
@@ -254,6 +325,7 @@ export async function createLeavePolicy(
       .values({
         tenantId: ctx.tenantId,
         leaveTypeId: p.leaveTypeId,
+        gradeId: p.gradeId ?? null,
         accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated' },
         validFrom: p.validFrom,
         validTo: null,
@@ -275,13 +347,14 @@ export async function createLeavePolicy(
  *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this. */
 export async function updateLeavePolicy(
   ctx: SessionContext,
-  p: { id: string; annualDays: number; carryForwardMax?: number; method?: string; validFrom: string },
+  p: { id: string; annualDays: number; carryForwardMax?: number; method?: string; gradeId?: string | null; validFrom: string },
 ) {
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     await tx
       .update(leavePolicy)
       .set({
+        gradeId: p.gradeId ?? null,
         accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated' },
         validFrom: p.validFrom,
       })
@@ -427,11 +500,14 @@ export function listLeavePolicies(ctx: SessionContext) {
         leaveType: leaveType.name,
         typeCode: leaveType.code,
         accrual: leavePolicy.accrual,
+        gradeId: leavePolicy.gradeId,
+        gradeName: jobGrade.name,
         validFrom: leavePolicy.validFrom,
         validTo: leavePolicy.validTo,
       })
       .from(leavePolicy)
       .innerJoin(leaveType, eq(leaveType.id, leavePolicy.leaveTypeId))
+      .leftJoin(jobGrade, eq(jobGrade.id, leavePolicy.gradeId))
       .orderBy(leaveType.name),
   );
 }

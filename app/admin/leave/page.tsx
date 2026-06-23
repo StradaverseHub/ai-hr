@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listLeaveTypes, listCompanies } from '@/core/read';
+import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
@@ -14,6 +15,8 @@ import {
   openLeaveYearAction,
   runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
+  createJobGradeAction,
+  archiveJobGradeAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
 } from '../actions';
@@ -26,11 +29,13 @@ export default async function LeaveConfigPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies] = await Promise.all([
+  const [types, policies, companies, grades] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listLeavePolicies(s),
     listCompanies(s),
+    listJobGrades(s),
   ]);
+  const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
 
   // Statutory floor display (MY pack): sample the three service bands. 6 (not 5)
   // catches the top band on both boundary conventions (annual ≤5 vs sick <5).
@@ -48,6 +53,8 @@ export default async function LeaveConfigPage({
       annualDays: Number(acc?.annualDays ?? 0),
       carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
       method: acc?.method,
+      gradeId: p.gradeId,
+      gradeName: p.gradeName,
       validFrom: p.validFrom,
       validTo: p.validTo,
     };
@@ -82,6 +89,7 @@ export default async function LeaveConfigPage({
               floorLabel={floorBands(t.code)}
               floor0={entitlement(t.code, 0)}
               policies={polByType.get(t.id) ?? []}
+              grades={gradeOptions}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -175,6 +183,56 @@ export default async function LeaveConfigPage({
             </li>
           ))}
         </ul>
+      </Card>
+
+      {/* ADR-0041 2E: the grade catalog (seniority bands). Grade-scoped leave policies reference these. */}
+      <Card>
+        <SectionHeader title={t('gradesTitle')} count={grades.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('gradesHelp')}</p>
+        <ul className="divide-y divide-border">
+          {grades.length === 0 && (
+            <li className="px-4 py-4 text-center text-xs text-muted-foreground">{t('gradesEmpty')}</li>
+          )}
+          {grades.map((g) => (
+            <li key={g.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="truncate text-sm font-medium text-foreground">{g.name}</span>
+                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  {g.code}
+                </span>
+                <span className="text-xs text-muted-foreground">{t('gradeRank', { rank: g.rank })}</span>
+              </div>
+              <form action={archiveJobGradeAction}>
+                <input type="hidden" name="id" value={g.id} />
+                <input type="hidden" name="archived" value="true" />
+                <ConfirmSubmit
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  title={t('archiveGradeConfirmTitle')}
+                  description={t('archiveGradeConfirmDescription')}
+                  confirmLabel={t('archiveConfirmLabel')}
+                >
+                  {t('archive')}
+                </ConfirmSubmit>
+              </form>
+            </li>
+          ))}
+        </ul>
+        <form action={createJobGradeAction} className="flex flex-wrap items-end gap-2 border-t border-border p-4">
+          <Field label={t('gradeCodeLabel')}>
+            <input name="code" required placeholder="EXEC" className={`${inputCls} w-28 uppercase`} />
+          </Field>
+          <Field label={t('gradeNameLabel')}>
+            <input name="name" required placeholder={t('gradeNamePlaceholder')} className={inputCls} />
+          </Field>
+          <Field label={t('gradeRankLabel')}>
+            <input name="rank" type="number" min="0" defaultValue="0" className={`${inputCls} w-20`} />
+          </Field>
+          <Button type="submit" size="sm">
+            {t('addGrade')}
+          </Button>
+        </form>
       </Card>
     </div>
   );

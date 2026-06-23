@@ -631,6 +631,13 @@
 			"when": 1781861530000,
 			"tag": "0089_leave_cycle",
 			"breakpoints": true
+		},
+		{
+			"idx": 90,
+			"version": "7",
+			"when": 1781861540000,
+			"tag": "0090_job_grades",
+			"breakpoints": true
 		}
 	]
 }

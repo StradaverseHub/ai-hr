@@ -11,6 +11,7 @@ import {
   leaveRequestsFor,
   listDepartments,
   listEmployees,
+  listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
@@ -78,13 +79,14 @@ export default async function EmployeePage({
   if (!emp) notFound();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [history, balances, requests, departments, reporting, employees] = await Promise.all([
+  const [history, balances, requests, departments, reporting, employees, grades] = await Promise.all([
     assignmentHistory(s, employmentId),
     leaveBalances(s, employmentId),
     leaveRequestsFor(s, employmentId),
     listDepartments(s),
     reportingLinesFor(s, employmentId),
     listEmployees(s),
+    listJobGrades(s),
   ]);
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
@@ -138,6 +140,16 @@ export default async function EmployeePage({
                 {MY_STATES.map((st) => (
                   <option key={st} value={st}>
                     {st}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('grade')}>
+              <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
+                <option value="">{t('gradeNone')}</option>
+                {grades.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
                   </option>
                 ))}
               </select>
