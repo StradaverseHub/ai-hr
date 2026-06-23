@@ -633,10 +633,23 @@ function accrualPeriods(start: string, asOf: string, method: string): number {
   return Math.max(0, (ay - sy) * 12 + (am - sm) + 1);
 }
 
-/** ADR-0040 (2D-1): top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
- *  shortfall is written — so it is safe to run repeatedly (admin button now; monthly cron in 2D-2).
- *  Calendar cycle (1 Jan); joiners pro-rate from their join month. The full-cycle total equals
- *  max(EA-floor, policy days), so the statutory floor still holds by year-end. */
+/** ADR-0040 2D-2: the start of an employee's current earned-accrual cycle as of `asOf`.
+ *  calendar → 1 Jan of asOf's year. anniversary → the most-recent hire-month anniversary on/before
+ *  asOf (so each employee's cycle is anchored to their hire month; a joiner's first cycle starts at
+ *  hire). Returns ISO yyyy-mm-01. */
+export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | null | undefined): string {
+  if (cycle !== 'anniversary') return `${asOf.slice(0, 4)}-01-01`;
+  const hireMonth = hiredOn.slice(5, 7);
+  const [ay, am] = asOf.split('-').map(Number);
+  const cycleYear = am >= Number(hireMonth) ? ay : ay - 1;
+  return `${cycleYear}-${hireMonth}-01`;
+}
+
+/** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
+ *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
+ *  The cycle is per company (`leave_cycle`): calendar (1 Jan, joiners pro-rate from their join month)
+ *  or anniversary (each employee's cycle anchored to their hire-month anniversary). The full-cycle
+ *  total equals max(EA-floor, policy days), so the statutory floor still holds. */
 export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }) {
   return withTenant(ctx, async (tx) => {
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
@@ -669,7 +682,12 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
     const earnedTypeIds = [...earnedBy.keys()];
 
     const emps = await tx
-      .select({ employmentId: employment.id, hiredOn: employment.hiredOn, country: company.country })
+      .select({
+        employmentId: employment.id,
+        hiredOn: employment.hiredOn,
+        country: company.country,
+        leaveCycle: company.leaveCycle,
+      })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
       .where(
@@ -681,11 +699,16 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
     if (emps.length === 0) return { granted: 0 };
     const empIds = emps.map((e) => e.employmentId);
 
-    const accrued = await tx
+    // 2D-2: the cycle start varies per employee (calendar = yearStart; anniversary = their hire-month
+    // anniversary), so we can't sum "already accrued this cycle" in SQL with one bound. Fetch the
+    // trailing ~12 months of accrual rows (covers any cycle start) and sum per employee in JS below.
+    const accrualFrom = `${Number(p.asOf.slice(0, 4)) - 1}-${p.asOf.slice(5, 7)}-01`;
+    const accrualRows = await tx
       .select({
         employmentId: leaveLedger.employmentId,
         leaveTypeId: leaveLedger.leaveTypeId,
-        sum: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+        days: leaveLedger.days,
+        effectiveOn: leaveLedger.effectiveOn,
       })
       .from(leaveLedger)
       .where(
@@ -693,27 +716,39 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
           inArray(leaveLedger.employmentId, empIds),
           inArray(leaveLedger.leaveTypeId, earnedTypeIds),
           eq(leaveLedger.entryType, 'accrual'),
-          gte(leaveLedger.effectiveOn, yearStart),
+          gte(leaveLedger.effectiveOn, accrualFrom),
         ),
-      )
-      .groupBy(leaveLedger.employmentId, leaveLedger.leaveTypeId);
-    const accruedBy = new Map(accrued.map((a) => [`${a.employmentId}|${a.leaveTypeId}`, Number(a.sum)]));
+      );
+    const accrualRowsBy = new Map<string, { days: number; effectiveOn: string }[]>();
+    for (const r of accrualRows) {
+      const k = `${r.employmentId}|${r.leaveTypeId}`;
+      const row = { days: Number(r.days), effectiveOn: r.effectiveOn };
+      const arr = accrualRowsBy.get(k);
+      if (arr) arr.push(row);
+      else accrualRowsBy.set(k, [row]);
+    }
 
     let granted = 0;
     for (const e of emps) {
       const pack = packFor(e.country);
       if (!pack) continue;
-      const years = serviceYearsAt(e.hiredOn, yearStart);
+      // 2D-2: the cycle start anchors both the entitlement band (service years measured at it) and the
+      // accrual window. Calendar joiners still pro-rate from their join month; anniversary employees
+      // accrue from their own cycle start (which, for a joiner, is their hire month).
+      const cycleStart = earnedCycleStart(e.hiredOn, p.asOf, e.leaveCycle);
+      const years = serviceYearsAt(e.hiredOn, cycleStart);
       for (const [typeId, { days: polDays, method }] of earnedBy) {
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
         const entitlement = Math.max(pack.leave.entitlement(type.code, years), polDays);
         if (entitlement <= 0) continue;
         const totalPeriods = method === 'earned_quarterly' ? 4 : 12;
-        const accrualStart = e.hiredOn > yearStart ? `${e.hiredOn.slice(0, 7)}-01` : yearStart;
+        const accrualStart =
+          e.leaveCycle === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
         const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, method));
         const earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
-        const already = accruedBy.get(`${e.employmentId}|${typeId}`) ?? 0;
+        const rows = accrualRowsBy.get(`${e.employmentId}|${typeId}`) ?? [];
+        const already = rows.reduce((s, r) => (r.effectiveOn >= cycleStart ? s + r.days : s), 0);
         const toGrant = Math.round((earnedToDate - already) * 100) / 100;
         if (toGrant > 0) {
           await tx.insert(leaveLedger).values({

@@ -26,6 +26,7 @@ import {
   deletePosition,
   revokeRole,
   setCompanyParent,
+  setCompanyLeaveCycle,
   updateCompany,
   updateCostCenter,
   updateDepartment,
@@ -260,11 +261,25 @@ export async function updateLeavePolicyAction(formData: FormData) {
 }
 
 /** ADR-0040 (2D-1): top earned policies up to today's accrued amount. Idempotent — admins can run it
- *  any time; the same call a monthly cron will make in 2D-2. */
+ *  any time; the same call the monthly cron (scripts/accrue-earned.ts) makes. */
 export async function runEarnedAccrualAction() {
   const s = await getSession();
   try {
     await accrueEarnedLeave(s, { asOf: new Date().toISOString().slice(0, 10) });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/** ADR-0040 (2D-2): set a company's earned-accrual cycle (calendar vs hire anniversary). */
+export async function setCompanyLeaveCycleAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await setCompanyLeaveCycle(s, {
+      companyId: String(formData.get('companyId')),
+      cycle: String(formData.get('cycle') || 'calendar'),
+    });
   } catch (e) {
     fail(LEAVE, e);
   }
