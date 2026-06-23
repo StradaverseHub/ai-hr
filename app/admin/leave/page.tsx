@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
 import { entitlement } from '@/localization/my/leave';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import {
   archiveLeaveTypeAction,
@@ -12,6 +12,7 @@ import {
   deleteLeavePolicyAction,
   deleteLeaveTypeAction,
   openLeaveYearAction,
+  runEarnedAccrualAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
 } from '../actions';
@@ -39,11 +40,12 @@ export default async function LeaveConfigPage({
   // Group each type's effective-dated policies, newest first, for inline editing.
   const polByType = new Map<string, EntitlementPolicy[]>();
   for (const p of policies) {
-    const acc = p.accrual as { annualDays?: number; carryForwardMax?: number } | null;
+    const acc = p.accrual as { annualDays?: number; carryForwardMax?: number; method?: string } | null;
     const ep: EntitlementPolicy = {
       id: p.id,
       annualDays: Number(acc?.annualDays ?? 0),
       carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+      method: acc?.method,
       validFrom: p.validFrom,
       validTo: p.validTo,
     };
@@ -135,6 +137,14 @@ export default async function LeaveConfigPage({
           </Field>
           <button className={btnPrimary}>{t('openLeaveYear')}</button>
         </form>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
+          <p className="max-w-md text-xs text-muted-foreground">{t('earnedAccrualHelp')}</p>
+          <form action={runEarnedAccrualAction}>
+            <Button type="submit" variant="outline" size="sm">
+              {t('runEarnedAccrual')}
+            </Button>
+          </form>
+        </div>
       </Card>
     </div>
   );

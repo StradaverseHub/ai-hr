@@ -9,9 +9,16 @@ export type EntitlementPolicy = {
   id: string;
   annualDays: number;
   carryForwardMax: number;
+  /** Accrual cadence (ADR-0040): 'earned_monthly' | 'earned_quarterly' earn through the year; anything
+   *  else is a lump grant at hire / year-open. */
+  method?: string;
   validFrom: string;
   validTo: string | null;
 };
+
+const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
+/** Normalise to a select value: earned methods pass through, everything else is the lump option. */
+const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -221,6 +228,13 @@ export function LeaveTypePanel({
                   <Field label={t('effectiveFromLabel')}>
                     <input name="validFrom" type="date" required defaultValue={p.validFrom} className={inputCls} />
                   </Field>
+                  <Field label={t('accrualMethodLabel')}>
+                    <select name="method" defaultValue={methodValue(p.method)} className={`${inputCls} w-40`}>
+                      <option value="grant_on_hire_prorated">{t('methodLumpSum')}</option>
+                      <option value="earned_monthly">{t('methodEarnedMonthly')}</option>
+                      <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
+                    </select>
+                  </Field>
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>
@@ -248,6 +262,11 @@ export function LeaveTypePanel({
                         : t('validFrom', { from: p.validFrom })}
                     </span>
                     {!p.validTo && <span className={badge.emerald}>{t('activeBadge')}</span>}
+                    {isEarned(p.method) && (
+                      <span className={badge.amber}>
+                        {t(p.method === 'earned_quarterly' ? 'methodEarnedQuarterly' : 'methodEarnedMonthly')}
+                      </span>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditingPolicyId(p.id)}>
@@ -306,6 +325,13 @@ export function LeaveTypePanel({
               )}
               <Field label={t('effectiveFromLabel')}>
                 <input name="validFrom" type="date" required defaultValue={`${thisYear}-01-01`} className={inputCls} />
+              </Field>
+              <Field label={t('accrualMethodLabel')}>
+                <select name="method" defaultValue="grant_on_hire_prorated" className={`${inputCls} w-40`}>
+                  <option value="grant_on_hire_prorated">{t('methodLumpSum')}</option>
+                  <option value="earned_monthly">{t('methodEarnedMonthly')}</option>
+                  <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
+                </select>
               </Field>
               <Button type="submit" size="sm">
                 {t('add')}

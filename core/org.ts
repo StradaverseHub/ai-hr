@@ -7,6 +7,7 @@ import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
+import { isEarnedMethod } from './leave';
 import { packFor } from '../localization/registry';
 import {
   person,
@@ -100,15 +101,20 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
             ),
           );
         // Overlapping policies for a type: the most generous active one applies.
-        const policyDays = new Map<string, number>();
+        const policyBy = new Map<string, { days: number; method?: string }>();
         for (const pol of policies) {
-          const d = Number((pol.accrual as { annualDays?: number })?.annualDays ?? 0);
-          if (d > (policyDays.get(pol.leaveTypeId) ?? 0)) policyDays.set(pol.leaveTypeId, d);
+          const acc = pol.accrual as { annualDays?: number; method?: string } | null;
+          const d = Number(acc?.annualDays ?? 0);
+          const prev = policyBy.get(pol.leaveTypeId);
+          if (!prev || d > prev.days) policyBy.set(pol.leaveTypeId, { days: d, method: acc?.method });
         }
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
+          const polFor = policyBy.get(lt.id);
+          // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
+          if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);
-          const days = Math.max(floor, policyDays.get(lt.id) ?? 0);
+          const days = Math.max(floor, polFor?.days ?? 0);
           if (days <= 0) continue;
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year

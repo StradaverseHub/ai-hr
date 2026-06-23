@@ -33,7 +33,7 @@ import {
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
-import { openLeaveYear } from '@/core/leave';
+import { openLeaveYear, accrueEarnedLeave } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
 import { setToilPolicy, runToilExpiry } from '@/core/toil';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
@@ -234,6 +234,7 @@ export async function createLeavePolicyAction(formData: FormData) {
       leaveTypeId: String(formData.get('leaveTypeId')),
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+      method: String(formData.get('method') || '') || undefined,
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
@@ -249,8 +250,21 @@ export async function updateLeavePolicyAction(formData: FormData) {
       id: String(formData.get('id')),
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+      method: String(formData.get('method') || '') || undefined,
       validFrom: String(formData.get('validFrom')),
     });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/** ADR-0040 (2D-1): top earned policies up to today's accrued amount. Idempotent — admins can run it
+ *  any time; the same call a monthly cron will make in 2D-2. */
+export async function runEarnedAccrualAction() {
+  const s = await getSession();
+  try {
+    await accrueEarnedLeave(s, { asOf: new Date().toISOString().slice(0, 10) });
   } catch (e) {
     fail(LEAVE, e);
   }

@@ -275,14 +275,14 @@ export async function createLeavePolicy(
  *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this. */
 export async function updateLeavePolicy(
   ctx: SessionContext,
-  p: { id: string; annualDays: number; carryForwardMax?: number; validFrom: string },
+  p: { id: string; annualDays: number; carryForwardMax?: number; method?: string; validFrom: string },
 ) {
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     await tx
       .update(leavePolicy)
       .set({
-        accrual: { annualDays: p.annualDays, carryForwardMax, method: 'grant_on_hire_prorated' },
+        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated' },
         validFrom: p.validFrom,
       })
       .where(eq(leavePolicy.id, p.id));

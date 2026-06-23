@@ -533,13 +533,17 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, yearStart)),
         ),
       );
-    const policyBy = new Map<string, { days: number; carryMax: number }>();
+    const policyBy = new Map<string, { days: number; carryMax: number; method?: string }>();
     for (const pol of policies) {
-      const acc = pol.accrual as { annualDays?: number; carryForwardMax?: number } | null;
+      const acc = pol.accrual as { annualDays?: number; carryForwardMax?: number; method?: string } | null;
       const d = Number(acc?.annualDays ?? 0);
       const prev = policyBy.get(pol.leaveTypeId);
       if (!prev || d > prev.days) {
-        policyBy.set(pol.leaveTypeId, { days: d, carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)) });
+        policyBy.set(pol.leaveTypeId, {
+          days: d,
+          carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+          method: acc?.method,
+        });
       }
     }
 
@@ -568,6 +572,8 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           continue;
         }
         const pol = policyBy.get(t.id);
+        // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
+        if (isEarnedMethod(pol?.method)) continue;
         const days = Math.max(pack.leave.entitlement(t.code, years), pol?.days ?? 0);
         if (days <= 0) continue;
         const before = balanceBy.get(key) ?? 0;
@@ -608,5 +614,129 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       payload: { year: p.year, granted, skipped, forfeits },
     });
     return { granted, skipped, forfeits };
+  });
+}
+
+// ── Earned accrual (ADR-0040 / 2D-1) ──────────────────────────────────────────────────────────────
+/** Lump-sum policies (the default) grant at hire + year-open; these earn through the year instead. */
+export const EARNED_METHODS = ['earned_monthly', 'earned_quarterly'] as const;
+export function isEarnedMethod(m: unknown): m is (typeof EARNED_METHODS)[number] {
+  return m === 'earned_monthly' || m === 'earned_quarterly';
+}
+/** Accrual periods from `start` through `asOf`, inclusive of the current period (month or quarter). */
+function accrualPeriods(start: string, asOf: string, method: string): number {
+  const [sy, sm] = start.split('-').map(Number);
+  const [ay, am] = asOf.split('-').map(Number);
+  if (method === 'earned_quarterly') {
+    return Math.max(0, (ay - sy) * 4 + (Math.floor((am - 1) / 3) - Math.floor((sm - 1) / 3)) + 1);
+  }
+  return Math.max(0, (ay - sy) * 12 + (am - sm) + 1);
+}
+
+/** ADR-0040 (2D-1): top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
+ *  shortfall is written — so it is safe to run repeatedly (admin button now; monthly cron in 2D-2).
+ *  Calendar cycle (1 Jan); joiners pro-rate from their join month. The full-cycle total equals
+ *  max(EA-floor, policy days), so the statutory floor still holds by year-end. */
+export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }) {
+  return withTenant(ctx, async (tx) => {
+    const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
+    const types = await tx
+      .select({ id: leaveType.id, code: leaveType.code })
+      .from(leaveType)
+      .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
+    const typeIds = types.map((t) => t.id);
+    if (typeIds.length === 0) return { granted: 0 };
+
+    const policies = await tx
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, accrual: leavePolicy.accrual })
+      .from(leavePolicy)
+      .where(
+        and(
+          inArray(leavePolicy.leaveTypeId, typeIds),
+          lte(leavePolicy.validFrom, p.asOf),
+          or(isNull(leavePolicy.validTo), gt(leavePolicy.validTo, p.asOf)),
+        ),
+      );
+    const earnedBy = new Map<string, { days: number; method: string }>();
+    for (const pol of policies) {
+      const acc = pol.accrual as { annualDays?: number; method?: string } | null;
+      if (!isEarnedMethod(acc?.method)) continue;
+      const days = Number(acc?.annualDays ?? 0);
+      const prev = earnedBy.get(pol.leaveTypeId);
+      if (!prev || days > prev.days) earnedBy.set(pol.leaveTypeId, { days, method: acc!.method! });
+    }
+    if (earnedBy.size === 0) return { granted: 0 };
+    const earnedTypeIds = [...earnedBy.keys()];
+
+    const emps = await tx
+      .select({ employmentId: employment.id, hiredOn: employment.hiredOn, country: company.country })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(
+        and(
+          lte(employment.hiredOn, p.asOf),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+        ),
+      );
+    if (emps.length === 0) return { granted: 0 };
+    const empIds = emps.map((e) => e.employmentId);
+
+    const accrued = await tx
+      .select({
+        employmentId: leaveLedger.employmentId,
+        leaveTypeId: leaveLedger.leaveTypeId,
+        sum: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+      })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, empIds),
+          inArray(leaveLedger.leaveTypeId, earnedTypeIds),
+          eq(leaveLedger.entryType, 'accrual'),
+          gte(leaveLedger.effectiveOn, yearStart),
+        ),
+      )
+      .groupBy(leaveLedger.employmentId, leaveLedger.leaveTypeId);
+    const accruedBy = new Map(accrued.map((a) => [`${a.employmentId}|${a.leaveTypeId}`, Number(a.sum)]));
+
+    let granted = 0;
+    for (const e of emps) {
+      const pack = packFor(e.country);
+      if (!pack) continue;
+      const years = serviceYearsAt(e.hiredOn, yearStart);
+      for (const [typeId, { days: polDays, method }] of earnedBy) {
+        const type = types.find((t) => t.id === typeId);
+        if (!type) continue;
+        const entitlement = Math.max(pack.leave.entitlement(type.code, years), polDays);
+        if (entitlement <= 0) continue;
+        const totalPeriods = method === 'earned_quarterly' ? 4 : 12;
+        const accrualStart = e.hiredOn > yearStart ? `${e.hiredOn.slice(0, 7)}-01` : yearStart;
+        const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, method));
+        const earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        const already = accruedBy.get(`${e.employmentId}|${typeId}`) ?? 0;
+        const toGrant = Math.round((earnedToDate - already) * 100) / 100;
+        if (toGrant > 0) {
+          await tx.insert(leaveLedger).values({
+            tenantId: ctx.tenantId,
+            employmentId: e.employmentId,
+            leaveTypeId: typeId,
+            entryType: 'accrual',
+            days: toGrant.toFixed(2),
+            effectiveOn: p.asOf,
+          });
+          granted += 1;
+        }
+      }
+    }
+    // One summary event; ledger rows are the per-item audit (deliberate skip, as openLeaveYear).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: ctx.tenantId,
+      eventType: 'leave.earned-accrual.run',
+      actor: actorOf(ctx),
+      payload: { asOf: p.asOf, granted },
+    });
+    return { granted };
   });
 }
