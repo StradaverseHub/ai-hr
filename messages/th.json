@@ -668,7 +668,18 @@
     "documentRequired": "ต้องมีเอกสาร",
     "viewDocument": "ดูเอกสาร",
     "stageManager": "การพิจารณาของผู้จัดการ",
-    "stageHr": "การพิจารณาของ HR"
+    "stageHr": "การพิจารณาของ HR",
+    "resignationTitle": "การลาออก",
+    "resignationDescription": "ส่งใบลาออกของคุณเพื่อให้ฝ่ายบุคคลตรวจสอบ การส่งไม่ได้สิ้นสุดการจ้างงานของคุณ — ฝ่ายบุคคลต้องยอมรับ",
+    "resignationPendingTitle": "ส่งใบลาออกแล้ว — รอฝ่ายบุคคลตรวจสอบ",
+    "lastWorkingDayLabel": "วันทำงานสุดท้าย",
+    "resignationReasonLabel": "เหตุผล (ไม่บังคับ)",
+    "resignationReasonPlaceholder": "เช่น ตอบรับตำแหน่งใหม่",
+    "withdrawResignation": "ถอนใบลาออก",
+    "submitResignation": "ส่งใบลาออก",
+    "resignationAcceptedNote": "ใบลาออกของคุณได้รับการยอมรับแล้ว วันทำงานสุดท้ายของคุณคือ {date}",
+    "resignationWasRejected": "ใบลาออกก่อนหน้าของคุณถูกปฏิเสธ คุณสามารถส่งใหม่ด้านล่าง",
+    "resignationWasWithdrawn": "คุณถอนใบลาออกก่อนหน้าแล้ว คุณสามารถส่งใหม่ด้านล่าง"
   },
   "approvals": {
     "title": "การอนุมัติ",
@@ -701,7 +712,10 @@
     "stepOfN": "{n} จาก {total}",
     "viewHistory": "ดูประวัติการลา",
     "applicantBalance": "เหลือ {n} วัน",
-    "teamCalendar": "ปฏิทินทีม"
+    "teamCalendar": "ปฏิทินทีม",
+    "resignations": "การลาออก",
+    "noPendingResignations": "ไม่มีใบลาออกที่รอดำเนินการ",
+    "lastWorkingDay": "วันทำงานสุดท้าย"
   },
   "performance": {
     "list": {

@@ -7,8 +7,15 @@ import { listLeaveRequests } from '@/core/read';
 import { listAttendanceCorrections } from '@/core/attendance';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
+import { listResignationRequests } from '@/core/offboarding';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { approveClaimAction, approveCorrectionAction, approveLeaveAction, approveProfileChangeAction } from './actions';
+import {
+  approveClaimAction,
+  approveCorrectionAction,
+  approveLeaveAction,
+  approveProfileChangeAction,
+  decideResignationAction,
+} from './actions';
 
 function DecideButtons({
   action,
@@ -64,11 +71,12 @@ export default async function ApprovalsPage({
     reject: t('reject'),
   };
 
-  const [leave, corrections, profileChanges, claims] = await Promise.all([
+  const [leave, corrections, profileChanges, claims, resignations] = await Promise.all([
     listLeaveRequests(s, scopeIds),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     listPendingClaims(s),
+    admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
@@ -76,7 +84,8 @@ export default async function ApprovalsPage({
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
   const stageLabel = (kind: string | null) =>
     kind === 'hr_admin' ? t('stageHr') : kind === 'direct_manager' ? t('stageManager') : '';
-  const total = pendingLeave.length + corrections.length + profileChanges.length + claims.length;
+  const total =
+    pendingLeave.length + corrections.length + profileChanges.length + claims.length + resignations.length;
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
   return (
@@ -275,6 +284,51 @@ export default async function ApprovalsPage({
                 </li>
               ))}
             </ul>
+          )}
+        </Card>
+      )}
+
+      {admin && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('resignations')} count={resignations.length} />
+          {resignations.length === 0 ? (
+            <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingResignations')}</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                  <th className="px-4 py-2 font-medium">{t('lastWorkingDay')}</th>
+                  <th className="px-4 py-2 font-medium">{t('reason')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {resignations.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-4 py-2.5 font-medium">
+                      <Link
+                        href={`/people/${r.employmentId}`}
+                        className="underline-offset-2 hover:text-primary hover:underline"
+                        title={t('viewHistory')}
+                      >
+                        {r.employee}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.lastWorkingDay}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{r.reason ?? '—'}</td>
+                    <td className="px-4 py-2.5">
+                      <DecideButtons
+                        action={decideResignationAction}
+                        id={r.id}
+                        disabled={mine(r.personId)}
+                        labels={decideLabels}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </Card>
       )}

@@ -1117,6 +1117,30 @@ export const profileChangeRequest = pgTable(
   (t) => [index('profile_change_request_employment_idx').on(t.employmentId, t.status)],
 );
 
+// ADR-0042 (#29): employee-initiated resignation. The employee submits one; HR accepts it, which triggers
+// terminateEmployment (a 'voluntary' termination). Same request→approve rails as profile_change_request.
+export const resignationStatusEnum = pgEnum('resignation_status', ['pending', 'accepted', 'rejected', 'withdrawn']);
+export const resignationRequest = pgTable(
+  'resignation_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    lastWorkingDay: date('last_working_day').notNull(),
+    reason: text('reason'),
+    status: resignationStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('resignation_request_employment_idx').on(t.employmentId, t.status)],
+);
+
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
 

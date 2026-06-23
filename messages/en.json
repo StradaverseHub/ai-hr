@@ -668,7 +668,18 @@
     "documentRequired": "document required",
     "viewDocument": "View document",
     "stageManager": "Manager review",
-    "stageHr": "HR review"
+    "stageHr": "HR review",
+    "resignationTitle": "Resignation",
+    "resignationDescription": "Submit your resignation for HR review. Submitting does not end your employment — HR must accept it.",
+    "resignationPendingTitle": "Resignation submitted — pending HR review",
+    "lastWorkingDayLabel": "Last working day",
+    "resignationReasonLabel": "Reason (optional)",
+    "resignationReasonPlaceholder": "e.g. accepted a new role",
+    "withdrawResignation": "Withdraw resignation",
+    "submitResignation": "Submit resignation",
+    "resignationAcceptedNote": "Your resignation has been accepted. Your last working day is {date}.",
+    "resignationWasRejected": "Your previous resignation was declined. You can submit a new one below.",
+    "resignationWasWithdrawn": "You withdrew your previous resignation. You can submit a new one below."
   },
   "approvals": {
     "title": "Approvals",
@@ -701,7 +712,10 @@
     "stepOfN": "{n} of {total}",
     "viewHistory": "View leave history",
     "applicantBalance": "{n}d left",
-    "teamCalendar": "Team calendar"
+    "teamCalendar": "Team calendar",
+    "resignations": "Resignations",
+    "noPendingResignations": "No pending resignations.",
+    "lastWorkingDay": "Last working day"
   },
   "performance": {
     "list": {

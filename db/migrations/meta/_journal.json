@@ -638,6 +638,13 @@
 			"when": 1781861540000,
 			"tag": "0090_job_grades",
 			"breakpoints": true
+		},
+		{
+			"idx": 91,
+			"version": "7",
+			"when": 1781861550000,
+			"tag": "0091_resignation_request",
+			"breakpoints": true
 		}
 	]
 }

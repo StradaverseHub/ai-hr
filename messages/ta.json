@@ -668,7 +668,18 @@
     "documentRequired": "ஆவணம் தேவை",
     "viewDocument": "ஆவணத்தைக் காண்க",
     "stageManager": "மேலாளர் மதிப்பாய்வு",
-    "stageHr": "HR மதிப்பாய்வு"
+    "stageHr": "HR மதிப்பாய்வு",
+    "resignationTitle": "ராஜினாமா",
+    "resignationDescription": "உங்கள் ராஜினாமாவை HR மதிப்பாய்வுக்கு சமர்ப்பிக்கவும். சமர்ப்பித்தல் உங்கள் வேலையை முடிக்காது — HR அதை ஏற்க வேண்டும்.",
+    "resignationPendingTitle": "ராஜினாமா சமர்ப்பிக்கப்பட்டது — HR மதிப்பாய்வுக்கு நிலுவையில்",
+    "lastWorkingDayLabel": "கடைசி வேலை நாள்",
+    "resignationReasonLabel": "காரணம் (விருப்பத்தேர்வு)",
+    "resignationReasonPlaceholder": "எ.கா. புதிய பணியை ஏற்றுக்கொண்டேன்",
+    "withdrawResignation": "ராஜினாமாவை திரும்பப் பெறு",
+    "submitResignation": "ராஜினாமாவை சமர்ப்பி",
+    "resignationAcceptedNote": "உங்கள் ராஜினாமா ஏற்றுக்கொள்ளப்பட்டது. உங்கள் கடைசி வேலை நாள் {date}.",
+    "resignationWasRejected": "உங்கள் முந்தைய ராஜினாமா நிராகரிக்கப்பட்டது. கீழே புதியதை சமர்ப்பிக்கலாம்.",
+    "resignationWasWithdrawn": "உங்கள் முந்தைய ராஜினாமாவை திரும்பப் பெற்றீர்கள். கீழே புதியதை சமர்ப்பிக்கலாம்."
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
@@ -701,7 +712,10 @@
     "stepOfN": "{total} இல் {n}",
     "viewHistory": "விடுப்பு வரலாற்றைக் காண்க",
     "applicantBalance": "மீதம் {n}நா",
-    "teamCalendar": "குழு நாட்காட்டி"
+    "teamCalendar": "குழு நாட்காட்டி",
+    "resignations": "ராஜினாமாக்கள்",
+    "noPendingResignations": "நிலுவையில் ராஜினாமாக்கள் இல்லை.",
+    "lastWorkingDay": "கடைசி வேலை நாள்"
   },
   "performance": {
     "list": {

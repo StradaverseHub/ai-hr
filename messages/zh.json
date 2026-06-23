@@ -668,7 +668,18 @@
     "documentRequired": "需要文件",
     "viewDocument": "查看文件",
     "stageManager": "经理审批",
-    "stageHr": "人力资源审批"
+    "stageHr": "人力资源审批",
+    "resignationTitle": "辞职",
+    "resignationDescription": "提交辞职申请供人力资源审核。提交不会终止您的雇佣关系——须经人力资源批准。",
+    "resignationPendingTitle": "辞职已提交——等待人力资源审核",
+    "lastWorkingDayLabel": "最后工作日",
+    "resignationReasonLabel": "原因（可选）",
+    "resignationReasonPlaceholder": "例如：接受了新职位",
+    "withdrawResignation": "撤回辞职",
+    "submitResignation": "提交辞职",
+    "resignationAcceptedNote": "您的辞职已获批准。您的最后工作日为 {date}。",
+    "resignationWasRejected": "您之前的辞职被驳回。您可以在下方重新提交。",
+    "resignationWasWithdrawn": "您已撤回之前的辞职。您可以在下方重新提交。"
   },
   "approvals": {
     "title": "审批",
@@ -701,7 +712,10 @@
     "stepOfN": "第 {n} / {total} 步",
     "viewHistory": "查看请假记录",
     "applicantBalance": "剩 {n} 天",
-    "teamCalendar": "团队日历"
+    "teamCalendar": "团队日历",
+    "resignations": "辞职申请",
+    "noPendingResignations": "没有待处理的辞职申请。",
+    "lastWorkingDay": "最后工作日"
   },
   "performance": {
     "list": {

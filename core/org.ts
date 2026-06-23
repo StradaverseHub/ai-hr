@@ -213,48 +213,57 @@ export type TerminationType =
   | 'death'
   | 'other';
 
+/** The termination write, runnable inside a caller's transaction — so an accepted resignation can
+ *  terminate atomically (ADR-0042). Sets the leave date + turnover classification, closes the open
+ *  assignment version, and emits employment.terminated. */
+export async function terminateEmploymentTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; terminationDate: string; terminationType?: TerminationType; terminationReason?: string },
+) {
+  await tx
+    .update(employment)
+    .set({
+      terminatedOn: p.terminationDate,
+      // Wave 4A: capture the turnover classification (null when not provided).
+      terminationType: p.terminationType ?? null,
+      terminationReason: p.terminationReason?.trim() || null,
+    })
+    .where(eq(employment.id, p.employmentId));
+  const [cur] = await tx
+    .select()
+    .from(assignment)
+    .where(
+      and(
+        eq(assignment.employmentId, p.employmentId),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .limit(1);
+  if (cur) {
+    await tx.update(assignment).set({ validTo: p.terminationDate }).where(eq(assignment.id, cur.id));
+  }
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: p.employmentId,
+    eventType: 'employment.terminated',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: {
+      terminationDate: p.terminationDate,
+      terminationType: p.terminationType ?? null,
+      terminationReason: p.terminationReason?.trim() || null,
+    },
+  });
+}
+
 export async function terminateEmployment(
   ctx: SessionContext,
   p: { employmentId: string; terminationDate: string; terminationType?: TerminationType; terminationReason?: string },
 ) {
-  return withTenant(ctx, async (tx) => {
-    await tx
-      .update(employment)
-      .set({
-        terminatedOn: p.terminationDate,
-        // Wave 4A: capture the turnover classification (null when not provided).
-        terminationType: p.terminationType ?? null,
-        terminationReason: p.terminationReason?.trim() || null,
-      })
-      .where(eq(employment.id, p.employmentId));
-    const [cur] = await tx
-      .select()
-      .from(assignment)
-      .where(
-        and(
-          eq(assignment.employmentId, p.employmentId),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-        ),
-      )
-      .limit(1);
-    if (cur) {
-      await tx.update(assignment).set({ validTo: p.terminationDate }).where(eq(assignment.id, cur.id));
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employment',
-      aggregateId: p.employmentId,
-      eventType: 'employment.terminated',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: {
-        terminationDate: p.terminationDate,
-        terminationType: p.terminationType ?? null,
-        terminationReason: p.terminationReason?.trim() || null,
-      },
-    });
-  });
+  return withTenant(ctx, (tx) => terminateEmploymentTx(tx, ctx, p));
 }
 
 /** Walk the administrative graph UP from `manager`; cycle if we reach `subordinate`. */

@@ -668,7 +668,18 @@
     "documentRequired": "dokumen diperlukan",
     "viewDocument": "Lihat dokumen",
     "stageManager": "Semakan pengurus",
-    "stageHr": "Semakan HR"
+    "stageHr": "Semakan HR",
+    "resignationTitle": "Peletakan Jawatan",
+    "resignationDescription": "Hantar peletakan jawatan anda untuk semakan HR. Penghantaran tidak menamatkan pekerjaan anda — HR mesti menerimanya.",
+    "resignationPendingTitle": "Peletakan jawatan dihantar — menunggu semakan HR",
+    "lastWorkingDayLabel": "Hari bekerja terakhir",
+    "resignationReasonLabel": "Sebab (pilihan)",
+    "resignationReasonPlaceholder": "cth. menerima jawatan baharu",
+    "withdrawResignation": "Tarik balik peletakan jawatan",
+    "submitResignation": "Hantar peletakan jawatan",
+    "resignationAcceptedNote": "Peletakan jawatan anda telah diterima. Hari bekerja terakhir anda ialah {date}.",
+    "resignationWasRejected": "Peletakan jawatan anda sebelum ini ditolak. Anda boleh menghantar yang baharu di bawah.",
+    "resignationWasWithdrawn": "Anda telah menarik balik peletakan jawatan sebelum ini. Anda boleh menghantar yang baharu di bawah."
   },
   "approvals": {
     "title": "Kelulusan",
@@ -701,7 +712,10 @@
     "stepOfN": "{n} daripada {total}",
     "viewHistory": "Lihat sejarah cuti",
     "applicantBalance": "baki {n}h",
-    "teamCalendar": "Kalendar pasukan"
+    "teamCalendar": "Kalendar pasukan",
+    "resignations": "Peletakan Jawatan",
+    "noPendingResignations": "Tiada peletakan jawatan tertangguh.",
+    "lastWorkingDay": "Hari bekerja terakhir"
   },
   "performance": {
     "list": {
