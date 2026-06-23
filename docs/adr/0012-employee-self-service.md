@@ -57,3 +57,20 @@ shows the full breakdown — earnings (basic / allowance / overtime / bonus → 
 employee's statutory deductions (EPF / SOCSO / EIS / PCB → net), and the employer-side
 contributions shown separately as "not deducted from you". Linked from the `/me` payslips
 table (the pay period is the link); "Print / Save PDF" reuses the EA statement's print path.
+
+## Refinement — gate compliance-sensitive identity fields (#24, 2026-06-23)
+
+The consultant (#24) flagged that an employee's self-edit of personal information applies immediately
+("Updated Successfully") with no HR review — a compliance risk. The original two-path split put **date of
+birth, gender, and marital status** on the direct (`updateOwnContact`) path, but those three are
+compliance-sensitive: date of birth drives age-based statutory (EPF senior / SOCSO / retirement), marital
+status drives the PCB category, and gender gates maternity / paternity eligibility. So they move onto the
+**approval-gated** path (`requestProfileChange` → admin `decideProfileChange`), alongside bank / tax /
+dependents. The genuinely low-risk contact fields (phone, address, emergency contacts) stay direct.
+
+`ProfileChangeProposed` now also carries `dateOfBirth` / `gender` / `maritalStatus`; on approval the
+person-table fields are applied to `person` (no statutory profile required) and the statutory fields to
+`employee_statutory_my`, each with its own audit event recording the field *names* only. The `/me` page
+shows these three as read-only current values under the approval-gated card with a "request a change"
+form; legal name, email, and IC remain admin-only (never self-editable). A test pins that a DOB / marital
+change is withheld until approval and then applied to `person`.

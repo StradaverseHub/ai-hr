@@ -86,9 +86,6 @@ export async function myUpdateContact(formData: FormData) {
     await updateOwnContact(s, {
       phone: String(formData.get('phone') ?? ''),
       address: String(formData.get('address') ?? ''),
-      dateOfBirth: String(formData.get('dateOfBirth') ?? ''),
-      gender: String(formData.get('gender') ?? ''),
-      maritalStatus: String(formData.get('maritalStatus') ?? ''),
       emergencyContactName: String(formData.get('emergencyContactName') ?? ''),
       emergencyContactPhone: String(formData.get('emergencyContactPhone') ?? ''),
     });
@@ -111,6 +108,13 @@ export async function myRequestProfileChange(formData: FormData) {
   if (bankAccountNo) proposed.bankAccountNo = bankAccountNo;
   if (taxCategory) proposed.taxCategory = Number(taxCategory);
   if (numChildren) proposed.numChildren = Number(numChildren);
+  // #24: compliance-sensitive identity fields are requested here (approval-gated), not self-applied.
+  const dateOfBirth = String(formData.get('dateOfBirth') ?? '').trim();
+  const gender = String(formData.get('gender') ?? '').trim();
+  const maritalStatus = String(formData.get('maritalStatus') ?? '').trim();
+  if (dateOfBirth) proposed.dateOfBirth = dateOfBirth;
+  if (gender) proposed.gender = gender;
+  if (maritalStatus) proposed.maritalStatus = maritalStatus;
   try {
     await requestProfileChange(s, { employmentId, proposed });
   } catch (e) {

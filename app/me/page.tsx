@@ -55,6 +55,9 @@ const PROPOSED_LABEL_KEY: Record<string, string> = {
   bankAccountNo: 'proposedAccountNo',
   taxCategory: 'proposedPcbCategory',
   numChildren: 'proposedChildren',
+  dateOfBirth: 'dateOfBirthLabel',
+  gender: 'genderLabel',
+  maritalStatus: 'maritalLabel',
 };
 const maskAcct = (no?: string | null) =>
   no ? `•••• ${no.slice(-4)}` : '—';
@@ -396,32 +399,6 @@ export default async function MePage({
               <Field label={t('addressLabel')}>
                 <input name="address" defaultValue={profile?.person?.address ?? ''} className={inputCls} />
               </Field>
-              <Field label={t('dateOfBirthLabel')}>
-                <input
-                  type="date"
-                  name="dateOfBirth"
-                  defaultValue={profile?.person?.dateOfBirth ?? ''}
-                  className={inputCls}
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-2">
-                <Field label={t('genderLabel')}>
-                  <select name="gender" defaultValue={profile?.person?.gender ?? ''} className={inputCls}>
-                    <option value="">{t('notSet')}</option>
-                    <option value="male">{t('gender_male')}</option>
-                    <option value="female">{t('gender_female')}</option>
-                    <option value="undisclosed">{t('gender_undisclosed')}</option>
-                  </select>
-                </Field>
-                <Field label={t('maritalLabel')}>
-                  <select name="maritalStatus" defaultValue={profile?.person?.maritalStatus ?? ''} className={inputCls}>
-                    <option value="">{t('notSet')}</option>
-                    <option value="single">{t('marital_single')}</option>
-                    <option value="married">{t('marital_married')}</option>
-                    <option value="other">{t('marital_other')}</option>
-                  </select>
-                </Field>
-              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Field label={t('emergencyContactLabel')}>
                   <input
@@ -445,7 +422,7 @@ export default async function MePage({
           </div>
 
           <div className="lg:border-l lg:border-border lg:pl-6" data-tour="me-bank">
-            <h2 className="text-sm font-semibold">{t('bankAndTax')}</h2>
+            <h2 className="text-sm font-semibold">{t('approvalGatedHeading')}</h2>
             <p className="text-xs text-muted-foreground">{t('changesNeedApproval')}</p>
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between gap-2">
@@ -463,6 +440,18 @@ export default async function MePage({
               <div className="flex justify-between gap-2">
                 <dt className="text-muted-foreground">{t('dependentChildren')}</dt>
                 <dd className="tabular-nums">{profile?.statutory?.numChildren ?? 0}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">{t('dateOfBirthLabel')}</dt>
+                <dd className="tabular-nums">{profile?.person?.dateOfBirth ?? '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">{t('genderLabel')}</dt>
+                <dd>{profile?.person?.gender ? t(`gender_${profile.person.gender}`) : '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-muted-foreground">{t('maritalLabel')}</dt>
+                <dd>{profile?.person?.maritalStatus ? t(`marital_${profile.person.maritalStatus}`) : '—'}</dd>
               </div>
             </dl>
 
@@ -490,6 +479,27 @@ export default async function MePage({
                   </Field>
                   <Field label={t('dependentChildren')}>
                     <input type="number" name="numChildren" min="0" placeholder="—" className={inputCls} />
+                  </Field>
+                </div>
+                <Field label={t('dateOfBirthLabel')}>
+                  <input type="date" name="dateOfBirth" defaultValue="" className={inputCls} />
+                </Field>
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label={t('genderLabel')}>
+                    <select name="gender" defaultValue="" className={inputCls}>
+                      <option value="">{t('noChangeOption')}</option>
+                      <option value="male">{t('gender_male')}</option>
+                      <option value="female">{t('gender_female')}</option>
+                      <option value="undisclosed">{t('gender_undisclosed')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('maritalLabel')}>
+                    <select name="maritalStatus" defaultValue="" className={inputCls}>
+                      <option value="">{t('noChangeOption')}</option>
+                      <option value="single">{t('marital_single')}</option>
+                      <option value="married">{t('marital_married')}</option>
+                      <option value="other">{t('marital_other')}</option>
+                    </select>
                   </Field>
                 </div>
                 <p className="text-xs text-muted-foreground">{t('leaveBlankToKeep')}</p>
