@@ -641,7 +641,12 @@
       "netPay": "Net pay",
       "employerContributionsHeading": "Employer contributions (not deducted from you)",
       "totalEmployerCost": "Total employer cost",
-      "proratedNote": "Prorated on {days, plural, one {# day} other {# days}} worked in this period."
+      "proratedNote": "Prorated on {days, plural, one {# day} other {# days}} worked in this period.",
+      "pdfTitle": "Payslip",
+      "payPeriodLabel": "Pay period",
+      "employeeCodeLabel": "Employee code",
+      "generatedNote": "This is a system-generated payslip.",
+      "downloadPdf": "Download PDF"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",

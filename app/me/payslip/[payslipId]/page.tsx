@@ -46,7 +46,16 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
         <Link href="/me" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
           ← {t('backToWorkspace')}
         </Link>
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          <a
+            href={`/me/payslip/${payslipId}/pdf`}
+            download
+            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            {t('downloadPdf')}
+          </a>
+          <PrintButton />
+        </div>
       </div>
 
       <Card className="space-y-5 p-6">

@@ -608,7 +608,12 @@
       "netPay": "Lương thực lãnh",
       "employerContributionsHeading": "Đóng góp của người sử dụng lao động (không khấu trừ từ bạn)",
       "totalEmployerCost": "Tổng chi phí người sử dụng lao động",
-      "proratedNote": "Tính theo tỷ lệ trên {days, plural, one {# ngày} other {# ngày}} làm việc trong kỳ này."
+      "proratedNote": "Tính theo tỷ lệ trên {days, plural, one {# ngày} other {# ngày}} làm việc trong kỳ này.",
+      "pdfTitle": "Phiếu lương",
+      "payPeriodLabel": "Kỳ lương",
+      "employeeCodeLabel": "Mã nhân viên",
+      "generatedNote": "Đây là phiếu lương do hệ thống tạo.",
+      "downloadPdf": "Tải PDF"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",
