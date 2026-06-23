@@ -25,7 +25,7 @@ const owner = createDb(process.env.MIGRATION_DATABASE_URL!);
 const TABLES = [
   'tenant', 'company', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'job_grade', 'leave_type', 'leave_policy', 'leave_ledger',
-  'leave_request', 'app_user', 'role_assignment', 'domain_event',
+  'leave_request', 'resignation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
   'kb_document',

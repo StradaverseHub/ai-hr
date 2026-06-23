@@ -668,7 +668,18 @@
     "documentRequired": "cần tài liệu",
     "viewDocument": "Xem tài liệu",
     "stageManager": "Quản lý xét duyệt",
-    "stageHr": "HR xét duyệt"
+    "stageHr": "HR xét duyệt",
+    "resignationTitle": "Đơn xin nghỉ việc",
+    "resignationDescription": "Gửi đơn xin nghỉ việc để HR xem xét. Việc gửi không chấm dứt hợp đồng của bạn — HR phải chấp nhận.",
+    "resignationPendingTitle": "Đã gửi đơn — chờ HR xem xét",
+    "lastWorkingDayLabel": "Ngày làm việc cuối cùng",
+    "resignationReasonLabel": "Lý do (tùy chọn)",
+    "resignationReasonPlaceholder": "ví dụ: nhận một vị trí mới",
+    "withdrawResignation": "Rút đơn xin nghỉ",
+    "submitResignation": "Gửi đơn xin nghỉ",
+    "resignationAcceptedNote": "Đơn xin nghỉ việc của bạn đã được chấp nhận. Ngày làm việc cuối cùng của bạn là {date}.",
+    "resignationWasRejected": "Đơn trước của bạn đã bị từ chối. Bạn có thể gửi đơn mới bên dưới.",
+    "resignationWasWithdrawn": "Bạn đã rút đơn trước đó. Bạn có thể gửi đơn mới bên dưới."
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -701,7 +712,10 @@
     "stepOfN": "{n}/{total}",
     "viewHistory": "Xem lịch sử nghỉ phép",
     "applicantBalance": "còn {n} ngày",
-    "teamCalendar": "Lịch nhóm"
+    "teamCalendar": "Lịch nhóm",
+    "resignations": "Đơn xin nghỉ việc",
+    "noPendingResignations": "Không có đơn xin nghỉ việc nào đang chờ.",
+    "lastWorkingDay": "Ngày làm việc cuối cùng"
   },
   "performance": {
     "list": {

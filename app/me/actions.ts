@@ -7,6 +7,7 @@ import { myEmployment } from '@/core/read';
 import { addLeaveAttachment, requestLeave } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
+import { submitResignation, withdrawResignation } from '@/core/offboarding';
 import {
   createGoal,
   declinePeerFeedback,
@@ -122,6 +123,33 @@ export async function myRequestProfileChange(formData: FormData) {
   }
   revalidatePath('/me');
   redirect('/me?toast=Change+requested+for+approval');
+}
+
+// ── Resignation (ADR-0042, #29) — employee-initiated, HR-approved offboarding ──
+
+export async function mySubmitResignation(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const lastWorkingDay = String(formData.get('lastWorkingDay') ?? '').trim();
+  const reason = String(formData.get('reason') ?? '').trim();
+  try {
+    await submitResignation(s, { employmentId, lastWorkingDay, reason: reason || null });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Resignation+submitted');
+}
+
+export async function myWithdrawResignation(formData: FormData) {
+  const { s } = await resolveMe();
+  const requestId = String(formData.get('requestId'));
+  try {
+    await withdrawResignation(s, { requestId });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Resignation+withdrawn');
 }
 
 export async function myCheckIn() {

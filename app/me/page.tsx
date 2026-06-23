@@ -12,6 +12,7 @@ import {
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
+import { myResignation } from '@/core/offboarding';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { SectionJumpNav } from '@/components/section-jump-nav';
@@ -24,8 +25,10 @@ import {
   myRequestLeave,
   myRequestProfileChange,
   mySubmitPeerFeedback,
+  mySubmitResignation,
   myUpdateContact,
   myUpdateGoalProgress,
+  myWithdrawResignation,
 } from './actions';
 
 const rm = (n: unknown) =>
@@ -99,7 +102,7 @@ export default async function MePage({
 
   const employments = await myEmployments(s);
   const locale = await getLocale(); // R37: render leave-type names in the employee's language
-  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests] =
+  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation] =
     await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       leaveRequestsFor(s, me.employmentId, locale),
@@ -113,6 +116,7 @@ export default async function MePage({
       myGoals(s),
       myCheckIns(s),
       myFeedbackRequests(s),
+      myResignation(s, me.employmentId),
     ]);
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
@@ -822,6 +826,52 @@ export default async function MePage({
             </li>
           ))}
         </ul>
+      </Card>
+
+      {/* Resignation (ADR-0042, #29) — employee-initiated, HR-approved. A serious action: it does not end
+          employment on its own; HR must accept it. Kept at the foot of the page. */}
+      <Card className="mt-6 p-5">
+        <SectionHeader title={t('resignationTitle')} />
+        <p className="px-1 pt-2 text-xs text-muted-foreground">{t('resignationDescription')}</p>
+        {resignation?.status === 'pending' ? (
+          <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+            <div className="text-sm">
+              <div className="font-medium">{t('resignationPendingTitle')}</div>
+              <div className="mt-1 text-muted-foreground">
+                {t('lastWorkingDayLabel')}: <span className="tabular-nums">{resignation.lastWorkingDay}</span>
+              </div>
+              {resignation.reason && <div className="mt-0.5 text-muted-foreground">{resignation.reason}</div>}
+            </div>
+            <form action={myWithdrawResignation}>
+              <input type="hidden" name="requestId" value={resignation.id} />
+              <Button type="submit" size="sm" variant="outline">
+                {t('withdrawResignation')}
+              </Button>
+            </form>
+          </div>
+        ) : resignation?.status === 'accepted' ? (
+          <p className="mt-3 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+            {t('resignationAcceptedNote', { date: resignation.lastWorkingDay })}
+          </p>
+        ) : (
+          <form action={mySubmitResignation} className="mt-3 space-y-3">
+            {resignation?.status === 'rejected' && (
+              <p className="text-xs text-muted-foreground">{t('resignationWasRejected')}</p>
+            )}
+            {resignation?.status === 'withdrawn' && (
+              <p className="text-xs text-muted-foreground">{t('resignationWasWithdrawn')}</p>
+            )}
+            <Field label={t('lastWorkingDayLabel')}>
+              <input type="date" name="lastWorkingDay" required className={inputCls} />
+            </Field>
+            <Field label={t('resignationReasonLabel')}>
+              <textarea name="reason" rows={3} className={inputCls} placeholder={t('resignationReasonPlaceholder')} />
+            </Field>
+            <Button type="submit" size="sm" variant="outline">
+              {t('submitResignation')}
+            </Button>
+          </form>
+        )}
       </Card>
           </section>
         </div>

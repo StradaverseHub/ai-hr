@@ -7,6 +7,7 @@ import { decideLeave } from '@/core/leave';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
 import { decideClaim } from '@/core/claims';
+import { decideResignation } from '@/core/offboarding';
 import { myEmployment } from '@/core/read';
 
 // Thin wrappers around the same decide services the source pages use (authz lives in the
@@ -52,6 +53,22 @@ export async function approveProfileChangeAction(formData: FormData) {
     fail(e);
   }
   done(`Change ${decision}`);
+}
+
+export async function decideResignationAction(formData: FormData) {
+  const s = await getSession();
+  const accepted = String(formData.get('decision')) === 'approved';
+  try {
+    const me = await myEmployment(s);
+    await decideResignation(s, {
+      requestId: String(formData.get('id')),
+      decision: accepted ? 'accepted' : 'rejected',
+      deciderEmploymentId: me?.employmentId,
+    });
+  } catch (e) {
+    fail(e);
+  }
+  done(`Resignation ${accepted ? 'accepted' : 'rejected'}`);
 }
 
 export async function approveClaimAction(formData: FormData) {
