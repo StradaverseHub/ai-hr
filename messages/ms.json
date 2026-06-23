@@ -608,7 +608,12 @@
       "netPay": "Gaji bersih",
       "employerContributionsHeading": "Caruman majikan (tidak dipotong daripada anda)",
       "totalEmployerCost": "Jumlah kos majikan",
-      "proratedNote": "Diprorata pada {days, plural, one {# hari} other {# hari}} bekerja dalam tempoh ini."
+      "proratedNote": "Diprorata pada {days, plural, one {# hari} other {# hari}} bekerja dalam tempoh ini.",
+      "pdfTitle": "Slip Gaji",
+      "payPeriodLabel": "Tempoh gaji",
+      "employeeCodeLabel": "Kod pekerja",
+      "generatedNote": "Ini ialah slip gaji yang dijana oleh sistem.",
+      "downloadPdf": "Muat turun PDF"
     },
     "goalsTitle": "Matlamat saya",
     "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",

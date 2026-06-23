@@ -608,7 +608,12 @@
       "netPay": "实发工资",
       "employerContributionsHeading": "雇主缴纳（不从您工资中扣除）",
       "totalEmployerCost": "雇主总成本",
-      "proratedNote": "按本周期内工作的 {days, plural, one {# 天} other {# 天}}按比例计算。"
+      "proratedNote": "按本周期内工作的 {days, plural, one {# 天} other {# 天}}按比例计算。",
+      "pdfTitle": "薪资单",
+      "payPeriodLabel": "薪资周期",
+      "employeeCodeLabel": "员工编号",
+      "generatedNote": "本薪资单由系统自动生成。",
+      "downloadPdf": "下载 PDF"
     },
     "goalsTitle": "我的目标",
     "goalsEmpty": "暂无目标。添加一个，跟踪您正在努力实现的方向。",

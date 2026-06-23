@@ -608,7 +608,12 @@
       "netPay": "รายได้สุทธิ",
       "employerContributionsHeading": "เงินสมทบนายจ้าง (ไม่หักจากคุณ)",
       "totalEmployerCost": "ต้นทุนนายจ้างทั้งหมด",
-      "proratedNote": "คำนวณตามสัดส่วน {days, plural, one {# วัน} other {# วัน}} ที่ทำงานในงวดนี้"
+      "proratedNote": "คำนวณตามสัดส่วน {days, plural, one {# วัน} other {# วัน}} ที่ทำงานในงวดนี้",
+      "pdfTitle": "สลิปเงินเดือน",
+      "payPeriodLabel": "งวดจ่าย",
+      "employeeCodeLabel": "รหัสพนักงาน",
+      "generatedNote": "สลิปเงินเดือนนี้สร้างโดยระบบ",
+      "downloadPdf": "ดาวน์โหลด PDF"
     },
     "goalsTitle": "เป้าหมายของฉัน",
     "goalsEmpty": "ยังไม่มีเป้าหมาย เพิ่มเป้าหมายเพื่อติดตามสิ่งที่คุณกำลังมุ่งทำ",

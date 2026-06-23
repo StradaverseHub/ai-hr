@@ -1313,7 +1313,9 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
       .select({
         id: payslip.id,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         company: company.legalName,
+        companyReg: company.registrationNo,
         payPeriod: payrollBatch.payPeriod,
         status: payrollBatch.status,
         basic: payslip.basicSalary,
