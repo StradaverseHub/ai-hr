@@ -158,13 +158,17 @@ export function listDepartments(
   );
 }
 
-export function listLeaveTypes(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
-  return withTenant(ctx, (tx) =>
-    tx
+export function listLeaveTypes(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; locale?: string } = {},
+) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: leaveType.id,
         code: leaveType.code,
         name: leaveType.name,
+        i18n: leaveType.i18n,
         paid: leaveType.paid,
         counting: leaveType.counting,
         requiresDocument: leaveType.requiresDocument,
@@ -172,8 +176,11 @@ export function listLeaveTypes(ctx: SessionContext, opts: { includeArchived?: bo
         inUse: sql<boolean>`exists (select 1 from leave_request lr where lr.leave_type_id = leave_type.id) or exists (select 1 from leave_ledger ll where ll.leave_type_id = leave_type.id) or exists (select 1 from leave_policy lp where lp.leave_type_id = leave_type.id)`,
       })
       .from(leaveType)
-      .where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt)),
-  );
+      .where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt));
+    // R37: localize the display name to the viewer's locale. Admin callers pass no locale, so the
+    // config screens keep the default English name (which is what gets edited).
+    return rows.map(({ i18n, ...r }) => ({ ...r, name: pickName(r.name, i18n, opts.locale) }));
+  });
 }
 
 /** Every leave request in scope (RLS additionally trims to what the viewer may see:
@@ -391,7 +398,13 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
   );
 }
 
-export function leaveBalances(ctx: SessionContext, employmentId: string) {
+/** R37 (2F-2): resolve a leave-type name to the viewer's locale, falling back to the default name. */
+type LeaveTypeI18n = Record<string, { name: string }> | null;
+function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): string {
+  return (locale && locale !== 'en' && i18n?.[locale]?.name) || name;
+}
+
+export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string) {
   return withTenant(ctx, async (tx) => {
     const [rows, pend] = await Promise.all([
       tx
@@ -453,7 +466,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string) {
     // yet — so the list is the full menu, not just types they've already accrued or requested.
     const [types, [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility })
+        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
@@ -469,6 +482,10 @@ export function leaveBalances(ctx: SessionContext, employmentId: string) {
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
       out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0 });
     }
+    // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
+    // archived types with old ledger entries fall back to their stored English name).
+    const localName = new Map(types.map((t) => [t.id, pickName(t.name, t.i18n, locale)]));
+    for (const r of out) r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
     return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
 }
@@ -560,12 +577,13 @@ export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
   });
 }
 
-export function leaveRequestsFor(ctx: SessionContext, employmentId: string) {
-  return withTenant(ctx, (tx) =>
-    tx
+export function leaveRequestsFor(ctx: SessionContext, employmentId: string, locale?: string) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: leaveRequest.id,
         leaveType: leaveType.name,
+        i18n: leaveType.i18n,
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
         days: leaveRequest.days,
@@ -578,8 +596,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string) {
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(eq(leaveRequest.employmentId, employmentId))
-      .orderBy(desc(leaveRequest.startDate)),
-  );
+      .orderBy(desc(leaveRequest.startDate));
+    return rows.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
+  });
 }
 
 /** Current reporting edges for an employment: who they report to, and their direct reports. */

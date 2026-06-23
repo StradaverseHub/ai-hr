@@ -8,19 +8,60 @@ export type MyLeaveTypeDef = {
   counting: 'working_days' | 'calendar_days';
   eligibility?: LeaveEligibility; // ADR-0038 2A-1 — lawful gate (only where the Act restricts)
   requiresDocument?: boolean; // ADR-0038 2A-2 — supporting document needed (e.g. MC)
+  i18n?: Record<string, { name: string }>; // ADR-0038 2F-2 / R37 — per-locale display names
 };
 
 export const MY_LEAVE_TYPES: MyLeaveTypeDef[] = [
-  { code: 'ANNUAL', name: 'Annual Leave', paid: true, counting: 'working_days' },
+  {
+    code: 'ANNUAL',
+    name: 'Annual Leave',
+    paid: true,
+    counting: 'working_days',
+    i18n: { ms: { name: 'Cuti Tahunan' }, zh: { name: '年假' }, ta: { name: 'ஆண்டு விடுப்பு' }, th: { name: 'การลาพักร้อน' }, vi: { name: 'Nghỉ phép năm' } },
+  },
   // Paid sick & hospitalization leave is conditioned on certification by a registered medical
   // practitioner / dental surgeon (EA-1955 s.60F(1)), so both require a supporting document.
-  { code: 'SICK', name: 'Sick Leave', paid: true, counting: 'calendar_days', requiresDocument: true },
-  { code: 'HOSPITALIZATION', name: 'Hospitalization Leave', paid: true, counting: 'calendar_days', requiresDocument: true },
+  {
+    code: 'SICK',
+    name: 'Sick Leave',
+    paid: true,
+    counting: 'calendar_days',
+    requiresDocument: true,
+    i18n: { ms: { name: 'Cuti Sakit' }, zh: { name: '病假' }, ta: { name: 'நோய் விடுப்பு' }, th: { name: 'การลาป่วย' }, vi: { name: 'Nghỉ ốm' } },
+  },
+  {
+    code: 'HOSPITALIZATION',
+    name: 'Hospitalization Leave',
+    paid: true,
+    counting: 'calendar_days',
+    requiresDocument: true,
+    i18n: { ms: { name: 'Cuti Kemasukan Hospital' }, zh: { name: '住院假' }, ta: { name: 'மருத்துவமனை விடுப்பு' }, th: { name: 'การลานอนโรงพยาบาล' }, vi: { name: 'Nghỉ nằm viện' } },
+  },
   // Maternity — female employee (EA-1955 s.37, as amended by Act A1651 2022; 98 days).
-  { code: 'MATERNITY', name: 'Maternity Leave', paid: true, counting: 'calendar_days', eligibility: { gender: 'female' } },
+  {
+    code: 'MATERNITY',
+    name: 'Maternity Leave',
+    paid: true,
+    counting: 'calendar_days',
+    eligibility: { gender: 'female' },
+    i18n: { ms: { name: 'Cuti Bersalin' }, zh: { name: '产假' }, ta: { name: 'மகப்பேறு விடுப்பு' }, th: { name: 'การลาคลอด' }, vi: { name: 'Nghỉ thai sản' } },
+  },
   // Paternity — married male employee, ≥12 months service (EA-1955 s.60FA, inserted by Act A1651 2022; 7 days).
-  { code: 'PATERNITY', name: 'Paternity Leave', paid: true, counting: 'calendar_days', eligibility: { gender: 'male', maritalStatus: 'married', minServiceMonths: 12 } },
-  { code: 'UNPAID', name: 'Unpaid Leave', paid: false, counting: 'calendar_days' },
+  {
+    code: 'PATERNITY',
+    name: 'Paternity Leave',
+    paid: true,
+    counting: 'calendar_days',
+    eligibility: { gender: 'male', maritalStatus: 'married', minServiceMonths: 12 },
+    i18n: { ms: { name: 'Cuti Paterniti' }, zh: { name: '陪产假' }, ta: { name: 'தந்தைமை விடுப்பு' }, th: { name: 'การลาเพื่อดูแลบุตร' }, vi: { name: 'Nghỉ chăm vợ sinh' } },
+  },
+  {
+    code: 'UNPAID',
+    name: 'Unpaid Leave',
+    paid: false,
+    counting: 'calendar_days',
+    i18n: { ms: { name: 'Cuti Tanpa Gaji' }, zh: { name: '无薪假' }, ta: { name: 'ஊதியமில்லா விடுப்பு' }, th: { name: 'การลาโดยไม่รับค่าจ้าง' }, vi: { name: 'Nghỉ không lương' } },
+  },
 ];
 
 /** Annual leave entitlement by completed years of service (EA 1955 s.60E). */

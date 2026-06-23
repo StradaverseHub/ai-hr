@@ -617,6 +617,13 @@
 			"when": 1781861510000,
 			"tag": "0087_state_holidays",
 			"breakpoints": true
+		},
+		{
+			"idx": 88,
+			"version": "7",
+			"when": 1781861520000,
+			"tag": "0088_leave_type_i18n",
+			"breakpoints": true
 		}
 	]
 }

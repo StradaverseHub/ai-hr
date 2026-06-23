@@ -94,7 +94,7 @@ async function main() {
   for (const lt of myPack.leave.types) {
     const [row] = await owner.db
       .insert(schema.leaveType)
-      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting, eligibility: lt.eligibility ?? null, requiresDocument: lt.requiresDocument ?? false })
+      .values({ tenantId: DEV_TENANT_ID, code: lt.code, name: lt.name, paid: lt.paid, counting: lt.counting, eligibility: lt.eligibility ?? null, requiresDocument: lt.requiresDocument ?? false, i18n: lt.i18n ?? null })
       .returning({ id: schema.leaveType.id });
     leaveTypeIds[lt.code] = row.id;
   }

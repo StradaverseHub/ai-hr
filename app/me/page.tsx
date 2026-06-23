@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   leaveBalances,
@@ -95,11 +95,12 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
+  const locale = await getLocale(); // R37: render leave-type names in the employee's language
   const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests] =
     await Promise.all([
-      leaveBalances(s, me.employmentId),
-      leaveRequestsFor(s, me.employmentId),
-      listLeaveTypes(s),
+      leaveBalances(s, me.employmentId, locale),
+      leaveRequestsFor(s, me.employmentId, locale),
+      listLeaveTypes(s, { locale }),
       myPayslips(s, employments.map((e) => e.employmentId)),
       myAttendance(s, me.employmentId, 14),
       myAttendanceCorrections(s, me.employmentId),
