@@ -1120,7 +1120,25 @@
       "staleWarn": "A newer statutory pack ({available}) is available but not ingested (latest ingested: {ingested}). Run statutory:sync to apply it.",
       "syncFailed": "The last sync had {count} failure(s) — check the sync log.",
       "lastSync": "Last synced",
-      "neverSynced": "Never synced"
+      "neverSynced": "Never synced",
+      "body_epf": "EPF",
+      "body_socso": "SOCSO",
+      "body_eis": "EIS",
+      "body_pcb": "PCB",
+      "body_hrdf": "HRDF",
+      "perBodyTitle": "Per-body versions",
+      "perBodySubtitle": "Each statutory body resolves its own effective version independently.",
+      "body_ot": "Overtime",
+      "src_default": "Built-in",
+      "src_override": "Override",
+      "src_pack": "Vendor pack",
+      "src_component": "Per-body",
+      "componentTitle": "Per-body override",
+      "componentIntro": "Publish an effective-dated override for a single body (EPF rates, overtime ceiling, or HRDF rates) without re-issuing the whole ruleset.",
+      "componentBody": "Body",
+      "componentPublish": "Publish override",
+      "hrdfMandatory": "HRDF mandatory rate",
+      "hrdfOptional": "HRDF optional rate"
     }
   },
   "admin": {

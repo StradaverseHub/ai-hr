@@ -10,12 +10,20 @@
 import { and, desc, eq, isNull, lte } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent } from '../../db/events';
-import { statutoryPack, statutoryPackSyncLog, statutoryRuleset, statutorySigningKey } from '../../db/schema';
+import {
+  statutoryComponentOverride,
+  statutoryPack,
+  statutoryPackSyncLog,
+  statutoryRuleset,
+  statutorySigningKey,
+} from '../../db/schema';
 import {
   DEFAULT_MY_STATUTORY,
   MY_STATUTORY_VERSION,
+  STATUTORY_BODIES,
   type ContribBand,
   type PcbBand,
+  type StatutoryBody,
   type StatutoryRuleset,
 } from './statutory-tables';
 
@@ -24,6 +32,13 @@ function today(): string {
 }
 
 // ─────────────────────────────── Loader (kernel) — 3-tier merge ───────────────────────────────
+
+/** Per-body provenance (ADR-0037): which version of THIS body applied, and from where. */
+export type ComponentProvenance = {
+  version: string;
+  source: 'default' | 'override' | 'pack' | 'component';
+  effectiveFrom: string | null;
+};
 
 export type ActiveResolution = {
   ruleset: StatutoryRuleset;
@@ -35,7 +50,12 @@ export type ActiveResolution = {
   signedKeyId: string | null;
   /** The winning tenant override row (only when source === 'override'). */
   overrideRow: StatutoryRulesetRow | null;
+  /** Per-body provenance after the overlay (ADR-0037): each statutory body's effective version+source. */
+  components: Record<StatutoryBody, ComponentProvenance>;
 };
+
+/** The bundled baseline resolution, before the per-body overlay is applied. */
+type BaselineResolution = Omit<ActiveResolution, 'components'>;
 
 /**
  * Resolve the active ruleset for `asOf` across THREE sources, in ONE tx snapshot (ADR-0020 §6):
@@ -76,7 +96,7 @@ async function resolveActiveRulesetMY(tx: Tx, asOf: string): Promise<ActiveResol
     packs = []; // fail safe: the pack channel must never break payroll
   }
 
-  type Cand = { effFrom: string; issuanceMs: number; rank: number; packVersion: string; id: string; res: ActiveResolution };
+  type Cand = { effFrom: string; issuanceMs: number; rank: number; packVersion: string; id: string; res: BaselineResolution };
   const cands: Cand[] = [];
   for (const o of overrides) {
     cands.push({
@@ -117,8 +137,9 @@ async function resolveActiveRulesetMY(tx: Tx, asOf: string): Promise<ActiveResol
     });
   }
 
+  let base: BaselineResolution;
   if (cands.length === 0) {
-    return {
+    base = {
       ruleset: DEFAULT_MY_STATUTORY,
       source: 'default',
       effectiveFrom: null,
@@ -128,16 +149,67 @@ async function resolveActiveRulesetMY(tx: Tx, asOf: string): Promise<ActiveResol
       signedKeyId: null,
       overrideRow: null,
     };
+  } else {
+    cands.sort(
+      (a, b) =>
+        b.effFrom.localeCompare(a.effFrom) ||
+        b.issuanceMs - a.issuanceMs ||
+        b.rank - a.rank ||
+        b.packVersion.localeCompare(a.packVersion) ||
+        b.id.localeCompare(a.id),
+    );
+    base = cands[0].res;
   }
-  cands.sort(
-    (a, b) =>
-      b.effFrom.localeCompare(a.effFrom) ||
-      b.issuanceMs - a.issuanceMs ||
-      b.rank - a.rank ||
-      b.packVersion.localeCompare(a.packVersion) ||
-      b.id.localeCompare(a.id),
-  );
-  return cands[0].res;
+  return overlayComponents(tx, asOf, base);
+}
+
+/**
+ * Per-body overlay (ADR-0037): on top of the bundled `base`, replace each body's slice with the
+ * newest-effective component override for that body (if any). Returns the merged ruleset + a per-body
+ * provenance map. With NO component rows the baseline ruleset is returned untouched (the same object
+ * reference when nothing overrides), so the kernel + every golden test stay byte-identical.
+ */
+async function overlayComponents(tx: Tx, asOf: string, base: BaselineResolution): Promise<ActiveResolution> {
+  const rows = await tx
+    .select()
+    .from(statutoryComponentOverride)
+    .where(
+      and(
+        eq(statutoryComponentOverride.country, 'MY'),
+        isNull(statutoryComponentOverride.archivedAt),
+        lte(statutoryComponentOverride.effectiveFrom, asOf),
+      ),
+    );
+  // Newest per body: latest effective_from, then latest created_at.
+  const newest = new Map<string, (typeof rows)[number]>();
+  for (const r of rows) {
+    const cur = newest.get(r.body);
+    if (
+      !cur ||
+      r.effectiveFrom > cur.effectiveFrom ||
+      (r.effectiveFrom === cur.effectiveFrom && r.createdAt.getTime() > cur.createdAt.getTime())
+    ) {
+      newest.set(r.body, r);
+    }
+  }
+
+  const components = {} as Record<StatutoryBody, ComponentProvenance>;
+  let merged = base.ruleset;
+  let cloned = false;
+  for (const body of STATUTORY_BODIES) {
+    const ov = newest.get(body);
+    if (ov) {
+      if (!cloned) {
+        merged = { ...base.ruleset }; // never mutate the shared DEFAULT_MY_STATUTORY singleton
+        cloned = true;
+      }
+      (merged as Record<string, unknown>)[body] = ov.data;
+      components[body] = { version: ov.version, source: 'component', effectiveFrom: ov.effectiveFrom };
+    } else {
+      components[body] = { version: base.version, source: base.source, effectiveFrom: base.effectiveFrom };
+    }
+  }
+  return { ...base, ruleset: merged, components };
 }
 
 /**
@@ -337,6 +409,7 @@ export async function readActiveStatutoryMY(
   packVersion: string | null;
   issuedAt: string | null;
   effectiveFrom: string | null;
+  components: Record<StatutoryBody, ComponentProvenance>;
 }> {
   const asOf = p?.asOf ?? today();
   return withTenant(ctx, async (tx) => {
@@ -348,6 +421,7 @@ export async function readActiveStatutoryMY(
       packVersion: r.packVersion,
       issuedAt: r.issuedAt,
       effectiveFrom: r.effectiveFrom,
+      components: r.components,
     };
   });
 }
@@ -526,6 +600,134 @@ export async function archiveStatutoryRulesetMY(ctx: SessionContext, id: string)
       eventType: 'statutory.config.archived',
       actor: actorOf(ctx),
       payload: { country: 'MY', version: row.version },
+    });
+  });
+}
+
+// ─────────────────── Per-body component overrides (ADR-0037, #6) ───────────────────
+// A finer-grained override than statutory_ruleset: one row replaces ONE body's slice, effective-dated,
+// overlaid on top of the bundled baseline by resolveActiveRulesetMY above. Lets a single body (e.g. a
+// mid-year SOCSO revision) move on its own legal timeline without re-issuing the whole ruleset.
+
+export type StatutoryComponentRow = {
+  id: string;
+  body: StatutoryBody;
+  version: string;
+  effectiveFrom: string;
+  data: unknown;
+  notes: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  archivedAt: string | null;
+};
+
+function mapComponentRow(row: typeof statutoryComponentOverride.$inferSelect): StatutoryComponentRow {
+  return {
+    id: row.id,
+    body: row.body as StatutoryBody,
+    version: row.version,
+    effectiveFrom: row.effectiveFrom,
+    data: row.data,
+    notes: row.notes,
+    createdByUserId: row.createdByUserId,
+    createdAt: row.createdAt.toISOString(),
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
+  };
+}
+
+/**
+ * Validate ONE body's slice. epf/socso/eis/pcb/ot are checked by probing a full ruleset with just this
+ * body replaced (the rest stay the verified defaults, so only THIS body's problems surface); hrdf has a
+ * dedicated rate check (it isn't part of the legacy ruleset validator).
+ */
+export function validateStatutoryComponent(body: StatutoryBody, data: unknown): string[] {
+  if (data == null || typeof data !== 'object') return [`${body.toUpperCase()} data is missing or malformed.`];
+  if (body === 'hrdf') {
+    const h = data as { mandatoryRate?: unknown; optionalRate?: unknown };
+    const errs: string[] = [];
+    if (!inUnit(h.mandatoryRate)) errs.push('HRDF mandatory rate must be between 0 and 1.');
+    if (!inUnit(h.optionalRate)) errs.push('HRDF optional rate must be between 0 and 1.');
+    return errs;
+  }
+  const probe = { ...DEFAULT_MY_STATUTORY, [body]: data } as StatutoryRuleset;
+  return validateStatutoryRuleset(probe);
+}
+
+/** All stored per-body overrides (incl. archived), newest effective first — the history/audit list. */
+export async function listComponentOverridesMY(ctx: SessionContext): Promise<StatutoryComponentRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select()
+      .from(statutoryComponentOverride)
+      .where(eq(statutoryComponentOverride.country, 'MY'))
+      .orderBy(desc(statutoryComponentOverride.effectiveFrom), desc(statutoryComponentOverride.createdAt));
+    return rows.map(mapComponentRow);
+  });
+}
+
+/**
+ * Save a new effective-dated override for ONE statutory body. Validates the slice first, appends a NEW
+ * row (provenance intact), and logs `statutory.component.updated`. Admin-only via RLS.
+ */
+export async function setComponentOverrideMY(
+  ctx: SessionContext,
+  input: { body: StatutoryBody; effectiveFrom: string; version: string; data: unknown; notes?: string | null },
+): Promise<{ id: string }> {
+  if (!STATUTORY_BODIES.includes(input.body))
+    throw new StatutoryRulesetInvalidError([`Unknown statutory body: ${String(input.body)}.`]);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveFrom))
+    throw new StatutoryRulesetInvalidError(['Effective-from must be a YYYY-MM-DD date.']);
+  if (typeof input.version !== 'string' || input.version.trim() === '')
+    throw new StatutoryRulesetInvalidError(['Version is required.']);
+  const problems = validateStatutoryComponent(input.body, input.data);
+  if (problems.length) throw new StatutoryRulesetInvalidError(problems);
+
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(statutoryComponentOverride)
+      .values({
+        tenantId: ctx.tenantId,
+        country: 'MY',
+        body: input.body,
+        version: input.version.trim(),
+        effectiveFrom: input.effectiveFrom,
+        data: input.data as object,
+        notes: input.notes ?? null,
+        createdByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: statutoryComponentOverride.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'statutory-component-override',
+      aggregateId: row.id,
+      eventType: 'statutory.component.updated',
+      actor: actorOf(ctx),
+      payload: { country: 'MY', body: input.body, version: input.version, effectiveFrom: input.effectiveFrom },
+    });
+    return { id: row.id };
+  });
+}
+
+/** Soft-archive a per-body override (admin). The overlay skips archived rows. */
+export async function archiveComponentOverrideMY(ctx: SessionContext, id: string): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .update(statutoryComponentOverride)
+      .set({ archivedAt: new Date() })
+      .where(and(eq(statutoryComponentOverride.id, id), isNull(statutoryComponentOverride.archivedAt)))
+      .returning({
+        id: statutoryComponentOverride.id,
+        body: statutoryComponentOverride.body,
+        version: statutoryComponentOverride.version,
+      });
+    if (!row) return;
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'statutory-component-override',
+      aggregateId: row.id,
+      eventType: 'statutory.component.archived',
+      actor: actorOf(ctx),
+      payload: { country: 'MY', body: row.body, version: row.version },
     });
   });
 }

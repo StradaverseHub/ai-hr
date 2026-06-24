@@ -4,10 +4,11 @@ import { packFor } from '@/localization/registry';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
-import type { ContribBand } from '@/localization/my/statutory-tables';
+import { StatutoryComponentForm } from '@/components/statutory-component-form';
+import { MY_HRDF, STATUTORY_BODIES, type ContribBand } from '@/localization/my/statutory-tables';
 import type { StatutorySource } from '@/localization/my/statutory-config';
 import { latestAvailablePackVersion } from '@/lib/statutory-pack-available';
-import { archiveStatutoryAction } from './actions';
+import { archiveStatutoryAction, archiveStatutoryComponentAction } from './actions';
 import Link from 'next/link';
 
 const pct = (n: number) => {
@@ -67,12 +68,14 @@ export default async function StatutoryConfigPage({
     );
   }
 
-  const [{ ruleset, source, row, packVersion, issuedAt }, history, packs, syncStatus] = await Promise.all([
-    pack.statutoryConfig.readActive(s),
-    pack.statutoryConfig.list(s),
-    pack.statutoryConfig.listPacks(s),
-    pack.statutoryConfig.syncStatus(s),
-  ]);
+  const [{ ruleset, source, row, packVersion, issuedAt, components }, history, packs, syncStatus, componentOverrides] =
+    await Promise.all([
+      pack.statutoryConfig.readActive(s),
+      pack.statutoryConfig.list(s),
+      pack.statutoryConfig.listPacks(s),
+      pack.statutoryConfig.syncStatus(s),
+      pack.statutoryConfig.listComponents(s),
+    ]);
   const latestAvailable = latestAvailablePackVersion();
   const stale = !!(latestAvailable && (!syncStatus.latestIngested || latestAvailable > syncStatus.latestIngested));
   const sources = pack.statutoryConfig.sources;
@@ -150,6 +153,38 @@ export default async function StatutoryConfigPage({
             {issuedAt ? ` · ${t('issued')} ${issuedAt.slice(0, 10)}` : ''}
           </div>
         ) : null}
+      </Card>
+
+      {/* Per-body versions (ADR-0037, #6) — each statutory body resolves its own version + source */}
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold">{t('perBodyTitle')}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{t('perBodySubtitle')}</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {STATUTORY_BODIES.map((b) => {
+            const c = components[b];
+            return (
+              <div key={b} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{t(`body_${b}`)}</div>
+                  <div className="truncate font-mono text-xs text-muted-foreground">{c.version}</div>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    c.source === 'component'
+                      ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+                      : c.source === 'pack'
+                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400'
+                        : c.source === 'override'
+                          ? 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-400'
+                          : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                  }`}
+                >
+                  {t(`src_${c.source}`)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -279,6 +314,81 @@ export default async function StatutoryConfigPage({
                       {!h.archivedAt && (
                         <form action={archiveStatutoryAction}>
                           <input type="hidden" name="id" value={h.id} />
+                          <Button type="submit" variant="ghost" size="sm">
+                            {t('archive')}
+                          </Button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Per-body overrides (ADR-0037, #6) — publish a single-body, effective-dated override + history */}
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold">{t('componentTitle')}</h2>
+        <p className="mt-1 text-xs text-muted-foreground">{t('componentIntro')}</p>
+        <StatutoryComponentForm
+          defaults={{
+            epf: {
+              employeeRate: ruleset.epf.employeeRate,
+              employerRateLow: ruleset.epf.employerRateLow,
+              employerRateHigh: ruleset.epf.employerRateHigh,
+              employerThreshold: ruleset.epf.employerThreshold,
+            },
+            ot: { wageCeiling: ruleset.ot.wageCeiling },
+            hrdf: ruleset.hrdf ?? MY_HRDF,
+          }}
+          labels={{
+            body: t('componentBody'),
+            body_epf: t('body_epf'),
+            body_ot: t('body_ot'),
+            body_hrdf: t('body_hrdf'),
+            effectiveFrom: t('effectiveFrom'),
+            version: t('version'),
+            notes: t('fieldNotes'),
+            epfEmployeeRate: t('epfEmployeeRate'),
+            epfEmployerRateLow: t('epfEmployerRateLow'),
+            epfEmployerRateHigh: t('epfEmployerRateHigh'),
+            epfEmployerThreshold: t('epfEmployerThreshold'),
+            otWageCeiling: t('otWageCeiling'),
+            hrdfMandatory: t('hrdfMandatory'),
+            hrdfOptional: t('hrdfOptional'),
+            publish: t('componentPublish'),
+          }}
+        />
+        {componentOverrides.length > 0 && (
+          <div className="mt-4 overflow-x-auto border-t border-border pt-3">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="py-1.5 pr-4 font-medium">{t('componentBody')}</th>
+                  <th className="py-1.5 pr-4 font-medium">{t('version')}</th>
+                  <th className="py-1.5 pr-4 font-medium">{t('effectiveFrom')}</th>
+                  <th className="py-1.5 font-medium" />
+                </tr>
+              </thead>
+              <tbody>
+                {componentOverrides.map((co) => (
+                  <tr key={co.id} className="border-t border-border align-top">
+                    <td className="py-2 pr-4 font-medium">{t(`body_${co.body}`)}</td>
+                    <td className="py-2 pr-4">
+                      <span className="font-mono">{co.version}</span>
+                      {co.archivedAt && (
+                        <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          {t('archived')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-4 tabular-nums">{co.effectiveFrom}</td>
+                    <td className="py-2 text-right">
+                      {!co.archivedAt && (
+                        <form action={archiveStatutoryComponentAction}>
+                          <input type="hidden" name="id" value={co.id} />
                           <Button type="submit" variant="ghost" size="sm">
                             {t('archive')}
                           </Button>

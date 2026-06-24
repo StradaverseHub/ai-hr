@@ -436,9 +436,9 @@ export const MY_OT_WAGE_CEILING = 4000;
 // The HRDF wage base is basic salary + fixed allowances ONLY; it is NOT the EPF/SOCSO base —
 // it excludes bonus, commission, overtime and non-fixed allowances (the caller builds the base).
 // Sourced + re-verified against hrdcorp.gov.my / PSMB Act 2001 in docs/wave2-payroll-design.md.
-// The 1%/0.5% rates are stable national figures held as pack constants (not the editable ruleset);
-// the per-company registration band lives on company_statutory_my.hrdf_status. If HRDF rate
-// versioning is ever needed it belongs in Wave 3 #6 (per-statutory-body versioning).
+// The 1%/0.5% rates are the built-in baseline; per-company registration lives on
+// company_statutory_my.hrdf_status. As of #6 (ADR-0037) HRDF is a first-class versioned body — an admin
+// can publish an effective-dated `hrdf` override via the per-body overlay, and the kernel reads it.
 export type HrdfStatus = 'not_registered' | 'mandatory' | 'optional';
 export const MY_HRDF = { mandatoryRate: 0.01, optionalRate: 0.005 } as const;
 
@@ -482,7 +482,14 @@ export type StatutoryRuleset = {
     reliefs: { individual: number; spouse: number; perChild: number; epfReliefCap: number };
   };
   ot: { wageCeiling: number };
+  /** HRD Corp levy rates (#6, ADR-0037). Optional: overrides/packs predating 2026.4 omit it and
+   *  `hrdfLevy` falls back to the built-in MY_HRDF. A first-class versioned body via the overlay. */
+  hrdf?: { mandatoryRate: number; optionalRate: number };
 };
+
+/** The statutory bodies that version independently via the per-body overlay (ADR-0037). */
+export const STATUTORY_BODIES = ['epf', 'socso', 'eis', 'pcb', 'ot', 'hrdf'] as const;
+export type StatutoryBody = (typeof STATUTORY_BODIES)[number];
 
 /** The verified, sourced 2026.1 ruleset — the canonical default + fallback (ADR-0019). */
 export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
@@ -498,4 +505,5 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
   eis: { bands: MY_EIS_BANDS, rates: MY_EIS_RATES },
   pcb: { bands: MY_PCB_BANDS, reliefs: MY_RELIEFS },
   ot: { wageCeiling: MY_OT_WAGE_CEILING },
+  hrdf: MY_HRDF,
 };
