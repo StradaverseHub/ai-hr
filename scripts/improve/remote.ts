@@ -87,6 +87,34 @@ export function pushPlan(p: {
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
 }
 
+/** Move an approved item into the build (status → building + a feedback.build.started event). */
+export function markBuildStarted(p: { id: string; tenantId: string; reporterEmploymentId: string }): void {
+  assertUuid(p.id, 'feedback id');
+  assertUuid(p.tenantId, 'tenant id');
+  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  const sql = [
+    'BEGIN;',
+    `UPDATE feedback_request SET status = 'building', updated_at = now() WHERE id = '${p.id}' AND status = 'approved';`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.started', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ via: 'improvement-loop' }))}::jsonb);`,
+    'COMMIT;',
+  ].join('\n');
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+}
+
+/** Mark a green build done (status → done + build_ref + a feedback.build.completed event). buildRef = the branch/PR. */
+export function markBuildCompleted(p: { id: string; tenantId: string; reporterEmploymentId: string; buildRef: string }): void {
+  assertUuid(p.id, 'feedback id');
+  assertUuid(p.tenantId, 'tenant id');
+  assertUuid(p.reporterEmploymentId, 'reporter employment id');
+  const sql = [
+    'BEGIN;',
+    `UPDATE feedback_request SET status = 'done', build_ref = ${dq(p.buildRef)}, updated_at = now() WHERE id = '${p.id}' AND status = 'building';`,
+    `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.build.completed', 'agent', '${p.reporterEmploymentId}', ${dq(JSON.stringify({ buildRef: p.buildRef, via: 'improvement-loop' }))}::jsonb);`,
+    'COMMIT;',
+  ].join('\n');
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+}
+
 /** Close a released item (status → deployed + a feedback.deployed event). buildRef is the PR/commit link. */
 export function markDeployed(p: { id: string; tenantId: string; reporterEmploymentId: string; buildRef: string }): void {
   assertUuid(p.id, 'feedback id');
