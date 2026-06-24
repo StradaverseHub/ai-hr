@@ -62,7 +62,13 @@ for (let i = 0; i < items.length; i++) {
       `any new table. Add the tests the plan specifies.\n\n` +
       `GATE — you MUST reach BOTH before returning testsPass=true:\n` +
       `  • \`npx tsc --noEmit\` is clean.\n` +
-      `  • \`pnpm vitest run\` is fully green.\n` +
+      `  • \`pnpm vitest run\` is fully green. ⚠️ The test database (ai_hr_test on :5433) is SHARED across ` +
+      `sequential builds and the Vitest harness only migrates-forward (it never drops schema), so BEFORE you ` +
+      `run vitest you MUST reset it to a clean slate or another build's migrations will collide with yours:\n` +
+      `      set -a; . ./.env.local; set +a\n` +
+      `      psql "$TEST_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS drizzle CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ai_hr_app; GRANT ALL ON SCHEMA public TO postgres;"\n` +
+      `    Then run \`pnpm vitest run\` (the harness re-applies all migrations from your worktree into the clean DB). ` +
+      `Re-run this reset before EACH full vitest attempt.\n` +
       `Then \`git add -A\` and return: testsPass=true, the full \`git diff --cached\` as \`patch\`, the ` +
       `\`git diff --cached --stat\` as \`diffstat\`, and a short summary.\n\n` +
       `If you cannot reach green after a genuine effort, return testsPass=false with the specific blockers. ` +
