@@ -9,7 +9,8 @@
  *
  * push-plan / mark-deployed read their argument as JSON on stdin (plans contain newlines/quotes).
  */
-import { markDeployed, pullApproved, pullPlannable, pushPlan } from './remote';
+import { markBuildCompleted, markBuildStarted, markDeployed, pullApproved, pullPlannable, pushPlan } from './remote';
+import { releaseBuiltItem } from './release';
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -36,6 +37,24 @@ async function main() {
       console.log(`pushed plan for ${p.id} (status → planned)`);
       break;
     }
+    case 'build-start': {
+      const p = JSON.parse(await readStdin());
+      markBuildStarted(p);
+      console.log(`build started for ${p.id} (status → building)`);
+      break;
+    }
+    case 'build-complete': {
+      const p = JSON.parse(await readStdin());
+      markBuildCompleted(p);
+      console.log(`build completed for ${p.id} (status → done, ref=${p.buildRef})`);
+      break;
+    }
+    case 'release': {
+      // HUMAN-GATED (ADR-0045): only run after a human has reviewed the preview + diff.
+      const p = JSON.parse(await readStdin());
+      await releaseBuiltItem(p);
+      break;
+    }
     case 'mark-deployed': {
       const p = JSON.parse(await readStdin());
       markDeployed(p);
@@ -43,7 +62,9 @@ async function main() {
       break;
     }
     default:
-      console.error('usage: improve <pull | pull-approved | push-plan | mark-deployed>');
+      console.error(
+        'usage: improve <pull | pull-approved | push-plan | build-start | build-complete | release | mark-deployed>',
+      );
       process.exit(2);
   }
 }
