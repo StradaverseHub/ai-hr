@@ -9,6 +9,7 @@ import {
   approveFeedbackPlan,
   cancelFeedback,
   contestFeedbackPlan,
+  generateFeedbackPlan,
   submitFeedback,
 } from '@/core/feedback';
 import type { FeedbackCategory } from '@/db/schema';
@@ -69,6 +70,19 @@ export async function contestFeedbackPlanAction(formData: FormData) {
   }
   revalidatePath(`${BASE}/${id}`);
   redirect(`${BASE}/${id}?toast=${encodeURIComponent('Sent back for re-planning')}`);
+}
+
+/** Admin "Generate plan now" — runs the planning agent immediately instead of waiting for the cron. */
+export async function generateFeedbackPlanNowAction(formData: FormData) {
+  const s = await getSession();
+  const id = String(formData.get('id'));
+  try {
+    await generateFeedbackPlan(s, { feedbackId: id });
+  } catch (e) {
+    fail(e, `${BASE}/${id}`);
+  }
+  revalidatePath(`${BASE}/${id}`);
+  redirect(`${BASE}/${id}?toast=${encodeURIComponent('Plan generated')}`);
 }
 
 export async function cancelFeedbackAction(formData: FormData) {

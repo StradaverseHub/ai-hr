@@ -5,9 +5,11 @@
  * transition appends a DomainEvent (user / agent actor). RLS scopes reads via can_see_employment; the
  * review authority (only the reporter approves/contests) is enforced here.
  */
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { generateDraft, redactPII } from '../lib/ai';
+import { resolveActiveAiConfig } from './ai-config';
 import {
   employment,
   feedbackAttachment,
@@ -152,6 +154,77 @@ export async function setFeedbackPlan(
       subjectEmploymentId: fb.reporterEmploymentId,
       payload: { revision: fb.planRevision + 1, model: p.model ?? null },
     });
+  });
+}
+
+/**
+ * FB-3 — the planning agent. Resolves the tenant's AI config, sends the (PII-redacted) feedback (and, on
+ * a re-plan, the prior plan + the reporter's push-back) to the gateway, and stores the result via
+ * setFeedbackPlan (agent actor). The provider call happens OUTSIDE any DB transaction. Gated: no AI config
+ * ⇒ a clear error (the cron skips, the admin button surfaces it).
+ */
+export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId: string }): Promise<{ plan: string }> {
+  const gathered = await withTenant(ctx, async (tx) => {
+    const [fb] = await tx.select().from(feedbackRequest).where(eq(feedbackRequest.id, p.feedbackId)).limit(1);
+    if (!fb) throw new FeedbackError('Feedback not found (or not visible).');
+    if (fb.status !== 'open' && fb.status !== 'contested') {
+      throw new FeedbackError(`A plan can only be drafted while the item is open or contested (it is ${fb.status}).`);
+    }
+    const aiCfg = await resolveActiveAiConfig(tx, ctx);
+    return { fb, aiCfg };
+  });
+  const { fb, aiCfg } = gathered;
+  if (!aiCfg) {
+    throw new FeedbackError('No AI provider is configured for this workspace — set one up to enable automatic planning.');
+  }
+
+  const system = [
+    'You are a senior software engineer writing an implementation plan for one product-feedback item in a',
+    'Malaysian HR / payroll web application (Next.js App Router, Drizzle ORM, PostgreSQL with row-level',
+    'security, next-intl). Write a concrete, ordered plan: the data-model / migration changes, the service',
+    'logic, the UI, and how to verify it (tests + a browser check). Be specific and realistic; scope it to',
+    'exactly what the feedback asks — do not invent extra features. Use British English. Output a numbered',
+    'plan in Markdown only — no preamble, no closing remarks.',
+  ].join(' ');
+
+  const lines = [
+    `Type: ${fb.category}`,
+    `Title: ${redactPII(fb.title)}`,
+    `Description: ${redactPII(fb.description)}`,
+    fb.expectedBehavior ? `Expected behaviour: ${redactPII(fb.expectedBehavior)}` : '',
+    fb.expectedFunction ? `Expected function: ${redactPII(fb.expectedFunction)}` : '',
+  ].filter(Boolean);
+  if (fb.status === 'contested' && fb.plan) {
+    lines.push(
+      '',
+      'A previous plan was sent back by the reporter. Previous plan:',
+      fb.plan,
+      '',
+      `The reporter asked for these changes: ${redactPII(fb.contestReason ?? '')}`,
+      'Revise the plan to address that feedback.',
+    );
+  }
+
+  const plan = await generateDraft(aiCfg, {
+    system,
+    prompt: `Write an implementation plan for this product feedback:\n\n${lines.join('\n')}`,
+    maxTokens: 2048,
+  });
+
+  await setFeedbackPlan(ctx, { feedbackId: fb.id, plan, model: `${aiCfg.provider}/${aiCfg.model}` });
+  return { plan };
+}
+
+/** Ids of items awaiting a (re)plan — the cron's work-list (newest first, capped). */
+export function listPlannableFeedback(ctx: SessionContext, limit = 50): Promise<string[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ id: feedbackRequest.id })
+      .from(feedbackRequest)
+      .where(inArray(feedbackRequest.status, ['open', 'contested']))
+      .orderBy(desc(feedbackRequest.createdAt))
+      .limit(limit);
+    return rows.map((r) => r.id);
   });
 }
 

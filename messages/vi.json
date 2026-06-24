@@ -2083,6 +2083,7 @@
     "contestLabel": "Cần thay đổi gì?",
     "contestPlaceholder": "Giải thích kế hoạch còn thiếu hoặc sai gì",
     "contest": "Gửi lại",
-    "withdraw": "Rút phản hồi"
+    "withdraw": "Rút phản hồi",
+    "generatePlanNow": "Tạo kế hoạch ngay"
   }
 }

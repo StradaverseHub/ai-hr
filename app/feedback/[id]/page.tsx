@@ -4,7 +4,12 @@ import { getSession } from '@/lib/session';
 import { getFeedback } from '@/core/feedback';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { statusTone } from '../page';
-import { approveFeedbackPlanAction, cancelFeedbackAction, contestFeedbackPlanAction } from '../actions';
+import {
+  approveFeedbackPlanAction,
+  cancelFeedbackAction,
+  contestFeedbackPlanAction,
+  generateFeedbackPlanNowAction,
+} from '../actions';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   if (value == null || value === '') return null;
@@ -31,8 +36,10 @@ export default async function FeedbackDetailPage({
   if (!fb) notFound();
 
   const isReporter = !!s.userId && fb.reporterUserId === s.userId;
+  const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const canReview = isReporter && fb.status === 'planned';
   const canWithdraw = isReporter && !['done', 'cancelled', 'building'].includes(fb.status);
+  const canGeneratePlan = isAdmin && (fb.status === 'open' || fb.status === 'contested');
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -85,6 +92,15 @@ export default async function FeedbackDetailPage({
           </>
         ) : (
           <p className="px-1 pt-2 text-sm text-muted-foreground">{t('planPending')}</p>
+        )}
+
+        {canGeneratePlan && (
+          <form action={generateFeedbackPlanNowAction} className="mt-3">
+            <input type="hidden" name="id" value={fb.id} />
+            <Button type="submit" size="sm" variant="outline">
+              {t('generatePlanNow')}
+            </Button>
+          </form>
         )}
 
         {fb.status === 'contested' && fb.contestReason && (

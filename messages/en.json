@@ -2083,6 +2083,7 @@
     "contestLabel": "What should change?",
     "contestPlaceholder": "Explain what the plan is missing or got wrong",
     "contest": "Send back",
-    "withdraw": "Withdraw feedback"
+    "withdraw": "Withdraw feedback",
+    "generatePlanNow": "Generate plan now"
   }
 }

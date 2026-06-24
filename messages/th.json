@@ -2083,6 +2083,7 @@
     "contestLabel": "ควรแก้ไขอะไร?",
     "contestPlaceholder": "อธิบายสิ่งที่แผนขาดหายหรือผิดพลาด",
     "contest": "ส่งกลับ",
-    "withdraw": "ถอนข้อเสนอแนะ"
+    "withdraw": "ถอนข้อเสนอแนะ",
+    "generatePlanNow": "สร้างแผนตอนนี้"
   }
 }
