@@ -612,6 +612,12 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // alter this batch, and a forged/wrong-pack incident is traceable to the key + packVersion that produced it.
     const resolved = await pack.payroll.loadRulesetResolved(tx, { asOf: periodEnd });
     const rules = resolved.ruleset;
+    // #6 (ADR-0037): per-body provenance to stamp on each payslip — but ONLY when a component override
+    // is actually in effect, so a tenant with no overrides keeps a byte-identical statutory snapshot.
+    const anyComponentOverride = Object.values(resolved.components).some((c) => c.source === 'component');
+    const componentVersions = anyComponentOverride
+      ? (Object.fromEntries(Object.entries(resolved.components).map(([b, c]) => [b, c.version])) as Record<string, string>)
+      : null;
     const statutoryProvenance =
       resolved.source === 'pack' ? { packVersion: resolved.packVersion, signedKeyId: resolved.signedKeyId } : {};
 
@@ -927,7 +933,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // unpaid leave; NOT the EPF/SOCSO wage (overtime, bonus, and reimbursed claims are excluded).
       const fixedAllowance = en.hrdfAllowApplied;
       const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
-      const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus);
+      // #6: HRDF rates come from the resolved ruleset (rules.hrdf) when overridden, else the built-in MY_HRDF.
+      const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf);
       // Statutory contribution. Regular run: computed directly as today (byte-identical). Additional run
       // (Wave 2C): the INCREMENT of the cumulative month — re-run with/without this run's additional
       // remuneration and take the delta, so the normal wage's SOCSO/EPF (already charged by the regular
@@ -976,6 +983,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         hrdf: isAdditionalRun ? 0 : hrdf,
         // EPF contribution mode applied (Wave 2B audit) — 'auto' unless an i-Topup/exempt election.
         epfMode: e.epfMode ?? 'auto',
+        // #6 (ADR-0037): per-body version map, present only when a component override is in effect.
+        ...(componentVersions ? { componentVersions } : {}),
       };
 
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,

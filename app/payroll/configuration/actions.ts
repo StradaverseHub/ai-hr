@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { packFor } from '@/localization/registry';
 import { StatutoryRulesetInvalidError } from '@/localization/my/statutory-config';
-import type { StatutoryRuleset } from '@/localization/my/statutory-tables';
+import type { StatutoryBody, StatutoryRuleset } from '@/localization/my/statutory-tables';
 
 const BASE = '/payroll/configuration';
 
@@ -34,6 +34,66 @@ export async function saveStatutoryAction(formData: FormData) {
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Statutory version published')}`);
+}
+
+/**
+ * Publish an effective-dated override for ONE statutory body (ADR-0037, #6). The scalar form covers EPF
+ * rates / OT ceiling / HRDF rates; for EPF the scalars merge onto the current EPF slice so the band
+ * tables (Part A / Part E) survive. Band-heavy bodies (SOCSO/EIS/PCB) stay pack/whole-ruleset managed.
+ */
+export async function setStatutoryComponentAction(formData: FormData) {
+  const s = await getSession();
+  const pack = packFor('MY');
+  if (!pack) redirect(`${BASE}?error=${encodeURIComponent('No localization pack for MY.')}`);
+
+  const body = String(formData.get('body') ?? '') as StatutoryBody;
+  const version = String(formData.get('version') ?? '').trim();
+  const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
+  const notes = String(formData.get('notes') ?? '').trim() || null;
+  const num = (k: string) => Number(formData.get(k));
+
+  // Merge onto the baseline that will be active on the effective date (preserves EPF band tables).
+  const current = (await pack!.statutoryConfig.readActive(s, { asOf: effectiveFrom || undefined })).ruleset;
+  let data: unknown;
+  if (body === 'epf') {
+    data = {
+      ...current.epf,
+      employeeRate: num('employeeRate'),
+      employerRateLow: num('employerRateLow'),
+      employerRateHigh: num('employerRateHigh'),
+      employerThreshold: num('employerThreshold'),
+    };
+  } else if (body === 'ot') {
+    data = { wageCeiling: num('wageCeiling') };
+  } else if (body === 'hrdf') {
+    data = { mandatoryRate: num('mandatoryRate'), optionalRate: num('optionalRate') };
+  } else {
+    redirect(`${BASE}?error=${encodeURIComponent('Only EPF, OT and HRDF support the scalar override form.')}`);
+  }
+
+  try {
+    await pack!.statutoryConfig.setComponent(s, { body, version, effectiveFrom, data, notes });
+  } catch (e) {
+    const msg = e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
+    redirect(`${BASE}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath(BASE);
+  redirect(`${BASE}?toast=${encodeURIComponent('Per-body override published')}`);
+}
+
+/** Archive a per-body override so the overlay skips it (admin). */
+export async function archiveStatutoryComponentAction(formData: FormData) {
+  const s = await getSession();
+  const pack = packFor('MY');
+  if (!pack) redirect(`${BASE}?error=${encodeURIComponent('No localization pack for MY.')}`);
+  const id = String(formData.get('id') ?? '');
+  try {
+    await pack!.statutoryConfig.archiveComponent(s, id);
+  } catch (e) {
+    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(BASE);
+  redirect(`${BASE}?toast=${encodeURIComponent('Override archived')}`);
 }
 
 /** Archive a stored version so the active resolution skips it (admin). */

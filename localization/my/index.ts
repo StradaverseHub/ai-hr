@@ -8,15 +8,19 @@ import { MY_HOLIDAYS_2026 } from './holidays';
 import { eis, epf, hrdfLevy, overtimePay, pcbMonth, socso, statutory } from './payroll';
 import { DEFAULT_MY_STATUTORY, MY_RELIEFS } from './statutory-tables';
 import {
+  archiveComponentOverrideMY,
   archiveStatutoryRulesetMY,
   getActiveStatutoryMY,
   getActiveStatutoryResolvedMY,
+  listComponentOverridesMY,
   listStatutoryPacksMY,
   listStatutoryRulesetsMY,
   MY_STATUTORY_SOURCES,
   readActiveStatutoryMY,
   saveStatutoryRulesetMY,
+  setComponentOverrideMY,
   statutorySyncStatusMY,
+  validateStatutoryComponent,
   validateStatutoryRuleset,
 } from './statutory-config';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
@@ -68,6 +72,11 @@ export const myPack = {
     // Vendor pack distribution (ADR-0020): the pack panel + staleness signal.
     listPacks: listStatutoryPacksMY,
     syncStatus: statutorySyncStatusMY,
+    // Per-body overrides (ADR-0037, #6): each statutory body versions independently via an overlay.
+    listComponents: listComponentOverridesMY,
+    setComponent: setComponentOverrideMY,
+    archiveComponent: archiveComponentOverrideMY,
+    validateComponent: validateStatutoryComponent,
   },
   reports: MY_REPORTS,
   eaStatement,

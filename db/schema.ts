@@ -1727,6 +1727,30 @@ export const statutoryRuleset = pgTable(
   (t) => [index('statutory_ruleset_lookup_idx').on(t.tenantId, t.country, t.effectiveFrom)],
 );
 
+// ─────────────────── Per-body statutory override (overlay) (ADR-0037, #6) ───────────────────
+// Effective-dated override for ONE statutory body (epf/socso/eis/pcb/ot/hrdf). `data` is just that
+// body's slice of the StatutoryRuleset. The resolver overlays the newest-effective component per body
+// ON TOP of the bundled baseline (pack ∪ ruleset ∪ default), so e.g. a SOCSO-only mid-year change is a
+// single row that never touches EPF/PCB. Empty table ⇒ baseline unchanged (backward-compatible). RLS
+// mirrors statutory_ruleset (tenant-wide read, admin-only append; archive = soft-delete).
+export const statutoryComponentOverride = pgTable(
+  'statutory_component_override',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    country: text('country').notNull().default('MY'),
+    body: text('body').notNull(), // 'epf' | 'socso' | 'eis' | 'pcb' | 'ot' | 'hrdf'
+    version: text('version').notNull(),
+    effectiveFrom: date('effective_from').notNull(),
+    data: jsonb('data').notNull(),
+    notes: text('notes'),
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+  },
+  (t) => [index('statutory_component_override_lookup_idx').on(t.tenantId, t.country, t.body, t.effectiveFrom)],
+);
+
 // ───────────────────── Statutory data-pack distribution (ADR-0020) ─────────────────────
 // NATIONAL, vendor-signed statutory data — NOT tenant-scoped (no tenant_id). The trust boundary is enforced
 // in the RLS migration: SELECT granted to every tenant (USING(true)); INSERT/UPDATE/DELETE REVOKED from
