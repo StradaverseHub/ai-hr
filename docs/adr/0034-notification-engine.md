@@ -1,7 +1,7 @@
 # ADR-0034 — Notification engine (multi-channel, event-derived)
 
-- **Status:** Proposed (design only — no code; gated `NOTIFICATIONS_ENABLED`, off by default)
-- **Date:** 2026-06-22
+- **Status:** Accepted — **34-1** (schema + RLS + migration 0078) and **34-2** (registry + `dispatchNotifications` sweep + `NotificationCenter` bell) shipped; **34-2b** (the remaining decision producers + the payslip-ready fan-out) added 2026-06-24. All gated `NOTIFICATIONS_ENABLED` (off by default → byte-identical fallback to the computed approvals count). **34-3** (prefs UI) and **34-4–34-6** (scheduled scans, email, WhatsApp) pending; email/WhatsApp remain provider-blocked (no SMTP; no client WABA + approved templates).
+- **Date:** 2026-06-22 (34-2b: 2026-06-24)
 - **Builds on:** ADR-0006 (domain-event substrate — the spine notifications derive from), ADR-0033 (TOIL — the first concrete consumer), the existing topbar bell (`core/approvals-inbox.ts` + `components/notification-bell.tsx`)
 - **Pull-through from:** ADR-0033 §33-7 ("TOIL → notifications"). Also the broadest of the deferred *platform engines* — it pays off across every module, not just TOIL.
 
@@ -53,7 +53,8 @@ Notifications carry PII (names, leave/pay facts). In-app is recipient-RLS-scoped
 
 ## 4. Slice plan
 - **34-1** — schema (`notification` + `notification_pref` + `notification_delivery` + `notification_cursor`) + RLS (recipient-only) + migration. Gated, additive.
-- **34-2** — registry + `dispatchNotifications` sweep (in-app only) + **bell upgrade** (read `notification`, unread badge, dropdown with mark-read + deep links; falls back to the computed count when off). First producers: TOIL (`toil.accrued`/`converted`/`lapsed`), leave (`leave.approved`/`rejected`/`requested`), approvals.
+- **34-2** — registry + `dispatchNotifications` sweep (in-app only) + **bell upgrade** (read `notification`, unread badge, dropdown with mark-read + deep links; falls back to the computed count when off). First producers: TOIL (`toil.accrued`/`converted`/`lapsed`), leave (`leave-request.approved`/`rejected`).
+- **34-2b** *(2026-06-24)* — the rest of the "your request was actioned" decisions, each already carrying the requester as `subjectEmploymentId` so they slot straight into the subject-routed dispatch: `resignation.accepted`/`rejected` (ADR-0042), `claim-request.approved`/`rejected`, `profile-change.approved`/`rejected`. Plus the **payslip-ready fan-out**: `payroll-batch.closed` has no single subject, so a registry `recipients(tx, ev)` resolver enumerates the batch's payslips and produces one `payslip.ready` notification per employee (the dispatch loop now supports fan-out specs; recipient defaults to `subjectEmploymentId` when none). Notification titles/bodies stay English strings stored at dispatch time (localized rendering is 34-3 work). Still gated; the per-tenant cursor keeps the fan-out idempotent.
 - **34-3** — `/me` notification prefs UI (category × channel) + i18n ×6.
 - **34-4** — scheduled-scan producers (TOIL *expiring soon*, contract/probation/document expiry) + the delivery sweep skeleton (statuses, retry) + a cron/admin "run now".
 - **34-5** — email adapter (behind `NOTIFY_EMAIL_ENABLED` + chosen provider).

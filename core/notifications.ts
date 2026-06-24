@@ -7,13 +7,21 @@
  * so dispatch does NOT append a DomainEvent (per CLAUDE.md — that would be an event storm + a derivation loop).
  */
 import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
-import { domainEvent, notification, notificationCursor, type NotificationSeverity } from '../db/schema';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { domainEvent, notification, notificationCursor, payslip, type NotificationSeverity } from '../db/schema';
 
 const enabled = () => process.env.NOTIFICATIONS_ENABLED === 'true';
 
 type Rendered = { severity: NotificationSeverity; title: string; body: string; linkPath: string };
-type Spec = { kind: string; category: string; render: (payload: Record<string, unknown> | null) => Rendered };
+type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
+type Spec = {
+  kind: string;
+  category: string;
+  render: (payload: Record<string, unknown> | null) => Rendered;
+  /** Fan-out resolver. When present, recipients come from here (e.g. every employee in a closed payroll
+   *  batch) instead of the event's single subjectEmploymentId. */
+  recipients?: (tx: Tx, ev: EventRef) => Promise<string[]>;
+};
 
 // eventType → notification. Recipient is always the event's subjectEmploymentId (so these only need the
 // payload to render). Keep titles/bodies short; deep-link into the app where the full, gated detail lives.
@@ -48,6 +56,48 @@ const REGISTRY: Record<string, Spec> = {
     category: 'toil',
     render: (p) => ({ severity: 'warning', title: 'In-lieu expired', body: `Your unused time in lieu (${p?.daysCredited ?? ''} day(s)) has lapsed.`, linkPath: '/me' }),
   },
+  // 34-2b producers — the rest of the "your request was actioned" decisions (each already carries the
+  // requester as subjectEmploymentId) plus the payslip-ready fan-out.
+  'resignation.accepted': {
+    kind: 'resignation.accepted',
+    category: 'offboarding',
+    render: () => ({ severity: 'info', title: 'Resignation accepted', body: 'Your resignation has been accepted by HR.', linkPath: '/me' }),
+  },
+  'resignation.rejected': {
+    kind: 'resignation.rejected',
+    category: 'offboarding',
+    render: () => ({ severity: 'warning', title: 'Resignation not accepted', body: 'Your resignation was not accepted — please speak with HR.', linkPath: '/me' }),
+  },
+  'claim-request.approved': {
+    kind: 'claim.approved',
+    category: 'claims',
+    render: () => ({ severity: 'info', title: 'Claim approved', body: 'Your expense claim was approved.', linkPath: '/me' }),
+  },
+  'claim-request.rejected': {
+    kind: 'claim.rejected',
+    category: 'claims',
+    render: () => ({ severity: 'warning', title: 'Claim not approved', body: 'Your expense claim was not approved.', linkPath: '/me' }),
+  },
+  'profile-change.approved': {
+    kind: 'profile.approved',
+    category: 'profile',
+    render: () => ({ severity: 'info', title: 'Profile change approved', body: 'Your requested profile change was approved.', linkPath: '/me' }),
+  },
+  'profile-change.rejected': {
+    kind: 'profile.rejected',
+    category: 'profile',
+    render: () => ({ severity: 'warning', title: 'Profile change not approved', body: 'Your requested profile change was not approved.', linkPath: '/me' }),
+  },
+  // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
+  'payroll-batch.closed': {
+    kind: 'payslip.ready',
+    category: 'payroll',
+    render: () => ({ severity: 'info', title: 'Payslip ready', body: 'Your payslip is ready to view.', linkPath: '/me' }),
+    recipients: async (tx, ev) => {
+      const rows = await tx.select({ e: payslip.employmentId }).from(payslip).where(eq(payslip.batchId, ev.aggregateId));
+      return [...new Set(rows.map((r) => r.e))];
+    },
+  },
 };
 
 export type DispatchResult = { processed: number; created: number };
@@ -66,6 +116,7 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
     const rows = await tx
       .select({
         id: domainEvent.id,
+        aggregateId: domainEvent.aggregateId,
         eventType: domainEvent.eventType,
         subjectEmploymentId: domainEvent.subjectEmploymentId,
         payload: domainEvent.payload,
@@ -80,19 +131,28 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
     let created = 0;
     for (const ev of rows) {
       const spec = REGISTRY[ev.eventType];
-      if (!spec || !ev.subjectEmploymentId) continue;
+      if (!spec) continue;
+      // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
+      const recipients = spec.recipients
+        ? await spec.recipients(tx, { aggregateId: ev.aggregateId, subjectEmploymentId: ev.subjectEmploymentId })
+        : ev.subjectEmploymentId
+          ? [ev.subjectEmploymentId]
+          : [];
+      if (recipients.length === 0) continue;
       const r = spec.render((ev.payload as Record<string, unknown> | null) ?? null);
-      await tx.insert(notification).values({
-        tenantId: ctx.tenantId,
-        recipientEmploymentId: ev.subjectEmploymentId,
-        kind: spec.kind,
-        title: r.title,
-        body: r.body,
-        linkPath: r.linkPath,
-        severity: r.severity,
-        sourceEventId: ev.id,
-      });
-      created += 1;
+      for (const recipient of recipients) {
+        await tx.insert(notification).values({
+          tenantId: ctx.tenantId,
+          recipientEmploymentId: recipient,
+          kind: spec.kind,
+          title: r.title,
+          body: r.body,
+          linkPath: r.linkPath,
+          severity: r.severity,
+          sourceEventId: ev.id,
+        });
+        created += 1;
+      }
     }
 
     const last = rows[rows.length - 1];
