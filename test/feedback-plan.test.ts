@@ -44,12 +44,14 @@ beforeAll(async () => {
 beforeEach(async () => {
   await resetDb();
   base = await seedBase();
+  process.env.FEEDBACK_AI_PLANNING_ENABLED = 'true'; // the in-app agent is gated off by default (ADR-0044)
   vi.mocked(generateDraft).mockReset().mockResolvedValue('PLAN: 1. Do the thing. 2. Test it.');
   vi.mocked(resolveActiveAiConfig)
     .mockReset()
     .mockResolvedValue({ provider: 'anthropic', model: 'claude-opus-4-8', apiKey: 'sk-test' });
 });
 afterAll(async () => {
+  delete process.env.FEEDBACK_AI_PLANNING_ENABLED;
   await closeAll();
 });
 

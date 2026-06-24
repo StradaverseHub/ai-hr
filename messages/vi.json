@@ -2084,6 +2084,8 @@
     "contestPlaceholder": "Giải thích kế hoạch còn thiếu hoặc sai gì",
     "contest": "Gửi lại",
     "withdraw": "Rút phản hồi",
-    "generatePlanNow": "Tạo kế hoạch ngay"
+    "generatePlanNow": "Tạo kế hoạch ngay",
+    "status_deployed": "Đã triển khai",
+    "deployedNote": "Đã xây dựng và phát hành."
   }
 }

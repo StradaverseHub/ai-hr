@@ -19,6 +19,7 @@ export function statusTone(status: string): string {
     case 'building':
       return 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400';
     case 'done':
+    case 'deployed':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';
     default:
       return 'bg-muted text-muted-foreground';

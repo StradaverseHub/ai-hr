@@ -2084,6 +2084,8 @@
     "contestPlaceholder": "Terangkan apa yang pelan terlepas atau silap",
     "contest": "Hantar semula",
     "withdraw": "Tarik balik maklum balas",
-    "generatePlanNow": "Jana pelan sekarang"
+    "generatePlanNow": "Jana pelan sekarang",
+    "status_deployed": "Telah dideploy",
+    "deployedNote": "Dibina dan dikeluarkan."
   }
 }

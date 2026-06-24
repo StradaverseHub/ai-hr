@@ -164,6 +164,12 @@ export async function setFeedbackPlan(
  * ⇒ a clear error (the cron skips, the admin button surfaces it).
  */
 export async function generateFeedbackPlan(ctx: SessionContext, p: { feedbackId: string }): Promise<{ plan: string }> {
+  // Disabled by default — planning now runs in the operator-side improvement loop (ADR-0044), which
+  // drafts + adversarially refines the plan locally and pushes it back. Set FEEDBACK_AI_PLANNING_ENABLED
+  // to use this single-shot in-app agent instead.
+  if (process.env.FEEDBACK_AI_PLANNING_ENABLED !== 'true') {
+    throw new FeedbackError('In-app AI planning is disabled — plans are produced by the improvement loop.');
+  }
   const gathered = await withTenant(ctx, async (tx) => {
     const [fb] = await tx.select().from(feedbackRequest).where(eq(feedbackRequest.id, p.feedbackId)).limit(1);
     if (!fb) throw new FeedbackError('Feedback not found (or not visible).');
@@ -337,6 +343,33 @@ export async function completeFeedbackBuild(ctx: SessionContext, p: { feedbackId
       actor: { type: 'agent' },
       subjectEmploymentId: fb.reporterEmploymentId,
       payload: { buildRef: p.buildRef },
+    });
+  });
+}
+
+/** The improvement loop releases the built change and closes the item (→ deployed). Allowed from approved
+ *  / building / done so the loop can combine the build + release steps. */
+export async function markFeedbackDeployed(
+  ctx: SessionContext,
+  p: { feedbackId: string; buildRef?: string | null },
+): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const fb = await loadDecidable(tx, p.feedbackId);
+    if (!['approved', 'building', 'done'].includes(fb.status)) {
+      throw new FeedbackError(`Only an approved/building/done item can be marked deployed (it is ${fb.status}).`);
+    }
+    await tx
+      .update(feedbackRequest)
+      .set({ status: 'deployed', buildRef: p.buildRef ?? undefined, decidedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(eq(feedbackRequest.id, fb.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'feedback',
+      aggregateId: fb.id,
+      eventType: 'feedback.deployed',
+      actor: { type: 'agent' },
+      subjectEmploymentId: fb.reporterEmploymentId,
+      payload: { buildRef: p.buildRef ?? null },
     });
   });
 }
