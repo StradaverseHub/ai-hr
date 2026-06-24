@@ -177,7 +177,18 @@
       "fieldChildren": "บุตร",
       "noChanges": "ไม่มีการเปลี่ยนแปลง",
       "fullNamePlaceholder": "Aisyah Rahman",
-      "emailPlaceholder": "aisyah@demo.test"
+      "emailPlaceholder": "aisyah@demo.test",
+      "filterCompany": "กรองตามบริษัท",
+      "filterDepartment": "กรองตามแผนก",
+      "filterStatus": "กรองตามสถานะ",
+      "filterType": "กรองตามประเภท",
+      "allCompanies": "ทุกบริษัท",
+      "allDepartments": "ทุกแผนก",
+      "allStatuses": "ทุกสถานะ",
+      "allTypes": "ทุกประเภท",
+      "statusActive": "ทำงานอยู่",
+      "statusTerminated": "สิ้นสุดการจ้าง",
+      "emptyFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง"
     },
     "detail": {
       "backToPeople": "พนักงาน",

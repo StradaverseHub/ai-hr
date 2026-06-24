@@ -177,7 +177,18 @@
       "fieldChildren": "Children",
       "noChanges": "No changes",
       "fullNamePlaceholder": "Aisyah Rahman",
-      "emailPlaceholder": "aisyah@demo.test"
+      "emailPlaceholder": "aisyah@demo.test",
+      "filterCompany": "Filter by company",
+      "filterDepartment": "Filter by department",
+      "filterStatus": "Filter by status",
+      "filterType": "Filter by type",
+      "allCompanies": "All companies",
+      "allDepartments": "All departments",
+      "allStatuses": "All statuses",
+      "allTypes": "All types",
+      "statusActive": "Active",
+      "statusTerminated": "Terminated",
+      "emptyFiltered": "No employees match the filters."
     },
     "detail": {
       "backToPeople": "People",

@@ -177,7 +177,18 @@
       "fieldChildren": "Anak",
       "noChanges": "Tiada perubahan",
       "fullNamePlaceholder": "Aisyah Rahman",
-      "emailPlaceholder": "aisyah@demo.test"
+      "emailPlaceholder": "aisyah@demo.test",
+      "filterCompany": "Tapis ikut syarikat",
+      "filterDepartment": "Tapis ikut jabatan",
+      "filterStatus": "Tapis ikut status",
+      "filterType": "Tapis ikut jenis",
+      "allCompanies": "Semua syarikat",
+      "allDepartments": "Semua jabatan",
+      "allStatuses": "Semua status",
+      "allTypes": "Semua jenis",
+      "statusActive": "Aktif",
+      "statusTerminated": "Ditamatkan",
+      "emptyFiltered": "Tiada pekerja sepadan dengan tapisan."
     },
     "detail": {
       "backToPeople": "Kakitangan",
