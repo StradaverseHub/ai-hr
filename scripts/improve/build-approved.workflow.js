@@ -73,7 +73,9 @@ for (let i = 0; i < items.length; i++) {
       `\`git diff --cached --stat\` as \`diffstat\`, and a short summary.\n\n` +
       `If you cannot reach green after a genuine effort, return testsPass=false with the specific blockers. ` +
       `NEVER weaken, skip, or delete tests to go green. NEVER return a red/partial patch as if it passed.\n\n` +
-      `FEEDBACK:\n${brief}\n\nAPPROVED PLAN:\n${fb.plan ?? '(no plan attached — stop and report this as a blocker)'}`,
+      `FEEDBACK:\n${brief}\n\n` +
+      `APPROVED PLAN: read it IN FULL with the Read tool from ${fb.planPath ?? '(missing planPath — stop and report this as a blocker)'} ` +
+      `before implementing. It is the adversarially-refined plan the reporter approved; implement exactly it.`,
     { schema: BUILD_SCHEMA, phase: 'Build', label: `build ${i}:${(fb.title || '').slice(0, 24)}`, effort: 'xhigh', isolation: 'worktree' },
   );
 
