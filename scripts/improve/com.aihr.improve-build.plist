@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Improvement-loop WATCH + NOTIFY (ADR-0045, the safe 24/7 trigger). Read-only: polls the server for approved
+  feedback every 4h and posts a macOS notification. Does NOT build, write code, or release — that all happens
+  later in an interactive Claude session.
+  Install:    cp scripts/improve/com.aihr.improve-build.plist ~/Library/LaunchAgents/
+              launchctl load ~/Library/LaunchAgents/com.aihr.improve-build.plist
+  Disable:    launchctl unload ~/Library/LaunchAgents/com.aihr.improve-build.plist
+  Run once:   launchctl start com.aihr.improve-build
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.aihr.improve-build</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/zenlam/Projects/ai-hr/scripts/improve/watch-approved.sh</string>
+  </array>
+  <!-- Every 4 hours at :23 local (off-minute on purpose). -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>23</integer></dict>
+    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>23</integer></dict>
+  </array>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/Users/zenlam/Projects/ai-hr/.improve/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/zenlam/Projects/ai-hr/.improve/launchd.err.log</string>
+</dict>
+</plist>

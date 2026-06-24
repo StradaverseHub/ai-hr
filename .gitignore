@@ -53,3 +53,6 @@ messages/*.csv
 
 # Consultant-supplied feedback workbook (kept locally, not part of the repo)
 AI-HR-Consultant-Feedback-Template.xlsx
+
+# improvement-loop runtime (logs, patches) — local only
+.improve/

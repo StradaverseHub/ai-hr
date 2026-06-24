@@ -43,18 +43,15 @@ irreversible, outward-facing release. "Show in preview before releasing" is exac
 ## Shape
 
 ```
-            ┌──────────────── scheduled (cron, every few hours) ────────────────┐
-            │                                                                    │
-  improve:pull-approved ─→ for each approved item:                              │
-            │                 git worktree add  (isolated branch off main)       │
-            │                 build agent implements the plan  (Claude subagent) │
-            │                 npx tsc --noEmit  &&  pnpm vitest run   ── gate ──→ │ green?
-            │                 mark build.started/completed on the server         │
-            │                 leave the worktree + a DIFF + a SUMMARY            │
-            └──────────────── notify human: "N builds ready for preview" ────────┘
-                                              │
-                       ── human, interactively (NOT scheduled) ──
-                                              │
+  ┌─── scheduled, read-only (launchd, every 4h) ───┐
+  │  watch-approved.sh: improve:pull-approved       │
+  │  if any approved → macOS notification            │   no agent, no gates-off, no build, no release
+  └──────────────────────┬──────────────────────────┘
+                         │  "N items approved — open Claude to build"
+        ── human opens a Claude session (everything below is permission-gated) ──
+                         │
+  build:   Workflow(build-approved) → per item: worktree + implement + tsc+vitest gate
+           mark build.started/completed on the server → patch + summary
   review:  preview_start(worktree) → inspect the change in the browser + read the diff
   gate:    human approves  ─────────────────────────────────────────────┐
                                                                          ▼
@@ -74,9 +71,18 @@ irreversible, outward-facing release. "Show in preview before releasing" is exac
 - **`scripts/improve/release.ts` + `improve:release <id>`** — the **human-gated** release: validates the
   worktree is green, rsyncs it → server, runs `deploy.sh`, and calls `markDeployed`. Refuses without an
   explicit item id; never run by the schedule.
-- **The schedule** — a Claude Code cron whose prompt is "run the improvement build phase and notify me; do
-  NOT release." On fire it runs `improve:build` and surfaces the preview-ready summary. Cadence is
-  configurable; default every 4 hours, matching the original FB-3 loop.
+- **The schedule** — `scripts/improve/watch-approved.sh`, a **read-only** `launchd` job (every 4h) that
+  polls `improve:pull-approved` and posts a macOS notification when anything is approved. It runs **no agent**
+  and bypasses **no permission gate** — it neither builds nor releases. The operator sees the notification,
+  opens a Claude session, and runs the build phase (then previews, then releases) **interactively**, where
+  every code-writing and outward action is permission-gated normally.
+
+  > **Why not a headless autonomous build on the timer?** That was the original design (a `launchd` job
+  > running `claude -p --permission-mode bypassPermissions`), but standing up an unattended agent with all
+  > approval gates off is a security escalation the operator must opt into explicitly, not a default. The
+  > watch-and-notify trigger keeps the 24/7 awareness without the gates-off agent; the build still happens,
+  > just in a supervised session. The headless wrapper can be reintroduced behind an explicit opt-in if
+  > always-on autonomy is later wanted.
 
 ## Why a worktree per item (not edit-in-place)
 

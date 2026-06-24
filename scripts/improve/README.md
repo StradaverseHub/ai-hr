@@ -58,8 +58,22 @@ echo '{"id","tenantId","reporterEmploymentId","worktree","branch","buildRef"}' |
 `markDeployed` (status → `deployed` + `feedback.deployed` event). Then, manually:
 `sudo systemctl restart aihr` on the server, and `git checkout main && git merge --no-ff build/fb-<id>` here.
 
-## The schedule
+## The schedule (24/7 watch + notify)
 
-A Claude Code cron fires Phase B every few hours: pull approved → build → preview-ready → **notify**. It
-**never** runs Phase C. "Show in preview before releasing" is the gate: a human looks, then runs
-`improve:release`.
+`watch-approved.sh` is a **read-only** `launchd` job (every 4h) that polls `improve:pull-approved` and posts
+a macOS notification when anything is approved. It runs no agent and bypasses no permission gate — it does
+**not** build or release. On the notification, open a Claude session and run Phase B → preview → Phase C
+interactively (permission-gated).
+
+```bash
+cp scripts/improve/com.aihr.improve-build.plist ~/Library/LaunchAgents/
+launchctl load   ~/Library/LaunchAgents/com.aihr.improve-build.plist   # enable
+launchctl start  com.aihr.improve-build                                 # run once now
+launchctl unload ~/Library/LaunchAgents/com.aihr.improve-build.plist   # disable
+```
+Logs: `.improve/watch.log` (+ `.improve/launchd.{out,err}.log`). SSH key must be usable non-interactively
+(BatchMode) for the poll to reach the server.
+
+> A fully autonomous headless build on the timer (`claude -p --permission-mode bypassPermissions`) was
+> considered and deliberately **not** enabled: an unattended agent with gates off is an explicit opt-in, not
+> a default (see ADR-0045).
