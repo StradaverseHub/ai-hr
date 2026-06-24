@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --env-file=.env.local --import tsx db/seed.ts",
     "leave:accrue": "node --env-file=.env.local --import tsx scripts/accrue-earned.ts",
+    "feedback:plan": "node --env-file=.env.local --import tsx scripts/feedback-plan.ts",
     "kb:seed": "node --env-file=.env.local --import tsx db/seed-guides.ts",
     "db:studio": "drizzle-kit studio",
     "i18n:export": "node --import tsx scripts/i18n-export.ts",

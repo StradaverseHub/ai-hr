@@ -1901,3 +1901,73 @@ export const claimAttachment = pgTable(
   },
   (t) => [index('claim_attachment_claim_idx').on(t.claimRequestId)],
 );
+
+// ─────────────── In-product feedback → AI-plan → review → build loop (ADR-0043) ───────────────
+// A user logs feedback (issue / enhancement / new function); an AI planning agent writes an
+// implementation `plan`; the REPORTER reviews it (approve or contest → re-plan); on approval an
+// out-of-app build agent produces a human-reviewed PR. RLS mirrors claims (can_see_employment for
+// read); the review authority is the reporter (asserted in the service).
+export const feedbackCategoryEnum = pgEnum('feedback_category', ['issue', 'enhancement', 'new_function']);
+export const feedbackStatusEnum = pgEnum('feedback_status', [
+  'open', // submitted, awaiting a plan
+  'planned', // the agent wrote a plan; awaiting the reporter's review
+  'approved', // reporter approved the plan; awaiting build
+  'contested', // reporter pushed back; the agent will re-plan
+  'building', // a build agent is implementing it (out-of-app)
+  'done', // built (build_ref points at the PR)
+  'rejected', // an admin closed it without building
+  'cancelled', // the reporter withdrew it
+]);
+export type FeedbackCategory = (typeof feedbackCategoryEnum.enumValues)[number];
+export type FeedbackStatus = (typeof feedbackStatusEnum.enumValues)[number];
+
+export const feedbackRequest = pgTable(
+  'feedback_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // Denormalized for RLS can_see_employment(); the user id is the review gate.
+    reporterEmploymentId: uuid('reporter_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    reporterUserId: uuid('reporter_user_id').references(() => appUser.id),
+    category: feedbackCategoryEnum('category').notNull(),
+    title: text('title').notNull(),
+    description: text('description').notNull(),
+    expectedBehavior: text('expected_behavior'),
+    expectedFunction: text('expected_function'),
+    status: feedbackStatusEnum('status').notNull().default('open'),
+    // AI-written implementation plan (markdown) + how many times it has been (re)drafted.
+    plan: text('plan'),
+    planRevision: integer('plan_revision').notNull().default(0),
+    planModel: text('plan_model'), // provider/model that produced the current plan (audit)
+    contestReason: text('contest_reason'), // the reporter's latest push-back
+    buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('feedback_request_reporter_idx').on(t.tenantId, t.reporterEmploymentId, t.status)],
+);
+
+export const feedbackAttachment = pgTable(
+  'feedback_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    feedbackRequestId: uuid('feedback_request_id')
+      .notNull()
+      .references(() => feedbackRequest.id),
+    // Denormalized from the feedback so RLS can use can_see_employment(employment_id) directly.
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('feedback_attachment_feedback_idx').on(t.feedbackRequestId)],
+);
