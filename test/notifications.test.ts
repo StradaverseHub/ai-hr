@@ -107,4 +107,58 @@ describe('notification dispatch + reads (ADR-0034 34-2)', () => {
     expect(await dispatchNotifications(adminCtx(b), {})).toEqual({ processed: 0, created: 0 });
     expect(await unreadNotificationCount(A.ctx, A.employmentId)).toBe(0);
   });
+
+  // ── 34-2b producers: the remaining approval decisions + the payslip-ready fan-out ──
+
+  it('34-2b: resignation / claim / profile-change decisions notify the subject', async () => {
+    const A = await makeEmployee();
+    await owner.db.insert(schema.domainEvent).values([
+      event('resignation.accepted', A.employmentId, { decision: 'accepted' }),
+      event('claim-request.approved', A.employmentId, { taxable: false }),
+      event('profile-change.rejected', A.employmentId, { decision: 'rejected' }),
+    ]);
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(3);
+    const kinds = (await listNotifications(A.ctx, A.employmentId)).map((n) => n.kind).sort();
+    expect(kinds).toEqual(['claim.approved', 'profile.rejected', 'resignation.accepted']);
+  });
+
+  it('34-2b: payroll-batch.closed fans out a payslip-ready notification to every employee in the batch', async () => {
+    const A = await makeEmployee();
+    const B = await makeEmployee();
+    // A minimal closed batch with one payslip each (owner bypasses RLS).
+    const [pp] = await owner.db
+      .insert(schema.payPeriod)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, period: '2026-07' })
+      .returning({ id: schema.payPeriod.id });
+    const [batch] = await owner.db
+      .insert(schema.payrollBatch)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, payPeriodId: pp.id, payPeriod: '2026-07', batchDate: '2026-07-25', status: 'closed' })
+      .returning({ id: schema.payrollBatch.id });
+    const slip = (employmentId: string) => ({
+      tenantId: b.tenantId,
+      batchId: batch.id,
+      employmentId,
+      basicSalary: '3000',
+      grossPay: '3000',
+      statutory: {},
+      totalDeductions: '330',
+      netPay: '2670',
+      employerCost: '3390',
+    });
+    await owner.db.insert(schema.payslip).values([slip(A.employmentId), slip(B.employmentId)]);
+    // The batch-closed event has NO subject — the registry fan-out resolves recipients from its payslips.
+    await owner.db.insert(schema.domainEvent).values({
+      tenantId: b.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: batch.id,
+      eventType: 'payroll-batch.closed',
+      actorType: 'system',
+      subjectEmploymentId: null,
+      payload: {},
+    });
+
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(2); // one per employee in the batch
+    expect((await listNotifications(A.ctx, A.employmentId))[0].kind).toBe('payslip.ready');
+    expect((await listNotifications(B.ctx, B.employmentId))[0].kind).toBe('payslip.ready');
+  });
 });
