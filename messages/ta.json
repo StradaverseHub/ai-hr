@@ -177,7 +177,18 @@
       "fieldChildren": "குழந்தைகள்",
       "noChanges": "மாற்றங்கள் இல்லை",
       "fullNamePlaceholder": "Aisyah Rahman",
-      "emailPlaceholder": "aisyah@demo.test"
+      "emailPlaceholder": "aisyah@demo.test",
+      "filterCompany": "நிறுவனத்தின்படி வடிகட்டு",
+      "filterDepartment": "துறையின்படி வடிகட்டு",
+      "filterStatus": "நிலையின்படி வடிகட்டு",
+      "filterType": "வகையின்படி வடிகட்டு",
+      "allCompanies": "அனைத்து நிறுவனங்கள்",
+      "allDepartments": "அனைத்து துறைகள்",
+      "allStatuses": "அனைத்து நிலைகள்",
+      "allTypes": "அனைத்து வகைகள்",
+      "statusActive": "செயலில்",
+      "statusTerminated": "நிறுத்தப்பட்டது",
+      "emptyFiltered": "வடிகட்டிகளுக்கு பொருந்தும் பணியாளர்கள் இல்லை."
     },
     "detail": {
       "backToPeople": "பணியாளர்கள்",

@@ -177,7 +177,18 @@
       "fieldChildren": "Số con",
       "noChanges": "Không có thay đổi",
       "fullNamePlaceholder": "Aisyah Rahman",
-      "emailPlaceholder": "aisyah@demo.test"
+      "emailPlaceholder": "aisyah@demo.test",
+      "filterCompany": "Lọc theo công ty",
+      "filterDepartment": "Lọc theo phòng ban",
+      "filterStatus": "Lọc theo trạng thái",
+      "filterType": "Lọc theo loại",
+      "allCompanies": "Tất cả công ty",
+      "allDepartments": "Tất cả phòng ban",
+      "allStatuses": "Tất cả trạng thái",
+      "allTypes": "Tất cả loại",
+      "statusActive": "Đang làm việc",
+      "statusTerminated": "Đã nghỉ việc",
+      "emptyFiltered": "Không có nhân viên nào khớp với bộ lọc."
     },
     "detail": {
       "backToPeople": "Nhân sự",

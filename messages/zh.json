@@ -177,7 +177,18 @@
       "fieldChildren": "子女",
       "noChanges": "无变更",
       "fullNamePlaceholder": "Aisyah Rahman",
-      "emailPlaceholder": "aisyah@demo.test"
+      "emailPlaceholder": "aisyah@demo.test",
+      "filterCompany": "按公司筛选",
+      "filterDepartment": "按部门筛选",
+      "filterStatus": "按状态筛选",
+      "filterType": "按类型筛选",
+      "allCompanies": "所有公司",
+      "allDepartments": "所有部门",
+      "allStatuses": "所有状态",
+      "allTypes": "所有类型",
+      "statusActive": "在职",
+      "statusTerminated": "已离职",
+      "emptyFiltered": "没有符合筛选条件的员工。"
     },
     "detail": {
       "backToPeople": "员工",

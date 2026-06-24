@@ -1,5 +1,5 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, desc, eq, gte, inArray, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { isLeaveEligible, type LeaveEligibility } from './leave';
 import {
@@ -12,6 +12,7 @@ import {
   domainEvent,
   employeeStatutoryMy,
   employment,
+  employmentTypeEnum,
   holiday,
   jobGrade,
   leaveLedger,
@@ -71,12 +72,37 @@ export type EmployeeListRow = {
  *  target dropdowns, exports). */
 export function listEmployeesPage(
   ctx: SessionContext,
-  p: { companyIds?: string[]; q?: string; limit: number; offset: number },
+  p: {
+    companyIds?: string[];
+    q?: string;
+    // #18 structured filters (each optional; combine with AND). status: 'active' = not terminated.
+    companyId?: string;
+    departmentId?: string;
+    status?: 'active' | 'terminated';
+    employmentType?: string;
+    limit: number;
+    offset: number;
+  },
 ): Promise<{ rows: EmployeeListRow[]; total: number }> {
   return withTenant(ctx, async (tx) => {
     const q = p.q?.trim();
+    // The current-assignment join (≤1 row per employment) — shared by the rows + count queries so the
+    // department filter applies consistently to both.
+    const currentAssignment = and(
+      eq(assignment.employmentId, employment.id),
+      isNull(assignment.validTo),
+      isNull(assignment.supersededAt),
+    );
     const where = and(
       p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+      p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+      p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+      p.status === 'terminated'
+        ? isNotNull(employment.terminatedOn)
+        : p.status === 'active'
+          ? isNull(employment.terminatedOn)
+          : undefined,
+      p.employmentType ? eq(assignment.employmentType, p.employmentType as (typeof employmentTypeEnum.enumValues)[number]) : undefined,
       q
         ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'})`
         : undefined,
@@ -95,23 +121,18 @@ export function listEmployeesPage(
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(
-        assignment,
-        and(
-          eq(assignment.employmentId, employment.id),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-        ),
-      )
+      .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .where(where)
       .orderBy(person.fullName)
       .limit(p.limit)
       .offset(p.offset)) as EmployeeListRow[];
+    // count(distinct employment.id): the assignment join is ≤1/employment, but distinct is the safe guard.
     const [{ count }] = await tx
-      .select({ count: sql<number>`count(*)::int` })
+      .select({ count: sql<number>`count(distinct ${employment.id})::int` })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignment)
       .where(where);
     return { rows, total: Number(count) };
   });
