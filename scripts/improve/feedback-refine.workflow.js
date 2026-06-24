@@ -38,7 +38,8 @@ const CRITIQUE_SCHEMA = {
   required: ['issues', 'severity'],
 };
 
-const fb = args || {};
+// The Workflow runtime delivers `args` as a JSON string, so parse it (tolerate an already-parsed object too).
+const fb = (typeof args === 'string' ? JSON.parse(args || '{}') : args) || {};
 // Absolute path to the ai-hr repo so the agents read the right code regardless of the loop's cwd.
 const repo = fb.repoPath || '/Users/zenlam/Projects/ai-hr';
 const brief = [
