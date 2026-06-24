@@ -2,7 +2,7 @@
 # Watch for approved feedback + notify (ADR-0045, the SAFE 24/7 trigger). Read-only: it polls the server for
 # items reporters have approved and posts a macOS notification when there are any. It does NOT build, does NOT
 # write code, does NOT release, and runs NO autonomous agent — the build/preview/release all happen later in
-# an interactive Claude session. Run by launchd every 4h.
+# an interactive Claude session. Run by launchd hourly.
 #
 # Disable:  launchctl unload ~/Library/LaunchAgents/com.aihr.improve-build.plist
 set -uo pipefail

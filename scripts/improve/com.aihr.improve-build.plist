@@ -18,16 +18,9 @@
     <string>/bin/bash</string>
     <string>/Users/zenlam/Projects/ai-hr/scripts/improve/watch-approved.sh</string>
   </array>
-  <!-- Every 4 hours at :23 local (off-minute on purpose). -->
+  <!-- Every hour at :23 local (off-minute on purpose). Omitting Hour = fire every hour. -->
   <key>StartCalendarInterval</key>
-  <array>
-    <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>23</integer></dict>
-    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>23</integer></dict>
-    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>23</integer></dict>
-    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>23</integer></dict>
-    <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>23</integer></dict>
-    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>23</integer></dict>
-  </array>
+  <dict><key>Minute</key><integer>23</integer></dict>
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>

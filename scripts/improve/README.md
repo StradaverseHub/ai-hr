@@ -60,7 +60,7 @@ echo '{"id","tenantId","reporterEmploymentId","worktree","branch","buildRef"}' |
 
 ## The schedule (24/7 watch + notify)
 
-`watch-approved.sh` is a **read-only** `launchd` job (every 4h) that polls `improve:pull-approved` and posts
+`watch-approved.sh` is a **read-only** `launchd` job (hourly) that polls `improve:pull-approved` and posts
 a macOS notification when anything is approved. It runs no agent and bypasses no permission gate — it does
 **not** build or release. On the notification, open a Claude session and run Phase B → preview → Phase C
 interactively (permission-gated).
