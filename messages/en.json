@@ -2084,6 +2084,8 @@
     "contestPlaceholder": "Explain what the plan is missing or got wrong",
     "contest": "Send back",
     "withdraw": "Withdraw feedback",
-    "generatePlanNow": "Generate plan now"
+    "generatePlanNow": "Generate plan now",
+    "status_deployed": "Deployed",
+    "deployedNote": "Built and released."
   }
 }

@@ -2084,6 +2084,8 @@
     "contestPlaceholder": "อธิบายสิ่งที่แผนขาดหายหรือผิดพลาด",
     "contest": "ส่งกลับ",
     "withdraw": "ถอนข้อเสนอแนะ",
-    "generatePlanNow": "สร้างแผนตอนนี้"
+    "generatePlanNow": "สร้างแผนตอนนี้",
+    "status_deployed": "ปรับใช้แล้ว",
+    "deployedNote": "สร้างและเผยแพร่แล้ว"
   }
 }

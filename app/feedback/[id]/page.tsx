@@ -38,8 +38,10 @@ export default async function FeedbackDetailPage({
   const isReporter = !!s.userId && fb.reporterUserId === s.userId;
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
   const canReview = isReporter && fb.status === 'planned';
-  const canWithdraw = isReporter && !['done', 'cancelled', 'building'].includes(fb.status);
-  const canGeneratePlan = isAdmin && (fb.status === 'open' || fb.status === 'contested');
+  const canWithdraw = isReporter && !['done', 'deployed', 'cancelled', 'building'].includes(fb.status);
+  // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
+  const inAppPlanning = process.env.FEEDBACK_AI_PLANNING_ENABLED === 'true';
+  const canGeneratePlan = inAppPlanning && isAdmin && (fb.status === 'open' || fb.status === 'contested');
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -111,11 +113,12 @@ export default async function FeedbackDetailPage({
           </div>
         )}
 
-        {(fb.status === 'approved' || fb.status === 'building' || fb.status === 'done') && (
+        {(fb.status === 'approved' || fb.status === 'building' || fb.status === 'done' || fb.status === 'deployed') && (
           <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
             {fb.status === 'approved' && t('approvedNote')}
             {fb.status === 'building' && t('buildingNote')}
             {fb.status === 'done' && t('doneNote')}
+            {fb.status === 'deployed' && t('deployedNote')}
             {fb.buildRef && (
               <>
                 {' '}

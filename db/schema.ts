@@ -1914,7 +1914,8 @@ export const feedbackStatusEnum = pgEnum('feedback_status', [
   'approved', // reporter approved the plan; awaiting build
   'contested', // reporter pushed back; the agent will re-plan
   'building', // a build agent is implementing it (out-of-app)
-  'done', // built (build_ref points at the PR)
+  'done', // built (build_ref points at the PR), awaiting release
+  'deployed', // built AND released to the server (the improvement loop closes the item here)
   'rejected', // an admin closed it without building
   'cancelled', // the reporter withdrew it
 ]);

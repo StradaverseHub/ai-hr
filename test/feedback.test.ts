@@ -17,6 +17,7 @@ import {
   getFeedback,
   getFeedbackAttachment,
   listFeedback,
+  markFeedbackDeployed,
   setFeedbackPlan,
   startFeedbackBuild,
   submitFeedback,
@@ -135,5 +136,10 @@ describe('FB-1 — feedback capture + review (ADR-0043)', () => {
     const done = (await getFeedback(rctx, id))!;
     expect(done.status).toBe('done');
     expect(done.buildRef).toContain('/pull/42');
+
+    // The improvement loop releases it → deployed (closes the item; ADR-0044).
+    await markFeedbackDeployed(adminCtx(base), { feedbackId: id });
+    expect((await getFeedback(rctx, id))!.status).toBe('deployed');
+    expect(await eventTypesFor(base.tenantId, id)).toContain('feedback.deployed');
   });
 });

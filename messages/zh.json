@@ -2084,6 +2084,8 @@
     "contestPlaceholder": "说明方案遗漏或有误之处",
     "contest": "退回",
     "withdraw": "撤回反馈",
-    "generatePlanNow": "立即生成方案"
+    "generatePlanNow": "立即生成方案",
+    "status_deployed": "已部署",
+    "deployedNote": "已构建并发布。"
   }
 }
