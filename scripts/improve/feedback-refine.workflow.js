@@ -39,6 +39,8 @@ const CRITIQUE_SCHEMA = {
 };
 
 const fb = args || {};
+// Absolute path to the ai-hr repo so the agents read the right code regardless of the loop's cwd.
+const repo = fb.repoPath || '/Users/zenlam/Projects/ai-hr';
 const brief = [
   `Type: ${fb.category ?? 'unknown'}`,
   `Title: ${fb.title ?? ''}`,
@@ -57,9 +59,10 @@ const priorContext =
 
 phase('Draft');
 const draft = await agent(
-  `You are a senior engineer on the ai-hr codebase (Next.js App Router, Drizzle ORM, PostgreSQL with RLS, ` +
-    `next-intl, Vitest). Read the relevant existing code (services in core/, schema in db/schema.ts, pages in ` +
-    `app/, the test conventions) and write a concrete, ordered implementation plan for this product feedback. ` +
+  `You are a senior engineer on the ai-hr codebase at ${repo} (Next.js App Router, Drizzle ORM, PostgreSQL ` +
+    `with RLS, next-intl, Vitest). Read the relevant existing code there (services in core/, schema in ` +
+    `db/schema.ts, pages in app/, the test conventions in test/) and write a concrete, ordered implementation ` +
+    `plan for this product feedback. ` +
     `Cover the data-model/migration, service, UI, i18n (6 locales), and how to verify (tests + browser). ` +
     `Scope it to exactly what is asked — flag, but do not invent, extras.\n\n${brief}${priorContext}`,
   { schema: PLAN_SCHEMA, phase: 'Draft', label: 'draft-plan', effort: 'high' },
@@ -75,8 +78,8 @@ const LENSES = [
 const critiques = await parallel(
   LENSES.map((l) => () =>
     agent(
-      `Adversarially critique this implementation plan for the ai-hr codebase through the **${l.key}** lens. ` +
-        `${l.ask} Read the code to ground your critique. Be specific and harsh; if the plan is sound on this ` +
+      `Adversarially critique this implementation plan for the ai-hr codebase at ${repo} through the ` +
+        `**${l.key}** lens. ${l.ask} Read the code there to ground your critique. Be specific and harsh; if the plan is sound on this ` +
         `lens, say so with severity "low".\n\nPLAN:\n${draft.plan}\n\nFILES IT TOUCHES: ${(draft.files || []).join(', ')}`,
       { schema: CRITIQUE_SCHEMA, phase: 'Critique', label: `critique:${l.key}`, effort: 'high' },
     ).then((c) => ({ ...c, lens: l.key })),
