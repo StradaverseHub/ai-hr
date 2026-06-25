@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
+import { DownloadTemplate } from '@/components/download-template';
+import { payrollComponentTemplate } from '@/lib/import-template';
 import type { ComponentImportResult } from '@/core/pay-components';
 import { commitComponentImportAction, dryRunComponentImportAction } from './import-actions';
 
@@ -81,6 +83,7 @@ export function ComponentImport({ batchId }: { batchId: string }) {
         >
           {t('loadSample')}
         </Button>
+        <DownloadTemplate spec={payrollComponentTemplate} />
         <span className="ml-auto text-xs text-muted-foreground">{t('matchHint')}</span>
       </div>
 

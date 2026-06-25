@@ -1562,6 +1562,9 @@
     "downloadCsv": {
       "button": "下载 CSV"
     },
+    "downloadTemplate": {
+      "button": "下载模板"
+    },
     "editableRow": {
       "save": "保存",
       "cancel": "取消",

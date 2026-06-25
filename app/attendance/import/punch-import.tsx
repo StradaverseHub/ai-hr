@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
+import { DownloadTemplate } from '@/components/download-template';
+import { attendancePunchTemplate } from '@/lib/import-template';
 import type { PunchImportResult } from '@/core/attendance';
 import { dryRunPunchImportAction, commitPunchImportAction } from './actions';
 
@@ -98,6 +100,7 @@ export function PunchImport() {
           >
             {t('loadSample')}
           </Button>
+          <DownloadTemplate spec={attendancePunchTemplate} />
           <span className="ml-auto text-xs text-muted-foreground">{t('matchHint')}</span>
         </div>
 
