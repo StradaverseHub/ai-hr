@@ -53,8 +53,17 @@ for (let i = 0; i < items.length; i++) {
       `worktree off main — make ALL changes here; do not touch ${REPO}.\n\n` +
       `SETUP (do this first, the worktree has no deps/env):\n` +
       `  1. \`ln -s ${REPO}/node_modules ./node_modules\` (reuse the installed deps).\n` +
-      `  2. \`cp ${REPO}/.env.local ./.env.local 2>/dev/null; cp ${REPO}/.env.test ./.env.test 2>/dev/null\` ` +
-      `(the Vitest harness + dev DB config). If those files are absent, proceed; tsc still runs.\n\n` +
+      `  2. \`cp ${REPO}/.env.local ./.env.local\` (the Vitest harness config).\n` +
+      `  3. Give yourself a PRIVATE, isolated test database so your migrations never collide with another ` +
+      `build's (the harness migrates-forward only; a shared DB breaks across builds). Pick a unique name and ` +
+      `point .env.local at it:\n` +
+      `       DB=ahr_build_${(fb.id || '').slice(0, 8)}\n` +
+      `       psql "postgres://postgres@127.0.0.1:5433/postgres" -c "DROP DATABASE IF EXISTS $DB; CREATE DATABASE $DB OWNER postgres;"\n` +
+      `       # rewrite the two TEST_* urls in ./.env.local to use $DB (keep the ai_hr_app / postgres roles):\n` +
+      `       #   TEST_DATABASE_URL=postgres://ai_hr_app@127.0.0.1:5433/$DB\n` +
+      `       #   TEST_MIGRATION_DATABASE_URL=postgres://postgres@127.0.0.1:5433/$DB\n` +
+      `     The harness will migrate this fresh DB from zero on first use — no reset, no collision. (If you add ` +
+      `a migration, append its db/migrations/meta/_journal.json entry as usual.)\n\n` +
       `IMPLEMENT the approved plan below EXACTLY — scope strictly to it, add no extras. Follow the repo's ` +
       `conventions without exception: Drizzle hand-written migrations (db/migrations/NNNN_*.sql + a manual ` +
       `db/migrations/meta/_journal.json append), the DomainEvent substrate on every state-changing service ` +
@@ -62,17 +71,19 @@ for (let i = 0; i < items.length; i++) {
       `any new table. Add the tests the plan specifies.\n\n` +
       `GATE — you MUST reach BOTH before returning testsPass=true:\n` +
       `  • \`npx tsc --noEmit\` is clean.\n` +
-      `  • \`pnpm vitest run\` is fully green. ⚠️ The test database (ai_hr_test on :5433) is SHARED across ` +
-      `sequential builds and the Vitest harness only migrates-forward (it never drops schema), so BEFORE you ` +
-      `run vitest you MUST reset it to a clean slate or another build's migrations will collide with yours:\n` +
-      `      set -a; . ./.env.local; set +a\n` +
-      `      psql "$TEST_MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA IF EXISTS drizzle CASCADE; DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO ai_hr_app; GRANT ALL ON SCHEMA public TO postgres;"\n` +
-      `    Then run \`pnpm vitest run\` (the harness re-applies all migrations from your worktree into the clean DB). ` +
-      `Re-run this reset before EACH full vitest attempt.\n` +
-      `Then \`git add -A\` and return: testsPass=true, the full \`git diff --cached\` as \`patch\`, the ` +
+      `  • \`pnpm vitest run\` is fully green against YOUR isolated DB (set up above). The harness migrates it ` +
+      `from zero, so there is no shared-DB collision and no reset to run.\n` +
+      `⛔ HANG GUARDS (the previous run stalled on these): do NOT start the dev server (\`pnpm dev\` / \`next ` +
+      `dev\`), do NOT run browser/preview verification, and do NOT run any long-lived or watch-mode process. ` +
+      `Use ONLY \`tsc --noEmit\` and \`vitest run\` (one-shot). If a command hangs > 2 min, kill it and treat ` +
+      `it as a blocker rather than waiting.\n` +
+      `When green: \`git add -A\`, then PERSIST your work before returning so a later build's failure cannot ` +
+      `lose it — write the full \`git diff --cached\` to \`${REPO}/.improve/patches/${fb.id}.patch\` (use the ` +
+      `Write tool or \`git diff --cached > …\`). Return: testsPass=true, that same diff as \`patch\`, the ` +
       `\`git diff --cached --stat\` as \`diffstat\`, and a short summary.\n\n` +
       `If you cannot reach green after a genuine effort, return testsPass=false with the specific blockers. ` +
-      `NEVER weaken, skip, or delete tests to go green. NEVER return a red/partial patch as if it passed.\n\n` +
+      `NEVER weaken, skip, or delete tests to go green. NEVER return a red/partial patch as if it passed. ` +
+      `Spend at most ~30 minutes per build; if not green by then, return testsPass=false with what's left.\n\n` +
       `FEEDBACK:\n${brief}\n\n` +
       `APPROVED PLAN: read it IN FULL with the Read tool from ${fb.planPath ?? '(missing planPath — stop and report this as a blocker)'} ` +
       `before implementing. It is the adversarially-refined plan the reporter approved; implement exactly it.`,
