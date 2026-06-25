@@ -7,6 +7,7 @@ import { endReportingLine, setEmploymentGrade, setEmploymentWorkState, setReport
 import { setCompensation } from '@/core/comp';
 import { setEmploymentPayComponent } from '@/core/pay-components';
 import { packFor } from '@/localization/registry';
+import { mapEpfUiMode } from '@/lib/epf-mode-map';
 
 export async function setEmploymentComponentAction(formData: FormData) {
   const s = await getSession();
@@ -155,13 +156,15 @@ export async function setStatutoryAction(formData: FormData) {
         const c = String(formData.get('epfCitizenship') ?? 'citizen');
         return c === 'pr' || c === 'non_citizen' ? c : 'citizen';
       })(),
-      // EPF contribution mode (Wave 2B). Rates are entered as percentages → stored as decimals.
-      epfMode: (() => {
-        const m = String(formData.get('epfMode') ?? 'auto');
-        return m === 'voluntary_excess' || m === 'exempt' ? m : 'auto';
-      })(),
-      epfEmployeeRate: formData.get('epfEmployeeRate') ? Number(formData.get('epfEmployeeRate')) / 100 : null,
-      epfEmployerRate: formData.get('epfEmployerRate') ? Number(formData.get('epfEmployerRate')) / 100 : null,
+      // EPF contribution mode (Wave 2B, ADR-0046). The UI surfaces five named categories; mapEpfUiMode
+      // maps them down to the three lawful KWSP enum values + the rates to persist HERE (never trust the
+      // client to send a clean enum). resolveEpfElection() additionally nulls rates for any
+      // non-voluntary_excess mode, so auto/none always persist with both rates null.
+      ...mapEpfUiMode(
+        formData.get('epfMode') as string | null,
+        formData.get('epfEmployeeRate') as string | null,
+        formData.get('epfEmployerRate') as string | null,
+      ),
       bankName: (formData.get('bankName') as string) || undefined,
       bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
       tp3Year: Number(formData.get('tp3Year')) || null,
