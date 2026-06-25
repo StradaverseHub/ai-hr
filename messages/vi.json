@@ -936,7 +936,12 @@
         "closed": "Đã đóng"
       },
       "scopeLabel": "Phòng ban (tùy chọn)",
-      "scopeHint": "Chọn phòng ban để chạy lương cho một nhóm. Bỏ trống tất cả để bao gồm toàn công ty."
+      "scopeEmployeesLabel": "Nhân viên (tùy chọn)",
+      "scopeEmployeesEmpty": "Không có nhân viên đang làm việc trong công ty này.",
+      "scopeEmployeesSelected": "Đã chọn {n}",
+      "scopeEmployeesSelectAll": "Chọn tất cả",
+      "scopeEmployeesClear": "Xóa",
+      "scopeHint": "Phòng ban đã chọn và nhân viên được chỉ định sẽ được gộp lại. Bỏ trống tất cả để chạy lương cho toàn công ty."
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -1959,7 +1964,20 @@
     "exportCsv": "Xuất CSV",
     "exportWithoutComp": "Danh sách (không lương)",
     "exportWithComp": "Danh sách + lương",
-    "exportAll": "Tất cả gồm đã nghỉ + lương"
+    "exportAll": "Tất cả gồm đã nghỉ + lương",
+    "changeJobsTitle": "Giao dịch thay đổi công việc",
+    "colFromDept": "Từ phòng ban",
+    "colToDept": "Đến phòng ban",
+    "colFromPosition": "Từ vị trí",
+    "colToPosition": "Đến vị trí",
+    "colEffectiveOn": "Có hiệu lực từ",
+    "exportXlsx": "Excel",
+    "exportPdf": "PDF",
+    "pdfNonLatinNote": "PDF là bản tóm tắt dễ đọc; tên không phải Latinh (vd. CJK, Tamil) hiển thị thành “?”. Dùng Excel hoặc CSV để xuất không mất dữ liệu.",
+    "filterDepartment": "Phòng ban",
+    "allDepartments": "Tất cả phòng ban",
+    "search": "Tìm kiếm",
+    "searchPlaceholder": "Tên hoặc email"
   },
   "payComponents": {
     "title": "Thành phần lương",
@@ -2024,6 +2042,9 @@
     "payDay": "Ngày trả",
     "paymentBasis": "Cơ sở trả",
     "basis_monthly": "Hàng tháng",
+    "basis_daily": "Hàng ngày",
+    "basis_hourly": "Theo giờ",
+    "basis_other": "Khác",
     "monthEnd": "Cuối tháng",
     "dayHint": "Ngày trong tháng (1–31). Để trống cho cuối tháng. Chỉ là tham chiếu lịch trình — không thay đổi cách tính kỳ lương.",
     "statutoryTitle": "Danh tính người sử dụng lao động theo luật",
@@ -2037,6 +2058,12 @@
     "myinvoisTin": "MyInvois TIN",
     "ssmRegistrationNo": "Số đăng ký SSM",
     "hrdfHint": "Bậc HRDF quyết định khoản thuế HRD Corp chỉ do người SDLĐ đóng trong lương. Số đăng ký xuất hiện trên hồ sơ pháp lý và phiếu lương.",
+    "cutOffsTitle": "Thiết lập ngày chốt",
+    "overtimeCutOff": "Ngày chốt làm thêm giờ",
+    "claimCutOff": "Ngày chốt hoàn ứng",
+    "unpaidLeaveCutOff": "Ngày chốt nghỉ không lương",
+    "attendanceCutOff": "Ngày chốt chấm công",
+    "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Chỉ dùng để tham chiếu lập lịch — các giá trị này không thay đổi cách tính kỳ lương, và không bắt buộc thứ tự giữa các trường (ví dụ chấm công trước ngày trả lương).",
     "save": "Lưu"
   },
   "leaveApproval": {

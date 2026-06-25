@@ -30,6 +30,10 @@ export async function savePayrollConfigAction(formData: FormData) {
       cutOffDay: str(formData, 'cutOffDay') ?? null,
       payDay: str(formData, 'payDay') ?? null,
       paymentBasis: str(formData, 'paymentBasis') ?? 'monthly',
+      overtimeCutOffDay: str(formData, 'overtimeCutOffDay') ?? null,
+      claimCutOffDay: str(formData, 'claimCutOffDay') ?? null,
+      unpaidLeaveCutOffDay: str(formData, 'unpaidLeaveCutOffDay') ?? null,
+      attendanceCutOffDay: str(formData, 'attendanceCutOffDay') ?? null,
     });
     await setCompanyStatutoryMY(s, {
       companyId,

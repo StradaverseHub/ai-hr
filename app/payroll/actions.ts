@@ -13,15 +13,29 @@ import {
   setPayrollInput,
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
+import { listEmployees } from '@/core/read';
 
 export async function createBatchAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId'));
   const payPeriod = String(formData.get('payPeriod'));
   const departmentIds = formData.getAll('departmentIds').map(String).filter(Boolean);
+  const submittedEmploymentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+
+  // Guard against a silent under-set: generatePayslips drops any employmentId whose company !=
+  // batch.companyId without erroring (a double-submit racing the company-change reset, or any
+  // cross-company id, would otherwise yield a smaller run with no signal). Intersect the submitted
+  // ids with the chosen company's employees so only valid ids reach createBatch.
+  let employmentIds = submittedEmploymentIds;
+  if (submittedEmploymentIds.length) {
+    const companyEmps = await listEmployees(s, [companyId]);
+    const valid = new Set(companyEmps.map((e) => e.employmentId));
+    employmentIds = submittedEmploymentIds.filter((id) => valid.has(id));
+  }
+
   let batchId = '';
   try {
-    ({ batchId } = await createBatch(s, { companyId, payPeriod, scope: { departmentIds } }));
+    ({ batchId } = await createBatch(s, { companyId, payPeriod, scope: { departmentIds, employmentIds } }));
   } catch (e) {
     redirect(`/payroll?error=${encodeURIComponent((e as Error).message)}`);
   }

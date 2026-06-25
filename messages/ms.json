@@ -936,7 +936,12 @@
         "closed": "Ditutup"
       },
       "scopeLabel": "Jabatan (pilihan)",
-      "scopeHint": "Pilih jabatan untuk menjalankan gaji bagi subset. Biarkan semua tidak bertanda untuk seluruh syarikat."
+      "scopeEmployeesLabel": "Pekerja (pilihan)",
+      "scopeEmployeesEmpty": "Tiada pekerja aktif dalam syarikat ini.",
+      "scopeEmployeesSelected": "{n} dipilih",
+      "scopeEmployeesSelectAll": "Pilih semua",
+      "scopeEmployeesClear": "Kosongkan",
+      "scopeHint": "Jabatan yang dipilih dan pekerja yang dinamakan digabungkan. Biarkan semua tidak bertanda untuk menjalankan gaji bagi seluruh syarikat."
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -1959,7 +1964,20 @@
     "exportCsv": "Eksport CSV",
     "exportWithoutComp": "Senarai (tanpa gaji)",
     "exportWithComp": "Senarai + gaji",
-    "exportAll": "Semua termasuk tamat + gaji"
+    "exportAll": "Semua termasuk tamat + gaji",
+    "changeJobsTitle": "Transaksi pertukaran jawatan",
+    "colFromDept": "Daripada jabatan",
+    "colToDept": "Ke jabatan",
+    "colFromPosition": "Daripada jawatan",
+    "colToPosition": "Ke jawatan",
+    "colEffectiveOn": "Berkuat kuasa pada",
+    "exportXlsx": "Excel",
+    "exportPdf": "PDF",
+    "pdfNonLatinNote": "PDF ialah ringkasan boleh baca; nama bukan Latin (cth. CJK, Tamil) dipaparkan sebagai “?”. Gunakan Excel atau CSV untuk eksport tanpa kehilangan.",
+    "filterDepartment": "Jabatan",
+    "allDepartments": "Semua jabatan",
+    "search": "Cari",
+    "searchPlaceholder": "Nama atau e-mel"
   },
   "payComponents": {
     "title": "Komponen gaji",
@@ -2024,6 +2042,9 @@
     "payDay": "Hari bayaran",
     "paymentBasis": "Asas bayaran",
     "basis_monthly": "Bulanan",
+    "basis_daily": "Harian",
+    "basis_hourly": "Sejam",
+    "basis_other": "Lain-lain",
     "monthEnd": "Akhir bulan",
     "dayHint": "Hari dalam bulan (1–31). Biar kosong untuk akhir bulan. Rujukan penjadualan sahaja — ia tidak mengubah cara tempoh gaji dikira.",
     "statutoryTitle": "Identiti majikan berkanun",
@@ -2037,6 +2058,12 @@
     "myinvoisTin": "TIN MyInvois",
     "ssmRegistrationNo": "No. pendaftaran SSM",
     "hrdfHint": "Jalur HRDF memacu levi HRD Corp (majikan sahaja) dalam gaji. Nombor pendaftaran muncul pada fail berkanun dan slip gaji.",
+    "cutOffsTitle": "Tetapan tarikh tutup",
+    "overtimeCutOff": "Tarikh tutup kerja lebih masa",
+    "claimCutOff": "Tarikh tutup tuntutan",
+    "unpaidLeaveCutOff": "Tarikh tutup cuti tanpa gaji",
+    "attendanceCutOff": "Tarikh tutup kehadiran",
+    "cutOffsHint": "Hari dalam bulan (1–31). Kosong = akhir bulan. Tarikh tutup gaji/input ditetapkan di atas sebagai Tarikh tutup. Rujukan penjadualan sahaja — ini tidak mengubah cara tempoh gaji dikira, dan tiada susunan antara medan (cth. kehadiran sebelum hari gaji) dikuatkuasakan.",
     "save": "Simpan"
   },
   "leaveApproval": {

@@ -936,7 +936,12 @@
         "closed": "已关闭"
       },
       "scopeLabel": "部门（可选）",
-      "scopeHint": "选择部门以仅为部分员工运行薪资。全部不勾选则包含整个公司。"
+      "scopeEmployeesLabel": "员工（可选）",
+      "scopeEmployeesEmpty": "该公司没有在职员工。",
+      "scopeEmployeesSelected": "已选 {n} 人",
+      "scopeEmployeesSelectAll": "全选",
+      "scopeEmployeesClear": "清除",
+      "scopeHint": "所选部门与指定员工将合并计入。全部不勾选则为整个公司运行薪资。"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -1959,7 +1964,20 @@
     "exportCsv": "导出 CSV",
     "exportWithoutComp": "名册（不含薪酬）",
     "exportWithComp": "名册 + 薪酬",
-    "exportAll": "全部含离职 + 薪酬"
+    "exportAll": "全部含离职 + 薪酬",
+    "changeJobsTitle": "职位变动记录",
+    "colFromDept": "原部门",
+    "colToDept": "新部门",
+    "colFromPosition": "原职位",
+    "colToPosition": "新职位",
+    "colEffectiveOn": "生效日期",
+    "exportXlsx": "Excel",
+    "exportPdf": "PDF",
+    "pdfNonLatinNote": "PDF 为可读摘要；非拉丁字符姓名（如中日韩、泰米尔文）会显示为“?”。如需无损导出，请使用 Excel 或 CSV。",
+    "filterDepartment": "部门",
+    "allDepartments": "所有部门",
+    "search": "搜索",
+    "searchPlaceholder": "姓名或邮箱"
   },
   "payComponents": {
     "title": "薪资组件",
@@ -2024,6 +2042,9 @@
     "payDay": "发薪日",
     "paymentBasis": "支付基准",
     "basis_monthly": "每月",
+    "basis_daily": "每日",
+    "basis_hourly": "每小时",
+    "basis_other": "其他",
     "monthEnd": "月末",
     "dayHint": "每月第几天（1–31）。留空表示月末。仅作排期参考——不会改变薪资期的计算方式。",
     "statutoryTitle": "法定雇主身份",
@@ -2037,6 +2058,12 @@
     "myinvoisTin": "MyInvois 税号",
     "ssmRegistrationNo": "SSM 注册号",
     "hrdfHint": "HRDF 等级决定薪资中仅由雇主缴纳的 HRD Corp 征费。注册编号会出现在法定文件和薪资单上。",
+    "cutOffsTitle": "截止日设置",
+    "overtimeCutOff": "加班截止日",
+    "claimCutOff": "报销截止日",
+    "unpaidLeaveCutOff": "无薪假截止日",
+    "attendanceCutOff": "考勤截止日",
+    "cutOffsHint": "每月日期（1–31）。留空 = 月末。薪资/输入截止日在上方设为截止日。仅作排程参考——这些不会改变薪资周期的计算方式，也不强制字段之间的顺序（例如考勤早于发薪日）。",
     "save": "保存"
   },
   "leaveApproval": {

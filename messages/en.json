@@ -936,7 +936,12 @@
         "closed": "Closed"
       },
       "scopeLabel": "Departments (optional)",
-      "scopeHint": "Select departments to run payroll for a subset. Leave all unchecked to include the whole company."
+      "scopeEmployeesLabel": "Employees (optional)",
+      "scopeEmployeesEmpty": "No active employees in this company.",
+      "scopeEmployeesSelected": "{n} selected",
+      "scopeEmployeesSelectAll": "Select all",
+      "scopeEmployeesClear": "Clear",
+      "scopeHint": "Selected departments and named employees are combined. Leave everything unchecked to run payroll for the whole company."
     },
     "batch": {
       "back": "Payroll",
@@ -1959,7 +1964,20 @@
     "exportCsv": "Export CSV",
     "exportWithoutComp": "Roster (no pay)",
     "exportWithComp": "Roster + compensation",
-    "exportAll": "All incl. terminated + comp"
+    "exportAll": "All incl. terminated + comp",
+    "changeJobsTitle": "Change job transactions",
+    "colFromDept": "From department",
+    "colToDept": "To department",
+    "colFromPosition": "From position",
+    "colToPosition": "To position",
+    "colEffectiveOn": "Effective on",
+    "exportXlsx": "Excel",
+    "exportPdf": "PDF",
+    "pdfNonLatinNote": "PDF is a human-readable summary; non-Latin names (e.g. CJK, Tamil) appear as “?”. Use Excel or CSV for the lossless export.",
+    "filterDepartment": "Department",
+    "allDepartments": "All departments",
+    "search": "Search",
+    "searchPlaceholder": "Name or email"
   },
   "payComponents": {
     "title": "Pay components",
@@ -2024,6 +2042,9 @@
     "payDay": "Pay day",
     "paymentBasis": "Payment basis",
     "basis_monthly": "Monthly",
+    "basis_daily": "Daily",
+    "basis_hourly": "Hourly",
+    "basis_other": "Other",
     "monthEnd": "Month-end",
     "dayHint": "Day of month (1–31). Leave blank for month-end. Scheduling reference only — it does not change how the pay period is calculated.",
     "statutoryTitle": "Statutory employer identity",
@@ -2037,6 +2058,12 @@
     "myinvoisTin": "MyInvois TIN",
     "ssmRegistrationNo": "SSM registration no.",
     "hrdfHint": "HRDF band drives the employer-only HRD Corp levy in payroll. Registration numbers appear on statutory files and payslips.",
+    "cutOffsTitle": "Cut-off settings",
+    "overtimeCutOff": "Overtime cut-off day",
+    "claimCutOff": "Claim cut-off day",
+    "unpaidLeaveCutOff": "Unpaid-leave cut-off day",
+    "attendanceCutOff": "Attendance cut-off day",
+    "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. Scheduling reference only — these do not change how the pay period is calculated, and no cross-field ordering (e.g. attendance before pay day) is enforced.",
     "save": "Save"
   },
   "leaveApproval": {

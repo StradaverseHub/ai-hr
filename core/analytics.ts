@@ -6,7 +6,7 @@
  *
  * First tranche: headcount, master-data export (±comp), new hires, terminations, turnover %.
  */
-import { and, count, desc, eq, gt, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { aliasedTable, and, count, desc, eq, gt, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { isAdmin } from '../lib/authz';
 import { assignment, company, compensation, department, employment, person, position } from '../db/schema';
@@ -26,6 +26,18 @@ const currentAssignment = and(
   isNull(assignment.validTo),
   isNull(assignment.supersededAt),
 );
+
+/**
+ * Roster/event scoping filter (ADR-0047). Department + free-text `q`, reusing the predicate shape from
+ * core/read.ts#listEmployeesPage. Never widens access — it only narrows on top of the RLS-scoped rows.
+ */
+export type ReportFilter = { departmentId?: string; q?: string };
+
+/** Free-text `q` predicate over name/email (case-insensitive), mirroring listEmployeesPage. */
+const qWhere = (filter: ReportFilter | undefined) => {
+  const q = filter?.q?.trim();
+  return q ? or(ilike(person.fullName, `%${q}%`), ilike(person.primaryEmail, `%${q}%`)) : undefined;
+};
 
 export type DimensionCount = { name: string; count: number };
 export type HeadcountSummary = {
@@ -84,11 +96,14 @@ export type MasterDataRow = {
 };
 
 /** Employee master-data roster. Compensation columns are included ONLY when the caller is an admin
- *  AND asks for them (Wave 1 #5). `includeComp` for a non-admin is silently ignored. */
+ *  AND asks for them (Wave 1 #5). `includeComp` for a non-admin is silently ignored.
+ *  The optional `filter` (ADR-0047) narrows by department (on the CURRENT assignment) and free-text `q`.
+ *  Note: a department-filtered master-data export legitimately excludes employees with no open
+ *  assignment — that is intended behaviour for the roster view (see ADR-0047 §4). */
 export function masterDataExport(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
-  opts: { includeComp?: boolean; includeTerminated?: boolean } = {},
+  opts: { includeComp?: boolean; includeTerminated?: boolean; filter?: ReportFilter } = {},
 ): Promise<MasterDataRow[]> {
   const withComp = !!opts.includeComp && isAdmin(ctx);
   return withTenant(ctx, async (tx) => {
@@ -125,6 +140,8 @@ export function masterDataExport(
       .where(
         and(
           opts.includeTerminated ? undefined : isNull(employment.terminatedOn),
+          opts.filter?.departmentId ? eq(assignment.departmentId, opts.filter.departmentId) : undefined,
+          qWhere(opts.filter),
           scopeWhere(scopeIds),
         ),
       )
@@ -160,11 +177,35 @@ export type HireRow = {
   hiredOn: string;
 };
 
-/** Employees hired within [from, to] (inclusive) — the new-hire cohort for the period. */
+/** Assignment version effective at a given date column (ADR-0047 temporal-coherence): the version whose
+ *  validity range covers the event date, non-superseded. Used so department-filtered event reports
+ *  resolve the department AS OF the event, not the (possibly closed/null) current assignment.
+ *  `eventDate` is an employment column (hiredOn / terminatedOn).
+ *
+ *  `inclusiveEnd` controls the upper bound:
+ *   - new-hire (false): standard half-open [validFrom, validTo) — `validTo > eventDate`. The genesis
+ *     row is open (validTo null) so it always matches; a same-day transfer (validFrom = hireDate) is
+ *     not a hire-date department, so the half-open bound correctly keeps the genesis row.
+ *   - termination (true): the leaver's last assignment is CLOSED exactly on the termination date
+ *     (`terminateEmploymentTx` sets validTo = terminationDate). The employee was in that department
+ *     through their last day, so we include `validTo = eventDate` (`validTo >= eventDate`). */
+const assignmentEffectiveAt = (
+  eventDate: typeof employment.hiredOn | typeof employment.terminatedOn,
+  inclusiveEnd = false,
+) =>
+  and(
+    eq(assignment.employmentId, employment.id),
+    isNull(assignment.supersededAt),
+    lte(assignment.validFrom, eventDate),
+    or(isNull(assignment.validTo), inclusiveEnd ? gte(assignment.validTo, eventDate) : gt(assignment.validTo, eventDate)),
+  );
+
+/** Employees hired within [from, to] (inclusive) — the new-hire cohort for the period.
+ *  `filter` (ADR-0047): department resolved against the assignment effective on the hire date. */
 export function newHires(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
-  p: { from: string; to: string },
+  p: { from: string; to: string; filter?: ReportFilter },
 ): Promise<HireRow[]> {
   return withTenant(ctx, (tx) =>
     tx
@@ -178,10 +219,18 @@ export function newHires(
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(assignment, currentAssignment)
+      .leftJoin(assignment, assignmentEffectiveAt(employment.hiredOn))
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
-      .where(and(gte(employment.hiredOn, p.from), lte(employment.hiredOn, p.to), scopeWhere(scopeIds)))
+      .where(
+        and(
+          gte(employment.hiredOn, p.from),
+          lte(employment.hiredOn, p.to),
+          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+          qWhere(p.filter),
+          scopeWhere(scopeIds),
+        ),
+      )
       .orderBy(desc(employment.hiredOn)),
   );
 }
@@ -195,11 +244,14 @@ export type TerminationRow = {
   terminationReason: string | null;
 };
 
-/** Employees terminated within [from, to] (inclusive) — the leaver cohort, with classification. */
+/** Employees terminated within [from, to] (inclusive) — the leaver cohort, with classification.
+ *  `filter` (ADR-0047): department resolved against the assignment effective on the termination date.
+ *  This matters because a terminated employee's open assignment is CLOSED (validTo set), so a current
+ *  assignment join would yield a null department and silently drop every leaver from a dept filter. */
 export function terminations(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
-  p: { from: string; to: string },
+  p: { from: string; to: string; filter?: ReportFilter },
 ): Promise<TerminationRow[]> {
   return withTenant(ctx, (tx) =>
     tx
@@ -214,10 +266,16 @@ export function terminations(
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
-      .leftJoin(assignment, currentAssignment)
+      .leftJoin(assignment, assignmentEffectiveAt(employment.terminatedOn, true))
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .where(
-        and(gte(employment.terminatedOn, p.from), lte(employment.terminatedOn, p.to), scopeWhere(scopeIds)),
+        and(
+          gte(employment.terminatedOn, p.from),
+          lte(employment.terminatedOn, p.to),
+          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+          qWhere(p.filter),
+          scopeWhere(scopeIds),
+        ),
       )
       .orderBy(desc(employment.terminatedOn)),
   );
@@ -259,4 +317,83 @@ export function turnoverRate(
     const turnoverPct = avgHeadcount > 0 ? round1((leavers / avgHeadcount) * 100) : 0;
     return { leavers, headcountStart, headcountEnd, avgHeadcount, turnoverPct };
   });
+}
+
+export type ChangeJobRow = {
+  name: string;
+  company: string;
+  fromDepartment: string | null;
+  toDepartment: string | null;
+  fromPosition: string | null;
+  toPosition: string | null;
+  effectiveOn: string;
+};
+
+/**
+ * Change Job Transactions (ADR-0047) — every in-period department/position move, read from the
+ * bitemporal `assignment` version history. Read-only — no domain event.
+ *
+ * Versioning semantics:
+ *  - The SUCCESSOR is an `assignment` version with `validFrom` in [from, to] and `supersededAt IS NULL`
+ *    (correction tombstones excluded).
+ *  - The PREDECESSOR is INNER-joined on `prior.employmentId = next.employmentId AND
+ *    prior.validTo = next.validFrom AND prior.supersededAt IS NULL` — `transferEmployee` closes the
+ *    prior open row (validTo = effectiveDate) and inserts the successor, so a real change always has a
+ *    closed predecessor abutting the successor's validFrom.
+ *  - The INNER JOIN is the "this is a job change, not a hire" guard: a hire's genesis assignment has
+ *    `validFrom = hiredOn` and no predecessor row with `validTo = validFrom`, so it is dropped.
+ *  - Terminations are excluded for free: `terminateEmploymentTx` closes the open row WITHOUT inserting
+ *    a successor, so there is no in-window `validFrom` successor to falsely report.
+ */
+export function changeJobTransactions(
+  ctx: SessionContext,
+  scopeIds: string[] | undefined,
+  p: { from: string; to: string; filter?: ReportFilter },
+): Promise<ChangeJobRow[]> {
+  const prior = aliasedTable(assignment, 'prior_assignment');
+  const fromDept = aliasedTable(department, 'from_department');
+  const fromPos = aliasedTable(position, 'from_position');
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        name: person.fullName,
+        company: company.legalName,
+        fromDepartment: fromDept.name,
+        toDepartment: department.name,
+        fromPosition: fromPos.title,
+        toPosition: position.title,
+        effectiveOn: assignment.validFrom,
+      })
+      .from(assignment)
+      .innerJoin(employment, eq(employment.id, assignment.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      // predecessor: closed version abutting the successor's validFrom — INNER drops genesis hires.
+      .innerJoin(
+        prior,
+        and(
+          eq(prior.employmentId, assignment.employmentId),
+          eq(prior.validTo, assignment.validFrom),
+          isNull(prior.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId)) // to-department
+      .leftJoin(position, eq(position.id, assignment.positionId)) // to-position
+      .leftJoin(fromDept, eq(fromDept.id, prior.departmentId))
+      .leftJoin(fromPos, eq(fromPos.id, prior.positionId))
+      .where(
+        and(
+          gte(assignment.validFrom, p.from),
+          lte(assignment.validFrom, p.to),
+          isNull(assignment.supersededAt), // exclude correction tombstones on the successor
+          // dept filter matches a move that TOUCHED the department (either side).
+          p.filter?.departmentId
+            ? or(eq(assignment.departmentId, p.filter.departmentId), eq(prior.departmentId, p.filter.departmentId))
+            : undefined,
+          qWhere(p.filter),
+          scopeWhere(scopeIds),
+        ),
+      )
+      .orderBy(desc(assignment.validFrom), person.fullName),
+  );
 }
