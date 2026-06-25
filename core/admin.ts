@@ -336,6 +336,18 @@ export async function archiveJobGrade(ctx: SessionContext, p: { id: string; arch
   });
 }
 
+/** ADR-0038 carry-forward expiry: clamp the optional month/day offset (1-12 / 1-31) into the JSONB, or
+ *  leave both unset (carry never expires). Returned as a partial so it can be spread into `accrual`. */
+function carryExpiryAccrual(month?: number | null, day?: number | null): {
+  carryForwardExpiryMonth?: number;
+  carryForwardExpiryDay?: number;
+} {
+  const m = Number(month ?? 0);
+  const d = Number(day ?? 0);
+  if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { carryForwardExpiryMonth: m, carryForwardExpiryDay: d };
+  return {};
+}
+
 export async function createLeavePolicy(
   ctx: SessionContext,
   p: {
@@ -343,6 +355,9 @@ export async function createLeavePolicy(
     annualDays: number;
     /** Max unused ANNUAL days carried into the next leave year (default 0 = forfeit). */
     carryForwardMax?: number;
+    /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
+    carryForwardExpiryMonth?: number | null;
+    carryForwardExpiryDay?: number | null;
     method?: string;
     /** ADR-0041 2E: grade this policy applies to. null/undefined = all grades (the company default). */
     gradeId?: string | null;
@@ -351,13 +366,14 @@ export async function createLeavePolicy(
 ) {
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
+    const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
     const [row] = await tx
       .insert(leavePolicy)
       .values({
         tenantId: ctx.tenantId,
         leaveTypeId: p.leaveTypeId,
         gradeId: p.gradeId ?? null,
-        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated' },
+        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated', ...expiry },
         validFrom: p.validFrom,
         validTo: null,
       })
@@ -368,7 +384,7 @@ export async function createLeavePolicy(
       aggregateId: row.id,
       eventType: 'leave-policy.created',
       actor: actorOf(ctx),
-      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax },
+      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax, ...expiry },
     });
     return row;
   });
@@ -378,15 +394,26 @@ export async function createLeavePolicy(
  *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this. */
 export async function updateLeavePolicy(
   ctx: SessionContext,
-  p: { id: string; annualDays: number; carryForwardMax?: number; method?: string; gradeId?: string | null; validFrom: string },
+  p: {
+    id: string;
+    annualDays: number;
+    carryForwardMax?: number;
+    /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
+    carryForwardExpiryMonth?: number | null;
+    carryForwardExpiryDay?: number | null;
+    method?: string;
+    gradeId?: string | null;
+    validFrom: string;
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
+    const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
     await tx
       .update(leavePolicy)
       .set({
         gradeId: p.gradeId ?? null,
-        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated' },
+        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated', ...expiry },
         validFrom: p.validFrom,
       })
       .where(eq(leavePolicy.id, p.id));
@@ -396,7 +423,7 @@ export async function updateLeavePolicy(
       aggregateId: p.id,
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
-      payload: { annualDays: p.annualDays, carryForwardMax, validFrom: p.validFrom },
+      payload: { annualDays: p.annualDays, carryForwardMax, validFrom: p.validFrom, ...expiry },
     });
   });
 }

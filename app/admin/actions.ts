@@ -230,6 +230,12 @@ export async function createLeaveTypeAction(formData: FormData) {
   ok(LEAVE);
 }
 
+/** ADR-0038 carry-forward expiry: an empty month/day field means "no expiry" → null. */
+const carryExpiryField = (raw: FormDataEntryValue | null): number | null => {
+  const n = Number(raw ?? '');
+  return raw != null && String(raw) !== '' && Number.isFinite(n) ? n : null;
+};
+
 export async function createLeavePolicyAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -237,6 +243,8 @@ export async function createLeavePolicyAction(formData: FormData) {
       leaveTypeId: String(formData.get('leaveTypeId')),
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+      carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
+      carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
       validFrom: String(formData.get('validFrom')),
@@ -254,6 +262,8 @@ export async function updateLeavePolicyAction(formData: FormData) {
       id: String(formData.get('id')),
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+      carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
+      carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
       validFrom: String(formData.get('validFrom')),

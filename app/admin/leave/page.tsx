@@ -47,11 +47,19 @@ export default async function LeaveConfigPage({
   // Group each type's effective-dated policies, newest first, for inline editing.
   const polByType = new Map<string, EntitlementPolicy[]>();
   for (const p of policies) {
-    const acc = p.accrual as { annualDays?: number; carryForwardMax?: number; method?: string } | null;
+    const acc = p.accrual as {
+      annualDays?: number;
+      carryForwardMax?: number;
+      method?: string;
+      carryForwardExpiryMonth?: number;
+      carryForwardExpiryDay?: number;
+    } | null;
     const ep: EntitlementPolicy = {
       id: p.id,
       annualDays: Number(acc?.annualDays ?? 0),
       carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+      carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
+      carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
       method: acc?.method,
       gradeId: p.gradeId,
       gradeName: p.gradeName,

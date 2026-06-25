@@ -9,6 +9,9 @@ export type EntitlementPolicy = {
   id: string;
   annualDays: number;
   carryForwardMax: number;
+  /** ADR-0038 carry-forward expiry: month/day the carried-forward portion auto-forfeits; null = never. */
+  carryForwardExpiryMonth?: number | null;
+  carryForwardExpiryDay?: number | null;
   /** Accrual cadence (ADR-0040): 'earned_monthly' | 'earned_quarterly' earn through the year; anything
    *  else is a lump grant at hire / year-open. */
   method?: string;
@@ -357,16 +360,45 @@ export function LeaveTypePanel({
                     />
                   </Field>
                   {isAnnual ? (
-                    <Field label={t('carryCapLabel')}>
-                      <input
-                        name="carryForwardMax"
-                        type="number"
-                        min="0"
-                        step="0.5"
-                        defaultValue={p.carryForwardMax}
-                        className={`${inputCls} w-24`}
-                      />
-                    </Field>
+                    <>
+                      <Field label={t('carryCapLabel')}>
+                        <input
+                          name="carryForwardMax"
+                          type="number"
+                          min="0"
+                          step="0.5"
+                          defaultValue={p.carryForwardMax}
+                          className={`${inputCls} w-24`}
+                        />
+                      </Field>
+                      <Field label={t('carryExpiryLabel')}>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            name="carryForwardExpiryMonth"
+                            type="number"
+                            min="1"
+                            max="12"
+                            step="1"
+                            aria-label={t('carryExpiryMonthLabel')}
+                            placeholder={t('carryExpiryMonthLabel')}
+                            defaultValue={p.carryForwardExpiryMonth ?? ''}
+                            className={`${inputCls} w-16`}
+                          />
+                          <span className="text-xs text-muted-foreground">/</span>
+                          <input
+                            name="carryForwardExpiryDay"
+                            type="number"
+                            min="1"
+                            max="31"
+                            step="1"
+                            aria-label={t('carryExpiryDayLabel')}
+                            placeholder={t('carryExpiryDayLabel')}
+                            defaultValue={p.carryForwardExpiryDay ?? ''}
+                            className={`${inputCls} w-16`}
+                          />
+                        </div>
+                      </Field>
+                    </>
                   ) : (
                     <input type="hidden" name="carryForwardMax" value="0" />
                   )}
@@ -413,6 +445,14 @@ export function LeaveTypePanel({
                         {t('carryCapText', { max: fmt(p.carryForwardMax) })}
                       </span>
                     )}
+                    {isAnnual &&
+                      p.carryForwardMax > 0 &&
+                      p.carryForwardExpiryMonth != null &&
+                      p.carryForwardExpiryDay != null && (
+                        <span className="text-muted-foreground">
+                          {t('carryExpiryText', { date: `${p.carryForwardExpiryDay}/${p.carryForwardExpiryMonth}` })}
+                        </span>
+                      )}
                     <span className="text-muted-foreground">
                       {p.validTo
                         ? t('validFromTo', { from: p.validFrom, to: p.validTo })
@@ -468,16 +508,43 @@ export function LeaveTypePanel({
                 />
               </Field>
               {isAnnual ? (
-                <Field label={t('carryCapLabel')}>
-                  <input
-                    name="carryForwardMax"
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    defaultValue="0"
-                    className={`${inputCls} w-24`}
-                  />
-                </Field>
+                <>
+                  <Field label={t('carryCapLabel')}>
+                    <input
+                      name="carryForwardMax"
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      defaultValue="0"
+                      className={`${inputCls} w-24`}
+                    />
+                  </Field>
+                  <Field label={t('carryExpiryLabel')}>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        name="carryForwardExpiryMonth"
+                        type="number"
+                        min="1"
+                        max="12"
+                        step="1"
+                        aria-label={t('carryExpiryMonthLabel')}
+                        placeholder={t('carryExpiryMonthLabel')}
+                        className={`${inputCls} w-16`}
+                      />
+                      <span className="text-xs text-muted-foreground">/</span>
+                      <input
+                        name="carryForwardExpiryDay"
+                        type="number"
+                        min="1"
+                        max="31"
+                        step="1"
+                        aria-label={t('carryExpiryDayLabel')}
+                        placeholder={t('carryExpiryDayLabel')}
+                        className={`${inputCls} w-16`}
+                      />
+                    </div>
+                  </Field>
+                </>
               ) : (
                 <input type="hidden" name="carryForwardMax" value="0" />
               )}
