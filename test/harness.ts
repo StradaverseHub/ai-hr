@@ -130,6 +130,27 @@ export async function eventTypesFor(tenantId: string, aggregateId: string): Prom
   return rows.map((r) => r.t);
 }
 
+/** The payload of the latest (highest-sequence) event of a given type for an aggregate. */
+export async function latestEventPayload(
+  tenantId: string,
+  aggregateId: string,
+  eventType: string,
+): Promise<Record<string, unknown> | null> {
+  const rows = await owner.db
+    .select({ payload: schema.domainEvent.payload, seq: schema.domainEvent.sequence })
+    .from(schema.domainEvent)
+    .where(
+      and(
+        eq(schema.domainEvent.tenantId, tenantId),
+        eq(schema.domainEvent.aggregateId, aggregateId),
+        eq(schema.domainEvent.eventType, eventType),
+      ),
+    );
+  if (rows.length === 0) return null;
+  rows.sort((a, b) => Number(a.seq) - Number(b.seq));
+  return (rows[rows.length - 1].payload ?? null) as Record<string, unknown> | null;
+}
+
 export function adminCtx(b: Base): SessionContext {
   return { tenantId: b.tenantId, userId: b.adminUserId, roles: ['hr_admin'] };
 }

@@ -5,7 +5,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { adminCtx, createAppUser, eventTypesFor, seedBase, type Base } from './harness';
+import { adminCtx, createAppUser, eventTypesFor, latestEventPayload, seedBase, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import {
@@ -43,7 +43,7 @@ const reporterCtx = async (personId: string): Promise<SessionContext> => {
 };
 
 describe('FB-1 — feedback capture + review (ADR-0043)', () => {
-  it('submit → agent plans → reporter approves; an admin cannot review on the reporter’s behalf', async () => {
+  it('submit → agent plans → reporter approves; a stranger (non-reporter, non-admin) cannot', async () => {
     const R = await hire('FB Reporter');
     const rctx = await reporterCtx(R.personId);
     const { id } = await submitFeedback(rctx, {
@@ -62,15 +62,37 @@ describe('FB-1 — feedback capture + review (ADR-0043)', () => {
     expect(planned.planRevision).toBe(1);
     expect(planned.plan).toContain('Split the page');
 
-    // The review gate: an admin can SEE it (RLS) but is NOT the reporter → cannot approve.
-    await expect(approveFeedbackPlan(adminCtx(base), { feedbackId: id })).rejects.toBeInstanceOf(FeedbackError);
+    // The review gate: a stranger (neither the reporter nor an admin) cannot approve.
+    const stranger = await hire('FB Stranger');
+    const sctx = await reporterCtx(stranger.personId);
+    await expect(approveFeedbackPlan(sctx, { feedbackId: id })).rejects.toBeInstanceOf(FeedbackError);
 
-    // The reporter approves.
+    // The reporter approves their own item.
     await approveFeedbackPlan(rctx, { feedbackId: id });
     expect((await getFeedback(rctx, id))!.status).toBe('approved');
 
     const types = await eventTypesFor(base.tenantId, id);
     expect(types).toEqual(expect.arrayContaining(['feedback.submitted', 'feedback.plan.drafted', 'feedback.plan.approved']));
+  });
+
+  it('an admin can approve on the reporter’s behalf — recorded as decidedBy:admin (triage)', async () => {
+    const R = await hire('FB AdminApprove');
+    const rctx = await reporterCtx(R.personId);
+    const { id } = await submitFeedback(rctx, {
+      reporterEmploymentId: R.employmentId,
+      category: 'enhancement',
+      title: 'Add a thing',
+      description: 'Please add the thing.',
+    });
+    await setFeedbackPlan(adminCtx(base), { feedbackId: id, plan: 'Build the thing', model: 'm' });
+
+    // An admin (not the reporter) approves — triage path.
+    await approveFeedbackPlan(adminCtx(base), { feedbackId: id });
+    expect((await getFeedback(adminCtx(base), id))!.status).toBe('approved');
+
+    // The approval event records that an admin decided, not the reporter.
+    const ev = await latestEventPayload(base.tenantId, id, 'feedback.plan.approved');
+    expect(ev?.decidedBy).toBe('admin');
   });
 
   it('contesting re-opens for re-planning (revision bumps, the contest reason clears)', async () => {

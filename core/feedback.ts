@@ -240,7 +240,7 @@ export function listPlannableFeedback(ctx: SessionContext, limit = 50): Promise<
 export async function approveFeedbackPlan(ctx: SessionContext, p: { feedbackId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const fb = await loadDecidable(tx, p.feedbackId);
-    assertReporter(ctx, fb);
+    const { onBehalf } = assertCanReview(ctx, fb);
     if (fb.status !== 'planned') throw new FeedbackError(`Only a planned item can be approved (it is ${fb.status}).`);
     await tx
       .update(feedbackRequest)
@@ -253,7 +253,7 @@ export async function approveFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
       eventType: 'feedback.plan.approved',
       actor: actorOf(ctx),
       subjectEmploymentId: fb.reporterEmploymentId,
-      payload: { revision: fb.planRevision },
+      payload: { revision: fb.planRevision, decidedBy: onBehalf ? 'admin' : 'reporter' },
     });
   });
 }
@@ -264,7 +264,7 @@ export async function contestFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
   if (!reason) throw new FeedbackError('Please say what should change about the plan.');
   await withTenant(ctx, async (tx) => {
     const fb = await loadDecidable(tx, p.feedbackId);
-    assertReporter(ctx, fb);
+    const { onBehalf } = assertCanReview(ctx, fb);
     if (fb.status !== 'planned') throw new FeedbackError(`Only a planned item can be contested (it is ${fb.status}).`);
     await tx
       .update(feedbackRequest)
@@ -277,7 +277,7 @@ export async function contestFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
       eventType: 'feedback.plan.contested',
       actor: actorOf(ctx),
       subjectEmploymentId: fb.reporterEmploymentId,
-      payload: { revision: fb.planRevision },
+      payload: { revision: fb.planRevision, decidedBy: onBehalf ? 'admin' : 'reporter' },
     });
   });
 }
@@ -449,10 +449,20 @@ async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedb
   return fb;
 }
 
-/** Only the person who raised the feedback may approve/contest/cancel it (admins triage but do not review
- *  on the reporter's behalf). */
+/** Only the person who raised the feedback may withdraw it. */
 function assertReporter(ctx: SessionContext, fb: DecidableFeedback): void {
   if (!ctx.userId || fb.reporterUserId !== ctx.userId) {
     throw new FeedbackError('Only the person who raised this feedback can review its plan.');
   }
+}
+
+/** Approve/contest a plan: allowed for the reporter OR an admin (HR triage). Returns whether an admin acted
+ *  on the reporter's behalf, so the event records the provenance (admin-on-behalf vs self-approval). */
+function assertCanReview(ctx: SessionContext, fb: DecidableFeedback): { onBehalf: boolean } {
+  const isReporter = !!ctx.userId && fb.reporterUserId === ctx.userId;
+  const isAdmin = (ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
+  if (!isReporter && !isAdmin) {
+    throw new FeedbackError('Only the person who raised this feedback, or an admin, can review its plan.');
+  }
+  return { onBehalf: !isReporter && isAdmin };
 }

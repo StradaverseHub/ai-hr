@@ -37,7 +37,8 @@ export default async function FeedbackDetailPage({
 
   const isReporter = !!s.userId && fb.reporterUserId === s.userId;
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-  const canReview = isReporter && fb.status === 'planned';
+  // Approve/contest: the reporter OR an admin (HR triage). Withdraw stays reporter-only.
+  const canReview = (isReporter || isAdmin) && fb.status === 'planned';
   const canWithdraw = isReporter && !['done', 'deployed', 'cancelled', 'building'].includes(fb.status);
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
   const inAppPlanning = process.env.FEEDBACK_AI_PLANNING_ENABLED === 'true';
