@@ -680,6 +680,13 @@
       "when": 1781861600000,
       "tag": "0096_performance_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1781861610000,
+      "tag": "0097_leave_duration",
+      "breakpoints": true
     }
   ]
 }

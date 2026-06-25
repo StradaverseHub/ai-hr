@@ -396,7 +396,17 @@
     "fieldReason": "Reason (optional)",
     "reasonPlaceholder": "Family trip",
     "submitRequest": "Submit request",
-    "myRequestsTitle": "My leave history"
+    "myRequestsTitle": "My leave history",
+    "fieldDurationType": "Duration",
+    "duration": {
+      "full_day": "Full day",
+      "half_day_am": "Half day (AM)",
+      "half_day_pm": "Half day (PM)",
+      "hourly": "Hourly"
+    },
+    "fieldHours": "Hours",
+    "hoursPlaceholder": "e.g. 2",
+    "hoursUnit": "{hours}h"
   },
   "attendance": {
     "title": "Attendance",
@@ -1462,7 +1472,13 @@
       "eligibilityMinServiceLabel": "Minimum service",
       "eligibilityMinServiceSuffix": "months",
       "eligibilitySummaryOnly": "{who} only",
-      "eligibilitySummaryService": "≥ {n} months service"
+      "eligibilitySummaryService": "≥ {n} months service",
+      "allowedDurationsLabel": "Allowed durations",
+      "allowedDurationsHelp": "Choose which durations employees may pick for this leave type. Full day is always available.",
+      "duration_full_day": "Full day",
+      "duration_half_day_am": "Half day (AM)",
+      "duration_half_day_pm": "Half day (PM)",
+      "duration_hourly": "Hourly"
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -1659,7 +1675,10 @@
       "employees": "Employees",
       "pillTitle": "{type} · {start} to {end} · {status}",
       "showAll": "Show all {count}",
-      "showLess": "Show less"
+      "showLess": "Show less",
+      "durationBadgeHalfAm": "½ AM",
+      "durationBadgeHalfPm": "½ PM",
+      "durationBadgeHours": "{hours}h"
     },
     "timelineNav": {
       "previous": "Previous {unit}",

@@ -28,6 +28,9 @@ export type LeaveEligibilityRule = {
   minServiceMonths?: number;
 };
 
+/** ADR-0048: the four non-full-day durations an admin can enable on a leave type. */
+const DURATION_OPTIONS = ['half_day_am', 'half_day_pm', 'hourly'] as const;
+
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
 const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
@@ -60,6 +63,7 @@ export function LeaveTypePanel({
   floorLabel,
   floor0,
   eligibility,
+  durations,
   policies,
   grades,
   updateTypeAction,
@@ -78,6 +82,8 @@ export function LeaveTypePanel({
   floorLabel: string | null;
   floor0: number;
   eligibility: LeaveEligibilityRule | null;
+  /** ADR-0048: enabled non-full-day durations (e.g. ['half_day_am','hourly']); null/[] = full-day-only. */
+  durations: string[] | null;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   updateTypeAction: Action;
@@ -289,6 +295,38 @@ export function LeaveTypePanel({
             )}
             <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
             <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>
+          </div>
+
+          {/* ADR-0048 — allowed leave durations (full day is always available) */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('allowedDurationsLabel')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the durations column (tri-state guard) */}
+              <input type="hidden" name="durations" value="1" />
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked disabled className="size-3.5 rounded border-border" />
+                {t('duration_full_day')}
+              </label>
+              {DURATION_OPTIONS.map((d) => (
+                <label key={d} className="flex items-center gap-2 text-xs text-foreground">
+                  <input
+                    type="checkbox"
+                    name="duration"
+                    value={d}
+                    defaultChecked={durations?.includes(d) ?? false}
+                    className="size-3.5 rounded border-border"
+                  />
+                  {t(`duration_${d}`)}
+                </label>
+              ))}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('allowedDurationsHelp')}</p>
           </div>
 
           {/* entitlement timeline */}

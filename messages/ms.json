@@ -396,7 +396,17 @@
     "fieldReason": "Sebab (pilihan)",
     "reasonPlaceholder": "Perjalanan keluarga",
     "submitRequest": "Hantar permohonan",
-    "myRequestsTitle": "Sejarah cuti saya"
+    "myRequestsTitle": "Sejarah cuti saya",
+    "fieldDurationType": "Tempoh",
+    "duration": {
+      "full_day": "Sehari penuh",
+      "half_day_am": "Separuh hari (Pagi)",
+      "half_day_pm": "Separuh hari (Petang)",
+      "hourly": "Mengikut jam"
+    },
+    "fieldHours": "Jam",
+    "hoursPlaceholder": "cth. 2",
+    "hoursUnit": "{hours} jam"
   },
   "attendance": {
     "title": "Kehadiran",
@@ -1462,7 +1472,13 @@
       "eligibilityMinServiceLabel": "Perkhidmatan minimum",
       "eligibilityMinServiceSuffix": "bulan",
       "eligibilitySummaryOnly": "{who} sahaja",
-      "eligibilitySummaryService": "≥ {n} bulan perkhidmatan"
+      "eligibilitySummaryService": "≥ {n} bulan perkhidmatan",
+      "allowedDurationsLabel": "Tempoh dibenarkan",
+      "allowedDurationsHelp": "Pilih tempoh yang boleh dipilih pekerja untuk jenis cuti ini. Sehari penuh sentiasa tersedia.",
+      "duration_full_day": "Sehari penuh",
+      "duration_half_day_am": "Separuh hari (Pagi)",
+      "duration_half_day_pm": "Separuh hari (Petang)",
+      "duration_hourly": "Mengikut jam"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -1659,7 +1675,10 @@
       "employees": "Pekerja",
       "pillTitle": "{type} · {start} hingga {end} · {status}",
       "showAll": "Tunjukkan semua {count}",
-      "showLess": "Tunjukkan kurang"
+      "showLess": "Tunjukkan kurang",
+      "durationBadgeHalfAm": "½ Pagi",
+      "durationBadgeHalfPm": "½ Petang",
+      "durationBadgeHours": "{hours} jam"
     },
     "timelineNav": {
       "previous": "{unit} sebelumnya",

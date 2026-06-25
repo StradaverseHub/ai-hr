@@ -396,7 +396,17 @@
     "fieldReason": "原因（选填）",
     "reasonPlaceholder": "家庭出游",
     "submitRequest": "提交申请",
-    "myRequestsTitle": "我的请假记录"
+    "myRequestsTitle": "我的请假记录",
+    "fieldDurationType": "时长",
+    "duration": {
+      "full_day": "全天",
+      "half_day_am": "半天（上午）",
+      "half_day_pm": "半天（下午）",
+      "hourly": "按小时"
+    },
+    "fieldHours": "小时",
+    "hoursPlaceholder": "例如 2",
+    "hoursUnit": "{hours} 小时"
   },
   "attendance": {
     "title": "考勤",
@@ -1462,7 +1472,13 @@
       "eligibilityMinServiceLabel": "最低服务年资",
       "eligibilityMinServiceSuffix": "个月",
       "eligibilitySummaryOnly": "仅限{who}",
-      "eligibilitySummaryService": "服务满 {n} 个月"
+      "eligibilitySummaryService": "服务满 {n} 个月",
+      "allowedDurationsLabel": "允许的时长",
+      "allowedDurationsHelp": "选择员工可为此假期类型选择的时长。全天始终可用。",
+      "duration_full_day": "全天",
+      "duration_half_day_am": "半天（上午）",
+      "duration_half_day_pm": "半天（下午）",
+      "duration_hourly": "按小时"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -1659,7 +1675,10 @@
       "employees": "员工",
       "pillTitle": "{type} · {start} 至 {end} · {status}",
       "showAll": "显示全部 {count} 人",
-      "showLess": "收起"
+      "showLess": "收起",
+      "durationBadgeHalfAm": "½ 上午",
+      "durationBadgeHalfPm": "½ 下午",
+      "durationBadgeHours": "{hours} 小时"
     },
     "timelineNav": {
       "previous": "上一{unit}",

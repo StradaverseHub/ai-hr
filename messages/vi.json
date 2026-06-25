@@ -396,7 +396,17 @@
     "fieldReason": "Lý do (tùy chọn)",
     "reasonPlaceholder": "Đi du lịch gia đình",
     "submitRequest": "Gửi yêu cầu",
-    "myRequestsTitle": "Lịch sử nghỉ phép của tôi"
+    "myRequestsTitle": "Lịch sử nghỉ phép của tôi",
+    "fieldDurationType": "Thời lượng",
+    "duration": {
+      "full_day": "Cả ngày",
+      "half_day_am": "Nửa ngày (sáng)",
+      "half_day_pm": "Nửa ngày (chiều)",
+      "hourly": "Theo giờ"
+    },
+    "fieldHours": "Số giờ",
+    "hoursPlaceholder": "vd. 2",
+    "hoursUnit": "{hours} giờ"
   },
   "attendance": {
     "title": "Chấm công",
@@ -1462,7 +1472,13 @@
       "eligibilityMinServiceLabel": "Thâm niên tối thiểu",
       "eligibilityMinServiceSuffix": "tháng",
       "eligibilitySummaryOnly": "Chỉ {who}",
-      "eligibilitySummaryService": "≥ {n} tháng thâm niên"
+      "eligibilitySummaryService": "≥ {n} tháng thâm niên",
+      "allowedDurationsLabel": "Thời lượng được phép",
+      "allowedDurationsHelp": "Chọn thời lượng nhân viên có thể chọn cho loại nghỉ này. Cả ngày luôn khả dụng.",
+      "duration_full_day": "Cả ngày",
+      "duration_half_day_am": "Nửa ngày (sáng)",
+      "duration_half_day_pm": "Nửa ngày (chiều)",
+      "duration_hourly": "Theo giờ"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -1659,7 +1675,10 @@
       "employees": "Nhân viên",
       "pillTitle": "{type} · {start} đến {end} · {status}",
       "showAll": "Hiển thị tất cả {count}",
-      "showLess": "Thu gọn"
+      "showLess": "Thu gọn",
+      "durationBadgeHalfAm": "½ Sáng",
+      "durationBadgeHalfPm": "½ Chiều",
+      "durationBadgeHours": "{hours} giờ"
     },
     "timelineNav": {
       "previous": "{unit} trước",

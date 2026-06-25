@@ -33,6 +33,10 @@ export type GridLeave = {
   startDate: string;
   endDate: string;
   title: string;
+  /** ADR-0048: short badge for non-full-day leave ("½ AM" / "2h"); null for full-day. */
+  durationBadge?: string | null;
+  /** ADR-0048: true for half/hourly leave — drawn as a partial (half-height, hatched) pill. */
+  partial?: boolean;
 };
 export type GridRow = { id: string; name: string; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
@@ -142,26 +146,42 @@ export function PlannedAbsencesGrid({
                 const pending = l.status === 'pending';
                 const span = ce - cs + 1;
                 const StatusIcon = pending ? Clock : CheckCircle2;
+                // ADR-0048: a half/hourly leave covers only part of the day — draw it as a partial pill
+                // (shorter, hatched overlay, duration badge) so it never reads as a full day on the grid.
+                const partial = !!l.partial;
                 return (
                   <div
                     key={l.id}
-                    style={{ gridColumn: `${cs + 2} / ${ce + 3}`, gridRow: r + 2, ...FLOAT }}
+                    style={{
+                      gridColumn: `${cs + 2} / ${ce + 3}`,
+                      gridRow: r + 2,
+                      ...FLOAT,
+                      ...(partial ? HATCH : {}),
+                    }}
                     className={cn(
-                      'z-10 my-1 flex items-center gap-1.5 self-stretch overflow-hidden rounded-full px-2.5 text-xs font-medium',
+                      'z-10 flex items-center gap-1.5 self-stretch overflow-hidden rounded-full px-2.5 text-xs font-medium',
                       chip,
                       pending && 'ring-1 ring-inset ring-black/10 dark:ring-white/15',
+                      // Partial pill: inset top/bottom so it visibly occupies less than a full tile.
+                      partial ? 'my-2' : 'my-1',
                     )}
                     title={l.title}
                   >
                     <Icon className="size-3.5 shrink-0" />
                     <span className="flex-1 truncate">{l.typeName.replace(/\s*leave$/i, '')}</span>
-                    {span >= 4 ? (
-                      <span className="shrink-0 rounded-full bg-black/[0.07] px-1.5 py-0.5 text-[10px] font-semibold capitalize dark:bg-white/15">
-                        {l.statusLabel}
+                    {l.durationBadge && (
+                      <span className="shrink-0 rounded-full bg-black/[0.07] px-1.5 py-0.5 text-[10px] font-semibold dark:bg-white/15">
+                        {l.durationBadge}
                       </span>
-                    ) : span >= 3 ? (
-                      <StatusIcon className="size-3.5 shrink-0 opacity-80" />
-                    ) : null}
+                    )}
+                    {!partial &&
+                      (span >= 4 ? (
+                        <span className="shrink-0 rounded-full bg-black/[0.07] px-1.5 py-0.5 text-[10px] font-semibold capitalize dark:bg-white/15">
+                          {l.statusLabel}
+                        </span>
+                      ) : span >= 3 ? (
+                        <StatusIcon className="size-3.5 shrink-0 opacity-80" />
+                      ) : null)}
                   </div>
                 );
               })}

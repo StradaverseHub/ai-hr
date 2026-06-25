@@ -3,10 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { decideLeave, requestLeave } from '@/core/leave';
+import { decideLeave, requestLeave, type LeaveDurationType } from '@/core/leave';
 
 export async function requestLeaveAction(formData: FormData) {
   const session = await getSession();
+  const durationType = (String(formData.get('durationType') || 'full_day') as LeaveDurationType);
+  const hoursRaw = String(formData.get('hours') ?? '').trim();
   try {
     await requestLeave(session, {
       employmentId: String(formData.get('employmentId')),
@@ -14,6 +16,8 @@ export async function requestLeaveAction(formData: FormData) {
       startDate: String(formData.get('startDate')),
       endDate: String(formData.get('endDate')),
       reason: (formData.get('reason') as string) || undefined,
+      durationType,
+      hours: durationType === 'hourly' && hoursRaw !== '' ? Number(hoursRaw) : undefined,
     });
   } catch (e) {
     redirect(`/leave?error=${encodeURIComponent((e as Error).message)}`);

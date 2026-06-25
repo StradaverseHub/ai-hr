@@ -36,7 +36,7 @@ import {
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
-import { openLeaveYear, accrueEarnedLeave } from '@/core/leave';
+import { openLeaveYear, accrueEarnedLeave, type LeaveDurationType } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
 import { setToilPolicy, runToilExpiry } from '@/core/toil';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
@@ -484,8 +484,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
         minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
       }
     : undefined;
+  // ADR-0048: the durations form posts `durations=1` (marker) plus a `duration` checkbox per allowed slot,
+  // so a name/eligibility edit that doesn't carry that marker leaves the allow-list untouched (same tri-state).
+  const touchDurations = fd.get('durations') === '1';
+  const durations = touchDurations
+    ? (fd.getAll('duration').map(String) as LeaveDurationType[])
+    : undefined;
   try {
-    await updateLeaveType(s, { id: String(fd.get('id')), name: String(fd.get('name') ?? '').trim(), eligibility });
+    await updateLeaveType(s, {
+      id: String(fd.get('id')),
+      name: String(fd.get('name') ?? '').trim(),
+      eligibility,
+      durations,
+    });
   } catch (e) {
     fail(LEAVE, e);
   }

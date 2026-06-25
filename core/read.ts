@@ -205,6 +205,7 @@ export function listLeaveTypes(
         counting: leaveType.counting,
         requiresDocument: leaveType.requiresDocument,
         eligibility: leaveType.eligibility,
+        durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
         inUse: sql<boolean>`exists (select 1 from leave_request lr where lr.leave_type_id = leave_type.id) or exists (select 1 from leave_ledger ll where ll.leave_type_id = leave_type.id) or exists (select 1 from leave_policy lp where lp.leave_type_id = leave_type.id)`,
       })
@@ -240,6 +241,7 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           counting: leaveType.counting,
           requiresDocument: leaveType.requiresDocument,
           eligibility: leaveType.eligibility,
+          durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
         })
         .from(leaveType)
@@ -274,6 +276,8 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
         days: leaveRequest.days,
+        durationType: leaveRequest.durationType,
+        hours: leaveRequest.hours,
         status: leaveRequest.status,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
@@ -341,6 +345,9 @@ export function plannedAbsences(
         status: leaveRequest.status,
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
+        days: leaveRequest.days,
+        durationType: leaveRequest.durationType,
+        hours: leaveRequest.hours,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -686,6 +693,8 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         startDate: leaveRequest.startDate,
         endDate: leaveRequest.endDate,
         days: leaveRequest.days,
+        durationType: leaveRequest.durationType,
+        hours: leaveRequest.hours,
         status: leaveRequest.status,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,

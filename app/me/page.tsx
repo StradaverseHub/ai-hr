@@ -19,6 +19,8 @@ import { myResignation } from '@/core/offboarding';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { SectionJumpNav } from '@/components/section-jump-nav';
+import { LeaveDurationFields } from '@/components/leave-duration-fields';
+import { durationLabel } from '@/lib/leave-duration';
 import {
   myCheckIn,
   myCheckOut,
@@ -87,6 +89,7 @@ export default async function MePage({
   searchParams: Promise<{ error?: string; month?: string; cycle?: string }>;
 }) {
   const t = await getTranslations('me');
+  const tLeave = await getTranslations('leave'); // ADR-0048 — duration labels in history
   const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
   const { error, month: spMonth, cycle: spCycle } = await searchParams;
@@ -352,24 +355,14 @@ export default async function MePage({
           </div>
 
           <form action={myRequestLeave} className="mt-4 space-y-3 border-t border-border pt-4">
-            <Field label={t('typeLabel')}>
-              <select name="leaveTypeId" required className={inputCls}>
-                {leaveTypes.map((lt) => (
-                  <option key={lt.id} value={lt.id}>
-                    {lt.name}
-                    {lt.requiresDocument ? ` · ${t('documentRequired')}` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-2">
-              <Field label={t('fromLabel')}>
-                <input type="date" name="startDate" required className={inputCls} />
-              </Field>
-              <Field label={t('toLabel')}>
-                <input type="date" name="endDate" required className={inputCls} />
-              </Field>
-            </div>
+            <LeaveDurationFields
+              layout="stack"
+              types={leaveTypes.map((lt) => ({
+                id: lt.id,
+                label: lt.requiresDocument ? `${lt.name} · ${t('documentRequired')}` : lt.name,
+                durations: lt.durations ?? null,
+              }))}
+            />
             <Field label={t('documentLabel')}>
               <input
                 type="file"
@@ -394,6 +387,11 @@ export default async function MePage({
                   <div className="min-w-0">
                     <span className="block truncate text-muted-foreground">
                       {r.leaveType} · {r.startDate}
+                      {durationLabel(tLeave, r.durationType, r.hours) && (
+                        <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
+                          {durationLabel(tLeave, r.durationType, r.hours)}
+                        </span>
+                      )}
                     </span>
                     {r.status === 'pending' && r.stepCount > 0 && (
                       <span className="text-xs text-muted-foreground/80">

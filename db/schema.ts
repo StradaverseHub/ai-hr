@@ -386,6 +386,10 @@ export const leaveType = pgTable('leave_type', {
   // Wave 2 (ADR-0038 2F-2 / R37): per-locale display names, { ms: { name }, zh: { name }, ... }.
   // Mirrors kb_document.i18n. Reads resolve to the viewer's locale, falling back to `name`.
   i18n: jsonb('i18n').$type<Record<string, { name: string }>>(),
+  // ADR-0048: allow-list of duration types this leave type supports, e.g.
+  // ["full_day","half_day_am","half_day_pm","hourly"]. null ⇒ full-day-only (preserves existing types).
+  // requestLeave rejects a chosen duration not in this list.
+  durations: jsonb('durations').$type<string[]>(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
@@ -461,6 +465,13 @@ export const leaveRequest = pgTable(
     startDate: date('start_date').notNull(),
     endDate: date('end_date').notNull(),
     days: numeric('days', { precision: 6, scale: 2 }).notNull(),
+    // ADR-0048: chosen duration — 'full_day' | 'half_day_am' | 'half_day_pm' | 'hourly'. Descriptive
+    // metadata for display + audit; `days` remains the single deduction source of truth. NOT NULL
+    // DEFAULT 'full_day' backfills existing rows to the prior full-day behaviour.
+    durationType: text('duration_type').notNull().default('full_day'),
+    // ADR-0048: original hours for an 'hourly' request (null otherwise). Kept because round(hours/8,2)
+    // can be lossy (1h → 0.13), so the displayed "1h" is recovered from here, not back-computed from days.
+    hours: numeric('hours', { precision: 4, scale: 2 }),
     status: leaveRequestStatusEnum('status').notNull().default('pending'),
     reason: text('reason'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
