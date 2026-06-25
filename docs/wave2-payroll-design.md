@@ -66,6 +66,13 @@ For a 17-employee services firm, "all industries, gated by headcount" is the cor
 
 ## #2 — EPF contribution modes  ·  *mostly sourced; the consultant's mode list must be reconciled with statute*
 
+> **UI label mapping (ADR-0046).** The consultant's five categories — *Auto / Manual (by %) / Manual (by
+> fixed amount) / Semi-Auto / No-contribution* — are surfaced as five **named UI options**, each mapped at
+> the server boundary onto the three lawful enum values (`auto | voluntary_excess | exempt`): Auto→`auto`,
+> Manual-%→`voluntary_excess` (both rates), Semi-Auto→`voluntary_excess` (employee rate, employer `null`),
+> No-contribution→`exempt`; **Manual-by-fixed-amount is deferred** (no KWSP fixed-amount election; needs §4
+> sign-off). No new enum value, column, or migration. See `docs/adr/0046-epf-five-category-ui-labels.md`.
+
 The official above-statutory mechanism is **i-Topup** (formerly "Voluntary Excess"), elected via **Form KWSP
 17A/18A (AHL)** for the employee share (employer share needs no form — done in i-Akaun). Verified from
 kwsp.gov.my (captured via byte-faithful Wayback raw snapshots; the live site returns 403 to non-browser clients).

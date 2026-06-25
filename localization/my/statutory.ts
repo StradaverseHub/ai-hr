@@ -146,7 +146,14 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       eventType: existing ? 'statutory.my.updated' : 'statutory.my.created',
       actor: actorOf(ctx),
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
-      payload: { personId: p.personId },
+      // Carry the resolved EPF election on the event so a mode change is reconstructable from the
+      // log alone (CLAUDE.md substrate discipline). Rates are decimals (e.g. '0.1500') or null.
+      payload: {
+        personId: p.personId,
+        epfMode: epf.epfMode,
+        epfEmployeeRate: epf.epfEmployeeRate,
+        epfEmployerRate: epf.epfEmployerRate,
+      },
     });
     return { id };
   });

@@ -12,7 +12,8 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { DEFAULT_MY_STATUTORY } from '../localization/my/statutory-tables';
 import { epf, resolveEpfRates } from '../localization/my/payroll';
-import { setStatutoryProfileMY, InvalidEpfElectionError } from '../localization/my/statutory';
+import { getStatutoryProfileMY, setStatutoryProfileMY, InvalidEpfElectionError } from '../localization/my/statutory';
+import { mapEpfUiMode } from '../lib/epf-mode-map';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { hireEmployee } from '../core/org';
@@ -118,5 +119,84 @@ describe('Wave 2B — EPF election service + kernel', () => {
     expect(st(ps).epfEmployee).toBe(0);
     expect(st(ps).epfEmployer).toBe(0);
     expect(st(ps).epfMode).toBe('exempt');
+  });
+
+  // ADR-0046 — the five-category UI maps down to the three lawful enum values at the server boundary.
+  // These round-trip the real mapper through setStatutoryProfileMY and assert the persisted shape.
+  const persistUi = async (ctx: SessionContext, personId: string, ic: string, ui: string, ee?: string, er?: string) =>
+    setStatutoryProfileMY(ctx, { personId, icNumber: ic, ...mapEpfUiMode(ui, ee ?? null, er ?? null) });
+
+  it('ADR-0046: each of the 5 UI selections persists the mapped enum value + rates', async () => {
+    const a = adminCtx(base);
+
+    // Auto → auto, both rates null.
+    const auto = await hire(a, base, 'UiAuto');
+    await persistUi(a, auto.personId, '900101010001', 'auto');
+    let row = await getStatutoryProfileMY(a, auto.personId);
+    expect(row?.epfMode).toBe('auto');
+    expect(row?.epfEmployeeRate).toBeNull();
+    expect(row?.epfEmployerRate).toBeNull();
+
+    // Manual (by percentage) → voluntary_excess, both rates set.
+    const pctEmp = await hire(a, base, 'UiPct');
+    await persistUi(a, pctEmp.personId, '900101010002', 'manual_percentage', '15', '13');
+    row = await getStatutoryProfileMY(a, pctEmp.personId);
+    expect(row?.epfMode).toBe('voluntary_excess');
+    expect(Number(row?.epfEmployeeRate)).toBeCloseTo(0.15, 4);
+    expect(Number(row?.epfEmployerRate)).toBeCloseTo(0.13, 4);
+
+    // Semi-Auto → voluntary_excess, employee rate set, employer rate null (stays statutory).
+    const semi = await hire(a, base, 'UiSemi');
+    await persistUi(a, semi.personId, '900101010003', 'semi_auto', '15', '99');
+    row = await getStatutoryProfileMY(a, semi.personId);
+    expect(row?.epfMode).toBe('voluntary_excess');
+    expect(Number(row?.epfEmployeeRate)).toBeCloseTo(0.15, 4);
+    expect(row?.epfEmployerRate).toBeNull();
+
+    // No contribution → exempt, both rates null.
+    const none = await hire(a, base, 'UiNone');
+    await persistUi(a, none.personId, '900101010004', 'none', '15', '13');
+    row = await getStatutoryProfileMY(a, none.personId);
+    expect(row?.epfMode).toBe('exempt');
+    expect(row?.epfEmployeeRate).toBeNull();
+    expect(row?.epfEmployerRate).toBeNull();
+
+    // Manual fixed (deferred) → coerced to auto, both rates null.
+    const fixed = await hire(a, base, 'UiFixed');
+    await persistUi(a, fixed.personId, '900101010005', 'manual_fixed', '15', '13');
+    row = await getStatutoryProfileMY(a, fixed.personId);
+    expect(row?.epfMode).toBe('auto');
+    expect(row?.epfEmployeeRate).toBeNull();
+    expect(row?.epfEmployerRate).toBeNull();
+  });
+
+  it('ADR-0046: the statutory.my event payload carries epfMode + resolved rates (substrate discipline)', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, base, 'EventPayload');
+    await persistUi(a, e.personId, '900101010006', 'semi_auto', '15');
+
+    const [ev] = await owner.db
+      .select({ type: schema.domainEvent.eventType, payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.aggregateType, 'employee-statutory-my'));
+    const p = ev.payload as Record<string, unknown>;
+    expect(ev.type).toBe('statutory.my.created');
+    expect(p.epfMode).toBe('voluntary_excess');
+    expect(Number(p.epfEmployeeRate)).toBeCloseTo(0.15, 4);
+    expect(p.epfEmployerRate).toBeNull();
+  });
+});
+
+describe('ADR-0046 — EPF 5-category UI → 3-enum mapping (pure)', () => {
+  // The mapper is pure (no DB); covers every UI category → enum value + the rates to persist.
+  it('maps each of the 5 UI selections onto a lawful enum value', () => {
+    expect(mapEpfUiMode('auto', null, null)).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null });
+    expect(mapEpfUiMode('manual_percentage', '15', '13')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: 0.13 });
+    // Semi-Auto: employee rate elected, employer side forced statutory (null) even if a value is sent.
+    expect(mapEpfUiMode('semi_auto', '15', '99')).toEqual({ epfMode: 'voluntary_excess', epfEmployeeRate: 0.15, epfEmployerRate: null });
+    expect(mapEpfUiMode('none', '15', '13')).toEqual({ epfMode: 'exempt', epfEmployeeRate: null, epfEmployerRate: null });
+    // Manual fixed is deferred (ADR-0046) → coerced to auto; an unknown value also falls through to auto.
+    expect(mapEpfUiMode('manual_fixed', '15', '13')).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null });
+    expect(mapEpfUiMode('garbage', '15', '13')).toEqual({ epfMode: 'auto', epfEmployeeRate: null, epfEmployerRate: null });
   });
 });
