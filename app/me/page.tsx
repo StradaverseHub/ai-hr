@@ -7,8 +7,11 @@ import {
   listLeaveTypes,
   myAttendance,
   myEmployment,
+  myEmploymentIdsAll,
   myEmployments,
   myPayslips,
+  myTaxRelief,
+  myTaxReliefEmploymentIds,
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
@@ -81,12 +84,12 @@ function Pill({ status, map, label }: { status: string; map: Record<string, stri
 export default async function MePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; month?: string; cycle?: string }>;
 }) {
   const t = await getTranslations('me');
   const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
-  const { error } = await searchParams;
+  const { error, month: spMonth, cycle: spCycle } = await searchParams;
   const me = await myEmployment(s);
 
   if (!me) {
@@ -101,13 +104,17 @@ export default async function MePage({
   }
 
   const employments = await myEmployments(s);
+  // My Payroll TP1 is leaver-safe: resolve ids by person, including terminated employments, so a resigned
+  // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
+  const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
   const locale = await getLocale(); // R37: render leave-type names in the employee's language
-  const [balances, requests, leaveTypes, payslips, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation] =
+  const [balances, requests, leaveTypes, payslips, taxRelief, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation] =
     await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       leaveRequestsFor(s, me.employmentId, locale),
       listLeaveTypes(s, { locale }),
       myPayslips(s, employments.map((e) => e.employmentId)),
+      myTaxRelief(s, taxReliefEmploymentIds),
       myAttendance(s, me.employmentId, 14),
       myAttendanceCorrections(s, me.employmentId),
       myProfile(s),
@@ -118,10 +125,68 @@ export default async function MePage({
       myFeedbackRequests(s),
       myResignation(s, me.employmentId),
     ]);
+  // Group TP1 rows by company — each entity files its own PCB, so a single blended YTD would mislead.
+  const taxReliefByCompany = taxRelief.rows.reduce<Record<string, typeof taxRelief.rows>>((acc, r) => {
+    (acc[r.company] ??= []).push(r);
+    return acc;
+  }, {});
   const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
   const today = new Date().toISOString().slice(0, 10);
   const todayRow = attendance.find((a) => a.date === today);
+
+  // EA (annual tax statement) rows — derived from the principal's REAL payslips across ALL their
+  // employments incl. terminated ones (leavers must reach their prior employer's EA). `myEmploymentIdsAll`
+  // is RLS-scoped to own employments; `myPayslips` is RLS-gated, so no foreign data leaks. We build one
+  // row per distinct (company, year) pair the user actually has payslips for — no synthetic year window,
+  // so a principal with zero payslips simply sees no EA rows (empty state below). Each payslip carries the
+  // batch's company name; we map that back to its employmentId for the EA link.
+  const eaEmployments = await myEmploymentIdsAll(s);
+  const eaPayslips = await myPayslips(s, eaEmployments.map((e) => e.employmentId));
+  const employmentIdByCompany = new Map(eaEmployments.map((e) => [e.company, e.employmentId]));
+  const eaRowMap = new Map<string, { employmentId: string; company: string; year: string }>();
+  for (const ps of eaPayslips) {
+    const year = ps.payPeriod.slice(0, 4); // 'YYYY-MM' → 'YYYY' (a string, matching EaStatement.year)
+    const employmentId = employmentIdByCompany.get(ps.company);
+    if (!employmentId) continue;
+    const key = `${ps.company}::${year}`;
+    if (!eaRowMap.has(key)) eaRowMap.set(key, { employmentId, company: ps.company, year });
+  }
+  const eaRows = [...eaRowMap.values()].sort(
+    (a, b) => a.company.localeCompare(b.company) || b.year.localeCompare(a.year),
+  );
+
+  // Self Payslip selectors (Feature 1.1.1): pick by payroll month + pay cycle, server-side.
+  // Only finalized batches (status 'closed') are offered; draft/processed never surface in the
+  // month/cycle options or the default selection. Month = payPeriod ('YYYY-MM'); cycle key =
+  // `${runType}#${runSeq}` so a multi-company month with the same cycle keeps all its rows.
+  const finalizedPayslips = payslips.filter((p) => p.status === 'closed');
+  const payslipMonths = [...new Set(finalizedPayslips.map((p) => p.payPeriod))].sort((a, b) =>
+    a < b ? 1 : a > b ? -1 : 0,
+  );
+  const selectedMonth = spMonth && payslipMonths.includes(spMonth) ? spMonth : payslipMonths[0] ?? '';
+  // Distinct cycles for the selected month, preserving the read's (payPeriod desc, runSeq) order.
+  const monthRows = finalizedPayslips.filter((p) => p.payPeriod === selectedMonth);
+  const cycleKeyOf = (p: { runType: string; runSeq: number }) => `${p.runType}#${p.runSeq}`;
+  const cycleCountByType = monthRows.reduce<Record<string, number>>((acc, p) => {
+    acc[p.runType] = (acc[p.runType] ?? 0) + 1;
+    return acc;
+  }, {});
+  const seenCycleKeys = new Set<string>();
+  const payslipCycles: { key: string; runType: string; runSeq: number }[] = [];
+  for (const p of monthRows) {
+    const key = cycleKeyOf(p);
+    if (seenCycleKeys.has(key)) continue;
+    seenCycleKeys.add(key);
+    payslipCycles.push({ key, runType: p.runType, runSeq: p.runSeq });
+  }
+  const cycleLabelOf = (c: { runType: string; runSeq: number }) =>
+    cycleCountByType[c.runType] > 1
+      ? t('cycleLabel', { runType: tRun(c.runType), seq: c.runSeq })
+      : t('cycleLabelSingle', { runType: tRun(c.runType) });
+  const selectedCycle =
+    spCycle && payslipCycles.some((c) => c.key === spCycle) ? spCycle : payslipCycles[0]?.key ?? '';
+  const displayedPayslips = monthRows.filter((p) => cycleKeyOf(p) === selectedCycle);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -531,6 +596,33 @@ export default async function MePage({
       {/* Payslips */}
       <Card className="overflow-hidden" data-tour="me-payslips">
         <SectionHeader title={t('myPayslips')} count={payslips.length} />
+        {payslipMonths.length > 0 && (
+          // Select by payroll month + pay cycle (server component, GET round-trip — no client JS).
+          // Mirrors app/payroll/reports/page.tsx: <form method="get"> + native <select> + submit.
+          <form method="get" className="grid grid-cols-1 items-end gap-3 border-b border-border p-4 sm:grid-cols-3">
+            <Field label={t('selectMonth')}>
+              <select name="month" defaultValue={selectedMonth} className={inputCls}>
+                {payslipMonths.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('selectCycle')}>
+              <select name="cycle" defaultValue={selectedCycle} className={inputCls}>
+                {payslipCycles.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {cycleLabelOf(c)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Button type="submit" size="sm">
+              {t('selectCycle')}
+            </Button>
+          </form>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -541,10 +633,11 @@ export default async function MePage({
                 <th className="px-4 py-2 text-right font-medium">{t('colDeductions')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colNet')}</th>
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                <th className="px-4 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {payslips.map((p) => (
+              {displayedPayslips.map((p) => (
                 <tr key={p.id}>
                   <td className="px-4 py-2.5 font-medium">
                     <Link href={`/me/payslip/${p.id}`} className="text-primary hover:underline">
@@ -561,11 +654,20 @@ export default async function MePage({
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(p.deductions)}</td>
                   <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(p.net)}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{t(`payrollStatus.${p.status}`)}</td>
+                  <td className="px-4 py-2.5 text-right">
+                    <a
+                      href={`/me/payslip/${p.id}/pdf`}
+                      download
+                      className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-muted"
+                    >
+                      {t('payslip.downloadPdf')}
+                    </a>
+                  </td>
                 </tr>
               ))}
-              {payslips.length === 0 && (
+              {displayedPayslips.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noPayslips')}
                   </td>
                 </tr>
@@ -573,6 +675,72 @@ export default async function MePage({
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* My Payroll — Self Personal Tax Relief (LHDN TP1). Year-scoped, grouped per company. */}
+      <Card className="mt-6 overflow-hidden">
+        <SectionHeader title={t('taxReliefTp1')} count={taxRelief.rows.length} />
+        <p className="px-4 pb-3 pt-1 text-xs text-muted-foreground">
+          {t('taxReliefDescription', { year: String(taxRelief.year) })}
+        </p>
+        {taxRelief.rows.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('noTaxRelief')}</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('colTp1')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {Object.entries(taxReliefByCompany).map(([companyName, rows]) => {
+                  const subtotal = rows.reduce((sum, r) => sum + r.tp1, 0);
+                  return rows
+                    .map((r, i) => (
+                      <tr key={`${companyName}-${r.payPeriod}-${r.runType}`}>
+                        {i === 0 && (
+                          <td
+                            rowSpan={rows.length}
+                            className="px-4 py-2.5 align-top font-medium text-muted-foreground"
+                          >
+                            {companyName}
+                          </td>
+                        )}
+                        <td className="px-4 py-2.5 font-medium">
+                          {r.payPeriod}
+                          {r.runType !== 'regular' && (
+                            <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                              {tRun(r.runType)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">{rm(r.tp1)}</td>
+                      </tr>
+                    ))
+                    .concat(
+                      <tr key={`${companyName}-subtotal`} className="bg-muted/30">
+                        <td className="px-4 py-2 text-right text-xs font-medium text-muted-foreground" colSpan={2}>
+                          {companyName}
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium tabular-nums">{rm(subtotal)}</td>
+                      </tr>,
+                    );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-border">
+                  <td className="px-4 py-2.5 text-right font-medium" colSpan={2}>
+                    {t('yearTaxRelief', { year: String(taxRelief.year) })}
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{rm(taxRelief.ytd)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
       </Card>
           </section>
 
@@ -808,24 +976,38 @@ export default async function MePage({
       <Card className="p-5">
         <SectionHeader title={t('taxStatementEa')} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('taxStatementDescription')}</p>
-        <ul className="mt-3 space-y-2">
-          {employments.map((e) => (
-            <li
-              key={e.employmentId}
-              className="flex items-center justify-between rounded-lg border border-border p-3 text-sm"
-            >
-              <span>
-                {e.company} · <span className="text-muted-foreground">{t('yearOfAssessment', { year: '2026' })}</span>
-              </span>
-              <Link
-                href={`/payroll/reports/ea/${e.employmentId}?year=2026`}
-                className="text-primary hover:underline"
+        {eaRows.length === 0 ? (
+          <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+            {t('noPayslips')}
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {eaRows.map((r) => (
+              <li
+                key={`${r.employmentId}-${r.year}`}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border p-3 text-sm"
               >
-                {t('viewDownload')}
-              </Link>
-            </li>
-          ))}
-        </ul>
+                <span>
+                  {r.company} · <span className="text-muted-foreground">{t('yearOfAssessment', { year: r.year })}</span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <Link
+                    href={`/payroll/reports/ea/${r.employmentId}?year=${r.year}`}
+                    className="text-primary hover:underline"
+                  >
+                    {t('viewDownload')}
+                  </Link>
+                  <Link
+                    href={`/me/ea/${r.employmentId}/pdf?year=${r.year}`}
+                    className="text-primary hover:underline"
+                  >
+                    {t('eaDownloadPdf')}
+                  </Link>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
       {/* Resignation (ADR-0042, #29) — employee-initiated, HR-approved. A serious action: it does not end

@@ -1337,6 +1337,8 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         company: company.legalName,
         companyReg: company.registrationNo,
         payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
         basic: payslip.basicSalary,
         allowance: payslip.allowance,

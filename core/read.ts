@@ -1059,6 +1059,25 @@ export function myEmployments(ctx: SessionContext) {
   });
 }
 
+/**
+ * The principal's full set of employment ids + company name, INCLUDING terminated ones. `myEmployments`
+ * filters out terminated employments (correct for the active-portal lists), but a leaver is the headline
+ * EA-form user: they need their prior employer's annual statement to file personal tax. RLS still scopes
+ * this to the principal's own employments, so feeding the result to `myPayslips` only surfaces payslips
+ * the principal owns. Used solely to build the /me EA document rows.
+ */
+export function myEmploymentIdsAll(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    return tx
+      .select({ employmentId: employment.id, company: company.legalName })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.personId, ctx.personId))
+      .orderBy(employment.hiredOn);
+  });
+}
+
 export type ConcurrentEmploymentPerson = {
   personId: string;
   personName: string;
@@ -1134,6 +1153,84 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(inArray(payslip.employmentId, employmentIds))
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+  });
+}
+
+/**
+ * My Payroll — Self Personal Tax Relief (LHDN TP1). Read-only: no domain event (CLAUDE.md substrate
+ * rule — this slice is a pure SELECT).
+ *
+ * Sources the relief ACTUALLY APPLIED to a payslip from `payslip.statutory.lp` (core/payroll.ts:935/986),
+ * NOT the raw `payroll_input.tp1Deduction`, which is the pre-clamp input. This matches the figure the
+ * employee sees on their own payslip detail page and rides the payslip's own RLS policy
+ * (`app.can_see_employment`, 0010_payroll_rls.sql) — the same self-scoping `myPayslips` already relies on.
+ *
+ * Because a payslip row only exists AFTER generation, draft/voided batches are excluded by construction —
+ * no batch-status predicate is needed (a reviewer should NOT "helpfully" add a status join). TP1 is a
+ * per-assessment-year LHDN concept, so results are filtered to a single tax year (default = current),
+ * derived from `payrollBatch.payPeriod`, and the YTD total is scoped to that year (not blended across years).
+ *
+ * Returns one row per applied TP1 (lp > 0), each carrying its company, so a person employed by two entities
+ * — each filing its own PCB — can be grouped per company in the UI rather than blended.
+ */
+export type TaxReliefRow = {
+  payPeriod: string;
+  company: string;
+  runType: string;
+  tp1: number;
+};
+export type TaxReliefResult = { year: number; rows: TaxReliefRow[]; ytd: number };
+
+export function myTaxRelief(
+  ctx: SessionContext,
+  employmentIds: string[],
+  year?: number,
+): Promise<TaxReliefResult> {
+  const taxYear = year ?? new Date().getFullYear();
+  return withTenant(ctx, async (tx): Promise<TaxReliefResult> => {
+    if (employmentIds.length === 0) return { year: taxYear, rows: [], ytd: 0 };
+    const raw = await tx
+      .select({
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        company: company.legalName,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(inArray(payslip.employmentId, employmentIds))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+
+    const rows: TaxReliefRow[] = [];
+    let ytd = 0;
+    for (const r of raw) {
+      // payPeriod is 'YYYY-MM'; scope to the requested assessment year.
+      if (Number(r.payPeriod.slice(0, 4)) !== taxYear) continue;
+      // numeric(12,2) inside JSONB arrives as a string — coerce or a raw += string-concatenates.
+      const tp1 = Number((r.statutory as { lp?: unknown } | null)?.lp ?? 0);
+      if (!(tp1 > 0)) continue; // exclude zero rows; based on the payslip's applied lp
+      rows.push({ payPeriod: r.payPeriod, company: r.company, runType: r.runType, tp1 });
+      ytd += tp1;
+    }
+    return { year: taxYear, rows, ytd: Math.round(ytd * 100) / 100 };
+  });
+}
+
+/**
+ * Employment ids for the current principal INCLUDING terminated employments — leaver-safe. `myEmployments`
+ * filters `isNull(terminatedOn)`, but a resigned employee is exactly who needs TP1 history to file taxes,
+ * and payslip RLS (`can_see_employment` self-branch, 0016) gates rows to the caller regardless of
+ * termination. Used to scope My Payroll TP1 so a leaver's relief history stays visible.
+ */
+export function myTaxReliefEmploymentIds(ctx: SessionContext): Promise<string[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const rows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.personId, ctx.personId));
+    return rows.map((r) => r.id);
   });
 }
 
