@@ -731,7 +731,26 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
 
 // ── Grade-based policy resolution (ADR-0041 / 2E) ─────────────────────────────────────────────────
 export type GradePolicyRow = { gradeId: string | null; accrual: unknown };
-export type ResolvedPolicy = { days: number; carryMax: number; method?: string };
+/** ADR-0038 carry-forward expiry: the month+day on which the carried-forward ANNUAL portion expires
+ *  (e.g. {month:3, day:31} = 31 March of the leave year following the one it was carried into). Stored
+ *  as an OFFSET, not a hardcoded date, so it works for any leave-year start. null = never expires. */
+export type CarryExpiry = { month: number; day: number };
+export type ResolvedPolicy = { days: number; carryMax: number; method?: string; carryExpiry?: CarryExpiry | null };
+/** Shape of the `leave_policy.accrual` JSONB (a documented JSONB extension point — no DDL). */
+type AccrualConfig = {
+  annualDays?: number;
+  carryForwardMax?: number;
+  method?: string;
+  carryForwardExpiryMonth?: number;
+  carryForwardExpiryDay?: number;
+};
+/** Parse the two optional offset fields into a {month, day} (or null when either is absent/out of range). */
+function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null {
+  const m = Number(acc?.carryForwardExpiryMonth ?? 0);
+  const d = Number(acc?.carryForwardExpiryDay ?? 0);
+  if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { month: m, day: d };
+  return null;
+}
 /** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
  *  policy scoped to the employee's grade, else the most-generous null-grade (all-grades) policy, else
  *  null. With no grades assigned (employee + every policy null-grade) this is exactly the pre-2E
@@ -740,10 +759,18 @@ export function resolveGradePolicy(rows: GradePolicyRow[], employeeGradeId: stri
   const pick = (subset: GradePolicyRow[]): ResolvedPolicy | null => {
     let best: ResolvedPolicy | null = null;
     for (const r of subset) {
-      const acc = r.accrual as { annualDays?: number; carryForwardMax?: number; method?: string } | null;
+      const acc = r.accrual as AccrualConfig | null;
       const days = Number(acc?.annualDays ?? 0);
+      // CRITICAL (panel): carryExpiry must be chosen from the SAME winning policy as days/carryMax/method.
+      // Assign it inside this block — never outside — or a rejected lower-`days` policy's expiry can leak
+      // onto the selected policy.
       if (!best || days > best.days) {
-        best = { days, carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)), method: acc?.method };
+        best = {
+          days,
+          carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+          method: acc?.method,
+          carryExpiry: parseCarryExpiry(acc),
+        };
       }
     }
     return best;
@@ -956,5 +983,185 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       payload: { asOf: p.asOf, granted, forfeits },
     });
     return { granted, forfeits };
+  });
+}
+
+// ── Carry-forward expiry / auto-forfeit (ADR-0038 carry-forward enhancement) ───────────────────────
+/**
+ * Forfeit the still-unused carried-forward ANNUAL days whose configured expiry date has arrived.
+ *
+ * Design rationale (the panel-refined model — read before changing):
+ *  - "Maximum Carry Forward Days" already exists: openLeaveYear (and the earned path) cap the carry at
+ *    `carryForwardMax` at year-open and forfeit the excess. This function adds the SECOND, later forfeit
+ *    of whatever survived the cap but stayed UNUSED past the policy's expiry date.
+ *  - Expiry is configured as a month+day OFFSET on the policy JSONB (carryForwardExpiryMonth/Day), not a
+ *    hardcoded date — so it holds for any leave-year start. The carry posted at year-open Y expires on
+ *    {Y}-{month}-{day} (e.g. carry into 2026 expires 2026-03-31).
+ *  - NO new schema / enum value / tagged "carry lot" row. The carried days stay folded into the plain
+ *    `accrual` row that openLeaveYear already posts, so read aggregates (accrued/taken) and the earned
+ *    path's `already`-sum are untouched. We RECONSTRUCT the carried quantity the same way openLeaveYear
+ *    computed it: carriedAmount = min(max(priorYearEndBalance, 0), carryForwardMax).
+ *  - WEAKER (correct) forfeit rule — NO consumption-ordering claim: there is no debit→accrual tag in the
+ *    flat signed ledger, so we cannot say "the carry was consumed first/last". We forfeit only what is
+ *    *still in the balance*: forfeit = min(unconsumedCarry, max(0, currentBalance)). This never taxes the
+ *    fresh entitlement and never double-forfeits already-taken days.
+ *  - Back-compat: only carry whose origin year-open is on/after the policy's validFrom year is swept;
+ *    the reconstruction window is bounded to [yearStart, expiryDate] of the cycle being expired, so prior
+ *    years are not retroactively swept. No backfill of legacy carry.
+ *
+ * Idempotency: the forfeit `adjustment` is dated at the YEAR-QUALIFIED expiry date of the cycle being
+ * swept (not just month/day) so consecutive years (each ending e.g. 03-31) forfeit independently. We
+ * compute the intended forfeit first and only treat an existing adjustment at that exact date as the
+ * prior sweep when there would otherwise be something to forfeit — so a manual unrelated adjustment on
+ * the same date does not suppress the real sweep.
+ *
+ * SYSTEM context (cron path): the negative-adjustment ledger inserts follow the deliberate-skip
+ * convention in openLeaveYear/accrueEarnedLeave (ledger rows are the per-item audit). One summary
+ * DomainEvent is appended below.
+ */
+export async function expireCarriedLeave(ctx: SessionContext, p: { today: string }) {
+  return withTenant(ctx, async (tx) => {
+    const todayYear = Number(p.today.slice(0, 4));
+    const annualTypes = await tx
+      .select({ id: leaveType.id, code: leaveType.code })
+      .from(leaveType)
+      .where(and(eq(leaveType.code, 'ANNUAL'), isNull(leaveType.archivedAt)));
+    if (annualTypes.length === 0) return { swept: 0, forfeited: 0 };
+    const typeIds = annualTypes.map((t) => t.id);
+
+    const emps = await tx
+      .select({
+        employmentId: employment.id,
+        hiredOn: employment.hiredOn,
+        gradeId: employment.gradeId,
+        terminatedOn: employment.terminatedOn,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(and(lte(employment.hiredOn, p.today), or(isNull(employment.terminatedOn), gte(employment.terminatedOn, `${todayYear}-01-01`))));
+    if (emps.length === 0) return { swept: 0, forfeited: 0 };
+    const empIds = emps.map((e) => e.employmentId);
+
+    // Every dated ANNUAL policy version (not just the currently-active one): the cycle being swept may be
+    // governed by the policy version that was active at that year's open. resolveGradePolicy below picks
+    // the most-generous one per (year, grade).
+    const policies = await tx
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom, validTo: leavePolicy.validTo })
+      .from(leavePolicy)
+      .where(inArray(leavePolicy.leaveTypeId, typeIds));
+    if (policies.length === 0) return { swept: 0, forfeited: 0 };
+
+    // The earliest leave-year a carry-expiry policy could apply to (back-compat boundary): the year of the
+    // earliest validFrom among policies that carry an expiry offset. Never sweep before it.
+    const expiryPolicyYears = policies
+      .filter((pol) => parseCarryExpiry(pol.accrual as AccrualConfig | null) != null)
+      .map((pol) => Number(pol.validFrom.slice(0, 4)));
+    if (expiryPolicyYears.length === 0) return { swept: 0, forfeited: 0 };
+    const earliestYear = Math.min(...expiryPolicyYears);
+
+    // For a given leave year, the policies active at its year-open (Jan 1).
+    const activeAt = (yearOpen: string): GradePolicyRow[] =>
+      policies
+        .filter((pol) => pol.validFrom <= yearOpen && (pol.validTo == null || pol.validTo > yearOpen))
+        .map((pol) => ({ gradeId: pol.gradeId, accrual: pol.accrual }));
+
+    let swept = 0;
+    let forfeitedTotal = 0;
+    for (const e of emps) {
+      for (const t of annualTypes) {
+        // Sweep each candidate leave year Y from the back-compat boundary up to today whose expiry date has
+        // arrived. Each year is independently reconstructed + idempotent on its own year-qualified date.
+        for (let y = earliestYear; y <= todayYear; y++) {
+          const yearStart = `${y}-01-01`;
+          const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId);
+          const expiry = pol?.carryExpiry ?? null;
+          if (!expiry) continue;
+          const expiryDate = `${y}-${String(expiry.month).padStart(2, '0')}-${String(expiry.day).padStart(2, '0')}`;
+          if (expiryDate > p.today) continue; // not yet due
+          // Only sweep a year whose leave-year was actually OPENED: openLeaveYear posts the carry as a
+          // Jan-1 accrual (its own open-marker). Without that marker no carry was ever posted for this year,
+          // so there is nothing to expire (back-compat: a year never run is never retroactively swept).
+          const [openMarker] = await tx
+            .select({ n: sql<string>`count(*)` })
+            .from(leaveLedger)
+            .where(
+              and(
+                eq(leaveLedger.employmentId, e.employmentId),
+                eq(leaveLedger.leaveTypeId, t.id),
+                eq(leaveLedger.entryType, 'accrual'),
+                eq(leaveLedger.effectiveOn, yearStart),
+              ),
+            );
+          if (Number(openMarker?.n ?? 0) === 0) continue;
+          // The carried amount openLeaveYear posted at this year-open: prior-year-end balance, capped.
+          const carryMax = pol!.carryMax;
+          if (carryMax <= 0) continue; // nothing could have carried
+          const [priorRow] = await tx
+            .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+            .from(leaveLedger)
+            .where(and(eq(leaveLedger.employmentId, e.employmentId), eq(leaveLedger.leaveTypeId, t.id), lt(leaveLedger.effectiveOn, yearStart)));
+          const carriedAmount = Math.min(Math.max(Number(priorRow?.bal ?? 0), 0), carryMax);
+          if (carriedAmount <= 0) continue;
+          // Annual debits inside [yearStart, expiryDate] reduce the still-unconsumed carry. (Weaker rule:
+          // no ordering claim — just "how much of the window's leave could have eaten the carry".)
+          const [debitRow] = await tx
+            .select({ taken: sql<string>`coalesce(-sum(${leaveLedger.days}), 0)` })
+            .from(leaveLedger)
+            .where(
+              and(
+                eq(leaveLedger.employmentId, e.employmentId),
+                eq(leaveLedger.leaveTypeId, t.id),
+                eq(leaveLedger.entryType, 'debit'),
+                gte(leaveLedger.effectiveOn, yearStart),
+                lte(leaveLedger.effectiveOn, expiryDate),
+              ),
+            );
+          const debitsInWindow = Number(debitRow?.taken ?? 0);
+          const unconsumedCarry = Math.max(0, Math.round((carriedAmount - debitsInWindow) * 100) / 100);
+          if (unconsumedCarry <= 0) continue;
+          // Cap at what is actually still in the balance now — never tax fresh entitlement / re-forfeit.
+          const currentBalance = await leaveBalance(tx, e.employmentId, t.id);
+          const forfeit = Math.round(Math.min(unconsumedCarry, Math.max(0, currentBalance)) * 100) / 100;
+          if (forfeit <= 0) continue;
+          // Idempotency (year-qualified): if a forfeit adjustment of this magnitude already sits at exactly
+          // this expiry date, this year was already swept — skip. A manual unrelated adjustment of a
+          // DIFFERENT amount does not match, so the real sweep still fires.
+          const priorSweeps = await tx
+            .select({ days: leaveLedger.days })
+            .from(leaveLedger)
+            .where(
+              and(
+                eq(leaveLedger.employmentId, e.employmentId),
+                eq(leaveLedger.leaveTypeId, t.id),
+                eq(leaveLedger.entryType, 'adjustment'),
+                eq(leaveLedger.effectiveOn, expiryDate),
+              ),
+            );
+          if (priorSweeps.some((r) => Number(r.days) === -forfeit)) continue;
+          await tx.insert(leaveLedger).values({
+            tenantId: ctx.tenantId,
+            employmentId: e.employmentId,
+            leaveTypeId: t.id,
+            entryType: 'adjustment',
+            days: (-forfeit).toFixed(2),
+            effectiveOn: expiryDate,
+          });
+          swept += 1;
+          forfeitedTotal = Math.round((forfeitedTotal + forfeit) * 100) / 100;
+        }
+      }
+    }
+
+    // One summary event; the ledger rows are the per-item audit (deliberate substrate skip, as
+    // openLeaveYear / accrueEarnedLeave).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: ctx.tenantId,
+      eventType: 'leave.carry-forward.swept',
+      actor: actorOf(ctx),
+      payload: { today: p.today, swept, forfeited: forfeitedTotal },
+    });
+    return { swept, forfeited: forfeitedTotal };
   });
 }
