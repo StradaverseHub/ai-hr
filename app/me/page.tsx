@@ -4,7 +4,7 @@ import { getSession } from '@/lib/session';
 import {
   leaveBalances,
   leaveRequestsFor,
-  listLeaveTypes,
+  listEligibleLeaveTypesFor,
   myAttendance,
   myEmployment,
   myEmploymentIdsAll,
@@ -112,7 +112,8 @@ export default async function MePage({
     await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       leaveRequestsFor(s, me.employmentId, locale),
-      listLeaveTypes(s, { locale }),
+      // #25: only the types this employee is eligible for — they never see a type they can't request.
+      listEligibleLeaveTypesFor(s, me.employmentId, locale),
       myPayslips(s, employments.map((e) => e.employmentId)),
       myTaxRelief(s, taxReliefEmploymentIds),
       myAttendance(s, me.employmentId, 14),

@@ -204,6 +204,7 @@ export function listLeaveTypes(
         paid: leaveType.paid,
         counting: leaveType.counting,
         requiresDocument: leaveType.requiresDocument,
+        eligibility: leaveType.eligibility,
         archivedAt: leaveType.archivedAt,
         inUse: sql<boolean>`exists (select 1 from leave_request lr where lr.leave_type_id = leave_type.id) or exists (select 1 from leave_ledger ll where ll.leave_type_id = leave_type.id) or exists (select 1 from leave_policy lp where lp.leave_type_id = leave_type.id)`,
       })
@@ -212,6 +213,48 @@ export function listLeaveTypes(
     // R37: localize the display name to the viewer's locale. Admin callers pass no locale, so the
     // config screens keep the default English name (which is what gets edited).
     return rows.map(({ i18n, ...r }) => ({ ...r, name: pickName(r.name, i18n, opts.locale) }));
+  });
+}
+
+/**
+ * The leave types ONE employee may actually take — `listLeaveTypes` filtered through the eligibility
+ * gate (#25 visibility). This is the apply-dropdown source on /me so an employee never sees a type they
+ * can't request (e.g. a male sees no Maternity). It filters the SAME projection as `listLeaveTypes`, so
+ * `requiresDocument` / `id` / localized `name` are preserved.
+ *
+ * Defense-in-depth only: `requestLeave` still enforces `assertEligible` server-side and remains the
+ * authority. Strict equality means an employee whose gated attribute is undisclosed/NULL is excluded —
+ * the lawful conservative default (don't grant a restricted entitlement to someone whose attribute is
+ * unknown). Mirrors the leaveBalances no-activity tail (read.ts) and the requestLeave gate (leave.ts).
+ */
+export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string) {
+  return withTenant(ctx, async (tx) => {
+    const [types, [emp]] = await Promise.all([
+      tx
+        .select({
+          id: leaveType.id,
+          code: leaveType.code,
+          name: leaveType.name,
+          i18n: leaveType.i18n,
+          paid: leaveType.paid,
+          counting: leaveType.counting,
+          requiresDocument: leaveType.requiresDocument,
+          eligibility: leaveType.eligibility,
+          archivedAt: leaveType.archivedAt,
+        })
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      tx
+        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(eq(employment.id, employmentId))
+        .limit(1),
+    ]);
+    const today = new Date().toISOString().slice(0, 10);
+    return types
+      .filter((t) => isLeaveEligible(t.eligibility as LeaveEligibility | null, emp, today))
+      .map(({ i18n, eligibility, ...r }) => ({ ...r, name: pickName(r.name, i18n, locale) }));
   });
 }
 

@@ -473,7 +473,22 @@ export async function deleteCompanyAction(fd: FormData) {
 
 export async function updateLeaveTypeAction(fd: FormData) {
   const s = await getSession();
-  try { await updateLeaveType(s, { id: String(fd.get('id')), name: String(fd.get('name') ?? '').trim() }); } catch (e) { fail(LEAVE, e); }
+  // #25 visibility: the eligibility form posts `eligibility=1` (a marker hidden input) so a name-only
+  // rename — which doesn't carry that marker — leaves the rule untouched (tri-state in updateLeaveType).
+  const touchEligibility = fd.get('eligibility') === '1';
+  const minRaw = String(fd.get('minServiceMonths') ?? '').trim();
+  const eligibility = touchEligibility
+    ? {
+        gender: String(fd.get('gender') ?? '') || undefined,
+        maritalStatus: String(fd.get('maritalStatus') ?? '') || undefined,
+        minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
+      }
+    : undefined;
+  try {
+    await updateLeaveType(s, { id: String(fd.get('id')), name: String(fd.get('name') ?? '').trim(), eligibility });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
   ok(LEAVE);
 }
 export async function archiveLeaveTypeAction(fd: FormData) {

@@ -6,6 +6,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import type { LeaveEligibility } from './leave';
 import {
   appUser,
   assignment,
@@ -55,6 +56,36 @@ function cleanName(v: string | undefined, label: string): string {
   const s = (v ?? '').replace(/\s+/g, ' ').trim();
   if (!s) throw new Error(`${label} is required`);
   return s;
+}
+
+/**
+ * Normalise + validate a leave-type eligibility rule (#25 visibility). Tri-state by the caller:
+ *   undefined → caller leaves the column untouched (a name-only rename must NOT clobber a rule);
+ *   null / all-blank → returns null (open to all);
+ *   populated → returns a sanitised object built from only the three known fields.
+ * Because requestLeave reads whatever JSONB is stored, validation lives in core (not just the action):
+ * a malformed POST can't land arbitrary JSONB or an out-of-range value. Throws on bad input.
+ */
+function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibility | null {
+  if (e == null) return null;
+  const out: LeaveEligibility = {};
+  if (e.gender != null && e.gender !== '') {
+    if (e.gender !== 'male' && e.gender !== 'female') throw new Error('Eligibility gender must be male or female');
+    out.gender = e.gender;
+  }
+  if (e.maritalStatus != null && (e.maritalStatus as string) !== '') {
+    if (!['single', 'married', 'other'].includes(e.maritalStatus)) {
+      throw new Error('Eligibility marital status must be single, married, or other');
+    }
+    out.maritalStatus = e.maritalStatus;
+  }
+  if (e.minServiceMonths != null && (e.minServiceMonths as unknown) !== '') {
+    const n = Number(e.minServiceMonths);
+    if (!Number.isInteger(n) || n < 0) throw new Error('Minimum service months must be a non-negative whole number');
+    if (n > 0) out.minServiceMonths = n; // 0 = no service floor → omit so the stored object stays minimal
+  }
+  // All three blank ⇒ open to all.
+  return Object.keys(out).length === 0 ? null : out;
 }
 
 /** Uppercased fixed-length ISO code — company.country/currency drive pack lookup and holiday
@@ -714,11 +745,42 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateLeaveType(ctx: SessionContext, p: { id: string; name: string }) {
+/**
+ * Update a leave type's name and (optionally) its eligibility rule (#25 visibility).
+ * `eligibility` is tri-state: omit it for a name-only rename (the column is left untouched, so a
+ * rename never wipes an existing rule — a real data-loss guard, since the 2A-1 seed rows carry rules);
+ * pass null / all-blank to reopen the type to everyone; pass a populated object to restrict it.
+ * Records who restricted a type via a before/after event (substrate discipline) — hence the
+ * read-before-write SELECT inside the tx.
+ */
+export async function updateLeaveType(
+  ctx: SessionContext,
+  p: { id: string; name: string; eligibility?: LeaveEligibility | null },
+) {
   const name = cleanName(p.name, 'Leave-type name');
+  const touchEligibility = p.eligibility !== undefined;
+  const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
   return withTenant(ctx, async (tx) => {
-    await tx.update(leaveType).set({ name }).where(eq(leaveType.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'leave-type', aggregateId: p.id, eventType: 'leave-type.updated', actor: actorOf(ctx), payload: { name } });
+    const [before] = await tx
+      .select({ name: leaveType.name, eligibility: leaveType.eligibility })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.id))
+      .limit(1);
+    await tx
+      .update(leaveType)
+      .set(touchEligibility ? { name, eligibility: nextEligibility } : { name })
+      .where(eq(leaveType.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-type',
+      aggregateId: p.id,
+      eventType: 'leave-type.updated',
+      actor: actorOf(ctx),
+      payload: {
+        before: { name: before?.name ?? null, eligibility: before?.eligibility ?? null },
+        after: { name, eligibility: touchEligibility ? nextEligibility : (before?.eligibility ?? null) },
+      },
+    });
   });
 }
 export function archiveLeaveType(ctx: SessionContext, p: { id: string; archived: boolean }) {

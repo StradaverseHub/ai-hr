@@ -88,6 +88,7 @@ export default async function LeaveConfigPage({
               isAnnual={t.code === 'ANNUAL'}
               floorLabel={floorBands(t.code)}
               floor0={entitlement(t.code, 0)}
+              eligibility={(t.eligibility as { gender?: string; maritalStatus?: string; minServiceMonths?: number } | null) ?? null}
               policies={polByType.get(t.id) ?? []}
               grades={gradeOptions}
               updateTypeAction={updateLeaveTypeAction}
