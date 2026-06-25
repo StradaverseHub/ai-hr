@@ -406,7 +406,14 @@
     },
     "fieldHours": "Jam",
     "hoursPlaceholder": "cth. 2",
-    "hoursUnit": "{hours} jam"
+    "hoursUnit": "{hours} jam",
+    "errors": {
+      "documentRequiredAfter": "Dokumen sokongan diperlukan untuk {typeName} yang melebihi {days} hari.",
+      "documentRequired": "Dokumen sokongan diperlukan untuk {typeName} (cth. sijil perubatan).",
+      "employeeRemarkRequired": "Catatan pekerja diperlukan untuk {typeName}.",
+      "fileTypeNotAllowed": "Jenis fail tidak dibenarkan — diterima: {allowed}.",
+      "fileTooLarge": "Fail melebihi had {mb} MB."
+    }
   },
   "attendance": {
     "title": "Kehadiran",
@@ -702,7 +709,7 @@
     "marital_other": "Lain-lain",
     "notSet": "— Tidak ditetapkan —",
     "documentLabel": "Dokumen sokongan",
-    "documentHint": "Diperlukan untuk cuti sakit & kemasukan hospital (cth. sijil cuti sakit).",
+    "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
     "documentRequired": "dokumen diperlukan",
     "viewDocument": "Lihat dokumen",
     "stageManager": "Semakan pengurus",
@@ -717,7 +724,9 @@
     "submitResignation": "Hantar peletakan jawatan",
     "resignationAcceptedNote": "Peletakan jawatan anda telah diterima. Hari bekerja terakhir anda ialah {date}.",
     "resignationWasRejected": "Peletakan jawatan anda sebelum ini ditolak. Anda boleh menghantar yang baharu di bawah.",
-    "resignationWasWithdrawn": "Anda telah menarik balik peletakan jawatan sebelum ini. Anda boleh menghantar yang baharu di bawah."
+    "resignationWasWithdrawn": "Anda telah menarik balik peletakan jawatan sebelum ini. Anda boleh menghantar yang baharu di bawah.",
+    "employeeRemarkLabel": "Catatan pekerja",
+    "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti."
   },
   "approvals": {
     "title": "Kelulusan",
@@ -1482,7 +1491,19 @@
       "duration_full_day": "Sehari penuh",
       "duration_half_day_am": "Separuh hari (Pagi)",
       "duration_half_day_pm": "Separuh hari (Petang)",
-      "duration_hourly": "Mengikut jam"
+      "duration_hourly": "Mengikut jam",
+      "documentSectionTitle": "Dokumen sokongan",
+      "requireAttachmentLabel": "Wajib lampiran",
+      "mandatoryAfterDaysLabel": "Diperlukan selepas lebih daripada N hari",
+      "allowedFileTypesLabel": "Jenis fail dibenarkan",
+      "fileTypePdf": "PDF",
+      "fileTypeJpg": "JPG",
+      "fileTypePng": "PNG",
+      "maxFileSizeLabel": "Saiz fail maksimum (MB)",
+      "employeeRemarkRequiredLabel": "Catatan pekerja diperlukan",
+      "hrRemarkRequiredLabel": "Catatan HR diperlukan (dikuatkuasakan dalam keluaran kemudian)",
+      "saveDocumentRule": "Simpan tetapan dokumen",
+      "documentSectionHelp": "Tetapkan sama ada dokumen sokongan diperlukan, bila ia menjadi wajib, serta jenis dan saiz fail yang diterima."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

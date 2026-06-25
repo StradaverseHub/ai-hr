@@ -406,7 +406,14 @@
     },
     "fieldHours": "ชั่วโมง",
     "hoursPlaceholder": "เช่น 2",
-    "hoursUnit": "{hours} ชม."
+    "hoursUnit": "{hours} ชม.",
+    "errors": {
+      "documentRequiredAfter": "ต้องมีเอกสารประกอบสำหรับ {typeName} ที่เกิน {days} วัน",
+      "documentRequired": "ต้องมีเอกสารประกอบสำหรับ {typeName} (เช่น ใบรับรองแพทย์)",
+      "employeeRemarkRequired": "ต้องมีหมายเหตุของพนักงานสำหรับ {typeName}",
+      "fileTypeNotAllowed": "ไม่อนุญาตประเภทไฟล์นี้ — ที่ยอมรับ: {allowed}",
+      "fileTooLarge": "ไฟล์เกินขีดจำกัด {mb} MB"
+    }
   },
   "attendance": {
     "title": "การเข้างาน",
@@ -702,7 +709,7 @@
     "marital_other": "อื่น ๆ",
     "notSet": "— ยังไม่ได้ตั้งค่า —",
     "documentLabel": "เอกสารประกอบ",
-    "documentHint": "จำเป็นสำหรับการลาป่วยและลานอนโรงพยาบาล (เช่น ใบรับรองแพทย์)",
+    "documentHint": "จำเป็นสำหรับการลาบางประเภท (เช่น ใบรับรองแพทย์) ประเภทไฟล์และขนาดที่อนุญาตขึ้นอยู่กับประเภทการลาที่เลือก",
     "documentRequired": "ต้องมีเอกสาร",
     "viewDocument": "ดูเอกสาร",
     "stageManager": "การพิจารณาของผู้จัดการ",
@@ -717,7 +724,9 @@
     "submitResignation": "ส่งใบลาออก",
     "resignationAcceptedNote": "ใบลาออกของคุณได้รับการยอมรับแล้ว วันทำงานสุดท้ายของคุณคือ {date}",
     "resignationWasRejected": "ใบลาออกก่อนหน้าของคุณถูกปฏิเสธ คุณสามารถส่งใหม่ด้านล่าง",
-    "resignationWasWithdrawn": "คุณถอนใบลาออกก่อนหน้าแล้ว คุณสามารถส่งใหม่ด้านล่าง"
+    "resignationWasWithdrawn": "คุณถอนใบลาออกก่อนหน้าแล้ว คุณสามารถส่งใหม่ด้านล่าง",
+    "employeeRemarkLabel": "หมายเหตุของพนักงาน",
+    "employeeRemarkRequiredHint": "การลาบางประเภทจำเป็นต้องมีหมายเหตุ"
   },
   "approvals": {
     "title": "การอนุมัติ",
@@ -1482,7 +1491,19 @@
       "duration_full_day": "เต็มวัน",
       "duration_half_day_am": "ครึ่งวัน (เช้า)",
       "duration_half_day_pm": "ครึ่งวัน (บ่าย)",
-      "duration_hourly": "รายชั่วโมง"
+      "duration_hourly": "รายชั่วโมง",
+      "documentSectionTitle": "เอกสารประกอบ",
+      "requireAttachmentLabel": "ต้องแนบไฟล์",
+      "mandatoryAfterDaysLabel": "จำเป็นเมื่อเกิน N วัน",
+      "allowedFileTypesLabel": "ประเภทไฟล์ที่อนุญาต",
+      "fileTypePdf": "PDF",
+      "fileTypeJpg": "JPG",
+      "fileTypePng": "PNG",
+      "maxFileSizeLabel": "ขนาดไฟล์สูงสุด (MB)",
+      "employeeRemarkRequiredLabel": "ต้องมีหมายเหตุของพนักงาน",
+      "hrRemarkRequiredLabel": "ต้องมีหมายเหตุของ HR (บังคับใช้ในรุ่นถัดไป)",
+      "saveDocumentRule": "บันทึกการตั้งค่าเอกสาร",
+      "documentSectionHelp": "กำหนดว่าจำเป็นต้องมีเอกสารประกอบหรือไม่ เมื่อใดจึงบังคับ และยอมรับประเภทและขนาดไฟล์ใดบ้าง"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",
