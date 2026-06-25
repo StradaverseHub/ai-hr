@@ -8,7 +8,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { companyPayrollConfig } from '../db/schema';
 
-export const PAYMENT_BASES = ['monthly'] as const;
+export const PAYMENT_BASES = ['monthly', 'daily', 'hourly', 'other'] as const;
 export type PaymentBasis = (typeof PAYMENT_BASES)[number];
 
 // Day-of-month 1–31, or null = month-end. Out-of-range/blank ⇒ null so a bad value never silently sticks.
@@ -24,6 +24,11 @@ export type PayrollConfigInput = {
   cutOffDay?: number | string | null;
   payDay?: number | string | null;
   paymentBasis?: string;
+  // Per-purpose cut-off scheduling metadata (1–31, null = month-end / inherit). Not inputs to period computation.
+  overtimeCutOffDay?: number | string | null;
+  claimCutOffDay?: number | string | null;
+  unpaidLeaveCutOffDay?: number | string | null;
+  attendanceCutOffDay?: number | string | null;
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
@@ -31,6 +36,10 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     cutOffDay: cleanDay(p.cutOffDay),
     payDay: cleanDay(p.payDay),
     paymentBasis: cleanBasis(p.paymentBasis),
+    overtimeCutOffDay: cleanDay(p.overtimeCutOffDay),
+    claimCutOffDay: cleanDay(p.claimCutOffDay),
+    unpaidLeaveCutOffDay: cleanDay(p.unpaidLeaveCutOffDay),
+    attendanceCutOffDay: cleanDay(p.attendanceCutOffDay),
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx

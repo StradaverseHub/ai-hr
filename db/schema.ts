@@ -701,9 +701,15 @@ export const companyPayrollConfig = pgTable(
     companyId: uuid('company_id')
       .notNull()
       .references(() => company.id),
-    cutOffDay: integer('cut_off_day'), // day of month payroll inputs close (1–31); null = month-end
+    cutOffDay: integer('cut_off_day'), // day of month payroll inputs close (1–31); null = month-end. The salary/inputs cut-off.
     payDay: integer('pay_day'), // day of month salary is paid (1–31); null = month-end
     paymentBasis: text('payment_basis').notNull().default('monthly'),
+    // Per-purpose cut-off scheduling METADATA — these join cutOffDay (the salary/inputs cut-off) as
+    // scheduling reference only; null = month-end / inherit. None feed period computation.
+    overtimeCutOffDay: integer('overtime_cut_off_day'), // day of month OT inputs close (1–31); null = month-end
+    claimCutOffDay: integer('claim_cut_off_day'), // day of month claim inputs close (1–31); null = month-end
+    unpaidLeaveCutOffDay: integer('unpaid_leave_cut_off_day'), // day of month unpaid-leave inputs close (1–31); null = month-end
+    attendanceCutOffDay: integer('attendance_cut_off_day'), // day of month attendance inputs close (1–31); null = month-end
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

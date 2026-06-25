@@ -25,6 +25,9 @@ import {
   reportingLine,
 } from '../db/schema';
 
+// Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
+// etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
+// employee, not a page, or the checkbox set would silently drop people past the page boundary.
 export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
   return withTenant(ctx, (tx) =>
     tx
@@ -35,6 +38,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         status: assignment.status,
         department: department.name,
         company: company.legalName,
+        companyId: employment.companyId,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
       })
@@ -62,6 +66,7 @@ export type EmployeeListRow = {
   status: string | null;
   department: string | null;
   company: string;
+  companyId: string;
   hiredOn: string;
   terminatedOn: string | null;
 };
@@ -115,6 +120,7 @@ export function listEmployeesPage(
         status: assignment.status,
         department: department.name,
         company: company.legalName,
+        companyId: employment.companyId,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
       })

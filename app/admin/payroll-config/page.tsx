@@ -7,6 +7,7 @@ import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputC
 import { savePayrollConfigAction } from './actions';
 
 const HRDF = ['not_registered', 'mandatory', 'optional'] as const;
+const BASES = ['monthly', 'daily', 'hourly', 'other'] as const;
 
 export default async function PayrollConfigPage({
   searchParams,
@@ -54,7 +55,9 @@ export default async function PayrollConfigPage({
                   </Field>
                   <Field label={t('paymentBasis')}>
                     <select name="paymentBasis" defaultValue={cfg?.paymentBasis ?? 'monthly'} className={inputCls}>
-                      <option value="monthly">{t('basis_monthly')}</option>
+                      {BASES.map((bs) => (
+                        <option key={bs} value={bs}>{t(`basis_${bs}`)}</option>
+                      ))}
                     </select>
                   </Field>
                 </div>
@@ -88,6 +91,25 @@ export default async function PayrollConfigPage({
                   </Field>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('hrdfHint')}</p>
+              </div>
+
+              <div>
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('cutOffsTitle')}</h4>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('overtimeCutOff')}>
+                    <input type="number" name="overtimeCutOffDay" min={1} max={31} defaultValue={cfg?.overtimeCutOffDay ?? ''} placeholder={t('monthEnd')} className={inputCls} />
+                  </Field>
+                  <Field label={t('claimCutOff')}>
+                    <input type="number" name="claimCutOffDay" min={1} max={31} defaultValue={cfg?.claimCutOffDay ?? ''} placeholder={t('monthEnd')} className={inputCls} />
+                  </Field>
+                  <Field label={t('unpaidLeaveCutOff')}>
+                    <input type="number" name="unpaidLeaveCutOffDay" min={1} max={31} defaultValue={cfg?.unpaidLeaveCutOffDay ?? ''} placeholder={t('monthEnd')} className={inputCls} />
+                  </Field>
+                  <Field label={t('attendanceCutOff')}>
+                    <input type="number" name="attendanceCutOffDay" min={1} max={31} defaultValue={cfg?.attendanceCutOffDay ?? ''} placeholder={t('monthEnd')} className={inputCls} />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('cutOffsHint')}</p>
               </div>
 
               <button className={btnPrimary}>{t('save')}</button>

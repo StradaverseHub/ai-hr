@@ -1,21 +1,25 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
+import { listDepartments } from '@/core/read';
 import {
+  changeJobTransactions,
   headcountSummary,
   masterDataExport,
   newHires,
   terminations,
   turnoverRate,
+  type ReportFilter,
 } from '@/core/analytics';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 
 const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function AnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; departmentId?: string; q?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('analytics');
@@ -23,17 +27,28 @@ export default async function AnalyticsPage({
   const today = new Date().toISOString().slice(0, 10);
   const from = isDate(sp.from) ? sp.from : `${today.slice(0, 4)}-01-01`;
   const to = isDate(sp.to) ? sp.to : today;
+  const departmentId = sp.departmentId && UUID.test(sp.departmentId) ? sp.departmentId : undefined;
+  const q = sp.q ? sp.q.slice(0, 100) : undefined;
+  const filter: ReportFilter = { departmentId, q };
 
-  const [hc, hires, terms, turnover] = await Promise.all([
+  const departments = await listDepartments(s, { companyIds: scopeIds });
+
+  const [hc, hires, terms, turnover, changeJobs] = await Promise.all([
     headcountSummary(s, scopeIds, { asOf: to }),
-    newHires(s, scopeIds, { from, to }),
-    terminations(s, scopeIds, { from, to }),
+    newHires(s, scopeIds, { from, to, filter }),
+    terminations(s, scopeIds, { from, to, filter }),
     turnoverRate(s, scopeIds, { from, to }),
+    changeJobTransactions(s, scopeIds, { from, to, filter }),
   ]);
-  const masterCount = (await masterDataExport(s, scopeIds, { includeComp: false })).length;
+  const masterCount = (await masterDataExport(s, scopeIds, { includeComp: false, filter })).length;
 
-  const exportHref = (report: string, extra = '') =>
-    `/analytics/export?report=${report}&from=${from}&to=${to}${extra}`;
+  // Carry the period + scoping filters onto every export link.
+  const filterQs =
+    (departmentId ? `&departmentId=${encodeURIComponent(departmentId)}` : '') +
+    (q ? `&q=${encodeURIComponent(q)}` : '');
+  const exportHref = (report: string, format: string, extra = '') =>
+    `/analytics/export?report=${report}&from=${from}&to=${to}&format=${format}${extra}${filterQs}`;
+
   const ExportLink = ({ href, label }: { href: string; label: string }) => (
     <a
       href={href}
@@ -41,6 +56,15 @@ export default async function AnalyticsPage({
     >
       ↓ {label}
     </a>
+  );
+
+  // CSV / XLSX / PDF button group for a report (+ optional extra query, e.g. &comp=1).
+  const FormatGroup = ({ report, extra = '' }: { report: string; extra?: string }) => (
+    <div className="inline-flex items-center gap-1.5">
+      <ExportLink href={exportHref(report, 'csv', extra)} label={t('exportCsv')} />
+      <ExportLink href={exportHref(report, 'xlsx', extra)} label={t('exportXlsx')} />
+      <ExportLink href={exportHref(report, 'pdf', extra)} label={t('exportPdf')} />
+    </div>
   );
 
   const tiles: [string, string | number][] = [
@@ -54,14 +78,27 @@ export default async function AnalyticsPage({
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
 
-      {/* Period filter */}
+      {/* Period + scoping filter */}
       <Card>
-        <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+        <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5">
           <Field label={t('from')}>
             <input name="from" type="date" defaultValue={from} className={inputCls} />
           </Field>
           <Field label={t('to')}>
             <input name="to" type="date" defaultValue={to} className={inputCls} />
+          </Field>
+          <Field label={t('filterDepartment')}>
+            <select name="departmentId" defaultValue={departmentId ?? ''} className={inputCls}>
+              <option value="">{t('allDepartments')}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('search')}>
+            <input name="q" type="search" defaultValue={q ?? ''} placeholder={t('searchPlaceholder')} className={inputCls} />
           </Field>
           <div className="flex items-center gap-2">
             <button className={btnPrimary}>{t('apply')}</button>
@@ -123,7 +160,7 @@ export default async function AnalyticsPage({
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between gap-3 pr-4">
           <SectionHeader title={t('newHiresTitle')} count={hires.length} />
-          <ExportLink href={exportHref('new-hires')} label={t('exportCsv')} />
+          <FormatGroup report="new-hires" />
         </div>
         <Table
           head={[t('colName'), t('colCompany'), t('colDepartment'), t('colHiredOn')]}
@@ -136,7 +173,7 @@ export default async function AnalyticsPage({
       <Card className="overflow-hidden">
         <div className="flex items-center justify-between gap-3 pr-4">
           <SectionHeader title={t('terminationsTitle')} count={terms.length} />
-          <ExportLink href={exportHref('terminations')} label={t('exportCsv')} />
+          <FormatGroup report="terminations" />
         </div>
         <Table
           head={[t('colName'), t('colDepartment'), t('colTerminatedOn'), t('colType'), t('colReason')]}
@@ -151,16 +188,53 @@ export default async function AnalyticsPage({
         />
       </Card>
 
+      {/* Change job transactions (ADR-0047) */}
+      <Card className="overflow-hidden">
+        <div className="flex items-center justify-between gap-3 pr-4">
+          <SectionHeader title={t('changeJobsTitle')} count={changeJobs.length} />
+          <FormatGroup report="change-jobs" />
+        </div>
+        <Table
+          head={[
+            t('colName'),
+            t('colFromDept'),
+            t('colToDept'),
+            t('colFromPosition'),
+            t('colToPosition'),
+            t('colEffectiveOn'),
+          ]}
+          rows={changeJobs.map((r) => [
+            r.name,
+            r.fromDepartment ?? '—',
+            r.toDepartment ?? '—',
+            r.fromPosition ?? '—',
+            r.toPosition ?? '—',
+            r.effectiveOn,
+          ])}
+          empty={t('noData')}
+        />
+      </Card>
+
       {/* Master-data export */}
       <Card>
         <SectionHeader title={t('masterDataTitle')} count={masterCount} />
         <div className="space-y-3 p-4">
           <p className="text-sm text-muted-foreground">{t('masterDataDesc')}</p>
-          <div className="flex flex-wrap gap-2">
-            <ExportLink href={exportHref('master-data')} label={t('exportWithoutComp')} />
-            <ExportLink href={exportHref('master-data', '&comp=1')} label={t('exportWithComp')} />
-            <ExportLink href={exportHref('master-data', '&all=1&comp=1')} label={t('exportAll')} />
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportWithoutComp')}</span>
+              <FormatGroup report="master-data" />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportWithComp')}</span>
+              <FormatGroup report="master-data" extra="&comp=1" />
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportAll')}</span>
+              <FormatGroup report="master-data" extra="&all=1&comp=1" />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground">{t('pdfNonLatinNote')}</p>
         </div>
       </Card>
     </div>

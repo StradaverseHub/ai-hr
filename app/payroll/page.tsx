@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
-import { listCompanies, listDepartments } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { BatchCreateForm } from './batch-create-form';
@@ -25,10 +25,16 @@ export default async function PayrollPage({
   // Wave 2C (ADR-0024): the "add run" control is gated — only shown when multi-cycle is enabled.
   const multiCycle = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
   const { error } = await searchParams;
-  const [batches, companies, departments] = await Promise.all([
+  // Note (scope asymmetry, pre-existing): companies come from the UNSCOPED listCompanies, while
+  // departments + employees are scope-filtered by scopeIds. A subtree-restricted admin can pick a
+  // parent/sibling company in the dropdown whose departments + employees then come back empty → a
+  // whole-company run with no ability to subset. This is inherited, not introduced here; scoping the
+  // company dropdown too is out of scope for this feature.
+  const [batches, companies, departments, employees] = await Promise.all([
     listBatches(s, scopeIds),
     listCompanies(s),
     listDepartments(s, { companyIds: scopeIds }),
+    listEmployees(s, scopeIds),
   ]);
 
   return (
@@ -88,7 +94,7 @@ export default async function PayrollPage({
             )}
           </tbody>
         </table>
-        <BatchCreateForm companies={companies} departments={departments} thisMonth={thisMonth} />
+        <BatchCreateForm companies={companies} departments={departments} employees={employees} thisMonth={thisMonth} />
         {multiCycle && (
           <form action={addRunAction} className="grid grid-cols-1 items-end gap-3 border-t border-border bg-muted/30 p-4 sm:grid-cols-4">
             <Field label={t('company')}>
