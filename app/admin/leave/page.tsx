@@ -89,6 +89,7 @@ export default async function LeaveConfigPage({
               floorLabel={floorBands(t.code)}
               floor0={entitlement(t.code, 0)}
               eligibility={(t.eligibility as { gender?: string; maritalStatus?: string; minServiceMonths?: number } | null) ?? null}
+              durations={(t.durations as string[] | null) ?? null}
               policies={polByType.get(t.id) ?? []}
               grades={gradeOptions}
               updateTypeAction={updateLeaveTypeAction}

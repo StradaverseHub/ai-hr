@@ -30,6 +30,29 @@ export class InsufficientLeaveBalanceError extends Error {
   }
 }
 
+// ── Duration types (ADR-0048) ──────────────────────────────────────────────────────────────────────
+// A request can be a full day, a half-day (AM or PM), or a number of hours. The deduction is full=1,
+// half=0.5, hourly = round(hours / DEFAULT_STANDARD_HOURS, 2). The denominator "hours in a workday" is a
+// company-wide constant (matches core/toil.ts STD_DAY_MINUTES = 480 = 8h), not a per-type column.
+export type LeaveDurationType = 'full_day' | 'half_day_am' | 'half_day_pm' | 'hourly';
+export const LEAVE_DURATION_TYPES: readonly LeaveDurationType[] = [
+  'full_day',
+  'half_day_am',
+  'half_day_pm',
+  'hourly',
+] as const;
+export const DEFAULT_STANDARD_HOURS = 8;
+export function isLeaveDurationType(v: unknown): v is LeaveDurationType {
+  return typeof v === 'string' && (LEAVE_DURATION_TYPES as readonly string[]).includes(v);
+}
+
+export class LeaveDurationNotAllowedError extends Error {
+  constructor() {
+    super('This leave type does not allow the selected duration (full day / half day / hourly)');
+    this.name = 'LeaveDurationNotAllowedError';
+  }
+}
+
 // ── Eligibility (ADR-0038 2A-1, #25) ──────────────────────────────────────────────────────────────
 // A lawful gate that mirrors what the Act restricts (maternity female-only EA s.37; paternity married-
 // male ≥12mo EA s.60FA). It NEVER blocks a statutory entitlement — types with no restriction carry no
@@ -135,6 +158,8 @@ export async function requestLeave(
     endDate: string;
     reason?: string;
     hasDocument?: boolean; // 2A-2: asserts a supporting document accompanies this request
+    durationType?: LeaveDurationType; // ADR-0048: defaults to 'full_day'
+    hours?: number; // ADR-0048: required (and only used) when durationType === 'hourly'
   },
 ) {
   return withTenant(ctx, async (tx) => {
@@ -144,6 +169,7 @@ export async function requestLeave(
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
         requiresDocument: leaveType.requiresDocument,
+        durations: leaveType.durations,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -164,7 +190,23 @@ export async function requestLeave(
       assertEligible(elig, emp, p.startDate);
     }
 
-    let days: number;
+    const durationType: LeaveDurationType = p.durationType ?? 'full_day';
+    const hours = durationType === 'hourly' ? (p.hours ?? null) : null;
+
+    // ADR-0048: a non-full-day duration must be enabled on the leave type's allow-list, and confined to a
+    // single day. (full_day is always allowed and keeps the original range path unchanged.)
+    if (durationType !== 'full_day') {
+      const allow = (lt?.durations as string[] | null) ?? [];
+      if (!allow.includes(durationType)) throw new LeaveDurationNotAllowedError();
+      if (p.startDate !== p.endDate) {
+        throw new Error('Half-day and hourly leave must be a single day (start and end dates must match)');
+      }
+    }
+
+    // For working_days types the leave must land on an actual working day — for full_day ranges this is the
+    // existing count; for half/hourly it is the panel-fix guard so a half-day on a weekend/holiday is
+    // rejected rather than silently deducted at 0.5. Run the holiday query once and reuse it for both.
+    let workingDayCount: number | null = null;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038): holidays apply per the employee's work state — national (state null) ∪ their
       // effective state (work_state, falling back to the company default). National-only when unset.
@@ -185,9 +227,50 @@ export async function requestLeave(
             effState ? or(isNull(holiday.state), eq(holiday.state, effState)) : isNull(holiday.state),
           ),
         );
-      days = workingDays(p.startDate, p.endDate, new Set(hols.map((h) => h.d)));
+      workingDayCount = workingDays(p.startDate, p.endDate, new Set(hols.map((h) => h.d)));
+    }
+
+    let days: number;
+    if (durationType === 'full_day') {
+      days = lt?.counting === 'working_days' ? workingDayCount! : dayCount(p.startDate, p.endDate);
     } else {
-      days = dayCount(p.startDate, p.endDate);
+      // Single day already enforced. Working-day guard: reject a half/hourly request that falls on a
+      // weekend/holiday for working_days types (workingDayCount === 0) — same error as an empty range.
+      if (lt?.counting === 'working_days' && workingDayCount === 0) {
+        throw new Error('No leave days in range (end before start, or all non-working)');
+      }
+      if (durationType === 'hourly') {
+        const h = hours ?? 0;
+        if (!(h > 0 && h <= DEFAULT_STANDARD_HOURS)) {
+          throw new Error(`Hourly leave must be between 0 and ${DEFAULT_STANDARD_HOURS} hours`);
+        }
+        days = Math.round((h / DEFAULT_STANDARD_HOURS) * 100) / 100;
+      } else {
+        days = 0.5; // half_day_am / half_day_pm
+      }
+
+      // AM/PM same-date conflict (ADR-0048): a non-rejected request already covering this slot blocks a new
+      // one. Complementary AM + PM on the same date is allowed; everything else (same slot, a full_day, or
+      // an hourly) conflicts. This is the only overlap logic — general range overlap stays out of scope.
+      const existing = await tx
+        .select({ durationType: leaveRequest.durationType })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, p.employmentId),
+            eq(leaveRequest.startDate, p.startDate),
+            eq(leaveRequest.endDate, p.endDate),
+            inArray(leaveRequest.status, ['pending', 'approved']),
+          ),
+        );
+      for (const e of existing) {
+        const conflicts =
+          e.durationType === durationType || // same slot (or hourly vs hourly)
+          e.durationType === 'full_day' ||
+          e.durationType === 'hourly' ||
+          durationType === 'hourly';
+        if (conflicts) throw new Error('This date already has a conflicting leave request');
+      }
     }
     if (days <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
     const [row] = await tx
@@ -199,6 +282,8 @@ export async function requestLeave(
         startDate: p.startDate,
         endDate: p.endDate,
         days: days.toFixed(2),
+        durationType,
+        hours: hours != null ? hours.toFixed(2) : null,
         status: 'pending',
         reason: p.reason ?? null,
       })
@@ -210,7 +295,7 @@ export async function requestLeave(
       eventType: 'leave-request.submitted',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days },
+      payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days, durationType, hours },
     });
     // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
     await generateApprovalSteps(tx, ctx.tenantId, row.id, p.employmentId, p.leaveTypeId);

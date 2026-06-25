@@ -21,6 +21,8 @@ type Leave = {
   status: string; // 'approved' | 'pending'
   startDate: string;
   endDate: string;
+  durationType?: string | null; // ADR-0048
+  hours?: string | number | null; // ADR-0048
 };
 type Row = { id: string; name: string; role: string | null; leaves: Leave[] };
 
@@ -68,6 +70,23 @@ export async function PlannedAbsences({
   });
   const lastIdx = days - 1;
 
+  // ADR-0048: a short duration badge for non-full-day leave ("½ AM", "½ PM", "2h"). Translated/formatted
+  // server-side so the client grid stays i18n-free; null for full-day leave (no badge, full-width tile).
+  const durationBadge = (durationType?: string | null, hours?: string | number | null): string | null => {
+    switch (durationType) {
+      case 'half_day_am':
+        return t('durationBadgeHalfAm');
+      case 'half_day_pm':
+        return t('durationBadgeHalfPm');
+      case 'hourly': {
+        const h = hours == null ? null : Number(hours);
+        return h != null && Number.isFinite(h) ? t('durationBadgeHours', { hours: h }) : null;
+      }
+      default:
+        return null;
+    }
+  };
+
   // Translate per-pill titles + status labels server-side so the client grid stays i18n-free.
   const gridRows: GridRow[] = rows.map((emp) => ({
     id: emp.id,
@@ -81,6 +100,8 @@ export async function PlannedAbsences({
       startDate: l.startDate,
       endDate: l.endDate,
       statusLabel: l.status,
+      durationBadge: durationBadge(l.durationType, l.hours),
+      partial: l.durationType != null && l.durationType !== 'full_day',
       title: t('pillTitle', { type: l.typeName, start: l.startDate, end: l.endDate, status: l.status }),
     })),
   }));

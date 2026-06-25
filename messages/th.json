@@ -396,7 +396,17 @@
     "fieldReason": "เหตุผล (ไม่บังคับ)",
     "reasonPlaceholder": "ไปเที่ยวกับครอบครัว",
     "submitRequest": "ส่งคำขอ",
-    "myRequestsTitle": "ประวัติการลาของฉัน"
+    "myRequestsTitle": "ประวัติการลาของฉัน",
+    "fieldDurationType": "ระยะเวลา",
+    "duration": {
+      "full_day": "เต็มวัน",
+      "half_day_am": "ครึ่งวัน (เช้า)",
+      "half_day_pm": "ครึ่งวัน (บ่าย)",
+      "hourly": "รายชั่วโมง"
+    },
+    "fieldHours": "ชั่วโมง",
+    "hoursPlaceholder": "เช่น 2",
+    "hoursUnit": "{hours} ชม."
   },
   "attendance": {
     "title": "การเข้างาน",
@@ -1462,7 +1472,13 @@
       "eligibilityMinServiceLabel": "อายุงานขั้นต่ำ",
       "eligibilityMinServiceSuffix": "เดือน",
       "eligibilitySummaryOnly": "{who} เท่านั้น",
-      "eligibilitySummaryService": "อายุงาน ≥ {n} เดือน"
+      "eligibilitySummaryService": "อายุงาน ≥ {n} เดือน",
+      "allowedDurationsLabel": "ระยะเวลาที่อนุญาต",
+      "allowedDurationsHelp": "เลือกระยะเวลาที่พนักงานสามารถเลือกได้สำหรับการลาประเภทนี้ เต็มวันใช้ได้เสมอ",
+      "duration_full_day": "เต็มวัน",
+      "duration_half_day_am": "ครึ่งวัน (เช้า)",
+      "duration_half_day_pm": "ครึ่งวัน (บ่าย)",
+      "duration_hourly": "รายชั่วโมง"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",
@@ -1659,7 +1675,10 @@
       "employees": "พนักงาน",
       "pillTitle": "{type} · {start} ถึง {end} · {status}",
       "showAll": "แสดงทั้งหมด {count} รายการ",
-      "showLess": "แสดงน้อยลง"
+      "showLess": "แสดงน้อยลง",
+      "durationBadgeHalfAm": "½ เช้า",
+      "durationBadgeHalfPm": "½ บ่าย",
+      "durationBadgeHours": "{hours} ชม."
     },
     "timelineNav": {
       "previous": "{unit}ก่อนหน้า",

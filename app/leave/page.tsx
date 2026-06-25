@@ -4,6 +4,8 @@ import { isAdmin } from '@/lib/authz';
 import { leaveBalancesAll, listEmployees, listLeaveTypes, listLeaveRequests } from '@/core/read';
 import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
 import { styleFor } from '@/components/planned-absences';
+import { LeaveDurationFields } from '@/components/leave-duration-fields';
+import { durationLabel } from '@/lib/leave-duration';
 import { requestLeaveAction } from './actions';
 
 const REQ_STATUS: Record<string, string> = {
@@ -179,7 +181,14 @@ export default async function LeavePage({
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.startDate} → {r.endDate}
                     </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.days)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {Number(r.days)}
+                      {durationLabel(t, r.durationType, r.hours) && (
+                        <span className="ml-1 text-[10px] font-medium uppercase text-muted-foreground">
+                          {durationLabel(t, r.durationType, r.hours)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>
                         {t(`status.${r.status}`)}
@@ -215,21 +224,10 @@ export default async function LeavePage({
                 ))}
               </select>
             </Field>
-            <Field label={t('fieldLeaveType')}>
-              <select name="leaveTypeId" required className={inputCls}>
-                {leaveTypes.map((lt) => (
-                  <option key={lt.id} value={lt.id}>
-                    {lt.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('fieldStartDate')}>
-              <input name="startDate" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
-            <Field label={t('fieldEndDate')}>
-              <input name="endDate" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
+            <LeaveDurationFields
+              types={leaveTypes.map((lt) => ({ id: lt.id, label: lt.name, durations: lt.durations ?? null }))}
+              startDefault={today}
+            />
             <Field label={t('fieldReason')}>
               <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
             </Field>

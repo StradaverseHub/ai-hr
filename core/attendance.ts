@@ -339,11 +339,14 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
     const [onLeave, holidays, policies] = await Promise.all([
       empIds.length
         ? tx
+            // ADR-0048: only full_day leave suppresses the day's attendance signal. A half-day / hourly
+            // leave still expects (and can record) attendance for the worked portion, so it is excluded here.
             .select({ employmentId: leaveRequest.employmentId })
             .from(leaveRequest)
             .where(
               and(
                 eq(leaveRequest.status, 'approved'),
+                eq(leaveRequest.durationType, 'full_day'),
                 lte(leaveRequest.startDate, date),
                 gte(leaveRequest.endDate, date),
                 inArray(leaveRequest.employmentId, empIds),
@@ -452,6 +455,8 @@ export function attendanceMonthSummary(
         .from(holiday)
         .where(and(gte(holiday.holidayDate, monthStart), lte(holiday.holidayDate, monthEnd))),
       tx
+        // ADR-0048: only full_day leave counts as a full leave day in the monthly summary. A half-day /
+        // hourly leave is a worked (partial) day — it must not increment leaveDays — so it is excluded here.
         .select({
           employmentId: leaveRequest.employmentId,
           startDate: leaveRequest.startDate,
@@ -461,6 +466,7 @@ export function attendanceMonthSummary(
         .where(
           and(
             eq(leaveRequest.status, 'approved'),
+            eq(leaveRequest.durationType, 'full_day'),
             lte(leaveRequest.startDate, monthEnd),
             gte(leaveRequest.endDate, monthStart),
             inArray(leaveRequest.employmentId, empIds),

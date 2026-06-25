@@ -6,7 +6,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import type { LeaveEligibility } from './leave';
+import { LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
 import {
   appUser,
   assignment,
@@ -753,22 +753,38 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
  * Records who restricted a type via a before/after event (substrate discipline) — hence the
  * read-before-write SELECT inside the tx.
  */
+/** ADR-0048: normalise the allowed-durations allow-list. undefined ⇒ untouched; an array is filtered to
+ *  the known set; empty or full-day-only ⇒ null (full-day-only, the clean default). */
+function cleanDurations(d: LeaveDurationType[] | null | undefined): LeaveDurationType[] | null | undefined {
+  if (d === undefined) return undefined;
+  if (d == null) return null;
+  const set = new Set(d.filter((x): x is LeaveDurationType => LEAVE_DURATION_TYPES.includes(x)));
+  set.delete('full_day'); // full_day is always available; storing only it is the same as null
+  return set.size === 0 ? null : [...set];
+}
+
 export async function updateLeaveType(
   ctx: SessionContext,
-  p: { id: string; name: string; eligibility?: LeaveEligibility | null },
+  p: { id: string; name: string; eligibility?: LeaveEligibility | null; durations?: LeaveDurationType[] | null },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
   const touchEligibility = p.eligibility !== undefined;
   const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
+  const touchDurations = p.durations !== undefined;
+  const nextDurations = cleanDurations(p.durations);
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
-      .select({ name: leaveType.name, eligibility: leaveType.eligibility })
+      .select({ name: leaveType.name, eligibility: leaveType.eligibility, durations: leaveType.durations })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
     await tx
       .update(leaveType)
-      .set(touchEligibility ? { name, eligibility: nextEligibility } : { name })
+      .set({
+        name,
+        ...(touchEligibility ? { eligibility: nextEligibility } : {}),
+        ...(touchDurations ? { durations: nextDurations } : {}),
+      })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -777,8 +793,12 @@ export async function updateLeaveType(
       eventType: 'leave-type.updated',
       actor: actorOf(ctx),
       payload: {
-        before: { name: before?.name ?? null, eligibility: before?.eligibility ?? null },
-        after: { name, eligibility: touchEligibility ? nextEligibility : (before?.eligibility ?? null) },
+        before: { name: before?.name ?? null, eligibility: before?.eligibility ?? null, durations: before?.durations ?? null },
+        after: {
+          name,
+          eligibility: touchEligibility ? nextEligibility : (before?.eligibility ?? null),
+          durations: touchDurations ? nextDurations : (before?.durations ?? null),
+        },
       },
     });
   });
