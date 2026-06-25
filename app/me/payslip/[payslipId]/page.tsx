@@ -9,6 +9,7 @@ import { PrintButton } from '@/components/print-button';
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+type RecordLine = { code: string; name: string; amount: number };
 type Stat = {
   epfEmployee?: number;
   epfEmployer?: number;
@@ -18,6 +19,7 @@ type Stat = {
   eisEmployee?: number;
   eisEmployer?: number;
   pcb?: number;
+  recordLines?: RecordLine[];
 };
 
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
@@ -115,6 +117,18 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <Row label={t('eis')} value={rm(st.eisEmployer)} muted />
           <Row label={t('totalEmployerCost')} value={rm(p.employerCost)} muted />
         </section>
+
+        {st.recordLines && st.recordLines.length > 0 && (
+          <section>
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('recordLinesHeading')}
+            </h2>
+            {st.recordLines.map((l) => (
+              <Row key={l.code} label={l.name} value={rm(l.amount)} muted />
+            ))}
+            <p className="mt-2 text-xs text-muted-foreground">{t('recordLinesNote')}</p>
+          </section>
+        )}
 
         {p.daysWorked != null && (
           <p className="text-xs text-muted-foreground">

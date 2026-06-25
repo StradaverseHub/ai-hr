@@ -794,7 +794,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // agency split exactly, so a back-filled batch is byte-identical (proven by the compat test).
     const typedComponents = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
     type CompRow = {
-      code: string; kind: string; amount: number; rounding: string;
+      code: string; name: string; kind: string; amount: number; rounding: string;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
     };
     const recurringByEmp = new Map<string, CompRow[]>();
@@ -804,6 +804,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         employmentId: employmentPayComponent.employmentId,
         amount: employmentPayComponent.amount,
         code: payComponent.code,
+        name: payComponent.name,
         kind: payComponent.kind,
         epf: payComponent.includedInEpf,
         socso: payComponent.includedInSocsoEis,
@@ -846,6 +847,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     ): {
       basicRaw: number; basicGross: number; allowanceApplied: number; hrdfAllowApplied: number;
       overtime: number; bonus: number; reimburse: number; deduct: number;
+      recordLines: { code: string; name: string; amount: number }[];
     } => {
       if (!typedComponents) {
         const basicRaw = Number(e.basic);
@@ -860,27 +862,31 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           bonus: round2(bonusByEmp.get(e.employmentId) ?? 0),
           reimburse: 0,
           deduct: 0,
+          recordLines: [],
         };
       }
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
+      const recordLines: { code: string; name: string; amount: number }[] = [];
       const comps = [...(recurringByEmp.get(e.employmentId) ?? []), ...(batchCompByEmp.get(e.employmentId) ?? [])];
       for (const c of comps) {
         const applied = roundAmount(c.prorates ? c.amount * factor : c.amount, c.rounding);
         if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
-        // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable amount that the v1 calculator can't place in a cash
-        // bucket — a non-payable/BIK, or a PCB-only earning (not EPF and not SOCSO) — would be SILENTLY
-        // under-taxed. v1 does not compute these, so reject rather than produce a wrong payslip.
+        // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
+        // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce
+        // a wrong payslip. (Write-time guards in core/pay-components.ts now reject the same at entry/import.)
         if (c.pcb && (c.nonPayable || (!c.epf && !c.socso))) {
           throw new UnsupportedPayComponentError(c.code);
         }
-        if (c.nonPayable) continue; // a non-payable, non-taxable record line — nothing to compute
+        // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
+        // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
+        if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
         if (c.code === 'BASIC') { basicRaw += c.amount; basicGross = round2(basicGross + applied); continue; }
         if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
         else if (!c.epf && c.socso) ot = round2(ot + applied);
         else if (c.epf && !c.socso) bonusAmt = round2(bonusAmt + applied);
         else reimburse = round2(reimburse + applied); // all-false earning: paid but untaxed (e.g. receipted reimbursement)
       }
-      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct };
+      return { basicRaw, basicGross, allowanceApplied: wageAllow, hrdfAllowApplied: hrdfAllow, overtime: ot, bonus: bonusAmt, reimburse, deduct, recordLines };
     };
 
     /** Age at the period end; null when DOB is not captured (treated as < 60). */
@@ -985,6 +991,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         epfMode: e.epfMode ?? 'auto',
         // #6 (ADR-0037): per-body version map, present only when a component override is in effect.
         ...(componentVersions ? { componentVersions } : {}),
+        // ADR-0025 §5 (Option A): non-payable, non-taxable components recorded for the payslip only — they
+        // do NOT affect gross/net (key present only when there is at least one, to preserve byte-identical
+        // parity with the legacy path which never produces record lines). Carried on the regular run only —
+        // an additional/off-cycle run pays solely its bonus and would otherwise re-list the same record.
+        ...(!isAdditionalRun && en.recordLines.length ? { recordLines: en.recordLines } : {}),
       };
 
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,

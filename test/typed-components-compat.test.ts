@@ -105,6 +105,46 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     expect(typed.statutory).toEqual(legacy.statutory);
   });
 
+  it('RECORD-ONLY: a non-payable, non-taxable component is recorded on the payslip with zero gross/net delta', async () => {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Rec', primaryEmail: 'rec@acme.test' },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    await seedPayComponentCatalog(a);
+    await backfillEmploymentComponentsFromCompensation(a);
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+
+    // ── Baseline (no non-payable component) ──
+    const { batchId: baseBatch } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: baseBatch });
+    const baseline = snap(await payslipOf(baseBatch));
+    expect((baseline.statutory as Record<string, unknown>).recordLines).toBeUndefined(); // no record lines when none exist
+
+    // ── With a record-only BIK: non-payable AND not PCB-taxable ──
+    await upsertPayComponent(a, { code: 'BIK_PARK', name: 'Parking (record only)', kind: 'non_payable', includedInEpf: false, includedInSocsoEis: false, includedInPcb: false, includedInHrdfBase: false, isNonPayable: true, prorates: false });
+    const recId = (await listPayComponents(a)).find((c) => c.code === 'BIK_PARK')!.id;
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: recId, amount: 120, effectiveFrom: '2026-01-01' });
+
+    // Same period length as the baseline (31-day month) so daysWorked is comparable — the BIK alone must
+    // not change any cash column.
+    const { batchId: recBatch } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
+    await generatePayslips(a, { batchId: recBatch });
+    const withRec = snap(await payslipOf(recBatch));
+
+    // Every cash column is identical to the baseline — the record line does NOT affect take-home pay.
+    expect(withRec.cols).toEqual(baseline.cols);
+    // …but the non-payable line IS recorded on the payslip for transparency.
+    const recordLines = (withRec.statutory as Record<string, unknown>).recordLines as { code: string; name: string; amount: number }[];
+    expect(recordLines).toHaveLength(1);
+    expect(recordLines[0]).toMatchObject({ code: 'BIK_PARK', amount: 120 });
+  });
+
   it('FAIL-CLOSED: a taxable non-payable (BIK) component is rejected, not silently under-taxed', async () => {
     const a = adminCtx(base);
     const e = await hireEmployee(a, {

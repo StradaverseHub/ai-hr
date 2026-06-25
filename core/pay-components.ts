@@ -272,6 +272,23 @@ export function setEmploymentPayComponent(
 
 // ───────────────────── Per-batch one-off ─────────────────────
 
+/**
+ * Thrown at WRITE time when an admin tries to put a PCB-taxable component that v1 cannot tax onto a batch
+ * — a non-payable/BIK, or a PCB-only earning (neither EPF nor SOCSO). The payroll kernel fails closed on
+ * the same case at generate time (UnsupportedPayComponentError, ADR-0025 §5); this guard surfaces it at
+ * entry/import time so the admin is told immediately, not after a green import when payroll won't run.
+ */
+export class UnsupportedBatchComponentError extends Error {
+  constructor(public readonly code: string) {
+    super(`Pay component "${code}" is PCB-taxable but cannot be computed in this version (non-payable/PCB-only). Remove it from the batch or use a payable component.`);
+    this.name = 'UnsupportedBatchComponentError';
+  }
+}
+
+/** The kernel's fail-closed condition (core/payroll.ts earningsOf), evaluated on a catalog row's flags. */
+const isUnsupportedTaxableComponent = (c: { includedInEpf: boolean; includedInSocsoEis: boolean; includedInPcb: boolean; isNonPayable: boolean }) =>
+  c.includedInPcb && (c.isNonPayable || (!c.includedInEpf && !c.includedInSocsoEis));
+
 /** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
 export function setPayrollBatchComponent(
   ctx: SessionContext,
@@ -279,6 +296,20 @@ export function setPayrollBatchComponent(
   outerTx?: Tx,
 ) {
   const run = async (tx: Tx) => {
+    // Write-time guard parity with the kernel (ADR-0025 §5): reject a PCB-taxable BIK / PCB-only earning
+    // here rather than letting a green write fail later at payslip generation.
+    const [comp] = await tx
+      .select({
+        code: payComponent.code,
+        includedInEpf: payComponent.includedInEpf,
+        includedInSocsoEis: payComponent.includedInSocsoEis,
+        includedInPcb: payComponent.includedInPcb,
+        isNonPayable: payComponent.isNonPayable,
+      })
+      .from(payComponent)
+      .where(eq(payComponent.id, p.componentId))
+      .limit(1);
+    if (comp && isUnsupportedTaxableComponent(comp)) throw new UnsupportedBatchComponentError(comp.code);
     const [cur] = await tx
       .select({ id: payrollBatchComponent.id })
       .from(payrollBatchComponent)
@@ -402,7 +433,15 @@ export async function importBatchComponents(
     const byEmail = new Map(emps.filter((e) => e.email).map((e) => [e.email!.toLowerCase(), e]));
 
     const comps = await tx
-      .select({ id: payComponent.id, code: payComponent.code, name: payComponent.name })
+      .select({
+        id: payComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        includedInEpf: payComponent.includedInEpf,
+        includedInSocsoEis: payComponent.includedInSocsoEis,
+        includedInPcb: payComponent.includedInPcb,
+        isNonPayable: payComponent.isNonPayable,
+      })
       .from(payComponent)
       .where(and(eq(payComponent.tenantId, ctx.tenantId), isNull(payComponent.archivedAt)));
     const byCode = new Map(comps.map((c) => [c.code.toUpperCase(), c]));
@@ -420,6 +459,9 @@ export async function importBatchComponents(
       else if (!code) error = 'Missing component';
       else if (!comp) error = `Unknown component: ${code}`;
       else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
+      // Write-time guard parity (ADR-0025 §5): a PCB-taxable BIK / PCB-only earning is unprocessable by the
+      // v1 kernel — flag it in the preview so the admin is told here, not after a green import.
+      else if (isUnsupportedTaxableComponent(comp)) error = `Unsupported component: ${code} (PCB-taxable non-payable / PCB-only)`;
       return {
         line: i + 2,
         employee,
