@@ -70,7 +70,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ payslip
     generatedNote: t('generatedNote'),
   });
 
-  const fname = `payslip-${p.payPeriod}-${p.employeeCode ?? 'employee'}`.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  // Disambiguate the filename so two cycles in one month don't collide (and silently overwrite on
+  // download). A sole regular run keeps the legacy `payslip-<period>-<code>`; non-regular or repeated
+  // runs append the run identity. Sanitizer below strips anything outside [A-Za-z0-9._-].
+  const runTag =
+    p.runType === 'regular' && p.runSeq <= 1
+      ? ''
+      : `-${p.runType}${p.runSeq > 1 ? `-${p.runSeq}` : ''}`;
+  const fname = `payslip-${p.payPeriod}${runTag}-${p.employeeCode ?? 'employee'}`.replace(
+    /[^a-zA-Z0-9._-]+/g,
+    '-',
+  );
   return new Response(Buffer.from(bytes), {
     headers: {
       'Content-Type': 'application/pdf',

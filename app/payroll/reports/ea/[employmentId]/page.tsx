@@ -28,7 +28,7 @@ export default async function EaStatementPage({
   const { employmentId } = await params;
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(employmentId)) notFound();
   const { year } = await searchParams;
-  const yr = /^\d{4}$/.test(year ?? '') ? (year as string) : '2026';
+  const yr = /^\d{4}$/.test(year ?? '') ? (year as string) : String(new Date().getFullYear());
   const s = await getSession(); // RLS-scopes the read to what this user may see
   const ea = await employeeEaStatement(s, { employmentId, year: yr });
   if (!ea) notFound();
