@@ -59,7 +59,14 @@ export default async function PayComponentsPage({
                 <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
                   <td className="px-4 py-2.5 font-mono text-xs">{c.code}</td>
                   <td className="px-4 py-2.5">{c.name}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{t(`kind_${c.kind}`)}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {t(`kind_${c.kind}`)}
+                    {c.isNonPayable && (
+                      <span className="ml-1.5 inline-block rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground" title={t('recordOnlyNote')}>
+                        {t('recordOnlyBadge')}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-center tabular-nums">{flag(c.includedInEpf)}</td>
                   <td className="px-4 py-2.5 text-center tabular-nums">{flag(c.includedInSocsoEis)}</td>
                   <td className="px-4 py-2.5 text-center tabular-nums">{flag(c.includedInPcb)}</td>
