@@ -1562,6 +1562,9 @@
     "downloadCsv": {
       "button": "CSV பதிவிறக்கு"
     },
+    "downloadTemplate": {
+      "button": "வார்ப்புருவைப் பதிவிறக்கு"
+    },
     "editableRow": {
       "save": "சேமி",
       "cancel": "ரத்துசெய்",

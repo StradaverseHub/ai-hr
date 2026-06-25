@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, Field, inputCls } from '@/components/ui';
+import { DownloadTemplate } from '@/components/download-template';
+import { employeeTemplate } from '@/lib/import-template';
 import { IMPORT_COLUMNS, type ImportPreview, type ImportResult } from '@/lib/import-schema';
 import { validateImportAction, commitImportAction } from './actions';
 
@@ -116,6 +118,7 @@ export function EmployeeImport({
           >
             {t('loadSample')}
           </Button>
+          <DownloadTemplate spec={employeeTemplate} />
           <span className="ml-auto text-xs text-muted-foreground">
             {t('resolveHint', { company: company?.name ?? t('theCompany') })}
           </span>

@@ -1562,6 +1562,9 @@
     "downloadCsv": {
       "button": "Tải xuống CSV"
     },
+    "downloadTemplate": {
+      "button": "Tải xuống Mẫu"
+    },
     "editableRow": {
       "save": "Lưu",
       "cancel": "Hủy",
