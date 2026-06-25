@@ -406,7 +406,14 @@
     },
     "fieldHours": "小时",
     "hoursPlaceholder": "例如 2",
-    "hoursUnit": "{hours} 小时"
+    "hoursUnit": "{hours} 小时",
+    "errors": {
+      "documentRequiredAfter": "{typeName}超过 {days} 天时需要提供证明文件。",
+      "documentRequired": "{typeName}需要提供证明文件（例如医疗证明）。",
+      "employeeRemarkRequired": "{typeName}需要填写员工备注。",
+      "fileTypeNotAllowed": "不允许的文件类型 — 接受：{allowed}。",
+      "fileTooLarge": "文件超过 {mb} MB 上限。"
+    }
   },
   "attendance": {
     "title": "考勤",
@@ -702,7 +709,7 @@
     "marital_other": "其他",
     "notSet": "— 未设置 —",
     "documentLabel": "证明文件",
-    "documentHint": "病假和住院假需提供（例如医生证明）。",
+    "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
     "documentRequired": "需要文件",
     "viewDocument": "查看文件",
     "stageManager": "经理审批",
@@ -717,7 +724,9 @@
     "submitResignation": "提交辞职",
     "resignationAcceptedNote": "您的辞职已获批准。您的最后工作日为 {date}。",
     "resignationWasRejected": "您之前的辞职被驳回。您可以在下方重新提交。",
-    "resignationWasWithdrawn": "您已撤回之前的辞职。您可以在下方重新提交。"
+    "resignationWasWithdrawn": "您已撤回之前的辞职。您可以在下方重新提交。",
+    "employeeRemarkLabel": "员工备注",
+    "employeeRemarkRequiredHint": "某些请假类型需要填写备注。"
   },
   "approvals": {
     "title": "审批",
@@ -1482,7 +1491,19 @@
       "duration_full_day": "全天",
       "duration_half_day_am": "半天（上午）",
       "duration_half_day_pm": "半天（下午）",
-      "duration_hourly": "按小时"
+      "duration_hourly": "按小时",
+      "documentSectionTitle": "证明文件",
+      "requireAttachmentLabel": "要求附件",
+      "mandatoryAfterDaysLabel": "超过 N 天时要求",
+      "allowedFileTypesLabel": "允许的文件类型",
+      "fileTypePdf": "PDF",
+      "fileTypeJpg": "JPG",
+      "fileTypePng": "PNG",
+      "maxFileSizeLabel": "最大文件大小（MB）",
+      "employeeRemarkRequiredLabel": "要求员工备注",
+      "hrRemarkRequiredLabel": "要求人力资源备注（将在后续版本中执行）",
+      "saveDocumentRule": "保存文件设置",
+      "documentSectionHelp": "配置是否需要证明文件、何时变为强制，以及接受哪些文件类型和大小。"
     },
     "holidays": {
       "pageTitle": "公共假期",

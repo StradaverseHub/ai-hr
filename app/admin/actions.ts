@@ -500,12 +500,36 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const durations = touchDurations
     ? (fd.getAll('duration').map(String) as LeaveDurationType[])
     : undefined;
+  // Supporting-document config: the document sub-form posts `document=1` (marker) so a rename / eligibility
+  // / durations edit that omits it leaves the doc columns untouched (same tri-state guard).
+  const touchDocument = fd.get('document') === '1';
+  let docFields: {
+    requiresDocument?: boolean;
+    mandatoryAfterDays?: number | null;
+    allowedMimeTypes?: string[];
+    maxDocBytes?: number;
+    employeeRemarkRequired?: boolean;
+    hrRemarkRequired?: boolean;
+  } = {};
+  if (touchDocument) {
+    const afterRaw = String(fd.get('mandatoryAfterDays') ?? '').trim();
+    const mbRaw = String(fd.get('maxFileSizeMb') ?? '').trim();
+    docFields = {
+      requiresDocument: fd.get('requiresDocument') === 'on',
+      mandatoryAfterDays: afterRaw === '' ? null : Number(afterRaw),
+      allowedMimeTypes: fd.getAll('allowedMimeType').map(String),
+      maxDocBytes: mbRaw === '' ? 10 * 1024 * 1024 : Math.round(Number(mbRaw) * 1024 * 1024),
+      employeeRemarkRequired: fd.get('employeeRemarkRequired') === 'on',
+      hrRemarkRequired: fd.get('hrRemarkRequired') === 'on',
+    };
+  }
   try {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
       name: String(fd.get('name') ?? '').trim(),
       eligibility,
       durations,
+      ...docFields,
     });
   } catch (e) {
     fail(LEAVE, e);

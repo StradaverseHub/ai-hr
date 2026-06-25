@@ -34,6 +34,13 @@ export type LeaveEligibilityRule = {
 /** ADR-0048: the four non-full-day durations an admin can enable on a leave type. */
 const DURATION_OPTIONS = ['half_day_am', 'half_day_pm', 'hourly'] as const;
 
+/** Supporting-document config: the closed set of allowed mime types (PDF / JPG / PNG). */
+const DOC_MIME_OPTIONS = [
+  { mime: 'application/pdf', label: 'fileTypePdf' as const },
+  { mime: 'image/jpeg', label: 'fileTypeJpg' as const },
+  { mime: 'image/png', label: 'fileTypePng' as const },
+] as const;
+
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
 const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
@@ -67,6 +74,12 @@ export function LeaveTypePanel({
   floor0,
   eligibility,
   durations,
+  requiresDocument,
+  mandatoryAfterDays,
+  allowedMimeTypes,
+  maxDocBytes,
+  employeeRemarkRequired,
+  hrRemarkRequired,
   policies,
   grades,
   updateTypeAction,
@@ -87,6 +100,13 @@ export function LeaveTypePanel({
   eligibility: LeaveEligibilityRule | null;
   /** ADR-0048: enabled non-full-day durations (e.g. ['half_day_am','hourly']); null/[] = full-day-only. */
   durations: string[] | null;
+  /** Supporting-document config — current values, threaded so the sub-form round-trips. */
+  requiresDocument: boolean;
+  mandatoryAfterDays: number | null;
+  allowedMimeTypes: string[] | null;
+  maxDocBytes: number;
+  employeeRemarkRequired: boolean;
+  hrRemarkRequired: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   updateTypeAction: Action;
@@ -330,6 +350,87 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('allowedDurationsHelp')}</p>
+          </div>
+
+          {/* Supporting-document configuration */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('documentSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the document columns (tri-state guard) */}
+              <input type="hidden" name="document" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="requiresDocument"
+                  defaultChecked={requiresDocument}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('requireAttachmentLabel')}
+              </label>
+              <Field label={t('mandatoryAfterDaysLabel')}>
+                <input
+                  name="mandatoryAfterDays"
+                  type="number"
+                  min="0"
+                  step="1"
+                  defaultValue={mandatoryAfterDays ?? ''}
+                  className={`${inputCls} w-24`}
+                />
+              </Field>
+              <div className="space-y-1">
+                <span className="text-xs text-muted-foreground">{t('allowedFileTypesLabel')}</span>
+                <div className="flex flex-wrap gap-3">
+                  {DOC_MIME_OPTIONS.map((o) => (
+                    <label key={o.mime} className="flex items-center gap-1.5 text-xs text-foreground">
+                      <input
+                        type="checkbox"
+                        name="allowedMimeType"
+                        value={o.mime}
+                        defaultChecked={allowedMimeTypes?.includes(o.mime) ?? false}
+                        className="size-3.5 rounded border-border"
+                      />
+                      {t(o.label)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <Field label={t('maxFileSizeLabel')}>
+                <input
+                  name="maxFileSizeMb"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                  defaultValue={Math.round(maxDocBytes / (1024 * 1024))}
+                  className={`${inputCls} w-24`}
+                />
+              </Field>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="employeeRemarkRequired"
+                  defaultChecked={employeeRemarkRequired}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('employeeRemarkRequiredLabel')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="hrRemarkRequired"
+                  defaultChecked={hrRemarkRequired}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('hrRemarkRequiredLabel')}
+              </label>
+              <Button type="submit" size="sm">
+                {t('saveDocumentRule')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('documentSectionHelp')}</p>
           </div>
 
           {/* entitlement timeline */}

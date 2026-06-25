@@ -687,6 +687,13 @@
       "when": 1781861610000,
       "tag": "0097_leave_duration",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1781861620000,
+      "tag": "0098_leave_document_config",
+      "breakpoints": true
     }
   ]
 }

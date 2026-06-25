@@ -406,7 +406,14 @@
     },
     "fieldHours": "Hours",
     "hoursPlaceholder": "e.g. 2",
-    "hoursUnit": "{hours}h"
+    "hoursUnit": "{hours}h",
+    "errors": {
+      "documentRequiredAfter": "A supporting document is required for {typeName} exceeding {days} days.",
+      "documentRequired": "A supporting document is required for {typeName} (e.g. a medical certificate).",
+      "employeeRemarkRequired": "An employee remark is required for {typeName}.",
+      "fileTypeNotAllowed": "File type not allowed — accepted: {allowed}.",
+      "fileTooLarge": "File exceeds the {mb} MB limit."
+    }
   },
   "attendance": {
     "title": "Attendance",
@@ -702,8 +709,10 @@
     "marital_other": "Other",
     "notSet": "— Not set —",
     "documentLabel": "Supporting document",
-    "documentHint": "Required for sick & hospitalization leave (e.g. a medical certificate).",
+    "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
     "documentRequired": "document required",
+    "employeeRemarkLabel": "Employee remark",
+    "employeeRemarkRequiredHint": "A remark is required for some leave types.",
     "viewDocument": "View document",
     "stageManager": "Manager review",
     "stageHr": "HR review",
@@ -1482,7 +1491,19 @@
       "duration_full_day": "Full day",
       "duration_half_day_am": "Half day (AM)",
       "duration_half_day_pm": "Half day (PM)",
-      "duration_hourly": "Hourly"
+      "duration_hourly": "Hourly",
+      "documentSectionTitle": "Supporting document",
+      "requireAttachmentLabel": "Require attachment",
+      "mandatoryAfterDaysLabel": "Required after more than N days",
+      "allowedFileTypesLabel": "Allowed file types",
+      "fileTypePdf": "PDF",
+      "fileTypeJpg": "JPG",
+      "fileTypePng": "PNG",
+      "maxFileSizeLabel": "Max file size (MB)",
+      "employeeRemarkRequiredLabel": "Employee remark required",
+      "hrRemarkRequiredLabel": "HR remark required (enforced in a later release)",
+      "saveDocumentRule": "Save document settings",
+      "documentSectionHelp": "Configure whether a supporting document is required, when it becomes mandatory, and which file types and sizes are accepted."
     },
     "holidays": {
       "pageTitle": "Public holidays",

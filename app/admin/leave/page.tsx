@@ -98,6 +98,12 @@ export default async function LeaveConfigPage({
               floor0={entitlement(t.code, 0)}
               eligibility={(t.eligibility as { gender?: string; maritalStatus?: string; minServiceMonths?: number } | null) ?? null}
               durations={(t.durations as string[] | null) ?? null}
+              requiresDocument={t.requiresDocument}
+              mandatoryAfterDays={t.mandatoryAfterDays ?? null}
+              allowedMimeTypes={(t.allowedMimeTypes as string[] | null) ?? null}
+              maxDocBytes={t.maxDocBytes}
+              employeeRemarkRequired={t.employeeRemarkRequired}
+              hrRemarkRequired={t.hrRemarkRequired}
               policies={polByType.get(t.id) ?? []}
               grades={gradeOptions}
               updateTypeAction={updateLeaveTypeAction}

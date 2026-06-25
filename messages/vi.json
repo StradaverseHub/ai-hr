@@ -406,7 +406,14 @@
     },
     "fieldHours": "Số giờ",
     "hoursPlaceholder": "vd. 2",
-    "hoursUnit": "{hours} giờ"
+    "hoursUnit": "{hours} giờ",
+    "errors": {
+      "documentRequiredAfter": "Cần có tài liệu hỗ trợ cho {typeName} vượt quá {days} ngày.",
+      "documentRequired": "Cần có tài liệu hỗ trợ cho {typeName} (ví dụ: giấy chứng nhận y tế).",
+      "employeeRemarkRequired": "Cần có ghi chú của nhân viên cho {typeName}.",
+      "fileTypeNotAllowed": "Loại tệp không được phép — chấp nhận: {allowed}.",
+      "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB."
+    }
   },
   "attendance": {
     "title": "Chấm công",
@@ -702,7 +709,7 @@
     "marital_other": "Khác",
     "notSet": "— Chưa đặt —",
     "documentLabel": "Tài liệu hỗ trợ",
-    "documentHint": "Bắt buộc cho nghỉ ốm & nằm viện (ví dụ: giấy chứng nhận y tế).",
+    "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
     "documentRequired": "cần tài liệu",
     "viewDocument": "Xem tài liệu",
     "stageManager": "Quản lý xét duyệt",
@@ -717,7 +724,9 @@
     "submitResignation": "Gửi đơn xin nghỉ",
     "resignationAcceptedNote": "Đơn xin nghỉ việc của bạn đã được chấp nhận. Ngày làm việc cuối cùng của bạn là {date}.",
     "resignationWasRejected": "Đơn trước của bạn đã bị từ chối. Bạn có thể gửi đơn mới bên dưới.",
-    "resignationWasWithdrawn": "Bạn đã rút đơn trước đó. Bạn có thể gửi đơn mới bên dưới."
+    "resignationWasWithdrawn": "Bạn đã rút đơn trước đó. Bạn có thể gửi đơn mới bên dưới.",
+    "employeeRemarkLabel": "Ghi chú của nhân viên",
+    "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú."
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -1482,7 +1491,19 @@
       "duration_full_day": "Cả ngày",
       "duration_half_day_am": "Nửa ngày (sáng)",
       "duration_half_day_pm": "Nửa ngày (chiều)",
-      "duration_hourly": "Theo giờ"
+      "duration_hourly": "Theo giờ",
+      "documentSectionTitle": "Tài liệu hỗ trợ",
+      "requireAttachmentLabel": "Yêu cầu tệp đính kèm",
+      "mandatoryAfterDaysLabel": "Bắt buộc khi vượt quá N ngày",
+      "allowedFileTypesLabel": "Loại tệp được phép",
+      "fileTypePdf": "PDF",
+      "fileTypeJpg": "JPG",
+      "fileTypePng": "PNG",
+      "maxFileSizeLabel": "Kích thước tệp tối đa (MB)",
+      "employeeRemarkRequiredLabel": "Bắt buộc ghi chú của nhân viên",
+      "hrRemarkRequiredLabel": "Bắt buộc ghi chú của HR (áp dụng trong bản phát hành sau)",
+      "saveDocumentRule": "Lưu cài đặt tài liệu",
+      "documentSectionHelp": "Định cấu hình xem có cần tài liệu hỗ trợ hay không, khi nào bắt buộc, và những loại và kích thước tệp nào được chấp nhận."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

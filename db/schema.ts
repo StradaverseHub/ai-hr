@@ -383,6 +383,22 @@ export const leaveType = pgTable('leave_type', {
   // Wave 2 (ADR-0038 2A-2): require a supporting document (e.g. an MC for sick leave). When true,
   // requestLeave rejects a request that has no attachment. Default false = no document needed.
   requiresDocument: boolean('requires_document').notNull().default(false),
+  // Supporting-document configuration (#"Supporting Document Configuration in Leave"). All additive,
+  // discrete typed columns (claims-style — see core/claims.ts requiresReceipt) so update is a flat set
+  // with no JSONB partial-merge. Only enforced when requiresDocument is true.
+  //   mandatoryAfterDays: require a doc only when days > this value. null/0 ⇒ always require (when
+  //     requiresDocument). Strict '>' against the integer config: "Required after more than N days".
+  mandatoryAfterDays: integer('mandatory_after_days'),
+  //   allowedMimeTypes: allow-list of file types; null/empty ⇒ any type (backward-compat). Subset of the
+  //     fixed set {application/pdf, image/jpeg, image/png}.
+  allowedMimeTypes: text('allowed_mime_types').array(),
+  //   maxDocBytes: per-file size ceiling. Replaces the previously hard-coded 10 MB; default keeps it.
+  maxDocBytes: integer('max_doc_bytes').notNull().default(10 * 1024 * 1024),
+  //   employeeRemarkRequired: require a non-empty employee remark on submission.
+  employeeRemarkRequired: boolean('employee_remark_required').notNull().default(false),
+  //   hrRemarkRequired: STORED ONLY this slice — config round-trips so a later slice can enforce it on the
+  //     decision surface; no enforcement, no hr_remark column ships now (deliberate deferral).
+  hrRemarkRequired: boolean('hr_remark_required').notNull().default(false),
   // Wave 2 (ADR-0038 2F-2 / R37): per-locale display names, { ms: { name }, zh: { name }, ... }.
   // Mirrors kb_document.i18n. Reads resolve to the viewer's locale, falling back to `name`.
   i18n: jsonb('i18n').$type<Record<string, { name: string }>>(),
@@ -474,6 +490,9 @@ export const leaveRequest = pgTable(
     hours: numeric('hours', { precision: 4, scale: 2 }),
     status: leaveRequestStatusEnum('status').notNull().default('pending'),
     reason: text('reason'),
+    // Supporting-document config: the applicant's mandatory remark when the leave type sets
+    // employee_remark_required. Nullable — null/absent for types that don't require it (backward-compat).
+    employeeRemark: text('employee_remark'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

@@ -406,7 +406,14 @@
     },
     "fieldHours": "மணிநேரம்",
     "hoursPlaceholder": "எ.கா. 2",
-    "hoursUnit": "{hours} மணி"
+    "hoursUnit": "{hours} மணி",
+    "errors": {
+      "documentRequiredAfter": "{days} நாட்களை மீறும் {typeName}-க்கு ஒரு ஆதார ஆவணம் தேவை.",
+      "documentRequired": "{typeName}-க்கு ஒரு ஆதார ஆவணம் தேவை (எ.கா. மருத்துவச் சான்றிதழ்).",
+      "employeeRemarkRequired": "{typeName}-க்கு ஒரு பணியாளர் குறிப்பு தேவை.",
+      "fileTypeNotAllowed": "கோப்பு வகை அனுமதிக்கப்படவில்லை — ஏற்கப்படுபவை: {allowed}.",
+      "fileTooLarge": "கோப்பு {mb} MB வரம்பை மீறுகிறது."
+    }
   },
   "attendance": {
     "title": "கலந்துகொள்வு",
@@ -702,7 +709,7 @@
     "marital_other": "மற்றவை",
     "notSet": "— அமைக்கப்படவில்லை —",
     "documentLabel": "ஆதரவு ஆவணம்",
-    "documentHint": "உடல்நலக் குறைவு & மருத்துவமனை விடுப்புக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்).",
+    "documentHint": "சில விடுப்பு வகைகளுக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்). அனுமதிக்கப்படும் வகைகளும் அளவு வரம்புகளும் தேர்ந்தெடுத்த விடுப்பு வகையைப் பொறுத்தது.",
     "documentRequired": "ஆவணம் தேவை",
     "viewDocument": "ஆவணத்தைக் காண்க",
     "stageManager": "மேலாளர் மதிப்பாய்வு",
@@ -717,7 +724,9 @@
     "submitResignation": "ராஜினாமாவை சமர்ப்பி",
     "resignationAcceptedNote": "உங்கள் ராஜினாமா ஏற்றுக்கொள்ளப்பட்டது. உங்கள் கடைசி வேலை நாள் {date}.",
     "resignationWasRejected": "உங்கள் முந்தைய ராஜினாமா நிராகரிக்கப்பட்டது. கீழே புதியதை சமர்ப்பிக்கலாம்.",
-    "resignationWasWithdrawn": "உங்கள் முந்தைய ராஜினாமாவை திரும்பப் பெற்றீர்கள். கீழே புதியதை சமர்ப்பிக்கலாம்."
+    "resignationWasWithdrawn": "உங்கள் முந்தைய ராஜினாமாவை திரும்பப் பெற்றீர்கள். கீழே புதியதை சமர்ப்பிக்கலாம்.",
+    "employeeRemarkLabel": "பணியாளர் குறிப்பு",
+    "employeeRemarkRequiredHint": "சில விடுப்பு வகைகளுக்கு ஒரு குறிப்பு தேவை."
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
@@ -1482,7 +1491,19 @@
       "duration_full_day": "முழு நாள்",
       "duration_half_day_am": "அரை நாள் (காலை)",
       "duration_half_day_pm": "அரை நாள் (மாலை)",
-      "duration_hourly": "மணிநேரம் வாரியாக"
+      "duration_hourly": "மணிநேரம் வாரியாக",
+      "documentSectionTitle": "ஆதார ஆவணம்",
+      "requireAttachmentLabel": "இணைப்பு கட்டாயம்",
+      "mandatoryAfterDaysLabel": "N நாட்களுக்கு மேல் இருந்தால் தேவை",
+      "allowedFileTypesLabel": "அனுமதிக்கப்பட்ட கோப்பு வகைகள்",
+      "fileTypePdf": "PDF",
+      "fileTypeJpg": "JPG",
+      "fileTypePng": "PNG",
+      "maxFileSizeLabel": "அதிகபட்ச கோப்பு அளவு (MB)",
+      "employeeRemarkRequiredLabel": "பணியாளர் குறிப்பு கட்டாயம்",
+      "hrRemarkRequiredLabel": "HR குறிப்பு கட்டாயம் (பின்னர் வெளியீட்டில் அமல்படுத்தப்படும்)",
+      "saveDocumentRule": "ஆவண அமைப்புகளைச் சேமி",
+      "documentSectionHelp": "ஆதார ஆவணம் தேவையா, அது எப்போது கட்டாயமாகிறது, எந்த கோப்பு வகைகள் மற்றும் அளவுகள் ஏற்கப்படும் என்பதை அமைக்கவும்."
     },
     "holidays": {
       "pageTitle": "பொது விடுமுறைகள்",

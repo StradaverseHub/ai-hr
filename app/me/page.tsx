@@ -367,10 +367,16 @@ export default async function MePage({
               <input
                 type="file"
                 name="document"
-                accept="image/*,application/pdf"
+                accept="image/jpeg,image/png,application/pdf"
                 className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
               />
               <p className="mt-1 text-xs text-muted-foreground">{t('documentHint')}</p>
+            </Field>
+            {/* Supporting-document config: employee remark. Always rendered; required-ness is enforced
+                server-side per the selected leave type's employeeRemarkRequired flag. */}
+            <Field label={t('employeeRemarkLabel')}>
+              <textarea name="employeeRemark" rows={2} className={inputCls} />
+              <p className="mt-1 text-xs text-muted-foreground">{t('employeeRemarkRequiredHint')}</p>
             </Field>
             <Button type="submit" size="sm">
               {t('requestLeave')}

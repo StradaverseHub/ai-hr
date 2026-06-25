@@ -790,18 +790,72 @@ function cleanDurations(d: LeaveDurationType[] | null | undefined): LeaveDuratio
   return set.size === 0 ? null : [...set];
 }
 
+/** Supporting-document config: the closed set of mime types an admin may allow. No generic ceiling. */
+const DOC_MIME_SET = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at 10 MB
+
 export async function updateLeaveType(
   ctx: SessionContext,
-  p: { id: string; name: string; eligibility?: LeaveEligibility | null; durations?: LeaveDurationType[] | null },
+  p: {
+    id: string;
+    name: string;
+    eligibility?: LeaveEligibility | null;
+    durations?: LeaveDurationType[] | null;
+    // Supporting-document config (claims-style flat signature; each is tri-state — undefined = leave column).
+    requiresDocument?: boolean;
+    mandatoryAfterDays?: number | null;
+    allowedMimeTypes?: string[];
+    maxDocBytes?: number;
+    employeeRemarkRequired?: boolean;
+    hrRemarkRequired?: boolean; // stored only this slice; not enforced
+  },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
   const touchEligibility = p.eligibility !== undefined;
   const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
   const touchDurations = p.durations !== undefined;
   const nextDurations = cleanDurations(p.durations);
+
+  // Doc-config validation (kept minimal — the fields are a fixed, closed set).
+  const touchDoc =
+    p.requiresDocument !== undefined ||
+    p.mandatoryAfterDays !== undefined ||
+    p.allowedMimeTypes !== undefined ||
+    p.maxDocBytes !== undefined ||
+    p.employeeRemarkRequired !== undefined ||
+    p.hrRemarkRequired !== undefined;
+  if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
+    throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
+  }
+  if (p.allowedMimeTypes !== undefined && p.allowedMimeTypes.some((m) => !DOC_MIME_SET.includes(m as (typeof DOC_MIME_SET)[number]))) {
+    throw new Error('Allowed file types must be a subset of PDF, JPG, PNG.');
+  }
+  if (p.maxDocBytes !== undefined && (!(p.maxDocBytes > 0) || p.maxDocBytes > MAX_DOC_BYTES_CEILING)) {
+    throw new Error('Max file size must be between 0 and 10 MB.');
+  }
+
+  const docSet = {
+    ...(p.requiresDocument !== undefined ? { requiresDocument: p.requiresDocument } : {}),
+    ...(p.mandatoryAfterDays !== undefined ? { mandatoryAfterDays: p.mandatoryAfterDays } : {}),
+    ...(p.allowedMimeTypes !== undefined ? { allowedMimeTypes: p.allowedMimeTypes } : {}),
+    ...(p.maxDocBytes !== undefined ? { maxDocBytes: p.maxDocBytes } : {}),
+    ...(p.employeeRemarkRequired !== undefined ? { employeeRemarkRequired: p.employeeRemarkRequired } : {}),
+    ...(p.hrRemarkRequired !== undefined ? { hrRemarkRequired: p.hrRemarkRequired } : {}),
+  };
+
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
-      .select({ name: leaveType.name, eligibility: leaveType.eligibility, durations: leaveType.durations })
+      .select({
+        name: leaveType.name,
+        eligibility: leaveType.eligibility,
+        durations: leaveType.durations,
+        requiresDocument: leaveType.requiresDocument,
+        mandatoryAfterDays: leaveType.mandatoryAfterDays,
+        allowedMimeTypes: leaveType.allowedMimeTypes,
+        maxDocBytes: leaveType.maxDocBytes,
+        employeeRemarkRequired: leaveType.employeeRemarkRequired,
+        hrRemarkRequired: leaveType.hrRemarkRequired,
+      })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
@@ -811,6 +865,7 @@ export async function updateLeaveType(
         name,
         ...(touchEligibility ? { eligibility: nextEligibility } : {}),
         ...(touchDurations ? { durations: nextDurations } : {}),
+        ...docSet,
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -820,11 +875,35 @@ export async function updateLeaveType(
       eventType: 'leave-type.updated',
       actor: actorOf(ctx),
       payload: {
-        before: { name: before?.name ?? null, eligibility: before?.eligibility ?? null, durations: before?.durations ?? null },
+        before: {
+          name: before?.name ?? null,
+          eligibility: before?.eligibility ?? null,
+          durations: before?.durations ?? null,
+          ...(touchDoc
+            ? {
+                requiresDocument: before?.requiresDocument ?? null,
+                mandatoryAfterDays: before?.mandatoryAfterDays ?? null,
+                allowedMimeTypes: before?.allowedMimeTypes ?? null,
+                maxDocBytes: before?.maxDocBytes ?? null,
+                employeeRemarkRequired: before?.employeeRemarkRequired ?? null,
+                hrRemarkRequired: before?.hrRemarkRequired ?? null,
+              }
+            : {}),
+        },
         after: {
           name,
           eligibility: touchEligibility ? nextEligibility : (before?.eligibility ?? null),
           durations: touchDurations ? nextDurations : (before?.durations ?? null),
+          ...(touchDoc
+            ? {
+                requiresDocument: p.requiresDocument ?? before?.requiresDocument ?? null,
+                mandatoryAfterDays: p.mandatoryAfterDays !== undefined ? p.mandatoryAfterDays : (before?.mandatoryAfterDays ?? null),
+                allowedMimeTypes: p.allowedMimeTypes !== undefined ? p.allowedMimeTypes : (before?.allowedMimeTypes ?? null),
+                maxDocBytes: p.maxDocBytes !== undefined ? p.maxDocBytes : (before?.maxDocBytes ?? null),
+                employeeRemarkRequired: p.employeeRemarkRequired ?? before?.employeeRemarkRequired ?? null,
+                hrRemarkRequired: p.hrRemarkRequired ?? before?.hrRemarkRequired ?? null,
+              }
+            : {}),
         },
       },
     });

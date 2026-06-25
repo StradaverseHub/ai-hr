@@ -2,9 +2,19 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { myEmployment } from '@/core/read';
-import { addLeaveAttachment, requestLeave, type LeaveDurationType } from '@/core/leave';
+import { myEmployment, listEligibleLeaveTypesFor } from '@/core/read';
+import {
+  addLeaveAttachment,
+  requestLeave,
+  validateLeaveDocument,
+  LeaveDocumentRequiredError,
+  LeaveRemarkRequiredError,
+  LeaveDocumentTypeError,
+  LeaveDocumentSizeError,
+  type LeaveDurationType,
+} from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { submitResignation, withdrawResignation } from '@/core/offboarding';
@@ -37,15 +47,33 @@ export async function myRequestLeave(formData: FormData) {
   const endDate = String(formData.get('endDate'));
   const durationType = String(formData.get('durationType') || 'full_day') as LeaveDurationType;
   const hoursRaw = String(formData.get('hours') ?? '').trim();
+  const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
   const file = formData.get('document');
   const hasFile = file instanceof File && file.size > 0;
+
+  const locale = await getLocale();
+  // Supporting-document config: resolve the selected type once — supplies the localized name for error
+  // messages AND the mime/size rule for the pre-check. listEligibleLeaveTypesFor is the same source the
+  // /me dropdown renders from, so the type is always present here.
+  const types = await listEligibleLeaveTypesFor(s, employmentId, locale);
+  const selected = types.find((t) => t.id === leaveTypeId);
+
   try {
+    // Orphan-prevention (the headline fix): validate the file BEFORE requestLeave commits the row + event.
+    // A disallowed/oversized file is rejected here, so no committed pending request is left behind.
+    if (hasFile && selected) {
+      validateLeaveDocument(
+        { allowedMimeTypes: selected.allowedMimeTypes, maxDocBytes: selected.maxDocBytes },
+        { mimeType: file.type || 'application/octet-stream', sizeBytes: file.size },
+      );
+    }
     const { leaveRequestId } = await requestLeave(s, {
       employmentId,
       leaveTypeId,
       startDate,
       endDate,
       hasDocument: hasFile,
+      employeeRemark,
       durationType,
       hours: durationType === 'hourly' && hoursRaw !== '' ? Number(hoursRaw) : undefined,
     });
@@ -58,10 +86,29 @@ export async function myRequestLeave(formData: FormData) {
       });
     }
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Leave+requested');
+}
+
+/** Supporting-document config: re-localize the structured service/validation errors into the viewer's
+ *  language (they reach ms/ta/th/vi/zh via ?error=). Unknown errors fall back to their English message. */
+async function localizeLeaveError(e: unknown, typeName?: string): Promise<string> {
+  const t = await getTranslations('leave.errors');
+  const name = typeName ?? '';
+  if (e instanceof LeaveDocumentRequiredError) {
+    return e.afterDays != null
+      ? t('documentRequiredAfter', { typeName: name, days: e.afterDays })
+      : t('documentRequired', { typeName: name });
+  }
+  if (e instanceof LeaveRemarkRequiredError) return t('employeeRemarkRequired', { typeName: name });
+  if (e instanceof LeaveDocumentTypeError) {
+    const labels: Record<string, string> = { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG' };
+    return t('fileTypeNotAllowed', { allowed: e.allowed.map((m) => labels[m] ?? m).join(', ') });
+  }
+  if (e instanceof LeaveDocumentSizeError) return t('fileTooLarge', { mb: e.maxMb });
+  return (e as Error).message;
 }
 
 export async function myRequestCorrection(formData: FormData) {

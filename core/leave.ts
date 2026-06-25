@@ -69,11 +69,81 @@ export class LeaveIneligibleError extends Error {
 // ── Mandatory documents (ADR-0038 2A-2, #25) ─────────────────────────────────────────────────────
 // Some leave types need a supporting document (e.g. an MC for sick leave). When leave_type.requires_
 // document is set, requestLeave rejects a request that arrives without an attachment.
+//
+// Supporting-document config: these errors carry STRUCTURED fields (typeName, afterDays, ...) so the
+// action layer can re-localize via getTranslations('leave.errors') before redirecting with ?error=.
+// The English `message` stays as a fallback for tests/logs.
 export class LeaveDocumentRequiredError extends Error {
-  constructor() {
-    super('This leave type requires a supporting document (e.g. a medical certificate)');
+  /** The (localized) leave-type name and, when the rule is conditioned on duration, the threshold. */
+  readonly typeName?: string;
+  readonly afterDays?: number;
+  constructor(typeName?: string, afterDays?: number) {
+    super(
+      afterDays != null
+        ? `A supporting document is required for ${typeName ?? 'this leave type'} exceeding ${afterDays} days.`
+        : `A supporting document is required for ${typeName ?? 'this leave type'} (e.g. a medical certificate).`,
+    );
     this.name = 'LeaveDocumentRequiredError';
+    this.typeName = typeName;
+    this.afterDays = afterDays;
   }
+}
+
+// Supporting-document config: the applicant must supply a remark when the type sets employeeRemarkRequired.
+export class LeaveRemarkRequiredError extends Error {
+  readonly typeName?: string;
+  constructor(typeName?: string) {
+    super(`An employee remark is required for ${typeName ?? 'this leave type'}.`);
+    this.name = 'LeaveRemarkRequiredError';
+    this.typeName = typeName;
+  }
+}
+
+// Supporting-document config: file type / size validation. Thrown at the /me action boundary BEFORE
+// requestLeave commits (so a bad file never leaves an orphan pending request), and again as defence-in-
+// depth inside addLeaveAttachment for any other caller.
+const DOC_MIME_LABELS: Record<string, string> = {
+  'application/pdf': 'PDF',
+  'image/jpeg': 'JPG',
+  'image/png': 'PNG',
+};
+export class LeaveDocumentTypeError extends Error {
+  readonly allowed: string[];
+  constructor(allowed: string[]) {
+    const labels = allowed.map((m) => DOC_MIME_LABELS[m] ?? m).join(', ');
+    super(`File type not allowed — accepted: ${labels}`);
+    this.name = 'LeaveDocumentTypeError';
+    this.allowed = allowed;
+  }
+}
+export class LeaveDocumentSizeError extends Error {
+  readonly maxMb: number;
+  constructor(maxBytes: number) {
+    const maxMb = Math.round((maxBytes / (1024 * 1024)) * 10) / 10;
+    super(`File exceeds the ${maxMb} MB limit`);
+    this.name = 'LeaveDocumentSizeError';
+    this.maxMb = maxMb;
+  }
+}
+
+/** A type's supporting-document rule, as needed by the pure validator. */
+export type LeaveDocumentRule = { allowedMimeTypes?: string[] | null; maxDocBytes?: number | null };
+
+/**
+ * Pure file-type / size gate for a leave attachment. Empty/null allowedMimeTypes ⇒ no type restriction
+ * (backward-compat). maxDocBytes null ⇒ fall back to the prior 10 MB ceiling. Called at the submission
+ * boundary BEFORE the request commits, and inside addLeaveAttachment as defence-in-depth.
+ */
+export function validateLeaveDocument(
+  rule: LeaveDocumentRule,
+  file: { mimeType: string; sizeBytes: number },
+): void {
+  const allowed = rule.allowedMimeTypes ?? [];
+  if (allowed.length > 0 && !allowed.includes(file.mimeType)) {
+    throw new LeaveDocumentTypeError(allowed);
+  }
+  const max = rule.maxDocBytes ?? 10 * 1024 * 1024;
+  if (file.sizeBytes > max) throw new LeaveDocumentSizeError(max);
 }
 
 /** Whole completed months from `start` to `asOf` (both ISO yyyy-mm-dd). */
@@ -158,6 +228,7 @@ export async function requestLeave(
     endDate: string;
     reason?: string;
     hasDocument?: boolean; // 2A-2: asserts a supporting document accompanies this request
+    employeeRemark?: string; // doc-config: required when the type sets employeeRemarkRequired
     durationType?: LeaveDurationType; // ADR-0048: defaults to 'full_day'
     hours?: number; // ADR-0048: required (and only used) when durationType === 'hourly'
   },
@@ -166,17 +237,20 @@ export async function requestLeave(
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
     const [lt] = await tx
       .select({
+        name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
         requiresDocument: leaveType.requiresDocument,
+        mandatoryAfterDays: leaveType.mandatoryAfterDays,
+        employeeRemarkRequired: leaveType.employeeRemarkRequired,
         durations: leaveType.durations,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
 
-    // Mandatory-document gate (2A-2, #25) — fail fast before anything is created.
-    if (lt?.requiresDocument && !p.hasDocument) throw new LeaveDocumentRequiredError();
+    // Doc-config: the mandatory-document gate moved BELOW day-counting (it now depends on `days` vs
+    // mandatoryAfterDays). The eligibility gate stays here — it does not depend on `days`.
 
     // Eligibility gate (2A-1, #25) — fail fast before anything is created.
     const elig = (lt?.eligibility ?? null) as LeaveEligibility | null;
@@ -273,6 +347,23 @@ export async function requestLeave(
       }
     }
     if (days <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
+
+    // Doc-config: now that `days` is known, enforce the conditional document gate. `days` is fractional
+    // (half-day / hourly), so use strict `>` against the integer config: mandatoryAfterDays:N means "more
+    // than N days" (a 2.0-day request with N=2 needs no doc; 2.5 days does). null/0 ⇒ always require.
+    if (lt?.requiresDocument && !p.hasDocument) {
+      const after = lt.mandatoryAfterDays;
+      if (after == null || after === 0 || days > after) {
+        throw new LeaveDocumentRequiredError(lt.name, after ?? undefined);
+      }
+    }
+
+    // Doc-config: mandatory employee remark.
+    const employeeRemark = p.employeeRemark?.trim() || null;
+    if (lt?.employeeRemarkRequired && !employeeRemark) {
+      throw new LeaveRemarkRequiredError(lt.name);
+    }
+
     const [row] = await tx
       .insert(leaveRequest)
       .values({
@@ -286,6 +377,7 @@ export async function requestLeave(
         hours: hours != null ? hours.toFixed(2) : null,
         status: 'pending',
         reason: p.reason ?? null,
+        employeeRemark,
       })
       .returning({ id: leaveRequest.id });
     await appendEvent(tx, {
@@ -295,7 +387,7 @@ export async function requestLeave(
       eventType: 'leave-request.submitted',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days, durationType, hours },
+      payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days, durationType, hours, mandatoryAfterDays: lt?.mandatoryAfterDays ?? null, hasRemark: !!employeeRemark },
     });
     // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
     await generateApprovalSteps(tx, ctx.tenantId, row.id, p.employmentId, p.leaveTypeId);
@@ -358,15 +450,27 @@ export async function addLeaveAttachment(
   p: { leaveRequestId: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new Error('Empty file');
-  if (p.content.byteLength > 10 * 1024 * 1024) throw new Error('File exceeds 10 MB');
   return withTenant(ctx, async (tx) => {
+    // Doc-config: join the type to read its mime/size rule. The /me flow already validated upstream (so
+    // a bad file never created an orphan request); this is defence-in-depth for any other caller and
+    // replaces the previously hard-coded 10 MB ceiling with the type's configured limit.
     const [req] = await tx
-      .select({ employmentId: leaveRequest.employmentId, status: leaveRequest.status })
+      .select({
+        employmentId: leaveRequest.employmentId,
+        status: leaveRequest.status,
+        allowedMimeTypes: leaveType.allowedMimeTypes,
+        maxDocBytes: leaveType.maxDocBytes,
+      })
       .from(leaveRequest)
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(eq(leaveRequest.id, p.leaveRequestId))
       .limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
     if (req.status !== 'pending') throw new Error('Documents can only be added while the request is pending');
+    validateLeaveDocument(
+      { allowedMimeTypes: req.allowedMimeTypes, maxDocBytes: req.maxDocBytes },
+      { mimeType: p.mimeType, sizeBytes: p.content.byteLength },
+    );
     const [row] = await tx
       .insert(leaveRequestAttachment)
       .values({
