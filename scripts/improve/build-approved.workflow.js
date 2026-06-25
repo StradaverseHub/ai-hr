@@ -49,8 +49,13 @@ for (let i = 0; i < items.length; i++) {
     .join('\n');
 
   const built = await agent(
-    `You are implementing an APPROVED feature in the ai-hr codebase. You are in a fresh, isolated git ` +
-      `worktree off main — make ALL changes here; do not touch ${REPO}.\n\n` +
+    `You are implementing an APPROVED feature in the ai-hr codebase, in a fresh ISOLATED git worktree.\n` +
+      `🔒 WORKTREE CONFINEMENT (critical — a stray write corrupts other builds): your current working ` +
+      `directory IS your private worktree. Run \`pwd\` first and confirm it is under .claude/worktrees/. Stay ` +
+      `there. Run EVERY command (git add / git diff / pnpm / psql / node) from this cwd. Use ONLY relative ` +
+      `paths or paths under this cwd when editing. You may READ from ${REPO} (to copy node_modules/.env in ` +
+      `setup), but NEVER \`cd\` into ${REPO}, NEVER edit a file under ${REPO}, and NEVER run \`git add\`/` +
+      `\`git commit\` against ${REPO} — that is the shared main repo and writing to its index breaks the run.\n\n` +
       `SETUP (do this first, the worktree has no deps/env):\n` +
       `  1. \`ln -s ${REPO}/node_modules ./node_modules\` (reuse the installed deps).\n` +
       `  2. \`cp ${REPO}/.env.local ./.env.local\` (the Vitest harness config).\n` +
