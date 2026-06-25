@@ -21,6 +21,13 @@ export type EntitlementPolicy = {
 
 export type GradeOption = { id: string; name: string };
 
+/** #25 visibility: who may see + apply for this type. null = open to all. */
+export type LeaveEligibilityRule = {
+  gender?: string;
+  maritalStatus?: string;
+  minServiceMonths?: number;
+};
+
 const isEarned = (m?: string) => m === 'earned_monthly' || m === 'earned_quarterly';
 /** Normalise to a select value: earned methods pass through, everything else is the lump option. */
 const methodValue = (m?: string) => (isEarned(m) ? m! : 'grant_on_hire_prorated');
@@ -52,6 +59,7 @@ export function LeaveTypePanel({
   isAnnual,
   floorLabel,
   floor0,
+  eligibility,
   policies,
   grades,
   updateTypeAction,
@@ -69,6 +77,7 @@ export function LeaveTypePanel({
   isAnnual: boolean;
   floorLabel: string | null;
   floor0: number;
+  eligibility: LeaveEligibilityRule | null;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   updateTypeAction: Action;
@@ -81,8 +90,32 @@ export function LeaveTypePanel({
   const t = useTranslations('admin.leave');
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [editingEligibility, setEditingEligibility] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
+  // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
+  const genderLabel = (g?: string) =>
+    g === 'male' ? t('eligibilityGenderMale') : g === 'female' ? t('eligibilityGenderFemale') : null;
+  const maritalLabel = (m?: string) =>
+    m === 'single'
+      ? t('eligibilityMaritalSingle')
+      : m === 'married'
+        ? t('eligibilityMaritalMarried')
+        : m === 'other'
+          ? t('eligibilityMaritalOther')
+          : null;
+  const eligibilitySummary = () => {
+    if (!eligibility || (!eligibility.gender && !eligibility.maritalStatus && !eligibility.minServiceMonths)) {
+      return t('eligibilityOpenToAll');
+    }
+    const parts: string[] = [];
+    const who = [maritalLabel(eligibility.maritalStatus), genderLabel(eligibility.gender)].filter(Boolean).join(' ');
+    if (who) parts.push(t('eligibilitySummaryOnly', { who }));
+    if (eligibility.minServiceMonths) parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths }));
+    return parts.join(' · ');
+  };
 
   const active = policies.filter((p) => !p.validTo);
   const bestActive = active.reduce((m, p) => Math.max(m, p.annualDays), 0);
@@ -189,6 +222,73 @@ export function LeaveTypePanel({
             <span className="tabular-nums">
               {floorLabel ? t('daysValue', { days: floorLabel }) : t('none')}
             </span>
+          </div>
+
+          {/* #25 visibility — eligibility rules (who can see + apply) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{t('eligibilityTitle')}</span>
+              {!editingEligibility && (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingEligibility(true)}>
+                  {t('eligibilityEdit')}
+                </Button>
+              )}
+            </div>
+            {editingEligibility ? (
+              <form
+                action={updateTypeAction}
+                className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
+                onSubmit={() => setEditingEligibility(false)}
+              >
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
+                <input type="hidden" name="eligibility" value="1" />
+                <Field label={t('eligibilityGenderLabel')}>
+                  <select name="gender" defaultValue={eligibility?.gender ?? ''} className={`${inputCls} w-36`}>
+                    <option value="">{t('eligibilityGenderAny')}</option>
+                    <option value="male">{t('eligibilityGenderMale')}</option>
+                    <option value="female">{t('eligibilityGenderFemale')}</option>
+                  </select>
+                </Field>
+                <Field label={t('eligibilityMaritalLabel')}>
+                  <select
+                    name="maritalStatus"
+                    defaultValue={eligibility?.maritalStatus ?? ''}
+                    className={`${inputCls} w-36`}
+                  >
+                    <option value="">{t('eligibilityMaritalAny')}</option>
+                    <option value="single">{t('eligibilityMaritalSingle')}</option>
+                    <option value="married">{t('eligibilityMaritalMarried')}</option>
+                    <option value="other">{t('eligibilityMaritalOther')}</option>
+                  </select>
+                </Field>
+                <Field label={t('eligibilityMinServiceLabel')}>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      name="minServiceMonths"
+                      type="number"
+                      min="0"
+                      step="1"
+                      defaultValue={eligibility?.minServiceMonths ?? ''}
+                      className={`${inputCls} w-20`}
+                    />
+                    <span className="text-xs text-muted-foreground">{t('eligibilityMinServiceSuffix')}</span>
+                  </div>
+                </Field>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setEditingEligibility(false)}>
+                  {t('cancel')}
+                </Button>
+              </form>
+            ) : (
+              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">{eligibilitySummary()}</div>
+            )}
+            <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
+            <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>
           </div>
 
           {/* entitlement timeline */}
