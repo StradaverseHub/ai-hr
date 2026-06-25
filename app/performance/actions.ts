@@ -5,8 +5,11 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
   acknowledgeReview,
+  addPerformanceAttachment,
+  approveGoal,
   cancelCheckIn,
   closeCycle,
+  closeReview,
   commitCalibration,
   completeCheckIn,
   createCycle,
@@ -14,8 +17,10 @@ import {
   draftManagerReview,
   enactCompAction,
   linkGoalToReview,
+  lockGoalSetting,
   openCalibrationSession,
   proposeCalibration,
+  proposeGoals,
   moveCycleToCalibration,
   openCycle,
   releaseCycle,
@@ -23,8 +28,13 @@ import {
   scheduleCheckIn,
   submitManagerReview,
   submitSelfReview,
+  submitStageManager,
+  submitStageSelf,
   unlinkGoalFromReview,
+  ALL_STAGE_KINDS,
+  type CycleStage,
   type MeritBudget,
+  type StageKind,
 } from '@/core/performance';
 
 const num = (v: FormDataEntryValue | null) => {
@@ -46,6 +56,10 @@ export async function createCycleAction(formData: FormData) {
       kind && (kind === 'percent' || kind === 'amount') && value != null && value > 0
         ? { kind, value }
         : null;
+    // Stages: HR ticks which lifecycle stages run; default (none ticked) = all three.
+    const labelOf: Record<StageKind, string> = { goal_setting: 'Goal-setting', mid_year: 'Mid-year review', year_end: 'Year-end review' };
+    const picked = formData.getAll('stage').map(String).filter((k): k is StageKind => (ALL_STAGE_KINDS as string[]).includes(k));
+    const stages: CycleStage[] | undefined = picked.length ? picked.map((kind) => ({ kind, label: labelOf[kind] })) : undefined;
     const res = await createCycle(s, {
       name: String(formData.get('name') ?? ''),
       companyId: str(formData.get('companyId')) ?? null,
@@ -54,6 +68,7 @@ export async function createCycleAction(formData: FormData) {
       meritBudget,
       excludeProbation: formData.get('excludeProbation') != null,
       hiredBefore: str(formData.get('hiredBefore')) ?? null,
+      stages,
     });
     cycleId = res.cycleId;
   } catch (e) {
@@ -297,4 +312,119 @@ export async function declineAction(formData: FormData) {
   }
   revalidatePath(`/performance/${cycleId}`);
   redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Recommendation declined')}`);
+}
+
+// ─────────────────────────── Lifecycle (stages / goals / closure / attachments) ───────────────────────────
+
+const reviewRedirect = (reviewId: string, msg: string) =>
+  redirect(`/performance/review/${reviewId}?toast=${encodeURIComponent(msg)}`);
+
+export async function submitStageSelfAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  const stage = String(formData.get('stage')) as 'mid_year' | 'year_end';
+  try {
+    await submitStageSelf(s, {
+      reviewId,
+      stage,
+      selfRating: num(formData.get('selfRating')) ?? 0,
+      selfComments: str(formData.get('selfComments')),
+      goalsSummary: str(formData.get('goalsSummary')),
+    });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  reviewRedirect(reviewId, 'Self-assessment submitted');
+}
+
+export async function submitStageManagerAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  const stage = String(formData.get('stage')) as 'mid_year' | 'year_end';
+  try {
+    await submitStageManager(s, {
+      reviewId,
+      stage,
+      managerRating: num(formData.get('managerRating')) ?? 0,
+      managerComments: str(formData.get('managerComments')),
+      overallRating: num(formData.get('overallRating')),
+    });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  reviewRedirect(reviewId, 'Manager evaluation submitted');
+}
+
+export async function proposeGoalsAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    await proposeGoals(s, { reviewId });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  reviewRedirect(reviewId, 'Goals proposed');
+}
+
+export async function approveGoalAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    await approveGoal(s, { goalId: String(formData.get('goalId')) });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  reviewRedirect(reviewId, 'Goal approved');
+}
+
+export async function lockGoalSettingAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    await lockGoalSetting(s, { reviewId });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  reviewRedirect(reviewId, 'Goal-setting locked');
+}
+
+export async function closeReviewAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  const cycleId = String(formData.get('cycleId'));
+  const abcClass = String(formData.get('abcClass')) as 'A' | 'B' | 'C';
+  try {
+    await closeReview(s, { reviewId, abcClass, finalScore: num(formData.get('finalScore')) });
+  } catch (e) {
+    redirect(`/performance/${cycleId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/${cycleId}`);
+  redirect(`/performance/${cycleId}?toast=${encodeURIComponent('Review closed')}`);
+}
+
+export async function uploadAttachmentAction(formData: FormData) {
+  const s = await getSession();
+  const reviewId = String(formData.get('reviewId'));
+  const rawStage = str(formData.get('stageKind'));
+  const stageKind = rawStage && (ALL_STAGE_KINDS as string[]).includes(rawStage) ? (rawStage as StageKind) : null;
+  const file = formData.get('file');
+  try {
+    if (!(file instanceof File) || file.size === 0) throw new Error('Choose a file to upload');
+    await addPerformanceAttachment(s, {
+      reviewId,
+      stageKind,
+      fileName: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      content: Buffer.from(await file.arrayBuffer()),
+    });
+  } catch (e) {
+    redirect(`/performance/review/${reviewId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/performance/review/${reviewId}`);
+  reviewRedirect(reviewId, 'File uploaded');
 }

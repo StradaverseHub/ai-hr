@@ -907,6 +907,46 @@
       "aiDrafting": "Menjana draf…",
       "aiDraftHint": "Jana draf permulaan daripada penilaian kendiri, matlamat berkaitan, penarafan terdahulu dan maklum balas 360. Anda sentiasa menyemak dan menyuntingnya sebelum memuktamadkan.",
       "aiDraftSuccess": "Draf dimasukkan — semak dan suntingnya sebelum menghantar."
+    },
+    "lifecycle": {
+      "title": "Kitar hayat",
+      "stageGoalSetting": "Penetapan matlamat",
+      "stageMidYear": "Penilaian pertengahan tahun",
+      "stageYearEnd": "Penilaian akhir tahun",
+      "stagesField": "Peringkat kitar hayat",
+      "stagesHint": "Pilih peringkat yang dijalankan kitaran ini. Akhir tahun membawa penilaian akhir, penyelarasan dan gaji.",
+      "selfRating": "Penilaian sendiri",
+      "selfComments": "Komen sendiri",
+      "managerRating": "Penilaian pengurus",
+      "managerComments": "Komen pengurus",
+      "overallRating": "Penilaian keseluruhan",
+      "submitSelf": "Hantar penilaian kendiri",
+      "submitManager": "Hantar penilaian pengurus",
+      "proposeGoals": "Cadang matlamat",
+      "approveGoal": "Lulus",
+      "lockGoalSetting": "Kunci penetapan matlamat",
+      "goalStagePending": "Penetapan matlamat dibuka",
+      "goalStageLocked": "Penetapan matlamat dikunci",
+      "goalApprovalDraft": "Draf",
+      "goalApprovalProposed": "Dicadang",
+      "goalApprovalApproved": "Diluluskan",
+      "closeReview": "Tutup penilaian",
+      "finalScore": "Skor akhir",
+      "abcClass": "Kelas prestasi",
+      "classA": "A",
+      "classB": "B",
+      "classC": "C",
+      "closed": "Ditutup",
+      "closurePanelTitle": "Penutupan akhir",
+      "closurePanelHint": "Rekod skor akhir dan kelas A/B/C. Lepaskan kitaran dahulu; ini memberitahu pekerja.",
+      "justificationRequired": "Justifikasi (perlu untuk melaras penilaian)",
+      "byDepartment": "Mengikut jabatan",
+      "attachmentsTitle": "Lampiran",
+      "attachmentsHint": "Fail untuk peringkat penilaian ini. Hanya pekerja dan pengurus mereka boleh lihat.",
+      "attachmentUpload": "Muat naik",
+      "attachmentDownload": "Muat turun",
+      "attachmentEmpty": "Tiada lampiran untuk peringkat ini lagi.",
+      "reviewFinalized": "Penilaian prestasi anda telah dimuktamadkan."
     }
   },
   "payroll": {
@@ -1171,6 +1211,57 @@
         "colComponent": "Komponen",
         "colAmount": "Jumlah",
         "colStatus": "Status"
+      }
+    },
+    "transactions": {
+      "title": "Transaksi",
+      "subtitle": "Akses tersusun kepada fungsi transaksi gaji.",
+      "gatedTitle": "Komponen gaji tidak diaktifkan",
+      "gatedBody": "Komponen gaji bertaip dimatikan untuk persekitaran ini. Transaksi tetap dan individu yang dimasukkan di sini tidak akan menjejaskan slip gaji sehingga ia diaktifkan. Minta pentadbir anda mengaktifkan komponen gaji.",
+      "hub": {
+        "fixedTitle": "Transaksi Tetap",
+        "fixedDesc": "Elaun dan potongan berulang bagi setiap pekerja, mengikut tarikh berkuat kuasa.",
+        "fixedCta": "Urus berulang",
+        "individualTitle": "Transaksi Individu",
+        "individualDesc": "Komponen sekali sahaja untuk kelompok draf, serta pelepasan TP1 dan zakat.",
+        "individualCta": "Tambah sekali sahaja"
+      },
+      "fixed": {
+        "title": "Transaksi Tetap",
+        "subtitle": "Komponen gaji berulang bagi setiap pekerja, mengikut tarikh berkuat kuasa.",
+        "intro": "Pilih pekerja untuk mengurus elaun dan potongan berulang mereka. Perubahan berkuat kuasa pada slip gaji seterusnya yang dijana.",
+        "pickEmployee": "Pekerja",
+        "open": "Buka editor",
+        "empty": "Tiada pekerja dalam skop semasa.",
+        "colEmployee": "Pekerja",
+        "colCompany": "Syarikat",
+        "manage": "Urus"
+      },
+      "individual": {
+        "title": "Transaksi Individu",
+        "subtitle": "Komponen kelompok sekali sahaja, pelepasan TP1 dan zakat.",
+        "pickBatch": "Kelompok draf",
+        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Kelompok dahulu.",
+        "addTitle": "Tambah komponen sekali sahaja",
+        "addIntro": "Tambah satu komponen gaji sekali sahaja untuk seorang pekerja pada kelompok draf ini.",
+        "employee": "Pekerja",
+        "component": "Komponen",
+        "amount": "Jumlah",
+        "notes": "Nota",
+        "notesPlaceholder": "Nota pilihan",
+        "add": "Tambah komponen",
+        "added": "Komponen ditambah.",
+        "csvTitle": "Import pukal (CSV)",
+        "csvIntro": "Muatkan banyak komponen sekali sahaja serentak.",
+        "deductionTitle": "Pelepasan TP1 & zakat",
+        "deductionIntro": "Pelepasan cukai bulanan (TP1) dan zakat untuk seorang pekerja. Menyimpan ini tidak mengubah kerja lebih masa atau bonus pada baris yang sama.",
+        "tp1": "Pelepasan TP1",
+        "tp1Title": "Pelepasan potongan cukai bulanan (TP1) — mengurangkan PCB/MTD.",
+        "zakat": "Zakat",
+        "zakatTitle": "Zakat dibayar melalui gaji — dikreditkan terhadap PCB/MTD.",
+        "save": "Simpan",
+        "saved": "Disimpan.",
+        "unsupportedComponent": "Komponen itu tidak boleh digunakan pada kelompok dalam versi ini. Pilih komponen yang boleh dibayar."
       }
     }
   },
@@ -1569,7 +1660,8 @@
     "payrollTabs": {
       "batches": "Kelompok",
       "reports": "Laporan",
-      "configuration": "Konfigurasi"
+      "configuration": "Konfigurasi",
+      "transactions": "Transaksi"
     },
     "printButton": {
       "print": "Cetak / Simpan PDF"

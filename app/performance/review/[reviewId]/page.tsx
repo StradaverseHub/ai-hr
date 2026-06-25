@@ -10,7 +10,10 @@ import {
   linkGoalAction,
   requestPeerFeedbackAction,
   submitSelfAction,
+  submitStageManagerAction,
+  submitStageSelfAction,
   unlinkGoalAction,
+  uploadAttachmentAction,
 } from '../../actions';
 
 function RatingSelect({
@@ -54,6 +57,7 @@ export default async function ReviewPage({
   searchParams: Promise<{ error?: string; toast?: string }>;
 }) {
   const t = await getTranslations('performance.review');
+  const tl = await getTranslations('performance.lifecycle');
   const s = await getSession();
   const { reviewId } = await params;
   const { error, toast } = await searchParams;
@@ -112,6 +116,43 @@ export default async function ReviewPage({
           <p className="mt-3 text-sm text-muted-foreground">{t('notSubmittedYet')}</p>
         )}
       </Card>
+
+      {/* Mid-year stage (lifecycle) — own self + manager columns; status machine is the year-end one */}
+      {r.stages.some((st) => st.kind === 'mid_year') && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{tl('stageMidYear')}</h2>
+          <div className="mt-3 grid gap-5 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{tl('selfRating')}</p>
+              {r.isSubject ? (
+                <form action={submitStageSelfAction} className="space-y-3">
+                  <input type="hidden" name="reviewId" value={r.id} />
+                  <input type="hidden" name="stage" value="mid_year" />
+                  <RatingSelect name="selfRating" scale={scale} defaultValue={r.midSelfRating} required placeholder={t('selectRating')} />
+                  <textarea name="selfComments" rows={2} defaultValue={r.midSelfComments ?? ''} className={inputCls} placeholder={t('selfCommentsPlaceholder')} />
+                  <Button type="submit" size="sm">{tl('submitSelf')}</Button>
+                </form>
+              ) : (
+                <p className="text-sm">{ratingLabel(scale, r.midSelfRating)}</p>
+              )}
+            </div>
+            <div>
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{tl('managerRating')}</p>
+              {r.canManage ? (
+                <form action={submitStageManagerAction} className="space-y-3">
+                  <input type="hidden" name="reviewId" value={r.id} />
+                  <input type="hidden" name="stage" value="mid_year" />
+                  <RatingSelect name="managerRating" scale={scale} defaultValue={r.midManagerRating} required placeholder={t('selectRating')} />
+                  <textarea name="managerComments" rows={2} defaultValue={r.midManagerComments ?? ''} className={inputCls} placeholder={t('selfCommentsPlaceholder')} />
+                  <Button type="submit" size="sm" variant="secondary">{tl('submitManager')}</Button>
+                </form>
+              ) : (
+                <p className="text-sm">{r.midManagerRating != null ? ratingLabel(scale, r.midManagerRating) : t('managerReviewPendingRelease')}</p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Goals referenced (ADR-0022) — the manager links the subject's goals onto this review */}
       {(linkedGoals.length > 0 || r.canManage) && (
@@ -269,6 +310,60 @@ export default async function ReviewPage({
             <Row label={t('statusLabel')} value={r.compActionStatus} />
           </dl>
           <p className="mt-2 text-xs text-muted-foreground">{t('enactFromCyclePage')}</p>
+        </Card>
+      )}
+
+      {/* Closure summary (lifecycle G4) — final score + ABC, shown once finalized + released */}
+      {(r.closed || r.finalScore != null || r.abcClass != null) && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{tl('closurePanelTitle')}</h2>
+          <dl className="mt-3 space-y-2 text-sm">
+            {r.finalScore != null && <Row label={tl('finalScore')} value={String(r.finalScore)} />}
+            {r.abcClass != null && <Row label={tl('abcClass')} value={r.abcClass} />}
+            {r.closed && <Row label={t('statusLabel')} value={tl('closed')} />}
+          </dl>
+        </Card>
+      )}
+
+      {/* Attachments (lifecycle G5) — subject-scoped: visible to the subject + their manager/admin only */}
+      {(r.isSubject || r.canManage) && (
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold">{tl('attachmentsTitle')}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{tl('attachmentsHint')}</p>
+          {r.attachments.length === 0 ? (
+            <p className="mt-3 text-sm text-muted-foreground">{tl('attachmentEmpty')}</p>
+          ) : (
+            <ul className="mt-3 space-y-2">
+              {r.attachments.map((att) => (
+                <li key={att.id} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="min-w-0 flex-1 truncate">
+                    {att.fileName}
+                    {att.stageKind && (
+                      <span className="ml-2 text-[10px] text-muted-foreground">
+                        {att.stageKind === 'goal_setting' ? tl('stageGoalSetting') : att.stageKind === 'mid_year' ? tl('stageMidYear') : tl('stageYearEnd')}
+                      </span>
+                    )}
+                  </span>
+                  <a className="shrink-0 text-xs text-primary underline" href={`/performance/attachment/${att.id}`}>
+                    {tl('attachmentDownload')}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          <form action={uploadAttachmentAction} className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-3">
+            <input type="hidden" name="reviewId" value={r.id} />
+            <Field label={tl('stagesField')}>
+              <select name="stageKind" className={inputCls} defaultValue="">
+                <option value="">—</option>
+                <option value="goal_setting">{tl('stageGoalSetting')}</option>
+                <option value="mid_year">{tl('stageMidYear')}</option>
+                <option value="year_end">{tl('stageYearEnd')}</option>
+              </select>
+            </Field>
+            <input type="file" name="file" required className="text-sm" />
+            <Button type="submit" variant="secondary">{tl('attachmentUpload')}</Button>
+          </form>
         </Card>
       )}
 

@@ -70,4 +70,24 @@ describe('#18 — people structured filters', () => {
     expect(ids(composed.rows).has(leaver.employmentId)).toBe(false);
     expect(ids(composed.rows).has(full.employmentId)).toBe(false);
   });
+
+  // Employee-code surfacing: the People list select now returns employeeCode, and the q-search
+  // predicate matches it. This is load-bearing because listEmployeesPage casts its rows as
+  // EmployeeListRow[], which silences TS structural checks on a missing select column.
+  it('surfaces a non-null employee code on the list and makes it searchable', async () => {
+    const hired = await hire('Code Carrier', 'full_time');
+
+    // (a) the row carries a non-null, EMP-formatted code
+    const all = await page({ limit: 100, offset: 0 });
+    const row = all.rows.find((r) => r.employmentId === hired.employmentId);
+    expect(row).toBeDefined();
+    expect(row!.employeeCode).toMatch(/^EMP-\d{4,}$/);
+
+    // (b) searching by that exact code returns the matching row (covers the q predicate)
+    const code = row!.employeeCode!;
+    const byCode = await page({ q: code, limit: 100, offset: 0 });
+    expect(ids(byCode.rows).has(hired.employmentId)).toBe(true);
+    // every returned row genuinely matches the code (no over-broad predicate)
+    expect(byCode.rows.every((r) => r.employeeCode === code)).toBe(true);
+  });
 });

@@ -344,6 +344,46 @@ export async function setPayrollInput(
 }
 
 /**
+ * Feature 1.2 (Transaction sub-module) — set ONLY the statutory deduction scalars (TP1, zakat) on a
+ * draft batch input row, preserving the sibling earnings fields. `setPayrollInput` is a full-row
+ * overwrite that coalesces any omitted field to 0; a TP1/zakat-only form posting through it would
+ * silently zero overtime/bonus. This is a READ-MODIFY-WRITE wrapper: it reads the current row's
+ * overtime/bonus, merges the changed deduction fields, and delegates to setPayrollInput so the event
+ * shape (payroll-batch.input-set) and the draft-only / clamp rules stay identical. Either field may be
+ * left undefined to keep its current value.
+ */
+export async function setPayrollDeductionInput(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; tp1Deduction?: number; zakat?: number },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({
+        overtimeAmount: payrollInput.overtimeAmount,
+        bonusAmount: payrollInput.bonusAmount,
+        tp1Deduction: payrollInput.tp1Deduction,
+        zakat: payrollInput.zakat,
+      })
+      .from(payrollInput)
+      .where(and(eq(payrollInput.batchId, p.batchId), eq(payrollInput.employmentId, p.employmentId)))
+      .limit(1);
+    return setPayrollInput(
+      ctx,
+      {
+        batchId: p.batchId,
+        employmentId: p.employmentId,
+        // Preserve the sibling earnings — do NOT let the full-row overwrite reset them.
+        overtimeAmount: Number(existing?.overtimeAmount ?? 0),
+        bonusAmount: Number(existing?.bonusAmount ?? 0),
+        tp1Deduction: p.tp1Deduction ?? Number(existing?.tp1Deduction ?? 0),
+        zakat: p.zakat ?? Number(existing?.zakat ?? 0),
+      },
+      tx,
+    );
+  });
+}
+
+/**
  * Prefill a draft batch's overtime inputs from classified attendance (ADR-0011 → money).
  * Per employee, the period's per-day OT minutes (workday / rest day / holiday) are
  * monetized by the country pack — ORP = wages/26, 1.5× workday, rest-day ½/1-day rule

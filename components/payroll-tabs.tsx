@@ -1,11 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 
-/** Sub-navigation within the Payroll module (ADR-0010): batch runs vs statutory reports. */
-export async function PayrollTabs({ active }: { active: 'batches' | 'reports' | 'configuration' }) {
+/** Sub-navigation within the Payroll module (ADR-0010): batch runs, transactions, statutory reports. */
+export async function PayrollTabs({ active }: { active: 'batches' | 'transactions' | 'reports' | 'configuration' }) {
   const t = await getTranslations('components.payrollTabs');
   const tabs = [
     { key: 'batches', href: '/payroll', label: t('batches') },
+    { key: 'transactions', href: '/payroll/transactions', label: t('transactions') },
     { key: 'reports', href: '/payroll/reports', label: t('reports') },
     { key: 'configuration', href: '/payroll/configuration', label: t('configuration') },
   ] as const;

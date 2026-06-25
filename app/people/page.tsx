@@ -221,6 +221,9 @@ export default async function PeoplePage({
                       >
                         {e.name}
                       </Link>
+                      {e.employeeCode && (
+                        <span className="ml-2 font-mono text-xs text-muted-foreground">{e.employeeCode}</span>
+                      )}
                       <div className="truncate text-xs text-muted-foreground">{e.email}</div>
                     </div>
                   </div>

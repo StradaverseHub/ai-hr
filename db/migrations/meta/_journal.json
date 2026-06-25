@@ -673,6 +673,13 @@
       "when": 1781861590000,
       "tag": "0095_payroll_config_cutoffs",
       "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1781861600000,
+      "tag": "0096_performance_lifecycle",
+      "breakpoints": true
     }
   ]
 }

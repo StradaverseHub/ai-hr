@@ -4,11 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
+import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
   calibrateAction,
   closeAction,
+  closeReviewAction,
   commitCalibrationAction,
   declineAction,
   enactAction,
@@ -37,6 +38,7 @@ export default async function CyclePage({
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('performance.cycle');
+  const tl = await getTranslations('performance.lifecycle');
   const { cycleId } = await params;
   const { error } = await searchParams;
   const data = await cycleDetail(s, cycleId);
@@ -193,6 +195,21 @@ export default async function CyclePage({
                       <span key={rl.reviewer} className="tabular-nums">
                         {rl.reviewer}: <span className="font-medium">{rl.avg}</span>
                         <span className="text-xs text-muted-foreground"> ({rl.count})</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* By-department grouping (calibration governance, G3) */}
+              {calib.byDepartment.length > 0 && (
+                <div className="border-b border-border px-4 py-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{tl('byDepartment')}</p>
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                    {calib.byDepartment.map((d) => (
+                      <span key={d.department} className="tabular-nums">
+                        {d.department}: <span className="font-medium">{d.avg}</span>
+                        <span className="text-xs text-muted-foreground"> ({d.count})</span>
                       </span>
                     ))}
                   </div>
@@ -374,6 +391,41 @@ export default async function CyclePage({
               </tbody>
             </table>
           </Card>
+
+          {/* Final closure (lifecycle G4) — admin records final score + ABC once the cycle is released */}
+          {cycle.releasedAt != null && (
+            <Card className="p-5">
+              <h2 className="text-sm font-semibold">{tl('closurePanelTitle')}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{tl('closurePanelHint')}</p>
+              <form action={closeReviewAction} className="mt-3 flex flex-wrap items-end gap-2">
+                <input type="hidden" name="cycleId" value={cycle.id} />
+                <Field label={t('colEmployee')}>
+                  <select name="reviewId" required className={inputCls} defaultValue="">
+                    <option value="" disabled>—</option>
+                    {roster
+                      .filter((r) => r.status === 'submitted' || r.status === 'acknowledged')
+                      .map((r) => (
+                        <option key={r.reviewId} value={r.reviewId}>
+                          {r.employee}
+                        </option>
+                      ))}
+                  </select>
+                </Field>
+                <Field label={tl('finalScore')}>
+                  <input name="finalScore" type="number" step="0.01" min="0" className={`${inputCls} w-24`} />
+                </Field>
+                <Field label={tl('abcClass')}>
+                  <select name="abcClass" required className={inputCls} defaultValue="">
+                    <option value="" disabled>—</option>
+                    <option value="A">{tl('classA')}</option>
+                    <option value="B">{tl('classB')}</option>
+                    <option value="C">{tl('classC')}</option>
+                  </select>
+                </Field>
+                <Button type="submit" variant="secondary">{tl('closeReview')}</Button>
+              </form>
+            </Card>
+          )}
         </>
       )}
     </div>

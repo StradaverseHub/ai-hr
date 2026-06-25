@@ -1,0 +1,60 @@
+import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
+import { requireAdmin } from '@/lib/authz';
+import { Card, PageHeader } from '@/components/ui';
+import { PayrollTabs } from '@/components/payroll-tabs';
+
+/**
+ * Feature 1.2 — Transaction hub (information architecture over existing payroll capability).
+ * Re-surfaces the already-wired transaction functions (Fixed / Individual incl. TP1+zakat) as a
+ * card grid under the Payroll module. No schema, no kernel change. Per the approved plan we render
+ * ONLY the wired functions — no "coming soon" placeholders for CP38/Loan/EA/Import (those are
+ * separate backlog items, each with its own ADR).
+ *
+ * Flag posture (plan step 1): typed pay components are read by the kernel only when
+ * TYPED_PAY_COMPONENTS_ENABLED. When off, components entered via these functions do nothing to the
+ * payslip, so we show a visible gated banner rather than implying impact.
+ */
+export default async function PayrollTransactionsPage() {
+  await requireAdmin();
+  const t = await getTranslations('payroll.transactions');
+  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+
+  return (
+    <div className="mx-auto max-w-5xl space-y-6">
+      <PageHeader title={t('title')} description={t('subtitle')} />
+      <PayrollTabs active="transactions" />
+
+      {!typedComponentsOn && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          <p className="font-medium">{t('gatedTitle')}</p>
+          <p className="mt-1 text-xs">{t('gatedBody')}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.fixedTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.fixedDesc')}</p>
+          <Link
+            href="/payroll/transactions/fixed"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.fixedCta')}
+          </Link>
+        </Card>
+
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.individualTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.individualDesc')}</p>
+          <Link
+            href="/payroll/transactions/individual"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.individualCta')}
+          </Link>
+        </Card>
+      </div>
+    </div>
+  );
+}

@@ -907,6 +907,46 @@
       "aiDrafting": "起草中…",
       "aiDraftHint": "根据自评、关联目标、历史评分和 360 反馈生成初稿。在最终确定前你始终可以审阅和编辑。",
       "aiDraftSuccess": "草稿已插入——提交前请审阅并编辑。"
+    },
+    "lifecycle": {
+      "title": "生命周期",
+      "stageGoalSetting": "目标设定",
+      "stageMidYear": "年中评估",
+      "stageYearEnd": "年终评估",
+      "stagesField": "生命周期阶段",
+      "stagesHint": "选择本周期运行的阶段。年终阶段承载最终评分、校准与薪酬。",
+      "selfRating": "自评分数",
+      "selfComments": "自评意见",
+      "managerRating": "经理评分",
+      "managerComments": "经理意见",
+      "overallRating": "整体评分",
+      "submitSelf": "提交自评",
+      "submitManager": "提交经理评估",
+      "proposeGoals": "提交目标",
+      "approveGoal": "批准",
+      "lockGoalSetting": "锁定目标设定",
+      "goalStagePending": "目标设定开放中",
+      "goalStageLocked": "目标设定已锁定",
+      "goalApprovalDraft": "草稿",
+      "goalApprovalProposed": "已提交",
+      "goalApprovalApproved": "已批准",
+      "closeReview": "关闭评估",
+      "finalScore": "最终分数",
+      "abcClass": "绩效等级",
+      "classA": "A",
+      "classB": "B",
+      "classC": "C",
+      "closed": "已关闭",
+      "closurePanelTitle": "最终结案",
+      "closurePanelHint": "记录最终分数和 A/B/C 等级。请先发布周期；此操作会通知员工。",
+      "justificationRequired": "理由（调整评分时必填）",
+      "byDepartment": "按部门",
+      "attachmentsTitle": "附件",
+      "attachmentsHint": "此评估阶段的文件。仅员工及其经理可见。",
+      "attachmentUpload": "上传",
+      "attachmentDownload": "下载",
+      "attachmentEmpty": "此阶段暂无附件。",
+      "reviewFinalized": "您的绩效评估已最终确定。"
     }
   },
   "payroll": {
@@ -1171,6 +1211,57 @@
         "colComponent": "项目",
         "colAmount": "金额",
         "colStatus": "状态"
+      }
+    },
+    "transactions": {
+      "title": "交易",
+      "subtitle": "有组织地访问薪资交易功能。",
+      "gatedTitle": "薪资组件未启用",
+      "gatedBody": "此环境已关闭类型化薪资组件。在此输入的固定和个别交易在启用之前不会影响工资单。请联系管理员启用薪资组件。",
+      "hub": {
+        "fixedTitle": "固定交易",
+        "fixedDesc": "每位员工的经常性津贴和扣除，按生效日期。",
+        "fixedCta": "管理经常项",
+        "individualTitle": "个别交易",
+        "individualDesc": "草稿批次的一次性组件，以及 TP1 减免和天课。",
+        "individualCta": "添加一次性"
+      },
+      "fixed": {
+        "title": "固定交易",
+        "subtitle": "每位员工的经常性薪资组件，按生效日期。",
+        "intro": "选择一名员工以管理其经常性津贴和扣除。更改将在下次生成的工资单上生效。",
+        "pickEmployee": "员工",
+        "open": "打开编辑器",
+        "empty": "当前范围内没有员工。",
+        "colEmployee": "员工",
+        "colCompany": "公司",
+        "manage": "管理"
+      },
+      "individual": {
+        "title": "个别交易",
+        "subtitle": "一次性批次组件、TP1 减免和天课。",
+        "pickBatch": "草稿批次",
+        "noBatches": "没有可用的草稿批次。请先在批次选项卡中创建一个。",
+        "addTitle": "添加一次性组件",
+        "addIntro": "在此草稿批次上为一名员工添加单个一次性薪资组件。",
+        "employee": "员工",
+        "component": "组件",
+        "amount": "金额",
+        "notes": "备注",
+        "notesPlaceholder": "可选备注",
+        "add": "添加组件",
+        "added": "已添加组件。",
+        "csvTitle": "批量导入 (CSV)",
+        "csvIntro": "一次加载多个一次性组件。",
+        "deductionTitle": "TP1 减免与天课",
+        "deductionIntro": "为一名员工设置每月税务减免 (TP1) 和天课。保存这些不会更改同一行的加班或奖金。",
+        "tp1": "TP1 减免",
+        "tp1Title": "每月税务扣除减免 (TP1) — 减少 PCB/MTD。",
+        "zakat": "天课",
+        "zakatTitle": "通过薪资缴纳的天课 — 抵扣 PCB/MTD。",
+        "save": "保存",
+        "saved": "已保存。",
+        "unsupportedComponent": "该组件在此版本中不能用于批次。请选择可支付的组件。"
       }
     }
   },
@@ -1569,7 +1660,8 @@
     "payrollTabs": {
       "batches": "批次",
       "reports": "报表",
-      "configuration": "配置"
+      "configuration": "配置",
+      "transactions": "交易"
     },
     "printButton": {
       "print": "打印 / 保存 PDF"
