@@ -124,6 +124,22 @@ export function listPayComponents(ctx: SessionContext, opts: { includeArchived?:
   });
 }
 
+/**
+ * Feature 1.2 (Transaction sub-module) — the catalog components an admin may put on a draft batch via the
+ * guided single-row Individual Transaction form. Excludes archived AND the kernel's unsupported-taxable
+ * class (a PCB-taxable BIK / PCB-only earning) so the picker never offers a component that
+ * setPayrollBatchComponent would reject at write time (UnsupportedBatchComponentError). Same predicate the
+ * CSV importer enforces — the picker is the front-line filter, the service throw is the backstop.
+ */
+export function listSupportedBatchComponents(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
+    return rows
+      .filter((r) => r.archivedAt == null && !isUnsupportedTaxableComponent(r))
+      .map((r) => ({ id: r.id, code: r.code, name: r.name, kind: r.kind }));
+  });
+}
+
 export type PayComponentInput = {
   code: string;
   name: string;

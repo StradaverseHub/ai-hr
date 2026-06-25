@@ -35,6 +35,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         employmentId: employment.id,
         name: person.fullName,
         email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
         status: assignment.status,
         department: department.name,
         company: company.legalName,
@@ -63,6 +64,7 @@ export type EmployeeListRow = {
   employmentId: string;
   name: string;
   email: string;
+  employeeCode: string | null;
   status: string | null;
   department: string | null;
   company: string;
@@ -109,7 +111,7 @@ export function listEmployeesPage(
           : undefined,
       p.employmentType ? eq(assignment.employmentType, p.employmentType as (typeof employmentTypeEnum.enumValues)[number]) : undefined,
       q
-        ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'})`
+        ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${person.primaryEmail} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
         : undefined,
     );
     const rows = (await tx
@@ -117,6 +119,7 @@ export function listEmployeesPage(
         employmentId: employment.id,
         name: person.fullName,
         email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
         status: assignment.status,
         department: department.name,
         company: company.legalName,

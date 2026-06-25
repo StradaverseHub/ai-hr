@@ -101,6 +101,10 @@ export const feedbackRequestStatusEnum = pgEnum('feedback_request_status', ['pen
 // Calibration session lifecycle (ADR-0022, Phase B slice 4). Advisory: admins propose, then COMMIT.
 export const calibrationStatusEnum = pgEnum('calibration_status', ['open', 'committed']);
 export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'google']);
+// Performance lifecycle (ADR-0022 lifecycle extension). Goal-setting lock + closure classification.
+export const goalStageStatusEnum = pgEnum('perf_goal_stage_status', ['pending', 'locked']);
+export const goalApprovalEnum = pgEnum('perf_goal_approval', ['draft', 'proposed', 'approved']);
+export const perfAbcClassEnum = pgEnum('perf_abc_class', ['A', 'B', 'C']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -1412,6 +1416,9 @@ export const reviewCycle = pgTable(
     meritBudget: jsonb('merit_budget'), // { kind: 'percent' | 'amount', value: number } | null
     excludeProbation: boolean('exclude_probation').notNull().default(true),
     hiredBefore: date('hired_before'), // only include employees hired on/before this; null = no cutoff
+    // Lifecycle stages HR elected at initiation (JSONB, migration-free). Array of
+    // { kind: 'goal_setting'|'mid_year'|'year_end', label, opensOn?, dueOn? }. Null/absent ⇒ all three.
+    stages: jsonb('stages'),
     // The release gate: manager ratings/overall become employee-visible only once this is set.
     releasedAt: timestamp('released_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -1442,6 +1449,23 @@ export const performanceReview = pgTable(
     managerRating: integer('manager_rating'),
     managerComments: text('manager_comments'),
     overallRating: integer('overall_rating'),
+    // ── Lifecycle (column-widening, ADR-0022 lifecycle extension) ──
+    // Mid-year (MYR) stage. Year-end (YER) reuses the canonical self/manager/overall columns above,
+    // so calibration / comp / release / acknowledge / distribution / AI stay untouched.
+    midSelfRating: integer('mid_self_rating'),
+    midSelfComments: text('mid_self_comments'),
+    midSelfSubmittedAt: timestamp('mid_self_submitted_at', { withTimezone: true }),
+    midManagerRating: integer('mid_manager_rating'),
+    midManagerComments: text('mid_manager_comments'),
+    midManagerSubmittedAt: timestamp('mid_manager_submitted_at', { withTimezone: true }),
+    // Goal-setting stage lock (the gate that freezes approved cycle-bound goals).
+    goalStageStatus: goalStageStatusEnum('goal_stage_status').notNull().default('pending'),
+    goalStageLockedAt: timestamp('goal_stage_locked_at', { withTimezone: true }),
+    // Closure (G4): preliminary = YER manager's forwarded figure; final/abc = HR's deliberate say.
+    preliminaryScore: numeric('preliminary_score', { precision: 5, scale: 2 }),
+    finalScore: numeric('final_score', { precision: 5, scale: 2 }),
+    abcClass: perfAbcClassEnum('abc_class'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
     // Pay seam (free-form recommendation; admin enacts via setCompensation / payroll bonus).
     recommendedMeritPct: numeric('recommended_merit_pct', { precision: 5, scale: 2 }),
     recommendedBonus: numeric('recommended_bonus', { precision: 12, scale: 2 }),
@@ -1479,6 +1503,11 @@ export const performanceGoal = pgTable(
     weight: numeric('weight', { precision: 5, scale: 2 }), // optional relative weight
     progress: integer('progress').notNull().default(0), // 0–100
     status: goalStatusEnum('status').notNull().default('active'),
+    // Goal-setting approval (G2): draft → proposed → approved. An approved cycle-bound goal becomes
+    // immutable once its review's goalStageStatus = 'locked' (the stage gate, not a per-goal lock state).
+    approvalStatus: goalApprovalEnum('approval_status').notNull().default('draft'),
+    approvedByUserId: uuid('approved_by_user_id'),
+    approvedAt: timestamp('approved_at', { withTimezone: true }),
     dueOn: date('due_on'),
     createdByUserId: uuid('created_by_user_id'),
     createdAt: createdAt(),
@@ -1630,6 +1659,33 @@ export const calibrationEntry = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('calibration_entry_session_review_uq').on(t.sessionId, t.reviewId)],
+);
+
+// Performance attachments (G5, lifecycle extension). Subject-scoped, like claim_attachment: the
+// employment_id is denormalized from the review's SUBJECT, so RLS is a direct can_see_employment()
+// — visible to the subject, their admin-line manager, and admins (NOT peer/subordinate 360 reviewers).
+// stage_kind is a plain string discriminator ('goal_setting'|'mid_year'|'year_end'|null=review-level),
+// not an FK (there is no stage table — the lifecycle uses column-widening on performance_review).
+export const performanceAttachment = pgTable(
+  'performance_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => performanceReview.id),
+    employmentId: uuid('employment_id') // denormalized subject — drives RLS
+      .notNull()
+      .references(() => employment.id),
+    stageKind: text('stage_kind'), // 'goal_setting' | 'mid_year' | 'year_end' | null (review-level)
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('performance_attachment_review_idx').on(t.reviewId)],
 );
 
 // ─────────────────────── AI provider configuration (ADR-0023) ───────────────────────

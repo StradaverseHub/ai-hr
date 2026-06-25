@@ -907,6 +907,46 @@
       "aiDrafting": "Đang soạn thảo…",
       "aiDraftHint": "Tạo bản nháp khởi đầu từ phần tự đánh giá, các mục tiêu đã liên kết, xếp hạng trước đó và phản hồi 360. Bạn luôn xem lại và chỉnh sửa trước khi hoàn tất.",
       "aiDraftSuccess": "Đã chèn bản nháp — hãy xem lại và chỉnh sửa trước khi gửi."
+    },
+    "lifecycle": {
+      "title": "Vòng đời",
+      "stageGoalSetting": "Thiết lập mục tiêu",
+      "stageMidYear": "Đánh giá giữa năm",
+      "stageYearEnd": "Đánh giá cuối năm",
+      "stagesField": "Các giai đoạn vòng đời",
+      "stagesHint": "Chọn các giai đoạn chu kỳ này thực hiện. Cuối năm mang điểm cuối cùng, hiệu chỉnh và lương.",
+      "selfRating": "Tự đánh giá",
+      "selfComments": "Nhận xét của bản thân",
+      "managerRating": "Đánh giá của quản lý",
+      "managerComments": "Nhận xét của quản lý",
+      "overallRating": "Đánh giá tổng thể",
+      "submitSelf": "Gửi tự đánh giá",
+      "submitManager": "Gửi đánh giá của quản lý",
+      "proposeGoals": "Đề xuất mục tiêu",
+      "approveGoal": "Phê duyệt",
+      "lockGoalSetting": "Khóa thiết lập mục tiêu",
+      "goalStagePending": "Thiết lập mục tiêu đang mở",
+      "goalStageLocked": "Thiết lập mục tiêu đã khóa",
+      "goalApprovalDraft": "Bản nháp",
+      "goalApprovalProposed": "Đã đề xuất",
+      "goalApprovalApproved": "Đã phê duyệt",
+      "closeReview": "Đóng đánh giá",
+      "finalScore": "Điểm cuối cùng",
+      "abcClass": "Xếp loại hiệu suất",
+      "classA": "A",
+      "classB": "B",
+      "classC": "C",
+      "closed": "Đã đóng",
+      "closurePanelTitle": "Kết thúc cuối cùng",
+      "closurePanelHint": "Ghi điểm cuối cùng và xếp loại A/B/C. Phát hành chu kỳ trước; thao tác này thông báo cho nhân viên.",
+      "justificationRequired": "Lý do (bắt buộc khi điều chỉnh đánh giá)",
+      "byDepartment": "Theo phòng ban",
+      "attachmentsTitle": "Tệp đính kèm",
+      "attachmentsHint": "Tệp cho giai đoạn đánh giá này. Chỉ nhân viên và quản lý của họ thấy được.",
+      "attachmentUpload": "Tải lên",
+      "attachmentDownload": "Tải xuống",
+      "attachmentEmpty": "Chưa có tệp đính kèm cho giai đoạn này.",
+      "reviewFinalized": "Đánh giá hiệu suất của bạn đã được hoàn tất."
     }
   },
   "payroll": {
@@ -1171,6 +1211,57 @@
         "colComponent": "Thành phần",
         "colAmount": "Số tiền",
         "colStatus": "Trạng thái"
+      }
+    },
+    "transactions": {
+      "title": "Giao dịch",
+      "subtitle": "Truy cập có tổ chức vào các chức năng giao dịch bảng lương.",
+      "gatedTitle": "Thành phần lương chưa được bật",
+      "gatedBody": "Thành phần lương có kiểu đã bị tắt cho môi trường này. Các giao dịch cố định và riêng lẻ nhập ở đây sẽ không ảnh hưởng đến phiếu lương cho đến khi chúng được bật. Hãy yêu cầu quản trị viên bật thành phần lương.",
+      "hub": {
+        "fixedTitle": "Giao dịch Cố định",
+        "fixedDesc": "Phụ cấp và khấu trừ định kỳ theo nhân viên, có ngày hiệu lực.",
+        "fixedCta": "Quản lý định kỳ",
+        "individualTitle": "Giao dịch Riêng lẻ",
+        "individualDesc": "Thành phần một lần cho đợt nháp, cùng với miễn giảm TP1 và zakat.",
+        "individualCta": "Thêm một lần"
+      },
+      "fixed": {
+        "title": "Giao dịch Cố định",
+        "subtitle": "Thành phần lương định kỳ theo nhân viên, có ngày hiệu lực.",
+        "intro": "Chọn một nhân viên để quản lý phụ cấp và khấu trừ định kỳ của họ. Thay đổi sẽ có hiệu lực trên phiếu lương được tạo tiếp theo.",
+        "pickEmployee": "Nhân viên",
+        "open": "Mở trình chỉnh sửa",
+        "empty": "Không có nhân viên trong phạm vi hiện tại.",
+        "colEmployee": "Nhân viên",
+        "colCompany": "Công ty",
+        "manage": "Quản lý"
+      },
+      "individual": {
+        "title": "Giao dịch Riêng lẻ",
+        "subtitle": "Thành phần đợt một lần, miễn giảm TP1 và zakat.",
+        "pickBatch": "Đợt nháp",
+        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Đợt trước.",
+        "addTitle": "Thêm thành phần một lần",
+        "addIntro": "Thêm một thành phần lương một lần cho một nhân viên trên đợt nháp này.",
+        "employee": "Nhân viên",
+        "component": "Thành phần",
+        "amount": "Số tiền",
+        "notes": "Ghi chú",
+        "notesPlaceholder": "Ghi chú tùy chọn",
+        "add": "Thêm thành phần",
+        "added": "Đã thêm thành phần.",
+        "csvTitle": "Nhập hàng loạt (CSV)",
+        "csvIntro": "Tải nhiều thành phần một lần cùng lúc.",
+        "deductionTitle": "Miễn giảm TP1 & zakat",
+        "deductionIntro": "Miễn giảm thuế hàng tháng (TP1) và zakat cho một nhân viên. Lưu các mục này không thay đổi tăng ca hoặc thưởng trên cùng hàng.",
+        "tp1": "Miễn giảm TP1",
+        "tp1Title": "Miễn giảm khấu trừ thuế hàng tháng (TP1) — giảm PCB/MTD.",
+        "zakat": "Zakat",
+        "zakatTitle": "Zakat trả qua lương — được ghi có vào PCB/MTD.",
+        "save": "Lưu",
+        "saved": "Đã lưu.",
+        "unsupportedComponent": "Thành phần đó không thể dùng trên đợt trong phiên bản này. Hãy chọn một thành phần có thể chi trả."
       }
     }
   },
@@ -1569,7 +1660,8 @@
     "payrollTabs": {
       "batches": "Đợt",
       "reports": "Báo cáo",
-      "configuration": "Cấu hình"
+      "configuration": "Cấu hình",
+      "transactions": "Giao dịch"
     },
     "printButton": {
       "print": "In / Lưu PDF"

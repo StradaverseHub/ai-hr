@@ -20,6 +20,7 @@ export default async function PerformancePage({
 }) {
   const { s } = await scopedSession();
   const t = await getTranslations('performance.list');
+  const tl = await getTranslations('performance.lifecycle');
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
@@ -227,6 +228,23 @@ export default async function PerformancePage({
                 <Field label={t('fieldHiredBefore')}>
                   <input name="hiredBefore" type="date" className={inputCls} />
                 </Field>
+                <div className="sm:col-span-2">
+                  <Field label={tl('stagesField')}>
+                    <p className="mb-2 text-xs text-muted-foreground">{tl('stagesHint')}</p>
+                    <div className="flex flex-wrap gap-4 text-sm">
+                      {([
+                        ['goal_setting', tl('stageGoalSetting')],
+                        ['mid_year', tl('stageMidYear')],
+                        ['year_end', tl('stageYearEnd')],
+                      ] as const).map(([kind, label]) => (
+                        <label key={kind} className="flex items-center gap-2">
+                          <input type="checkbox" name="stage" value={kind} defaultChecked className="size-4" />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </Field>
+                </div>
                 <label className="flex items-center gap-2 text-sm sm:col-span-2">
                   <input type="checkbox" name="excludeProbation" defaultChecked className="size-4" />
                   {t('excludeProbation')}

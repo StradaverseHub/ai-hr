@@ -88,6 +88,14 @@ const REGISTRY: Record<string, Spec> = {
     category: 'profile',
     render: () => ({ severity: 'warning', title: 'Profile change not approved', body: 'Your requested profile change was not approved.', linkPath: '/me' }),
   },
+  // Performance closure (lifecycle G4). Release-safe: closeReview asserts the cycle is released before
+  // closing, and the body says only that the review was finalized — never the score or ABC class (the
+  // /me review surface gates the actual figures behind the existing release/showManager rules).
+  'performance-review.closed': {
+    kind: 'performance.closed',
+    category: 'performance',
+    render: () => ({ severity: 'info', title: 'Performance review finalized', body: 'Your performance review has been finalized.', linkPath: '/me' }),
+  },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
   'payroll-batch.closed': {
     kind: 'payslip.ready',

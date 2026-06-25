@@ -23,10 +23,12 @@ import {
   calibrationSession,
   compensation,
   employment,
+  department,
   payrollBatch,
   payrollInput,
   peerFeedback,
   peerFeedbackRequest,
+  performanceAttachment,
   performanceCheckin,
   performanceGoal,
   performanceReview,
@@ -84,6 +86,7 @@ export async function createCycle(
     meritBudget?: MeritBudget;
     excludeProbation?: boolean;
     hiredBefore?: string | null;
+    stages?: CycleStage[];
   },
 ) {
   if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can create a review cycle');
@@ -91,6 +94,8 @@ export async function createCycle(
   if (p.periodEnd < p.periodStart) throw new PerfError('Cycle period end is before its start');
   const scale = p.ratingScale ?? DEFAULT_RATING_SCALE;
   if (!Array.isArray(scale) || scale.length < 2) throw new PerfError('A rating scale needs at least two points');
+  // HR elects which lifecycle stages run; default = all three. Normalize + reject empty / unknown.
+  const stages = cycleStages(p.stages);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(reviewCycle)
@@ -105,6 +110,7 @@ export async function createCycle(
         meritBudget: p.meritBudget ?? null,
         excludeProbation: p.excludeProbation ?? true,
         hiredBefore: p.hiredBefore ?? null,
+        stages,
       })
       .returning({ id: reviewCycle.id });
     await appendEvent(tx, {
@@ -400,6 +406,389 @@ export async function reassignReviewer(
     });
     return { ok: true };
   });
+}
+
+// ───────────────────────────── Lifecycle stages (ADR-0022 extension) ─────────────────────────────
+//
+// The cycle runs up to three FIXED stages — goal-setting, mid-year (MYR), year-end (YER). This is
+// column-widening, not a stage table: YER reuses the canonical self/manager/overall columns (so
+// calibration, comp, release, acknowledge, distribution and AI stay untouched); MYR + goal-setting
+// get their own column sets on performance_review. HR elects which stages run at initiation
+// (review_cycle.stages JSONB; null ⇒ all three).
+
+export type StageKind = 'goal_setting' | 'mid_year' | 'year_end';
+export type CycleStage = { kind: StageKind; label: string; opensOn?: string | null; dueOn?: string | null };
+export const ALL_STAGE_KINDS: StageKind[] = ['goal_setting', 'mid_year', 'year_end'];
+const DEFAULT_STAGE_LABEL: Record<StageKind, string> = {
+  goal_setting: 'Goal-setting',
+  mid_year: 'Mid-year review',
+  year_end: 'Year-end review',
+};
+const DEFAULT_STAGES: CycleStage[] = ALL_STAGE_KINDS.map((kind) => ({ kind, label: DEFAULT_STAGE_LABEL[kind] }));
+
+/** The configured stages for a cycle (null/absent ⇒ all three). */
+export function cycleStages(stages: unknown): CycleStage[] {
+  if (!Array.isArray(stages) || stages.length === 0) return DEFAULT_STAGES;
+  const out: CycleStage[] = [];
+  for (const s of stages as CycleStage[]) {
+    if (s && ALL_STAGE_KINDS.includes(s.kind)) {
+      out.push({ kind: s.kind, label: s.label || DEFAULT_STAGE_LABEL[s.kind], opensOn: s.opensOn ?? null, dueOn: s.dueOn ?? null });
+    }
+  }
+  return out.length > 0 ? out : DEFAULT_STAGES;
+}
+const cycleHasStage = (stages: unknown, kind: StageKind) => cycleStages(stages).some((s) => s.kind === kind);
+
+/** The subject's personId for a review — for the explicit subject-ban (applies even to super_admin). */
+async function reviewSubjectPersonId(tx: Tx, reviewId: string): Promise<{ personId: string | null; employmentId: string }> {
+  const { review, subjectPersonId } = await loadReview(tx, reviewId);
+  return { personId: subjectPersonId, employmentId: review.employmentId };
+}
+
+/** Employee submits their per-stage self-assessment (mid_year or year_end). Self-or-admin only.
+ *  year_end writes through the canonical self columns + marches status exactly as submitSelfReview;
+ *  mid_year writes its own MYR columns and leaves status untouched. Each function writes ONLY its
+ *  own column set (the RLS-vs-service boundary: RLS is FOR ALL, the service scopes the columns). */
+export async function submitStageSelf(
+  ctx: SessionContext,
+  p: { reviewId: string; stage: 'mid_year' | 'year_end'; selfRating: number; selfComments?: string; goalsSummary?: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
+    const isSelf = ctx.personId != null && ctx.personId === subjectPersonId;
+    if (!isSelf && !isAdminCtx(ctx)) throw new PerfError('Only the employee can submit their own self-review');
+    if (cycle.status !== 'open') throw new PerfError(`The cycle is ${cycle.status}; reviews can only be edited while it is open`);
+    if (!cycleHasStage(cycle.stages, p.stage)) throw new PerfError(`This cycle does not run the ${p.stage} stage`);
+    assertRatingInScale(cycle.ratingScale as RatingScale, p.selfRating, 'Self rating');
+
+    if (p.stage === 'year_end') {
+      if (review.status !== 'self_review') throw new PerfError(`Self-review is not open (status: ${review.status})`);
+      await tx
+        .update(performanceReview)
+        .set({ selfRating: p.selfRating, selfComments: p.selfComments ?? null, goalsSummary: p.goalsSummary ?? null, status: 'manager_review' })
+        .where(eq(performanceReview.id, review.id));
+    } else {
+      // mid_year — its own columns; status (the YER machine) is untouched.
+      await tx
+        .update(performanceReview)
+        .set({ midSelfRating: p.selfRating, midSelfComments: p.selfComments ?? null, midSelfSubmittedAt: sql`now()` })
+        .where(eq(performanceReview.id, review.id));
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-review.stage-self-submitted',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { cycleId: review.cycleId, stage: p.stage }, // no rating (tenant-wide event log)
+    });
+    return { stage: p.stage };
+  });
+}
+
+/** Manager finalizes a per-stage evaluation (mid_year or year_end). Reviewer-or-admin, never self
+ *  (assertCanDecide + an explicit subject-ban that ALSO applies to super_admin). year_end delegates
+ *  to the canonical manager columns, marches status to submitted, and stamps preliminaryScore +
+ *  forwarded-to-hr; mid_year writes only its MYR columns. */
+export async function submitStageManager(
+  ctx: SessionContext,
+  p: { reviewId: string; stage: 'mid_year' | 'year_end'; managerRating: number; managerComments?: string; overallRating?: number },
+) {
+  return withTenant(ctx, async (tx) => {
+    const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
+    if (cycle.status !== 'open') throw new PerfError(`The cycle is ${cycle.status}; reviews can only be edited while it is open`);
+    if (!cycleHasStage(cycle.stages, p.stage)) throw new PerfError(`This cycle does not run the ${p.stage} stage`);
+    await assertCanDecide(tx, ctx, review.employmentId, 'performance review');
+    // Explicit subject-ban — applies even to super_admin (assertCanDecide lets super_admin self-decide).
+    if (ctx.personId != null && ctx.personId === subjectPersonId) throw new PerfError('You cannot finalize your own review');
+    const scale = cycle.ratingScale as RatingScale;
+    assertRatingInScale(scale, p.managerRating, 'Manager rating');
+
+    if (p.stage === 'year_end') {
+      if (review.status !== 'manager_review' && review.status !== 'self_review') {
+        throw new PerfError(`Manager review is not open (status: ${review.status})`);
+      }
+      const overall = p.overallRating ?? p.managerRating;
+      assertRatingInScale(scale, overall, 'Overall rating');
+      await tx
+        .update(performanceReview)
+        .set({
+          managerRating: p.managerRating,
+          managerComments: p.managerComments ?? null,
+          overallRating: overall,
+          // Forward the preliminary (manager-submitted) figure to HR for closure.
+          preliminaryScore: money(overall),
+          status: 'submitted',
+          submittedAt: sql`now()`,
+        })
+        .where(eq(performanceReview.id, review.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'performance-review',
+        aggregateId: review.id,
+        eventType: 'performance-review.manager-submitted',
+        actor: actorOf(ctx),
+        subjectEmploymentId: review.employmentId,
+        payload: { cycleId: review.cycleId, stage: p.stage },
+      });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'performance-review',
+        aggregateId: review.id,
+        eventType: 'performance-review.forwarded-to-hr',
+        actor: actorOf(ctx),
+        subjectEmploymentId: review.employmentId,
+        payload: { cycleId: review.cycleId },
+      });
+      return { stage: p.stage, status: 'submitted' as const };
+    }
+
+    // mid_year — its own columns only; the YER status machine is untouched.
+    await tx
+      .update(performanceReview)
+      .set({ midManagerRating: p.managerRating, midManagerComments: p.managerComments ?? null, midManagerSubmittedAt: sql`now()` })
+      .where(eq(performanceReview.id, review.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-review.stage-manager-submitted',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { cycleId: review.cycleId, stage: p.stage },
+    });
+    return { stage: p.stage };
+  });
+}
+
+// ───────────────────────────── Goal-setting + lock (G2) ─────────────────────────────
+
+/** Move the subject's cycle-bound goals from draft → proposed. Cycle-bound only (cycleId == the
+ *  review's cycle) — a continuous goal (null cycleId) is never swept in. Throws if there are none. */
+export async function proposeGoals(ctx: SessionContext, p: { reviewId: string }): Promise<{ proposed: number }> {
+  return withTenant(ctx, async (tx) => {
+    const { review } = await loadReview(tx, p.reviewId);
+    const goals = await tx
+      .select({ id: performanceGoal.id, status: performanceGoal.approvalStatus })
+      .from(performanceGoal)
+      .where(and(eq(performanceGoal.employmentId, review.employmentId), eq(performanceGoal.cycleId, review.cycleId)));
+    if (goals.length === 0) throw new PerfError('Propose at least one goal for this cycle');
+    let proposed = 0;
+    for (const g of goals) {
+      if (g.status !== 'draft') continue;
+      await tx.update(performanceGoal).set({ approvalStatus: 'proposed', updatedAt: sql`now()` }).where(eq(performanceGoal.id, g.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'performance-goal',
+        aggregateId: g.id,
+        eventType: 'performance-goal.proposed',
+        actor: actorOf(ctx),
+        subjectEmploymentId: review.employmentId,
+        payload: { cycleId: review.cycleId },
+      });
+      proposed += 1;
+    }
+    return { proposed };
+  });
+}
+
+/** Manager/admin approves a proposed goal. Never the subject (explicit subject-ban + assertCanDecide). */
+export async function approveGoal(ctx: SessionContext, p: { goalId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const g = await loadGoal(tx, p.goalId);
+    await assertCanDecide(tx, ctx, g.employmentId, 'goal approval');
+    const [subj] = await tx.select({ personId: employment.personId }).from(employment).where(eq(employment.id, g.employmentId)).limit(1);
+    if (ctx.personId != null && subj?.personId === ctx.personId) throw new PerfError('You cannot approve your own goal');
+    if (g.approvalStatus !== 'proposed') throw new PerfError(`Only a proposed goal can be approved (it is ${g.approvalStatus})`);
+    await tx
+      .update(performanceGoal)
+      .set({ approvalStatus: 'approved', approvedByUserId: ctx.userId ?? null, approvedAt: sql`now()`, updatedAt: sql`now()` })
+      .where(eq(performanceGoal.id, g.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-goal',
+      aggregateId: g.id,
+      eventType: 'performance-goal.approved',
+      actor: actorOf(ctx),
+      subjectEmploymentId: g.employmentId,
+    });
+  });
+}
+
+/** Lock the goal-setting stage on a review: every cycle-bound goal must be approved first. After
+ *  this, approved cycle-bound goals are immutable (see updateGoal/updateGoalProgress guards). */
+export async function lockGoalSetting(ctx: SessionContext, p: { reviewId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const { review, subjectPersonId } = await loadReview(tx, p.reviewId);
+    await assertCanDecide(tx, ctx, review.employmentId, 'goal-setting lock');
+    if (ctx.personId != null && ctx.personId === subjectPersonId) throw new PerfError('You cannot lock your own goal-setting');
+    if (review.goalStageStatus === 'locked') throw new PerfError('Goal-setting is already locked');
+    const unapproved = await tx
+      .select({ id: performanceGoal.id })
+      .from(performanceGoal)
+      .where(
+        and(
+          eq(performanceGoal.employmentId, review.employmentId),
+          eq(performanceGoal.cycleId, review.cycleId),
+          sql`${performanceGoal.approvalStatus} <> 'approved'`,
+        ),
+      );
+    if (unapproved.length > 0) throw new PerfError('Every cycle goal must be approved before locking goal-setting');
+    await tx
+      .update(performanceReview)
+      .set({ goalStageStatus: 'locked', goalStageLockedAt: sql`now()` })
+      .where(eq(performanceReview.id, review.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-review.goal-stage.locked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { cycleId: review.cycleId },
+    });
+  });
+}
+
+/** True if this cycle-bound goal is frozen by a locked goal-setting stage (its review is locked). */
+async function goalIsStageLocked(tx: Tx, goal: { cycleId: string | null; employmentId: string }): Promise<boolean> {
+  if (!goal.cycleId) return false; // continuous goals are never stage-locked
+  const [rev] = await tx
+    .select({ status: performanceReview.goalStageStatus })
+    .from(performanceReview)
+    .where(and(eq(performanceReview.cycleId, goal.cycleId), eq(performanceReview.employmentId, goal.employmentId)))
+    .limit(1);
+  return rev?.status === 'locked';
+}
+
+// ───────────────────────────── Final closure + ABC (G4) ─────────────────────────────
+
+/** HR finalizes a review: lock the row, record finalScore (defaults to overallRating) + an ABC class
+ *  + closedAt. Does NOT change status (the acknowledge path requires status === 'submitted').
+ *  Asserts the cycle is released first, so closure is post-release and the notification can't leak the
+ *  class before the subject is allowed to see ratings. */
+export async function closeReview(
+  ctx: SessionContext,
+  p: { reviewId: string; finalScore?: number; abcClass: 'A' | 'B' | 'C' },
+): Promise<{ finalScore: number; abcClass: 'A' | 'B' | 'C' }> {
+  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can close a review');
+  if (!['A', 'B', 'C'].includes(p.abcClass)) throw new PerfError('ABC class must be A, B, or C');
+  return withTenant(ctx, async (tx) => {
+    // Lock the row first (the enactCompAction pattern) so concurrent closes / a racing calibration
+    // write can't interleave on a stale preliminary value.
+    await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
+    const { review, cycle } = await loadReview(tx, p.reviewId);
+    if (!cycleHasStage(cycle.stages, 'year_end')) throw new PerfError('This cycle has no year-end stage to close');
+    if (!cycle.releasedAt) throw new PerfError('Release the cycle before closing reviews');
+    if (review.status !== 'submitted' && review.status !== 'acknowledged') {
+      throw new PerfError('A review can only be closed once it is finalized');
+    }
+    if (review.closedAt) throw new PerfError('This review is already closed');
+    const scale = cycle.ratingScale as RatingScale;
+    const finalScore = p.finalScore ?? review.overallRating ?? undefined;
+    if (finalScore == null) throw new PerfError('No overall rating to default the final score from');
+    if (finalScore < scale[0].value || finalScore > scale[scale.length - 1].value) {
+      throw new PerfError('Final score is outside the cycle rating scale');
+    }
+    await tx
+      .update(performanceReview)
+      .set({ finalScore: money(finalScore), abcClass: p.abcClass, closedAt: sql`now()` })
+      .where(eq(performanceReview.id, review.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-review.closed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { cycleId: review.cycleId }, // no score/class (tenant-wide event log; notification is release-safe)
+    });
+    return { finalScore: round2(finalScore), abcClass: p.abcClass };
+  });
+}
+
+// ───────────────────────────── Attachments (G5) ─────────────────────────────
+
+/** Attach a file to a review for a stage (subject-scoped: employment_id denormalized from the
+ *  review's subject, so RLS admits the subject + manager + admin, not peers). */
+export async function addPerformanceAttachment(
+  ctx: SessionContext,
+  p: { reviewId: string; stageKind: StageKind | null; fileName: string; mimeType: string; content: Buffer },
+): Promise<{ id: string }> {
+  if (p.content.byteLength === 0) throw new PerfError('Empty file');
+  if (p.content.byteLength > 10 * 1024 * 1024) throw new PerfError('File exceeds 10 MB');
+  if (p.stageKind != null && !ALL_STAGE_KINDS.includes(p.stageKind)) throw new PerfError('Unknown stage');
+  return withTenant(ctx, async (tx) => {
+    const { review } = await loadReview(tx, p.reviewId);
+    const [row] = await tx
+      .insert(performanceAttachment)
+      .values({
+        tenantId: ctx.tenantId,
+        reviewId: review.id,
+        employmentId: review.employmentId,
+        stageKind: p.stageKind,
+        content: p.content,
+        fileName: p.fileName,
+        mimeType: p.mimeType,
+        sizeBytes: p.content.byteLength,
+        uploadedByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: performanceAttachment.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'performance-review',
+      aggregateId: review.id,
+      eventType: 'performance-attachment.added',
+      actor: actorOf(ctx),
+      subjectEmploymentId: review.employmentId,
+      payload: { stageKind: p.stageKind, fileName: p.fileName, sizeBytes: p.content.byteLength },
+    });
+    return { id: row.id };
+  });
+}
+
+/** Read an attachment's bytes for download (RLS scopes visibility to the subject + manager + admin). */
+export async function getPerformanceAttachment(
+  ctx: SessionContext,
+  attachmentId: string,
+): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ content: performanceAttachment.content, fileName: performanceAttachment.fileName, mimeType: performanceAttachment.mimeType })
+      .from(performanceAttachment)
+      .where(eq(performanceAttachment.id, attachmentId))
+      .limit(1);
+    return row ? { content: row.content, fileName: row.fileName, mimeType: row.mimeType } : null;
+  });
+}
+
+export type AttachmentMeta = { id: string; stageKind: StageKind | null; fileName: string; sizeBytes: number; createdAt: string };
+
+async function listAttachmentsForReviewTx(tx: Tx, reviewId: string): Promise<AttachmentMeta[]> {
+  const rows = await tx
+    .select({
+      id: performanceAttachment.id,
+      stageKind: performanceAttachment.stageKind,
+      fileName: performanceAttachment.fileName,
+      sizeBytes: performanceAttachment.sizeBytes,
+      createdAt: performanceAttachment.createdAt,
+    })
+    .from(performanceAttachment)
+    .where(eq(performanceAttachment.reviewId, reviewId))
+    .orderBy(desc(performanceAttachment.createdAt));
+  return rows.map((r) => ({
+    id: r.id,
+    stageKind: (r.stageKind as StageKind | null) ?? null,
+    fileName: r.fileName,
+    sizeBytes: r.sizeBytes,
+    createdAt: r.createdAt.toISOString(),
+  }));
+}
+
+/** Attachment metadata for a review (no bytes), grouped by stageKind. RLS scopes to the viewer. */
+export function listAttachmentsForReview(ctx: SessionContext, reviewId: string): Promise<AttachmentMeta[]> {
+  return withTenant(ctx, (tx) => listAttachmentsForReviewTx(tx, reviewId));
 }
 
 // ───────────────────────────── Pay seam (admin enacts) ─────────────────────────────
@@ -760,6 +1149,18 @@ export type ReviewView = {
   managerRating: number | null;
   managerComments: string | null;
   overallRating: number | null;
+  // Mid-year stage (release-gated for the subject like the year-end manager side).
+  midSelfRating: number | null;
+  midSelfComments: string | null;
+  midManagerRating: number | null;
+  midManagerComments: string | null;
+  // Goal-setting stage + closure (release-gated for the subject).
+  goalStageStatus: 'pending' | 'locked';
+  finalScore: number | null;
+  abcClass: 'A' | 'B' | 'C' | null;
+  closed: boolean;
+  stages: CycleStage[];
+  attachments: AttachmentMeta[];
   // comp fields — populated only for manager/admin viewers (never the subject)
   recommendedMeritPct: number | null;
   recommendedBonus: number | null;
@@ -815,6 +1216,8 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
     const showManager = canManage || released;
     const showComp = canManage; // comp recommendation is management-only
 
+    const attachments = await listAttachmentsForReviewTx(tx, rv.id);
+
     return {
       id: rv.id,
       cycleId: rv.cycleId,
@@ -833,6 +1236,16 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
       managerRating: showManager ? rv.managerRating : null,
       managerComments: showManager ? rv.managerComments : null,
       overallRating: showManager ? rv.overallRating : null,
+      midSelfRating: rv.midSelfRating,
+      midSelfComments: rv.midSelfComments,
+      midManagerRating: showManager ? rv.midManagerRating : null,
+      midManagerComments: showManager ? rv.midManagerComments : null,
+      goalStageStatus: rv.goalStageStatus,
+      finalScore: showManager && rv.finalScore != null ? Number(rv.finalScore) : null,
+      abcClass: showManager ? (rv.abcClass as 'A' | 'B' | 'C' | null) : null,
+      closed: rv.closedAt != null,
+      stages: cycleStages(r.cycle.stages),
+      attachments,
       recommendedMeritPct: showComp && rv.recommendedMeritPct != null ? Number(rv.recommendedMeritPct) : null,
       recommendedBonus: showComp && rv.recommendedBonus != null ? Number(rv.recommendedBonus) : null,
       compActionStatus: showComp ? rv.compActionStatus : 'none',
@@ -856,6 +1269,8 @@ export function myReviews(ctx: SessionContext) {
         status: performanceReview.status,
         released: sql<boolean>`${reviewCycle.releasedAt} is not null`,
         overallRating: sql<number | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.overallRating} end`,
+        finalScore: sql<string | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.finalScore} end`,
+        abcClass: sql<'A' | 'B' | 'C' | null>`case when ${reviewCycle.releasedAt} is not null then ${performanceReview.abcClass} end`,
         periodEnd: reviewCycle.periodEnd,
       })
       .from(performanceReview)
@@ -1051,6 +1466,8 @@ export async function updateGoal(
     const g = await loadGoal(tx, p.goalId);
     const title = p.title?.trim();
     if (p.title != null && !title) throw new PerfError('A goal needs a title');
+    // Once goal-setting is locked, an approved cycle-bound goal is immutable.
+    if (await goalIsStageLocked(tx, g)) throw new PerfError('This goal is locked — goal-setting has been finalized');
     await tx
       .update(performanceGoal)
       .set({
@@ -1081,6 +1498,7 @@ export async function updateGoalProgress(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const g = await loadGoal(tx, p.goalId);
+    if (await goalIsStageLocked(tx, g)) throw new PerfError('This goal is locked — goal-setting has been finalized');
     const progress = p.progress != null ? clampProgress(p.progress) : g.progress;
     const status = p.status ?? g.status;
     await tx
@@ -1716,14 +2134,26 @@ export async function commitCalibration(ctx: SessionContext, p: { sessionId: str
     if (!sess) throw new PerfError('Session not found');
     if (sess.status !== 'open') throw new PerfError('This calibration is already committed');
     const entries = await tx
-      .select({ id: calibrationEntry.id, reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating })
+      .select({ id: calibrationEntry.id, reviewId: calibrationEntry.reviewId, proposed: calibrationEntry.proposedRating, note: calibrationEntry.note })
       .from(calibrationEntry)
       .where(eq(calibrationEntry.sessionId, p.sessionId));
     let applied = 0;
     for (const e of entries) {
-      if (e.proposed == null) continue;
-      const [rev] = await tx.select({ employmentId: performanceReview.employmentId }).from(performanceReview).where(eq(performanceReview.id, e.reviewId)).limit(1);
+      if (e.proposed == null) continue; // null = clear / no proposal; no justification required
+      const [rev] = await tx
+        .select({ employmentId: performanceReview.employmentId, priorOverall: performanceReview.overallRating })
+        .from(performanceReview)
+        .where(eq(performanceReview.id, e.reviewId))
+        .limit(1);
       if (!rev) continue;
+      // A genuine ADJUSTMENT (the proposal differs from the manager-submitted baseline) requires a
+      // justification. A no-op (proposed === prior) or a first-value (prior is null — nothing to
+      // adjust) does not. The 'performance-review.calibrated' event is the audit log; before/after =
+      // committedRating vs this event-time prior.
+      const isAdjustment = rev.priorOverall != null && e.proposed !== rev.priorOverall;
+      if (isAdjustment && !(e.note && e.note.trim())) {
+        throw new PerfError('Justification required to adjust a rating');
+      }
       await tx.update(performanceReview).set({ overallRating: e.proposed }).where(eq(performanceReview.id, e.reviewId));
       await tx.update(calibrationEntry).set({ committedRating: e.proposed }).where(eq(calibrationEntry.id, e.id));
       await appendEvent(tx, {
@@ -1764,6 +2194,8 @@ export type CalibrationView = {
   rows: CalibrationRow[];
   distribution: { value: number; label: string; count: number }[];
   reviewerLeniency: { reviewer: string; avg: number; count: number }[];
+  // Calibration governance (G3): the same cohort grouped by the subject's current department.
+  byDepartment: { department: string; avg: number; count: number }[];
 };
 
 /** The calibration cockpit for a cycle (admin): roster + open-session proposals + distribution + per-
@@ -1824,6 +2256,40 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
       .map(([rv, vals]) => ({ reviewer: rv, avg: round2(vals.reduce((a, b) => a + b, 0) / vals.length), count: vals.length }))
       .sort((a, b) => b.avg - a.avg);
 
+    // By-department grouping (G3): resolve each subject's CURRENT department. Runs in the admin tx
+    // where the roster is already RLS-scoped, so subjects outside the admin's subtree are invisible
+    // here exactly as in the rest of the calibration — the grouping reflects the same row set.
+    const deptRows = await tx
+      .select({ employmentId: assignment.employmentId, departmentName: department.name })
+      .from(assignment)
+      .innerJoin(department, eq(department.id, assignment.departmentId))
+      .where(
+        and(
+          inArray(assignment.employmentId, [...new Set(rows.map((r) => r.employmentId))]),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      );
+    const deptByEmployment = new Map(deptRows.map((d) => [d.employmentId, d.departmentName]));
+    // One bucket per subject in the calibration roster. `count` is roster membership (so the totals
+    // sum to the roster count); `avg` is taken over the subjects that have an effective rating.
+    const byDept = new Map<string, { ratings: number[]; subjects: number }>();
+    for (const r of rows) {
+      const v = proposedByReview.get(r.reviewId) ?? r.overallRating;
+      const dept = deptByEmployment.get(r.employmentId) ?? '—';
+      const bucket = byDept.get(dept) ?? { ratings: [], subjects: 0 };
+      bucket.subjects += 1;
+      if (v != null) bucket.ratings.push(v);
+      byDept.set(dept, bucket);
+    }
+    const byDepartment = [...byDept.entries()]
+      .map(([dept, b]) => ({
+        department: dept,
+        avg: b.ratings.length ? round2(b.ratings.reduce((a, c) => a + c, 0) / b.ratings.length) : 0,
+        count: b.subjects,
+      }))
+      .sort((a, b) => a.department.localeCompare(b.department));
+
     return {
       sessionId: sess?.id ?? null,
       status: sess?.status ?? 'none',
@@ -1831,6 +2297,7 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
       rows: calRows,
       distribution,
       reviewerLeniency,
+      byDepartment,
     };
   });
 }

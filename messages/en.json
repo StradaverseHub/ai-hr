@@ -907,6 +907,46 @@
       "feedback360Request": "Request feedback",
       "feedbackStrengths": "Strengths",
       "feedbackImprovements": "Areas to grow"
+    },
+    "lifecycle": {
+      "title": "Lifecycle",
+      "stageGoalSetting": "Goal-setting",
+      "stageMidYear": "Mid-year review",
+      "stageYearEnd": "Year-end review",
+      "stagesField": "Lifecycle stages",
+      "stagesHint": "Choose which stages this cycle runs. Year-end carries the final rating, calibration and pay.",
+      "selfRating": "Self rating",
+      "selfComments": "Self comments",
+      "managerRating": "Manager rating",
+      "managerComments": "Manager comments",
+      "overallRating": "Overall rating",
+      "submitSelf": "Submit self-assessment",
+      "submitManager": "Submit manager evaluation",
+      "proposeGoals": "Propose goals",
+      "approveGoal": "Approve",
+      "lockGoalSetting": "Lock goal-setting",
+      "goalStagePending": "Goal-setting open",
+      "goalStageLocked": "Goal-setting locked",
+      "goalApprovalDraft": "Draft",
+      "goalApprovalProposed": "Proposed",
+      "goalApprovalApproved": "Approved",
+      "closeReview": "Close review",
+      "finalScore": "Final score",
+      "abcClass": "Performance class",
+      "classA": "A",
+      "classB": "B",
+      "classC": "C",
+      "closed": "Closed",
+      "closurePanelTitle": "Final closure",
+      "closurePanelHint": "Record the final score and an A/B/C class. Release the cycle first; this notifies the employee.",
+      "justificationRequired": "Justification (required to adjust a rating)",
+      "byDepartment": "By department",
+      "attachmentsTitle": "Attachments",
+      "attachmentsHint": "Files for this review stage. Visible to the employee and their manager only.",
+      "attachmentUpload": "Upload",
+      "attachmentDownload": "Download",
+      "attachmentEmpty": "No attachments for this stage yet.",
+      "reviewFinalized": "Your performance review has been finalized."
     }
   },
   "payroll": {
@@ -1172,6 +1212,57 @@
       "componentPublish": "Publish override",
       "hrdfMandatory": "HRDF mandatory rate",
       "hrdfOptional": "HRDF optional rate"
+    },
+    "transactions": {
+      "title": "Transactions",
+      "subtitle": "Organised access to payroll transaction functions.",
+      "gatedTitle": "Pay components are not enabled",
+      "gatedBody": "Typed pay components are turned off for this environment. Fixed and individual transactions entered here will not affect the payslip until they are enabled. Ask your administrator to enable pay components.",
+      "hub": {
+        "fixedTitle": "Fixed Transaction",
+        "fixedDesc": "Recurring allowances and deductions per employee, effective-dated.",
+        "fixedCta": "Manage recurring",
+        "individualTitle": "Individual Transaction",
+        "individualDesc": "One-off components for a draft batch, plus TP1 relief and zakat.",
+        "individualCta": "Add one-off"
+      },
+      "fixed": {
+        "title": "Fixed Transaction",
+        "subtitle": "Recurring per-employee pay components, effective-dated.",
+        "intro": "Pick an employee to manage their recurring allowances and deductions. Changes take effect on the next generated payslip.",
+        "pickEmployee": "Employee",
+        "open": "Open editor",
+        "empty": "No employees in the current scope.",
+        "colEmployee": "Employee",
+        "colCompany": "Company",
+        "manage": "Manage"
+      },
+      "individual": {
+        "title": "Individual Transaction",
+        "subtitle": "One-off batch components, TP1 relief and zakat.",
+        "pickBatch": "Draft batch",
+        "noBatches": "No draft batch available. Create one from the Batches tab first.",
+        "addTitle": "Add a one-off component",
+        "addIntro": "Add a single one-off pay component for one employee on this draft batch.",
+        "employee": "Employee",
+        "component": "Component",
+        "amount": "Amount",
+        "notes": "Notes",
+        "notesPlaceholder": "Optional note",
+        "add": "Add component",
+        "added": "Component added.",
+        "csvTitle": "Bulk import (CSV)",
+        "csvIntro": "Load many one-off components at once.",
+        "deductionTitle": "TP1 relief & zakat",
+        "deductionIntro": "Monthly tax relief (TP1) and zakat for one employee. Saving these does not change overtime or bonus on the same row.",
+        "tp1": "TP1 relief",
+        "tp1Title": "Monthly tax deduction relief (TP1) — reduces PCB/MTD.",
+        "zakat": "Zakat",
+        "zakatTitle": "Zakat paid via salary — credited against PCB/MTD.",
+        "save": "Save",
+        "saved": "Saved.",
+        "unsupportedComponent": "That component cannot be used on a batch in this version. Pick a payable component."
+      }
     }
   },
   "admin": {
@@ -1569,7 +1660,8 @@
     "payrollTabs": {
       "batches": "Batches",
       "reports": "Reports",
-      "configuration": "Configuration"
+      "configuration": "Configuration",
+      "transactions": "Transactions"
     },
     "printButton": {
       "print": "Print / Save PDF"
