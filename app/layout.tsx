@@ -16,7 +16,7 @@ import { CompanySwitcher } from '@/components/company-switcher';
 import { TourLauncher } from '@/components/tour-launcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { getSession } from '@/lib/session';
-import { isAdmin } from '@/lib/authz';
+import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
@@ -65,7 +65,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               float separately on the canvas with gutters between them. */}
           <div className="flex h-full gap-3 lg:gap-4">
             <Sidebar
-              isAdmin={isAdmin(session)}
+              // ADR-0049: a partner is an admin who sees a subset, so it gets the admin nav group;
+              // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
+              // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
+              // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
+              isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               defaultCollapsed={railCollapsed}
             />

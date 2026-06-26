@@ -112,10 +112,15 @@ export function SectionHeader({ title, count }: { title: string; count?: number 
   );
 }
 
-export function RoleTag({ role }: { role: string }) {
+/**
+ * Role chip. Prefer passing a translated `label` (the call site does `t('role.<role>')`) so every
+ * role label is a STATIC t() lookup the i18n coverage test can see. Falls back to a humanised
+ * role string only when no label is given (legacy callers / unknown roles).
+ */
+export function RoleTag({ role, label }: { role: string; label?: string }) {
   return (
     <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium capitalize text-primary">
-      {role.replace(/_/g, ' ')}
+      {label ?? role.replace(/_/g, ' ')}
     </span>
   );
 }

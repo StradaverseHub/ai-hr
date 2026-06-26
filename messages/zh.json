@@ -1542,7 +1542,9 @@
         "employee": "员工",
         "manager": "经理",
         "hr_admin": "HR 管理员",
-        "super_admin": "超级管理员"
+        "super_admin": "超级管理员",
+        "payroll_partner": "薪资合作伙伴",
+        "performance_comp_partner": "绩效与薪酬合作伙伴"
       }
     },
     "audit": {

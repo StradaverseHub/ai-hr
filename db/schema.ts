@@ -44,7 +44,17 @@ const bytea = customType<{ data: Buffer; driver: Buffer }>({
 
 // ───────────────────────────── Enums ─────────────────────────────
 
-export const roleEnum = pgEnum('role', ['employee', 'manager', 'hr_admin', 'super_admin']);
+// Partner roles (ADR-0049) are ADDITIVE specialist roles beside hr_admin: each administers only
+// its function's data (payroll, or performance+comp) within its company subtree. Company-scopable
+// like hr_admin. Recruiting Partner is deferred to the ATS PR.
+export const roleEnum = pgEnum('role', [
+  'employee',
+  'manager',
+  'hr_admin',
+  'super_admin',
+  'payroll_partner',
+  'performance_comp_partner',
+]);
 export const employmentTypeEnum = pgEnum('employment_type', [
   'full_time',
   'part_time',

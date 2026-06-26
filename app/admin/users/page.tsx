@@ -5,7 +5,18 @@ import { adminCompanies, listCompanies } from '@/core/read';
 import { Avatar, Card, ErrorBanner, PageHeader, RoleTag, SectionHeader, btnGhost, inputCls } from '@/components/ui';
 import { assignRoleAction, revokeRoleAction } from '../actions';
 
-const ROLES = ['employee', 'manager', 'hr_admin', 'super_admin'] as const;
+const ROLES = [
+  'employee',
+  'manager',
+  'hr_admin',
+  'super_admin',
+  'payroll_partner',
+  'performance_comp_partner',
+] as const;
+
+// Roles that carry a company scope (ADR-0049) — hr_admin + the two job-function partners. These
+// render the company-scope chip on a grant and may be scoped via the company <select>.
+const SCOPABLE_ROLES = new Set<string>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
 
 export default async function UsersPage({
   searchParams,
@@ -59,8 +70,8 @@ export default async function UsersPage({
               <div className="flex flex-wrap items-center gap-2">
                 {u.roles.map((r) => (
                   <span key={r.id} className="inline-flex items-center gap-1">
-                    <RoleTag role={r.role} />
-                    {r.companyId && (
+                    <RoleTag role={r.role} label={t(`role.${r.role}`)} />
+                    {r.companyId && SCOPABLE_ROLES.has(r.role) && (
                       <span
                         className="text-[10px] text-muted-foreground"
                         title={t('scopedTo', { company: r.company ?? '' })}

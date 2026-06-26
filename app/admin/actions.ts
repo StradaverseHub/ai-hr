@@ -399,7 +399,13 @@ export async function assignRoleAction(formData: FormData) {
   try {
     await assignRole(s, {
       appUserId: String(formData.get('appUserId')),
-      role: String(formData.get('role')) as 'employee' | 'manager' | 'hr_admin' | 'super_admin',
+      role: String(formData.get('role')) as
+        | 'employee'
+        | 'manager'
+        | 'hr_admin'
+        | 'super_admin'
+        | 'payroll_partner'
+        | 'performance_comp_partner',
       companyId: (formData.get('companyId') as string) || undefined,
     });
   } catch (e) {

@@ -1542,7 +1542,9 @@
         "employee": "employee",
         "manager": "manager",
         "hr_admin": "hr admin",
-        "super_admin": "super admin"
+        "super_admin": "super admin",
+        "payroll_partner": "Payroll Partner",
+        "performance_comp_partner": "Performance & Comp Partner"
       }
     },
     "audit": {

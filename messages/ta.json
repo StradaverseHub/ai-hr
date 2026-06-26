@@ -1542,7 +1542,9 @@
         "employee": "பணியாளர்",
         "manager": "மேலாளர்",
         "hr_admin": "hr நிர்வாகி",
-        "super_admin": "சூப்பர் நிர்வாகி"
+        "super_admin": "சூப்பர் நிர்வாகி",
+        "payroll_partner": "ஊதிய பங்காளர்",
+        "performance_comp_partner": "செயல்திறன் & இழப்பீட்டுப் பங்காளர்"
       }
     },
     "audit": {

@@ -1542,7 +1542,9 @@
         "employee": "pekerja",
         "manager": "pengurus",
         "hr_admin": "hr admin",
-        "super_admin": "super admin"
+        "super_admin": "super admin",
+        "payroll_partner": "Rakan Penggajian",
+        "performance_comp_partner": "Rakan Prestasi & Pampasan"
       }
     },
     "audit": {
