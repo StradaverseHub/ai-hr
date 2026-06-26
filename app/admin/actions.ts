@@ -14,11 +14,14 @@ import {
   createCostCenter,
   createDepartment,
   createHoliday,
+  createHolidayGroup,
   createLeavePolicy,
   createLeaveType,
   createPosition,
   deleteHoliday,
+  deleteHolidayGroup,
   deleteLeavePolicy,
+  updateHolidayGroup,
   deleteCompany,
   deleteCostCenter,
   deleteDepartment,
@@ -372,6 +375,44 @@ export async function deleteHolidayAction(formData: FormData) {
     fail(path, e);
   }
   ok(path);
+}
+
+// ── Holiday groups (named multi-state bundles, assigned per employee) ──
+export async function createHolidayGroupAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await createHolidayGroup(s, {
+      name: String(formData.get('name') ?? ''),
+      states: formData.getAll('states').map(String),
+    });
+  } catch (e) {
+    fail(HOLIDAYS, e);
+  }
+  ok(HOLIDAYS);
+}
+
+export async function updateHolidayGroupAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await updateHolidayGroup(s, {
+      id: String(formData.get('id')),
+      name: String(formData.get('name') ?? ''),
+      states: formData.getAll('states').map(String),
+    });
+  } catch (e) {
+    fail(HOLIDAYS, e);
+  }
+  ok(HOLIDAYS);
+}
+
+export async function deleteHolidayGroupAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deleteHolidayGroup(s, { id: String(formData.get('id')) });
+  } catch (e) {
+    fail(HOLIDAYS, e);
+  }
+  ok(HOLIDAYS);
 }
 
 export async function openLeaveYearAction(formData: FormData) {

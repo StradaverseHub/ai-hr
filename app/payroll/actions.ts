@@ -10,6 +10,7 @@ import {
   generatePayslips,
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
+  prefillTp1FromSelfRelief,
   setPayrollInput,
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
@@ -150,6 +151,26 @@ export async function prefillClaimsAction(formData: FormData) {
       : `Queued ${claims} claim${claims === 1 ? '' : 's'} (RM ${total.toLocaleString('en-MY', {
           minimumFractionDigits: 2,
         })}) onto ${applied} payslip${applied === 1 ? '' : 's'}`;
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+export async function prefillTp1Action(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  let applied = 0;
+  let skipped = 0;
+  try {
+    ({ applied, skipped } = await prefillTp1FromSelfRelief(s, { batchId }));
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  const note =
+    applied === 0
+      ? 'No submitted TP1 self-relief found for this period'
+      : `TP1 self-relief fed onto ${applied} payslip${applied === 1 ? '' : 's'}${
+          skipped ? ` (${skipped} left as a manual override)` : ''
+        }`;
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
 }
 

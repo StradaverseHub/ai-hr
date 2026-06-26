@@ -310,6 +310,14 @@ export const employment = pgTable(
     // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
     // apply. Null falls back to the company's default_work_state, then national-only.
     workState: text('work_state'),
+    // Holiday grouping: assign the employee to a NAMED multi-state holiday group (holiday_group). At
+    // resolution the group expands to its member states and feeds the SAME holiday.state UNION predicate
+    // as work_state. Mutually exclusive with work_state (a group is "≥1 states", work_state is "exactly
+    // one") — enforced by the service XOR and the employment_holiday_assignment_xor DB CHECK. ON DELETE
+    // SET NULL: deleting a group falls the employee back to work_state/default/national, never an FK error.
+    holidayGroupId: uuid('holiday_group_id').references((): AnyPgColumn => holidayGroup.id, {
+      onDelete: 'set null',
+    }),
     terminatedOn: date('terminated_on'),
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
@@ -322,6 +330,12 @@ export const employment = pgTable(
     index('employment_person_idx').on(t.personId),
     index('employment_company_idx').on(t.companyId),
     uniqueIndex('employment_employee_code_uq').on(t.tenantId, t.employeeCode),
+    // Holiday assignment is single-axis: either a bare work_state OR a holiday group, never both. (Both
+    // NULL = company-default/national fallback.)
+    check(
+      'employment_holiday_assignment_xor',
+      sql`${t.workState} IS NULL OR ${t.holidayGroupId} IS NULL`,
+    ),
   ],
 );
 
@@ -837,6 +851,27 @@ export const holiday = pgTable(
   ],
 );
 
+// Holiday grouping (per-employee assignment over the EXISTING state engine). A "group" is a NAMED bundle
+// of states (MY_STATES labels). It is NOT a second tag on the holiday row — holidays stay keyed on
+// `state` only. At resolution an employee's group is expanded to its member states and fed into the same
+// `holiday.state` UNION predicate the engine already uses, so a grouped employee gets
+// national ∪ (holiday.state = ANY(group.states)). `employment.holiday_group_id` (added below) and
+// `employment.work_state` are mutually exclusive (DB CHECK + service XOR): a group is "one or more
+// states", a bare work-state is "exactly one state". Deleting a group SETs NULL on referencing
+// employments (FK), falling back to work_state/company-default/national.
+export const holidayGroup = pgTable(
+  'holiday_group',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    states: jsonb('states').notNull().default(sql`'[]'::jsonb`), // string[] of MY_STATES labels
+    createdAt: createdAt(),
+  },
+  // Case-insensitive per-tenant name uniqueness (follows the org_catalog_integrity pattern, 0030).
+  (t) => [uniqueIndex('holiday_group_name_uq').on(t.tenantId, sql`lower(${t.name})`)],
+);
+
 // ──────────────────────── Attendance (generic) ────────────────────────
 export const attendanceStatusEnum = pgEnum('attendance_status', ['present', 'absent', 'late', 'half_day']);
 // Day classification drives the OT class (EA 1955: workday 1.5x, rest day 2x, holiday 3x — ADR-0011).
@@ -935,6 +970,22 @@ export const attendanceCorrection = pgTable(
 // A configurable (NON-statutory) shift-differential pay rule. EA 1955 mandates no shift premium, so this
 // is employer policy; the value feeds a typed pay-component (C5), never a sourced statutory rate.
 export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_shift'; value: number };
+
+// A configurable pay-rule on a pay_component (Payroll Setup — configurable pay-rule engine). A small
+// typed-JSONB discriminated union resolved by a switch (mirrors ShiftDifferential), NOT a custom expression
+// language: the AI's job collapses to "classify a sentence into one of these kinds + extract a number".
+// Every kind resolves to a single ringgit number with NO division by a runtime scope value (so a zero-days
+// employee can never abort a batch). `null` ⇒ unchanged fixed-amount behaviour (the stored `amount`).
+// NON-GOAL (v1): no `gross`/`gross_of` base — there is no running gross inside the kernel's earningsOf()
+// loop and component order is arbitrary, so a gross-relative rule is unimplementable without a kernel
+// restructure. `percent_of` is restricted to `base: 'basic'`, resolved from the employee's BASIC component
+// amount (read in the same query batch, order-independent). Only read when TYPED_PAY_COMPONENTS_ENABLED.
+export type PayRule =
+  | { kind: 'fixed' } //                                    = current behaviour; the component's `amount` is the value
+  | { kind: 'percent_of'; base: 'basic'; pct: number } //   pct% of the employee's resolved BASIC component amount
+  | { kind: 'per_day'; rate: number } //                    rate × days_worked (component MUST have prorates=false)
+  | { kind: 'per_hour'; rate: number } //                   rate × attendance hours (component MUST have prorates=false)
+  | { kind: 'flat_capped'; value: number; cap: number }; // min(value, cap)
 
 // A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
 export const shift = pgTable(
@@ -1191,6 +1242,33 @@ export const resignationRequest = pgTable(
   (t) => [index('resignation_request_employment_idx').on(t.employmentId, t.status)],
 );
 
+// ADR-0050 (#1.1.3): yearly self-service TP1 personal tax relief. Keyed by `person_id` (TP1 is the
+// employee's own statutory declaration). One scalar `tp1_amount` per assessment year — the single number
+// the PCB kernel consumes (LP). Append-only request-row shape (profile_change_request pattern): the latest
+// row per (person, year) wins; the editable draft is UPDATEd in place; a submitted row is immutable and a
+// correction is a NEW submitted row. RLS scopes to app.can_see_person (self + admin) for read AND write.
+export const tp1StatusEnum = pgEnum('tp1_status', ['draft', 'submitted']);
+export const tp1Relief = pgTable(
+  'tp1_relief',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    assessmentYear: integer('assessment_year').notNull(),
+    status: tp1StatusEnum('status').notNull().default('draft'),
+    // The employee's single declared annual optional-relief total (LHDN TP1). All the kernel consumes.
+    tp1Amount: numeric('tp1_amount', { precision: 12, scale: 2 }).notNull().default('0.00'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Latest-wins read for a (person, year): order by created_at desc within the scope.
+    index('tp1_relief_person_year_idx').on(t.tenantId, t.personId, t.assessmentYear, t.createdAt),
+  ],
+);
+
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
 
@@ -1308,6 +1386,11 @@ export const payrollInput = pgTable(
     // PCB inputs (LHDN spec): TP1 optional deductions claimed this month (LP₁) and zakat paid
     // via salary deduction — zakat offsets the month's MTD per §E.5 and accumulates into Z.
     tp1Deduction: numeric('tp1_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
+    // ADR-0050 §0.4 provenance: who last set tp1_deduction. 'tp1_self' = a TP1 self-relief prefill set it
+    // (refreshable by a later prefill); null (default) = an admin keyed it / never prefilled (sticky — a
+    // re-prefill leaves it untouched). The admin forms (setPayrollInput / setPayrollDeductionInput) never
+    // write this column, so a manual override resets provenance to null and becomes sticky.
+    tp1Source: text('tp1_source'), // 'tp1_self' | null
     zakat: numeric('zakat', { precision: 12, scale: 2 }).notNull().default('0'),
     // Sum of approved TAXABLE claims prefilled into this batch (ADR-0021). Added to the taxable allowance
     // base in generatePayslips → contributes to PCB/EPF/SOCSO/EIS like a regular monthly allowance.
@@ -1353,6 +1436,10 @@ export const payComponent = pgTable(
     // nearest (whole ringgit). 'none' = exact 2dp (the legacy behaviour → byte-identical). NEVER touches
     // statutory contribution rounding, which keeps its own legislated rules.
     roundingMethod: text('rounding_method').notNull().default('none'),
+    // Configurable pay-rule (Payroll Setup). Nullable: null ⇒ the legacy fixed-amount behaviour, so every
+    // existing row stays valid (the compat golden is untouched). Resolved by core/pay-rule.ts and only read
+    // inside the kernel's TYPED_PAY_COMPONENTS_ENABLED block — a rule is meaningless with typed components off.
+    rule: jsonb('rule').$type<PayRule | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -1935,6 +2022,29 @@ export const claimType = pgTable(
   ],
 );
 
+// Dependent sub-category under a claim type (e.g. TRAVEL → MILEAGE / PARKING / TOLL). The submission form
+// shows it as a dependent dropdown; mandatory only when the chosen type has ≥1 live item (enforced in the
+// service, not the schema — claim_request.claim_item_id stays nullable for legacy/zero-item types).
+export const claimItem = pgTable(
+  'claim_item',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    claimTypeId: uuid('claim_type_id')
+      .notNull()
+      .references(() => claimType.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('claim_item_type_idx').on(t.claimTypeId),
+    // One live code per (type) — mirrors claim_type's partial-unique (archived rows may re-use a code).
+    uniqueIndex('claim_item_type_code_uq').on(t.tenantId, t.claimTypeId, t.code).where(sql`archived_at IS NULL`),
+  ],
+);
+
 export const claimPolicy = pgTable(
   'claim_policy',
   {
@@ -1947,12 +2057,25 @@ export const claimPolicy = pgTable(
     annualBudget: numeric('annual_budget', { precision: 12, scale: 2 }),
     /** NULL = no cap. Max amount of a single claim. */
     perClaimCap: numeric('per_claim_cap', { precision: 12, scale: 2 }),
+    /**
+     * Per-type rate/calculation config (discriminated union; nullable/absent ⇒ default 'receipt').
+     *   { kind: 'receipt' }                                — amount entered by the employee (current behaviour).
+     *   { kind: 'mileage_flat', ratePerKm: number }        — amount = km × ratePerKm.
+     *   { kind: 'fixed_allowance', amount: number }        — fixed allowance; amount not employee-editable.
+     * Effective-dated because rates change year-to-year (lives on the append-only policy, never claim_type).
+     */
+    rateConfig: jsonb('rate_config').$type<ClaimRateConfig>(),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
     createdAt: createdAt(),
   },
   (t) => [index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom)],
 );
+
+export type ClaimRateConfig =
+  | { kind: 'receipt' }
+  | { kind: 'mileage_flat'; ratePerKm: number }
+  | { kind: 'fixed_allowance'; amount: number };
 
 export const claimRequest = pgTable(
   'claim_request',
@@ -1965,7 +2088,11 @@ export const claimRequest = pgTable(
     claimTypeId: uuid('claim_type_id')
       .notNull()
       .references(() => claimType.id),
+    /** Dependent sub-category (nullable: legacy rows + types with no items). */
+    claimItemId: uuid('claim_item_id').references(() => claimItem.id),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    /** Distance in km — for mileage_flat claims only (amount = quantityKm × ratePerKm). NULL otherwise. */
+    quantityKm: numeric('quantity_km', { precision: 12, scale: 2 }),
     incurredOn: date('incurred_on').notNull(), // the expense date
     description: text('description'),
     /** HR-decided (default from the type). taxable ⇒ payroll allowance; non-taxable ⇒ reimbursement. */

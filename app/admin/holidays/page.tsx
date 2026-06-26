@@ -1,10 +1,16 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
-import { listHolidays, listHolidayYears } from '@/core/admin';
+import { listHolidayGroups, listHolidays, listHolidayYears } from '@/core/admin';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { MY_STATES } from '@/localization/my/holidays';
-import { createHolidayAction, deleteHolidayAction } from '../actions';
+import {
+  createHolidayAction,
+  createHolidayGroupAction,
+  deleteHolidayAction,
+  deleteHolidayGroupAction,
+  updateHolidayGroupAction,
+} from '../actions';
 
 export default async function HolidaysPage({
   searchParams,
@@ -15,7 +21,11 @@ export default async function HolidaysPage({
   const t = await getTranslations('admin.holidays');
   const { error, country: countryParam, year: yearParam } = await searchParams;
 
-  const [companies, years] = await Promise.all([listCompanies(s), listHolidayYears(s)]);
+  const [companies, years, holidayGroups] = await Promise.all([
+    listCompanies(s),
+    listHolidayYears(s),
+    listHolidayGroups(s),
+  ]);
   // Countries in play come from the configured companies (holidays match on company.country).
   const countries = [...new Set(companies.map((c) => c.country))].sort();
   const country = countryParam && countries.includes(countryParam) ? countryParam : undefined;
@@ -46,6 +56,74 @@ export default async function HolidaysPage({
     <div className="mx-auto max-w-4xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
+
+      {/* Holiday groups — named multi-state bundles, assigned per employee on their profile. */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('groupsTitle')} count={holidayGroups.length} />
+        {holidayGroups.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('groupEmpty')}</p>
+        ) : (
+          <div className="divide-y divide-border">
+            {holidayGroups.map((g) => (
+              <form
+                key={g.id}
+                action={updateHolidayGroupAction}
+                className="grid grid-cols-1 items-start gap-3 p-4 sm:grid-cols-[1fr_2fr_auto]"
+              >
+                <input type="hidden" name="id" value={g.id} />
+                <Field label={t('groupNameLabel')}>
+                  <input name="name" required defaultValue={g.name} className={inputCls} />
+                </Field>
+                <Field label={t('groupStatesLabel')}>
+                  <select
+                    name="states"
+                    multiple
+                    required
+                    defaultValue={(g.states as string[]) ?? []}
+                    className={`${inputCls} h-32`}
+                  >
+                    {MY_STATES.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <div className="flex items-end gap-2 self-stretch pt-6">
+                  <button className={btnPrimary}>{t('editGroup')}</button>
+                  <button
+                    formAction={deleteHolidayGroupAction}
+                    className="text-sm text-muted-foreground transition-colors hover:text-red-500"
+                  >
+                    {t('deleteGroup')}
+                  </button>
+                </div>
+              </form>
+            ))}
+          </div>
+        )}
+        <form
+          action={createHolidayGroupAction}
+          className="grid grid-cols-1 items-start gap-3 border-t border-border p-4 sm:grid-cols-[1fr_2fr_auto]"
+        >
+          <Field label={t('groupNameLabel')}>
+            <input name="name" required placeholder={t('groupNamePlaceholder')} className={inputCls} />
+          </Field>
+          <Field label={t('groupStatesLabel')}>
+            <select name="states" multiple required className={`${inputCls} h-32`}>
+              {MY_STATES.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="flex items-end self-stretch pt-6">
+            <button className={btnPrimary}>{t('addGroup')}</button>
+          </div>
+        </form>
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">{t('groupsHint')}</p>
+      </Card>
 
       {/* Filters */}
       <Card>

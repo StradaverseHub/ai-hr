@@ -1,0 +1,23 @@
+-- Configurable pay-rule engine (Payroll Setup) — a nullable typed-JSONB rule on the pay_component catalog.
+--
+-- WHY a column, not a table / expression language: the rule is a small discriminated union resolved by a
+-- switch (core/pay-rule.ts), exactly mirroring the proven shift.differential pattern. There is no custom
+-- expression string to parse/sandbox, no per-tenant variable catalogue, and no per-employment override — the
+-- feedback asks for catalogue-level configurability ("Payroll (Setup)"). The AI assist (core/pay-rule-ai.ts)
+-- classifies a sentence into one of ~5 kinds + extracts a number; the kernel reads the structured object.
+--
+-- RULE SHAPE (db/schema.ts → PayRule): fixed | percent_of(base:'basic') | per_day | per_hour | flat_capped.
+-- Every kind resolves to ONE ringgit number with NO division by a runtime scope value, so a zero-days /
+-- zero-hours employee can never abort a batch. No `gross` base (no running gross inside the kernel loop).
+--
+-- ADDITIVE-NULLABLE & IDEMPOTENT ON EXISTING DATA: null ⇒ the legacy fixed-amount behaviour, so every
+-- existing row stays valid and the byte-identical compat golden is untouched. The column is read ONLY inside
+-- the kernel's TYPED_PAY_COMPONENTS_ENABLED block — a rule is meaningless with typed components off.
+--
+-- EFFECTIVE-DATING / IMMUTABILITY: the rule lives on the MUTABLE catalogue, but closed batches are immutable
+-- (task #47 invariant) — closeBatch freezes each payslip and the kernel never re-reads the rule for a closed
+-- batch. Adding/editing a rule after a batch closes does NOT retroactively change that batch's history.
+--
+-- NO NEW RLS POLICY: the column inherits pay_component's existing admin-only-write / tenant-read policies.
+-- pay_component is admin-managed catalogue data; there is no self-readable pay-rule (no per-employment rule).
+ALTER TABLE "pay_component" ADD COLUMN "rule" jsonb;

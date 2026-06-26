@@ -16,6 +16,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       'Content-Type': att.mimeType || 'application/octet-stream',
       'Content-Disposition': `${disposition}; filename="${safe(att.fileName)}"`,
       'Content-Length': String(bytes.byteLength),
+      // A stored (or legacy) mimeType must not drive browser content-sniffing when served inline.
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }

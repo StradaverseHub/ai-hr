@@ -14,6 +14,7 @@ import {
   employment,
   assignment,
   company,
+  holidayGroup,
   leavePolicy,
   reportingLine,
   leaveLedger,
@@ -491,6 +492,71 @@ export async function setEmploymentWorkState(
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
       payload: { before: before.workState, after: workState },
+    });
+    return { id: p.employmentId };
+  });
+}
+
+/**
+ * Holiday-calendar selection for an employment — the SINGLE unified input that replaces the standalone
+ * work-state setter on the profile (so there are never two competing fields). `selection` is a
+ * discriminated value:
+ *   { kind: 'none' }        → company-default / national fallback (both columns null)
+ *   { kind: 'state', state }→ a single built-in state (work_state path — current behaviour)
+ *   { kind: 'group', groupId }→ an HR-defined multi-state holiday group (holiday_group_id path)
+ * Exactly ONE of work_state / holiday_group_id is set and the OTHER is nulled, enforcing the XOR in the
+ * service (the DB CHECK is the backstop). Admin-gated: employment writes go through the role-gated RLS
+ * (migration 0002), so a self-service employee cannot pick their own calendar.
+ */
+export type HolidayCalendarSelection =
+  | { kind: 'none' }
+  | { kind: 'state'; state: string }
+  | { kind: 'group'; groupId: string };
+
+export async function setEmploymentHolidayCalendar(
+  ctx: SessionContext,
+  p: { employmentId: string; selection: HolidayCalendarSelection },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ workState: employment.workState, holidayGroupId: employment.holidayGroupId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+
+    let workState: string | null = null;
+    let holidayGroupId: string | null = null;
+    if (p.selection.kind === 'state') {
+      workState = p.selection.state.trim() || null;
+    } else if (p.selection.kind === 'group') {
+      const groupId = p.selection.groupId.trim();
+      if (!groupId) throw new Error('A holiday group must be selected');
+      // Validate the group exists in this tenant (RLS scopes the read) before assigning.
+      const [g] = await tx
+        .select({ id: holidayGroup.id })
+        .from(holidayGroup)
+        .where(eq(holidayGroup.id, groupId))
+        .limit(1);
+      if (!g) throw new Error('Holiday group not found');
+      holidayGroupId = groupId;
+    }
+
+    await tx
+      .update(employment)
+      .set({ workState, holidayGroupId })
+      .where(eq(employment.id, p.employmentId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.holiday-calendar.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        before: { workState: before.workState, holidayGroupId: before.holidayGroupId },
+        after: { workState, holidayGroupId },
+      },
     });
     return { id: p.employmentId };
   });

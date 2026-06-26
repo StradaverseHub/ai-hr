@@ -7,6 +7,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
+import { MY_STATES } from '../localization/my/holidays';
 import {
   appUser,
   assignment,
@@ -15,6 +16,7 @@ import {
   department,
   employment,
   holiday,
+  holidayGroup,
   leaveLedger,
   jobGrade,
   leavePolicy,
@@ -25,10 +27,11 @@ import {
   roleAssignment,
 } from '../db/schema';
 
-/** Thrown when a hard delete is attempted on a referenced record (archive it instead). */
+/** Thrown when a hard delete is attempted on a referenced record (archive it instead). Pass `message`
+ *  to override the default "archive it instead" sentence with a record-specific one. */
 export class InUseError extends Error {
-  constructor(what: string) {
-    super(`This ${what} is in use — archive it instead of deleting.`);
+  constructor(what: string, message?: string) {
+    super(message ?? `This ${what} is in use — archive it instead of deleting.`);
     this.name = 'InUseError';
   }
 }
@@ -665,6 +668,126 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
       eventType: 'holiday.deleted',
       actor: actorOf(ctx),
       payload: { ...deleted },
+    });
+  });
+}
+
+// ───────────────────────── Holiday groups ─────────────────────────
+// A holiday group is a NAMED bundle of states (MY_STATES labels). It is delivered OVER the existing state
+// engine: holidays are not re-tagged; the resolver (core/leave.ts) expands the assigned group to its
+// member states and feeds them into the same holiday.state UNION predicate as work_state. Admin-only
+// writes (RLS 0100). Assignment lives on employment.holiday_group_id (mutually exclusive with work_state).
+
+/** Sanitise + validate a group's member states: non-empty, each ∈ MY_STATES, de-duplicated. A zero-state
+ *  group is meaningless (== national, which already exists), so it's rejected. */
+function cleanHolidayGroupStates(states: string[] | undefined): string[] {
+  const valid = new Set<string>(MY_STATES);
+  const out = [...new Set((states ?? []).map((s) => (s ?? '').trim()).filter(Boolean))];
+  if (out.length === 0) throw new Error('A holiday group must include at least one state.');
+  for (const s of out) {
+    if (!valid.has(s)) throw new Error(`Unknown state “${s}”.`);
+  }
+  return out;
+}
+
+/** All holiday groups for the tenant (id, name, states), ordered by name. Read-only — no event. */
+export function listHolidayGroups(ctx: SessionContext) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ id: holidayGroup.id, name: holidayGroup.name, states: holidayGroup.states })
+      .from(holidayGroup)
+      .orderBy(holidayGroup.name),
+  );
+}
+
+export async function createHolidayGroup(
+  ctx: SessionContext,
+  p: { name: string; states: string[] },
+) {
+  const name = cleanName(p.name, 'Group name');
+  const states = cleanHolidayGroupStates(p.states);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(holidayGroup)
+      .values({ tenantId: ctx.tenantId, name, states })
+      .returning({ id: holidayGroup.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
+        throw e;
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'holiday-group',
+      aggregateId: row.id,
+      eventType: 'holiday-group.created',
+      actor: actorOf(ctx),
+      payload: { name, states },
+    });
+    return row;
+  });
+}
+
+export async function updateHolidayGroup(
+  ctx: SessionContext,
+  p: { id: string; name?: string; states?: string[] },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ name: holidayGroup.name, states: holidayGroup.states })
+      .from(holidayGroup)
+      .where(eq(holidayGroup.id, p.id))
+      .limit(1);
+    if (!before) throw new Error('Holiday group not found');
+    const name = p.name !== undefined ? cleanName(p.name, 'Group name') : before.name;
+    const states = p.states !== undefined ? cleanHolidayGroupStates(p.states) : (before.states as string[]);
+    await tx
+      .update(holidayGroup)
+      .set({ name, states })
+      .where(eq(holidayGroup.id, p.id))
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
+        throw e;
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'holiday-group',
+      aggregateId: p.id,
+      eventType: 'holiday-group.updated',
+      actor: actorOf(ctx),
+      payload: { before: { name: before.name, states: before.states }, after: { name, states } },
+    });
+    return { id: p.id };
+  });
+}
+
+export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    // Lock the referencing employments inside the tx so the count can't change under us between the guard
+    // and the delete. The ON DELETE SET NULL FK is the DB-level backstop (a lost race can't orphan); this
+    // in-tx guard gives the friendly "still assigned to N employees" UX instead of silent reassignment.
+    const refs = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.holidayGroupId, p.id))
+      .for('update');
+    if (refs.length > 0) {
+      throw new InUseError(
+        'holiday group',
+        `This holiday group is still assigned to ${refs.length} employee${refs.length === 1 ? '' : 's'}. Reassign them before deleting it.`,
+      );
+    }
+    const [deleted] = await tx
+      .delete(holidayGroup)
+      .where(eq(holidayGroup.id, p.id))
+      .returning({ name: holidayGroup.name, states: holidayGroup.states });
+    if (!deleted) return;
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'holiday-group',
+      aggregateId: p.id,
+      eventType: 'holiday-group.deleted',
+      actor: actorOf(ctx),
+      payload: { name: deleted.name, states: deleted.states },
     });
   });
 }

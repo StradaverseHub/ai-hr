@@ -19,6 +19,7 @@ import {
 } from '../db/schema';
 import { MY_DEFAULT_PAY_COMPONENTS, BACKFILL_COMPONENT_CODES, type PayComponentSeed } from '../localization/my/pay-components';
 import { parseCsvRecords } from '../lib/csv';
+import { validatePayRule, type PayRule, type PayRuleErrorCode } from './pay-rule';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -152,22 +153,45 @@ export type PayComponentInput = {
   prorates: boolean;
   eaFormLine?: string | null;
   roundingMethod?: string;
+  // Configurable pay-rule (Payroll Setup). null / undefined / { kind: 'fixed' } ⇒ legacy fixed-amount behaviour.
+  rule?: PayRule | null;
 };
 
-const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+/**
+ * Thrown when an upserted component carries a structurally-invalid rule (out-of-enum kind, out-of-bounds
+ * number, or a per_day/per_hour rule on a prorating component — the double-proration conflict). Carries the
+ * stable error CODE so the UI maps it to a localised payRule.errors.* message (no raw English to the screen).
+ * Mirrors PayComponentInUseError.
+ */
+export class PayRuleInvalidError extends Error {
+  constructor(public readonly code: PayRuleErrorCode) {
+    super(`pay-rule-invalid:${code}`);
+    this.name = 'PayRuleInvalidError';
+  }
+}
 
-/** Admin upsert of a single catalog component (by code). */
+const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+// Normalise the rule for storage: a null / fixed rule is stored as null so an unconfigured component stays
+// byte-identical to the legacy fixed-amount path (and the compat golden never sees a non-null rule column).
+const ruleOf = (p: PayComponentInput): PayRule | null => (p.rule == null || p.rule.kind === 'fixed' ? null : p.rule);
+
+/** Admin upsert of a single catalog component (by code). Validates the rule against the component's
+ *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
+ *  contract the kernel and the AI validator enforce, from the one pure validatePayRule). */
 export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
   return withTenant(ctx, async (tx) => {
+    const rule = ruleOf(p);
+    const v = validatePayRule(rule, p.prorates);
+    if (!v.ok) throw new PayRuleInvalidError(v.code);
     const existing = await componentIdByCode(tx, ctx.tenantId, p.code);
     let id: string;
     if (existing) {
-      await tx.update(payComponent).set({ name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p) }).where(eq(payComponent.id, existing));
+      await tx.update(payComponent).set({ name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule }).where(eq(payComponent.id, existing));
       id = existing;
     } else {
       const [row] = await tx
         .insert(payComponent)
-        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p) })
+        .values({ tenantId: ctx.tenantId, code: p.code, name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), rule })
         .returning({ id: payComponent.id });
       id = row.id;
     }
@@ -177,7 +201,8 @@ export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
       aggregateId: id,
       eventType: existing ? 'pay-component.updated' : 'pay-component.created',
       actor: actorOf(ctx),
-      payload: { code: p.code },
+      // No PII, no amounts — just the code and which rule kind (null when fixed/unconfigured).
+      payload: { code: p.code, ruleKind: rule?.kind ?? null },
     });
     return { id };
   });

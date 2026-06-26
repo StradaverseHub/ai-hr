@@ -2,8 +2,11 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
 import { EA_FORM_LINES, ROUNDING_METHODS, listPayComponents } from '@/core/pay-components';
+import { isAiConfigured } from '@/core/ai-config';
+import type { PayRule } from '@/core/pay-rule';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { PayRuleEditor } from './pay-rule-editor';
 import { archiveComponentAction, deleteComponentAction, seedCatalogAction, upsertComponentAction } from './actions';
 
 const flag = (on: boolean) => (on ? '✓' : '—');
@@ -17,6 +20,7 @@ export default async function PayComponentsPage({
   const s = await requireAdmin();
   const t = await getTranslations('payComponents');
   const components = await listPayComponents(s);
+  const aiEnabled = await isAiConfigured(s);
   const { edit } = await searchParams;
   const editing = edit ? components.find((c) => c.code === edit) ?? null : null;
 
@@ -164,7 +168,6 @@ export default async function PayComponentsPage({
                 ['includedInSocsoEis', 'SOCSO/EIS', editing?.includedInSocsoEis ?? true],
                 ['includedInPcb', 'PCB', editing?.includedInPcb ?? true],
                 ['includedInHrdfBase', 'HRDF', editing?.includedInHrdfBase ?? false],
-                ['prorates', t('colProrates'), editing?.prorates ?? true],
               ] as const
             ).map(([name, label, def]) => (
               <label key={name} className="flex items-center gap-2 text-sm">
@@ -174,6 +177,14 @@ export default async function PayComponentsPage({
             ))}
           </div>
           <p className="text-xs text-muted-foreground sm:col-span-3">{t('flagsHint')}</p>
+          {/* Payroll Setup — configurable pay-rule + AI assist. The Prorates checkbox lives inside this island
+              (it interacts with per-day/per-hour rules) and is submitted as the form's `prorates` field. */}
+          <PayRuleEditor
+            code={editing?.code ?? ''}
+            prorates={editing?.prorates ?? true}
+            rule={(editing?.rule ?? null) as PayRule | null}
+            aiEnabled={aiEnabled}
+          />
           <div className="flex items-center gap-3 sm:col-span-3">
             <button className={btnPrimary}>{editing ? t('saveChanges') : t('saveComponent')}</button>
             {editing && (

@@ -4,9 +4,12 @@ import { listClaimTypes } from '@/core/claims';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ClaimTypePanel } from '@/components/claim-type-panel';
 import {
+  archiveClaimItemAction,
   archiveClaimTypeAction,
+  createClaimItemAction,
   createClaimTypeAction,
   setClaimPolicyAction,
+  updateClaimItemAction,
   updateClaimTypeAction,
 } from './actions';
 
@@ -47,9 +50,13 @@ export default async function ClaimsConfigPage({ searchParams }: { searchParams:
                 defaultTaxable={ct.defaultTaxable}
                 requiresReceipt={ct.requiresReceipt}
                 policy={ct.policy}
+                items={ct.items}
                 updateAction={updateClaimTypeAction}
                 archiveAction={archiveClaimTypeAction}
                 setPolicyAction={setClaimPolicyAction}
+                createItemAction={createClaimItemAction}
+                updateItemAction={updateClaimItemAction}
+                archiveItemAction={archiveClaimItemAction}
               />
             ))}
           </ul>
