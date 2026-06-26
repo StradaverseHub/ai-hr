@@ -1,11 +1,15 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { listFeedback, type FeedbackRow } from '@/core/feedback';
+import { feedbackStatusCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import type { FeedbackCategory, FeedbackStatus } from '@/db/schema';
 import { submitFeedbackAction } from './actions';
+import { BulkTable } from './bulk-table';
 
 const CATEGORIES = ['issue', 'enhancement', 'new_function'] as const;
+// Dashboard chip order; statuses with a zero count are hidden.
+const BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'building', 'done', 'deployed', 'cancelled'] as const;
 
 export function statusTone(status: string): string {
   switch (status) {
@@ -29,17 +33,55 @@ export function statusTone(status: string): string {
 export default async function FeedbackPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; toast?: string; status?: string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('feedback');
-  const { error } = await searchParams;
-  const rows: FeedbackRow[] = await listFeedback(s);
+  const { error, toast, status } = await searchParams;
+  const activeStatus = (BOARD_STATUSES as readonly string[]).includes(status ?? '')
+    ? (status as FeedbackStatus)
+    : undefined;
+
+  const [counts, rows] = await Promise.all([
+    feedbackStatusCounts(s),
+    listFeedback(s, { status: activeStatus }),
+  ]);
+  const countOf = (st: string) => counts.find((c) => c.status === st)?.count ?? 0;
+  const total = counts.reduce((a, c) => a + c.count, 0);
+
+  const chipBase = 'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition';
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={error} />
+      {toast && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {toast}
+        </div>
+      )}
+
+      {/* Dashboard — status board doubling as a filter (no DB query needed to see the queue). */}
+      <Card className="p-4">
+        <SectionHeader title={t('boardTitle')} />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link
+            href="/feedback"
+            className={`${chipBase} ${!activeStatus ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}
+          >
+            {t('boardAll')} <span className="font-semibold">{total}</span>
+          </Link>
+          {BOARD_STATUSES.filter((st) => countOf(st) > 0).map((st) => (
+            <Link
+              key={st}
+              href={`/feedback?status=${st}`}
+              className={`${chipBase} ${statusTone(st)} ${activeStatus === st ? 'ring-2 ring-primary ring-offset-1 ring-offset-background' : ''}`}
+            >
+              {t(`status_${st}`)} <span className="font-semibold">{countOf(st)}</span>
+            </Link>
+          ))}
+        </div>
+      </Card>
 
       <Card className="p-5">
         <SectionHeader title={t('logTitle')} />
@@ -83,38 +125,11 @@ export default async function FeedbackPage({
       </Card>
 
       <Card className="overflow-hidden">
-        <SectionHeader title={t('listTitle')} count={rows.length} />
+        <SectionHeader title={activeStatus ? t(`status_${activeStatus}`) : t('listTitle')} count={rows.length} />
         {rows.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('colTitle')}</th>
-                <th className="px-4 py-2 font-medium">{t('colCategory')}</th>
-                <th className="px-4 py-2 font-medium">{t('colReporter')}</th>
-                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((r) => (
-                <tr key={r.id} className="hover:bg-muted/40">
-                  <td className="px-4 py-2.5 font-medium">
-                    <Link href={`/feedback/${r.id}`} className="underline-offset-2 hover:text-primary hover:underline">
-                      {r.title}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{t(`category_${r.category}`)}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{r.reporter}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusTone(r.status)}`}>
-                      {t(`status_${r.status}`)}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <BulkTable rows={rows as FeedbackRow[]} />
         )}
       </Card>
     </div>

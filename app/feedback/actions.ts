@@ -7,10 +7,13 @@ import { myEmployment } from '@/core/read';
 import {
   addFeedbackAttachment,
   approveFeedbackPlan,
+  bulkReview,
   cancelFeedback,
   contestFeedbackPlan,
   generateFeedbackPlan,
+  refuteDeployment,
   submitFeedback,
+  type BulkAction,
 } from '@/core/feedback';
 import type { FeedbackCategory } from '@/db/schema';
 
@@ -95,4 +98,33 @@ export async function cancelFeedbackAction(formData: FormData) {
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Feedback withdrawn')}`);
+}
+
+/** Close the loop: the reporter refutes a DEPLOYED result that still needs changes (→ contested, re-planned). */
+export async function refuteDeploymentAction(formData: FormData) {
+  const s = await getSession();
+  const id = String(formData.get('id'));
+  try {
+    await refuteDeployment(s, { feedbackId: id, reason: String(formData.get('reason') ?? '') });
+  } catch (e) {
+    fail(e, `${BASE}/${id}`);
+  }
+  revalidatePath(`${BASE}/${id}`);
+  redirect(`${BASE}/${id}?toast=${encodeURIComponent('Sent back for changes')}`);
+}
+
+/** List-view bulk bar: apply one review action to the selected items at once. */
+export async function bulkReviewAction(formData: FormData) {
+  const s = await getSession();
+  const ids = formData.getAll('ids').map(String).filter(Boolean);
+  const action = String(formData.get('action')) as BulkAction;
+  let toast = '';
+  try {
+    const { succeeded, failed } = await bulkReview(s, { ids, action, reason: String(formData.get('reason') ?? '') });
+    toast = `${succeeded.length} item${succeeded.length === 1 ? '' : 's'} ${action}d` + (failed.length ? ` · ${failed.length} skipped` : '');
+  } catch (e) {
+    fail(e);
+  }
+  revalidatePath(BASE);
+  redirect(`${BASE}?toast=${encodeURIComponent(toast)}`);
 }

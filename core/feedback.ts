@@ -5,7 +5,7 @@
  * transition appends a DomainEvent (user / agent actor). RLS scopes reads via can_see_employment; the
  * review authority (only the reporter approves/contests) is enforced here.
  */
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
@@ -374,7 +374,83 @@ export async function markFeedbackDeployed(
   });
 }
 
+// ── Close the loop: post-deploy refute (ADR-0051) ──
+
+/** The reporter (or admin) refutes a DEPLOYED result that isn't up to standard, sending it back round the
+ *  loop: deployed → contested (the refiner re-plans, carrying contest_reason), reopened_count++. A distinct
+ *  `feedback.deployment.refuted` event keeps it separable from a pre-build plan contest in the audit. */
+export async function refuteDeployment(ctx: SessionContext, p: { feedbackId: string; reason: string }): Promise<void> {
+  const reason = p.reason?.trim();
+  if (!reason) throw new FeedbackError('Please say what still needs to change about the deployed result.');
+  await withTenant(ctx, async (tx) => {
+    const fb = await loadDecidable(tx, p.feedbackId);
+    const { onBehalf } = assertCanReview(ctx, fb);
+    if (fb.status !== 'deployed') {
+      throw new FeedbackError(`Only a deployed item can be refuted (it is ${fb.status}).`);
+    }
+    await tx
+      .update(feedbackRequest)
+      .set({
+        status: 'contested',
+        contestReason: reason,
+        reopenedCount: sql`${feedbackRequest.reopenedCount} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(feedbackRequest.id, fb.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'feedback',
+      aggregateId: fb.id,
+      eventType: 'feedback.deployment.refuted',
+      actor: actorOf(ctx),
+      subjectEmploymentId: fb.reporterEmploymentId,
+      payload: { reason, revision: fb.planRevision, decidedBy: onBehalf ? 'admin' : 'reporter' },
+    });
+  });
+}
+
+// ── Bulk review (list-view batch bar) ──
+
+export type BulkAction = 'approve' | 'contest' | 'cancel';
+
+/** Apply one review action to many items at once. Reuses the per-item services so each keeps its own authz,
+ *  status guard and event; a single-item failure (wrong status, not the reporter) is reported in `failed`,
+ *  never aborts the rest. */
+export async function bulkReview(
+  ctx: SessionContext,
+  p: { ids: string[]; action: BulkAction; reason?: string },
+): Promise<{ succeeded: string[]; failed: { id: string; error: string }[] }> {
+  const ids = [...new Set(p.ids)].filter(Boolean);
+  if (ids.length === 0) throw new FeedbackError('Select at least one item.');
+  if (ids.length > 100) throw new FeedbackError('Too many items selected at once (max 100).');
+  if (p.action === 'contest' && !p.reason?.trim()) throw new FeedbackError('A reason is required to contest.');
+  const succeeded: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+  for (const id of ids) {
+    try {
+      if (p.action === 'approve') await approveFeedbackPlan(ctx, { feedbackId: id });
+      else if (p.action === 'contest') await contestFeedbackPlan(ctx, { feedbackId: id, reason: p.reason! });
+      else await cancelFeedback(ctx, { feedbackId: id });
+      succeeded.push(id);
+    } catch (e) {
+      failed.push({ id, error: e instanceof FeedbackError ? e.message : 'Action failed' });
+    }
+  }
+  return { succeeded, failed };
+}
+
 // ── Reads (RLS-scoped) ──
+
+/** Counts by status for the in-app review dashboard (RLS-scoped to visible items). */
+export function feedbackStatusCounts(ctx: SessionContext): Promise<{ status: FeedbackStatus; count: number }[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ status: feedbackRequest.status, count: sql<number>`count(*)::int` })
+      .from(feedbackRequest)
+      .groupBy(feedbackRequest.status);
+    return rows as { status: FeedbackStatus; count: number }[];
+  });
+}
 
 export type FeedbackRow = {
   id: string;
@@ -383,10 +459,18 @@ export type FeedbackRow = {
   status: FeedbackStatus;
   reporter: string;
   planRevision: number;
+  reopenedCount: number;
   createdAt: Date;
 };
 
-export function listFeedback(ctx: SessionContext, opts: { status?: FeedbackStatus } = {}): Promise<FeedbackRow[]> {
+export function listFeedback(
+  ctx: SessionContext,
+  opts: { status?: FeedbackStatus; category?: FeedbackCategory } = {},
+): Promise<FeedbackRow[]> {
+  const filters = [
+    opts.status ? eq(feedbackRequest.status, opts.status) : undefined,
+    opts.category ? eq(feedbackRequest.category, opts.category) : undefined,
+  ].filter(Boolean);
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -396,12 +480,13 @@ export function listFeedback(ctx: SessionContext, opts: { status?: FeedbackStatu
         status: feedbackRequest.status,
         reporter: person.fullName,
         planRevision: feedbackRequest.planRevision,
+        reopenedCount: feedbackRequest.reopenedCount,
         createdAt: feedbackRequest.createdAt,
       })
       .from(feedbackRequest)
       .innerJoin(employment, eq(employment.id, feedbackRequest.reporterEmploymentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(opts.status ? eq(feedbackRequest.status, opts.status) : undefined)
+      .where(filters.length ? (filters.length === 1 ? filters[0] : (and as any)(...filters)) : undefined)
       .orderBy(desc(feedbackRequest.createdAt))
       .limit(200) as Promise<FeedbackRow[]>,
   );

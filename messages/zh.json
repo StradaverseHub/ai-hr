@@ -2377,7 +2377,21 @@
     "withdraw": "撤回反馈",
     "generatePlanNow": "立即生成方案",
     "status_deployed": "已部署",
-    "deployedNote": "已构建并发布。"
+    "deployedNote": "已构建并发布。",
+    "boardTitle": "状态看板",
+    "boardAll": "全部",
+    "bulkSelected": "已选 {count} 项",
+    "bulkApprove": "批准",
+    "bulkCancel": "取消",
+    "bulkClear": "清除",
+    "selectAll": "全选",
+    "reopenedBadge": "↻ {count}",
+    "reopenedTitle": "部署后被退回的次数",
+    "reopenedNote": "部署后已重新打开 {count} 次。",
+    "refutePrompt": "已部署但未达标？",
+    "refuteLabel": "还有什么需要修改？",
+    "refutePlaceholder": "描述已部署结果中仍然存在的问题或缺失…",
+    "refute": "要求修改"
   },
   "taxRelief": {
     "title": "个人税务减免 (TP1)",

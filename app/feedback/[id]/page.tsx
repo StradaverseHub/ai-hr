@@ -9,6 +9,7 @@ import {
   cancelFeedbackAction,
   contestFeedbackPlanAction,
   generateFeedbackPlanNowAction,
+  refuteDeploymentAction,
 } from '../actions';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -40,6 +41,8 @@ export default async function FeedbackDetailPage({
   // Approve/contest: the reporter OR an admin (HR triage). Withdraw stays reporter-only.
   const canReview = (isReporter || isAdmin) && fb.status === 'planned';
   const canWithdraw = isReporter && !['done', 'deployed', 'cancelled', 'building'].includes(fb.status);
+  // Close the loop: a deployed result the reporter (or admin) judges below standard can be sent back (ADR-0051).
+  const canRefute = (isReporter || isAdmin) && fb.status === 'deployed';
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
   const inAppPlanning = process.env.FEEDBACK_AI_PLANNING_ENABLED === 'true';
   const canGeneratePlan = inAppPlanning && isAdmin && (fb.status === 'open' || fb.status === 'contested');
@@ -128,7 +131,26 @@ export default async function FeedbackDetailPage({
                 </a>
               </>
             )}
+            {fb.reopenedCount > 0 && (
+              <div className="mt-1 text-xs font-medium text-rose-600 dark:text-rose-400">
+                {t('reopenedNote', { count: fb.reopenedCount })}
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Close the loop: refute a deployed result that still needs changes (reporter or admin). */}
+        {canRefute && (
+          <form action={refuteDeploymentAction} className="mt-4 space-y-2 border-t border-border pt-4">
+            <input type="hidden" name="id" value={fb.id} />
+            <p className="text-sm font-medium">{t('refutePrompt')}</p>
+            <Field label={t('refuteLabel')}>
+              <textarea name="reason" rows={2} required className={inputCls} placeholder={t('refutePlaceholder')} />
+            </Field>
+            <Button type="submit" size="sm" variant="outline">
+              {t('refute')}
+            </Button>
+          </form>
         )}
 
         {/* Reporter-only review controls (only the person who raised it) */}

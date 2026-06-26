@@ -2377,7 +2377,21 @@
     "withdraw": "Tarik balik maklum balas",
     "generatePlanNow": "Jana pelan sekarang",
     "status_deployed": "Telah dideploy",
-    "deployedNote": "Dibina dan dikeluarkan."
+    "deployedNote": "Dibina dan dikeluarkan.",
+    "boardTitle": "Papan status",
+    "boardAll": "Semua",
+    "bulkSelected": "{count} dipilih",
+    "bulkApprove": "Lulus",
+    "bulkCancel": "Batal",
+    "bulkClear": "Kosongkan",
+    "selectAll": "Pilih semua",
+    "reopenedBadge": "↻ {count}",
+    "reopenedTitle": "Bilangan kali dihantar semula selepas penerapan",
+    "reopenedNote": "Dibuka semula {count}× selepas penerapan.",
+    "refutePrompt": "Telah diterap tetapi tidak memenuhi standard?",
+    "refuteLabel": "Apa yang masih perlu diubah?",
+    "refutePlaceholder": "Terangkan apa yang masih salah atau tiada dalam hasil yang diterap…",
+    "refute": "Minta perubahan"
   },
   "taxRelief": {
     "title": "Pelepasan Cukai Peribadi (TP1)",

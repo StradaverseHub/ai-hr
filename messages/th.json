@@ -2377,7 +2377,21 @@
     "withdraw": "ถอนข้อเสนอแนะ",
     "generatePlanNow": "สร้างแผนตอนนี้",
     "status_deployed": "ปรับใช้แล้ว",
-    "deployedNote": "สร้างและเผยแพร่แล้ว"
+    "deployedNote": "สร้างและเผยแพร่แล้ว",
+    "boardTitle": "กระดานสถานะ",
+    "boardAll": "ทั้งหมด",
+    "bulkSelected": "เลือกแล้ว {count} รายการ",
+    "bulkApprove": "อนุมัติ",
+    "bulkCancel": "ยกเลิก",
+    "bulkClear": "ล้าง",
+    "selectAll": "เลือกทั้งหมด",
+    "reopenedBadge": "↻ {count}",
+    "reopenedTitle": "จำนวนครั้งที่ถูกส่งกลับหลังการปรับใช้",
+    "reopenedNote": "เปิดใหม่ {count}× หลังการปรับใช้",
+    "refutePrompt": "ปรับใช้แล้วแต่ยังไม่ได้มาตรฐาน?",
+    "refuteLabel": "ยังต้องแก้ไขอะไรอีก?",
+    "refutePlaceholder": "อธิบายว่ามีอะไรผิดพลาดหรือขาดหายไปในผลลัพธ์ที่ปรับใช้…",
+    "refute": "ขอการเปลี่ยนแปลง"
   },
   "taxRelief": {
     "title": "การลดหย่อนภาษีส่วนบุคคล (TP1)",

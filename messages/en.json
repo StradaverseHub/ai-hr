@@ -2377,7 +2377,21 @@
     "withdraw": "Withdraw feedback",
     "generatePlanNow": "Generate plan now",
     "status_deployed": "Deployed",
-    "deployedNote": "Built and released."
+    "deployedNote": "Built and released.",
+    "boardTitle": "Status board",
+    "boardAll": "All",
+    "bulkSelected": "{count} selected",
+    "bulkApprove": "Approve",
+    "bulkCancel": "Cancel",
+    "bulkClear": "Clear",
+    "selectAll": "Select all",
+    "reopenedBadge": "↻ {count}",
+    "reopenedTitle": "Times this was sent back after deploy",
+    "reopenedNote": "Reopened {count}× after deploy.",
+    "refutePrompt": "Deployed but not up to standard?",
+    "refuteLabel": "What still needs to change?",
+    "refutePlaceholder": "Describe what's still wrong or missing in the deployed result…",
+    "refute": "Request changes"
   },
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",
