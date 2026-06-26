@@ -8,6 +8,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   claimAttachment,
+  claimItem,
   claimPolicy,
   claimRequest,
   claimType,
@@ -17,7 +18,10 @@ import {
   payrollBatch,
   payrollInput,
   person,
+  type ClaimRateConfig,
 } from '../db/schema';
+
+export type { ClaimRateConfig };
 import { toCsv } from '../lib/csv';
 import { assertCanDecide } from './approvals';
 
@@ -27,6 +31,24 @@ const slugify = (s: string): string =>
 const today = (): string => new Date().toISOString().slice(0, 10);
 const num = (v: string | null): number | null => (v == null ? null : Number(v));
 
+/** UTC-date floor for the receipt window: the YYYY-MM-DD `days` before the given UTC date (inclusive on the
+ *  caller's >= compare). Computed off the same UTC date string the UI picker uses, so the boundary the user
+ *  sees and the server enforces agree even at a UTC+8 local midnight. */
+export const dateMinusDays = (yyyyMmDd: string, days: number): string =>
+  new Date(new Date(`${yyyyMmDd}T00:00:00Z`).getTime() - days * 86400000).toISOString().slice(0, 10);
+
+/** Receipt date window: not in the future, and not more than this many days back (≈1.5 months per ticket). */
+export const RECEIPT_BACKDATE_DAYS = 45;
+
+export type ClaimItemRow = { id: string; code: string; name: string };
+
+export type ClaimPolicyRow = {
+  annualBudget: number | null;
+  perClaimCap: number | null;
+  rateConfig: ClaimRateConfig | null;
+  validFrom: string;
+};
+
 export type ClaimTypeRow = {
   id: string;
   code: string;
@@ -34,15 +56,12 @@ export type ClaimTypeRow = {
   defaultTaxable: boolean;
   requiresReceipt: boolean;
   archivedAt: string | null;
-  policy: { annualBudget: number | null; perClaimCap: number | null; validFrom: string } | null;
+  policy: ClaimPolicyRow | null;
+  items: ClaimItemRow[];
 };
 
 /** The active policy (latest effective version ≤ asOf) for a claim type, or null. Pure read in the caller tx. */
-export async function getActiveClaimPolicy(
-  tx: Tx,
-  claimTypeId: string,
-  asOf: string,
-): Promise<{ annualBudget: number | null; perClaimCap: number | null; validFrom: string } | null> {
+export async function getActiveClaimPolicy(tx: Tx, claimTypeId: string, asOf: string): Promise<ClaimPolicyRow | null> {
   const [row] = await tx
     .select()
     .from(claimPolicy)
@@ -55,7 +74,19 @@ export async function getActiveClaimPolicy(
     )
     .orderBy(desc(claimPolicy.validFrom))
     .limit(1);
-  return row ? { annualBudget: num(row.annualBudget), perClaimCap: num(row.perClaimCap), validFrom: row.validFrom } : null;
+  return row
+    ? { annualBudget: num(row.annualBudget), perClaimCap: num(row.perClaimCap), rateConfig: row.rateConfig ?? null, validFrom: row.validFrom }
+    : null;
+}
+
+/** Non-archived items for a claim type (code asc), in the caller tx. */
+async function activeItemsFor(tx: Tx, claimTypeId: string): Promise<ClaimItemRow[]> {
+  const rows = await tx
+    .select({ id: claimItem.id, code: claimItem.code, name: claimItem.name })
+    .from(claimItem)
+    .where(and(eq(claimItem.claimTypeId, claimTypeId), isNull(claimItem.archivedAt)))
+    .orderBy(claimItem.code);
+  return rows;
 }
 
 /** All non-archived claim types with their active policy — the admin catalog. */
@@ -76,9 +107,15 @@ export async function listClaimTypes(ctx: SessionContext, p?: { asOf?: string })
         requiresReceipt: t.requiresReceipt,
         archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
         policy: await getActiveClaimPolicy(tx, t.id, asOf),
+        items: await activeItemsFor(tx, t.id),
       })),
     );
   });
+}
+
+/** Non-archived items for a claim type — the admin sub-list. */
+export async function listClaimItems(ctx: SessionContext, p: { claimTypeId: string }): Promise<ClaimItemRow[]> {
+  return withTenant(ctx, (tx) => activeItemsFor(tx, p.claimTypeId));
 }
 
 export async function createClaimType(
@@ -145,17 +182,101 @@ export async function archiveClaimType(ctx: SessionContext, id: string): Promise
   });
 }
 
+// ─────────────────────────────── Claim-item catalog (dependent sub-category) ───────────────────────────────
+// Mirrors the claim-type CRUD: code normalized to TRIM + UPPER (so PARKING/parking can't both live under one
+// type and defeat the partial-unique index), code immutable after create, soft-delete via archivedAt.
+
+export async function createClaimItem(
+  ctx: SessionContext,
+  p: { claimTypeId: string; code: string; name: string },
+): Promise<{ id: string }> {
+  const code = p.code.trim().toUpperCase();
+  if (!code) throw new Error('Claim item code is required');
+  if (!p.name.trim()) throw new Error('Claim item name is required');
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(claimItem)
+      .values({ tenantId: ctx.tenantId, claimTypeId: p.claimTypeId, code, name: p.name.trim() })
+      .returning({ id: claimItem.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-item',
+      aggregateId: row.id,
+      eventType: 'claim-item.created',
+      actor: actorOf(ctx),
+      payload: { claimTypeId: p.claimTypeId, code, name: p.name.trim() },
+    });
+    return { id: row.id };
+  });
+}
+
+export async function updateClaimItem(ctx: SessionContext, p: { id: string; name: string }): Promise<void> {
+  if (!p.name.trim()) throw new Error('Claim item name is required');
+  await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .update(claimItem)
+      .set({ name: p.name.trim() })
+      .where(eq(claimItem.id, p.id))
+      .returning({ id: claimItem.id });
+    if (!row) return;
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-item',
+      aggregateId: p.id,
+      eventType: 'claim-item.updated',
+      actor: actorOf(ctx),
+      payload: { name: p.name.trim() },
+    });
+  });
+}
+
+export async function archiveClaimItem(ctx: SessionContext, id: string): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .update(claimItem)
+      .set({ archivedAt: new Date() })
+      .where(and(eq(claimItem.id, id), isNull(claimItem.archivedAt)))
+      .returning({ id: claimItem.id });
+    if (!row) return;
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-item',
+      aggregateId: id,
+      eventType: 'claim-item.archived',
+      actor: actorOf(ctx),
+    });
+  });
+}
+
+/** Validate a rate-config union, throwing a plain Error for the admin path. */
+function assertValidRateConfig(rc: ClaimRateConfig): void {
+  if (rc.kind === 'mileage_flat') {
+    if (!(rc.ratePerKm > 0)) throw new Error('Mileage rate per km must be greater than zero');
+  } else if (rc.kind === 'fixed_allowance') {
+    if (!(rc.amount > 0)) throw new Error('Fixed allowance amount must be greater than zero');
+  }
+}
+
 /**
  * Set the budget policy for a claim type, effective-dated (CLOSE the open version + INSERT a new one — never
- * UPDATE business columns in place). NULL budget/cap = unlimited / no cap.
+ * UPDATE business columns in place). NULL budget/cap = unlimited / no cap. `rateConfig` (optional) carries the
+ * per-type calculation kind; because policies are append-only, a rate change is a new effective-dated version
+ * with full history — no destructive in-place overwrite, no silent re-pricing of historical claims.
  */
 export async function setClaimPolicy(
   ctx: SessionContext,
-  p: { claimTypeId: string; annualBudget: number | null; perClaimCap: number | null; effectiveFrom: string },
+  p: {
+    claimTypeId: string;
+    annualBudget: number | null;
+    perClaimCap: number | null;
+    effectiveFrom: string;
+    rateConfig?: ClaimRateConfig | null;
+  },
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
   if (p.annualBudget != null && p.annualBudget < 0) throw new Error('Annual budget must be ≥ 0');
   if (p.perClaimCap != null && p.perClaimCap < 0) throw new Error('Per-claim cap must be ≥ 0');
+  if (p.rateConfig != null) assertValidRateConfig(p.rateConfig);
   return withTenant(ctx, async (tx) => {
     // Close any currently-open policy for this type (half-open validity).
     await tx
@@ -169,6 +290,7 @@ export async function setClaimPolicy(
         claimTypeId: p.claimTypeId,
         annualBudget: p.annualBudget == null ? null : p.annualBudget.toFixed(2),
         perClaimCap: p.perClaimCap == null ? null : p.perClaimCap.toFixed(2),
+        rateConfig: p.rateConfig ?? null,
         validFrom: p.effectiveFrom,
       })
       .returning({ id: claimPolicy.id });
@@ -178,10 +300,33 @@ export async function setClaimPolicy(
       aggregateId: row.id,
       eventType: 'claim-policy.set',
       actor: actorOf(ctx),
-      payload: { claimTypeId: p.claimTypeId, annualBudget: p.annualBudget, perClaimCap: p.perClaimCap, effectiveFrom: p.effectiveFrom },
+      // rateConfig is a RATE (not a claim amount) — safe to log (ADR-0030).
+      payload: { claimTypeId: p.claimTypeId, annualBudget: p.annualBudget, perClaimCap: p.perClaimCap, effectiveFrom: p.effectiveFrom, rateConfig: p.rateConfig ?? null },
     });
     return { id: row.id };
   });
+}
+
+/**
+ * Derive the authoritative claim amount from the rate config (pure — unit-testable in isolation):
+ *   • receipt (or null/absent) → the employee-entered amount.
+ *   • mileage_flat            → quantityKm × ratePerKm (km must be > 0).
+ *   • fixed_allowance         → the config amount (entered amount ignored).
+ */
+export function computeClaimAmount(
+  rateConfig: ClaimRateConfig | null | undefined,
+  p: { quantityKm?: number | null; enteredAmount?: number | null },
+): number {
+  const kind = rateConfig?.kind ?? 'receipt';
+  if (kind === 'mileage_flat') {
+    const km = p.quantityKm;
+    if (km == null || !(km > 0)) throw new ClaimError('Distance (km) must be greater than zero');
+    return (rateConfig as { ratePerKm: number }).ratePerKm * km;
+  }
+  if (kind === 'fixed_allowance') {
+    return (rateConfig as { amount: number }).amount;
+  }
+  return p.enteredAmount ?? 0;
 }
 
 // ─────────────────────────────── Lifecycle (ADR-0021 §2) ───────────────────────────────
@@ -218,35 +363,74 @@ async function claimedInYear(
   return Number(row?.s ?? 0);
 }
 
-/** Submit a claim (employee, for their own employment — RLS enforces). Validates per-claim cap + annual
- *  budget (committed = pending+approved+paid). `taxable` defaults from the claim type. */
+/** Submit a claim (employee, for their own employment — RLS enforces). Resolves the per-type rate config,
+ *  validates the dependent item + receipt-date window, DERIVES the authoritative amount, then enforces the
+ *  per-claim cap + annual budget against that amount. `taxable` defaults from the claim type. */
 export async function submitClaim(
   ctx: SessionContext,
-  p: { employmentId: string; claimTypeId: string; amount: number; incurredOn: string; description?: string | null; hasReceipt?: boolean },
+  p: {
+    employmentId: string;
+    claimTypeId: string;
+    claimItemId?: string | null;
+    amount: number;
+    quantityKm?: number | null;
+    incurredOn: string;
+    description?: string | null;
+    hasReceipt?: boolean;
+  },
 ): Promise<{ id: string }> {
-  if (!(p.amount > 0)) throw new ClaimError('Amount must be greater than zero');
+  // 1. Format guard for the date (value guards run AFTER the amount is derived, below).
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
   return withTenant(ctx, async (tx) => {
+    // 2. Load the type + active policy (now also carries rateConfig).
     const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
     if (!ct) throw new ClaimError('Unknown or archived claim type');
-    if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
     const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn);
-    if (policy?.perClaimCap != null && p.amount > policy.perClaimCap) {
+
+    // 3. Item validation (D5): if the type has ≥1 live item, an item is required and must belong to the type.
+    const items = await activeItemsFor(tx, p.claimTypeId);
+    let claimItemId: string | null = null;
+    if (items.length > 0) {
+      if (!p.claimItemId) throw new ClaimError('A claim item is required for this claim type');
+      if (!items.some((i) => i.id === p.claimItemId)) throw new ClaimError('That claim item does not belong to this claim type');
+      claimItemId = p.claimItemId;
+    }
+
+    // 4. Receipt-date window: not in the future, and not more than 45 days (≈1.5 months per ticket) back.
+    //    Compared as UTC date strings off the same helper the client picker uses (no UTC+8 off-by-one).
+    const todayUtc = today();
+    if (p.incurredOn > todayUtc) throw new ClaimError('Receipt date cannot be in the future');
+    if (p.incurredOn < dateMinusDays(todayUtc, RECEIPT_BACKDATE_DAYS)) {
+      throw new ClaimError(`Receipt date cannot be more than ${RECEIPT_BACKDATE_DAYS} days ago`);
+    }
+
+    // 5. Derive the authoritative amount from the rate config BEFORE the value guards.
+    const quantityKm = policy?.rateConfig?.kind === 'mileage_flat' ? (p.quantityKm ?? null) : null;
+    const amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+    if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
+    if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
       throw new ClaimError(`Amount exceeds the per-claim cap (RM ${policy.perClaimCap.toLocaleString('en-MY')})`);
     }
     if (policy?.annualBudget != null) {
       const committed = await claimedInYear(tx, p.employmentId, p.claimTypeId, yearOf(p.incurredOn), ['pending', 'approved', 'paid']);
-      if (committed + p.amount > policy.annualBudget) {
+      if (committed + amount > policy.annualBudget) {
         throw new ClaimError(`This would exceed the annual budget (RM ${policy.annualBudget.toLocaleString('en-MY')})`);
       }
     }
+
+    // 6. Receipt-required check (type-level, unchanged).
+    if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
+
+    // 7. Insert with the dependent item, mileage km, and computed amount.
     const [row] = await tx
       .insert(claimRequest)
       .values({
         tenantId: ctx.tenantId,
         employmentId: p.employmentId,
         claimTypeId: p.claimTypeId,
-        amount: p.amount.toFixed(2),
+        claimItemId,
+        amount: amount.toFixed(2),
+        quantityKm: quantityKm == null ? null : quantityKm.toFixed(2),
         incurredOn: p.incurredOn,
         description: p.description ?? null,
         taxable: ct.defaultTaxable,
@@ -259,8 +443,10 @@ export async function submitClaim(
       eventType: 'claim-request.submitted',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      // ADR-0030 Layer 0: amount lives on claim_request[aggregateId]; reference, not cleartext in the log.
-      payload: { claimTypeId: p.claimTypeId, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
+      // ADR-0030 Layer 0: amount + quantityKm live on claim_request[aggregateId]; reference, not cleartext in
+      // the log (km × a readable per-km rate would reconstruct the redacted amount). claimItemId is safe (a
+      // non-sensitive sub-category reference), so it is logged.
+      payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
     });
     return { id: row.id };
   });
@@ -343,6 +529,11 @@ export async function cancelClaim(ctx: SessionContext, claimRequestId: string): 
   });
 }
 
+/** Receipt MIME allowlist (fail-closed): only PDF / JPG / PNG. The action sniffs magic bytes to derive a
+ *  trustworthy mimeType BEFORE calling this, so the allowlist is checked against the sniffed value, not the
+ *  spoofable client `file.type`. */
+export const ALLOWED_RECEIPT_MIME = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+
 /** Attach a receipt to a claim (denormalizes employment_id from the claim for RLS). */
 export async function addClaimAttachment(
   ctx: SessionContext,
@@ -350,6 +541,9 @@ export async function addClaimAttachment(
 ): Promise<{ id: string }> {
   if (p.content.byteLength === 0) throw new ClaimError('Empty file');
   if (p.content.byteLength > 10 * 1024 * 1024) throw new ClaimError('File exceeds 10 MB');
+  if (!(ALLOWED_RECEIPT_MIME as readonly string[]).includes(p.mimeType)) {
+    throw new ClaimError('Only PDF, JPG, or PNG files are allowed');
+  }
   return withTenant(ctx, async (tx) => {
     const [claim] = await tx
       .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, status: claimRequest.status })
@@ -405,7 +599,9 @@ export type ClaimRow = {
   id: string;
   typeCode: string;
   typeName: string;
+  itemName: string | null;
   amount: number;
+  quantityKm: number | null;
   incurredOn: string;
   description: string | null;
   taxable: boolean;
@@ -423,7 +619,9 @@ function rowSelect() {
     id: claimRequest.id,
     typeCode: claimType.code,
     typeName: claimType.name,
+    itemName: claimItem.name,
     amount: claimRequest.amount,
+    quantityKm: claimRequest.quantityKm,
     incurredOn: claimRequest.incurredOn,
     description: claimRequest.description,
     taxable: claimRequest.taxable,
@@ -456,7 +654,9 @@ type RawClaimRow = {
   id: string;
   typeCode: string;
   typeName: string;
+  itemName: string | null;
   amount: string;
+  quantityKm: string | null;
   incurredOn: string;
   description: string | null;
   taxable: boolean;
@@ -473,7 +673,9 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   id: r.id,
   typeCode: r.typeCode,
   typeName: r.typeName,
+  itemName: r.itemName,
   amount: Number(r.amount),
+  quantityKm: r.quantityKm == null ? null : Number(r.quantityKm),
   incurredOn: r.incurredOn,
   description: r.description,
   taxable: r.taxable,
@@ -493,6 +695,8 @@ export async function listClaimsForEmployment(ctx: SessionContext, employmentId:
       .select(rowSelect())
       .from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+      // LEFT join: legacy/zero-item rows (claim_item_id IS NULL) must not be dropped from the list.
+      .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(claimRequest.employmentId, employmentId))
@@ -509,6 +713,8 @@ export async function listPendingClaims(ctx: SessionContext): Promise<ClaimRow[]
       .select(rowSelect())
       .from(claimRequest)
       .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+      // LEFT join: zero-item / legacy claims must still appear in the approvals inbox.
+      .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
       .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(claimRequest.status, 'pending'))

@@ -29,6 +29,7 @@ import {
   transferAction,
 } from './actions';
 import { currentCompensation } from '@/core/comp';
+import { listHolidayGroups } from '@/core/admin';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
@@ -93,6 +94,14 @@ export default async function EmployeePage({
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
   const comp = admin ? await currentCompensation(s, employmentId) : null;
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
+  // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
+  const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  // Current selection of the unified field: a group wins, else a single state, else company default.
+  const holidayCalendarValue = emp.holidayGroupId
+    ? `group:${emp.holidayGroupId}`
+    : emp.workState
+      ? `state:${emp.workState}`
+      : '';
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   const payComps = admin ? await listEmploymentPayComponents(s, employmentId) : [];
   const componentCatalog = admin ? await listPayComponents(s) : [];
@@ -134,14 +143,25 @@ export default async function EmployeePage({
             <Field label={t('phone')}>
               <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
             </Field>
-            <Field label={t('workState')}>
-              <select name="workState" defaultValue={emp.workState ?? ''} className={inputCls}>
-                <option value="">{t('workStateDefault')}</option>
-                {MY_STATES.map((st) => (
-                  <option key={st} value={st}>
-                    {st}
-                  </option>
-                ))}
+            <Field label={t('holidayCalendar')}>
+              <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
+                <option value="">{t('holidayCalendarDefault')}</option>
+                {holidayGroups.length > 0 && (
+                  <optgroup label={t('holidayCalendarGroupOptgroup')}>
+                    {holidayGroups.map((g) => (
+                      <option key={g.id} value={`group:${g.id}`}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label={t('holidayCalendarStateOptgroup')}>
+                  {MY_STATES.map((st) => (
+                    <option key={st} value={`state:${st}`}>
+                      {st}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </Field>
             <Field label={t('grade')}>

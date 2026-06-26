@@ -117,6 +117,37 @@ describe('ADR-0021 §5 — claims RLS', () => {
     expect((await seesAttach(peerCtx)).length).toBe(0);
   });
 
+  it('claim_item: members read, only admins write; a different tenant is blocked', async () => {
+    const E = await hire(adminCtx(base), base, 'Emp');
+    const uE = await createAppUser(base.tenantId, E.personId, 'employee');
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'] };
+
+    const [ct] = await owner.db
+      .insert(schema.claimType)
+      .values({ tenantId: base.tenantId, code: 'TRAVEL', name: 'Travel' })
+      .returning({ id: schema.claimType.id });
+
+    // Admin can create a claim item.
+    const [it] = await withTenant(adminCtx(base), (tx) =>
+      tx.insert(schema.claimItem).values({ tenantId: base.tenantId, claimTypeId: ct.id, code: 'PARKING', name: 'Parking' }).returning({ id: schema.claimItem.id }),
+    );
+    expect(it.id).toBeTruthy();
+
+    // A non-admin can READ it…
+    const seen = await withTenant(empCtx, (tx) => tx.select().from(schema.claimItem));
+    expect(seen.map((r) => r.code)).toContain('PARKING');
+
+    // …but cannot WRITE the catalog (WITH CHECK requires app.is_admin()).
+    await expect(
+      withTenant(empCtx, (tx) => tx.insert(schema.claimItem).values({ tenantId: base.tenantId, claimTypeId: ct.id, code: 'TOLL', name: 'Toll' })),
+    ).rejects.toThrow();
+
+    // A different tenant cannot see it (tenant isolation).
+    const other = await seedBase();
+    const otherSees = await withTenant(adminCtx(other), (tx) => tx.select().from(schema.claimItem));
+    expect(otherSees.length).toBe(0);
+  });
+
   it('a different tenant cannot see the claim', async () => {
     const other = await seedBase();
     const E = await hire(adminCtx(base), base, 'Subject');

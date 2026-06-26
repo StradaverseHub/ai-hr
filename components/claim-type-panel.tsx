@@ -15,7 +15,13 @@ const badge = {
 };
 const rm = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
 
-/** One claim type as an expandable row: rename + taxable/receipt toggles + effective-dated budget. */
+type RateConfig =
+  | { kind: 'receipt' }
+  | { kind: 'mileage_flat'; ratePerKm: number }
+  | { kind: 'fixed_allowance'; amount: number };
+
+/** One claim type as an expandable row: rename + taxable/receipt toggles + effective-dated budget + rate
+ *  config + the dependent Claim Items sub-list. */
 export function ClaimTypePanel({
   id,
   code,
@@ -23,23 +29,34 @@ export function ClaimTypePanel({
   defaultTaxable,
   requiresReceipt,
   policy,
+  items,
   updateAction,
   archiveAction,
   setPolicyAction,
+  createItemAction,
+  updateItemAction,
+  archiveItemAction,
 }: {
   id: string;
   code: string;
   name: string;
   defaultTaxable: boolean;
   requiresReceipt: boolean;
-  policy: { annualBudget: number | null; perClaimCap: number | null; validFrom: string } | null;
+  policy: { annualBudget: number | null; perClaimCap: number | null; rateConfig: RateConfig | null; validFrom: string } | null;
+  items: { id: string; code: string; name: string }[];
   updateAction: Action;
   archiveAction: Action;
   setPolicyAction: Action;
+  createItemAction: Action;
+  updateItemAction: Action;
+  archiveItemAction: Action;
 }) {
   const t = useTranslations('admin.claims');
   const [expanded, setExpanded] = useState(false);
+  const [rateKind, setRateKind] = useState<RateConfig['kind']>(policy?.rateConfig?.kind ?? 'receipt');
   const today = new Date().toISOString().slice(0, 10);
+  const ratePerKm = policy?.rateConfig?.kind === 'mileage_flat' ? policy.rateConfig.ratePerKm : '';
+  const fixedAmount = policy?.rateConfig?.kind === 'fixed_allowance' ? policy.rateConfig.amount : '';
 
   return (
     <li>
@@ -82,7 +99,7 @@ export function ClaimTypePanel({
             <Button type="submit" size="sm">{t('save')}</Button>
           </form>
 
-          {/* budget (effective-dated) */}
+          {/* budget + rate config (effective-dated — one append-only policy version) */}
           <form action={setPolicyAction} className="flex flex-wrap items-end gap-3 rounded-lg bg-background p-3">
             <input type="hidden" name="claimTypeId" value={id} />
             <Field label={t('annualBudgetLabel')}>
@@ -94,8 +111,62 @@ export function ClaimTypePanel({
             <Field label={t('effectiveFromLabel')}>
               <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
             </Field>
+            <Field label={t('rateKindLabel')}>
+              <select name="rateKind" value={rateKind} onChange={(e) => setRateKind(e.target.value as RateConfig['kind'])} className={`${inputCls} w-44`}>
+                <option value="receipt">{t('rateReceipt')}</option>
+                <option value="mileage_flat">{t('rateMileageFlat')}</option>
+                <option value="fixed_allowance">{t('rateFixed')}</option>
+              </select>
+            </Field>
+            {rateKind === 'mileage_flat' && (
+              <Field label={t('ratePerKmLabel')}>
+                <input name="ratePerKm" type="number" min="0" step="0.01" defaultValue={ratePerKm} className={`${inputCls} w-28`} />
+              </Field>
+            )}
+            {rateKind === 'fixed_allowance' && (
+              <Field label={t('fixedAmountLabel')}>
+                <input name="fixedAmount" type="number" min="0" step="0.01" defaultValue={fixedAmount} className={`${inputCls} w-28`} />
+              </Field>
+            )}
             <Button type="submit" size="sm">{t('setBudget')}</Button>
           </form>
+
+          {/* dependent Claim Items sub-list */}
+          <div className="space-y-2 rounded-lg bg-background p-3">
+            <p className="text-xs font-semibold text-foreground">{t('itemsTitle')}</p>
+            {items.length > 0 && (
+              <ul className="divide-y divide-border/60">
+                {items.map((it) => (
+                  <li key={it.id} className="flex flex-wrap items-end gap-2 py-2">
+                    <form action={updateItemAction} className="flex items-end gap-2">
+                      <input type="hidden" name="id" value={it.id} />
+                      <span className="self-center font-mono text-xs text-muted-foreground">{it.code}</span>
+                      <Field label={t('itemNameLabel')}>
+                        <input name="name" defaultValue={it.name} className={`${inputCls} w-44`} />
+                      </Field>
+                      <Button type="submit" size="sm" variant="ghost">{t('save')}</Button>
+                    </form>
+                    <form action={archiveItemAction}>
+                      <input type="hidden" name="id" value={it.id} />
+                      <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('itemArchiveConfirmTitle')} description={t('itemArchiveConfirmDescription')} confirmLabel={t('itemArchiveConfirmLabel')}>
+                        {t('archive')}
+                      </ConfirmSubmit>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <form action={createItemAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="claimTypeId" value={id} />
+              <Field label={t('itemCodeLabel')}>
+                <input name="code" required placeholder="MILEAGE" className={`${inputCls} w-32 font-mono uppercase`} />
+              </Field>
+              <Field label={t('itemNameLabel')}>
+                <input name="name" required placeholder="Mileage" className={`${inputCls} w-44`} />
+              </Field>
+              <Button type="submit" size="sm">{t('newItem')}</Button>
+            </form>
+          </div>
 
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <span>{t('typeLabel')}</span>

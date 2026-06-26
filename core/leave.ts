@@ -13,6 +13,7 @@ import {
   company,
   employment,
   holiday,
+  holidayGroup,
   leaveApprovalStep,
   leaveLedger,
   leavePolicy,
@@ -282,15 +283,33 @@ export async function requestLeave(
     // rejected rather than silently deducted at 0.5. Run the holiday query once and reuse it for both.
     let workingDayCount: number | null = null;
     if (lt?.counting === 'working_days') {
-      // 2C (ADR-0038): holidays apply per the employee's work state — national (state null) ∪ their
-      // effective state (work_state, falling back to the company default). National-only when unset.
+      // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
+      // national (state null) ∪ those states. The set is, in priority order:
+      //   holiday_group → the group's member states (a NAMED bundle);
+      //   else work_state → [work_state] (a single state);
+      //   else company.default_work_state → [default] (the company fallback);
+      //   else [] → national-only.
+      // A group expands to its states and feeds the SAME holiday.state UNION predicate as a bare
+      // work_state — one query, one codepath — so a single-state group and the equivalent work_state
+      // resolve identically, and a group can never diverge from the state path.
       const [loc] = await tx
-        .select({ ws: employment.workState, cds: company.defaultWorkState })
+        .select({
+          ws: employment.workState,
+          cds: company.defaultWorkState,
+          groupStates: holidayGroup.states,
+        })
         .from(employment)
         .innerJoin(company, eq(company.id, employment.companyId))
+        .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
         .where(eq(employment.id, p.employmentId))
         .limit(1);
-      const effState = loc?.ws ?? loc?.cds ?? null;
+      const states: string[] = loc?.groupStates
+        ? (loc.groupStates as string[])
+        : loc?.ws
+          ? [loc.ws]
+          : loc?.cds
+            ? [loc.cds]
+            : [];
       const hols = await tx
         .select({ d: holiday.holidayDate })
         .from(holiday)
@@ -298,7 +317,7 @@ export async function requestLeave(
           and(
             gte(holiday.holidayDate, p.startDate),
             lte(holiday.holidayDate, p.endDate),
-            effState ? or(isNull(holiday.state), eq(holiday.state, effState)) : isNull(holiday.state),
+            states.length ? or(isNull(holiday.state), inArray(holiday.state, states)) : isNull(holiday.state),
           ),
         );
       workingDayCount = workingDays(p.startDate, p.endDate, new Set(hols.map((h) => h.d)));

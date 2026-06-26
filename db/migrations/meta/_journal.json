@@ -701,6 +701,34 @@
       "when": 1781861630000,
       "tag": "0099_job_function_partner_roles",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1781861640000,
+      "tag": "0100_holiday_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1781861650000,
+      "tag": "0101_claim_item_rate_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1781861660000,
+      "tag": "0102_tp1_self_relief",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1781861670000,
+      "tag": "0103_pay_component_rule",
+      "breakpoints": true
     }
   ]
 }

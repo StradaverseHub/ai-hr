@@ -29,9 +29,11 @@ import {
   person,
   rosterAssignment,
   shift,
+  tp1Relief,
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
-import type { ShiftDifferential } from '../db/schema';
+import type { ShiftDifferential, PayRule } from '../db/schema';
+import { resolvePayRule } from './pay-rule';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -309,6 +311,9 @@ export async function setPayrollInput(
           overtimeAmount: overtimeAmount.toFixed(2),
           bonusAmount: bonusAmount.toFixed(2),
           tp1Deduction: tp1Deduction.toFixed(2),
+          // ADR-0050 §0.4: an admin write resets TP1 provenance to manual (null) → sticky, so a later
+          // TP1 self-relief prefill leaves this override untouched.
+          tp1Source: null,
           zakat: zakat.toFixed(2),
           updatedAt: sql`now()`,
         })
@@ -324,6 +329,8 @@ export async function setPayrollInput(
           overtimeAmount: overtimeAmount.toFixed(2),
           bonusAmount: bonusAmount.toFixed(2),
           tp1Deduction: tp1Deduction.toFixed(2),
+          // Manual provenance (null is the column default; set explicitly for clarity).
+          tp1Source: null,
           zakat: zakat.toFixed(2),
         })
         .returning({ id: payrollInput.id });
@@ -380,6 +387,190 @@ export async function setPayrollDeductionInput(
       },
       tx,
     );
+  });
+}
+
+/**
+ * Prefill a draft batch's TP1 personal-relief deduction from the employee's yearly self-service
+ * declaration (ADR-0050, #1.1.3). The employee declares ONE annual TP1 amount per assessment year on
+ * /me; the latest SUBMITTED row feeds monthly PCB here.
+ *
+ * The kernel SUMS each month's `st.lp` into `acc.lpAccumulated` and PCB consumes `∑LP + LP₁`, so feeding
+ * the full annual every month over-relieves. Per ADR-0050 §0.1 (delta method) the feed is
+ *   feed = max(0, annual − ∑LP_already_accumulated_this_year_for_the_paymaster_employment)
+ * reading `∑LP` by replaying this assessment year's prior payslips' `st.lp` — the SAME source the kernel
+ * uses — so `∑LP + LP₁` converges to the declared annual, claimed exactly once. Self-correcting under
+ * mid-year adoption, re-run/idempotency, and mid-year correction.
+ *
+ * Routing (§0.5): the relief is keyed by person but tp1_deduction is per-employment, so for a person with
+ * concurrent employments in the batch it is written ONLY to `designated_paymaster_employment_id` (when set;
+ * else the single employment of that person in the batch). Other employments are left untouched.
+ *
+ * Provenance (§0.4): writes/refreshes only a tp1_deduction whose `tp1_source = 'tp1_self'` (or a row that
+ * has none yet), and stamps `tp1_source = 'tp1_self'`. A row last set by the admin form (`tp1_source` null)
+ * is a manual override and is left untouched. Uses a targeted `.update().set({ tp1Deduction })` that
+ * preserves overtime/bonus/zakat/claimAllowance — never `setPayrollInput` (which would zero them).
+ * Draft-only; throws `BatchNotDraftError` otherwise.
+ */
+export async function prefillTp1FromSelfRelief(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<{ applied: number; skipped: number }> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        id: payrollBatch.id,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        status: payrollBatch.status,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+
+    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+
+    // Active employees of this batch's company in the period (same active-set rule as generatePayslips).
+    const emps = await tx
+      .select({
+        employmentId: employment.id,
+        personId: employment.personId,
+        designatedPaymaster: person.designatedPaymasterEmploymentId,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        ),
+      );
+    if (emps.length === 0) return { applied: 0, skipped: 0 };
+
+    // §0.5 routing: per person, the employment that should carry the relief in THIS batch — the
+    // designated paymaster if it is among the batch's employments, else (no paymaster set) the person's
+    // single employment here. A person with >1 employment in the batch and no paymaster is ambiguous: skip
+    // to avoid double-counting (the kernel can't know which one is the paymaster).
+    const batchEmpIds = new Set(emps.map((e) => e.employmentId));
+    const byPerson = new Map<string, typeof emps>();
+    for (const e of emps) {
+      const list = byPerson.get(e.personId) ?? [];
+      list.push(e);
+      byPerson.set(e.personId, list);
+    }
+    const targetByPerson = new Map<string, string>(); // personId → employmentId to feed
+    for (const [personId, list] of byPerson) {
+      const paymaster = list[0].designatedPaymaster;
+      if (paymaster && batchEmpIds.has(paymaster)) targetByPerson.set(personId, paymaster);
+      else if (list.length === 1) targetByPerson.set(personId, list[0].employmentId);
+      // else: >1 employment in this batch and no paymaster among them → ambiguous, skip.
+    }
+    if (targetByPerson.size === 0) return { applied: 0, skipped: 0 };
+
+    // Latest SUBMITTED annual declaration per person for this assessment year (§0.6: payPeriod's year).
+    const personIds = [...targetByPerson.keys()];
+    const declarations = await tx
+      .select({
+        personId: tp1Relief.personId,
+        amount: tp1Relief.tp1Amount,
+        createdAt: tp1Relief.createdAt,
+      })
+      .from(tp1Relief)
+      .where(
+        and(
+          inArray(tp1Relief.personId, personIds),
+          eq(tp1Relief.assessmentYear, pYear),
+          eq(tp1Relief.status, 'submitted'),
+        ),
+      )
+      .orderBy(desc(tp1Relief.createdAt));
+    const annualByPerson = new Map<string, number>();
+    for (const d of declarations) {
+      if (!annualByPerson.has(d.personId)) annualByPerson.set(d.personId, Number(d.amount)); // latest wins
+    }
+    if (annualByPerson.size === 0) return { applied: 0, skipped: 0 };
+
+    // ∑LP already accumulated this assessment year per target employment — replay prior payslips' st.lp,
+    // the SAME ledger the PCB accumulator uses (generatePayslips). Prior = earlier pay periods this year.
+    const targetEmpIds = personIds.map((pid) => targetByPerson.get(pid)!).filter(Boolean);
+    const priorSlips = targetEmpIds.length
+      ? await tx
+          .select({ employmentId: payslip.employmentId, period: payrollBatch.payPeriod, statutory: payslip.statutory })
+          .from(payslip)
+          .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+          .where(
+            and(
+              inArray(payslip.employmentId, targetEmpIds),
+              like(payrollBatch.payPeriod, `${pYear}-%`),
+              lt(payrollBatch.payPeriod, batch.payPeriod),
+            ),
+          )
+      : [];
+    const lpAccByEmp = new Map<string, number>();
+    for (const s of priorSlips) {
+      const st = (s.statutory ?? {}) as { lp?: number };
+      lpAccByEmp.set(s.employmentId, round2((lpAccByEmp.get(s.employmentId) ?? 0) + Number(st.lp ?? 0)));
+    }
+
+    // Existing draft inputs for these target employments — preserve siblings; honour provenance.
+    const existingInputs = await tx
+      .select({
+        id: payrollInput.id,
+        employmentId: payrollInput.employmentId,
+        tp1Deduction: payrollInput.tp1Deduction,
+        tp1Source: payrollInput.tp1Source,
+      })
+      .from(payrollInput)
+      .where(and(eq(payrollInput.batchId, p.batchId), inArray(payrollInput.employmentId, targetEmpIds)));
+    const existingByEmp = new Map(existingInputs.map((r) => [r.employmentId, r]));
+
+    let applied = 0;
+    let skipped = 0;
+    for (const personId of personIds) {
+      const employmentId = targetByPerson.get(personId)!;
+      const annual = annualByPerson.get(personId);
+      if (annual == null) continue; // no submitted declaration this year
+      const lpAcc = lpAccByEmp.get(employmentId) ?? 0;
+      const feed = Math.max(0, round2(annual - lpAcc)); // §0.1/0.2 delta — never grows ∑LP past the annual
+      const prior = existingByEmp.get(employmentId);
+      // §0.4: refresh only a prefill-set row (or one with no row yet). A manual admin override
+      // (tp1_source null but a tp1_deduction already keyed) is sticky — skip it.
+      if (prior) {
+        const manualOverride = prior.tp1Source !== 'tp1_self' && Number(prior.tp1Deduction) > 0;
+        if (manualOverride) {
+          skipped += 1;
+          continue;
+        }
+        await tx
+          .update(payrollInput)
+          .set({ tp1Deduction: feed.toFixed(2), tp1Source: 'tp1_self', updatedAt: sql`now()` })
+          .where(eq(payrollInput.id, prior.id));
+      } else {
+        await tx.insert(payrollInput).values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId,
+          tp1Deduction: feed.toFixed(2),
+          tp1Source: 'tp1_self',
+        });
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-batch',
+        aggregateId: p.batchId,
+        eventType: 'payroll-batch.input-set',
+        actor: actorOf(ctx),
+        // ADR-0030 Layer 0: figures live on payroll_input; reference, not cleartext.
+        payload: { employmentId, source: 'tp1_self', fieldsChanged: ['tp1Deduction'] },
+      });
+      applied += 1;
+    }
+    return { applied, skipped };
   });
 }
 
@@ -836,6 +1027,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     type CompRow = {
       code: string; name: string; kind: string; amount: number; rounding: string;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
+      rule: PayRule | null; // Payroll Setup — configurable pay-rule; null ⇒ stored amount (legacy behaviour).
     };
     const recurringByEmp = new Map<string, CompRow[]>();
     const batchCompByEmp = new Map<string, CompRow[]>();
@@ -853,6 +1045,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         nonPayable: payComponent.isNonPayable,
         prorates: payComponent.prorates,
         rounding: payComponent.roundingMethod,
+        rule: payComponent.rule, // Payroll Setup — read for the resolver (null on every legacy row).
       };
       const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string } & Omit<CompRow, 'amount'>) => {
         const list = map.get(r.employmentId) ?? [];
@@ -877,6 +1070,26 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
         .where(eq(payrollBatchComponent.batchId, p.batchId));
       for (const r of bat) push(batchCompByEmp, r);
+    }
+
+    // Payroll Setup — attendance worked HOURS per employment, for `per_hour` rules only. Computed once here
+    // (gated on typedComponents) so the per-component resolver reads a map, not a re-query. No attendance
+    // rows ⇒ 0 hours, a real, non-erroring outcome (paid by the hour, worked no hours) — there is NO division
+    // in the resolver, so a zero-hours employee never aborts the batch.
+    const hoursByEmp = new Map<string, number>();
+    if (typedComponents && empIds.length) {
+      const att = await tx
+        .select({ employmentId: attendance.employmentId, minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
+        .from(attendance)
+        .where(
+          and(
+            inArray(attendance.employmentId, empIds),
+            gte(attendance.attendanceDate, periodStart),
+            lte(attendance.attendanceDate, periodEnd),
+          ),
+        )
+        .groupBy(attendance.employmentId);
+      for (const a of att) hoursByEmp.set(a.employmentId, Number(a.minutes) / 60);
     }
 
     /** Per-employee earnings, from the typed components (flag on) or the legacy comp+input (flag off).
@@ -908,19 +1121,39 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       let basicRaw = 0, basicGross = 0, wageAllow = 0, hrdfAllow = 0, ot = 0, bonusAmt = 0, reimburse = 0, deduct = 0;
       const recordLines: { code: string; name: string; amount: number }[] = [];
       const comps = [...(recurringByEmp.get(e.employmentId) ?? []), ...(batchCompByEmp.get(e.employmentId) ?? [])];
+
+      // Payroll Setup — pay-rule scope (shared by all components). `daysWorked` reflects the partial period
+      // (factor × dim); `hours` is the employee's attendance hours. NOTE: `per_day`/`per_hour` rules require
+      // the component to have prorates=false (validatePayRule rejects the combo), so the kernel's `factor`
+      // multiplier below does NOT also apply to them — no double-proration. `percent_of basic` reads the
+      // BASIC component's resolved amount (computed once below, order-independent). There is NO division in
+      // the resolver, so a zero-days / zero-hours employee can never abort the batch.
+      const rscope = { basic: 0, daysWorked: factor * dim, hours: hoursByEmp.get(e.employmentId) ?? 0 };
+      // Resolve the BASIC component's amount first so `percent_of basic` is order-independent. BASIC itself
+      // never references percent_of basic, so basic=0 in its own scope is harmless.
+      const basicComp = comps.find((c) => c.code === 'BASIC');
+      rscope.basic = basicComp ? resolvePayRule(basicComp.rule, rscope, basicComp.amount) : 0;
+      // A single resolved value per component, substituted at BOTH read sites (the line-868 amount and the
+      // line-877 basicRaw accumulator) so the gross AND the statutory base see the same number.
+      const resolveAmount = (c: (typeof comps)[number]): number =>
+        c.rule && c.rule.kind !== 'fixed' ? resolvePayRule(c.rule, rscope, c.amount) : c.amount;
+
       for (const c of comps) {
-        const applied = roundAmount(c.prorates ? c.amount * factor : c.amount, c.rounding);
+        const resolved = resolveAmount(c);
+        const applied = roundAmount(c.prorates ? resolved * factor : resolved, c.rounding);
         if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
         // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce
         // a wrong payslip. (Write-time guards in core/pay-components.ts now reject the same at entry/import.)
+        // PRECEDENCE: the flag check runs on the resolved value — a rule does not let an unsupported
+        // component through (an unsupported-PCB component still throws regardless of what its rule resolves to).
         if (c.pcb && (c.nonPayable || (!c.epf && !c.socso))) {
           throw new UnsupportedPayComponentError(c.code);
         }
         // A non-payable, non-taxable component (e.g. a record-only BIK) carries onto the payslip as an
         // INFORMATIONAL record line — it does NOT affect any cash bucket, gross, or net (ADR-0025 §5 / Option A).
         if (c.nonPayable) { recordLines.push({ code: c.code, name: c.name, amount: applied }); continue; }
-        if (c.code === 'BASIC') { basicRaw += c.amount; basicGross = round2(basicGross + applied); continue; }
+        if (c.code === 'BASIC') { basicRaw += resolved; basicGross = round2(basicGross + applied); continue; }
         if (c.epf && c.socso) { wageAllow = round2(wageAllow + applied); if (c.hrdf) hrdfAllow = round2(hrdfAllow + applied); }
         else if (!c.epf && c.socso) ot = round2(ot + applied);
         else if (c.epf && !c.socso) bonusAmt = round2(bonusAmt + applied);

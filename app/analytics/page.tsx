@@ -1,51 +1,73 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listDepartments } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees } from '@/core/read';
+import { listCostCenters } from '@/core/admin';
 import {
+  analyticsDateRange,
   changeJobTransactions,
+  demographicsByNationality,
   headcountSummary,
+  leaveBalancesSummary,
+  leaveUtilisation,
   masterDataExport,
+  movementByMonth,
   newHires,
+  parseAnalyticsFilters,
+  sickLeaveTrend,
   terminations,
-  turnoverRate,
+  turnoverRateFiltered,
+  workforceDemographics,
   type ReportFilter,
 } from '@/core/analytics';
-import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-
-const isDate = (v: string | undefined): v is string => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { Card, PageHeader, SectionHeader } from '@/components/ui';
+import { BarChart } from '@/components/charts/BarChart';
+import { PieChart } from '@/components/charts/PieChart';
+import { LineChart } from '@/components/charts/LineChart';
+import { ChartCard } from '@/components/charts/ChartCard';
+import { FilterBar } from './FilterBar';
+import { bucketLabel, localizeDimension } from './labels';
 
 export default async function AnalyticsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; departmentId?: string; q?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('analytics');
   const sp = await searchParams;
-  const today = new Date().toISOString().slice(0, 10);
-  const from = isDate(sp.from) ? sp.from : `${today.slice(0, 4)}-01-01`;
-  const to = isDate(sp.to) ? sp.to : today;
-  const departmentId = sp.departmentId && UUID.test(sp.departmentId) ? sp.departmentId : undefined;
-  const q = sp.q ? sp.q.slice(0, 100) : undefined;
-  const filter: ReportFilter = { departmentId, q };
+  const get = (k: string) => sp[k];
+  const { from, to } = analyticsDateRange(get);
+  // Single filter source of truth — the same parse the export route uses (no screen/export drift).
+  const filters = parseAnalyticsFilters(get);
+  const filter: ReportFilter = { departmentId: filters.departmentId, q: filters.q };
 
-  const departments = await listDepartments(s, { companyIds: scopeIds });
-
-  const [hc, hires, terms, turnover, changeJobs] = await Promise.all([
-    headcountSummary(s, scopeIds, { asOf: to }),
-    newHires(s, scopeIds, { from, to, filter }),
-    terminations(s, scopeIds, { from, to, filter }),
-    turnoverRate(s, scopeIds, { from, to }),
-    changeJobTransactions(s, scopeIds, { from, to, filter }),
+  const [departments, companies, costCentres, employees] = await Promise.all([
+    listDepartments(s, { companyIds: scopeIds }),
+    listCompanies(s),
+    listCostCenters(s, { companyIds: scopeIds }),
+    listEmployees(s, scopeIds),
   ]);
+
+  const [hc, hires, terms, turnover, changeJobs, demographics, nationality, leaveUtil, leaveBalances, sickTrend, movement] =
+    await Promise.all([
+      headcountSummary(s, scopeIds, { asOf: to }),
+      newHires(s, scopeIds, { from, to, filter }),
+      terminations(s, scopeIds, { from, to, filter }),
+      turnoverRateFiltered(s, scopeIds, { from, to, filters }),
+      changeJobTransactions(s, scopeIds, { from, to, filter }),
+      workforceDemographics(s, scopeIds, { asOf: to, filters }),
+      demographicsByNationality(s, scopeIds, { asOf: to, filters }),
+      leaveUtilisation(s, scopeIds, filters),
+      leaveBalancesSummary(s, scopeIds, filters),
+      sickLeaveTrend(s, scopeIds, { from, to, filters }),
+      movementByMonth(s, scopeIds, { from, to, filters }),
+    ]);
   const masterCount = (await masterDataExport(s, scopeIds, { includeComp: false, filter })).length;
 
   // Carry the period + scoping filters onto every export link.
   const filterQs =
-    (departmentId ? `&departmentId=${encodeURIComponent(departmentId)}` : '') +
-    (q ? `&q=${encodeURIComponent(q)}` : '');
+    (filters.departmentId ? `&departmentId=${encodeURIComponent(filters.departmentId)}` : '') +
+    (filters.q ? `&q=${encodeURIComponent(filters.q)}` : '');
   const exportHref = (report: string, format: string, extra = '') =>
     `/analytics/export?report=${report}&from=${from}&to=${to}&format=${format}${extra}${filterQs}`;
 
@@ -74,39 +96,48 @@ export default async function AnalyticsPage({
     ['terminations', terms.length],
   ];
 
+  // Localize the dimension buckets (enum codes + Unknown/Unassigned sentinels) into chart categories.
+  const genderData = demographics.byGender.map((r) => ({ label: bucketLabel(r.name, t, 'gender'), value: r.count }));
+  const maritalData = demographics.byMarital.map((r) => ({ label: bucketLabel(r.name, t, 'marital'), value: r.count }));
+  const ageData = localizeDimension(demographics.byAgeBand, t, 'plain'); // age bands + Unknown
+  const nationalityData = nationality ? localizeDimension(nationality, t, 'nationality') : null;
+  const deptData = localizeDimension(demographics.byDepartment, t, 'plain');
+  const locationData = localizeDimension(demographics.byLocation, t, 'plain');
+  const costCentreData = localizeDimension(demographics.byCostCentre, t, 'plain');
+  const statusData = localizeDimension(demographics.byEmploymentStatus, t, 'assignment');
+  // Distinct work-states present in the scoped roster → the Location filter options.
+  const locationOptions = [...new Set(demographics.byLocation.map((r) => r.name).filter((n) => n !== '__unknown__'))]
+    .sort()
+    .map((v) => ({ value: v, label: v }));
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
 
-      {/* Period + scoping filter */}
+      {/* Unified filter bar (form-GET, auto-submit on select change) */}
       <Card>
-        <form className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5">
-          <Field label={t('from')}>
-            <input name="from" type="date" defaultValue={from} className={inputCls} />
-          </Field>
-          <Field label={t('to')}>
-            <input name="to" type="date" defaultValue={to} className={inputCls} />
-          </Field>
-          <Field label={t('filterDepartment')}>
-            <select name="departmentId" defaultValue={departmentId ?? ''} className={inputCls}>
-              <option value="">{t('allDepartments')}</option>
-              {departments.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label={t('search')}>
-            <input name="q" type="search" defaultValue={q ?? ''} placeholder={t('searchPlaceholder')} className={inputCls} />
-          </Field>
-          <div className="flex items-center gap-2">
-            <button className={btnPrimary}>{t('apply')}</button>
-            <Link href="/analytics" className="text-sm text-muted-foreground hover:text-foreground">
-              {t('reset')}
-            </Link>
-          </div>
-        </form>
+        <FilterBar
+          from={from}
+          to={to}
+          values={{
+            companyId: filters.companyId,
+            departmentId: filters.departmentId,
+            costCenterId: filters.costCenterId,
+            lifecycleStatus: filters.lifecycleStatus,
+            assignmentStatus: filters.assignmentStatus,
+            gender: filters.gender,
+            nationality: filters.nationality,
+            workState: filters.workState,
+            managerEmploymentId: filters.managerEmploymentId,
+          }}
+          options={{
+            companies: companies.map((c) => ({ value: c.id, label: c.name })),
+            departments: departments.map((d) => ({ value: d.id, label: d.name })),
+            costCentres: costCentres.map((c) => ({ value: c.id, label: `${c.code} · ${c.name}` })),
+            managers: employees.map((e) => ({ value: e.employmentId, label: e.name })),
+            locations: locationOptions,
+          }}
+        />
       </Card>
 
       {/* Headline metrics */}
@@ -118,6 +149,94 @@ export default async function AnalyticsPage({
           </div>
         ))}
       </div>
+
+      {/* ── Workforce demographics ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title={t('chartGender')} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
+          <PieChart id="chart-gender" data={genderData} ariaLabel={t('chartGender')} />
+        </ChartCard>
+        <ChartCard title={t('chartMarital')} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
+          <PieChart id="chart-marital" data={maritalData} ariaLabel={t('chartMarital')} />
+        </ChartCard>
+        <ChartCard title={t('chartAgeBand')} svgId="chart-age" filenameBase={`age-band_${to}`} exportLabel={t('exportChart')}>
+          <BarChart id="chart-age" categories={ageData.categories} series={[{ label: t('chartAgeBand'), values: ageData.values }]} ariaLabel={t('chartAgeBand')} />
+        </ChartCard>
+        {nationalityData && (
+          <ChartCard
+            title={t('chartNationality')}
+            svgId="chart-nationality"
+            filenameBase={`nationality_${to}`}
+            exportLabel={t('exportChart')}
+            footnote={t('nationalityFootnote')}
+          >
+            <BarChart
+              id="chart-nationality"
+              categories={nationalityData.categories}
+              series={[{ label: t('chartNationality'), values: nationalityData.values }]}
+              ariaLabel={t('chartNationality')}
+            />
+          </ChartCard>
+        )}
+      </div>
+
+      {/* ── Headcount (dept / company / location) ──────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title={t('chartHeadcountByDept')} svgId="chart-hc-dept" filenameBase={`headcount-dept_${to}`} exportLabel={t('exportChart')}>
+          <BarChart id="chart-hc-dept" categories={deptData.categories} series={[{ label: t('chartHeadcountByDept'), values: deptData.values }]} ariaLabel={t('chartHeadcountByDept')} />
+        </ChartCard>
+        <ChartCard title={t('chartHeadcountByLocation')} svgId="chart-hc-loc" filenameBase={`headcount-location_${to}`} exportLabel={t('exportChart')}>
+          <BarChart id="chart-hc-loc" categories={locationData.categories} series={[{ label: t('chartHeadcountByLocation'), values: locationData.values }]} ariaLabel={t('chartHeadcountByLocation')} />
+        </ChartCard>
+        <ChartCard title={t('chartHeadcountByCostCentre')} svgId="chart-hc-cc" filenameBase={`headcount-costcentre_${to}`} exportLabel={t('exportChart')}>
+          <BarChart id="chart-hc-cc" categories={costCentreData.categories} series={[{ label: t('chartHeadcountByCostCentre'), values: costCentreData.values }]} ariaLabel={t('chartHeadcountByCostCentre')} />
+        </ChartCard>
+        <ChartCard title={t('chartEmploymentStatus')} svgId="chart-asg-status" filenameBase={`employment-status_${to}`} exportLabel={t('exportChart')}>
+          <BarChart id="chart-asg-status" categories={statusData.categories} series={[{ label: t('chartEmploymentStatus'), values: statusData.values }]} ariaLabel={t('chartEmploymentStatus')} />
+        </ChartCard>
+      </div>
+
+      {/* ── Leave ──────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <ChartCard title={t('chartLeaveUtilisation')} svgId="chart-leave-util" filenameBase={`leave-utilisation_${to}`} exportLabel={t('exportChart')}>
+          <BarChart
+            id="chart-leave-util"
+            grouped
+            categories={leaveUtil.map((r) => r.name)}
+            series={[
+              { label: t('leaveGranted'), values: leaveUtil.map((r) => r.granted) },
+              { label: t('leaveTaken'), values: leaveUtil.map((r) => r.taken) },
+            ]}
+            ariaLabel={t('chartLeaveUtilisation')}
+          />
+        </ChartCard>
+        <ChartCard title={t('chartLeaveBalances')} svgId="chart-leave-bal" filenameBase={`leave-balances_${to}`} exportLabel={t('exportChart')}>
+          <BarChart id="chart-leave-bal" categories={leaveBalances.map((r) => r.name)} series={[{ label: t('chartLeaveBalances'), values: leaveBalances.map((r) => r.balance) }]} ariaLabel={t('chartLeaveBalances')} />
+        </ChartCard>
+        <ChartCard
+          title={t('chartSickTrend')}
+          svgId="chart-sick"
+          filenameBase={`sick-trend_${from}_${to}`}
+          exportLabel={t('exportChart')}
+          isEmpty={!sickTrend.configured}
+          emptyLabel={t('sickNotConfigured')}
+        >
+          <LineChart id="chart-sick" labels={sickTrend.series.map((r) => r.month)} series={[{ label: t('chartSickTrend'), values: sickTrend.series.map((r) => r.days) }]} ariaLabel={t('chartSickTrend')} />
+        </ChartCard>
+      </div>
+
+      {/* ── Employee movement ──────────────────────────────────────────────── */}
+      <ChartCard title={t('chartMovement')} svgId="chart-movement" filenameBase={`movement_${from}_${to}`} exportLabel={t('exportChart')}>
+        <LineChart
+          id="chart-movement"
+          labels={movement.map((r) => r.month)}
+          series={[
+            { label: t('movementHires'), values: movement.map((r) => r.hires) },
+            { label: t('movementLeavers'), values: movement.map((r) => r.leavers) },
+            { label: t('movementNet'), values: movement.map((r) => r.netChange) },
+          ]}
+          ariaLabel={t('chartMovement')}
+        />
+      </ChartCard>
 
       {/* Headcount by department */}
       <Card className="overflow-hidden">

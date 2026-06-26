@@ -14,6 +14,7 @@ import {
   employment,
   employmentTypeEnum,
   holiday,
+  holidayGroup,
   jobGrade,
   leaveLedger,
   leaveRequest,
@@ -463,6 +464,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
         workState: employment.workState,
+        holidayGroupId: employment.holidayGroupId,
+        holidayGroupName: holidayGroup.name,
         gradeId: employment.gradeId,
         gradeName: jobGrade.name,
       })
@@ -470,6 +473,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
       .where(eq(employment.id, employmentId))
       .limit(1);
     return row ?? null;

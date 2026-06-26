@@ -105,6 +105,20 @@ describe('Wave 3 #9-3 — typed components are byte-identical to the legacy kern
     expect(typed.statutory).toEqual(legacy.statutory);
   });
 
+  // Payroll Setup — the configurable pay-rule column is nullable. The real regression surface is the
+  // flag-ON + every-rule-null path: the new resolver branch must be byte-identical to the legacy golden when
+  // no component carries a rule (i.e. `rule == null`, which the backfill always produces). This guards the
+  // "new branch entered, rule skipped" path.
+  it('flag ON with every rule = null: identical payslip + statutory (rule column is inert when null)', async () => {
+    const { legacy, typed } = await runCompat(base, '2026-01-01');
+    // Sanity: the backfilled components really do all have a null rule (so this exercises the null branch).
+    const rules = await owner.db.select({ rule: schema.payComponent.rule }).from(schema.payComponent);
+    expect(rules.length).toBeGreaterThan(0);
+    expect(rules.every((r) => r.rule == null)).toBe(true);
+    expect(typed.cols).toEqual(legacy.cols);
+    expect(typed.statutory).toEqual(legacy.statutory);
+  });
+
   it('RECORD-ONLY: a non-payable, non-taxable component is recorded on the payslip with zero gross/net delta', async () => {
     const a = adminCtx(base);
     const e = await hireEmployee(a, {

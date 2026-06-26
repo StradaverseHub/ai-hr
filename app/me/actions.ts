@@ -17,6 +17,7 @@ import {
 } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
+import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { submitResignation, withdrawResignation } from '@/core/offboarding';
 import {
   createGoal,
@@ -174,6 +175,34 @@ export async function myRequestProfileChange(formData: FormData) {
   }
   revalidatePath('/me');
   redirect('/me?toast=Change+requested+for+approval');
+}
+
+// ── Self Personal Tax Relief (ADR-0050, #1.1.3) — yearly TP1 self-service ──
+
+export async function mySaveTp1Draft(formData: FormData) {
+  const { s } = await resolveMe();
+  const assessmentYear = Number(formData.get('assessmentYear'));
+  const tp1Amount = Number(formData.get('tp1Amount'));
+  try {
+    await saveTp1Draft(s, { assessmentYear, tp1Amount });
+  } catch (e) {
+    redirect(`/me/tax-relief?year=${assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me/tax-relief');
+  redirect(`/me/tax-relief?year=${assessmentYear}&toast=Draft+saved`);
+}
+
+export async function mySubmitTp1(formData: FormData) {
+  const { s } = await resolveMe();
+  const assessmentYear = Number(formData.get('assessmentYear'));
+  const tp1Amount = Number(formData.get('tp1Amount'));
+  try {
+    await submitTp1(s, { assessmentYear, tp1Amount });
+  } catch (e) {
+    redirect(`/me/tax-relief?year=${assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me/tax-relief');
+  redirect(`/me/tax-relief?year=${assessmentYear}&toast=TP1+submitted`);
 }
 
 // ── Resignation (ADR-0042, #29) — employee-initiated, HR-approved offboarding ──

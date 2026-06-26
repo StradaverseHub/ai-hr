@@ -55,11 +55,22 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0].trim() === ''));
 }
 
+/** CSV formula-injection guard. A cell beginning with `= + - @ TAB CR` is interpreted as a formula by
+ *  Excel / Sheets / LibreOffice when the file is opened, so an employee fullName of `=HYPERLINK(...)` or
+ *  `@SUM(...)` would execute. Neutralise it by prefixing a single quote (the standard OWASP mitigation),
+ *  which the spreadsheet strips on display. Applied to every cell toCsv emits — and exported standalone
+ *  so callers can sanitise before any other serializer too. */
+export function csvSafeCell(v: string | number | null | undefined): string {
+  const s = v == null ? '' : String(v);
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+}
+
 /** Serialise rows to RFC-4180 CSV (CRLF endings; a field is quoted when it contains a comma,
- *  quote, or newline, with embedded quotes doubled). Symmetric with parseCsv. */
+ *  quote, or newline, with embedded quotes doubled). Symmetric with parseCsv. Each cell is first run
+ *  through csvSafeCell so a leading-formula value can never execute on open (CSV-injection hardening). */
 export function toCsv(rows: (string | number | null | undefined)[][]): string {
   const esc = (v: string | number | null | undefined) => {
-    const s = v == null ? '' : String(v);
+    const s = csvSafeCell(v);
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return rows.map((r) => r.map(esc).join(',')).join('\r\n') + '\r\n';

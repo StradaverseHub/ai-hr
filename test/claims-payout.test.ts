@@ -32,6 +32,11 @@ const hire = (ctx: SessionContext, b: Base, name: string) =>
     hiredOn: '2026-01-01',
   });
 
+// An incurred date inside the 45-day receipt window (submitClaim now rejects older expense dates). These
+// payout tests only care about the routing of an approved claim, not the specific expense date.
+const recent = (daysBack = 5): string =>
+  new Date(new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`).getTime() - daysBack * 86400000).toISOString().slice(0, 10);
+
 const payslipFor = async (batchId: string) => {
   const [ps] = await owner.db
     .select()
@@ -67,7 +72,7 @@ describe('ADR-0021 — claim payout', () => {
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 500, effectiveFrom: '2026-01-01' });
     // A taxable claim exists and is even approved — but is NEVER prefilled onto the batch.
     const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: true, requiresReceipt: false });
-    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 300, incurredOn: '2026-05-02' });
+    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 300, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: id, decision: 'approve' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
@@ -90,7 +95,7 @@ describe('ADR-0021 — claim payout', () => {
     const e = await hire(a, base, 'Taxable');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     const { id: typeId } = await createClaimType(a, { code: 'PHONE', name: 'Phone allowance', defaultTaxable: true, requiresReceipt: false });
-    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 300, incurredOn: '2026-05-02' });
+    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 300, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: id, decision: 'approve' }); // taxable defaulted true
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
@@ -124,9 +129,9 @@ describe('ADR-0021 — claim payout', () => {
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
     const { id: taxableType } = await createClaimType(a, { code: 'PHONE', name: 'Phone', defaultTaxable: true, requiresReceipt: false });
     const { id: nonTaxableType } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: false, requiresReceipt: false });
-    const { id: tx } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: taxableType, amount: 200, incurredOn: '2026-05-02' });
+    const { id: tx } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: taxableType, amount: 200, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: tx, decision: 'approve' });
-    const { id: nt } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: nonTaxableType, amount: 999, incurredOn: '2026-05-03' });
+    const { id: nt } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: nonTaxableType, amount: 999, incurredOn: recent(4) });
     await decideClaim(a, { claimRequestId: nt, decision: 'approve' });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
@@ -149,7 +154,7 @@ describe('ADR-0021 — claim payout', () => {
       bankAccountNo: '5140-1234-5678',
     });
     const { id: typeId } = await createClaimType(a, { code: 'TRAVEL', name: 'Travel', defaultTaxable: false, requiresReceipt: false });
-    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 125.5, incurredOn: '2026-06-01' });
+    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 125.5, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: id, decision: 'approve' }); // non-taxable
 
     const due = await listReimbursementsDue(a);
@@ -180,7 +185,7 @@ describe('ADR-0021 — claim payout', () => {
     const e = await hire(a, base, 'WrongRoute');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, effectiveFrom: '2026-01-01' });
     const { id: typeId } = await createClaimType(a, { code: 'PHONE', name: 'Phone', defaultTaxable: true, requiresReceipt: false });
-    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 100, incurredOn: '2026-06-01' });
+    const { id } = await submitClaim(a, { employmentId: e.employmentId, claimTypeId: typeId, amount: 100, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: id, decision: 'approve' }); // taxable
 
     const { paid } = await markReimbursementsPaid(a, { claimIds: [id], payoutRef: 'x' });

@@ -685,8 +685,16 @@ export default async function MePage({
       {/* My Payroll — Self Personal Tax Relief (LHDN TP1). Year-scoped, grouped per company. */}
       <Card className="mt-6 overflow-hidden">
         <SectionHeader title={t('taxReliefTp1')} count={taxRelief.rows.length} />
-        <p className="px-4 pb-3 pt-1 text-xs text-muted-foreground">
+        <p className="px-4 pb-2 pt-1 text-xs text-muted-foreground">
           {t('taxReliefDescription', { year: String(taxRelief.year) })}
+        </p>
+        <p className="px-4 pb-3">
+          <Link
+            href="/me/tax-relief"
+            className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('manageTp1')} →
+          </Link>
         </p>
         {taxRelief.rows.length === 0 ? (
           <p className="px-4 pb-4 text-sm text-muted-foreground">{t('noTaxRelief')}</p>

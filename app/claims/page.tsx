@@ -1,8 +1,9 @@
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
-import { listClaimsForEmployment, listClaimTypes } from '@/core/claims';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { dateMinusDays, listClaimsForEmployment, listClaimTypes, RECEIPT_BACKDATE_DAYS } from '@/core/claims';
+import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { ClaimForm, type ClaimFormType } from '@/components/claim-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { cancelClaimAction, submitClaimAction } from './actions';
 
@@ -32,6 +33,15 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
 
   const [types, claims] = await Promise.all([listClaimTypes(s), listClaimsForEmployment(s, me.employmentId)]);
   const today = new Date().toISOString().slice(0, 10);
+  const minDate = dateMinusDays(today, RECEIPT_BACKDATE_DAYS);
+  const formTypes: ClaimFormType[] = types.map((ct) => ({
+    id: ct.id,
+    code: ct.code,
+    name: ct.name,
+    requiresReceipt: ct.requiresReceipt,
+    rateConfig: ct.policy?.rateConfig ?? null,
+    items: ct.items,
+  }));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -43,33 +53,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         {types.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noTypes')}</p>
         ) : (
-          <form action={submitClaimAction} className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('typeLabel')}>
-              <select name="claimTypeId" required className={inputCls}>
-                {types.map((ct) => (
-                  <option key={ct.id} value={ct.id}>
-                    {ct.name} ({ct.code}){ct.requiresReceipt ? ` · ${t('receiptRequired')}` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('amountLabel')}>
-              <input name="amount" type="number" min="0.01" step="0.01" required className={inputCls} />
-            </Field>
-            <Field label={t('incurredOnLabel')}>
-              <input name="incurredOn" type="date" required defaultValue={today} max={today} className={inputCls} />
-            </Field>
-            <Field label={t('receiptLabel')}>
-              <input name="receipt" type="file" accept="image/*,application/pdf" className="text-sm" />
-            </Field>
-            <label className="flex flex-col gap-1.5 sm:col-span-2">
-              <span className="text-xs font-medium text-muted-foreground">{t('descriptionLabel')}</span>
-              <input name="description" placeholder={t('descriptionPlaceholder')} className={inputCls} />
-            </label>
-            <div className="sm:col-span-2">
-              <Button type="submit">{t('submit')}</Button>
-            </div>
-          </form>
+          <ClaimForm types={formTypes} submitAction={submitClaimAction} todayUtc={today} minDate={minDate} />
         )}
       </Card>
 
@@ -93,6 +77,10 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
                 <tr key={c.id} className="border-t border-border align-top">
                   <td className="px-4 py-2.5">
                     <div className="font-medium">{c.typeName}</div>
+                    {c.itemName && <div className="text-xs text-muted-foreground">{c.itemName}</div>}
+                    {c.quantityKm != null && (
+                      <div className="text-xs text-muted-foreground">{t('distanceLabel')}: {c.quantityKm} km</div>
+                    )}
                     {c.description && <div className="text-xs text-muted-foreground">{c.description}</div>}
                     {c.attachments.map((a) => (
                       <a key={a.id} href={`/claims/attachment/${a.id}?inline=1`} target="_blank" rel="noopener noreferrer" className="mt-0.5 block text-xs text-primary underline-offset-2 hover:underline">

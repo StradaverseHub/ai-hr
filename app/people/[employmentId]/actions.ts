@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { endReportingLine, setEmploymentGrade, setEmploymentWorkState, setReportingLine, terminateEmployment, transferEmployee, updatePerson } from '@/core/org';
+import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { setEmploymentPayComponent } from '@/core/pay-components';
 import { packFor } from '@/localization/registry';
@@ -114,6 +114,16 @@ export async function setCompensationAction(formData: FormData) {
   redirect(`/people/${employmentId}?toast=Saved`);
 }
 
+/** Parse the unified "Holiday calendar" selector value into a discriminated selection. The single field
+ *  emits `""` (company default), `"state:<label>"` (a built-in state), or `"group:<id>"` (an HR group),
+ *  so a save of unrelated fields re-submits the existing selection rather than nulling it (clobber closed). */
+function parseHolidayCalendar(raw: FormDataEntryValue | null): HolidayCalendarSelection {
+  const v = String(raw ?? '');
+  if (v.startsWith('group:')) return { kind: 'group', groupId: v.slice('group:'.length) };
+  if (v.startsWith('state:')) return { kind: 'state', state: v.slice('state:'.length) };
+  return { kind: 'none' };
+}
+
 export async function setPersonAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));
@@ -124,8 +134,12 @@ export async function setPersonAction(formData: FormData) {
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: (formData.get('phone') as string) || null,
     });
-    // 2C: work state lives on the employment but is edited alongside personal details.
-    await setEmploymentWorkState(s, { employmentId, workState: String(formData.get('workState') ?? '') || null });
+    // Holiday calendar (state OR HR-defined group) — the SINGLE unified input that replaces the standalone
+    // work-state field, so the two assignment columns can never disagree.
+    await setEmploymentHolidayCalendar(s, {
+      employmentId,
+      selection: parseHolidayCalendar(formData.get('holidayCalendar')),
+    });
     // 2E (ADR-0041): seniority grade — same form, drives grade-scoped leave entitlements.
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
   } catch (e) {

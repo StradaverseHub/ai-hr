@@ -116,6 +116,12 @@ async function main() {
       .insert(schema.holiday)
       .values({ tenantId: DEV_TENANT_ID, country: 'MY', state: h.state ?? null, holidayDate: h.date, name: h.name });
   }
+  // Holiday grouping: one illustrative multi-state group (no holiday re-tagging). Assigned to a demo
+  // employee below so the group path resolving e.g. Sarawak Day / Pesta Kaamatan is demonstrable.
+  const [eastMalaysiaGroup] = await owner.db
+    .insert(schema.holidayGroup)
+    .values({ tenantId: DEV_TENANT_ID, name: 'East Malaysia', states: ['Sabah', 'Sarawak', 'Labuan'] })
+    .returning({ id: schema.holidayGroup.id });
   // The dev admin is a real principal in the audit trail: link it to a person so its actions
   // resolve to a name ("HR Admin") instead of the bare actor type. No employment, so it never
   // appears in People / org / headcount — it's a back-office identity, not an employee.
@@ -217,6 +223,14 @@ async function main() {
       bankAccountNo: `8800${p.ic.slice(0, 8)}`,
     });
   }
+
+  // Holiday grouping: assign Arjun (no bare work_state) to the East-Malaysia group so the group
+  // resolution path is demonstrable alongside Mei Ling's single-state (Sarawak) path. XOR-safe: he has
+  // no work_state, so only holiday_group_id is set.
+  await owner.db
+    .update(schema.employment)
+    .set({ holidayGroupId: eastMalaysiaGroup.id })
+    .where(eq(schema.employment.id, hired[3].employmentId));
 
   // Administrative backbone (multi-level) + cross-cutting lines so the org chart can render
   // typed connectors: functional, project, and dotted-line reporting.
