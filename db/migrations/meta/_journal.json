@@ -694,6 +694,13 @@
       "when": 1781861620000,
       "tag": "0098_leave_document_config",
       "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1781861630000,
+      "tag": "0099_job_function_partner_roles",
+      "breakpoints": true
     }
   ]
 }

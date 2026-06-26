@@ -1542,7 +1542,9 @@
         "employee": "พนักงาน",
         "manager": "ผู้จัดการ",
         "hr_admin": "ผู้ดูแล HR",
-        "super_admin": "ผู้ดูแลระบบสูงสุด"
+        "super_admin": "ผู้ดูแลระบบสูงสุด",
+        "payroll_partner": "พาร์ทเนอร์บัญชีเงินเดือน",
+        "performance_comp_partner": "พาร์ทเนอร์ผลงานและค่าตอบแทน"
       }
     },
     "audit": {

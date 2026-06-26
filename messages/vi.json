@@ -1542,7 +1542,9 @@
         "employee": "nhân viên",
         "manager": "quản lý",
         "hr_admin": "hr admin",
-        "super_admin": "super admin"
+        "super_admin": "super admin",
+        "payroll_partner": "Đối tác Bảng lương",
+        "performance_comp_partner": "Đối tác Hiệu suất & Lương thưởng"
       }
     },
     "audit": {

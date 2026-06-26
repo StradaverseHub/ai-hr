@@ -67,6 +67,28 @@ const money = (n: number) => round2(n).toFixed(2);
 const isAdminCtx = (ctx: SessionContext) =>
   (ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
 
+/**
+ * Company-scoped perf-comp gate (ADR-0049). True if the session is an admin OR a performance_comp
+ * partner whose grant covers `companyId` — resolved against `ctx.grants` (which carries companyId),
+ * NOT `ctx.roles` (which drops it). A null companyId (group-wide cycle) requires a group-wide grant.
+ * This is the SERVICE-LAYER gate; the DB RLS (0099) is authoritative for subtree-descendant scope.
+ * Gating on `ctx.roles` here would let a Company-A partner act on a Company-B cycle (the cross-company
+ * bug this slice guards against).
+ */
+const canAdminPerfCtx = (ctx: SessionContext, companyId: string | null) => {
+  if (isAdminCtx(ctx)) return true;
+  return (ctx.grants ?? []).some(
+    (g) =>
+      g.role === 'performance_comp_partner' &&
+      (g.companyId == null || (companyId != null && g.companyId === companyId)),
+  );
+};
+
+/** Coarse "perf-comp partner somewhere" gate (any grant). Used for cycle-grained calibration, which
+ *  has no per-row company_id — matching the coarse `is_admin()` the calibration RLS uses (0099). */
+const isAdminOrPerfCompCtx = (ctx: SessionContext) =>
+  isAdminCtx(ctx) || (ctx.grants ?? []).some((g) => g.role === 'performance_comp_partner');
+
 function assertRatingInScale(scale: RatingScale, value: number, label: string) {
   if (!scale.some((s) => s.value === value)) {
     throw new PerfError(`${label} ${value} is not a value in this cycle's rating scale`);
@@ -89,7 +111,10 @@ export async function createCycle(
     stages?: CycleStage[];
   },
 ) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can create a review cycle');
+  // Admin or a perf-comp partner scoped to the cycle's company (group-wide cycles need a group grant).
+  if (!canAdminPerfCtx(ctx, p.companyId ?? null)) {
+    throw new PerfError('Only an admin or performance & comp partner can create a review cycle');
+  }
   if (!p.name?.trim()) throw new PerfError('A cycle name is required');
   if (p.periodEnd < p.periodStart) throw new PerfError('Cycle period end is before its start');
   const scale = p.ratingScale ?? DEFAULT_RATING_SCALE;
@@ -128,9 +153,11 @@ export async function createCycle(
 /** Open a draft cycle: snapshot active employees in scope (minus probation / late hires) into one
  *  review each, with the administrative-line manager as reviewer. Idempotent via the draft guard. */
 export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can open a review cycle');
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    if (!canAdminPerfCtx(ctx, cycle.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can open a review cycle');
+    }
     if (cycle.status !== 'draft') throw new PerfError(`Cycle is already ${cycle.status}; only a draft can be opened`);
 
     // Snapshot membership. RLS already limits this to employees the opener administers.
@@ -191,9 +218,11 @@ export async function moveCycleToCalibration(ctx: SessionContext, p: { cycleId: 
 
 /** Release ratings to employees (the gate): manager rating + overall become employee-visible. */
 export async function releaseCycle(ctx: SessionContext, p: { cycleId: string }) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can release a cycle');
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
+    if (!canAdminPerfCtx(ctx, cycle.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can release a cycle');
+    }
     if (cycle.status !== 'calibration' && cycle.status !== 'open') {
       throw new PerfError(`Cannot release a ${cycle.status} cycle`);
     }
@@ -221,9 +250,11 @@ async function transitionCycle(
   to: 'open' | 'calibration' | 'closed',
   eventType: string,
 ) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can change a cycle status');
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, cycleId);
+    if (!canAdminPerfCtx(ctx, cycle.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can change a cycle status');
+    }
     if (!from.includes(cycle.status)) {
       throw new PerfError(`Cannot move a ${cycle.status} cycle to ${to}`);
     }
@@ -298,7 +329,23 @@ export async function submitManagerReview(
     if (review.status !== 'manager_review' && review.status !== 'self_review') {
       throw new PerfError(`Manager review is not open (status: ${review.status})`);
     }
-    await assertCanDecide(tx, ctx, review.employmentId, 'performance review');
+    // A perf-comp partner scoped to the cycle's company owns the review surface (ADR-0049), so it may
+    // finalize a manager review like an admin — but never its own (no self-decide). When the actor is
+    // such a partner (and not a plain admin), authorize here; otherwise fall back to the standard
+    // admin-or-manager gate (assertCanDecide also handles the no-self rule for admins/managers).
+    const isPartnerForCycle = !isAdminCtx(ctx) && canAdminPerfCtx(ctx, cycle.companyId);
+    if (isPartnerForCycle) {
+      const [subj] = await tx
+        .select({ personId: employment.personId })
+        .from(employment)
+        .where(eq(employment.id, review.employmentId))
+        .limit(1);
+      if (ctx.personId != null && subj?.personId === ctx.personId) {
+        throw new PerfError('You cannot decide your own performance review');
+      }
+    } else {
+      await assertCanDecide(tx, ctx, review.employmentId, 'performance review');
+    }
     const scale = cycle.ratingScale as RatingScale;
     assertRatingInScale(scale, p.managerRating, 'Manager rating');
     assertRatingInScale(scale, p.overallRating, 'Overall rating');
@@ -373,9 +420,11 @@ export async function reassignReviewer(
   ctx: SessionContext,
   p: { reviewId: string; reviewerEmploymentId: string | null },
 ) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can reassign a reviewer');
   return withTenant(ctx, async (tx) => {
     const { review, cycle, subjectPersonId } = await loadReview(tx, p.reviewId);
+    if (!canAdminPerfCtx(ctx, cycle.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can reassign a reviewer');
+    }
     if (cycle.status === 'closed') throw new PerfError('Cannot reassign on a closed cycle');
     if (review.status === 'submitted' || review.status === 'acknowledged') {
       throw new PerfError('Cannot reassign the reviewer on a finalized review');
@@ -672,13 +721,15 @@ export async function closeReview(
   ctx: SessionContext,
   p: { reviewId: string; finalScore?: number; abcClass: 'A' | 'B' | 'C' },
 ): Promise<{ finalScore: number; abcClass: 'A' | 'B' | 'C' }> {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can close a review');
   if (!['A', 'B', 'C'].includes(p.abcClass)) throw new PerfError('ABC class must be A, B, or C');
   return withTenant(ctx, async (tx) => {
     // Lock the row first (the enactCompAction pattern) so concurrent closes / a racing calibration
     // write can't interleave on a stale preliminary value.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
     const { review, cycle } = await loadReview(tx, p.reviewId);
+    if (!canAdminPerfCtx(ctx, cycle.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can close a review');
+    }
     if (!cycleHasStage(cycle.stages, 'year_end')) throw new PerfError('This cycle has no year-end stage to close');
     if (!cycle.releasedAt) throw new PerfError('Release the cycle before closing reviews');
     if (review.status !== 'submitted' && review.status !== 'acknowledged') {
@@ -800,7 +851,6 @@ export async function enactCompAction(
   ctx: SessionContext,
   p: { reviewId: string; meritEffectiveFrom?: string; bonusBatchId?: string },
 ) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can enact a pay recommendation');
   return withTenant(ctx, async (tx) => {
     // Lock the review row first so two concurrent enacts can't both read 'recommended'.
     await tx.select({ id: performanceReview.id }).from(performanceReview).where(eq(performanceReview.id, p.reviewId)).for('update');
@@ -819,6 +869,24 @@ export async function enactCompAction(
       .limit(1);
     if (!emp) throw new PerfError('Employee not found');
     if (emp.terminatedOn) throw new PerfError('Cannot enact pay for a terminated employee');
+
+    // ADR-0049 boundary. Merit → compensation is the perf-comp partner's territory; a bonus enact
+    // writes payroll_input, which is the payroll function. So: enacting requires perf-comp access for
+    // the merit path, AND additionally payroll access (admin OR payroll partner) when a bonus is being
+    // enacted. A perf-comp partner records the recommendation on the review but cannot push bonus-to-pay.
+    if (!canAdminPerfCtx(ctx, emp.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can enact a pay recommendation');
+    }
+    if (review.recommendedBonus != null) {
+      const canEnactBonus =
+        isAdminCtx(ctx) ||
+        (ctx.grants ?? []).some(
+          (g) => g.role === 'payroll_partner' && (g.companyId == null || g.companyId === emp.companyId),
+        );
+      if (!canEnactBonus) {
+        throw new PerfError('Enacting a bonus requires payroll access (admin or payroll partner)');
+      }
+    }
 
     let enactedCompensationId: string | null = null;
     let enactedBatchId: string | null = null;
@@ -909,9 +977,11 @@ export async function enactCompAction(
 }
 
 export async function declineCompAction(ctx: SessionContext, p: { reviewId: string }) {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can decline a recommendation');
   return withTenant(ctx, async (tx) => {
-    const { review } = await loadReview(tx, p.reviewId);
+    const { review, cycle } = await loadReview(tx, p.reviewId);
+    if (!canAdminPerfCtx(ctx, cycle.companyId)) {
+      throw new PerfError('Only an admin or performance & comp partner can decline a recommendation');
+    }
     if (review.compActionStatus !== 'recommended') throw new PerfError('No pending recommendation to decline');
     await tx
       .update(performanceReview)
@@ -2071,7 +2141,7 @@ export function peerFeedbackForReview(
 
 /** Open (or reuse the open) calibration session for a cycle in 'calibration' status. Admin only. */
 export async function openCalibrationSession(ctx: SessionContext, p: { cycleId: string }): Promise<{ sessionId: string }> {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  if (!isAdminOrPerfCompCtx(ctx)) throw new PerfError('Only an admin or performance & comp partner can run calibration');
   return withTenant(ctx, async (tx) => {
     const [cycle] = await tx.select().from(reviewCycle).where(eq(reviewCycle.id, p.cycleId)).limit(1);
     if (!cycle) throw new PerfError('Cycle not found');
@@ -2103,7 +2173,7 @@ export async function proposeCalibration(
   ctx: SessionContext,
   p: { sessionId: string; reviewId: string; proposedRating: number | null; note?: string },
 ): Promise<void> {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  if (!isAdminOrPerfCompCtx(ctx)) throw new PerfError('Only an admin or performance & comp partner can run calibration');
   await withTenant(ctx, async (tx) => {
     const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
     if (!sess) throw new PerfError('Session not found');
@@ -2128,7 +2198,7 @@ export async function proposeCalibration(
 
 /** Commit the session: write each proposed overall rating onto its review (+ event), close the session. */
 export async function commitCalibration(ctx: SessionContext, p: { sessionId: string }): Promise<{ applied: number }> {
-  if (!isAdminCtx(ctx)) throw new PerfError('Only an admin can run calibration');
+  if (!isAdminOrPerfCompCtx(ctx)) throw new PerfError('Only an admin or performance & comp partner can run calibration');
   return withTenant(ctx, async (tx) => {
     const [sess] = await tx.select().from(calibrationSession).where(eq(calibrationSession.id, p.sessionId)).limit(1);
     if (!sess) throw new PerfError('Session not found');

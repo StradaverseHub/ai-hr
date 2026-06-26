@@ -98,7 +98,17 @@ function isoCode(v: string | undefined, fallback: string, label: string): string
   return s;
 }
 
-type Role = 'employee' | 'manager' | 'hr_admin' | 'super_admin';
+type Role =
+  | 'employee'
+  | 'manager'
+  | 'hr_admin'
+  | 'super_admin'
+  | 'payroll_partner'
+  | 'performance_comp_partner';
+
+/** Roles that carry a company scope (ADR-0049): hr_admin plus the two job-function partners. Every
+ *  other role is normalized to a null (group-wide / inert) company_id by assignRole. */
+const SCOPABLE_ROLES = new Set<Role>(['hr_admin', 'payroll_partner', 'performance_comp_partner']);
 
 export async function createCompany(
   ctx: SessionContext,
@@ -448,11 +458,12 @@ export async function assignRole(
   ctx: SessionContext,
   p: { appUserId: string; role: Role; companyId?: string },
 ) {
-  // Only hr_admin consumes a company scope today. super_admin is inherently group-wide (DB CHECK
-  // enforces it); manager/employee scoping isn't implemented yet — so normalize companyId to null
-  // for every role except hr_admin rather than persist inert, misleading grants. RLS additionally
-  // requires the assigner to be a group admin (is_group_admin), so this never escalates privilege.
-  const companyId = p.role === 'hr_admin' ? p.companyId || null : null;
+  // SCOPABLE_ROLES (hr_admin + the two partners, ADR-0049) consume a company scope. super_admin is
+  // inherently group-wide (DB CHECK enforces it); manager/employee scoping isn't implemented — so
+  // normalize companyId to null for every other role rather than persist inert, misleading grants.
+  // RLS additionally requires the assigner to be a group admin to mint partners (0099 tightening),
+  // so this never escalates privilege.
+  const companyId = SCOPABLE_ROLES.has(p.role) ? p.companyId || null : null;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(roleAssignment)
