@@ -5,7 +5,7 @@
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { adminCtx, createAppUser, eventTypesFor, latestEventPayload, seedBase, type Base } from './harness';
+import { adminCtx, createAppUser, eventTypesFor, latestEventPayload, migrateTestDb, seedBase, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import {
@@ -25,6 +25,7 @@ import {
 
 let base: Base;
 beforeAll(async () => {
+  await migrateTestDb();
   base = await seedBase();
 });
 

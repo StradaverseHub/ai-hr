@@ -2171,7 +2171,10 @@ export const feedbackRequest = pgTable(
     plan: text('plan'),
     planRevision: integer('plan_revision').notNull().default(0),
     planModel: text('plan_model'), // provider/model that produced the current plan (audit)
-    contestReason: text('contest_reason'), // the reporter's latest push-back
+    contestReason: text('contest_reason'), // the reporter's latest push-back (plan-contest OR post-deploy refute)
+    // How many times a DEPLOYED result was refuted by the reporter + sent back round the loop (ADR-0051).
+    // A quality signal: a feature reopened repeatedly is one the spec/build keeps missing.
+    reopenedCount: integer('reopened_count').notNull().default(0),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

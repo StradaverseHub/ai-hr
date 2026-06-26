@@ -2377,7 +2377,21 @@
     "withdraw": "Rút phản hồi",
     "generatePlanNow": "Tạo kế hoạch ngay",
     "status_deployed": "Đã triển khai",
-    "deployedNote": "Đã xây dựng và phát hành."
+    "deployedNote": "Đã xây dựng và phát hành.",
+    "boardTitle": "Bảng trạng thái",
+    "boardAll": "Tất cả",
+    "bulkSelected": "Đã chọn {count}",
+    "bulkApprove": "Duyệt",
+    "bulkCancel": "Hủy",
+    "bulkClear": "Xóa chọn",
+    "selectAll": "Chọn tất cả",
+    "reopenedBadge": "↻ {count}",
+    "reopenedTitle": "Số lần bị trả lại sau khi triển khai",
+    "reopenedNote": "Đã mở lại {count}× sau khi triển khai.",
+    "refutePrompt": "Đã triển khai nhưng chưa đạt yêu cầu?",
+    "refuteLabel": "Còn điều gì cần thay đổi?",
+    "refutePlaceholder": "Mô tả điều gì vẫn còn sai hoặc thiếu trong kết quả đã triển khai…",
+    "refute": "Yêu cầu thay đổi"
   },
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",

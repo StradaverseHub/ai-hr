@@ -25,5 +25,6 @@ decision, add a new ADR that supersedes the old one.
 | [0017](0017-knowledge-base.md) | Knowledge Base: tenant-shared doc repository (articles + files) + seeded module guides | Accepted |
 | [0018](0018-system-user-onboarding.md) | System-user onboarding: first-login spotlight tour, role-aware, replayable | Accepted |
 | [0049](0049-job-function-partner-roles.md) | Job-function partner roles: additive `payroll_partner` + `performance_comp_partner` beside `hr_admin`, company-scopable, RLS+service gated | Accepted |
+| [0051](0051-feedback-loop-closure.md) | Feedback v2: post-deploy refute (deployed → contested, `reopened_count`) closes the loop; bulk review; in-app status dashboard | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).
