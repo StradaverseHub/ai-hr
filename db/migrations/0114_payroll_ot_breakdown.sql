@@ -1,0 +1,12 @@
+-- Different rate of overtime: split the single manual overtime input into four rate-labelled RM buckets
+-- (1.0× flat / 1.5× normal working day / 2.0× rest day / 3.0× public holiday). The four amounts are an
+-- UI-entry convenience that the action sums into `overtime_amount` (the existing NOT NULL DEFAULT '0'
+-- scalar that every downstream reader uses). `ot_breakdown` only records the decomposition so the four
+-- inputs can be re-prefilled on reload; nothing downstream reads it.
+--
+-- Additive, backfill-safe: nullable column, no RLS change (inherits payroll_input's policy), no GRANT
+-- (a plain ADD COLUMN inherits payroll_input's table-level grants to ai_hr_app — verified vs 0008/0097).
+-- NULL ⇒ no per-bucket decomposition (legacy rows, attendance-prefilled rows, bonus-enact rows).
+--
+-- Rollback: `ALTER TABLE payroll_input DROP COLUMN ot_breakdown;` — safe, no downstream reader depends on it.
+ALTER TABLE payroll_input ADD COLUMN ot_breakdown jsonb;

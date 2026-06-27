@@ -281,6 +281,10 @@ export async function setPayrollInput(
     bonusAmount?: number;
     tp1Deduction?: number;
     zakat?: number;
+    /** OT rate-bucket decomposition (RM amounts). The caller has already summed these into
+     *  `overtimeAmount` — this is persisted only so the four UI inputs can be re-prefilled; nothing
+     *  downstream reads it. Omit to leave the stored decomposition untouched (insert ⇒ NULL). */
+    otBreakdown?: { flat: number; normal: number; rest: number; holiday: number };
   },
   /** Optional caller transaction — pass it so this participates in an enclosing transaction
    *  (the performance bonus enact) and commits/rolls back atomically with it. */
@@ -298,6 +302,17 @@ export async function setPayrollInput(
     const bonusAmount = Math.max(0, Number(p.bonusAmount) || 0);
     const tp1Deduction = Math.max(0, Number(p.tp1Deduction) || 0);
     const zakat = Math.max(0, Number(p.zakat) || 0);
+    // OT rate-bucket decomposition: persist only when the caller supplied it; clamp each bucket >= 0.
+    // `undefined` ⇒ leave the stored column untouched on update (do not coalesce to NULL), NULL on insert.
+    const otBreakdown =
+      p.otBreakdown === undefined
+        ? undefined
+        : {
+            flat: Math.max(0, Number(p.otBreakdown.flat) || 0),
+            normal: Math.max(0, Number(p.otBreakdown.normal) || 0),
+            rest: Math.max(0, Number(p.otBreakdown.rest) || 0),
+            holiday: Math.max(0, Number(p.otBreakdown.holiday) || 0),
+          };
     const [existing] = await tx
       .select({ id: payrollInput.id })
       .from(payrollInput)
@@ -315,6 +330,9 @@ export async function setPayrollInput(
           // TP1 self-relief prefill leaves this override untouched.
           tp1Source: null,
           zakat: zakat.toFixed(2),
+          // Persist the OT decomposition only when supplied; omit the key entirely otherwise so a
+          // TP1-only / bonus-enact round-trip leaves the existing breakdown untouched (not nulled).
+          ...(otBreakdown !== undefined ? { otBreakdown } : {}),
           updatedAt: sql`now()`,
         })
         .where(eq(payrollInput.id, existing.id));
@@ -332,6 +350,8 @@ export async function setPayrollInput(
           // Manual provenance (null is the column default; set explicitly for clarity).
           tp1Source: null,
           zakat: zakat.toFixed(2),
+          // NULL when the caller omitted the decomposition (legacy / wrapper paths).
+          otBreakdown: otBreakdown ?? null,
         })
         .returning({ id: payrollInput.id });
       payrollInputId = row.id;
@@ -343,7 +363,19 @@ export async function setPayrollInput(
       eventType: 'payroll-batch.input-set',
       actor: actorOf(ctx),
       // ADR-0030 Layer 0: the figures live on payroll_input[payrollInputId]; reference, not cleartext pay.
-      payload: { employmentId: p.employmentId, payrollInputId, fieldsChanged: ['overtimeAmount', 'bonusAmount', 'tp1Deduction', 'zakat'] },
+      // Only the field NAME 'otBreakdown' is recorded (and only when it was actually written) — never the
+      // per-bucket RM amounts.
+      payload: {
+        employmentId: p.employmentId,
+        payrollInputId,
+        fieldsChanged: [
+          'overtimeAmount',
+          'bonusAmount',
+          'tp1Deduction',
+          'zakat',
+          ...(otBreakdown !== undefined ? ['otBreakdown'] : []),
+        ],
+      },
     });
     return { ok: true };
   };
@@ -370,6 +402,7 @@ export async function setPayrollDeductionInput(
         bonusAmount: payrollInput.bonusAmount,
         tp1Deduction: payrollInput.tp1Deduction,
         zakat: payrollInput.zakat,
+        otBreakdown: payrollInput.otBreakdown,
       })
       .from(payrollInput)
       .where(and(eq(payrollInput.batchId, p.batchId), eq(payrollInput.employmentId, p.employmentId)))
@@ -384,6 +417,8 @@ export async function setPayrollDeductionInput(
         bonusAmount: Number(existing?.bonusAmount ?? 0),
         tp1Deduction: p.tp1Deduction ?? Number(existing?.tp1Deduction ?? 0),
         zakat: p.zakat ?? Number(existing?.zakat ?? 0),
+        // Preserve the OT decomposition too (undefined ⇒ leave the column untouched).
+        otBreakdown: existing?.otBreakdown ?? undefined,
       },
       tx,
     );
@@ -693,7 +728,10 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       if (prior) {
         await tx
           .update(payrollInput)
-          .set({ overtimeAmount: result.total.toFixed(2), updatedAt: sql`now()` })
+          // Reset any prior manual rate-bucket split: the statutory total is now the source, and a stale
+          // decomposition that no longer sums to overtimeAmount would only confuse a later re-edit. Nothing
+          // downstream reads ot_breakdown, so NULL is harmless and avoids the mismatch.
+          .set({ overtimeAmount: result.total.toFixed(2), otBreakdown: null, updatedAt: sql`now()` })
           .where(eq(payrollInput.id, prior.id));
       } else {
         await tx.insert(payrollInput).values({
@@ -1678,6 +1716,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         bonus: payrollInput.bonusAmount,
         tp1: payrollInput.tp1Deduction,
         zakat: payrollInput.zakat,
+        otBreakdown: payrollInput.otBreakdown,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, batchId));
@@ -1685,12 +1724,15 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     const bonusMap = new Map(inputs.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1Map = new Map(inputs.map((r) => [r.employmentId, Number(r.tp1)]));
     const zakatMap = new Map(inputs.map((r) => [r.employmentId, Number(r.zakat)]));
+    const otBreakdownMap = new Map(inputs.map((r) => [r.employmentId, r.otBreakdown ?? null]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
     return emps.map((e) => ({
       employmentId: e.employmentId,
       name: e.name,
       basic: Number(e.basic),
       overtimeAmount: otMap.get(e.employmentId) ?? 0,
+      // Per-bucket rate split for prefilling the four OT inputs; null ⇒ inputs default to 0 each.
+      otBreakdown: otBreakdownMap.get(e.employmentId) ?? null,
       bonusAmount: bonusMap.get(e.employmentId) ?? 0,
       tp1Deduction: tp1Map.get(e.employmentId) ?? 0,
       zakat: zakatMap.get(e.employmentId) ?? 0,

@@ -932,12 +932,14 @@ export async function enactCompAction(
       if (batch.companyId !== emp.companyId) {
         throw new PerfError("The chosen batch belongs to a different company than the employee");
       }
-      // Preserve any overtime / TP1 / zakat already keyed for this employee on the batch.
+      // Preserve any overtime / TP1 / zakat already keyed for this employee on the batch, plus the
+      // OT rate-bucket decomposition (ot_breakdown) so enacting a bonus does not wipe a manual split.
       const [existing] = await tx
         .select({
           overtimeAmount: payrollInput.overtimeAmount,
           tp1Deduction: payrollInput.tp1Deduction,
           zakat: payrollInput.zakat,
+          otBreakdown: payrollInput.otBreakdown,
         })
         .from(payrollInput)
         .where(and(eq(payrollInput.batchId, p.bonusBatchId), eq(payrollInput.employmentId, review.employmentId)))
@@ -951,6 +953,7 @@ export async function enactCompAction(
           bonusAmount: Number(review.recommendedBonus),
           tp1Deduction: existing ? Number(existing.tp1Deduction) : 0,
           zakat: existing ? Number(existing.zakat) : 0,
+          otBreakdown: existing?.otBreakdown ?? undefined,
         },
         tx,
       );

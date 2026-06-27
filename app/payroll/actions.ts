@@ -77,10 +77,19 @@ export async function setPayrollInputAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   try {
+    // OT is now split into four rate-labelled buckets (1.0× flat / 1.5× normal working day /
+    // 2.0× rest day / 3.0× public holiday). The four RM amounts sum into overtimeAmount — the single
+    // scalar every downstream reader uses — and the decomposition is persisted as ot_breakdown so the
+    // four inputs can be re-prefilled on reload.
+    const otFlat = Math.max(0, Number(formData.get('otFlat')) || 0);
+    const otNormal = Math.max(0, Number(formData.get('otNormal')) || 0);
+    const otRest = Math.max(0, Number(formData.get('otRest')) || 0);
+    const otHoliday = Math.max(0, Number(formData.get('otHoliday')) || 0);
     await setPayrollInput(s, {
       batchId,
       employmentId: String(formData.get('employmentId')),
-      overtimeAmount: Number(formData.get('overtimeAmount')) || 0,
+      overtimeAmount: otFlat + otNormal + otRest + otHoliday,
+      otBreakdown: { flat: otFlat, normal: otNormal, rest: otRest, holiday: otHoliday },
       bonusAmount: Number(formData.get('bonusAmount')) || 0,
       tp1Deduction: Number(formData.get('tp1Deduction')) || 0,
       zakat: Number(formData.get('zakat')) || 0,

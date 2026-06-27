@@ -1527,6 +1527,12 @@ export const payrollInput = pgTable(
     // Sum of approved TAXABLE claims prefilled into this batch (ADR-0021). Added to the taxable allowance
     // base in generatePayslips → contributes to PCB/EPF/SOCSO/EIS like a regular monthly allowance.
     claimAllowance: numeric('claim_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
+    // OT rate-bucket decomposition (UI-entry convenience). The clerk splits employer-policy overtime
+    // pay across four rate-labelled buckets (1.0× flat / 1.5× normal working day / 2.0× rest day /
+    // 3.0× public holiday); the UI sums them into `overtime_amount`, which is the persisted sum and
+    // the ONLY field downstream reads. Nullable on purpose: NULL ⇒ no per-bucket decomposition recorded
+    // (legacy rows, attendance-prefilled rows, bonus-enact rows). RM amounts, not hours.
+    otBreakdown: jsonb('ot_breakdown').$type<{ flat: number; normal: number; rest: number; holiday: number } | null>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
