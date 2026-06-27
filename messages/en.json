@@ -383,7 +383,20 @@
       "cp38None": "No CP38 records.",
       "cp38RefPlaceholder": "e.g. CP38/2026/00123",
       "cp38RemarksPlaceholder": "Optional note",
-      "cp38Open": "Open-ended"
+      "cp38Open": "Open-ended",
+      "zakat": {
+        "title": "Zakat (via salary)",
+        "active": "Deduct zakat via salary",
+        "state": "Zakat authority (state)",
+        "method": "Method",
+        "methodPercentOfPcb": "Percentage of PCB/MTD",
+        "methodFixed": "Fixed amount",
+        "percent": "Percentage (%)",
+        "fixed": "Fixed amount (RM)",
+        "effectiveFrom": "Effective from",
+        "effectiveTo": "Effective to",
+        "nonResidentHint": "Percentage of PCB produces RM0 for non-residents and below-threshold earners — use Fixed if a deduction is required."
+      }
     },
     "import": {
       "title": "Import employees",
@@ -768,7 +781,9 @@
       "employeeCodeLabel": "Employee code",
       "generatedNote": "This is a system-generated payslip.",
       "downloadPdf": "Download PDF",
-      "cp38": "CP38 (LHDN instalment)"
+      "cp38": "CP38 (LHDN instalment)",
+      "zakat": "Zakat (via salary)",
+      "zakatOffsetNote": "PCB above is already net of this"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",
@@ -1159,7 +1174,8 @@
         "colComponent": "Component",
         "colAmount": "Amount",
         "colStatus": "Status"
-      }
+      },
+      "prefillFixedZakat": "Prefill fixed zakat"
     },
     "reports": {
       "pageTitle": "Payroll",

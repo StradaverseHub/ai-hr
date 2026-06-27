@@ -613,6 +613,86 @@ export async function prefillTp1FromSelfRelief(
 }
 
 /**
+ * 1.2.4 Zakat — prefill a draft batch's `payroll_input.zakat` from each in-scope employee's FIXED zakat
+ * election, as a visibility/edit convenience: the kernel already auto-applies the fixed amount at generate
+ * time (effectiveZakat resolution), so this only lets an admin see/override the figure on the batch row
+ * before generating. The percent_of_pcb path needs none — it is derived live in the kernel.
+ *
+ * Scope: mirror `generatePayslips` exactly — the batch's company AND its `batch.scope` (departments +
+ * explicit individuals). NOT a company-wide select (that would write orphan rows for employees outside the
+ * batch's subset). Draft-only is enforced inside `setPayrollDeductionInput` → `setPayrollInput`, which also
+ * preserves the sibling earnings/TP1 fields. We DON'T emit a second event: the input-set call already logs
+ * it, and the derivation here is a trivial constant (fixedAmount), not an OT-style computation that would
+ * warrant a derivation payload. Writes ONLY for active employees; never zeroes others (an employee whose
+ * setup became inactive keeps any prior manual zakat — admin must clear it, same as OT/bonus preservation).
+ */
+export async function prefillFixedZakat(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<{ applied: number }> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        id: payrollBatch.id,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        status: payrollBatch.status,
+        scope: payrollBatch.scope,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+
+    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+    const periodStart = `${batch.payPeriod}-01`;
+    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+
+    // Scope resolution identical to generatePayslips: empty/absent scope ⇒ whole company.
+    const sc = (batch.scope ?? null) as BatchScope | null;
+    const scopeDeptIds = sc?.departmentIds ?? [];
+    const scopeExplicitIds = sc?.employmentIds ?? [];
+    const deptAssignees = scopeDeptIds.length
+      ? await tx
+          .select({ id: assignment.employmentId })
+          .from(assignment)
+          .where(and(inArray(assignment.departmentId, scopeDeptIds), isNull(assignment.supersededAt)))
+      : [];
+    const scopeEmploymentIds = [...new Set([...deptAssignees.map((r) => r.id), ...scopeExplicitIds])];
+    const scopeFilter =
+      scopeDeptIds.length || scopeExplicitIds.length
+        ? inArray(employment.id, scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'])
+        : undefined;
+
+    // Active employees of the batch's company/scope in the period WITH an active FIXED zakat election.
+    const rows = await tx
+      .select({ employmentId: employment.id, zakatFixed: employeeStatutoryMy.zakatFixed })
+      .from(employment)
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .where(
+        and(
+          eq(employment.companyId, batch.companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+          eq(employeeStatutoryMy.zakatActive, true),
+          eq(employeeStatutoryMy.zakatMethod, 'fixed'),
+          scopeFilter,
+        ),
+      );
+
+    let applied = 0;
+    for (const r of rows) {
+      const amount = round2(Number(r.zakatFixed ?? 0));
+      if (amount <= 0) continue;
+      await setPayrollDeductionInput(ctx, { batchId: p.batchId, employmentId: r.employmentId, zakat: amount });
+      applied += 1;
+    }
+    return { applied };
+  });
+}
+
+/**
  * Prefill a draft batch's overtime inputs from classified attendance (ADR-0011 → money).
  * Per employee, the period's per-day OT minutes (workday / rest day / holiday) are
  * monetized by the country pack — ORP = wages/26, 1.5× workday, rest-day ½/1-day rule
@@ -935,6 +1015,12 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         tp3Epf: employeeStatutoryMy.tp3EpfClaimed,
         tp3Pcb: employeeStatutoryMy.tp3PcbPaid,
         tp3Zakat: employeeStatutoryMy.tp3ZakatPaid,
+        // 1.2.4 Zakat election (per-employee). The current row is read like every other statutory field
+        // (this config class is not effective-dated); effective from/to are display-only and not read here.
+        zakatActive: employeeStatutoryMy.zakatActive,
+        zakatMethod: employeeStatutoryMy.zakatMethod,
+        zakatPercent: employeeStatutoryMy.zakatPercent,
+        zakatFixed: employeeStatutoryMy.zakatFixed,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -1310,16 +1396,38 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           employerRate: e.epfEmployerRate != null ? Number(e.epfEmployerRate) : null,
         },
       };
-      const computeMonth = (additional: number, ot: number) =>
+      // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
+      // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
+      //  1) a manual `payroll_input.zakat > 0` (admin override) wins — preserves today's behaviour;
+      //  2) else (REGULAR run only) an active 'fixed' election uses its flat amount;
+      //  3) else (REGULAR run only) an active 'percent_of_pcb' election multiplies the LIVE pre-offset normal
+      //     MTD — derived by a single zero-zakat probe call that reuses this loop's already-built
+      //     wages/profile/acc/opts/rules (no shadow re-derivation), so the figure tracks the current PCB;
+      //  4) else 0. The figure then drives `applyZakatOffset` (PCB reduction) + the Z accumulator unchanged.
+      // The election is gated to the regular run (like CP38/HRDF): an additional/off-cycle run carries ONLY
+      // the manual `payroll_input.zakat`, so a one-month regular + bonus pair applies the election ONCE.
+      let effectiveZakat =
+        zakat > 0
+          ? zakat
+          : !isAdditionalRun && e.zakatActive && e.zakatMethod === 'fixed'
+            ? round2(Number(e.zakatFixed ?? 0))
+            : 0;
+      // `zakatCurrent` defaults to the resolved figure, but the percent_of_pcb probe passes 0 to read the
+      // pre-offset normal MTD without a circular dependency.
+      const computeMonth = (additional: number, ot: number, zakatCurrent = effectiveZakat) =>
         pack.payroll.statutory(
           wagesExOt,
           taxProfile,
           additional,
           ot,
-          { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent: zakat },
+          { month: pMonth, acc: accByEmp.get(e.employmentId), lpCurrent: lp, zakatCurrent },
           stOpts,
           rules,
         );
+      if (zakat <= 0 && !isAdditionalRun && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
+        const probe = computeMonth(bonus, overtime, 0);
+        effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
+      }
       const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
       const stCore = isAdditionalRun
         ? deltaStat(
@@ -1331,7 +1439,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         ...stCore,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
         lp,
-        zakat,
+        zakat: effectiveZakat,
         // HRD Corp levy rides the normal wage (regular run only); a bonus/off-cycle run adds none.
         hrdf: isAdditionalRun ? 0 : hrdf,
         // 1.2.3 CP38 — stamped as the DISTINCT CP39 source (separate from PCB) + its LHDN ref, only when

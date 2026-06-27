@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { closeAction, generateAction, prefillClaimsAction, prefillOvertimeAction, prefillShiftDifferentialAction, setPayrollInputAction } from '../actions';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillOvertimeAction, prefillShiftDifferentialAction, setPayrollInputAction } from '../actions';
 import { ComponentImport } from './component-import';
 
 const rm = (n: unknown) =>
@@ -143,6 +143,12 @@ export default async function BatchPage({
                 <input type="hidden" name="batchId" value={batch.id} />
                 <Button type="submit" size="sm" variant="secondary">
                   {t('prefillShiftDiff')}
+                </Button>
+              </form>
+              <form action={prefillFixedZakatAction}>
+                <input type="hidden" name="batchId" value={batch.id} />
+                <Button type="submit" size="sm" variant="secondary">
+                  {t('prefillFixedZakat')}
                 </Button>
               </form>
             </div>

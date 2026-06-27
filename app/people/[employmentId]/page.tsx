@@ -547,6 +547,55 @@ export default async function EmployeePage({
             <Field label={t('tp3PcbPaid')}>
               <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
             </Field>
+
+            {/* 1.2.4 Zakat election. Percent shows as a %, stored as a decimal; both amount inputs render
+                and the setter keeps only the one for the chosen method. Effective dates are display-only. */}
+            <div className="sm:col-span-2 border-t border-border pt-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('zakat.title')}
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2">
+              <input type="checkbox" name="zakatActive" defaultChecked={statutory?.zakatActive ?? false} className="size-4 rounded" />
+              {t('zakat.active')}
+            </label>
+            <Field label={t('zakat.state')}>
+              <select name="zakatState" defaultValue={statutory?.zakatState ?? ''} className={inputCls}>
+                <option value="">—</option>
+                {MY_STATES.map((st) => (
+                  <option key={st} value={st}>{st}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('zakat.method')}>
+              <select name="zakatMethod" defaultValue={statutory?.zakatMethod ?? ''} className={inputCls}>
+                <option value="">—</option>
+                <option value="percent_of_pcb">{t('zakat.methodPercentOfPcb')}</option>
+                <option value="fixed">{t('zakat.methodFixed')}</option>
+              </select>
+            </Field>
+            <Field label={t('zakat.percent')}>
+              <input
+                name="zakatPercent"
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue={statutory?.zakatPercent ? (Number(statutory.zakatPercent) * 100).toString() : ''}
+                placeholder="2.5"
+                className={inputCls}
+              />
+            </Field>
+            <Field label={t('zakat.fixed')}>
+              <input name="zakatFixed" type="number" min="0" step="0.01" defaultValue={statutory?.zakatFixed ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('zakat.effectiveFrom')}>
+              <input name="zakatEffectiveFrom" type="date" defaultValue={statutory?.zakatEffectiveFrom ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('zakat.effectiveTo')}>
+              <input name="zakatEffectiveTo" type="date" defaultValue={statutory?.zakatEffectiveTo ?? ''} className={inputCls} />
+            </Field>
+            <p className="sm:col-span-2 text-xs text-muted-foreground">{t('zakat.nonResidentHint')}</p>
+
             <div className="flex items-end justify-end sm:col-span-2">
               <button className={btnPrimary}>{t('saveStatutory')}</button>
             </div>

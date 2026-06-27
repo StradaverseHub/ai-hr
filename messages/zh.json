@@ -383,7 +383,20 @@
       "cp38None": "没有 CP38 记录。",
       "cp38RefPlaceholder": "例如 CP38/2026/00123",
       "cp38RemarksPlaceholder": "可选备注",
-      "cp38Open": "无结束日期"
+      "cp38Open": "无结束日期",
+      "zakat": {
+        "title": "天课（薪资扣除）",
+        "active": "通过薪资扣除天课",
+        "state": "天课机构（州属）",
+        "method": "方式",
+        "methodPercentOfPcb": "PCB/MTD 的百分比",
+        "methodFixed": "固定金额",
+        "percent": "百分比 (%)",
+        "fixed": "固定金额 (RM)",
+        "effectiveFrom": "生效日期",
+        "effectiveTo": "失效日期",
+        "nonResidentHint": "对非居民及低于门槛的收入者，PCB 百分比计算结果为 RM0 — 如需扣除请使用固定金额。"
+      }
     },
     "import": {
       "title": "导入员工",
@@ -735,7 +748,9 @@
       "employeeCodeLabel": "员工编号",
       "generatedNote": "本薪资单由系统自动生成。",
       "downloadPdf": "下载 PDF",
-      "cp38": "CP38（LHDN 分期扣款）"
+      "cp38": "CP38（LHDN 分期扣款）",
+      "zakat": "天课（薪资扣除）",
+      "zakatOffsetNote": "上方 PCB 已扣除此项"
     },
     "goalsTitle": "我的目标",
     "goalsEmpty": "暂无目标。添加一个，跟踪您正在努力实现的方向。",
@@ -1318,7 +1333,8 @@
         "colComponent": "项目",
         "colAmount": "金额",
         "colStatus": "状态"
-      }
+      },
+      "prefillFixedZakat": "预填固定天课"
     },
     "transactions": {
       "title": "交易",

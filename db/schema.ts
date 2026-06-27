@@ -732,6 +732,12 @@ export const epfModeEnum = pgEnum('epf_mode', ['auto', 'voluntary_excess', 'exem
 // 2025). Source: KWSP Jadual Ketiga (1 Oct 2025) + YiWei Law statutory deck (10 Jun 2026).
 export const epfCitizenshipEnum = pgEnum('epf_citizenship', ['citizen', 'pr', 'non_citizen']);
 
+// 1.2.4 Zakat — a per-employee zakat-via-salary election. 'percent_of_pcb' = a fraction of the NORMAL
+// monthly MTD (derived live during payroll, never frozen); 'fixed' = a flat monthly RM amount. Null
+// (no method) ⇒ no election. The election offsets PCB per LHDN spec §E.5 (it does NOT add a separate
+// net deduction). See ADR-0058 / docs.
+export const zakatMethodEnum = pgEnum('zakat_method', ['percent_of_pcb', 'fixed']);
+
 export const employeeStatutoryMy = pgTable(
   'employee_statutory_my',
   {
@@ -768,6 +774,19 @@ export const employeeStatutoryMy = pgTable(
     tp3EpfClaimed: numeric('tp3_epf_claimed', { precision: 12, scale: 2 }),
     tp3PcbPaid: numeric('tp3_pcb_paid', { precision: 12, scale: 2 }),
     tp3ZakatPaid: numeric('tp3_zakat_paid', { precision: 12, scale: 2 }),
+    // 1.2.4 Zakat election (ADR-0058). zakatActive is the opt-in flag — false ⇒ no zakat regardless of the
+    // other fields. zakatState is one of MY_STATES (display/metadata only; no per-state behaviour in v1).
+    // zakatMethod selects percent-of-MTD vs a fixed RM amount; zakatPercent is a decimal (e.g. 0.0250 = 2.5%)
+    // and zakatFixed a flat RM amount — only the field for the active method is set. zakatEffectiveFrom/To
+    // are INERT display-only columns: nothing in the calc path filters on them (the kernel reads the current
+    // row, like every other field here, which is not effective-dated).
+    zakatActive: boolean('zakat_active').notNull().default(false),
+    zakatState: text('zakat_state'),
+    zakatMethod: zakatMethodEnum('zakat_method'),
+    zakatPercent: numeric('zakat_percent', { precision: 5, scale: 4 }),
+    zakatFixed: numeric('zakat_fixed', { precision: 12, scale: 2 }),
+    zakatEffectiveFrom: date('zakat_effective_from'),
+    zakatEffectiveTo: date('zakat_effective_to'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

@@ -299,6 +299,11 @@ export type PcbMonthResult = {
   additional: number;
   /** Amount to deduct this month. */
   total: number;
+  /** 1.2.4 Zakat — the NORMAL-remuneration MTD BEFORE any zakat offset, post §E.2 ceil5sen, pre §E.3
+   *  RM10-floor (the `mtdNormalCalc` value). The zakat 'percent_of_pcb' election multiplies this so the
+   *  zakat figure tracks ordinary monthly tax only (bonus-month additional MTD excluded). Additive — does
+   *  not change any other output. */
+  normalPreZakat: number;
   /** Audit snapshot stamped into the payslip (reproducibility, ADR-0006). */
   snapshot: {
     month: number;
@@ -371,6 +376,9 @@ export function pcbMonth(p: {
     normal,
     additional,
     total: round2(normal + additional),
+    // 1.2.4 Zakat — the pre-offset normal MTD (mtdNormalCalc), so the percent-of-PCB election can multiply
+    // it without re-deriving. Additive; the offset/total above are unchanged.
+    normalPreZakat: mtdNormalCalc,
     snapshot: {
       month,
       n,
@@ -540,6 +548,9 @@ export function statutory(
       eisEmployer: i.employer,
       pcb: pcbAll,
       pcbBonus: Math.min(pcbBonusOnly, pcbAll),
+      // 1.2.4 Zakat — undefined for flat-30% non-residents (zakat-via-salary % is undefined here): the
+      // percent_of_pcb election yields 0 for them by construction.
+      pcbNormalPreZakat: 0,
       pcbMeta: { nonResident: true as const, rate: 0.3 },
       version: rules.version,
     };
@@ -567,6 +578,9 @@ export function statutory(
     pcb: m.total,
     /** PCB attributable to the bonus alone (audit / payslip breakdown). */
     pcbBonus: m.additional,
+    /** 1.2.4 Zakat — the normal MTD before any zakat offset (mtdNormalCalc); the kernel multiplies this by
+     *  the employee's zakatPercent for the 'percent_of_pcb' election. Additive. */
+    pcbNormalPreZakat: m.normalPreZakat,
     /** Accumulator snapshot the PCB was computed from (audit / reproducibility, ADR-0014). */
     pcbMeta: m.snapshot,
     /** Statutory-table version that produced these figures (audit / reproducibility). */

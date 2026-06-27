@@ -99,7 +99,8 @@ export default async function EaStatementPage({
           </h2>
           <Row label={t('monthlyTaxDeduction')} value={rm(ea.partD.mtd)} />
           <Row label={t('cp38Deductions')} value={t('notTracked')} muted />
-          <Row label={t('zakatViaSalary')} value={t('notTracked')} muted />
+          {/* 1.2.4 Zakat — the year's accumulated zakat-via-salary (Z), now sourced from the payslips. */}
+          <Row label={t('zakatViaSalary')} value={rm(ea.partD.zakat)} />
         </section>
 
         <section>

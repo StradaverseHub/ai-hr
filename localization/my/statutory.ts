@@ -7,7 +7,11 @@ import { withTenant, type SessionContext } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
 import { employeeStatutoryMy } from '../../db/schema';
 import { DEFAULT_MY_STATUTORY } from './statutory-tables';
+import { MY_STATES } from './holidays';
 import type { EpfMode } from './payroll';
+
+/** 1.2.4 Zakat — the per-employee zakat-via-salary election method. */
+export type ZakatMethod = 'percent_of_pcb' | 'fixed';
 
 export class InvalidICError extends Error {
   constructor() {
@@ -22,6 +26,71 @@ export class InvalidEpfElectionError extends Error {
     super(message);
     this.name = 'InvalidEpfElectionError';
   }
+}
+
+/** 1.2.4 Zakat — an invalid zakat election (bad state, method, or a missing required amount). */
+export class InvalidZakatSetupError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidZakatSetupError';
+  }
+}
+
+/** Resolve + validate the per-employee zakat election (1.2.4). zakatActive is the opt-in gate; when off,
+ *  every other zakat field is nulled (no election regardless of stray values). When on, the method's
+ *  required amount must be present and the off-method amount is nulled. State (if given) must be a MY state.
+ *  Effective dates are stored verbatim as INERT display-only metadata (no calc-path filtering). */
+function resolveZakatElection(p: {
+  zakatActive?: boolean;
+  zakatState?: string | null;
+  zakatMethod?: ZakatMethod | null;
+  zakatPercent?: number | null;
+  zakatFixed?: number | null;
+  zakatEffectiveFrom?: string | null;
+  zakatEffectiveTo?: string | null;
+}): {
+  zakatActive: boolean;
+  zakatState: string | null;
+  zakatMethod: ZakatMethod | null;
+  zakatPercent: string | null;
+  zakatFixed: string | null;
+  zakatEffectiveFrom: string | null;
+  zakatEffectiveTo: string | null;
+} {
+  const active = p.zakatActive === true;
+  if (p.zakatState != null && p.zakatState !== '' && !(MY_STATES as readonly string[]).includes(p.zakatState))
+    throw new InvalidZakatSetupError(`Unknown Malaysian state '${p.zakatState}' for zakat.`);
+  const state = p.zakatState && p.zakatState !== '' ? p.zakatState : null;
+  if (!active) {
+    // Opt-out: keep the (validated) state + dates as harmless metadata, drop the method/amounts.
+    return {
+      zakatActive: false,
+      zakatState: state,
+      zakatMethod: null,
+      zakatPercent: null,
+      zakatFixed: null,
+      zakatEffectiveFrom: p.zakatEffectiveFrom || null,
+      zakatEffectiveTo: p.zakatEffectiveTo || null,
+    };
+  }
+  const method = p.zakatMethod === 'percent_of_pcb' || p.zakatMethod === 'fixed' ? p.zakatMethod : null;
+  if (method == null) throw new InvalidZakatSetupError('A zakat method (percent_of_pcb or fixed) is required when zakat is active.');
+  const pct = p.zakatPercent == null || Number.isNaN(Number(p.zakatPercent)) ? null : Math.max(0, Number(p.zakatPercent));
+  const fixed = p.zakatFixed == null || Number.isNaN(Number(p.zakatFixed)) ? null : Math.max(0, Number(p.zakatFixed));
+  if (method === 'percent_of_pcb' && pct == null)
+    throw new InvalidZakatSetupError('A zakat percentage is required for the percent_of_pcb method.');
+  if (method === 'fixed' && fixed == null)
+    throw new InvalidZakatSetupError('A fixed zakat amount is required for the fixed method.');
+  return {
+    zakatActive: true,
+    zakatState: state,
+    zakatMethod: method,
+    // Persist only the field for the active method; null the other.
+    zakatPercent: method === 'percent_of_pcb' ? (pct as number).toFixed(4) : null,
+    zakatFixed: method === 'fixed' ? (fixed as number).toFixed(2) : null,
+    zakatEffectiveFrom: p.zakatEffectiveFrom || null,
+    zakatEffectiveTo: p.zakatEffectiveTo || null,
+  };
 }
 
 const EPF_EMPLOYEE_FLOOR = DEFAULT_MY_STATUTORY.epf.employeeRate; // 11%
@@ -89,6 +158,16 @@ export type StatutoryInput = {
   tp3EpfClaimed?: number | null;
   tp3PcbPaid?: number | null;
   tp3ZakatPaid?: number | null;
+  /** 1.2.4 Zakat election. zakatActive is the opt-in gate (false ⇒ no zakat). zakatState ∈ MY_STATES is
+   *  display/metadata only. zakatMethod selects percent-of-MTD vs a fixed RM amount; the off-method amount
+   *  is nulled by the setter. zakatEffectiveFrom/To are INERT display-only (no calc-path filtering). */
+  zakatActive?: boolean;
+  zakatState?: string | null;
+  zakatMethod?: ZakatMethod | null;
+  zakatPercent?: number | null;
+  zakatFixed?: number | null;
+  zakatEffectiveFrom?: string | null;
+  zakatEffectiveTo?: string | null;
 };
 
 export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInput) {
@@ -98,6 +177,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   const money = (v: number | null | undefined) =>
     v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
   const epf = resolveEpfElection(p); // throws InvalidEpfElectionError on a below-floor election
+  const zakat = resolveZakatElection(p); // throws InvalidZakatSetupError on a bad election
   const values = {
     icNumber: normalizeIC(p.icNumber),
     epfNumber: p.epfNumber ?? null,
@@ -118,6 +198,14 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     tp3EpfClaimed: money(p.tp3EpfClaimed),
     tp3PcbPaid: money(p.tp3PcbPaid),
     tp3ZakatPaid: money(p.tp3ZakatPaid),
+    // 1.2.4 Zakat election (resolved + validated above).
+    zakatActive: zakat.zakatActive,
+    zakatState: zakat.zakatState,
+    zakatMethod: zakat.zakatMethod,
+    zakatPercent: zakat.zakatPercent,
+    zakatFixed: zakat.zakatFixed,
+    zakatEffectiveFrom: zakat.zakatEffectiveFrom,
+    zakatEffectiveTo: zakat.zakatEffectiveTo,
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -146,13 +234,21 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
       eventType: existing ? 'statutory.my.updated' : 'statutory.my.created',
       actor: actorOf(ctx),
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
-      // Carry the resolved EPF election on the event so a mode change is reconstructable from the
-      // log alone (CLAUDE.md substrate discipline). Rates are decimals (e.g. '0.1500') or null.
+      // Carry the resolved EPF + zakat election on the event so a mode change is reconstructable from the
+      // log alone (CLAUDE.md substrate discipline). Rates are decimals (e.g. '0.1500') or null. The zakat
+      // percent/fixed are config rates, not per-payslip cleartext pay (ADR-0030), so they may be recorded.
       payload: {
         personId: p.personId,
         epfMode: epf.epfMode,
         epfEmployeeRate: epf.epfEmployeeRate,
         epfEmployerRate: epf.epfEmployerRate,
+        zakatActive: zakat.zakatActive,
+        zakatState: zakat.zakatState,
+        zakatMethod: zakat.zakatMethod,
+        zakatPercent: zakat.zakatPercent,
+        zakatFixed: zakat.zakatFixed,
+        zakatEffectiveFrom: zakat.zakatEffectiveFrom,
+        zakatEffectiveTo: zakat.zakatEffectiveTo,
       },
     });
     return { id };

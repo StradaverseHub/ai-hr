@@ -383,7 +383,20 @@
       "cp38None": "Tiada rekod CP38.",
       "cp38RefPlaceholder": "cth. CP38/2026/00123",
       "cp38RemarksPlaceholder": "Catatan pilihan",
-      "cp38Open": "Tiada tarikh tamat"
+      "cp38Open": "Tiada tarikh tamat",
+      "zakat": {
+        "title": "Zakat (melalui gaji)",
+        "active": "Potong zakat melalui gaji",
+        "state": "Pihak berkuasa zakat (negeri)",
+        "method": "Kaedah",
+        "methodPercentOfPcb": "Peratus daripada PCB/MTD",
+        "methodFixed": "Jumlah tetap",
+        "percent": "Peratus (%)",
+        "fixed": "Jumlah tetap (RM)",
+        "effectiveFrom": "Berkuat kuasa dari",
+        "effectiveTo": "Berkuat kuasa hingga",
+        "nonResidentHint": "Peratus PCB menghasilkan RM0 bagi bukan pemastautin dan pendapatan di bawah ambang — guna Jumlah Tetap jika potongan diperlukan."
+      }
     },
     "import": {
       "title": "Import pekerja",
@@ -735,7 +748,9 @@
       "employeeCodeLabel": "Kod pekerja",
       "generatedNote": "Ini ialah slip gaji yang dijana oleh sistem.",
       "downloadPdf": "Muat turun PDF",
-      "cp38": "CP38 (ansuran LHDN)"
+      "cp38": "CP38 (ansuran LHDN)",
+      "zakat": "Zakat (melalui gaji)",
+      "zakatOffsetNote": "PCB di atas sudah ditolak zakat ini"
     },
     "goalsTitle": "Matlamat saya",
     "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",
@@ -1318,7 +1333,8 @@
         "colComponent": "Komponen",
         "colAmount": "Jumlah",
         "colStatus": "Status"
-      }
+      },
+      "prefillFixedZakat": "Isi awal zakat tetap"
     },
     "transactions": {
       "title": "Transaksi",

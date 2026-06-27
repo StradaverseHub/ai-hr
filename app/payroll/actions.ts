@@ -8,6 +8,7 @@ import {
   createAdditionalRun,
   createBatch,
   generatePayslips,
+  prefillFixedZakat,
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
@@ -180,6 +181,25 @@ export async function prefillTp1Action(formData: FormData) {
       : `TP1 self-relief fed onto ${applied} payslip${applied === 1 ? '' : 's'}${
           skipped ? ` (${skipped} left as a manual override)` : ''
         }`;
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+// 1.2.4 Zakat — prefill the FIXED-zakat amount onto in-scope employees' batch rows (visibility/edit
+// convenience; the kernel already auto-applies it at generate time). Actor passed through.
+export async function prefillFixedZakatAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  let applied = 0;
+  try {
+    ({ applied } = await prefillFixedZakat(s, { batchId }));
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  const note =
+    applied === 0
+      ? 'No active fixed-zakat elections for this batch'
+      : `Fixed zakat prefilled for ${applied} employee${applied === 1 ? '' : 's'}`;
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
 }
 

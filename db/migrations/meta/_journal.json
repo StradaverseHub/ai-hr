@@ -827,6 +827,13 @@
       "when": 1781861810000,
       "tag": "0117_employee_cp38",
       "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1781861820000,
+      "tag": "0118_employee_statutory_zakat",
+      "breakpoints": true
     }
   ]
 }

@@ -383,7 +383,20 @@
       "cp38None": "Chưa có bản ghi CP38.",
       "cp38RefPlaceholder": "vd. CP38/2026/00123",
       "cp38RemarksPlaceholder": "Ghi chú tùy chọn",
-      "cp38Open": "Không có ngày kết thúc"
+      "cp38Open": "Không có ngày kết thúc",
+      "zakat": {
+        "title": "Zakat (qua lương)",
+        "active": "Khấu trừ zakat qua lương",
+        "state": "Cơ quan zakat (bang)",
+        "method": "Phương thức",
+        "methodPercentOfPcb": "Phần trăm của PCB/MTD",
+        "methodFixed": "Số tiền cố định",
+        "percent": "Phần trăm (%)",
+        "fixed": "Số tiền cố định (RM)",
+        "effectiveFrom": "Hiệu lực từ",
+        "effectiveTo": "Hiệu lực đến",
+        "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ."
+      }
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -735,7 +748,9 @@
       "employeeCodeLabel": "Mã nhân viên",
       "generatedNote": "Đây là phiếu lương do hệ thống tạo.",
       "downloadPdf": "Tải PDF",
-      "cp38": "CP38 (khoản trả góp LHDN)"
+      "cp38": "CP38 (khoản trả góp LHDN)",
+      "zakat": "Zakat (qua lương)",
+      "zakatOffsetNote": "PCB ở trên đã trừ khoản này"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",
@@ -1318,7 +1333,8 @@
         "colComponent": "Thành phần",
         "colAmount": "Số tiền",
         "colStatus": "Trạng thái"
-      }
+      },
+      "prefillFixedZakat": "Điền sẵn zakat cố định"
     },
     "transactions": {
       "title": "Giao dịch",

@@ -500,7 +500,7 @@ export type EaStatement = {
   };
   /** Part B — employment income (cash). Untracked items (BIK, VOLA, ESOS, gratuity) are out of scope. */
   partB: { grossSalary: number; bonus: number; allowances: number; gross: number };
-  partD: { mtd: number }; // total deduction — MTD/PCB (zakat/CP38 untracked)
+  partD: { mtd: number; zakat: number }; // total deduction — MTD/PCB + the year's zakat-via-salary (Z)
   partE: { epf: number; socso: number; eis: number }; // employee's share of EPF + SOCSO/EIS
   statutoryVersion: string;
 };
@@ -555,6 +555,7 @@ export async function eaStatement(
     let allowances = 0;
     let gross = 0;
     let mtd = 0;
+    let zakat = 0;
     let epf = 0;
     let socso = 0;
     let eis = 0;
@@ -565,6 +566,8 @@ export async function eaStatement(
       allowances += num(s.allowance);
       gross += num(s.gross);
       mtd += num(st.pcb);
+      // 1.2.4 Zakat — the year's accumulated zakat-via-salary (each payslip stamps the month's figure).
+      zakat += num(st.zakat);
       epf += num(st.epfEmployee);
       socso += num(st.socsoEmployee);
       eis += num(st.eisEmployee);
@@ -584,7 +587,7 @@ export async function eaStatement(
         terminatedOn: info.terminatedOn,
       },
       partB: { grossSalary: round2(grossSalary), bonus: round2(bonus), allowances: round2(allowances), gross: round2(gross) },
-      partD: { mtd: round2(mtd) },
+      partD: { mtd: round2(mtd), zakat: round2(zakat) },
       partE: { epf: round2(epf), socso: round2(socso), eis: round2(eis) },
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),
     };

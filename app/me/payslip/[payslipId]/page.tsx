@@ -20,6 +20,7 @@ type Stat = {
   eisEmployer?: number;
   pcb?: number;
   cp38?: number;
+  zakat?: number;
   recordLines?: RecordLine[];
 };
 
@@ -98,6 +99,11 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <Row label={t('eis')} value={rm(st.eisEmployee)} />
           <Row label={t('pcb')} value={rm(st.pcb)} />
           {Number(st.cp38) > 0 && <Row label={t('cp38')} value={rm(st.cp38)} />}
+          {/* 1.2.4 Zakat — informational only: PCB above is ALREADY net of this (LHDN §E.5 offset), so it
+              is NOT re-added to total deductions. Muted, shown only when there is an election this month. */}
+          {Number(st.zakat) > 0 && (
+            <Row label={t('zakat')} value={`${rm(st.zakat)} · ${t('zakatOffsetNote')}`} muted />
+          )}
           {Number(p.otherDeductions) > 0 && <Row label={t('otherDeductions')} value={rm(p.otherDeductions)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('totalDeductions')}</span>

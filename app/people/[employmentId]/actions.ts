@@ -291,6 +291,18 @@ export async function setStatutoryAction(formData: FormData) {
       tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
       tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
       tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
+      // 1.2.4 Zakat election. Percent is entered as a % and stored as a decimal (÷100). The setter
+      // validates state/method and nulls the off-method amount; null/empty fields ⇒ no election.
+      zakatActive: formData.get('zakatActive') === 'on',
+      zakatState: (formData.get('zakatState') as string) || null,
+      zakatMethod: (() => {
+        const m = String(formData.get('zakatMethod') ?? '');
+        return m === 'percent_of_pcb' || m === 'fixed' ? m : null;
+      })(),
+      zakatPercent: formData.get('zakatPercent') ? Number(formData.get('zakatPercent')) / 100 : null,
+      zakatFixed: formData.get('zakatFixed') ? Number(formData.get('zakatFixed')) : null,
+      zakatEffectiveFrom: (formData.get('zakatEffectiveFrom') as string) || null,
+      zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
     });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
