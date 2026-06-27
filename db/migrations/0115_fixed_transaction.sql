@@ -1,0 +1,32 @@
+-- 1.2.1 Fixed Transaction — per-employee fixed allowance/deduction with currency, prorate override,
+-- remarks, and an effective end-date. We REUSE the existing temporal axis instead of adding a parallel
+-- end-date column: employment_pay_component already carries valid_from / valid_to / superseded_at (the same
+-- effective-dated shape as compensation). The "applies in every period regardless of window" behaviour was
+-- never a missing column — it was the kernel's recurring query filtering `valid_to IS NULL` and never
+-- bounding by the pay period. This feature end-dates an item by writing valid_to on the open row and makes
+-- the kernel + list queries period-aware (see core/payroll.ts + core/pay-components.ts).
+--
+-- Three additive columns (all metadata-only ALTERs on pg14 — constant defaults, no table rewrite):
+--   currency         — store-only ISO code. Default 'MYR'; the MYR-only kernel does no FX. A write-time guard
+--                      in setEmploymentPayComponent rejects a non-MYR value so the UI warns at entry.
+--                      ASSUMPTION: all historical rows are stamped 'MYR' — correct ONLY because the kernel
+--                      never supported any other currency, so every legacy amount is already in MYR.
+--   prorate_override — nullable boolean. null = inherit the catalog component's `prorates` flag (so every
+--                      backfilled/legacy row stays byte-identical: null resolves to the catalog flag,
+--                      unchanged). true/false overrides it for THIS employee's value. "prorate" here is the
+--                      EA-1955 join/resign tenure factor the kernel already computes per employee — NOT a
+--                      day-proration of the item's own mid-month window (an explicit v1 non-goal).
+--   remarks          — free-text note (nullable).
+--
+-- No CHECK constraint on valid_to >= valid_from: valid_from/valid_to carry supersession-chain semantics, so
+-- a naive CHECK can be violated on a legitimate supersession insert. The start<=end rule is enforced
+-- app-side (FixedTransactionDateError) before any write instead.
+--
+-- RLS + grants: inherited from 0065 (employment_pay_component_rls) and 0071 (table-level GRANT to ai_hr_app).
+-- A plain ADD COLUMN inherits both — no new policy, no new GRANT.
+--
+-- Rollback:
+--   ALTER TABLE employment_pay_component DROP COLUMN currency, DROP COLUMN prorate_override, DROP COLUMN remarks;
+ALTER TABLE employment_pay_component ADD COLUMN currency text NOT NULL DEFAULT 'MYR';--> statement-breakpoint
+ALTER TABLE employment_pay_component ADD COLUMN prorate_override boolean;--> statement-breakpoint
+ALTER TABLE employment_pay_component ADD COLUMN remarks text;

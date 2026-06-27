@@ -1600,6 +1600,16 @@ export const employmentPayComponent = pgTable(
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
+    // 1.2.1 Fixed Transaction — store-only currency (MYR-only kernel, no FX). Default 'MYR'; a write-time
+    // guard rejects any non-MYR value so the UI warns at entry. Legacy rows are all 'MYR' (the kernel never
+    // supported another currency).
+    currency: text('currency').notNull().default('MYR'),
+    // 1.2.1 Fixed Transaction — per-employee override of the catalog `prorates` flag. null = inherit the
+    // catalog flag (so every legacy/backfilled row stays byte-identical: null ⇒ catalog ⇒ unchanged).
+    // "prorate" = the EA-1955 join/resign tenure factor the kernel computes per employee.
+    prorateOverride: boolean('prorate_override'),
+    // 1.2.1 Fixed Transaction — free-text note on this recurring value (nullable).
+    remarks: text('remarks'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),

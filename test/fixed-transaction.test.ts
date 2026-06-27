@@ -1,0 +1,299 @@
+/**
+ * 1.2.1 Fixed Transaction — per-employee fixed allowance/deduction with currency, prorate override,
+ * remarks, and an effective start/end window. Reuses employment_pay_component's valid_from/valid_to axis;
+ * the kernel + list queries are period-aware. Covers: start<=end validation, MYR-only currency guard,
+ * prorate override (inherit/yes/no) against the EA-1955 employee tenure factor, the period window with its
+ * inclusive/exclusive boundaries, the legacy-window no-op, supersession-vs-end-date reconciliation, the
+ * active/ended list distinction, and the event payload (carries the new refs, never `amount`).
+ */
+import { and, eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import * as schema from '../db/schema';
+import type { SessionContext } from '../db/client';
+import { hireEmployee } from '../core/org';
+import { setCompensation } from '../core/comp';
+import { setStatutoryProfileMY } from '../localization/my/statutory';
+import { createBatch, generatePayslips } from '../core/payroll';
+import {
+  FixedTransactionDateError,
+  UnsupportedFixedCurrencyError,
+  listEmploymentPayComponents,
+  listPayComponents,
+  seedPayComponentCatalog,
+  setEmploymentPayComponent,
+} from '../core/pay-components';
+import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+const hire = (ctx: SessionContext, b: Base, name: string, hiredOn: string) =>
+  hireEmployee(ctx, {
+    person: { fullName: name, primaryEmail: `${name.toLowerCase().replace(/\s+/g, '')}@acme.test` },
+    companyId: b.companyId,
+    departmentId: b.deptA,
+    employmentType: 'full_time',
+    hiredOn,
+  });
+
+/** Resolve a catalog component id by code (after seeding). */
+async function codeId(ctx: SessionContext, code: string): Promise<string> {
+  const cat = await listPayComponents(ctx);
+  return cat.find((c) => c.code === code)!.id;
+}
+
+/** The single payslip for a batch (owner read, bypasses RLS). */
+async function payslipOf(batchId: string) {
+  const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+  return ps;
+}
+
+/** The raw stored row for a recurring component value (owner read). */
+async function rowOf(id: string) {
+  const [row] = await owner.db.select().from(schema.employmentPayComponent).where(eq(schema.employmentPayComponent.id, id));
+  return row;
+}
+
+describe('1.2.1 Fixed Transaction', () => {
+  let base: Base;
+  beforeAll(async () => {
+    await migrateTestDb();
+  });
+  beforeEach(async () => {
+    await resetDb();
+    base = await seedBase();
+    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+  });
+  afterEach(() => {
+    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+  });
+  afterAll(async () => {
+    await closeAll();
+  });
+
+  // ───────────────────── validation ─────────────────────
+
+  it('start<=end is accepted; effectiveTo < effectiveFrom throws FixedTransactionDateError', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'DateOk', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    // start <= end accepted (equal and proper ranges).
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-03-01', effectiveTo: '2026-03-01' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-04-01', effectiveTo: '2026-06-30' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+
+    // end before start rejected, before any write.
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-05-01', effectiveTo: '2026-04-30' }),
+    ).rejects.toBeInstanceOf(FixedTransactionDateError);
+  });
+
+  it('currency persists; a non-MYR currency throws UnsupportedFixedCurrencyError at write time', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'Cur', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 250, effectiveFrom: '2026-01-01', currency: 'MYR', remarks: 'phone' });
+    const row = await rowOf(id);
+    expect(row.currency).toBe('MYR');
+    expect(row.remarks).toBe('phone');
+
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 250, effectiveFrom: '2026-02-01', currency: 'USD' }),
+    ).rejects.toBeInstanceOf(UnsupportedFixedCurrencyError);
+  });
+
+  // ───────────────────── prorate override ─────────────────────
+  // A mid-month joiner on 2026-05-16 (May has 31 days) is employed days 16..31 = 16 days ⇒ factor 16/31.
+  // ALLOWANCE prorates=true in the catalog. With basic=0 the payslip `allowance` column is exactly the
+  // applied ALLOWANCE value, so it cleanly reflects the resolved prorate.
+  async function joinerAllowance(prorateOverride: boolean | null): Promise<number> {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, `Joiner${prorateOverride}`, '2026-05-16');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    // BASIC 0 so the wage base is just the allowance; ALLOWANCE 1000 with the override under test.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-05-16' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16', prorateOverride });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+    const ps = await payslipOf(batchId);
+    return Number(ps.allowance);
+  }
+
+  it('prorate override=false pays the full amount for a mid-period joiner (catalog prorates=true)', async () => {
+    expect(await joinerAllowance(false)).toBeCloseTo(1000, 2);
+  });
+
+  it('prorate override=true prorates by the employee tenure factor (16/31)', async () => {
+    expect(await joinerAllowance(true)).toBeCloseTo(1000 * (16 / 31), 2);
+  });
+
+  it('prorate override=null inherits the catalog flag (ALLOWANCE prorates=true ⇒ prorated)', async () => {
+    // Same as override=true because the catalog flag is true — proves null = inherit, not a hidden default.
+    expect(await joinerAllowance(null)).toBeCloseTo(1000 * (16 / 31), 2);
+  });
+
+  // ───────────────────── period window + boundaries ─────────────────────
+  // String 'YYYY-MM-DD' comparison; period 2026-05 ⇒ periodStart 2026-05-01, periodEnd 2026-05-31.
+  // A full-month employee (hired well before) so factor = 1 and the allowance is full-amount when included.
+  // We probe whether a single ALLOWANCE item with a given [validFrom, validTo] window is APPLIED in May by
+  // reading the payslip `allowance` column (basic 0).
+  async function appliedInMay(validFrom: string, validTo: string | null): Promise<number> {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, `Win${validFrom}${validTo ?? 'open'}`, '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01' });
+    // prorateOverride=false ⇒ full amount when in-window, so the value cleanly signals included (777) vs not (0).
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: validFrom, effectiveTo: validTo, prorateOverride: false });
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+    return Number((await payslipOf(batchId)).allowance);
+  }
+
+  it('window boundaries: validTo == periodStart is INCLUDED (inclusive gte)', async () => {
+    expect(await appliedInMay('2026-01-01', '2026-05-01')).toBeCloseTo(777, 2);
+  });
+  it('window boundaries: validTo one day before periodStart is EXCLUDED', async () => {
+    expect(await appliedInMay('2026-01-01', '2026-04-30')).toBeCloseTo(0, 2);
+  });
+  it('window boundaries: validFrom == periodEnd is INCLUDED (inclusive lte)', async () => {
+    expect(await appliedInMay('2026-05-31', null)).toBeCloseTo(777, 2);
+  });
+  it('window boundaries: validFrom one day after periodEnd is EXCLUDED', async () => {
+    expect(await appliedInMay('2026-06-01', null)).toBeCloseTo(0, 2);
+  });
+  it('window boundaries: validFrom == periodStart is INCLUDED', async () => {
+    expect(await appliedInMay('2026-05-01', '2026-05-31')).toBeCloseTo(777, 2);
+  });
+
+  it('legacy-window no-op: validFrom in a PRIOR month with validTo NULL is still included (new lte clause is a no-op for legacy rows)', async () => {
+    // 2026-01-01 is months before May; the new lte(validFrom, periodEnd) clause must NOT exclude it.
+    expect(await appliedInMay('2026-01-01', null)).toBeCloseTo(777, 2);
+  });
+
+  // ───────────────────── supersession vs end-date ─────────────────────
+
+  it('end-dating an item then setting the same component again inserts a fresh open row WITHOUT overwriting the ended one (gap is intended)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'Gap', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    // 1) An end-dated item (validTo set, supersededAt null).
+    const { id: ended } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01', effectiveTo: '2026-03-31' });
+    // 2) A later set for the SAME component — the cur lookup only matches OPEN (validTo null) rows, so the
+    //    ended row is NOT matched/overwritten: a fresh open row is inserted and the ended row keeps its validTo.
+    const { id: fresh } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-06-01' });
+
+    const endedRow = await rowOf(ended);
+    const freshRow = await rowOf(fresh);
+    expect(ended).not.toBe(fresh);
+    expect(endedRow.validTo).toBe('2026-03-31'); // untouched
+    expect(endedRow.supersededAt).toBeNull();
+    expect(freshRow.validFrom).toBe('2026-06-01');
+    expect(freshRow.validTo).toBeNull();
+  });
+
+  it('superseding an OPEN item truncates its window at the new effectiveFrom (no double-count)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'Trunc', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    // 1) An OPEN item (validTo null).
+    const { id: open } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01' });
+    // 2) A new value effective mid-stream — the existing OPEN row is closed at the new effectiveFrom.
+    const { id: next } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 600, effectiveFrom: '2026-04-01' });
+
+    const openRow = await rowOf(open);
+    const nextRow = await rowOf(next);
+    expect(openRow.validTo).toBe('2026-04-01'); // truncated at the new start — no overlap
+    expect(nextRow.validFrom).toBe('2026-04-01');
+    expect(nextRow.validTo).toBeNull();
+  });
+
+  // ───────────────────── list: active vs ended distinction ─────────────────────
+
+  it('listEmploymentPayComponents surfaces active + (validTo) ended rows, and excludes supersededAt rows', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ListAE', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const housingId = await codeId(a, 'HOUSING');
+    const colaId = await codeId(a, 'COLA');
+
+    // ALLOWANCE: set once (open) then re-set — the first row is CLOSED at the new start (validTo set,
+    // supersededAt null = "ended"), the second is open. Both are real history, so BOTH surface.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 200, effectiveFrom: '2026-03-01' });
+    // HOUSING: a single end-dated item (ended) — must still surface (with its validTo + remarks).
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: housingId, amount: 400, effectiveFrom: '2026-01-01', effectiveTo: '2026-02-28', currency: 'MYR', remarks: 'temp' });
+    // COLA: an open row that we then mark superseded directly (the only path that hard-hides a row) — it must
+    // NOT surface, distinguishing a superseded row from a merely ended one.
+    const { id: colaRow } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: colaId, amount: 50, effectiveFrom: '2026-01-01' });
+    await owner.db.update(schema.employmentPayComponent).set({ supersededAt: new Date() }).where(eq(schema.employmentPayComponent.id, colaRow));
+
+    const list = await listEmploymentPayComponents(a, e.employmentId);
+    const allow = list.filter((r) => r.code === 'ALLOWANCE');
+    const housing = list.filter((r) => r.code === 'HOUSING');
+    const cola = list.filter((r) => r.code === 'COLA');
+
+    // Both ALLOWANCE rows surface: the ended one (validTo = 2026-03-01) and the open one (validTo null).
+    expect(allow).toHaveLength(2);
+    const allowOpen = allow.find((r) => r.validTo == null)!;
+    const allowEnded = allow.find((r) => r.validTo != null)!;
+    expect(Number(allowOpen.amount)).toBeCloseTo(200, 2);
+    expect(allowEnded.validTo).toBe('2026-03-01');
+    // The ended HOUSING row IS returned, with its end-date + remarks intact for the "ended" badge.
+    expect(housing).toHaveLength(1);
+    expect(housing[0].validTo).toBe('2026-02-28');
+    expect(housing[0].remarks).toBe('temp');
+    // The supersededAt COLA row is hidden entirely.
+    expect(cola).toHaveLength(0);
+  });
+
+  // ───────────────────── event payload (substrate / PII) ─────────────────────
+
+  it('the set event payload carries effectiveTo / currency / prorateOverride and never the amount', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'Evt', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId,
+      componentId: allowId,
+      amount: 999,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '2026-12-31',
+      currency: 'MYR',
+      prorateOverride: false,
+      remarks: 'note',
+    });
+    const payload = await latestEventPayload(base.tenantId, id, 'employment-pay-component.set');
+    expect(payload).toMatchObject({
+      employmentId: e.employmentId,
+      componentId: allowId,
+      effectiveFrom: '2026-01-01',
+      effectiveTo: '2026-12-31',
+      currency: 'MYR',
+      prorateOverride: false,
+    });
+    // ADR-0030 Layer-0: the amount is a reference on the row, never inlined into the immutable event log.
+    expect(payload).not.toHaveProperty('amount');
+  });
+});

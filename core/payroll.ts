@@ -1065,13 +1065,16 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     type CompRow = {
       code: string; name: string; kind: string; amount: number; rounding: string;
       epf: boolean; socso: boolean; pcb: boolean; hrdf: boolean; nonPayable: boolean; prorates: boolean;
+      // 1.2.1 Fixed Transaction — per-employee override of the catalog `prorates` flag (null = inherit). A
+      // one-off batch component has no override, so this is null there too (⇒ catalog flag, unchanged).
+      prorateOverride: boolean | null;
       rule: PayRule | null; // Payroll Setup — configurable pay-rule; null ⇒ stored amount (legacy behaviour).
     };
     const recurringByEmp = new Map<string, CompRow[]>();
     const batchCompByEmp = new Map<string, CompRow[]>();
     if (typedComponents && empIds.length) {
-      const cols = {
-        employmentId: employmentPayComponent.employmentId,
+      // Catalog + amount columns shared by both the recurring and the one-off batch query.
+      const catCols = {
         amount: employmentPayComponent.amount,
         code: payComponent.code,
         name: payComponent.name,
@@ -1085,25 +1088,42 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         rounding: payComponent.roundingMethod,
         rule: payComponent.rule, // Payroll Setup — read for the resolver (null on every legacy row).
       };
-      const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string } & Omit<CompRow, 'amount'>) => {
+      const push = (map: Map<string, CompRow[]>, r: { employmentId: string; amount: string; prorateOverride?: boolean | null } & Omit<CompRow, 'amount' | 'prorateOverride'>) => {
         const list = map.get(r.employmentId) ?? [];
-        list.push({ ...r, amount: Number(r.amount) });
+        list.push({ ...r, amount: Number(r.amount), prorateOverride: r.prorateOverride ?? null });
         map.set(r.employmentId, list);
       };
       const rec = await tx
-        .select(cols)
+        .select({
+          ...catCols,
+          employmentId: employmentPayComponent.employmentId,
+          // 1.2.1 Fixed Transaction — per-employee prorate override (null = inherit catalog `prorates`).
+          prorateOverride: employmentPayComponent.prorateOverride,
+        })
         .from(employmentPayComponent)
         .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
         .where(
           and(
             inArray(employmentPayComponent.employmentId, empIds),
-            isNull(employmentPayComponent.validTo),
+            // 1.2.1 Fixed Transaction — PERIOD-AWARE window, mirroring the employment/compensation filter
+            // above (lte(hiredOn, periodEnd) / or(isNull(terminatedOn), gte(terminatedOn, periodStart))):
+            //   • valid_from <= periodEnd        → the item has started by the end of this period
+            //   • valid_to IS NULL OR >= periodStart → the item has not ended before this period starts
+            //   • superseded_at IS NULL          → never apply a row that was replaced by a newer value
+            // valid_to is an INCLUSIVE end-date: validTo == periodStart still applies (gte). The lte(valid_from,
+            // periodEnd) clause is a no-op for legacy/backfilled rows (their valid_from is a past month, so
+            // it is <= periodEnd) — proven by the legacy-window test. The activate/deactivate semantics here
+            // are BINARY in/out of window by design: an item active for any part of the period pays its full
+            // amount (times the employee tenure `factor`); per-item mid-month day-proration of the item's OWN
+            // window is an explicit v1 non-goal (the spec ties prorate to join/resign, not the item window).
+            lte(employmentPayComponent.validFrom, periodEnd),
+            or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
             isNull(employmentPayComponent.supersededAt),
           ),
         );
       for (const r of rec) push(recurringByEmp, r);
       const bat = await tx
-        .select({ ...cols, employmentId: payrollBatchComponent.employmentId, amount: payrollBatchComponent.amount })
+        .select({ ...catCols, employmentId: payrollBatchComponent.employmentId, amount: payrollBatchComponent.amount })
         .from(payrollBatchComponent)
         .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
         .where(eq(payrollBatchComponent.batchId, p.batchId));
@@ -1178,7 +1198,12 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
 
       for (const c of comps) {
         const resolved = resolveAmount(c);
-        const applied = roundAmount(c.prorates ? resolved * factor : resolved, c.rounding);
+        // 1.2.1 Fixed Transaction — the per-employee override wins over the catalog `prorates` flag; null
+        // (every legacy/backfilled row + every one-off batch component) inherits the catalog flag, so this is
+        // byte-identical to the prior `c.prorates` behaviour. `factor` is the EA-1955 join/resign tenure
+        // factor (prorate ON = proportional for a mid-period joiner/resigner, OFF = full amount).
+        const prorate = c.prorateOverride ?? c.prorates;
+        const applied = roundAmount(prorate ? resolved * factor : resolved, c.rounding);
         if (c.kind === 'deduction') { deduct = round2(deduct + applied); continue; }
         // FAIL-CLOSED (ADR-0025 §5): a PCB-taxable non-payable/BIK, or a PCB-only earning (not EPF and not
         // SOCSO), would be SILENTLY under-taxed — v1 does not compute the tax, so reject rather than produce

@@ -92,7 +92,16 @@ const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis
   prorates: c.prorates,
 });
 
-/** Current (open) recurring components for an employee, joined with the catalog (for the people page). */
+/**
+ * Recurring components for an employee, joined with the catalog (for the people page).
+ *
+ * 1.2.1 Fixed Transaction made this period-aware: it no longer hard-filters `isNull(validTo)`. Superseded
+ * rows are still excluded (`isNull(supersededAt)` — they were replaced by a newer value), but END-DATED rows
+ * (validTo set, supersededAt null) ARE returned so the UI can show them with an "ended" badge. The two
+ * inactive states are now distinguished: superseded ⇒ hidden, ended ⇒ shown as ended. The UI derives
+ * `active` vs `ended` from validTo against today. `prorates` (catalog) is selected so the UI can render the
+ * resolved prorate (override ?? catalog).
+ */
 export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, (tx) =>
     tx
@@ -104,17 +113,21 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
         kind: payComponent.kind,
         amount: employmentPayComponent.amount,
         validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        currency: employmentPayComponent.currency,
+        prorateOverride: employmentPayComponent.prorateOverride,
+        prorates: payComponent.prorates,
+        remarks: employmentPayComponent.remarks,
       })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
       .where(
         and(
           eq(employmentPayComponent.employmentId, employmentId),
-          isNull(employmentPayComponent.validTo),
           isNull(employmentPayComponent.supersededAt),
         ),
       )
-      .orderBy(payComponent.code),
+      .orderBy(payComponent.code, employmentPayComponent.validFrom),
   );
 }
 
@@ -263,13 +276,73 @@ export function deletePayComponent(ctx: SessionContext, id: string) {
 
 // ───────────────────── Per-employment recurring ─────────────────────
 
-/** Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation). */
+/**
+ * 1.2.1 Fixed Transaction — thrown at WRITE time when the effective end-date precedes the effective start
+ * (`effectiveTo < effectiveFrom`). The start<=end rule is enforced here rather than as a DB CHECK because
+ * valid_from/valid_to carry supersession-chain semantics (a naive CHECK can be violated on a legitimate
+ * supersession insert). The UI surfaces the message inline.
+ */
+export class FixedTransactionDateError extends Error {
+  constructor() {
+    super('fixed-transaction-date-invalid');
+    this.name = 'FixedTransactionDateError';
+  }
+}
+
+/**
+ * 1.2.1 Fixed Transaction — thrown at WRITE time when a non-MYR currency is supplied. The kernel is MYR-only
+ * and does no FX conversion, so a non-MYR amount could never be paid correctly. This single write-time guard
+ * (parity with setPayrollBatchComponent's UnsupportedBatchComponentError) tells the admin at entry; there is
+ * deliberately NO second kernel-side throw (a MYR-default UI can't produce a non-MYR value).
+ */
+export class UnsupportedFixedCurrencyError extends Error {
+  constructor(public readonly currency: string) {
+    super(`Currency "${currency}" is not supported — payroll is computed in MYR only.`);
+    this.name = 'UnsupportedFixedCurrencyError';
+  }
+}
+
+/**
+ * Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation).
+ *
+ * 1.2.1 Fixed Transaction extends this with an optional effective END date (written to `validTo` of the new
+ * open row), a store-only `currency`, a per-employee `prorateOverride` (null = inherit the catalog flag), and
+ * free-text `remarks`. The kernel and `listEmploymentPayComponents` are period-aware (they bound by valid_from
+ * /valid_to), so setting `effectiveTo` auto-deactivates the item once the period passes its end — no separate
+ * "deactivate" path is needed.
+ *
+ * Supersession-vs-end-date: the `cur` lookup matches the OPEN row by `isNull(validTo) AND isNull(supersededAt)`.
+ * An item that was end-dated (validTo set, supersededAt null) is therefore NOT matched as `cur`, so a later
+ * `set` for the same component does NOT find/overwrite it — it inserts a fresh open row and leaves a gap
+ * (intended: the old item ended, a new one begins). The one ambiguous case — superseding an item whose validTo
+ * is AFTER the new effectiveFrom — is handled by the supersession close below (validTo = effectiveFrom), which
+ * truncates the old window correctly (no double-count, no gap-bug). Both are asserted in tests.
+ */
 export function setEmploymentPayComponent(
   ctx: SessionContext,
-  p: { employmentId: string; componentId: string; amount: number; effectiveFrom: string },
+  p: {
+    employmentId: string;
+    componentId: string;
+    amount: number;
+    effectiveFrom: string;
+    effectiveTo?: string | null;
+    currency?: string;
+    prorateOverride?: boolean | null;
+    remarks?: string | null;
+  },
   outerTx?: Tx,
 ) {
+  // start<=end validation (before any write). effectiveTo is an inclusive end-date on the same axis as
+  // effectiveFrom; ISO 'YYYY-MM-DD' strings compare chronologically.
+  const effectiveTo = p.effectiveTo ?? null;
+  // Currency guard — single write-time site, MYR-only kernel.
+  const currency = p.currency ?? 'MYR';
   const run = async (tx: Tx) => {
+    // Validate inside the returned promise (not at call time) so the function ALWAYS returns a promise — a
+    // bad value rejects rather than throwing synchronously, giving callers (and `.rejects` in tests) a single
+    // uniform contract. Both checks still run before any write.
+    if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
+    if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
     const [cur] = await tx
       .select({ id: employmentPayComponent.id })
       .from(employmentPayComponent)
@@ -283,6 +356,8 @@ export function setEmploymentPayComponent(
       )
       .limit(1);
     if (cur) {
+      // Close the prior OPEN row at the new effectiveFrom. This truncates a window that ran past the new
+      // start (the supersession case the panel flagged) so there is no double-count.
       await tx.update(employmentPayComponent).set({ validTo: p.effectiveFrom }).where(eq(employmentPayComponent.id, cur.id));
     }
     const [row] = await tx
@@ -293,7 +368,10 @@ export function setEmploymentPayComponent(
         componentId: p.componentId,
         amount: money(p.amount),
         validFrom: p.effectiveFrom,
-        validTo: null,
+        validTo: effectiveTo,
+        currency,
+        prorateOverride: p.prorateOverride ?? null,
+        remarks: p.remarks ?? null,
       })
       .returning({ id: employmentPayComponent.id });
     await appendEvent(tx, {
@@ -304,7 +382,8 @@ export function setEmploymentPayComponent(
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
       // ADR-0030 Layer 0: amount lives on employment_pay_component[aggregateId]; reference, not cleartext.
-      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom },
+      // effectiveTo / currency / prorateOverride are non-PII references/flags (not in the banned set).
+      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom, effectiveTo, currency, prorateOverride: p.prorateOverride ?? null },
     });
     return { id: row.id };
   };

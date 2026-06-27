@@ -2,10 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
-import { setEmploymentPayComponent } from '@/core/pay-components';
+import { FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, type ReviewType } from '@/core/employment-review';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
@@ -41,15 +42,35 @@ export async function startReviewAction(formData: FormData) {
 export async function setEmploymentComponentAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));
+  // 1.2.1 Fixed Transaction — the prorate Select maps inherit/yes/no → null/true/false (null = inherit the
+  // catalog flag). The effective end-date and remarks are optional; an empty value is normalised to null.
+  const prorateRaw = String(formData.get('prorate') ?? 'inherit');
+  const prorateOverride = prorateRaw === 'yes' ? true : prorateRaw === 'no' ? false : null;
+  const effectiveTo = String(formData.get('effectiveTo') ?? '').trim() || null;
+  const remarks = String(formData.get('remarks') ?? '').trim() || null;
+  const currency = String(formData.get('currency') ?? 'MYR').trim() || 'MYR';
   try {
     await setEmploymentPayComponent(s, {
       employmentId,
       componentId: String(formData.get('componentId')),
       amount: Number(formData.get('amount')) || 0,
       effectiveFrom: String(formData.get('effectiveFrom')),
+      effectiveTo,
+      currency,
+      prorateOverride,
+      remarks,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    // Surface the two typed validation errors as localised inline messages (people.detail.dateError /
+    // currencyUnsupported); any other error falls back to its raw message via the same ?error= banner.
+    const t = await getTranslations('people.detail');
+    const msg =
+      e instanceof FixedTransactionDateError
+        ? t('dateError')
+        : e instanceof UnsupportedFixedCurrencyError
+          ? t('currencyUnsupported')
+          : (e as Error).message;
+    redirect(`/people/${employmentId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/people/${employmentId}`);
   redirect(`/people/${employmentId}?toast=Saved`);

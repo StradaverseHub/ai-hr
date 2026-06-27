@@ -15,7 +15,7 @@ import {
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EpfElection } from '@/components/epf-election';
@@ -195,14 +195,41 @@ export default async function EmployeePage({
           <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
           {payComps.length > 0 && (
             <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">{t('payComponent')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colCurrency')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('payComponentAmount')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colStart')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colEnd')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colProrate')}</th>
+                  <th className="px-4 py-2 font-medium">{t('colRemarks')}</th>
+                  <th className="px-4 py-2 font-medium">{t('status')}</th>
+                </tr>
+              </thead>
               <tbody className="divide-y divide-border">
-                {payComps.map((pc) => (
-                  <tr key={pc.id}>
-                    <td className="px-4 py-2.5 font-mono text-xs">{pc.code}</td>
-                    <td className="px-4 py-2.5">{pc.name}</td>
-                    <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(pc.amount).toFixed(2)}</td>
-                  </tr>
-                ))}
+                {payComps.map((pc) => {
+                  // An item is ENDED once its inclusive end-date is in the past; otherwise it is ACTIVE.
+                  const ended = pc.validTo != null && pc.validTo < today;
+                  // Resolved prorate = per-employee override (if set) else the catalog flag.
+                  const prorate = pc.prorateOverride ?? pc.prorates;
+                  return (
+                    <tr key={pc.id}>
+                      <td className="px-4 py-2.5">
+                        <span className="font-mono text-xs">{pc.code}</span> <span className="text-muted-foreground">{pc.name}</span>
+                      </td>
+                      <td className="px-4 py-2.5 font-mono text-xs">{pc.currency}</td>
+                      <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(pc.amount).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{pc.validFrom}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{pc.validTo ?? '—'}</td>
+                      <td className="px-4 py-2.5">{prorate ? t('prorateYes') : t('prorateNo')}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{pc.remarks ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        <Badge variant={ended ? 'default' : 'success'}>{ended ? t('statusEnded') : t('statusActive')}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -218,8 +245,26 @@ export default async function EmployeePage({
             <Field label={t('payComponentAmount')}>
               <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
             </Field>
+            <Field label={t('payComponentCurrency')}>
+              <select name="currency" defaultValue="MYR" className={inputCls}>
+                <option value="MYR">MYR</option>
+              </select>
+            </Field>
+            <Field label={t('payComponentProrate')}>
+              <select name="prorate" defaultValue="inherit" className={inputCls}>
+                <option value="inherit">{t('prorateInherit')}</option>
+                <option value="yes">{t('prorateYes')}</option>
+                <option value="no">{t('prorateNo')}</option>
+              </select>
+            </Field>
             <Field label={t('payComponentEffectiveFrom')}>
               <input name="effectiveFrom" type="date" required defaultValue={emp.hiredOn} className={inputCls} />
+            </Field>
+            <Field label={t('payComponentEffectiveTo')}>
+              <input name="effectiveTo" type="date" className={inputCls} />
+            </Field>
+            <Field label={t('payComponentRemarks')}>
+              <input name="remarks" type="text" placeholder={t('payComponentRemarksPlaceholder')} className={inputCls} />
             </Field>
             <button className={btnPrimary}>{t('payComponentSave')}</button>
           </form>
