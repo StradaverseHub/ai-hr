@@ -189,7 +189,22 @@
       "allTypes": "ทุกประเภท",
       "statusActive": "ทำงานอยู่",
       "statusTerminated": "สิ้นสุดการจ้าง",
-      "emptyFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง"
+      "emptyFiltered": "ไม่มีพนักงานที่ตรงกับตัวกรอง",
+      "orgInfoHeading": "ข้อมูลองค์กร",
+      "employmentInfoHeading": "ข้อมูลการจ้างงาน",
+      "position": "ตำแหน่ง / ชื่อตำแหน่งงาน",
+      "positionNone": "— ไม่มี —",
+      "jobGrade": "ระดับงาน",
+      "jobGradeNone": "— ไม่มี —",
+      "reportingManager": "ผู้จัดการที่รายงาน",
+      "noManager": "— ไม่มี —",
+      "costCenter": "ศูนย์ต้นทุน",
+      "costCenterNone": "— ไม่มี —",
+      "provisionalEndDate": "วันที่สิ้นสุดชั่วคราว",
+      "probationEndDate": "วันที่สิ้นสุดทดลองงาน",
+      "contractEndDate": "วันที่สิ้นสุดสัญญา",
+      "internshipEndDate": "วันที่สิ้นสุดการฝึกงาน",
+      "provisionalEndHint": "สิ้นสุดทดลองงานสำหรับงานเต็มเวลา (ค่าเริ่มต้น +3 เดือน); มิฉะนั้นเป็นวันสิ้นสุดสัญญาหรือการฝึกงาน เว้นว่างหากไม่มี"
     },
     "detail": {
       "backToPeople": "พนักงาน",

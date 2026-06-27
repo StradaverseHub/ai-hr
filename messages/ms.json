@@ -189,7 +189,22 @@
       "allTypes": "Semua jenis",
       "statusActive": "Aktif",
       "statusTerminated": "Ditamatkan",
-      "emptyFiltered": "Tiada pekerja sepadan dengan tapisan."
+      "emptyFiltered": "Tiada pekerja sepadan dengan tapisan.",
+      "orgInfoHeading": "Maklumat organisasi",
+      "employmentInfoHeading": "Maklumat pekerjaan",
+      "position": "Jawatan / Tajuk kerja",
+      "positionNone": "— Tiada —",
+      "jobGrade": "Gred kerja",
+      "jobGradeNone": "— Tiada —",
+      "reportingManager": "Pengurus pelapor",
+      "noManager": "— Tiada —",
+      "costCenter": "Pusat kos",
+      "costCenterNone": "— Tiada —",
+      "provisionalEndDate": "Tarikh tamat sementara",
+      "probationEndDate": "Tarikh tamat percubaan",
+      "contractEndDate": "Tarikh tamat kontrak",
+      "internshipEndDate": "Tarikh tamat latihan",
+      "provisionalEndHint": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada."
     },
     "detail": {
       "backToPeople": "Kakitangan",

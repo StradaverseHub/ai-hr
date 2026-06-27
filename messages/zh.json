@@ -189,7 +189,22 @@
       "allTypes": "所有类型",
       "statusActive": "在职",
       "statusTerminated": "已离职",
-      "emptyFiltered": "没有符合筛选条件的员工。"
+      "emptyFiltered": "没有符合筛选条件的员工。",
+      "orgInfoHeading": "组织信息",
+      "employmentInfoHeading": "雇佣信息",
+      "position": "职位 / 职称",
+      "positionNone": "— 无 —",
+      "jobGrade": "职级",
+      "jobGradeNone": "— 无 —",
+      "reportingManager": "汇报经理",
+      "noManager": "— 无 —",
+      "costCenter": "成本中心",
+      "costCenterNone": "— 无 —",
+      "provisionalEndDate": "临时结束日期",
+      "probationEndDate": "试用期结束日期",
+      "contractEndDate": "合同结束日期",
+      "internshipEndDate": "实习结束日期",
+      "provisionalEndHint": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。"
     },
     "detail": {
       "backToPeople": "员工",

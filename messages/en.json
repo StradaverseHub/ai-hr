@@ -189,7 +189,22 @@
       "allTypes": "All types",
       "statusActive": "Active",
       "statusTerminated": "Terminated",
-      "emptyFiltered": "No employees match the filters."
+      "emptyFiltered": "No employees match the filters.",
+      "orgInfoHeading": "Organization info",
+      "employmentInfoHeading": "Employment info",
+      "position": "Position / Job title",
+      "positionNone": "— None —",
+      "jobGrade": "Job grade",
+      "jobGradeNone": "— None —",
+      "reportingManager": "Reporting manager",
+      "noManager": "— None —",
+      "costCenter": "Cost center",
+      "costCenterNone": "— None —",
+      "provisionalEndDate": "Provisional end date",
+      "probationEndDate": "Probation end date",
+      "contractEndDate": "Contract end date",
+      "internshipEndDate": "Internship end date",
+      "provisionalEndHint": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none."
     },
     "detail": {
       "backToPeople": "People",

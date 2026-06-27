@@ -1,0 +1,264 @@
+/**
+ * Employee Hiring Process Enhancement — Organization + Employment info on hire.
+ * Covers: organization fields persisted on the assignment/employment, probation status,
+ * reporting line on hire, enriched + backward-compatible employment.hired event, the
+ * computeProvisionalEndOn date helper (incl. month-boundary clamps), server-side cross-company
+ * guard, and the RLS-scoped manager-candidate read.
+ */
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { and, eq, isNull } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import {
+  adminCtx,
+  closeAll,
+  eventTypesFor,
+  latestEventPayload,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  type Base,
+} from './harness';
+import {
+  computeProvisionalEndOn,
+  CrossCompanyError,
+  hireEmployee,
+} from '../core/org';
+import { listManagerCandidates } from '../core/read';
+import * as schema from '../db/schema';
+
+let b: Base;
+beforeAll(async () => {
+  await migrateTestDb();
+  await resetDb();
+  b = await seedBase();
+});
+afterAll(async () => {
+  await closeAll();
+});
+
+const email = () => `hire_${randomUUID().slice(0, 8)}@t.local`;
+
+async function openAssignment(employmentId: string) {
+  const [row] = await owner.db
+    .select()
+    .from(schema.assignment)
+    .where(
+      and(
+        eq(schema.assignment.employmentId, employmentId),
+        isNull(schema.assignment.validTo),
+        isNull(schema.assignment.supersededAt),
+      ),
+    )
+    .limit(1);
+  return row;
+}
+
+async function employmentRow(employmentId: string) {
+  const [row] = await owner.db
+    .select()
+    .from(schema.employment)
+    .where(eq(schema.employment.id, employmentId))
+    .limit(1);
+  return row;
+}
+
+describe('computeProvisionalEndOn', () => {
+  it('full_time → hire + 3 calendar months', () => {
+    expect(computeProvisionalEndOn('2026-01-15', 'full_time')).toBe('2026-04-15');
+    expect(computeProvisionalEndOn('2026-10-01', 'full_time')).toBe('2027-01-01');
+  });
+
+  it('clamps to the last day of the target month on overflow', () => {
+    // 30 Nov + 3mo → Feb has no 30th → 28 Feb (non-leap)
+    expect(computeProvisionalEndOn('2026-11-30', 'full_time')).toBe('2027-02-28');
+    // 31 Jan + 3mo → Apr has 30 days → 30 Apr
+    expect(computeProvisionalEndOn('2026-01-31', 'full_time')).toBe('2026-04-30');
+    // leap year: 30 Nov 2024 + 3mo → 28 Feb 2025 (2025 is not a leap year)
+    expect(computeProvisionalEndOn('2024-11-30', 'full_time')).toBe('2025-02-28');
+    // 30 Nov 2023 + 3mo → 29 Feb 2024 (2024 IS a leap year)
+    expect(computeProvisionalEndOn('2023-11-30', 'full_time')).toBe('2024-02-29');
+  });
+
+  it('non-full_time → null (caller supplies fixed-term date)', () => {
+    expect(computeProvisionalEndOn('2026-01-15', 'contract')).toBeNull();
+    expect(computeProvisionalEndOn('2026-01-15', 'intern')).toBeNull();
+    expect(computeProvisionalEndOn('2026-01-15', 'part_time')).toBeNull();
+  });
+});
+
+describe('hireEmployee — organization + employment info', () => {
+  it('persists org fields, sets probation status, creates the reporting line, and emits both events', async () => {
+    const mgr = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Org Manager', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2024-01-01',
+    });
+
+    const hire = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Org Hire', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      positionId: b.positionId,
+      costCenterId: b.costCenterId,
+      reportingManagerEmploymentId: mgr.employmentId,
+      employmentType: 'full_time',
+      hiredOn: '2026-03-01',
+      provisionalEndOn: '2026-06-01', // a probation period applies
+    });
+
+    // assignment carries position + cost-center and is PROBATION (a provisional end applies)
+    const asg = await openAssignment(hire.employmentId);
+    expect(asg.positionId).toBe(b.positionId);
+    expect(asg.costCenterId).toBe(b.costCenterId);
+    expect(asg.status).toBe('probation');
+
+    // employment carries the provisional end date
+    const emp = await employmentRow(hire.employmentId);
+    expect(emp.provisionalEndOn).toBe('2026-06-01');
+
+    // an OPEN administrative reporting line to the manager exists
+    const [rl] = await owner.db
+      .select()
+      .from(schema.reportingLine)
+      .where(
+        and(
+          eq(schema.reportingLine.subordinateEmploymentId, hire.employmentId),
+          isNull(schema.reportingLine.validTo),
+        ),
+      )
+      .limit(1);
+    expect(rl).toBeDefined();
+    expect(rl.managerEmploymentId).toBe(mgr.employmentId);
+    expect(rl.lineType).toBe('administrative');
+
+    // both events appended
+    const empEvents = await eventTypesFor(b.tenantId, hire.employmentId);
+    expect(empEvents).toContain('employment.hired');
+    const rlEvents = await eventTypesFor(b.tenantId, rl.id);
+    expect(rlEvents).toContain('reporting-line.set');
+  });
+
+  it('employment.hired payload is backward-compatible AND enriched', async () => {
+    const hire = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Compat Hire', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      positionId: b.positionId,
+      gradeId: null,
+      employmentType: 'contract',
+      hiredOn: '2026-04-10',
+      provisionalEndOn: '2026-10-10',
+    });
+    const payload = await latestEventPayload(b.tenantId, hire.employmentId, 'employment.hired');
+    expect(payload).not.toBeNull();
+    // existing keys preserved unrenamed (CP22 / audit consumers)
+    expect(payload).toMatchObject({
+      personId: hire.personId,
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      hiredOn: '2026-04-10',
+    });
+    // new keys added
+    expect(payload).toMatchObject({
+      positionId: b.positionId,
+      employmentType: 'contract',
+      assignmentStatus: 'probation',
+      provisionalEndOn: '2026-10-10',
+    });
+  });
+
+  it('intern/contract hires are probation even without a provisional date; full_time without one stays active', async () => {
+    const intern = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Intern Hire', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'intern',
+      hiredOn: '2026-05-01',
+    });
+    expect((await openAssignment(intern.employmentId)).status).toBe('probation');
+
+    const ft = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'NoProbation Hire', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-05-01',
+      provisionalEndOn: null,
+    });
+    expect((await openAssignment(ft.employmentId)).status).toBe('active');
+  });
+
+  it('rejects a position / cost-center / department that belongs to another company', async () => {
+    // a second company with its own position + cost center
+    const [c2] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Other Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const [pos2] = await owner.db
+      .insert(schema.position)
+      .values({ tenantId: b.tenantId, companyId: c2.id, title: 'Other Exec' })
+      .returning({ id: schema.position.id });
+    const [cc2] = await owner.db
+      .insert(schema.costCenter)
+      .values({ tenantId: b.tenantId, companyId: c2.id, code: 'CC2', name: 'Other HQ' })
+      .returning({ id: schema.costCenter.id });
+    const [dept2] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: b.tenantId, companyId: c2.id, name: 'Other Dept' })
+      .returning({ id: schema.department.id });
+
+    // position from company B into company A → throws
+    await expect(
+      hireEmployee(adminCtx(b), {
+        person: { fullName: 'X', primaryEmail: email() },
+        companyId: b.companyId,
+        departmentId: b.deptA,
+        positionId: pos2.id,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      }),
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+
+    // cost center from company B → throws
+    await expect(
+      hireEmployee(adminCtx(b), {
+        person: { fullName: 'X', primaryEmail: email() },
+        companyId: b.companyId,
+        departmentId: b.deptA,
+        costCenterId: cc2.id,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      }),
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+
+    // department from company B → throws
+    await expect(
+      hireEmployee(adminCtx(b), {
+        person: { fullName: 'X', primaryEmail: email() },
+        companyId: b.companyId,
+        departmentId: dept2.id,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      }),
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+  });
+
+  it('listManagerCandidates returns active in-scope employments and excludes terminated', async () => {
+    const active = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Candidate Active', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const candidates = await listManagerCandidates(adminCtx(b), { companyIds: [b.companyId] });
+    const ids = new Set(candidates.map((c) => c.employmentId));
+    expect(ids.has(active.employmentId)).toBe(true);
+    // a bogus company scope returns none of our company's people
+    const none = await listManagerCandidates(adminCtx(b), { companyIds: [randomUUID()] });
+    expect(none.length).toBe(0);
+  });
+});

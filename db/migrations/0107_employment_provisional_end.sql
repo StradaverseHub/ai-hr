@@ -1,0 +1,12 @@
+-- Employee Hiring Process Enhancement — provisional/lifecycle end date. Additive column only — no new
+-- table, no new RLS: the column is reachable by the existing employment FOR ALL tenant + can_see_employment
+-- policies (same as prior additive employment columns), and `GRANT ... ON ALL TABLES IN SCHEMA public TO
+-- ai_hr_app` (migration 0001) is table-level, so the new column inherits SELECT/UPDATE — no per-column grant.
+--
+--   employment.provisional_end_on: provisional/lifecycle end date, interpreted by the open assignment's
+--     employment_type — probation end for full_time, contract end for contract, internship end for intern.
+--     SINGLE-DATE BY DESIGN: the ticket specifies one date per employment type, so a MY fixed-term contract
+--     employee who also serves probation cannot store both here; a separate probation date for contract hires
+--     is a DEFERRED decision pending PM. Null = no provisional period (full_time without probation, or
+--     part_time). Existing rows are unaffected (nullable, no backfill).
+ALTER TABLE employment ADD COLUMN provisional_end_on date;

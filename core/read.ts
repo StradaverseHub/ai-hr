@@ -148,6 +148,39 @@ export function listEmployeesPage(
   });
 }
 
+/**
+ * Hiring enhancement — flat picker of active (non-terminated) employments the new hire can report to.
+ * Scoped to the session's allowed companies (reuse the `companyIds` filter from listEmployeesPage); no
+ * extra company-subtree narrowing. Cross-company managers stay selectable on purpose — the reporting_line
+ * schema permits manager & subordinate to differ in company. RLS already fences this to the tenant.
+ */
+export type ManagerCandidate = { employmentId: string; name: string; employeeCode: string | null };
+
+export function listManagerCandidates(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+): Promise<ManagerCandidate[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          opts.companyIds && opts.companyIds.length
+            ? inArray(employment.companyId, opts.companyIds)
+            : undefined,
+        ),
+      )
+      .orderBy(person.fullName),
+  );
+}
+
 export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boolean } = {}) {
   return withTenant(ctx, (tx) =>
     tx

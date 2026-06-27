@@ -189,7 +189,22 @@
       "allTypes": "Tất cả loại",
       "statusActive": "Đang làm việc",
       "statusTerminated": "Đã nghỉ việc",
-      "emptyFiltered": "Không có nhân viên nào khớp với bộ lọc."
+      "emptyFiltered": "Không có nhân viên nào khớp với bộ lọc.",
+      "orgInfoHeading": "Thông tin tổ chức",
+      "employmentInfoHeading": "Thông tin việc làm",
+      "position": "Vị trí / Chức danh",
+      "positionNone": "— Không có —",
+      "jobGrade": "Ngạch công việc",
+      "jobGradeNone": "— Không có —",
+      "reportingManager": "Quản lý trực tiếp",
+      "noManager": "— Không có —",
+      "costCenter": "Trung tâm chi phí",
+      "costCenterNone": "— Không có —",
+      "provisionalEndDate": "Ngày kết thúc tạm thời",
+      "probationEndDate": "Ngày kết thúc thử việc",
+      "contractEndDate": "Ngày kết thúc hợp đồng",
+      "internshipEndDate": "Ngày kết thúc thực tập",
+      "provisionalEndHint": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có."
     },
     "detail": {
       "backToPeople": "Nhân sự",

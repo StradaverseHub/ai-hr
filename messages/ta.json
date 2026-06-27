@@ -189,7 +189,22 @@
       "allTypes": "அனைத்து வகைகள்",
       "statusActive": "செயலில்",
       "statusTerminated": "நிறுத்தப்பட்டது",
-      "emptyFiltered": "வடிகட்டிகளுக்கு பொருந்தும் பணியாளர்கள் இல்லை."
+      "emptyFiltered": "வடிகட்டிகளுக்கு பொருந்தும் பணியாளர்கள் இல்லை.",
+      "orgInfoHeading": "நிறுவன தகவல்",
+      "employmentInfoHeading": "வேலைவாய்ப்பு தகவல்",
+      "position": "பதவி / பணித் தலைப்பு",
+      "positionNone": "— எதுவுமில்லை —",
+      "jobGrade": "பணி தரம்",
+      "jobGradeNone": "— எதுவுமில்லை —",
+      "reportingManager": "அறிக்கையிடும் மேலாளர்",
+      "noManager": "— எதுவுமில்லை —",
+      "costCenter": "செலவு மையம்",
+      "costCenterNone": "— எதுவுமில்லை —",
+      "provisionalEndDate": "தற்காலிக முடிவு தேதி",
+      "probationEndDate": "பணிக்கால சோதனை முடிவு தேதி",
+      "contractEndDate": "ஒப்பந்த முடிவு தேதி",
+      "internshipEndDate": "பயிற்சி முடிவு தேதி",
+      "provisionalEndHint": "முழுநேரத்திற்கு பணிக்கால சோதனை முடிவு (இயல்பாக +3 மாதங்கள்); இல்லையெனில் ஒப்பந்தம் அல்லது பயிற்சி முடிவு. எதுவுமில்லை எனில் வெறுமையாக விடவும்."
     },
     "detail": {
       "backToPeople": "பணியாளர்கள்",

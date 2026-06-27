@@ -307,6 +307,11 @@ export const employment = pgTable(
     // Wave 2 (ADR-0041 2E): the employee's seniority grade — drives grade-scoped leave entitlements.
     // Null = ungraded (falls to the company-default leave policy).
     gradeId: uuid('grade_id').references(() => jobGrade.id),
+    // Hiring enhancement: provisional/lifecycle end date — interpreted by assignment.employment_type
+    // (probation end for full_time, contract end for contract, internship end for intern). Single-date
+    // by design; a separate probation date for contract hires is deferred (PM). Null = no provisional
+    // period (e.g. a full_time hire with no probation, or part_time).
+    provisionalEndOn: date('provisional_end_on'),
     // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
     // apply. Null falls back to the company's default_work_state, then national-only.
     workState: text('work_state'),

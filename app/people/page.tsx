@@ -1,7 +1,15 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listDepartments, listEmployeesPage } from '@/core/read';
+import {
+  listCompanies,
+  listDepartments,
+  listEmployeesPage,
+  listJobGrades,
+  listManagerCandidates,
+} from '@/core/read';
+import { listPositions, listCostCenters } from '@/core/admin';
+import { computeProvisionalEndOn } from '@/core/org';
 import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { decideProfileChangeAction, hireAction } from './actions';
@@ -49,7 +57,16 @@ export default async function PeoplePage({
   const page = Math.max(0, Number(pageParam) || 0);
   const statusFilter = status === 'active' || status === 'terminated' ? status : undefined;
   const hasFilters = !!(q || company || dept || status || type);
-  const [{ rows: employees, total }, companies, departments, profileChanges] = await Promise.all([
+  const [
+    { rows: employees, total },
+    companies,
+    departments,
+    profileChanges,
+    positions,
+    costCenters,
+    grades,
+    managerCandidates,
+  ] = await Promise.all([
     listEmployeesPage(session, {
       companyIds: scopeIds,
       q,
@@ -65,7 +82,14 @@ export default async function PeoplePage({
     isAdmin
       ? listProfileChangeRequests(session, { companyIds: scopeIds, status: 'pending' })
       : Promise.resolve([]),
+    // Hire-form pickers — admin-gated like the hire form itself.
+    isAdmin ? listPositions(session, { companyIds: scopeIds }) : Promise.resolve([]),
+    isAdmin ? listCostCenters(session, { companyIds: scopeIds }) : Promise.resolve([]),
+    isAdmin ? listJobGrades(session) : Promise.resolve([]),
+    isAdmin ? listManagerCandidates(session, { companyIds: scopeIds }) : Promise.resolve([]),
   ]);
+  // full_time default provisional end (+3mo) for the server-rendered date field default.
+  const fullTimeProvisionalDefault = computeProvisionalEndOn(today, 'full_time') ?? today;
   const hasNext = (page + 1) * PAGE < total;
   const qs = (over: Record<string, string | number | undefined>) => {
     const merged: Record<string, string | number | undefined> = { q, company, dept, status, type, page: pageParam, ...over };
@@ -277,48 +301,112 @@ export default async function PeoplePage({
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
             {t('hireAnEmployee')}
           </summary>
-          <form
-            action={hireAction}
-            className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2"
-          >
-            <Field label={t('fullName')}>
-              <input name="fullName" required className={inputCls} placeholder={t('fullNamePlaceholder')} />
-            </Field>
-            <Field label={t('email')}>
-              <input name="primaryEmail" type="email" required className={inputCls} placeholder={t('emailPlaceholder')} />
-            </Field>
-            <Field label={t('company')}>
-              <select name="companyId" required className={inputCls}>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('department')}>
-              <select name="departmentId" required className={inputCls}>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('employmentType')}>
-              <select name="employmentType" defaultValue="full_time" className={inputCls}>
-                <option value="full_time">{t('employmentFullTime')}</option>
-                <option value="part_time">{t('employmentPartTime')}</option>
-                <option value="contract">{t('employmentContract')}</option>
-                <option value="intern">{t('employmentIntern')}</option>
-              </select>
-            </Field>
-            <Field label={t('hireDate')}>
-              <input name="hiredOn" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
-            <div className="sm:col-span-2">
-              <Button type="submit">{t('hire')}</Button>
+          <form action={hireAction} className="space-y-6 border-t border-border p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label={t('fullName')}>
+                <input name="fullName" required className={inputCls} placeholder={t('fullNamePlaceholder')} />
+              </Field>
+              <Field label={t('email')}>
+                <input name="primaryEmail" type="email" required className={inputCls} placeholder={t('emailPlaceholder')} />
+              </Field>
             </div>
+
+            <fieldset className="space-y-4">
+              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('orgInfoHeading')}
+              </legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label={t('company')}>
+                  <select name="companyId" required className={inputCls}>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('department')}>
+                  <select name="departmentId" required className={inputCls}>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('position')}>
+                  <select name="positionId" className={inputCls}>
+                    <option value="">{t('positionNone')}</option>
+                    {positions.map((pos) => (
+                      <option key={pos.id} value={pos.id}>
+                        {pos.title}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('jobGrade')}>
+                  <select name="gradeId" className={inputCls}>
+                    <option value="">{t('jobGradeNone')}</option>
+                    {grades.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('reportingManager')}>
+                  <select name="reportingManagerEmploymentId" defaultValue="" className={inputCls}>
+                    <option value="">{t('noManager')}</option>
+                    {managerCandidates.map((m) => (
+                      <option key={m.employmentId} value={m.employmentId}>
+                        {m.name}
+                        {m.employeeCode ? ` (${m.employeeCode})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('costCenter')}>
+                  <select name="costCenterId" className={inputCls}>
+                    <option value="">{t('costCenterNone')}</option>
+                    {costCenters.map((cc) => (
+                      <option key={cc.id} value={cc.id}>
+                        {cc.code} — {cc.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            </fieldset>
+
+            <fieldset className="space-y-4">
+              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t('employmentInfoHeading')}
+              </legend>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label={t('employmentType')}>
+                  <select name="employmentType" defaultValue="full_time" className={inputCls}>
+                    <option value="full_time">{t('employmentFullTime')}</option>
+                    <option value="part_time">{t('employmentPartTime')}</option>
+                    <option value="contract">{t('employmentContract')}</option>
+                    <option value="intern">{t('employmentIntern')}</option>
+                  </select>
+                </Field>
+                <Field label={t('hireDate')}>
+                  <input name="hiredOn" type="date" required defaultValue={today} className={inputCls} />
+                </Field>
+                <Field label={t('provisionalEndDate')}>
+                  <input
+                    name="provisionalEndOn"
+                    type="date"
+                    defaultValue={fullTimeProvisionalDefault}
+                    className={inputCls}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">{t('provisionalEndHint')}</p>
+                </Field>
+              </div>
+            </fieldset>
+
+            <Button type="submit">{t('hire')}</Button>
           </form>
         </details>
       </Card>

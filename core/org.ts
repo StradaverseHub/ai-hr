@@ -14,11 +14,25 @@ import {
   employment,
   assignment,
   company,
+  costCenter,
+  department,
   holidayGroup,
   leavePolicy,
+  position,
   reportingLine,
   leaveLedger,
 } from '../db/schema';
+
+/** Hiring enhancement: a position / cost-center / department chosen for a hire must belong to the
+ *  company the employment is created under. Client filtering is not a source of truth — this is the
+ *  server-side guard (positions & cost-centers carry company_id; departments carry it via hierarchy).
+ *  job_grade is tenant-wide (no company_id) so it is intentionally NOT checked. */
+export class CrossCompanyError extends Error {
+  constructor(entity: 'position' | 'cost-center' | 'department') {
+    super(`The selected ${entity} does not belong to the hiring company`);
+    this.name = 'CrossCompanyError';
+  }
+}
 
 export class ReportingCycleError extends Error {
   constructor() {
@@ -40,10 +54,49 @@ export type HireParams = {
   hiredOn: string; // 'YYYY-MM-DD'
   /** Seniority grade (ADR-0041 2E) — drives grade-scoped leave entitlements. Optional; null = ungraded. */
   gradeId?: string | null;
+  /** Hiring enhancement: the administrative manager this new hire reports to (an employment id). When
+   *  set, an open administrative reporting_line is created on hire. Optional; cross-company managers are
+   *  intentionally allowed (the reporting_line schema permits cross-company lines). */
+  reportingManagerEmploymentId?: string;
+  /** Hiring enhancement: provisional/lifecycle end date ('YYYY-MM-DD' or null), interpreted by
+   *  employmentType (probation end for full_time, contract/internship end otherwise). The server action
+   *  is the source of truth: it computes the full_time default via computeProvisionalEndOn. */
+  provisionalEndOn?: string | null;
   /** Standing entitlements to grant on hire (pack-driven). Pass ANNUAL / SICK /
    *  HOSPITALIZATION; situational types (maternity etc.) are claimed per event, not granted. */
   grantLeaveTypes?: { id: string; code: string }[];
 };
+
+/** Days in a given month (1-based month). */
+function daysInMonth(year: number, month: number): number {
+  // Day 0 of the next month is the last day of `month` (Date.UTC normalises month overflow).
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * Hiring enhancement — the server-side single source of truth for a hire's default provisional end date.
+ * full_time → hire + 3 calendar months with clamp-to-last-day-of-month (pure UTC string math, no Date TZ
+ * drift): parse Y/M/D, add 3 months, then clamp the day to the target month's last day so 2026-11-30 + 3mo
+ * → 2027-02-28 (not an overflow into March). contract / intern / part_time → null: their fixed-term length
+ * varies, so the user supplies the date explicitly. Exported for unit tests and the page's default render.
+ */
+export function computeProvisionalEndOn(
+  hiredOn: string,
+  employmentType: EmploymentType,
+): string | null {
+  if (employmentType !== 'full_time') return null;
+  const y = Number(hiredOn.slice(0, 4));
+  const m = Number(hiredOn.slice(5, 7));
+  const d = Number(hiredOn.slice(8, 10));
+  // Add 3 months in 1-based month arithmetic.
+  const total = m - 1 + 3; // 0-based month index after adding 3
+  const targetYear = y + Math.floor(total / 12);
+  const targetMonth = (total % 12) + 1; // back to 1-based
+  const clampedDay = Math.min(d, daysInMonth(targetYear, targetMonth));
+  const mm = String(targetMonth).padStart(2, '0');
+  const dd = String(clampedDay).padStart(2, '0');
+  return `${targetYear}-${mm}-${dd}`;
+}
 
 export async function hireEmployee(ctx: SessionContext, p: HireParams) {
   return withTenant(ctx, async (tx) => {
@@ -61,11 +114,49 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       personId = row.id;
     }
 
+    // Server-side cross-company guard (source of truth — client filtering is not). The chosen
+    // department / position / cost-center must belong to the hiring company. grade_id is tenant-wide
+    // (no company_id), so it is intentionally not checked. RLS already scopes these reads to the tenant.
+    const [dept] = await tx
+      .select({ companyId: department.companyId })
+      .from(department)
+      .where(eq(department.id, p.departmentId))
+      .limit(1);
+    if (!dept || dept.companyId !== p.companyId) throw new CrossCompanyError('department');
+    if (p.positionId) {
+      const [pos] = await tx
+        .select({ companyId: position.companyId })
+        .from(position)
+        .where(eq(position.id, p.positionId))
+        .limit(1);
+      if (!pos || pos.companyId !== p.companyId) throw new CrossCompanyError('position');
+    }
+    if (p.costCenterId) {
+      const [cc] = await tx
+        .select({ companyId: costCenter.companyId })
+        .from(costCenter)
+        .where(eq(costCenter.id, p.costCenterId))
+        .limit(1);
+      if (!cc || cc.companyId !== p.companyId) throw new CrossCompanyError('cost-center');
+    }
+
+    const provisionalEndOn = p.provisionalEndOn ?? null;
     const employeeCode = await nextEmployeeCode(tx, ctx.tenantId);
     const [emp] = await tx
       .insert(employment)
-      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null })
+      .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
       .returning({ id: employment.id });
+
+    // A new hire serving a provisional period is on 'probation', not 'active': interns/contractors
+    // always, and a full_time hire only when a probation end date applies. Storing a provisional end
+    // date while claiming 'active' would contradict every downstream reader of assignment.status. The
+    // probation→active completion workflow is out of scope for this slice (a follow-up).
+    const assignmentStatus =
+      (p.employmentType === 'full_time' && provisionalEndOn) ||
+      p.employmentType === 'contract' ||
+      p.employmentType === 'intern'
+        ? ('probation' as const)
+        : ('active' as const);
 
     await tx.insert(assignment).values({
       tenantId: ctx.tenantId,
@@ -74,10 +165,40 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       positionId: p.positionId ?? null,
       costCenterId: p.costCenterId ?? null,
       employmentType: p.employmentType,
-      status: 'active',
+      status: assignmentStatus,
       validFrom: p.hiredOn,
       validTo: null,
     });
+
+    // Reporting line on hire (inline insert — no supersede / cycle guard needed: a brand-new
+    // employment has no prior line and cannot form a cycle). Cross-company managers are allowed by design.
+    if (p.reportingManagerEmploymentId) {
+      const [rl] = await tx
+        .insert(reportingLine)
+        .values({
+          tenantId: ctx.tenantId,
+          subordinateEmploymentId: emp.id,
+          managerEmploymentId: p.reportingManagerEmploymentId,
+          lineType: 'administrative',
+          validFrom: p.hiredOn,
+          validTo: null,
+        })
+        .returning({ id: reportingLine.id });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'reporting-line',
+        aggregateId: rl.id,
+        eventType: 'reporting-line.set',
+        actor: actorOf(ctx),
+        subjectEmploymentId: emp.id,
+        payload: {
+          subordinateEmploymentId: emp.id,
+          managerEmploymentId: p.reportingManagerEmploymentId,
+          lineType: 'administrative',
+          validFrom: p.hiredOn,
+        },
+      });
+    }
 
     if (p.grantLeaveTypes?.length) {
       // Entitlement = max(statutory floor, company policy). The floor comes from the
@@ -146,7 +267,20 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       eventType: 'employment.hired',
       actor: actorOf(ctx),
       subjectEmploymentId: emp.id,
-      payload: { personId, companyId: p.companyId, departmentId: p.departmentId, hiredOn: p.hiredOn },
+      // Backward-compat: the original keys (personId, companyId, departmentId, hiredOn) are PRESERVED
+      // unrenamed (CP22/CP22A worklist + audit view read them). The hiring enhancement only ADDS keys.
+      payload: {
+        personId,
+        companyId: p.companyId,
+        departmentId: p.departmentId,
+        hiredOn: p.hiredOn,
+        positionId: p.positionId ?? null,
+        costCenterId: p.costCenterId ?? null,
+        gradeId: p.gradeId ?? null,
+        employmentType: p.employmentType,
+        assignmentStatus,
+        provisionalEndOn,
+      },
     });
 
     return { employmentId: emp.id, personId };
