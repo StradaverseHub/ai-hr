@@ -18,6 +18,7 @@ import {
   department,
   holidayGroup,
   leavePolicy,
+  location,
   position,
   reportingLine,
   leaveLedger,
@@ -28,7 +29,7 @@ import {
  *  server-side guard (positions & cost-centers carry company_id; departments carry it via hierarchy).
  *  job_grade is tenant-wide (no company_id) so it is intentionally NOT checked. */
 export class CrossCompanyError extends Error {
-  constructor(entity: 'position' | 'cost-center' | 'department') {
+  constructor(entity: 'position' | 'cost-center' | 'department' | 'location') {
     super(`The selected ${entity} does not belong to the hiring company`);
     this.name = 'CrossCompanyError';
   }
@@ -289,7 +290,18 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
 
 export async function transferEmployee(
   ctx: SessionContext,
-  p: { employmentId: string; effectiveDate: string; departmentId?: string; positionId?: string; costCenterId?: string },
+  p: {
+    employmentId: string;
+    effectiveDate: string;
+    departmentId?: string;
+    positionId?: string;
+    costCenterId?: string;
+    // Location master data (ADR-0054): `undefined` = carry the current version's location unchanged;
+    // a location id = set it; `null` = clear it. A non-null id must belong to the employment's company
+    // (cross-company coherence — RLS checks assignment and location independently, so it can't enforce
+    // this; the service does).
+    locationId?: string | null;
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     const [cur] = await tx
@@ -305,6 +317,24 @@ export async function transferEmployee(
       .limit(1);
     if (!cur) throw new Error('No open assignment to transfer');
 
+    const nextLocationId = p.locationId === undefined ? cur.locationId : p.locationId;
+    if (nextLocationId) {
+      const [emp] = await tx
+        .select({ companyId: employment.companyId })
+        .from(employment)
+        .where(eq(employment.id, p.employmentId))
+        .limit(1);
+      const [loc] = await tx
+        .select({ companyId: location.companyId })
+        .from(location)
+        .where(eq(location.id, nextLocationId))
+        .limit(1);
+      if (!loc) throw new Error('Location not found');
+      if (!emp || loc.companyId !== emp.companyId) {
+        throw new CrossCompanyError('location');
+      }
+    }
+
     // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
     await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
     const [next] = await tx
@@ -315,6 +345,7 @@ export async function transferEmployee(
         departmentId: p.departmentId ?? cur.departmentId,
         positionId: p.positionId ?? cur.positionId,
         costCenterId: p.costCenterId ?? cur.costCenterId,
+        locationId: nextLocationId,
         employmentType: cur.employmentType,
         status: cur.status,
         validFrom: p.effectiveDate,
@@ -331,8 +362,8 @@ export async function transferEmployee(
       subjectEmploymentId: p.employmentId,
       payload: {
         employmentId: p.employmentId,
-        from: { departmentId: cur.departmentId },
-        to: { departmentId: p.departmentId ?? cur.departmentId },
+        from: { departmentId: cur.departmentId, locationId: cur.locationId },
+        to: { departmentId: p.departmentId ?? cur.departmentId, locationId: nextLocationId },
         effectiveDate: p.effectiveDate,
       },
     });

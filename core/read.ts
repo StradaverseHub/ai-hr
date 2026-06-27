@@ -19,6 +19,7 @@ import {
   leaveLedger,
   leaveRequest,
   leaveType,
+  location,
   payrollBatch,
   payslip,
   person,
@@ -500,6 +501,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         name: person.fullName,
         email: person.primaryEmail,
         phone: person.phone,
+        companyId: employment.companyId,
         company: company.legalName,
         hiredOn: employment.hiredOn,
         terminatedOn: employment.terminatedOn,
@@ -508,12 +510,25 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         holidayGroupName: holidayGroup.name,
         gradeId: employment.gradeId,
         gradeName: jobGrade.name,
+        // ADR-0054: the location on the employee's CURRENT open assignment (null = none).
+        locationId: location.id,
+        locationCode: location.code,
+        locationName: location.name,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(location, eq(location.id, assignment.locationId))
       .where(eq(employment.id, employmentId))
       .limit(1);
     return row ?? null;

@@ -169,6 +169,34 @@ export const company = pgTable(
   ],
 );
 
+// location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
+// supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
+// company.default_work_state). `country` is captured for display only — the engine keeps using
+// company.country (a location-country override would silently flip the holiday-country lookup; out of
+// scope). archivedAt = soft-disable (never hard-delete, so audit survives). RLS gates read+write by
+// app.is_admin_for(company_id). The employee↔location link is assignment.location_id (no second table).
+export const location = pgTable(
+  'location',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    country: text('country').notNull().default('MY'), // ISO-3166 alpha-2 (display only)
+    state: text('state'), // holiday-state override; null = inherit work_state/default/national
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('location_company_idx').on(t.tenantId, t.companyId),
+    // Code unique per tenant among non-archived (mirrors shift_company_name_uq).
+    uniqueIndex('location_code_uq').on(t.tenantId, t.code).where(sql`archived_at is null`),
+  ],
+);
+
 // app_user = a login identity (WorkOS-sourced); optionally linked to a Person.
 export const appUser = pgTable(
   'app_user',
@@ -370,6 +398,11 @@ export const assignment = pgTable(
       .notNull()
       .references(() => department.id),
     costCenterId: uuid('cost_center_id').references(() => costCenter.id),
+    // Location master data (ADR-0054): the physical site this employee works at on this assignment
+    // version. Nullable — the entire employee↔location link, reusing assignment's CLOSE+INSERT history
+    // (no second bitemporal table). Null ⇒ location-blind = today's behaviour. The location's optional
+    // `state` overrides holiday resolution; see location table + core/attendance.ts.
+    locationId: uuid('location_id').references((): AnyPgColumn => location.id),
     employmentType: employmentTypeEnum('employment_type').notNull(),
     status: assignmentStatusEnum('status').notNull(),
     validFrom: date('valid_from').notNull(),

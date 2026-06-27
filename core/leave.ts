@@ -11,6 +11,7 @@ import { assertCanDecide } from './approvals';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { packFor } from '../localization/registry';
 import {
+  assignment,
   company,
   employment,
   holiday,
@@ -21,6 +22,7 @@ import {
   leaveRequest,
   leaveRequestAttachment,
   leaveType,
+  location,
   person,
   reportingLine,
 } from '../db/schema';
@@ -263,19 +265,33 @@ async function resolveHolidaySet(
       ws: employment.workState,
       cds: company.defaultWorkState,
       groupStates: holidayGroup.states,
+      // ADR-0054: location.state overlay from the employee's OPEN assignment row — the top of the
+      // precedence so leave matches attendance (which resolves the same order in core/attendance.ts).
+      locationState: location.state,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .leftJoin(
+      assignment,
+      and(
+        eq(assignment.employmentId, employment.id),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .leftJoin(location, eq(location.id, assignment.locationId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  const states: string[] = loc?.groupStates
-    ? (loc.groupStates as string[])
-    : loc?.ws
-      ? [loc.ws]
-      : loc?.cds
-        ? [loc.cds]
-        : [];
+  const states: string[] = loc?.locationState
+    ? [loc.locationState]
+    : loc?.groupStates
+      ? (loc.groupStates as string[])
+      : loc?.ws
+        ? [loc.ws]
+        : loc?.cds
+          ? [loc.cds]
+          : [];
   const hols = await tx
     .select({ d: holiday.holidayDate })
     .from(holiday)

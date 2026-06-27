@@ -7,11 +7,12 @@
  * (approved leave / holiday / rest day are not "absent"). Each mutation appends a
  * domain event (ADR-0006).
  */
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import {
+  assignment,
   attendance,
   attendanceCorrection,
   attendancePolicy,
@@ -19,7 +20,9 @@ import {
   employeeStatutoryMy,
   employment,
   holiday,
+  holidayGroup,
   leaveRequest,
+  location,
   person,
   rosterAssignment,
   shift,
@@ -55,7 +58,29 @@ export const isoWeekday = (iso: string): number => {
   return dow === 0 ? 7 : dow;
 };
 
-type Policy = typeof DEFAULTS & { country: string };
+type Policy = typeof DEFAULTS & { country: string; states: string[] };
+
+/**
+ * The holiday-state set for an employee (ADR-0054), resolved in priority order
+ *   location.state (open assignment) → holiday_group states → employment.work_state →
+ *   company.default_work_state → national-only.
+ * This is the SAME precedence core/leave.ts resolves (resolveHolidaySet), with `location.state` as a thin
+ * overlay on top, so leave and attendance can never disagree on a state-specific holiday. An empty array
+ * ⇒ national-only, identical to today's location-blind behaviour. Mirrors the leave UNION predicate
+ * `or(isNull(holiday.state), inArray(holiday.state, states))` (leave.ts:286).
+ */
+function resolveStates(row: {
+  locationState: string | null;
+  groupStates: unknown;
+  workState: string | null;
+  defaultWorkState: string | null;
+}): string[] {
+  if (row.locationState) return [row.locationState];
+  if (Array.isArray(row.groupStates) && row.groupStates.length) return row.groupStates as string[];
+  if (row.workState) return [row.workState];
+  if (row.defaultWorkState) return [row.defaultWorkState];
+  return [];
+}
 
 async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
   const [row] = await tx
@@ -67,10 +92,25 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
       breakMinutes: attendancePolicy.breakMinutes,
       workingDays: attendancePolicy.workingDays,
       country: company.country,
+      workState: employment.workState,
+      defaultWorkState: company.defaultWorkState,
+      groupStates: holidayGroup.states,
+      // Location override comes from the employee's OPEN assignment row (the same predicate org.ts uses).
+      locationState: location.state,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
+    .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .leftJoin(
+      assignment,
+      and(
+        eq(assignment.employmentId, employment.id),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .leftJoin(location, eq(location.id, assignment.locationId))
     .where(eq(employment.id, employmentId))
     .limit(1);
   return {
@@ -81,6 +121,14 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
     breakMinutes: row?.breakMinutes ?? DEFAULTS.breakMinutes,
     workingDays: row?.workingDays ?? DEFAULTS.workingDays,
     country: row?.country ?? 'MY',
+    states: row
+      ? resolveStates({
+          locationState: row.locationState ?? null,
+          groupStates: row.groupStates,
+          workState: row.workState ?? null,
+          defaultWorkState: row.defaultWorkState ?? null,
+        })
+      : [],
   };
 }
 
@@ -129,10 +177,20 @@ type ResolvedSchedule = {
 async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<ResolvedSchedule> {
   const pol = await policyFor(tx, employmentId);
   const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
+  // ADR-0054: match national holidays UNION the employee's resolved state holidays — byte-identical to the
+  // leave engine's predicate (leave.ts:286). No resolved state ⇒ national-only = today's behaviour.
   const [hol] = await tx
     .select({ id: holiday.id })
     .from(holiday)
-    .where(and(eq(holiday.holidayDate, date), eq(holiday.country, pol.country)))
+    .where(
+      and(
+        eq(holiday.holidayDate, date),
+        eq(holiday.country, pol.country),
+        pol.states.length
+          ? or(isNull(holiday.state), inArray(holiday.state, pol.states))
+          : isNull(holiday.state),
+      ),
+    )
     .limit(1);
   const [ra] = await tx
     .select({
@@ -312,6 +370,11 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
         name: person.fullName,
         companyCountry: company.country,
         companyId: employment.companyId,
+        // ADR-0054: per-employee holiday-state inputs, resolved like the leave engine + location overlay.
+        workState: employment.workState,
+        defaultWorkState: company.defaultWorkState,
+        groupStates: holidayGroup.states,
+        locationState: location.state,
         attendanceId: attendance.id,
         checkInAt: attendance.checkInAt,
         checkOutAt: attendance.checkOutAt,
@@ -323,6 +386,16 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(location, eq(location.id, assignment.locationId))
       .leftJoin(
         attendance,
         and(eq(attendance.employmentId, employment.id), eq(attendance.attendanceDate, date)),
@@ -353,21 +426,30 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
               ),
             )
         : Promise.resolve([]),
-      tx.select({ country: holiday.country }).from(holiday).where(eq(holiday.holidayDate, date)),
+      // ADR-0054: key holidays by country + (state | '') so a state-holiday is contextualized only for the
+      // employees whose resolved state matches — agreeing with what checkIn stamps.
+      tx.select({ country: holiday.country, state: holiday.state }).from(holiday).where(eq(holiday.holidayDate, date)),
       tx
         .select({ companyId: attendancePolicy.companyId, workingDays: attendancePolicy.workingDays })
         .from(attendancePolicy),
     ]);
     const leaveSet = new Set(onLeave.map((l) => l.employmentId));
-    const holidayCountries = new Set(holidays.map((h) => h.country));
+    // country|state key set (state '' = national). An employee resolves to a holiday if EITHER the national
+    // (country|'') key OR any of their resolved-state keys is present.
+    const holidayKeys = new Set(holidays.map((h) => `${h.country}|${h.state ?? ''}`));
     const daysByCompany = new Map(policies.map((p) => [p.companyId, p.workingDays]));
     const dow = isoWeekday(date);
 
-    return rows.map(({ companyCountry, companyId, ...r }) => {
+    return rows.map(({ companyCountry, companyId, workState, defaultWorkState, groupStates, locationState, ...r }) => {
       let context: DayContext = null;
       if (!r.attendanceId) {
+        const states = resolveStates({ locationState, groupStates, workState, defaultWorkState });
+        // National holiday (country|'') OR any resolved-state holiday for this employee.
+        const isHoliday =
+          holidayKeys.has(`${companyCountry}|`) ||
+          states.some((st) => holidayKeys.has(`${companyCountry}|${st}`));
         if (leaveSet.has(r.employmentId)) context = 'on_leave';
-        else if (holidayCountries.has(companyCountry)) context = 'holiday';
+        else if (isHoliday) context = 'holiday';
         else if (!(daysByCompany.get(companyId) ?? DEFAULTS.workingDays).includes(dow))
           context = 'rest_day';
       }
@@ -416,10 +498,25 @@ export function attendanceMonthSummary(
         companyId: employment.companyId,
         country: company.country,
         hiredOn: employment.hiredOn,
+        // ADR-0054: per-employee holiday-state inputs (location overlay over work_state / default).
+        workState: employment.workState,
+        defaultWorkState: company.defaultWorkState,
+        groupStates: holidayGroup.states,
+        locationState: location.state,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(location, eq(location.id, assignment.locationId))
       .where(
         and(
           isNull(employment.terminatedOn),
@@ -451,7 +548,7 @@ export function attendanceMonthSummary(
           ),
         ),
       tx
-        .select({ country: holiday.country, date: holiday.holidayDate })
+        .select({ country: holiday.country, state: holiday.state, date: holiday.holidayDate })
         .from(holiday)
         .where(and(gte(holiday.holidayDate, monthStart), lte(holiday.holidayDate, monthEnd))),
       tx
@@ -477,7 +574,9 @@ export function attendanceMonthSummary(
         .from(attendancePolicy),
     ]);
 
-    const holidaySet = new Set(hols.map((h) => `${h.country}|${h.date}`));
+    // ADR-0054: key holidays by country|state|date (state '' = national), so the absence loop counts a
+    // state-holiday only for employees whose resolved state matches — agreeing with the stored dayType.
+    const holidaySet = new Set(hols.map((h) => `${h.country}|${h.state ?? ''}|${h.date}`));
     const daysByCompany = new Map(policies.map((pp) => [pp.companyId, pp.workingDays]));
     const rowsByEmp = new Map<string, typeof rows>();
     for (const r of rows) {
@@ -505,6 +604,16 @@ export function attendanceMonthSummary(
       const myLeaves = leaveByEmp.get(e.employmentId) ?? [];
       const onLeave = (d: string) => myLeaves.some((l) => l.startDate <= d && d <= l.endDate);
       const workingDays = daysByCompany.get(e.companyId) ?? DEFAULTS.workingDays;
+      // ADR-0054: the employee's resolved holiday states. A date is a holiday for them if the national
+      // key (country|'') OR any of their resolved-state keys matches — agreeing with what checkIn stamps.
+      const states = resolveStates({
+        locationState: e.locationState ?? null,
+        groupStates: e.groupStates,
+        workState: e.workState ?? null,
+        defaultWorkState: e.defaultWorkState ?? null,
+      });
+      const isHoliday = (d: string) =>
+        holidaySet.has(`${e.country}||${d}`) || states.some((st) => holidaySet.has(`${e.country}|${st}|${d}`));
 
       let present = 0;
       let late = 0;
@@ -534,7 +643,7 @@ export function attendanceMonthSummary(
         if (d > lastCounted) break;
         if (d < e.hiredOn) continue;
         if (!workingDays.includes(isoWeekday(d))) continue;
-        if (holidaySet.has(`${e.country}|${d}`)) continue;
+        if (isHoliday(d)) continue;
         if (recorded.has(d)) continue;
         if (onLeave(d)) leaveDays += 1;
         else absent += 1;

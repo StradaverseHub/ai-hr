@@ -41,6 +41,8 @@ import {
 } from '@/core/admin';
 import { openLeaveYear, accrueEarnedLeave, type LeaveDurationType } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
+import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
+import { requireAdmin } from '@/lib/authz';
 import { setToilPolicy, runToilExpiry } from '@/core/toil';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
@@ -52,6 +54,7 @@ const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 const ATTENDANCE_POLICY = '/admin/attendance';
 const TOIL_POLICY = '/admin/toil';
+const LOCATIONS = '/admin/locations';
 
 function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);
@@ -649,4 +652,57 @@ export async function setAttendancePolicyAction(fd: FormData) {
     fail(ATTENDANCE_POLICY, e);
   }
   ok(ATTENDANCE_POLICY);
+}
+
+// ADR-0054 — Location master data CRUD. requireAdmin gates the route; RLS gates the write per company.
+export async function createLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await createLocation(user, {
+      companyId: String(fd.get('companyId') ?? ''),
+      code: String(fd.get('code') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      country: String(fd.get('country') ?? '') || undefined,
+      state: (fd.get('state') as string) || null,
+    });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function updateLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await updateLocation(user, {
+      locationId: String(fd.get('locationId') ?? ''),
+      code: String(fd.get('code') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      country: String(fd.get('country') ?? '') || undefined,
+      state: (fd.get('state') as string) || null,
+    });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function archiveLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await archiveLocation(user, { locationId: String(fd.get('locationId') ?? '') });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function restoreLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await restoreLocation(user, { locationId: String(fd.get('locationId') ?? '') });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
 }

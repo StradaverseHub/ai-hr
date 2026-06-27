@@ -26,6 +26,7 @@ import {
   endReportingLineAction,
   setCompensationAction,
   setEmploymentComponentAction,
+  setLocationAction,
   setPersonAction,
   setStatutoryAction,
   terminateAction,
@@ -33,6 +34,7 @@ import {
 } from './actions';
 import { currentCompensation } from '@/core/comp';
 import { listHolidayGroups } from '@/core/admin';
+import { listLocations } from '@/core/location';
 import { ReviewSection } from './review-section';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
@@ -101,6 +103,8 @@ export default async function EmployeePage({
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
+  const locations = admin ? await listLocations(s, [emp.companyId]) : [];
   // Current selection of the unified field: a group wins, else a single state, else company default.
   const holidayCalendarValue = emp.holidayGroupId
     ? `group:${emp.holidayGroupId}`
@@ -597,6 +601,36 @@ export default async function EmployeePage({
           </form>
         )}
       </Card>
+
+      {admin && (
+        <Card>
+          <SectionHeader title={t('locationTitle')} />
+          <div className="px-4 pt-3 text-sm text-muted-foreground">
+            {t('locationCurrent', { location: emp.locationName ? `${emp.locationName} (${emp.locationCode})` : t('locationNone') })}
+          </div>
+          {!emp.terminatedOn && (
+            <form action={setLocationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+              <input type="hidden" name="employmentId" value={emp.employmentId} />
+              <Field label={t('locationSelect')}>
+                <select name="locationId" defaultValue={emp.locationId ?? ''} className={inputCls}>
+                  <option value="">{t('locationNone')}</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.name} ({l.code}){l.state ? ` · ${l.state}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('effectiveDate')}>
+                <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+              </Field>
+              <div>
+                <button className={btnPrimary}>{t('setLocation')}</button>
+              </div>
+            </form>
+          )}
+        </Card>
+      )}
 
       {!emp.terminatedOn && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

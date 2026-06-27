@@ -86,7 +86,8 @@
     "payrollConfig": "Payroll config",
     "leaveApproval": "Approval chain",
     "feedback": "Feedback",
-    "reviews": "Reviews"
+    "reviews": "Reviews",
+    "locations": "Locations"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -340,7 +341,12 @@
       "delegationFrom": "From",
       "delegationTo": "Until (optional)",
       "delegationAdd": "Add delegation",
-      "delegationEnd": "End delegation"
+      "delegationEnd": "End delegation",
+      "locationTitle": "Location",
+      "locationCurrent": "Current location: {location}",
+      "locationNone": "No location",
+      "locationSelect": "Location",
+      "setLocation": "Set location"
     },
     "import": {
       "title": "Import employees",
@@ -1750,6 +1756,25 @@
       "processHint": "Convert or lapse time in lieu past its expiry, following each accrual's frozen rule. Runs for today; a scheduled job will automate this later.",
       "processedBanner": "Processed {processed} expirations: {converted} converted to pay, {lapsed} lapsed.",
       "processedNone": "No time in lieu was due for expiry."
+    },
+    "locations": {
+      "pageTitle": "Locations",
+      "pageDescription": "Physical work sites per company. A location can set a state that overrides the public-holiday calendar used by leave and attendance.",
+      "noCompanies": "No companies in scope.",
+      "code": "Code",
+      "name": "Name",
+      "country": "Country",
+      "state": "State",
+      "headcount": "Headcount",
+      "headcountLabel": "{count} staff",
+      "stateNational": "National (default)",
+      "codePlaceholder": "HQ",
+      "namePlaceholder": "Headquarters",
+      "add": "Add location",
+      "save": "Save",
+      "archive": "Archive",
+      "restore": "Restore",
+      "stateNote": "A location’s state overrides the employee’s work state for public-holiday resolution; leave blank to use the company default."
     }
   },
   "topbar": {

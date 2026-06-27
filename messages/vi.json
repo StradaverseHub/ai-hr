@@ -86,7 +86,8 @@
     "payrollConfig": "Cấu hình lương",
     "leaveApproval": "Chuỗi phê duyệt",
     "feedback": "Phản hồi",
-    "reviews": "Đánh giá"
+    "reviews": "Đánh giá",
+    "locations": "Địa điểm"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -340,7 +341,12 @@
       "delegationFrom": "Từ",
       "delegationTo": "Đến (tùy chọn)",
       "delegationAdd": "Thêm ủy quyền",
-      "delegationEnd": "Kết thúc ủy quyền"
+      "delegationEnd": "Kết thúc ủy quyền",
+      "locationTitle": "Địa điểm",
+      "locationCurrent": "Địa điểm hiện tại: {location}",
+      "locationNone": "Không có địa điểm",
+      "locationSelect": "Địa điểm",
+      "setLocation": "Đặt địa điểm"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1750,6 +1756,25 @@
       "processHint": "Chuyển thành tiền hoặc cho mất hiệu lực ngày nghỉ bù đã quá hạn, theo quy tắc cố định của từng khoản. Chạy cho hôm nay; một tác vụ theo lịch sẽ tự động hóa việc này sau.",
       "processedBanner": "Đã xử lý {processed} khoản hết hạn: {converted} chuyển thành tiền, {lapsed} mất hiệu lực.",
       "processedNone": "Không có ngày nghỉ bù nào đến hạn hết hiệu lực."
+    },
+    "locations": {
+      "pageTitle": "Địa điểm",
+      "pageDescription": "Các địa điểm làm việc thực tế theo từng công ty. Một địa điểm có thể đặt tiểu bang ghi đè lịch ngày lễ công cộng được dùng cho nghỉ phép và chấm công.",
+      "noCompanies": "Không có công ty trong phạm vi.",
+      "code": "Mã",
+      "name": "Tên",
+      "country": "Quốc gia",
+      "state": "Tiểu bang",
+      "headcount": "Số nhân sự",
+      "headcountLabel": "{count} nhân sự",
+      "stateNational": "Toàn quốc (mặc định)",
+      "codePlaceholder": "HQ",
+      "namePlaceholder": "Trụ sở chính",
+      "add": "Thêm địa điểm",
+      "save": "Lưu",
+      "archive": "Lưu trữ",
+      "restore": "Khôi phục",
+      "stateNote": "Tiểu bang của địa điểm ghi đè tiểu bang làm việc của nhân viên khi xác định ngày lễ công cộng; để trống để dùng mặc định của công ty."
     }
   },
   "topbar": {

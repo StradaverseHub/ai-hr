@@ -71,6 +71,25 @@ export async function transferAction(formData: FormData) {
   redirect(`/people/${employmentId}?toast=Saved`);
 }
 
+/** ADR-0054: set (or clear) an employee's location, effective-dated through the existing transfer path
+ *  (CLOSE+INSERT on assignment). An empty locationId clears it. Cross-company coherence is enforced in
+ *  the service. */
+export async function setLocationAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await transferEmployee(s, {
+      employmentId,
+      effectiveDate: String(formData.get('effectiveDate')),
+      locationId: (formData.get('locationId') as string) || null,
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
 export async function terminateAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));

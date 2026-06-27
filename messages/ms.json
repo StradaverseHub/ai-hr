@@ -86,7 +86,8 @@
     "payrollConfig": "Konfigurasi gaji",
     "leaveApproval": "Rantaian kelulusan",
     "feedback": "Maklum Balas",
-    "reviews": "Penilaian"
+    "reviews": "Penilaian",
+    "locations": "Lokasi"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -340,7 +341,12 @@
       "delegationFrom": "Dari",
       "delegationTo": "Hingga (pilihan)",
       "delegationAdd": "Tambah perwakilan",
-      "delegationEnd": "Tamatkan perwakilan"
+      "delegationEnd": "Tamatkan perwakilan",
+      "locationTitle": "Lokasi",
+      "locationCurrent": "Lokasi semasa: {location}",
+      "locationNone": "Tiada lokasi",
+      "locationSelect": "Lokasi",
+      "setLocation": "Tetapkan lokasi"
     },
     "import": {
       "title": "Import pekerja",
@@ -1750,6 +1756,25 @@
       "processHint": "Tukar atau luputkan cuti ganti yang telah tamat tempoh, mengikut peraturan tetap setiap rekod. Dijalankan untuk hari ini; kerja berjadual akan mengautomasikannya kemudian.",
       "processedBanner": "Diproses {processed} tamat tempoh: {converted} ditukar kepada bayaran, {lapsed} luput.",
       "processedNone": "Tiada cuti ganti yang perlu ditamatkan tempoh."
+    },
+    "locations": {
+      "pageTitle": "Lokasi",
+      "pageDescription": "Tapak kerja fizikal bagi setiap syarikat. Sesuatu lokasi boleh menetapkan negeri yang mengatasi kalendar cuti umum yang digunakan oleh cuti dan kehadiran.",
+      "noCompanies": "Tiada syarikat dalam skop.",
+      "code": "Kod",
+      "name": "Nama",
+      "country": "Negara",
+      "state": "Negeri",
+      "headcount": "Bilangan kakitangan",
+      "headcountLabel": "{count} kakitangan",
+      "stateNational": "Kebangsaan (lalai)",
+      "codePlaceholder": "HQ",
+      "namePlaceholder": "Ibu Pejabat",
+      "add": "Tambah lokasi",
+      "save": "Simpan",
+      "archive": "Arkib",
+      "restore": "Pulih",
+      "stateNote": "Negeri lokasi mengatasi negeri kerja pekerja untuk penentuan cuti umum; biarkan kosong untuk menggunakan lalai syarikat."
     }
   },
   "topbar": {

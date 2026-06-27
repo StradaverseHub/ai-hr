@@ -86,7 +86,8 @@
     "payrollConfig": "薪资配置",
     "leaveApproval": "审批链",
     "feedback": "反馈",
-    "reviews": "评估"
+    "reviews": "评估",
+    "locations": "地点"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -340,7 +341,12 @@
       "delegationFrom": "从",
       "delegationTo": "至（可选）",
       "delegationAdd": "添加委派",
-      "delegationEnd": "结束委派"
+      "delegationEnd": "结束委派",
+      "locationTitle": "地点",
+      "locationCurrent": "当前地点：{location}",
+      "locationNone": "无地点",
+      "locationSelect": "地点",
+      "setLocation": "设置地点"
     },
     "import": {
       "title": "导入员工",
@@ -1750,6 +1756,25 @@
       "processHint": "按每笔记录的固定规则，将逾期的调休转为支付或作失效处理。针对今天运行；日后将由计划任务自动执行。",
       "processedBanner": "已处理 {processed} 笔到期：{converted} 转为支付，{lapsed} 失效。",
       "processedNone": "没有到期的调休。"
+    },
+    "locations": {
+      "pageTitle": "地点",
+      "pageDescription": "每家公司的实际办公地点。地点可设置一个州，用以覆盖请假和考勤所使用的公共假期日历。",
+      "noCompanies": "范围内没有公司。",
+      "code": "代码",
+      "name": "名称",
+      "country": "国家",
+      "state": "州属",
+      "headcount": "人数",
+      "headcountLabel": "{count} 名员工",
+      "stateNational": "全国（默认）",
+      "codePlaceholder": "HQ",
+      "namePlaceholder": "总部",
+      "add": "添加地点",
+      "save": "保存",
+      "archive": "归档",
+      "restore": "恢复",
+      "stateNote": "地点的州属在公共假期判定中会覆盖员工的工作州属；留空则使用公司默认值。"
     }
   },
   "topbar": {

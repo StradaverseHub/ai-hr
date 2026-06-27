@@ -778,6 +778,13 @@
       "when": 1781861740000,
       "tag": "0110_employment_review",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1781861750000,
+      "tag": "0111_location_master_data",
+      "breakpoints": true
     }
   ]
 }

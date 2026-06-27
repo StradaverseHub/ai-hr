@@ -18,7 +18,7 @@ const ALL_TABLES = [
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
   'performance_goal', 'review_goal', 'performance_checkin', 'peer_feedback_request', 'peer_feedback', 'calibration_session', 'calibration_entry', 'performance_attachment',
-  'shift', 'roster_assignment', 'toil_policy', 'toil_accrual',
+  'shift', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
   'tp1_relief',
   // 0110 — leaking review rows across tests would make the partial-unique index throw spuriously

@@ -28,7 +28,7 @@ const TABLES = [
   'leave_request', 'resignation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'attendance', 'attendance_policy', 'payroll_batch', 'payslip', 'company_statutory_my',
-  'kb_document',
+  'location', 'kb_document',
 ];
 
 async function main() {
@@ -122,6 +122,17 @@ async function main() {
     .insert(schema.holidayGroup)
     .values({ tenantId: DEV_TENANT_ID, name: 'East Malaysia', states: ['Sabah', 'Sarawak', 'Labuan'] })
     .returning({ id: schema.holidayGroup.id });
+  // ADR-0054: demo locations. HQ (Selangor = the company default, so no reclassification of existing data)
+  // and a Kuching site (Sarawak) — assigned below to Mei Ling, whose work_state is ALREADY Sarawak, so her
+  // attendance classification is unchanged by the location (the location merely confirms her state).
+  const [hqLocation] = await owner.db
+    .insert(schema.location)
+    .values({ tenantId: DEV_TENANT_ID, companyId: company.id, code: 'HQ', name: 'Headquarters', country: 'MY', state: 'Selangor' })
+    .returning({ id: schema.location.id });
+  const [kuchingLocation] = await owner.db
+    .insert(schema.location)
+    .values({ tenantId: DEV_TENANT_ID, companyId: company.id, code: 'KCH', name: 'Kuching Office', country: 'MY', state: 'Sarawak' })
+    .returning({ id: schema.location.id });
   // The dev admin is a real principal in the audit trail: link it to a person so its actions
   // resolve to a name ("HR Admin") instead of the bare actor type. No employment, so it never
   // appears in People / org / headcount — it's a back-office identity, not an employee.
@@ -231,6 +242,18 @@ async function main() {
     .update(schema.employment)
     .set({ holidayGroupId: eastMalaysiaGroup.id })
     .where(eq(schema.employment.id, hired[3].employmentId));
+
+  // ADR-0054: set demo locations on the OPEN assignment row (no history churn). Regression-safe:
+  // Mei Ling → Kuching (Sarawak) matches her existing work_state Sarawak, and Aisyah → HQ (Selangor)
+  // matches the company default, so neither location reclassifies any already-seeded attendance.
+  await owner.db
+    .update(schema.assignment)
+    .set({ locationId: kuchingLocation.id })
+    .where(and(eq(schema.assignment.employmentId, hired[2].employmentId), sql`valid_to is null and superseded_at is null`));
+  await owner.db
+    .update(schema.assignment)
+    .set({ locationId: hqLocation.id })
+    .where(and(eq(schema.assignment.employmentId, hired[0].employmentId), sql`valid_to is null and superseded_at is null`));
 
   // Administrative backbone (multi-level) + cross-cutting lines so the org chart can render
   // typed connectors: functional, project, and dotted-line reporting.
