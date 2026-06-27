@@ -9,6 +9,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { resolveApprovalChain } from './leave-approval-policy';
+import { consumeReplacementLeaveTx } from './toil';
 import { holidayDatesFor } from './holidays';
 import { packFor } from '../localization/registry';
 import {
@@ -791,6 +792,18 @@ async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: Decidable
     .from(leaveType)
     .where(eq(leaveType.id, req.leaveTypeId))
     .limit(1);
+  // RL Control Engine (0113): when the consumed type is REPLACEMENT, decrement the toil_accrual register
+  // FIFO-by-expiry so the active/expired split stays authoritative and the year-end close never double-debits
+  // already-spent credits. The ledger debit above is the balance authority; this only updates the register.
+  // Gated by TOIL_ENABLED (the register is invisible when TOIL is off, so there is nothing to decrement).
+  if (lt?.code === 'REPLACEMENT' && process.env.TOIL_ENABLED === 'true') {
+    await consumeReplacementLeaveTx(tx, ctx, {
+      employmentId: req.employmentId,
+      requestId: req.id,
+      need,
+      effectiveOn: req.startDate,
+    });
+  }
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',

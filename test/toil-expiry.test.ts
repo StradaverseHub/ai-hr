@@ -27,6 +27,8 @@ const policy = (companyId: string, over: Partial<ToilPolicyInput> = {}): ToilPol
   expiryDays: 90,
   onExpiry: 'convert_to_pay',
   allowFirstScheduleEligible: false,
+  autoAccrueOnApproval: false,
+  carryForwardAtYearEnd: false,
   ...over,
 });
 

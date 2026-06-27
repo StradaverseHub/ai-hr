@@ -1,5 +1,5 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, desc, eq, gte, inArray, isNotNull, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { isLeaveEligible, type LeaveEligibility } from './leave';
 import {
@@ -25,6 +25,7 @@ import {
   person,
   position,
   reportingLine,
+  toilAccrual,
 } from '../db/schema';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
@@ -663,6 +664,128 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     const localName = new Map(types.map((t) => [t.id, pickName(t.name, t.i18n, locale)]));
     for (const r of out) r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
     return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+  });
+}
+
+// RL Control Engine (0113): the active-vs-expired replacement-leave split, sourced from the toil_accrual
+// register (which step-0 consumption makes authoritative). active = Σ(daysCredited − daysTaken) over active
+// rows; taken = Σ daysTaken (the partial-consumption tally + the fully-taken rows); expired = lapsed;
+// convertedToPay = converted_to_pay — each with worked/expiry dates for the admin panel.
+export type ReplacementLeaveLedger = {
+  active: number;
+  taken: number;
+  expired: number;
+  convertedToPay: number;
+  soonestExpiry: string | null;
+  rows: {
+    id: string;
+    workedDate: string;
+    expiresOn: string;
+    daysCredited: number;
+    daysTaken: number;
+    status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed';
+    remaining: number;
+  }[];
+};
+
+export function replacementLeaveLedger(ctx: SessionContext, employmentId: string): Promise<ReplacementLeaveLedger> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: toilAccrual.id,
+        workedDate: toilAccrual.workedDate,
+        expiresOn: toilAccrual.expiresOn,
+        daysCredited: toilAccrual.daysCredited,
+        daysTaken: toilAccrual.daysTaken,
+        status: toilAccrual.status,
+      })
+      .from(toilAccrual)
+      .where(eq(toilAccrual.employmentId, employmentId))
+      .orderBy(asc(toilAccrual.expiresOn), asc(toilAccrual.workedDate));
+
+    let active = 0;
+    let taken = 0;
+    let expired = 0;
+    let convertedToPay = 0;
+    let soonestExpiry: string | null = null;
+    const out: ReplacementLeaveLedger['rows'] = [];
+    for (const r of rows) {
+      const credited = Number(r.daysCredited);
+      const dTaken = Number(r.daysTaken);
+      const remaining = Math.round((credited - dTaken) * 100) / 100;
+      // taken accumulates the per-accrual consumed quantity regardless of status (active rows can carry a
+      // partial tally; fully-taken rows carry the whole credited amount).
+      taken = Math.round((taken + dTaken) * 100) / 100;
+      if (r.status === 'active') {
+        active = Math.round((active + remaining) * 100) / 100;
+        if (remaining > 0 && (soonestExpiry === null || r.expiresOn < soonestExpiry)) soonestExpiry = r.expiresOn;
+      } else if (r.status === 'lapsed') {
+        expired = Math.round((expired + remaining) * 100) / 100;
+      } else if (r.status === 'converted_to_pay') {
+        convertedToPay = Math.round((convertedToPay + remaining) * 100) / 100;
+      }
+      out.push({
+        id: r.id,
+        workedDate: r.workedDate,
+        expiresOn: r.expiresOn,
+        daysCredited: credited,
+        daysTaken: dTaken,
+        status: r.status,
+        remaining,
+      });
+    }
+    return { active, taken, expired, convertedToPay, soonestExpiry, rows: out };
+  });
+}
+
+// RL Control Engine (0113): company-scoped replacement-leave totals for the admin panel (the active-vs-expired
+// split aggregated over everyone in scope). Same status semantics as replacementLeaveLedger, summed.
+export type ReplacementLeaveSummary = {
+  active: number;
+  taken: number;
+  expired: number;
+  convertedToPay: number;
+  soonestExpiry: string | null;
+  activeAccruals: number;
+};
+
+export function replacementLeaveSummary(ctx: SessionContext, companyIds?: string[]): Promise<ReplacementLeaveSummary> {
+  return withTenant(ctx, async (tx) => {
+    const scope =
+      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined;
+    const rows = await tx
+      .select({
+        status: toilAccrual.status,
+        daysCredited: toilAccrual.daysCredited,
+        daysTaken: toilAccrual.daysTaken,
+        expiresOn: toilAccrual.expiresOn,
+      })
+      .from(toilAccrual)
+      .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
+      .where(scope);
+    let active = 0;
+    let taken = 0;
+    let expired = 0;
+    let convertedToPay = 0;
+    let soonestExpiry: string | null = null;
+    let activeAccruals = 0;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    for (const r of rows) {
+      const remaining = r2(Number(r.daysCredited) - Number(r.daysTaken));
+      taken = r2(taken + Number(r.daysTaken));
+      if (r.status === 'active') {
+        active = r2(active + remaining);
+        if (remaining > 0) {
+          activeAccruals += 1;
+          if (soonestExpiry === null || r.expiresOn < soonestExpiry) soonestExpiry = r.expiresOn;
+        }
+      } else if (r.status === 'lapsed') {
+        expired = r2(expired + remaining);
+      } else if (r.status === 'converted_to_pay') {
+        convertedToPay = r2(convertedToPay + remaining);
+      }
+    }
+    return { active, taken, expired, convertedToPay, soonestExpiry, activeAccruals };
   });
 }
 

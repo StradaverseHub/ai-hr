@@ -43,7 +43,7 @@ import { openLeaveYear, accrueEarnedLeave, type LeaveDurationType } from '@/core
 import { setAttendancePolicy } from '@/core/attendance';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import { requireAdmin } from '@/lib/authz';
-import { setToilPolicy, runToilExpiry } from '@/core/toil';
+import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { packFor } from '@/localization/registry';
@@ -622,6 +622,25 @@ export async function runToilExpiryAction() {
   redirect(`${TOIL_POLICY}?processed=${result!.processed}&converted=${result!.converted}&lapsed=${result!.lapsed}`);
 }
 
+// RL Control Engine (0113) — year-end rollover: expire (or carry-forward, per each accrual's frozen flag) the
+// replacement-leave balance at the year boundary. Supervised admin click; no cron. `asOf` defaults to this
+// year's 31 Dec for calendar tenants (the service recomputes per-employment boundaries for anniversary).
+export async function closeReplacementLeaveYearAction() {
+  const s = await getSession();
+  const asOf = `${new Date().getUTCFullYear()}-12-31`;
+  let result;
+  try {
+    result = await closeReplacementLeaveYear(s, { asOf });
+  } catch (e) {
+    fail(TOIL_POLICY, e);
+  }
+  revalidatePath(TOIL_POLICY);
+  redirect(
+    `${TOIL_POLICY}?closed=1&closedAlready=${result!.alreadyClosed ? 1 : 0}&closedProcessed=${result!.processed}` +
+      `&closedConverted=${result!.converted}&closedLapsed=${result!.lapsed}&closedCarried=${result!.carriedForward}`,
+  );
+}
+
 // ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.
 export async function setToilPolicyAction(fd: FormData) {
   const s = await getSession();
@@ -633,6 +652,8 @@ export async function setToilPolicyAction(fd: FormData) {
       expiryDays: Number(fd.get('expiryDays') ?? 90),
       onExpiry: String(fd.get('onExpiry') ?? 'convert_to_pay') as ToilExpiryAction,
       allowFirstScheduleEligible: fd.get('allowFirstScheduleEligible') === 'on',
+      autoAccrueOnApproval: fd.get('autoAccrueOnApproval') === 'on',
+      carryForwardAtYearEnd: fd.get('carryForwardAtYearEnd') === 'on',
     });
   } catch (e) {
     fail(TOIL_POLICY, e);

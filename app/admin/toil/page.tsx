@@ -1,19 +1,31 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
-import { listCompanies } from '@/core/read';
+import { listCompanies, replacementLeaveSummary } from '@/core/read';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
-import { setToilPolicyAction, runToilExpiryAction } from '../actions';
+import { setToilPolicyAction, runToilExpiryAction, closeReplacementLeaveYearAction } from '../actions';
 
 export default async function ToilPolicyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; processed?: string; converted?: string; lapsed?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    processed?: string;
+    converted?: string;
+    lapsed?: string;
+    closed?: string;
+    closedAlready?: string;
+    closedProcessed?: string;
+    closedConverted?: string;
+    closedLapsed?: string;
+    closedCarried?: string;
+  }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('admin.toilPolicy');
-  const { error, processed, converted, lapsed } = await searchParams;
+  const { error, processed, converted, lapsed, closed, closedAlready, closedProcessed, closedConverted, closedLapsed, closedCarried } =
+    await searchParams;
   const envOn = process.env.TOIL_ENABLED === 'true';
 
   const companies = await listCompanies(s);
@@ -21,6 +33,8 @@ export default async function ToilPolicyPage({
   const visible = companies.filter((c) => scopeIds.includes(c.id));
   const policies = await listToilPolicies(s, visible.map((c) => c.id));
   const byCompany = new Map(policies.map((p) => [p.companyId, p]));
+  // RL Control Engine (0113): the active-vs-expired ledger split across everyone in scope.
+  const summary = envOn ? await replacementLeaveSummary(s, visible.map((c) => c.id)) : null;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -32,6 +46,19 @@ export default async function ToilPolicyPage({
           {Number(processed) === 0
             ? t('processedNone')
             : t('processedBanner', { processed: Number(processed), converted: Number(converted ?? 0), lapsed: Number(lapsed ?? 0) })}
+        </div>
+      )}
+
+      {closed !== undefined && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {Number(closedAlready) === 1
+            ? t('closeAlready')
+            : t('closeBanner', {
+                processed: Number(closedProcessed ?? 0),
+                converted: Number(closedConverted ?? 0),
+                lapsed: Number(closedLapsed ?? 0),
+                carried: Number(closedCarried ?? 0),
+              })}
         </div>
       )}
 
@@ -103,11 +130,53 @@ export default async function ToilPolicyPage({
                   </span>
                 </label>
 
+                <label className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    name="autoAccrueOnApproval"
+                    defaultChecked={p.autoAccrueOnApproval}
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-foreground">{t('autoAccrueLabel')}</span>
+                    <span className="block text-xs text-muted-foreground">{t('autoAccrueHint')}</span>
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    name="carryForwardAtYearEnd"
+                    defaultChecked={p.carryForwardAtYearEnd}
+                    className="mt-0.5 h-4 w-4 accent-primary"
+                  />
+                  <span>
+                    <span className="text-sm font-medium text-foreground">{t('carryForwardLabel')}</span>
+                    <span className="block text-xs text-muted-foreground">{t('carryForwardHint')}</span>
+                  </span>
+                </label>
+
                 <button className={btnPrimary}>{t('save')}</button>
               </form>
             </Card>
           );
         })
+      )}
+
+      {envOn && summary && (
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold text-foreground">{t('ledgerTitle')}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">{t('ledgerHint')}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label={t('ledgerActive')} value={summary.active} />
+            <Stat label={t('ledgerTaken')} value={summary.taken} />
+            <Stat label={t('ledgerExpired')} value={summary.expired} />
+            <Stat label={t('ledgerConverted')} value={summary.convertedToPay} />
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {summary.soonestExpiry ? t('ledgerSoonest', { date: summary.soonestExpiry }) : t('ledgerNoneActive')}
+          </p>
+        </Card>
       )}
 
       {envOn && visible.length > 0 && (
@@ -117,14 +186,29 @@ export default async function ToilPolicyPage({
               <h2 className="text-sm font-semibold text-foreground">{t('processTitle')}</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">{t('processHint')}</p>
             </div>
-            <form action={runToilExpiryAction}>
-              <button className={btnPrimary}>{t('processButton')}</button>
-            </form>
+            <div className="flex flex-wrap items-center gap-2">
+              <form action={runToilExpiryAction}>
+                <button className={btnPrimary}>{t('processButton')}</button>
+              </form>
+              <form action={closeReplacementLeaveYearAction}>
+                <button className={btnPrimary}>{t('closeYearButton')}</button>
+              </form>
+            </div>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">{t('closeYearHint')}</p>
         </Card>
       )}
 
       <p className="px-1 text-xs text-muted-foreground">{t('footnote')}</p>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">{value}</div>
     </div>
   );
 }

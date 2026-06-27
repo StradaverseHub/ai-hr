@@ -11,6 +11,7 @@ import { and, desc, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { maybeAutoAccrueOnApprovalTx } from './toil';
 import {
   assignment,
   attendance,
@@ -776,6 +777,17 @@ export async function decideAttendanceCorrection(
           workedMinutes: d.workedMinutes,
           otMinutes: d.otMinutes,
         },
+      });
+
+      // RL Control Engine (0113): auto-create the replacement-leave credit when this is the only reviewed
+      // attendance-decision path. The approver above already passed assertCanDecide, so the auto-accrual runs
+      // with requireDecideAuth:false (re-checking would hard-throw). It self-gates on dayType ∈ {rest_day,
+      // holiday}, otMinutes>0, TOIL_ENABLED, and the company's enabled + autoAccrueOnApproval policy; eligibility
+      // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise.
+      await maybeAutoAccrueOnApprovalTx(tx, ctx, {
+        employmentId: cor.employmentId,
+        workedDate: cor.attendanceDate,
+        dayType,
       });
     }
 

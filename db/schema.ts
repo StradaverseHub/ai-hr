@@ -1140,6 +1140,12 @@ export const toilPolicy = pgTable(
     expiryDays: integer('expiry_days').notNull().default(90),
     onExpiry: toilExpiryActionEnum('on_expiry').notNull().default('convert_to_pay'),
     allowFirstScheduleEligible: boolean('allow_first_schedule_eligible').notNull().default(false),
+    // 0113 (RL Control Engine): opt-in (default false) — approving a rest-day/holiday attendance correction
+    // auto-banks the RL credit (no manual roster election). Triggered ONLY by decideAttendanceCorrection.
+    autoAccrueOnApproval: boolean('auto_accrue_on_approval').notNull().default(false),
+    // 0113: opt-in (default false) — an accrual survives the year-end close sweep instead of expiring.
+    // FROZEN onto each accrual at accrual time so a mid-year flip cannot change a banked entitlement's fate.
+    carryForwardAtYearEnd: boolean('carry_forward_at_year_end').notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -1161,9 +1167,16 @@ export const toilAccrual = pgTable(
     dayType: attendanceDayTypeEnum('day_type').notNull(),
     otMinutes: integer('ot_minutes').notNull(),
     daysCredited: numeric('days_credited', { precision: 6, scale: 2 }).notNull(),
+    // 0113 (RL Control Engine): signed per-accrual consumption tally. The active bucket nets to
+    // Σ(daysCredited − daysTaken); an accrual flips to 'taken' only once fully consumed. One row per worked
+    // day (preserves the unique index + the payroll predicate join) instead of splitting on partial use.
+    daysTaken: numeric('days_taken', { precision: 6, scale: 2 }).notNull().default('0'),
     accrualBasis: toilAccrualBasisEnum('accrual_basis').notNull(),
     expiresOn: date('expires_on').notNull(),
     status: toilAccrualStatusEnum('status').notNull().default('active'),
+    // 0113: the policy's carryForwardAtYearEnd copied at accrual time (mirrors expiryAction's freeze). The
+    // year-end close sweep reads THIS per-accrual flag, not the live policy.
+    carryForwardAtYearEnd: boolean('carry_forward_at_year_end').notNull().default(false),
     // Frozen at accrual (ADR-0033 33-4): 'convert_to_pay' for a First-Schedule-eligible employee (floor
     // protection), else the policy's on_expiry. The expiry sweep follows this, not a re-derivation.
     expiryAction: toilExpiryActionEnum('expiry_action').notNull().default('convert_to_pay'),
