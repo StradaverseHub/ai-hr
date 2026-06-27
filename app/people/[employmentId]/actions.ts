@@ -6,8 +6,37 @@ import { getSession } from '@/lib/session';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { setEmploymentPayComponent } from '@/core/pay-components';
+import { setReviewEndDate, startReview, type ReviewType } from '@/core/employment-review';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
+
+const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
+
+export async function setReviewEndDateAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  const rawType = String(formData.get('reviewType') ?? '');
+  const reviewType = (REVIEW_TYPES as string[]).includes(rawType) ? (rawType as ReviewType) : 'probation';
+  try {
+    await setReviewEndDate(s, { employmentId, reviewType, endDate: String(formData.get('endDate') || '') || null });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
+export async function startReviewAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await startReview(s, { employmentId });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Review started`);
+}
 
 export async function setEmploymentComponentAction(formData: FormData) {
   const s = await getSession();

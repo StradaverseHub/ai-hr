@@ -33,6 +33,7 @@ import {
 } from './actions';
 import { currentCompensation } from '@/core/comp';
 import { listHolidayGroups } from '@/core/admin';
+import { ReviewSection } from './review-section';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
@@ -681,6 +682,9 @@ export default async function EmployeePage({
           </tbody>
         </table>
       </Card>
+
+      {/* Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated. */}
+      {!emp.terminatedOn && admin && <ReviewSection s={s} employmentId={employmentId} />}
     </div>
   );
 }

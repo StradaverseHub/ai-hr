@@ -316,6 +316,14 @@ export const employment = pgTable(
     // by design; a separate probation date for contract hires is deferred (PM). Null = no provisional
     // period (e.g. a full_time hire with no probation, or part_time).
     provisionalEndOn: date('provisional_end_on'),
+    // Employment-review workflow (0110): explicit end-date source columns (the review trigger inputs).
+    // Which one is meaningful is decided at RUNTIME by the employee's CURRENT open assignment row
+    // (assignment.employment_type): full_time → probation_end_date, contract → contract_end_date,
+    // intern → internship_end_date. part_time → no review. Nullable; minimal stand-ins for the Hiring
+    // Enhancement (collapse to "consume existing columns" if a Hiring PR later owns them).
+    probationEndDate: date('probation_end_date'),
+    contractEndDate: date('contract_end_date'),
+    internshipEndDate: date('internship_end_date'),
     // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
     // apply. Null falls back to the company's default_work_state, then national-only.
     workState: text('work_state'),
@@ -1261,6 +1269,45 @@ export const resignationRequest = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('resignation_request_employment_idx').on(t.employmentId, t.status)],
+);
+
+// Automated Probation / Contract / Internship Review Workflow (0110). Shape/RLS mirror resignation_request.
+// review_type is selected at runtime from the CURRENT open assignment's employment_type; the matching
+// employment.*_end_date is the trigger input. All HR decisions are advisory in v1 (confirm/extend/terminate
+// record a decision + event + deep-link; none mutate employment state, none write back to a trigger column).
+export const reviewTypeEnum = pgEnum('review_type', ['probation', 'contract', 'internship']);
+export const reviewStatusEnum = pgEnum('review_status', ['pending_manager', 'pending_hr', 'completed', 'cancelled']);
+export const reviewDecisionEnum = pgEnum('review_decision', ['confirm', 'extend', 'terminate']);
+export const employmentReview = pgTable(
+  'employment_review',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    reviewType: reviewTypeEnum('review_type').notNull(),
+    status: reviewStatusEnum('status').notNull().default('pending_manager'),
+    endDate: date('end_date').notNull(), // snapshot of the triggering *_end_date
+    dueDate: date('due_date').notNull(), // snapshot: end_date − REVIEW_LEAD (1 month)
+    // manager stage (stage 1) — recommendation is enum-lite text; kept OUT of the subject-visible event payload.
+    managerEmploymentId: uuid('manager_employment_id').references(() => employment.id),
+    managerRecommendation: text('manager_recommendation'), // 'recommend_confirm'|'recommend_extend'|'recommend_terminate'
+    managerComments: text('manager_comments'),
+    managerSubmittedAt: timestamp('manager_submitted_at', { withTimezone: true }),
+    // HR stage (stage 2)
+    decision: reviewDecisionEnum('decision'),
+    extendToDate: date('extend_to_date'), // stored on the row ONLY; never written back to *_end_date in v1
+    hrComments: text('hr_comments'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    autoTriggered: boolean('auto_triggered').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index('employment_review_employment_idx').on(t.employmentId, t.status)],
 );
 
 // ADR-0050 (#1.1.3): yearly self-service TP1 personal tax relief. Keyed by `person_id` (TP1 is the

@@ -8,13 +8,17 @@ import { listAttendanceCorrections } from '@/core/attendance';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
 import { listResignationRequests } from '@/core/offboarding';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
+import { myEmployment } from '@/core/read';
+import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   approveClaimAction,
   approveCorrectionAction,
   approveLeaveAction,
   approveProfileChangeAction,
   decideResignationAction,
+  decideReviewAction,
+  submitManagerEvaluationAction,
 } from './actions';
 
 function DecideButtons({
@@ -79,6 +83,15 @@ export default async function ApprovalsPage({
     listPendingClaims(s),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
   ]);
+  // Employment-review queues (0110): the manager stage (assigned to the caller's own employment, even
+  // without the `manager` platform role) + the HR stage (admin-only).
+  const tReview = await getTranslations('review');
+  const me = s.personId ? await myEmployment(s) : null;
+  const [managerReviews, hrReviews] = await Promise.all([
+    me?.employmentId ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
+    admin ? listReviews(s, { status: 'pending_hr' }) : Promise.resolve([]),
+  ]);
+
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
   // 2B-1: a request may sit at a manager step or an HR step. A manager step is decidable by the
@@ -337,6 +350,95 @@ export default async function ApprovalsPage({
                 ))}
               </tbody>
             </table>
+          )}
+        </Card>
+      )}
+
+      {/* Employment review — manager stage (0110). Visible to the assigned Direct Manager (even without
+          the `manager` platform role) and to admins. */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={tReview('managerStage')} count={managerReviews.length} />
+        {managerReviews.length === 0 ? (
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{tReview('noManagerReviews')}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {managerReviews.map((r) => (
+              <li key={r.id} className="px-4 py-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
+                    {r.employee}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">
+                    {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')} · {tReview('dueDate')} {r.dueDate}
+                  </span>
+                </div>
+                <form action={submitManagerEvaluationAction} className="flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="id" value={r.id} />
+                  <label className="text-xs text-muted-foreground">
+                    {tReview('recommendation.label')}
+                    <select name="recommendation" required className={`${inputCls} mt-1`}>
+                      <option value="recommend_confirm">{tReview('recommendation.recommend_confirm')}</option>
+                      <option value="recommend_extend">{tReview('recommendation.recommend_extend')}</option>
+                      <option value="recommend_terminate">{tReview('recommendation.recommend_terminate')}</option>
+                    </select>
+                  </label>
+                  <input name="comments" placeholder={tReview('managerComments')} className={`${inputCls} flex-1`} />
+                  <Button type="submit" size="sm">
+                    {tReview('submitEvaluation')}
+                  </Button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      {/* Employment review — HR decision stage (0110, admin-only). */}
+      {admin && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={tReview('hrStage')} count={hrReviews.length} />
+          {hrReviews.length === 0 ? (
+            <p className="px-4 py-5 text-center text-sm text-muted-foreground">{tReview('noHrReviews')}</p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {hrReviews.map((r) => (
+                <li key={r.id} className="px-4 py-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
+                      {r.employee}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')}
+                    </span>
+                  </div>
+                  {r.managerRecommendation && (
+                    <div className="mb-2 text-xs text-muted-foreground">
+                      {tReview('recommendation.label')}: {tReview(`recommendation.${r.managerRecommendation}` as 'recommendation.recommend_confirm')}
+                      {r.managerComments ? ` · ${r.managerComments}` : ''}
+                    </div>
+                  )}
+                  <form action={decideReviewAction} className="flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="id" value={r.id} />
+                    <label className="text-xs text-muted-foreground">
+                      {tReview('decision.label')}
+                      <select name="decision" required className={`${inputCls} mt-1`}>
+                        <option value="confirm">{tReview('decision.confirm')}</option>
+                        <option value="extend">{tReview('decision.extend')}</option>
+                        <option value="terminate">{tReview('decision.terminate')}</option>
+                      </select>
+                    </label>
+                    <label className="text-xs text-muted-foreground">
+                      {tReview('extendToDate')}
+                      <input name="extendToDate" type="date" className={`${inputCls} mt-1`} />
+                    </label>
+                    <input name="hrComments" placeholder={tReview('hrComments')} className={`${inputCls} flex-1`} />
+                    <Button type="submit" size="sm">
+                      {tReview('recordDecision')}
+                    </Button>
+                  </form>
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
       )}

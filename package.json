@@ -16,6 +16,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node --env-file=.env.local --import tsx db/seed.ts",
     "leave:accrue": "node --env-file=.env.local --import tsx scripts/accrue-earned.ts",
+    "review:sweep": "node --env-file=.env.local --import tsx scripts/review-sweep.ts",
     "feedback:plan": "node --env-file=.env.local --import tsx scripts/feedback-plan.ts",
     "improve:pull": "node --import tsx scripts/improve/cli.ts pull",
     "improve:pull-approved": "node --import tsx scripts/improve/cli.ts pull-approved",

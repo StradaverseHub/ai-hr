@@ -85,7 +85,8 @@
     "toilPolicy": "Cuti ganti",
     "payrollConfig": "Konfigurasi gaji",
     "leaveApproval": "Rantaian kelulusan",
-    "feedback": "Maklum Balas"
+    "feedback": "Maklum Balas",
+    "reviews": "Penilaian"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -793,7 +794,11 @@
     "teamCalendar": "Kalendar pasukan",
     "resignations": "Peletakan Jawatan",
     "noPendingResignations": "Tiada peletakan jawatan tertangguh.",
-    "lastWorkingDay": "Hari bekerja terakhir"
+    "lastWorkingDay": "Hari bekerja terakhir",
+    "managerReviews": "Penilaian pengurus",
+    "hrReviews": "Keputusan penilaian",
+    "noManagerReviews": "Tiada penilaian menunggu penilaian anda.",
+    "noHrReviews": "Tiada penilaian menunggu keputusan."
   },
   "performance": {
     "list": {
@@ -2473,5 +2478,88 @@
     "assistUnconfigured": "AI tidak dikonfigurasikan untuk ruang kerja ini.",
     "assistFailed": "Tidak dapat menghasilkan peraturan yang sah daripada penerangan itu. Cuba ubah ayat.",
     "assistResultTitle": "Peraturan dicadangkan"
+  },
+  "review": {
+    "title": "Penilaian",
+    "sectionTitle": "Penilaian Percubaan / Kontrak / Latihan",
+    "currentType": "Jenis pekerjaan",
+    "endDate": "Tarikh tamat",
+    "dueDate": "Penilaian perlu",
+    "noEndDate": "Tiada tarikh tamat penilaian ditetapkan untuk pekerja ini.",
+    "setEndDate": "Tetapkan tarikh tamat penilaian",
+    "setEndDateSaved": "Tarikh tamat penilaian disimpan",
+    "startReview": "Mula penilaian",
+    "startReviewDone": "Penilaian dimulakan",
+    "reviewInProgress": "Penilaian sedang berjalan",
+    "viewInApprovals": "Lihat dalam kelulusan",
+    "downloadLetter": "Muat turun surat",
+    "stage": {
+      "pending_manager": "Menunggu penilaian pengurus",
+      "pending_hr": "Menunggu keputusan HR",
+      "completed": "Selesai",
+      "cancelled": "Dibatalkan"
+    },
+    "reviewType": {
+      "probation": "Percubaan",
+      "contract": "Kontrak",
+      "internship": "Latihan"
+    },
+    "recommendation": {
+      "label": "Cadangan",
+      "recommend_confirm": "Cadang sahkan",
+      "recommend_extend": "Cadang lanjutkan",
+      "recommend_terminate": "Cadang tamatkan"
+    },
+    "decision": {
+      "label": "Keputusan",
+      "confirm": "Sahkan",
+      "extend": "Lanjutkan",
+      "terminate": "Tamatkan"
+    },
+    "managerComments": "Komen pengurus",
+    "hrComments": "Komen HR",
+    "extendToDate": "Lanjutkan hingga",
+    "submitEvaluation": "Hantar penilaian",
+    "submitEvaluationDone": "Penilaian dihantar",
+    "recordDecision": "Rekod keputusan",
+    "recordDecisionDone": "Keputusan direkodkan",
+    "managerStage": "Penilaian pengurus",
+    "hrStage": "Keputusan HR",
+    "noManagerReviews": "Tiada penilaian menunggu penilaian anda.",
+    "noHrReviews": "Tiada penilaian menunggu keputusan HR.",
+    "outcome": "Keputusan penilaian",
+    "decidedOn": "Diputuskan pada",
+    "errors": {
+      "endDateRequired": "Tarikh tamat yang sah (YYYY-MM-DD) diperlukan.",
+      "extendDateRequired": "Tarikh lanjutan (YYYY-MM-DD) diperlukan untuk melanjutkan.",
+      "alreadyInProgress": "Penilaian sedang berjalan."
+    },
+    "letter": {
+      "title": {
+        "confirm": "Pengesahan Pekerjaan",
+        "extend": "Lanjutan Tempoh Penilaian",
+        "terminate": "Notis Tidak Disahkan"
+      },
+      "dateLabel": "Tarikh",
+      "reLabel": "Perkara:",
+      "reText": "Keputusan penilaian {type} anda",
+      "greeting": "Yang dihormati {name},",
+      "body": {
+        "confirm": "Berikutan tamatnya tempoh {type} anda pada {endDate}, kami dengan sukacitanya mengesahkan pekerjaan anda. Surat ini adalah notis rasmi pengesahan.",
+        "extend": "Berikutan tempoh {type} anda yang tamat pada {endDate}, tempoh penilaian anda telah dilanjutkan sehingga {extendTo}. Kami akan menjalankan penilaian selanjutnya pada atau sebelum tarikh tersebut.",
+        "terminate": "Berikutan tamatnya tempoh {type} anda pada {endDate}, kami dukacita memaklumkan bahawa pekerjaan anda tidak akan disahkan. Sila hubungi Sumber Manusia untuk membincangkan langkah seterusnya."
+      },
+      "signOff": "Yang benar,",
+      "hrSignature": "Sumber Manusia",
+      "disclaimer": "Surat ini dijana sistem untuk tujuan rekod."
+    },
+    "notify": {
+      "startedTitle": "Penilaian perlu",
+      "startedBody": "Penilaian percubaan / kontrak / latihan perlu — sahkan, lanjutkan atau tamatkan.",
+      "managerEvaluatedTitle": "Penilaian sedia untuk keputusan",
+      "managerEvaluatedBody": "Penilaian pengurus sedia — rekod keputusan HR.",
+      "decidedTitle": "Penilaian anda selesai",
+      "decidedBody": "Penilaian anda telah dimuktamadkan."
+    }
   }
 }

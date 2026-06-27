@@ -85,7 +85,8 @@
     "toilPolicy": "Nghỉ bù",
     "payrollConfig": "Cấu hình lương",
     "leaveApproval": "Chuỗi phê duyệt",
-    "feedback": "Phản hồi"
+    "feedback": "Phản hồi",
+    "reviews": "Đánh giá"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -793,7 +794,11 @@
     "teamCalendar": "Lịch nhóm",
     "resignations": "Đơn xin nghỉ việc",
     "noPendingResignations": "Không có đơn xin nghỉ việc nào đang chờ.",
-    "lastWorkingDay": "Ngày làm việc cuối cùng"
+    "lastWorkingDay": "Ngày làm việc cuối cùng",
+    "managerReviews": "Đánh giá của quản lý",
+    "hrReviews": "Quyết định đánh giá",
+    "noManagerReviews": "Không có đánh giá nào chờ bạn đánh giá.",
+    "noHrReviews": "Không có đánh giá nào chờ quyết định."
   },
   "performance": {
     "list": {
@@ -2473,5 +2478,88 @@
     "assistUnconfigured": "AI chưa được cấu hình cho không gian làm việc này.",
     "assistFailed": "Không thể tạo quy tắc hợp lệ từ mô tả đó. Hãy thử diễn đạt lại.",
     "assistResultTitle": "Quy tắc được gợi ý"
+  },
+  "review": {
+    "title": "Đánh giá",
+    "sectionTitle": "Đánh giá Thử việc / Hợp đồng / Thực tập",
+    "currentType": "Loại hình tuyển dụng",
+    "endDate": "Ngày kết thúc",
+    "dueDate": "Đánh giá đến hạn",
+    "noEndDate": "Chưa đặt ngày kết thúc đánh giá cho nhân viên này.",
+    "setEndDate": "Đặt ngày kết thúc đánh giá",
+    "setEndDateSaved": "Đã lưu ngày kết thúc đánh giá",
+    "startReview": "Bắt đầu đánh giá",
+    "startReviewDone": "Đã bắt đầu đánh giá",
+    "reviewInProgress": "Đánh giá đang diễn ra",
+    "viewInApprovals": "Xem trong phê duyệt",
+    "downloadLetter": "Tải thư",
+    "stage": {
+      "pending_manager": "Chờ quản lý đánh giá",
+      "pending_hr": "Chờ quyết định của HR",
+      "completed": "Hoàn thành",
+      "cancelled": "Đã hủy"
+    },
+    "reviewType": {
+      "probation": "Thử việc",
+      "contract": "Hợp đồng",
+      "internship": "Thực tập"
+    },
+    "recommendation": {
+      "label": "Đề xuất",
+      "recommend_confirm": "Đề xuất xác nhận",
+      "recommend_extend": "Đề xuất gia hạn",
+      "recommend_terminate": "Đề xuất chấm dứt"
+    },
+    "decision": {
+      "label": "Quyết định",
+      "confirm": "Xác nhận",
+      "extend": "Gia hạn",
+      "terminate": "Chấm dứt"
+    },
+    "managerComments": "Nhận xét của quản lý",
+    "hrComments": "Nhận xét của HR",
+    "extendToDate": "Gia hạn đến",
+    "submitEvaluation": "Gửi đánh giá",
+    "submitEvaluationDone": "Đã gửi đánh giá",
+    "recordDecision": "Ghi quyết định",
+    "recordDecisionDone": "Đã ghi quyết định",
+    "managerStage": "Đánh giá của quản lý",
+    "hrStage": "Quyết định của HR",
+    "noManagerReviews": "Không có đánh giá nào chờ bạn đánh giá.",
+    "noHrReviews": "Không có đánh giá nào chờ quyết định của HR.",
+    "outcome": "Kết quả đánh giá",
+    "decidedOn": "Quyết định vào",
+    "errors": {
+      "endDateRequired": "Cần ngày kết thúc hợp lệ (YYYY-MM-DD).",
+      "extendDateRequired": "Cần ngày gia hạn (YYYY-MM-DD) để gia hạn.",
+      "alreadyInProgress": "Đánh giá đã đang diễn ra."
+    },
+    "letter": {
+      "title": {
+        "confirm": "Xác nhận Tuyển dụng",
+        "extend": "Gia hạn Thời gian Đánh giá",
+        "terminate": "Thông báo Không Xác nhận"
+      },
+      "dateLabel": "Ngày",
+      "reLabel": "Về việc:",
+      "reText": "Kết quả đánh giá {type} của bạn",
+      "greeting": "Kính gửi {name},",
+      "body": {
+        "confirm": "Sau khi kết thúc thời gian {type} của bạn vào ngày {endDate}, chúng tôi vui mừng xác nhận việc tuyển dụng của bạn. Thư này là thông báo xác nhận chính thức.",
+        "extend": "Sau thời gian {type} của bạn kết thúc vào ngày {endDate}, thời gian đánh giá của bạn đã được gia hạn đến {extendTo}. Chúng tôi sẽ tiến hành đánh giá thêm vào hoặc trước ngày đó.",
+        "terminate": "Sau khi kết thúc thời gian {type} của bạn vào ngày {endDate}, chúng tôi rất tiếc phải thông báo rằng việc tuyển dụng của bạn sẽ không được xác nhận. Vui lòng liên hệ Phòng Nhân sự để thảo luận các bước tiếp theo."
+      },
+      "signOff": "Trân trọng,",
+      "hrSignature": "Phòng Nhân sự",
+      "disclaimer": "Thư này được hệ thống tạo cho mục đích lưu hồ sơ."
+    },
+    "notify": {
+      "startedTitle": "Đánh giá đến hạn",
+      "startedBody": "Đánh giá thử việc / hợp đồng / thực tập đến hạn — xác nhận, gia hạn hoặc chấm dứt.",
+      "managerEvaluatedTitle": "Đánh giá sẵn sàng để quyết định",
+      "managerEvaluatedBody": "Đánh giá của quản lý đã sẵn sàng — ghi quyết định của HR.",
+      "decidedTitle": "Đánh giá của bạn đã hoàn tất",
+      "decidedBody": "Đánh giá của bạn đã được hoàn tất."
+    }
   }
 }

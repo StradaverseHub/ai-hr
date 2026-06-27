@@ -8,6 +8,12 @@ import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
 import { decideClaim } from '@/core/claims';
 import { decideResignation } from '@/core/offboarding';
+import {
+  decideReview,
+  submitManagerEvaluation,
+  type ReviewDecision,
+  type ReviewRecommendation,
+} from '@/core/employment-review';
 import { myEmployment } from '@/core/read';
 
 // Thin wrappers around the same decide services the source pages use (authz lives in the
@@ -69,6 +75,38 @@ export async function decideResignationAction(formData: FormData) {
     fail(e);
   }
   done(`Resignation ${accepted ? 'accepted' : 'rejected'}`);
+}
+
+export async function submitManagerEvaluationAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await submitManagerEvaluation(s, {
+      reviewId: String(formData.get('id')),
+      recommendation: String(formData.get('recommendation')) as ReviewRecommendation,
+      comments: String(formData.get('comments') || '') || null,
+    });
+  } catch (e) {
+    fail(e);
+  }
+  done('Evaluation submitted');
+}
+
+export async function decideReviewAction(formData: FormData) {
+  const s = await getSession();
+  const decision = String(formData.get('decision')) as ReviewDecision;
+  try {
+    const me = await myEmployment(s);
+    await decideReview(s, {
+      reviewId: String(formData.get('id')),
+      decision,
+      extendToDate: String(formData.get('extendToDate') || '') || null,
+      hrComments: String(formData.get('hrComments') || '') || null,
+      deciderEmploymentId: me?.employmentId ?? null,
+    });
+  } catch (e) {
+    fail(e);
+  }
+  done('Decision recorded');
 }
 
 export async function approveClaimAction(formData: FormData) {

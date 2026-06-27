@@ -85,7 +85,8 @@
     "toilPolicy": "Time off in lieu",
     "payrollConfig": "Payroll config",
     "leaveApproval": "Approval chain",
-    "feedback": "Feedback"
+    "feedback": "Feedback",
+    "reviews": "Reviews"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -793,7 +794,11 @@
     "teamCalendar": "Team calendar",
     "resignations": "Resignations",
     "noPendingResignations": "No pending resignations.",
-    "lastWorkingDay": "Last working day"
+    "lastWorkingDay": "Last working day",
+    "managerReviews": "Manager evaluations",
+    "hrReviews": "Review decisions",
+    "noManagerReviews": "No reviews awaiting your evaluation.",
+    "noHrReviews": "No reviews awaiting a decision."
   },
   "performance": {
     "list": {
@@ -2473,5 +2478,88 @@
     "assistUnconfigured": "AI is not configured for this workspace.",
     "assistFailed": "Could not produce a valid rule from that description. Try rephrasing.",
     "assistResultTitle": "Suggested rule"
+  },
+  "review": {
+    "title": "Reviews",
+    "sectionTitle": "Probation / Contract / Internship Review",
+    "currentType": "Employment type",
+    "endDate": "End date",
+    "dueDate": "Review due",
+    "noEndDate": "No review end date is set for this employee.",
+    "setEndDate": "Set review end date",
+    "setEndDateSaved": "Review end date saved",
+    "startReview": "Start review",
+    "startReviewDone": "Review started",
+    "reviewInProgress": "A review is in progress",
+    "viewInApprovals": "View in approvals",
+    "downloadLetter": "Download letter",
+    "stage": {
+      "pending_manager": "Awaiting manager evaluation",
+      "pending_hr": "Awaiting HR decision",
+      "completed": "Completed",
+      "cancelled": "Cancelled"
+    },
+    "reviewType": {
+      "probation": "Probation",
+      "contract": "Contract",
+      "internship": "Internship"
+    },
+    "recommendation": {
+      "label": "Recommendation",
+      "recommend_confirm": "Recommend confirm",
+      "recommend_extend": "Recommend extend",
+      "recommend_terminate": "Recommend terminate"
+    },
+    "decision": {
+      "label": "Decision",
+      "confirm": "Confirm",
+      "extend": "Extend",
+      "terminate": "Terminate"
+    },
+    "managerComments": "Manager comments",
+    "hrComments": "HR comments",
+    "extendToDate": "Extend to",
+    "submitEvaluation": "Submit evaluation",
+    "submitEvaluationDone": "Evaluation submitted",
+    "recordDecision": "Record decision",
+    "recordDecisionDone": "Decision recorded",
+    "managerStage": "Manager evaluations",
+    "hrStage": "HR decisions",
+    "noManagerReviews": "No reviews awaiting your evaluation.",
+    "noHrReviews": "No reviews awaiting an HR decision.",
+    "outcome": "Review outcome",
+    "decidedOn": "Decided on",
+    "errors": {
+      "endDateRequired": "A valid end date (YYYY-MM-DD) is required.",
+      "extendDateRequired": "An extension date (YYYY-MM-DD) is required to extend.",
+      "alreadyInProgress": "A review is already in progress."
+    },
+    "letter": {
+      "title": {
+        "confirm": "Confirmation of Employment",
+        "extend": "Extension of Review Period",
+        "terminate": "Notice of Non-Confirmation"
+      },
+      "dateLabel": "Date",
+      "reLabel": "Re:",
+      "reText": "Outcome of your {type} review",
+      "greeting": "Dear {name},",
+      "body": {
+        "confirm": "Following the conclusion of your {type} period ending {endDate}, we are pleased to confirm your employment. This letter serves as formal notice of confirmation.",
+        "extend": "Following your {type} period ending {endDate}, your review period has been extended to {extendTo}. We will conduct a further review on or before that date.",
+        "terminate": "Following the conclusion of your {type} period ending {endDate}, we regret to inform you that your employment will not be confirmed. Please contact Human Resources to discuss the next steps."
+      },
+      "signOff": "Yours sincerely,",
+      "hrSignature": "Human Resources",
+      "disclaimer": "This letter is system-generated for record purposes."
+    },
+    "notify": {
+      "startedTitle": "Review due",
+      "startedBody": "A probation / contract / internship review is due — confirm, extend or terminate.",
+      "managerEvaluatedTitle": "Review ready for decision",
+      "managerEvaluatedBody": "A manager evaluation is ready — record the HR decision.",
+      "decidedTitle": "Your review is complete",
+      "decidedBody": "Your review has been finalized."
+    }
   }
 }

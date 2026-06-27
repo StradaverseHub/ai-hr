@@ -16,6 +16,7 @@ import {
 import { myAttendanceCorrections } from '@/core/attendance';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
+import { MeReviewCard } from './review-card';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { SectionJumpNav } from '@/components/section-jump-nav';
@@ -1033,6 +1034,9 @@ export default async function MePage({
           </ul>
         )}
       </Card>
+
+      {/* Employment review outcome (0110) — info-only; surfaces the employee's own completed review. */}
+      {me?.employmentId && <MeReviewCard s={s} employmentId={me.employmentId} />}
 
       {/* Resignation (ADR-0042, #29) — employee-initiated, HR-approved. A serious action: it does not end
           employment on its own; HR must accept it. Kept at the foot of the page. */}

@@ -85,7 +85,8 @@
     "toilPolicy": "调休",
     "payrollConfig": "薪资配置",
     "leaveApproval": "审批链",
-    "feedback": "反馈"
+    "feedback": "反馈",
+    "reviews": "评估"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -793,7 +794,11 @@
     "teamCalendar": "团队日历",
     "resignations": "辞职申请",
     "noPendingResignations": "没有待处理的辞职申请。",
-    "lastWorkingDay": "最后工作日"
+    "lastWorkingDay": "最后工作日",
+    "managerReviews": "经理评估",
+    "hrReviews": "评估决定",
+    "noManagerReviews": "没有等待您评估的项目。",
+    "noHrReviews": "没有等待决定的评估。"
   },
   "performance": {
     "list": {
@@ -2473,5 +2478,88 @@
     "assistUnconfigured": "此工作区尚未配置 AI。",
     "assistFailed": "无法从该描述生成有效规则。请尝试重新表述。",
     "assistResultTitle": "建议的规则"
+  },
+  "review": {
+    "title": "评估",
+    "sectionTitle": "试用 / 合约 / 实习评估",
+    "currentType": "雇佣类型",
+    "endDate": "结束日期",
+    "dueDate": "评估到期",
+    "noEndDate": "尚未为该员工设定评估结束日期。",
+    "setEndDate": "设定评估结束日期",
+    "setEndDateSaved": "评估结束日期已保存",
+    "startReview": "开始评估",
+    "startReviewDone": "评估已开始",
+    "reviewInProgress": "评估进行中",
+    "viewInApprovals": "在审批中查看",
+    "downloadLetter": "下载信函",
+    "stage": {
+      "pending_manager": "等待经理评估",
+      "pending_hr": "等待人力资源决定",
+      "completed": "已完成",
+      "cancelled": "已取消"
+    },
+    "reviewType": {
+      "probation": "试用",
+      "contract": "合约",
+      "internship": "实习"
+    },
+    "recommendation": {
+      "label": "建议",
+      "recommend_confirm": "建议确认",
+      "recommend_extend": "建议延长",
+      "recommend_terminate": "建议终止"
+    },
+    "decision": {
+      "label": "决定",
+      "confirm": "确认",
+      "extend": "延长",
+      "terminate": "终止"
+    },
+    "managerComments": "经理评语",
+    "hrComments": "人力资源评语",
+    "extendToDate": "延长至",
+    "submitEvaluation": "提交评估",
+    "submitEvaluationDone": "评估已提交",
+    "recordDecision": "记录决定",
+    "recordDecisionDone": "决定已记录",
+    "managerStage": "经理评估",
+    "hrStage": "人力资源决定",
+    "noManagerReviews": "没有等待您评估的项目。",
+    "noHrReviews": "没有等待人力资源决定的项目。",
+    "outcome": "评估结果",
+    "decidedOn": "决定于",
+    "errors": {
+      "endDateRequired": "需要有效的结束日期（YYYY-MM-DD）。",
+      "extendDateRequired": "延长需要提供延长日期（YYYY-MM-DD）。",
+      "alreadyInProgress": "评估已在进行中。"
+    },
+    "letter": {
+      "title": {
+        "confirm": "雇佣确认",
+        "extend": "评估期延长",
+        "terminate": "未予确认通知"
+      },
+      "dateLabel": "日期",
+      "reLabel": "主题：",
+      "reText": "您的{type}评估结果",
+      "greeting": "尊敬的 {name}：",
+      "body": {
+        "confirm": "在您于 {endDate} 结束的{type}期之后，我们很高兴确认您的雇佣关系。本函为正式确认通知。",
+        "extend": "在您于 {endDate} 结束的{type}期之后，您的评估期已延长至 {extendTo}。我们将在该日期或之前进行进一步评估。",
+        "terminate": "在您于 {endDate} 结束的{type}期之后，我们遗憾地通知您，您的雇佣关系将不予确认。请联系人力资源部门商讨后续步骤。"
+      },
+      "signOff": "此致敬礼，",
+      "hrSignature": "人力资源部",
+      "disclaimer": "本函由系统生成，仅供存档。"
+    },
+    "notify": {
+      "startedTitle": "评估到期",
+      "startedBody": "试用 / 合约 / 实习评估到期——确认、延长或终止。",
+      "managerEvaluatedTitle": "评估可供决定",
+      "managerEvaluatedBody": "经理评估已就绪——记录人力资源决定。",
+      "decidedTitle": "您的评估已完成",
+      "decidedBody": "您的评估已定案。"
+    }
   }
 }

@@ -1398,8 +1398,9 @@ async function namesForEmployments(tx: Tx, employmentIds: string[]): Promise<Map
   return new Map(rows.map((r) => [r.id, r.name]));
 }
 
-/** The current administrative-line manager's employment id, or null (top of org). */
-async function currentAdminManager(tx: Tx, tenantId: string, subjectEmploymentId: string): Promise<string | null> {
+/** The current administrative-line manager's employment id, or null (top of org).
+ *  Exported (0110) so the employment-review service reuses the SAME reporting-line query — no duplication. */
+export async function currentAdminManager(tx: Tx, tenantId: string, subjectEmploymentId: string): Promise<string | null> {
   const [mgr] = await tx
     .select({ id: reportingLine.managerEmploymentId })
     .from(reportingLine)

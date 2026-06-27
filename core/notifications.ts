@@ -6,9 +6,45 @@
  * resolver and are deferred. A notification is a derived projection with its own table acting as its audit,
  * so dispatch does NOT append a DomainEvent (per CLAUDE.md — that would be an event storm + a derivation loop).
  */
-import { and, asc, desc, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { domainEvent, notification, notificationCursor, payslip, type NotificationSeverity } from '../db/schema';
+import {
+  appUser,
+  domainEvent,
+  employment,
+  employmentReview,
+  notification,
+  notificationCursor,
+  payslip,
+  roleAssignment,
+  type NotificationSeverity,
+} from '../db/schema';
+
+/** All HR-admin employments in the same company as `employmentId` (0110, employment-review fan-out).
+ *  Resolves via role_assignment (hr_admin/super_admin) → app_user → person → that company's employment.
+ *  super_admin grants are group-wide; an hr_admin grant may be group-wide (company_id null) or scoped. */
+export async function hrAdminsForCompany(tx: Tx, employmentId: string): Promise<string[]> {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (!emp) return [];
+  const rows = await tx
+    .select({ employmentId: employment.id })
+    .from(roleAssignment)
+    .innerJoin(appUser, eq(appUser.id, roleAssignment.appUserId))
+    .innerJoin(employment, eq(employment.personId, appUser.personId))
+    .where(
+      and(
+        sql`${roleAssignment.role} in ('hr_admin','super_admin')`,
+        eq(employment.companyId, emp.companyId),
+        // group-wide grant (null company) OR scoped to this company
+        or(isNull(roleAssignment.companyId), eq(roleAssignment.companyId, emp.companyId)),
+      ),
+    );
+  return [...new Set(rows.map((r) => r.employmentId))];
+}
 
 const enabled = () => process.env.NOTIFICATIONS_ENABLED === 'true';
 
@@ -95,6 +131,56 @@ const REGISTRY: Record<string, Spec> = {
     kind: 'performance.closed',
     category: 'performance',
     render: () => ({ severity: 'info', title: 'Performance review finalized', body: 'Your performance review has been finalized.', linkPath: '/me' }),
+  },
+  // Employment-review workflow (0110). started → fan out to the resolved direct manager (from the review
+  // row) + the company's HR admins; manager-evaluated → HR admins; decided → the subject (default path).
+  'employment-review.started': {
+    kind: 'review.started',
+    category: 'review',
+    render: () => ({
+      severity: 'action',
+      title: 'Review due',
+      body: 'A probation / contract / internship review is due — confirm, extend or terminate.',
+      linkPath: '/approvals',
+    }),
+    recipients: async (tx, ev) => {
+      const [rev] = await tx
+        .select({ managerEmploymentId: employmentReview.managerEmploymentId, employmentId: employmentReview.employmentId })
+        .from(employmentReview)
+        .where(eq(employmentReview.id, ev.aggregateId))
+        .limit(1);
+      if (!rev) return [];
+      const hr = await hrAdminsForCompany(tx, rev.employmentId);
+      const out = [...hr];
+      if (rev.managerEmploymentId) out.unshift(rev.managerEmploymentId);
+      return [...new Set(out)];
+    },
+  },
+  'employment-review.manager-evaluated': {
+    kind: 'review.manager-evaluated',
+    category: 'review',
+    render: () => ({
+      severity: 'action',
+      title: 'Review ready for decision',
+      body: 'A manager evaluation is ready — record the HR decision.',
+      linkPath: '/approvals',
+    }),
+    recipients: async (tx, ev) => {
+      const [rev] = await tx
+        .select({ employmentId: employmentReview.employmentId })
+        .from(employmentReview)
+        .where(eq(employmentReview.id, ev.aggregateId))
+        .limit(1);
+      if (!rev) return [];
+      return hrAdminsForCompany(tx, rev.employmentId);
+    },
+  },
+  'employment-review.decided': {
+    kind: 'review.decided',
+    category: 'review',
+    // Default subject path (no resolver) — notify the subject only. The decision itself is gated behind
+    // the /me review surface; the body says only that the review is complete.
+    render: () => ({ severity: 'info', title: 'Your review is complete', body: 'Your review has been finalized.', linkPath: '/me' }),
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
   'payroll-batch.closed': {
