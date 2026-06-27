@@ -411,6 +411,10 @@
     "fieldHours": "மணிநேரம்",
     "hoursPlaceholder": "எ.கா. 2",
     "hoursUnit": "{hours} மணி",
+    "emergency": {
+      "formHint": "அவசர விடுப்பு முதலில் உங்கள் ஆண்டு விடுப்பைப் பயன்படுத்துகிறது; மீதமுள்ளவை ஊதியமில்லா விடுப்பாக எடுக்கப்படும்.",
+      "groupLabel": "அவசர விடுப்பு"
+    },
     "errors": {
       "documentRequiredAfter": "{days} நாட்களை மீறும் {typeName}-க்கு ஒரு ஆதார ஆவணம் தேவை.",
       "documentRequired": "{typeName}-க்கு ஒரு ஆதார ஆவணம் தேவை (எ.கா. மருத்துவச் சான்றிதழ்).",

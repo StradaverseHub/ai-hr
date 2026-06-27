@@ -65,6 +65,7 @@ export default async function ApprovalsPage({
   if (!admin && !manager) redirect('/');
   const { error } = await searchParams;
   const t = await getTranslations('approvals');
+  const tLeave = await getTranslations('leave'); // Emergency Leave (0106) — group label for EL child rows
   const decideLabels = {
     yourRequest: t('yourRequest'),
     approve: t('approve'),
@@ -137,6 +138,13 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {r.leaveType}
+                    {/* Emergency Leave (0106): EL children are ordinary ANNUAL/UNPAID requests sharing a
+                        parent_group_id — tag both so the approver sees they are halves of one EL. */}
+                    {r.parentGroupId && (
+                      <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {tLeave('emergency.groupLabel')}
+                      </span>
+                    )}
                     {r.hasDocument && (
                       <a
                         href={`/me/leave/attachment/${r.id}?inline=1`}

@@ -411,6 +411,10 @@
     "fieldHours": "Hours",
     "hoursPlaceholder": "e.g. 2",
     "hoursUnit": "{hours}h",
+    "emergency": {
+      "formHint": "Emergency Leave uses your Annual Leave first; any remainder is taken as Unpaid Leave.",
+      "groupLabel": "Emergency Leave"
+    },
     "errors": {
       "documentRequiredAfter": "A supporting document is required for {typeName} exceeding {days} days.",
       "documentRequired": "A supporting document is required for {typeName} (e.g. a medical certificate).",

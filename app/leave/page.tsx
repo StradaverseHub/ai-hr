@@ -177,6 +177,13 @@ export default async function LeavePage({
                         <Icon className="size-3" />
                         {r.leaveType.replace(/\s*leave$/i, '')}
                       </span>
+                      {/* Emergency Leave (0106): an EL submission is decomposed into ANNUAL + UNPAID child
+                          rows sharing a parent_group_id; tag each child so the two halves read as one EL. */}
+                      {r.parentGroupId && (
+                        <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {t('emergency.groupLabel')}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.startDate} → {r.endDate}

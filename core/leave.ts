@@ -4,6 +4,7 @@
  * the debit + status flip + event atomically in one transaction.
  */
 import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -194,6 +195,34 @@ export async function leaveBalance(tx: Tx, employmentId: string, leaveTypeId: st
   return Number(row?.bal ?? 0);
 }
 
+// ── Emergency Leave (0106) ─────────────────────────────────────────────────────────────────────────
+// EL is an APPLICATION TYPE ONLY (no balance, no ledger). On submission requestLeave decomposes it into
+// up to two ordinary child requests over the same dates: an ANNUAL request for the AL-covered portion and
+// an UNPAID request for the remainder, linked by a shared parent_group_id. Everything downstream
+// (approval chain, balance gate, ledger debit, payroll, history) reuses the existing code paths unchanged.
+export const EMERGENCY_LEAVE_CODE = 'EMERGENCY';
+
+/** Round to 2 dp (mirrors the rest of the leave math). */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Pure AL→UPL split resolver. Given the Annual balance and the span counted in Annual's own
+ * (working-days) unit, cover as much as the balance allows from Annual and take the remainder as Unpaid.
+ *   alCovered   = max(0, min(alBalance, alWorkingDays))
+ *   alShortfall = round2(alWorkingDays − alCovered)  (the days that fall to Unpaid)
+ * No DB, unit-testable. A negative balance yields alCovered 0 (everything to Unpaid).
+ */
+export function resolveEmergencyCascade(
+  alBalance: number,
+  alWorkingDays: number,
+): { alCovered: number; alShortfall: number } {
+  const alCovered = round2(Math.max(0, Math.min(alBalance, alWorkingDays)));
+  const alShortfall = round2(alWorkingDays - alCovered);
+  return { alCovered, alShortfall };
+}
+
 /** Inclusive whole-day count between two ISO dates (Slice 0 — no public-holiday logic yet). */
 function dayCount(start: string, end: string): number {
   const s = Date.parse(`${start}T00:00:00Z`);
@@ -220,6 +249,120 @@ function workingDays(start: string, end: string, holidays: Set<string>): number 
   return n;
 }
 
+/** The set of holiday dates in [start, end] for an employment's effective states (national ∪ states),
+ *  resolved in priority order holiday_group → work_state → company.default_work_state → national-only.
+ *  Extracted from requestLeave so the Emergency-Leave path can count a working-days span the same way. */
+async function resolveHolidaySet(
+  tx: Tx,
+  employmentId: string,
+  start: string,
+  end: string,
+): Promise<Set<string>> {
+  const [loc] = await tx
+    .select({
+      ws: employment.workState,
+      cds: company.defaultWorkState,
+      groupStates: holidayGroup.states,
+    })
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  const states: string[] = loc?.groupStates
+    ? (loc.groupStates as string[])
+    : loc?.ws
+      ? [loc.ws]
+      : loc?.cds
+        ? [loc.cds]
+        : [];
+  const hols = await tx
+    .select({ d: holiday.holidayDate })
+    .from(holiday)
+    .where(
+      and(
+        gte(holiday.holidayDate, start),
+        lte(holiday.holidayDate, end),
+        states.length ? or(isNull(holiday.state), inArray(holiday.state, states)) : isNull(holiday.state),
+      ),
+    );
+  return new Set(hols.map((h) => h.d));
+}
+
+/**
+ * Shared insert+event+approval-step body for a single leave_request. Both the ordinary requestLeave path
+ * and the Emergency-Leave children funnel through here so the event/approval-step wiring is never
+ * duplicated. The caller has already computed `days` in the type's own counting mode and run every gate.
+ */
+async function insertLeaveRequest(
+  tx: Tx,
+  ctx: SessionContext,
+  v: {
+    employmentId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    days: number;
+    durationType: LeaveDurationType;
+    hours: number | null;
+    reason: string | null;
+    employeeRemark: string | null;
+    parentGroupId: string | null;
+    mandatoryAfterDays: number | null;
+  },
+): Promise<{ id: string }> {
+  const [row] = await tx
+    .insert(leaveRequest)
+    .values({
+      tenantId: ctx.tenantId,
+      employmentId: v.employmentId,
+      leaveTypeId: v.leaveTypeId,
+      startDate: v.startDate,
+      endDate: v.endDate,
+      days: v.days.toFixed(2),
+      durationType: v.durationType,
+      hours: v.hours != null ? v.hours.toFixed(2) : null,
+      status: 'pending',
+      reason: v.reason,
+      employeeRemark: v.employeeRemark,
+      parentGroupId: v.parentGroupId,
+    })
+    .returning({ id: leaveRequest.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'leave-request',
+    aggregateId: row.id,
+    eventType: 'leave-request.submitted',
+    actor: actorOf(ctx),
+    subjectEmploymentId: v.employmentId,
+    payload: {
+      employmentId: v.employmentId,
+      leaveTypeId: v.leaveTypeId,
+      startDate: v.startDate,
+      endDate: v.endDate,
+      days: v.days,
+      durationType: v.durationType,
+      hours: v.hours,
+      mandatoryAfterDays: v.mandatoryAfterDays,
+      hasRemark: !!v.employeeRemark,
+      ...(v.parentGroupId ? { parentGroupId: v.parentGroupId } : {}),
+    },
+  });
+  // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
+  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId);
+  return { id: row.id };
+}
+
+/** requestLeave's result. `leaveRequestId` is the created request (the AL child, else the UPL child, for
+ *  an EL submission). `parentGroupId` is non-null only for an Emergency-Leave submission; `children` lists
+ *  every created request (one for an ordinary request; one or two for EL). */
+export type RequestLeaveResult = {
+  leaveRequestId: string;
+  days: number;
+  parentGroupId: string | null;
+  children: { id: string; code: string; days: number }[];
+};
+
 export async function requestLeave(
   ctx: SessionContext,
   p: {
@@ -233,11 +376,12 @@ export async function requestLeave(
     durationType?: LeaveDurationType; // ADR-0048: defaults to 'full_day'
     hours?: number; // ADR-0048: required (and only used) when durationType === 'hourly'
   },
-) {
+): Promise<RequestLeaveResult> {
   return withTenant(ctx, async (tx) => {
     // Day count depends on the leave type: working-days (excl weekends + holidays) vs calendar.
     const [lt] = await tx
       .select({
+        code: leaveType.code,
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
@@ -249,6 +393,12 @@ export async function requestLeave(
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
+
+    // Emergency Leave (0106): an application type only — decompose into ANNUAL + UNPAID children over the
+    // same dates before the normal single-request path. No EMERGENCY row is ever persisted.
+    if (lt?.code === EMERGENCY_LEAVE_CODE) {
+      return requestEmergencyLeave(tx, ctx, p);
+    }
 
     // Doc-config: the mandatory-document gate moved BELOW day-counting (it now depends on `days` vs
     // mandatoryAfterDays). The eligibility gate stays here — it does not depend on `days`.
@@ -284,43 +434,10 @@ export async function requestLeave(
     let workingDayCount: number | null = null;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
-      // national (state null) ∪ those states. The set is, in priority order:
-      //   holiday_group → the group's member states (a NAMED bundle);
-      //   else work_state → [work_state] (a single state);
-      //   else company.default_work_state → [default] (the company fallback);
-      //   else [] → national-only.
-      // A group expands to its states and feeds the SAME holiday.state UNION predicate as a bare
-      // work_state — one query, one codepath — so a single-state group and the equivalent work_state
-      // resolve identically, and a group can never diverge from the state path.
-      const [loc] = await tx
-        .select({
-          ws: employment.workState,
-          cds: company.defaultWorkState,
-          groupStates: holidayGroup.states,
-        })
-        .from(employment)
-        .innerJoin(company, eq(company.id, employment.companyId))
-        .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
-        .where(eq(employment.id, p.employmentId))
-        .limit(1);
-      const states: string[] = loc?.groupStates
-        ? (loc.groupStates as string[])
-        : loc?.ws
-          ? [loc.ws]
-          : loc?.cds
-            ? [loc.cds]
-            : [];
-      const hols = await tx
-        .select({ d: holiday.holidayDate })
-        .from(holiday)
-        .where(
-          and(
-            gte(holiday.holidayDate, p.startDate),
-            lte(holiday.holidayDate, p.endDate),
-            states.length ? or(isNull(holiday.state), inArray(holiday.state, states)) : isNull(holiday.state),
-          ),
-        );
-      workingDayCount = workingDays(p.startDate, p.endDate, new Set(hols.map((h) => h.d)));
+      // national (state null) ∪ those states, resolved holiday_group → work_state →
+      // company.default_work_state → national-only (see resolveHolidaySet).
+      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
+      workingDayCount = workingDays(p.startDate, p.endDate, hols);
     }
 
     let days: number;
@@ -383,35 +500,156 @@ export async function requestLeave(
       throw new LeaveRemarkRequiredError(lt.name);
     }
 
-    const [row] = await tx
-      .insert(leaveRequest)
-      .values({
-        tenantId: ctx.tenantId,
-        employmentId: p.employmentId,
-        leaveTypeId: p.leaveTypeId,
-        startDate: p.startDate,
-        endDate: p.endDate,
-        days: days.toFixed(2),
-        durationType,
-        hours: hours != null ? hours.toFixed(2) : null,
-        status: 'pending',
-        reason: p.reason ?? null,
-        employeeRemark,
-      })
-      .returning({ id: leaveRequest.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-request',
-      aggregateId: row.id,
-      eventType: 'leave-request.submitted',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId, leaveTypeId: p.leaveTypeId, startDate: p.startDate, endDate: p.endDate, days, durationType, hours, mandatoryAfterDays: lt?.mandatoryAfterDays ?? null, hasRemark: !!employeeRemark },
+    const { id } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId,
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      days,
+      durationType,
+      hours,
+      reason: p.reason ?? null,
+      employeeRemark,
+      parentGroupId: null,
+      mandatoryAfterDays: lt?.mandatoryAfterDays ?? null,
     });
-    // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
-    await generateApprovalSteps(tx, ctx.tenantId, row.id, p.employmentId, p.leaveTypeId);
-    return { leaveRequestId: row.id, days };
+    return { leaveRequestId: id, days, parentGroupId: null, children: [{ id, code: lt?.code ?? '', days }] };
   });
+}
+
+/**
+ * Emergency-Leave decomposition (0106). EL is an application type only: this resolves the AL→UPL split at
+ * submission against the Annual balance and creates up to two ordinary child requests over the same dates,
+ * linked by one parent_group_id. Each child is a full-day request of its own type, so it counts in its own
+ * mode natively (ANNUAL = working-days, UNPAID = calendar-days) — the counting-mode mismatch cannot occur.
+ *
+ * Boundary policy (earliest-days-to-AL): the ANNUAL child covers the earliest working-days up to the
+ * AL-covered amount and the UNPAID child covers the remainder of the span. The common cases are trivial —
+ * one child spans the whole range when the split is all-AL or all-UPL. For a partial split we walk the
+ * span's working days and cut at the boundary working-day: the ANNUAL child runs [start, boundary] and the
+ * UNPAID child runs [dayAfterBoundary, end].
+ *
+ * The split is frozen at submission (against AL balance at that instant). Each child still gates its own
+ * balance at its own approval — the ANNUAL child throws InsufficientLeaveBalanceError if AL was drained
+ * meanwhile, exactly as a normal AL request would (predictable, already-tested behaviour).
+ */
+async function requestEmergencyLeave(
+  tx: Tx,
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    durationType?: LeaveDurationType;
+  },
+): Promise<RequestLeaveResult> {
+  // EL is full-day-range only (no durations allow-list) — reject a non-full-day request explicitly.
+  if (p.durationType && p.durationType !== 'full_day') {
+    throw new LeaveDurationNotAllowedError();
+  }
+  // Resolve ANNUAL + UNPAID type ids for the tenant. Both are seeded in MY_LEAVE_TYPES; if either is
+  // absent, EL cannot decompose — a plain Error (no typed-error / i18n scaffolding).
+  const childTypes = await tx
+    .select({ id: leaveType.id, code: leaveType.code })
+    .from(leaveType)
+    .where(inArray(leaveType.code, ['ANNUAL', 'UNPAID']));
+  const annualId = childTypes.find((t) => t.code === 'ANNUAL')?.id;
+  const unpaidId = childTypes.find((t) => t.code === 'UNPAID')?.id;
+  if (!annualId || !unpaidId) {
+    throw new Error('Emergency Leave requires Annual and Unpaid leave types to be configured');
+  }
+
+  // Count the span twice — once as the ANNUAL child would (working-days, honouring the employee's
+  // holidays/state) and once as the UNPAID child would (calendar-days).
+  const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
+  const alSpanDays = workingDays(p.startDate, p.endDate, hols);
+  const uplSpanDays = dayCount(p.startDate, p.endDate);
+  if (uplSpanDays <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
+
+  const alBalance = await leaveBalance(tx, p.employmentId, annualId);
+  const { alCovered, alShortfall } = resolveEmergencyCascade(alBalance, alSpanDays);
+
+  const parentGroupId = randomUUID();
+  const children: { id: string; code: string; days: number }[] = [];
+
+  // The span's working-day dates (ANNUAL counts these). The boundary split assigns the earliest `alCovered`
+  // working-days to ANNUAL; the UNPAID child starts the calendar day after the last AL working-day.
+  const workingDates = eachDate(p.startDate, p.endDate).filter((d) => {
+    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+    return dow !== 0 && dow !== 6 && !hols.has(d);
+  });
+
+  if (alShortfall === 0 && alCovered > 0) {
+    // Annual fully covers the working-days span → a single ANNUAL child over the whole range.
+    const { id } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId, leaveTypeId: annualId, startDate: p.startDate, endDate: p.endDate,
+      days: alCovered, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+    });
+    children.push({ id, code: 'ANNUAL', days: alCovered });
+  } else if (alCovered === 0) {
+    // No Annual balance (or empty working-days span) → a single UNPAID child over the whole range.
+    const { id } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId, leaveTypeId: unpaidId, startDate: p.startDate, endDate: p.endDate,
+      days: uplSpanDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+    });
+    children.push({ id, code: 'UNPAID', days: uplSpanDays });
+  } else {
+    // Partial split: ANNUAL covers the earliest `alCovered` working-days [start, boundary]; UNPAID covers
+    // the suffix [dayAfter(boundary), end] counted in calendar-days. alCovered is an integer working-day
+    // count here (a full-day EL range has no fractional AL coverage).
+    const boundaryWorkingDay = workingDates[Math.ceil(alCovered) - 1];
+    const annualEnd = boundaryWorkingDay;
+    const uplStart = eachDate(boundaryWorkingDay, p.endDate)[1]; // the calendar day after the boundary
+    const uplDays = dayCount(uplStart, p.endDate);
+    const annualDays = workingDays(p.startDate, annualEnd, hols);
+    const { id: alId } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId, leaveTypeId: annualId, startDate: p.startDate, endDate: annualEnd,
+      days: annualDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+    });
+    children.push({ id: alId, code: 'ANNUAL', days: annualDays });
+    const { id: uplId } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId, leaveTypeId: unpaidId, startDate: uplStart, endDate: p.endDate,
+      days: uplDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+    });
+    children.push({ id: uplId, code: 'UNPAID', days: uplDays });
+  }
+
+  const alChildId = children.find((c) => c.code === 'ANNUAL')?.id;
+  const uplChildId = children.find((c) => c.code === 'UNPAID')?.id;
+  // A single EL command event keyed on parentGroupId, alongside each child's own leave-request.submitted —
+  // gives the audit trail / substrate one traceable EL submission.
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'leave-request',
+    aggregateId: parentGroupId,
+    eventType: 'leave-request.emergency.submitted',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: {
+      employmentId: p.employmentId,
+      ...(alChildId ? { alChildId } : {}),
+      ...(uplChildId ? { uplChildId } : {}),
+      alDays: alCovered,
+      uplDays: alShortfall,
+      startDate: p.startDate,
+      endDate: p.endDate,
+    },
+  });
+
+  // Keep `leaveRequestId` populated (the AL child when present, else the UPL child) so the existing action
+  // layer's destructure stays valid; `days` is the total span (AL + UPL) for parity with the ordinary path.
+  return {
+    leaveRequestId: (alChildId ?? uplChildId)!,
+    days: round2(alCovered + alShortfall),
+    parentGroupId,
+    children,
+  };
 }
 
 /** Generate the approval chain for a new request when its company opts into multi-step approval.

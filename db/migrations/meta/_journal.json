@@ -743,6 +743,13 @@
       "when": 1781861690000,
       "tag": "0105_leave_payroll_impact",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1781861700000,
+      "tag": "0106_emergency_leave_link",
+      "breakpoints": true
     }
   ]
 }

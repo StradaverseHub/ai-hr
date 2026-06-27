@@ -378,6 +378,10 @@ export default async function MePage({
               <textarea name="employeeRemark" rows={2} className={inputCls} />
               <p className="mt-1 text-xs text-muted-foreground">{t('employeeRemarkRequiredHint')}</p>
             </Field>
+            {/* Emergency Leave (0106): neutral, balance-safe hint — EL auto-decomposes into Annual (first)
+                then Unpaid for any remainder. Always shown so the applicant understands the cascade before
+                picking the type; it never promises pay (true even when Annual is zero). */}
+            <p className="text-xs text-muted-foreground">{tLeave('emergency.formHint')}</p>
             <Button type="submit" size="sm">
               {t('requestLeave')}
             </Button>
@@ -396,6 +400,13 @@ export default async function MePage({
                       {durationLabel(tLeave, r.durationType, r.hours) && (
                         <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
                           {durationLabel(tLeave, r.durationType, r.hours)}
+                        </span>
+                      )}
+                      {/* Emergency Leave (0106): the two ANNUAL/UNPAID child rows of one EL submission share
+                          a parent_group_id — tag each so the applicant sees them as one Emergency Leave. */}
+                      {r.parentGroupId && (
+                        <span className="ml-1 text-[10px] font-medium uppercase text-foreground/60">
+                          {tLeave('emergency.groupLabel')}
                         </span>
                       )}
                     </span>

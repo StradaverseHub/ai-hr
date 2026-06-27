@@ -293,6 +293,9 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         durationType: leaveRequest.durationType,
         hours: leaveRequest.hours,
         status: leaveRequest.status,
+        // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
+        // surface can group them as one logical absence. NULL for ordinary requests.
+        parentGroupId: leaveRequest.parentGroupId,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
@@ -362,6 +365,8 @@ export function plannedAbsences(
         days: leaveRequest.days,
         durationType: leaveRequest.durationType,
         hours: leaveRequest.hours,
+        // Emergency Leave (0106): the shared id linking an EL submission's children. NULL for ordinary rows.
+        parentGroupId: leaveRequest.parentGroupId,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -713,6 +718,10 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         durationType: leaveRequest.durationType,
         hours: leaveRequest.hours,
         status: leaveRequest.status,
+        typeCode: leaveType.code,
+        // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so the
+        // /me history can group them under one EL heading. NULL for ordinary requests.
+        parentGroupId: leaveRequest.parentGroupId,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,

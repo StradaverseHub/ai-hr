@@ -411,6 +411,10 @@
     "fieldHours": "Số giờ",
     "hoursPlaceholder": "vd. 2",
     "hoursUnit": "{hours} giờ",
+    "emergency": {
+      "formHint": "Nghỉ khẩn cấp sẽ dùng Nghỉ phép năm của bạn trước; phần còn lại được tính là Nghỉ không lương.",
+      "groupLabel": "Nghỉ khẩn cấp"
+    },
     "errors": {
       "documentRequiredAfter": "Cần có tài liệu hỗ trợ cho {typeName} vượt quá {days} ngày.",
       "documentRequired": "Cần có tài liệu hỗ trợ cho {typeName} (ví dụ: giấy chứng nhận y tế).",

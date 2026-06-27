@@ -411,6 +411,10 @@
     "fieldHours": "ชั่วโมง",
     "hoursPlaceholder": "เช่น 2",
     "hoursUnit": "{hours} ชม.",
+    "emergency": {
+      "formHint": "การลาฉุกเฉินจะใช้การลาพักร้อนของคุณก่อน ส่วนที่เหลือจะถูกนับเป็นการลาโดยไม่รับค่าจ้าง",
+      "groupLabel": "การลาฉุกเฉิน"
+    },
     "errors": {
       "documentRequiredAfter": "ต้องมีเอกสารประกอบสำหรับ {typeName} ที่เกิน {days} วัน",
       "documentRequired": "ต้องมีเอกสารประกอบสำหรับ {typeName} (เช่น ใบรับรองแพทย์)",

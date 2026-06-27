@@ -411,6 +411,10 @@
     "fieldHours": "Jam",
     "hoursPlaceholder": "cth. 2",
     "hoursUnit": "{hours} jam",
+    "emergency": {
+      "formHint": "Cuti Kecemasan menggunakan Cuti Tahunan anda dahulu; bakinya diambil sebagai Cuti Tanpa Gaji.",
+      "groupLabel": "Cuti Kecemasan"
+    },
     "errors": {
       "documentRequiredAfter": "Dokumen sokongan diperlukan untuk {typeName} yang melebihi {days} hari.",
       "documentRequired": "Dokumen sokongan diperlukan untuk {typeName} (cth. sijil perubatan).",

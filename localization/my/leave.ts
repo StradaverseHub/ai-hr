@@ -64,6 +64,19 @@ export const MY_LEAVE_TYPES: MyLeaveTypeDef[] = [
     sendToPayroll: true, // unpaid → emit the on-approval payroll signal by default (matches the migration backfill)
     i18n: { ms: { name: 'Cuti Tanpa Gaji' }, zh: { name: '无薪假' }, ta: { name: 'ஊதியமில்லா விடுப்பு' }, th: { name: 'การลาโดยไม่รับค่าจ้าง' }, vi: { name: 'Nghỉ không lương' } },
   },
+  // Emergency Leave — an APPLICATION TYPE ONLY (no balance, no ledger, no policy/accrual). It is never in
+  // STANDING_LEAVE_CODES and no leave_request row of type EMERGENCY is ever persisted: on submission
+  // requestLeave decomposes it into ANNUAL (covered portion) + UNPAID (remainder) child requests. The
+  // `paid`/`counting` fields here are INERT (no EL row is ever created) — the row exists only so the type
+  // appears in the application dropdown and pickName can localize its display name. It carries no
+  // eligibility, no durations, no policy.
+  {
+    code: 'EMERGENCY',
+    name: 'Emergency Leave',
+    paid: true,
+    counting: 'calendar_days',
+    i18n: { ms: { name: 'Cuti Kecemasan' }, zh: { name: '紧急假' }, ta: { name: 'அவசர விடுப்பு' }, th: { name: 'การลาฉุกเฉิน' }, vi: { name: 'Nghỉ khẩn cấp' } },
+  },
 ];
 
 /** Annual leave entitlement by completed years of service (EA 1955 s.60E). */

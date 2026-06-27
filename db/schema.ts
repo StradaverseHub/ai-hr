@@ -524,6 +524,11 @@ export const leaveRequest = pgTable(
     // Supporting-document config: the applicant's mandatory remark when the leave type sets
     // employee_remark_required. Nullable — null/absent for types that don't require it (backward-compat).
     employeeRemark: text('employee_remark'),
+    // Emergency Leave (0106): groups the ANNUAL + UNPAID children produced by one EL submission. EL is an
+    // application type only — no EMERGENCY row is ever persisted; on submission requestLeave decomposes
+    // into up to two ordinary child requests over the same dates, linked by this shared UUID so surfaces
+    // can group them as one logical absence. NULL for all pre-existing and ordinary (non-EL) rows.
+    parentGroupId: uuid('parent_group_id'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

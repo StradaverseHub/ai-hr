@@ -411,6 +411,10 @@
     "fieldHours": "小时",
     "hoursPlaceholder": "例如 2",
     "hoursUnit": "{hours} 小时",
+    "emergency": {
+      "formHint": "紧急假会先使用您的年假；剩余部分将作为无薪假处理。",
+      "groupLabel": "紧急假"
+    },
     "errors": {
       "documentRequiredAfter": "{typeName}超过 {days} 天时需要提供证明文件。",
       "documentRequired": "{typeName}需要提供证明文件（例如医疗证明）。",
