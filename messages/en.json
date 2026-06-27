@@ -1582,7 +1582,16 @@
       "deleteGroupInUse": "This holiday group is still assigned to employees. Reassign them before deleting it.",
       "groupStatesMin": "Select at least one state.",
       "groupEmpty": "No holiday groups yet. Create one to assign a multi-state calendar to staff.",
-      "groupsHint": "A group is a named bundle of states. Assign it to a staff member on their profile so the correct state holidays apply. Hold Ctrl (or Cmd) to select multiple states."
+      "groupsHint": "A group is a named bundle of states. Assign it to a staff member on their profile so the correct state holidays apply. Hold Ctrl (or Cmd) to select multiple states.",
+      "scope": {
+        "national": "National",
+        "state": "State",
+        "group": "Business group"
+      },
+      "scopeLabel": "Scope",
+      "scopeBadge": "{label}: {name}",
+      "companyLabel": "Business group",
+      "companyPlaceholder": "Select a company…"
     },
     "users": {
       "title": "Users & roles",

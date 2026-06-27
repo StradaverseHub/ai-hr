@@ -588,22 +588,31 @@ export function listLeavePolicies(ctx: SessionContext) {
 // Holidays are country-scoped (the attendance/leave working-day counters match on company.country),
 // not company-scoped — the table is keyed (tenant, country, holiday_date). Admin-only writes (RLS 0006).
 
-/** List holidays for the tenant, newest first. Optionally filter by country and/or calendar year. */
-export function listHolidays(ctx: SessionContext, opts: { country?: string; year?: number } = {}) {
+/** List holidays for the tenant, newest first. Optionally filter by country, calendar year, and/or the
+ *  owning company (org-scoped rows). Returns raw scope fields (state, companyId) + the joined company name
+ *  so the UI can build a scope label from the static i18n key map (National / State:X / Group:<name>). */
+export function listHolidays(
+  ctx: SessionContext,
+  opts: { country?: string; year?: number; companyId?: string } = {},
+) {
   return withTenant(ctx, (tx) => {
     const filters = [
       opts.country ? eq(holiday.country, opts.country) : undefined,
       opts.year ? sql`extract(year from ${holiday.holidayDate}) = ${opts.year}` : undefined,
+      opts.companyId ? eq(holiday.companyId, opts.companyId) : undefined,
     ].filter(Boolean);
     return tx
       .select({
         id: holiday.id,
         country: holiday.country,
         state: holiday.state,
+        companyId: holiday.companyId,
+        companyName: company.legalName,
         holidayDate: holiday.holidayDate,
         name: holiday.name,
       })
       .from(holiday)
+      .leftJoin(company, eq(company.id, holiday.companyId))
       .where(filters.length ? and(...filters) : undefined)
       .orderBy(holiday.holidayDate);
   });
@@ -623,22 +632,37 @@ export function listHolidayYears(ctx: SessionContext) {
 
 export async function createHoliday(
   ctx: SessionContext,
-  p: { country: string; holidayDate: string; name: string; state?: string | null },
+  p: { country: string; holidayDate: string; name: string; state?: string | null; companyId?: string | null },
 ) {
   const country = isoCode(p.country, 'MY', 'Country');
   const name = cleanName(p.name, 'Holiday name');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) throw new Error('Holiday date must be YYYY-MM-DD');
   const state = p.state?.trim() || null; // 2C: null = national (applies everywhere)
+  const companyId = p.companyId?.trim() || null; // ADR-0055: set = business-group (company-subtree) scope
+  // Scope is single-axis: national, state, OR business-group — never two at once (mirrors the DB CHECK
+  // holiday_scope_excl; thrown here so the user gets a clear message before hitting the constraint).
+  if (state && companyId) throw new Error('A holiday is either state-scoped or company-scoped, not both.');
   return withTenant(ctx, async (tx) => {
+    let companyName: string | null = null;
+    if (companyId) {
+      // Cross-tenant FK guard: the FK is satisfied by any existing id, so verify the company is THIS
+      // tenant's under the tenant-scoped role before trusting it (RLS on holiday alone can't catch this).
+      const [c] = await tx
+        .select({ name: company.legalName })
+        .from(company)
+        .where(and(eq(company.id, companyId), eq(company.tenantId, ctx.tenantId)))
+        .limit(1);
+      if (!c) throw new Error('Unknown company for this holiday scope.');
+      companyName = c.name;
+    }
     const [row] = await tx
       .insert(holiday)
-      .values({ tenantId: ctx.tenantId, country, state, holidayDate: p.holidayDate, name })
+      .values({ tenantId: ctx.tenantId, country, state, companyId, holidayDate: p.holidayDate, name })
       .returning({ id: holiday.id })
       .catch((e) => {
         if (isUniqueViolation(e)) {
-          throw new DuplicateError(
-            `A ${country} ${state ? `${state} ` : ''}holiday on ${p.holidayDate} already exists.`,
-          );
+          const scope = companyId ? `group ${companyName} ` : state ? `${state} ` : '';
+          throw new DuplicateError(`A ${country} ${scope}holiday on ${p.holidayDate} already exists.`);
         }
         throw e;
       });
@@ -648,7 +672,8 @@ export async function createHoliday(
       aggregateId: row.id,
       eventType: 'holiday.created',
       actor: actorOf(ctx),
-      payload: { country, holidayDate: p.holidayDate, name },
+      // Scope-in-audit (ADR-0055 acceptance goal): carry state AND companyId, not just country/date/name.
+      payload: { country, holidayDate: p.holidayDate, name, state, companyId },
     });
     return row;
   });
@@ -659,7 +684,14 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
     const [deleted] = await tx
       .delete(holiday)
       .where(eq(holiday.id, p.id))
-      .returning({ country: holiday.country, holidayDate: holiday.holidayDate, name: holiday.name });
+      .returning({
+        country: holiday.country,
+        holidayDate: holiday.holidayDate,
+        name: holiday.name,
+        // Echo full scope so the holiday.deleted payload mirrors holiday.created (ADR-0055).
+        state: holiday.state,
+        companyId: holiday.companyId,
+      });
     if (!deleted) return;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,

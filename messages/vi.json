@@ -1582,7 +1582,16 @@
       "deleteGroupInUse": "Nhóm ngày lễ này vẫn được gán cho nhân viên. Hãy gán lại họ trước khi xóa.",
       "groupStatesMin": "Chọn ít nhất một bang.",
       "groupEmpty": "Chưa có nhóm ngày lễ. Tạo một nhóm để gán lịch nhiều bang cho nhân viên.",
-      "groupsHint": "Nhóm là một tập hợp các bang có tên. Gán nhóm cho nhân viên trong hồ sơ của họ để áp dụng đúng ngày lễ của bang. Giữ Ctrl (hoặc Cmd) để chọn nhiều bang."
+      "groupsHint": "Nhóm là một tập hợp các bang có tên. Gán nhóm cho nhân viên trong hồ sơ của họ để áp dụng đúng ngày lễ của bang. Giữ Ctrl (hoặc Cmd) để chọn nhiều bang.",
+      "scope": {
+        "national": "Toàn quốc",
+        "state": "Bang",
+        "group": "Nhóm doanh nghiệp"
+      },
+      "scopeLabel": "Phạm vi",
+      "scopeBadge": "{label}: {name}",
+      "companyLabel": "Nhóm doanh nghiệp",
+      "companyPlaceholder": "Chọn một công ty…"
     },
     "users": {
       "title": "Người dùng & vai trò",

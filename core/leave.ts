@@ -9,20 +9,17 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { resolveApprovalChain } from './leave-approval-policy';
+import { holidayDatesFor } from './holidays';
 import { packFor } from '../localization/registry';
 import {
-  assignment,
   company,
   employment,
-  holiday,
-  holidayGroup,
   leaveApprovalStep,
   leaveLedger,
   leavePolicy,
   leaveRequest,
   leaveRequestAttachment,
   leaveType,
-  location,
   person,
   reportingLine,
 } from '../db/schema';
@@ -251,58 +248,16 @@ function workingDays(start: string, end: string, holidays: Set<string>): number 
   return n;
 }
 
-/** The set of holiday dates in [start, end] for an employment's effective states (national ∪ states),
- *  resolved in priority order holiday_group → work_state → company.default_work_state → national-only.
- *  Extracted from requestLeave so the Emergency-Leave path can count a working-days span the same way. */
+/** The set of holiday dates in [start, end] for an employment, resolved business-group → state →
+ *  national (ADR-0055; org-based override over ADR-0038 2C). Delegates to the unified resolver so leave
+ *  and the Emergency-Leave path count a working-days span the same way attendance will. */
 async function resolveHolidaySet(
   tx: Tx,
   employmentId: string,
   start: string,
   end: string,
 ): Promise<Set<string>> {
-  const [loc] = await tx
-    .select({
-      ws: employment.workState,
-      cds: company.defaultWorkState,
-      groupStates: holidayGroup.states,
-      // ADR-0054: location.state overlay from the employee's OPEN assignment row — the top of the
-      // precedence so leave matches attendance (which resolves the same order in core/attendance.ts).
-      locationState: location.state,
-    })
-    .from(employment)
-    .innerJoin(company, eq(company.id, employment.companyId))
-    .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
-    .leftJoin(
-      assignment,
-      and(
-        eq(assignment.employmentId, employment.id),
-        isNull(assignment.validTo),
-        isNull(assignment.supersededAt),
-      ),
-    )
-    .leftJoin(location, eq(location.id, assignment.locationId))
-    .where(eq(employment.id, employmentId))
-    .limit(1);
-  const states: string[] = loc?.locationState
-    ? [loc.locationState]
-    : loc?.groupStates
-      ? (loc.groupStates as string[])
-      : loc?.ws
-        ? [loc.ws]
-        : loc?.cds
-          ? [loc.cds]
-          : [];
-  const hols = await tx
-    .select({ d: holiday.holidayDate })
-    .from(holiday)
-    .where(
-      and(
-        gte(holiday.holidayDate, start),
-        lte(holiday.holidayDate, end),
-        states.length ? or(isNull(holiday.state), inArray(holiday.state, states)) : isNull(holiday.state),
-      ),
-    );
-  return new Set(hols.map((h) => h.d));
+  return holidayDatesFor(tx, { employmentId, startDate: start, endDate: end });
 }
 
 /**

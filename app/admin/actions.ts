@@ -356,12 +356,17 @@ function holidaysPath(formData: FormData): string {
 export async function createHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
+  // Scope drives which fields the service receives (ADR-0055): national → neither, state → state only,
+  // group → companyId only. Reading the raw select fields directly and zeroing the irrelevant one keeps
+  // the action consistent with the DB CHECK + service validation (single-axis scope).
+  const scope = String(formData.get('scope') ?? 'national');
   try {
     await createHoliday(s, {
       country: String(formData.get('country') ?? 'MY'),
       holidayDate: String(formData.get('holidayDate') ?? ''),
       name: String(formData.get('name') ?? ''),
-      state: String(formData.get('state') ?? '') || null,
+      state: scope === 'state' ? String(formData.get('state') ?? '') || null : null,
+      companyId: scope === 'group' ? String(formData.get('companyId') ?? '') || null : null,
     });
   } catch (e) {
     fail(path, e);

@@ -902,14 +902,32 @@ export const holiday = pgTable(
     // Wave 2 (ADR-0038 2C): null = national (applies everywhere); set = a state-specific holiday that
     // only applies to employees working in that state.
     state: text('state'),
+    // Org-based override (ADR-0055): when set, this holiday belongs to that company AND its descendants
+    // (resolved via the upward ancestor walk app.is_company_descendant at read time — a parent-group
+    // calendar cascades to child companies/factories/BUs). Null = not company-scoped (national/state, as
+    // today). Scope is implicit and mutually exclusive (DB CHECK holiday_scope_excl): national
+    // (state + company_id both null), state (state set), business-group (company_id set). A company-scoped
+    // calendar is single-winner — if ANY company row matches the employee's company chain in the window,
+    // those rows ARE the calendar; otherwise the engine falls back to national ∪ state (2C behaviour).
+    companyId: uuid('company_id').references((): AnyPgColumn => company.id),
     holidayDate: date('holiday_date').notNull(),
     name: text('name').notNull(),
     createdAt: createdAt(),
   },
-  // One holiday per (tenant, country, date, state-or-national). coalesce keeps the NULL (national) case
-  // unique on PG14 (no NULLS NOT DISTINCT).
+  // One holiday per (tenant, country, date, state-or-national, company-or-nil). coalesce keeps the NULL
+  // cases unique on PG14 (no NULLS NOT DISTINCT): state→'' (text), company_id→the nil uuid. The company
+  // dimension lets the same date exist at national, state, and group scope without collision.
   (t) => [
-    uniqueIndex('holiday_uq').on(t.tenantId, t.country, t.holidayDate, sql`coalesce(${t.state}, '')`),
+    uniqueIndex('holiday_uq').on(
+      t.tenantId,
+      t.country,
+      t.holidayDate,
+      sql`coalesce(${t.state}, '')`,
+      sql`coalesce(${t.companyId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+    ),
+    // Mutual exclusivity DB-guaranteed (seed/CSV/import paths bypass the service): a row is at most one of
+    // state-scoped or company-scoped, never both — so the resolver never sees a malformed multi-scope row.
+    check('holiday_scope_excl', sql`num_nonnulls(${t.state}, ${t.companyId}) <= 1`),
   ],
 );
 

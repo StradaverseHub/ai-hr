@@ -1582,7 +1582,16 @@
       "deleteGroupInUse": "该假期分组仍分配给员工。删除前请先重新分配。",
       "groupStatesMin": "至少选择一个州属。",
       "groupEmpty": "暂无假期分组。创建一个以便为员工分配多州假期日历。",
-      "groupsHint": "分组是命名的州属集合。在员工资料中为其分配分组，以应用正确的州假期。按住 Ctrl（或 Cmd）可选择多个州属。"
+      "groupsHint": "分组是命名的州属集合。在员工资料中为其分配分组，以应用正确的州假期。按住 Ctrl（或 Cmd）可选择多个州属。",
+      "scope": {
+        "national": "全国",
+        "state": "州属",
+        "group": "业务集团"
+      },
+      "scopeLabel": "范围",
+      "scopeBadge": "{label}：{name}",
+      "companyLabel": "业务集团",
+      "companyPlaceholder": "选择公司…"
     },
     "users": {
       "title": "用户与角色",

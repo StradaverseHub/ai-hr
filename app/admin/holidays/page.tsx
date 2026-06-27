@@ -179,7 +179,14 @@ export default async function HolidaysPage({
                           {h.country}
                         </span>
                         <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {h.state ?? t('national')}
+                          {/* Scope badge via a STATIC i18n key map (scope.national/state/group), name
+                              interpolated through the ICU "{label}: {name}" template — never a dynamic
+                              `scope.${type}` key (those escape the coverage test and fall back to English). */}
+                          {h.companyId
+                            ? t('scopeBadge', { label: t('scope.group'), name: h.companyName ?? '' })
+                            : h.state
+                              ? t('scopeBadge', { label: t('scope.state'), name: h.state })
+                              : t('scope.national')}
                         </span>
                       </td>
                       <td className="px-4 py-2.5 text-right">
@@ -209,7 +216,7 @@ export default async function HolidaysPage({
         <SectionHeader title={t('addTitle')} />
         <form
           action={createHolidayAction}
-          className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5"
+          className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3"
         >
           {filterFields}
           <Field label={t('dateLabel')}>
@@ -228,6 +235,16 @@ export default async function HolidaysPage({
               ))}
             </select>
           </Field>
+          {/* Scope (ADR-0055): National · State · Business group. The action reads `scope` and only honours
+              the matching field below, so leaving a stray State/Company selected on a National holiday is
+              harmless. Single-axis scope is also enforced by the service + DB CHECK. */}
+          <Field label={t('scopeLabel')}>
+            <select name="scope" defaultValue="national" className={inputCls}>
+              <option value="national">{t('scope.national')}</option>
+              <option value="state">{t('scope.state')}</option>
+              <option value="group">{t('scope.group')}</option>
+            </select>
+          </Field>
           <Field label={t('stateLabel')}>
             <select name="state" defaultValue="" className={inputCls}>
               <option value="">{t('national')}</option>
@@ -238,7 +255,19 @@ export default async function HolidaysPage({
               ))}
             </select>
           </Field>
-          <button className={btnPrimary}>{t('addHoliday')}</button>
+          <Field label={t('companyLabel')}>
+            <select name="companyId" defaultValue="" className={inputCls}>
+              <option value="">{t('companyPlaceholder')}</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="sm:col-span-3">
+            <button className={btnPrimary}>{t('addHoliday')}</button>
+          </div>
         </form>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">{t('addHint')}</p>
       </Card>

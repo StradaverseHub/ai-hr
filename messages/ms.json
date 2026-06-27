@@ -1582,7 +1582,16 @@
       "deleteGroupInUse": "Kumpulan cuti ini masih ditugaskan kepada pekerja. Tugaskan semula mereka sebelum memadamnya.",
       "groupStatesMin": "Pilih sekurang-kurangnya satu negeri.",
       "groupEmpty": "Belum ada kumpulan cuti. Cipta satu untuk menetapkan kalendar pelbagai negeri kepada kakitangan.",
-      "groupsHint": "Kumpulan ialah himpunan negeri yang bernama. Tetapkannya kepada kakitangan pada profil mereka supaya cuti negeri yang betul digunakan. Tahan Ctrl (atau Cmd) untuk memilih beberapa negeri."
+      "groupsHint": "Kumpulan ialah himpunan negeri yang bernama. Tetapkannya kepada kakitangan pada profil mereka supaya cuti negeri yang betul digunakan. Tahan Ctrl (atau Cmd) untuk memilih beberapa negeri.",
+      "scope": {
+        "national": "Kebangsaan",
+        "state": "Negeri",
+        "group": "Kumpulan perniagaan"
+      },
+      "scopeLabel": "Skop",
+      "scopeBadge": "{label}: {name}",
+      "companyLabel": "Kumpulan perniagaan",
+      "companyPlaceholder": "Pilih syarikat…"
     },
     "users": {
       "title": "Pengguna & peranan",
