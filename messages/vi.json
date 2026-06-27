@@ -1474,6 +1474,40 @@
         }
       }
     },
+    "setup": {
+      "title": "Cấu hình lương",
+      "subtitle": "Nơi trung tâm để quản lý thiết lập lương. Mở một mô-đun con để cấu hình; chỉ hiển thị các mô-đun bạn có quyền truy cập.",
+      "policies": {
+        "title": "Chính sách lương",
+        "desc": "Lịch trả lương theo từng công ty — ngày chốt, ngày trả, cơ sở thanh toán, chế độ HRDF và EPF.",
+        "cta": "Mở chính sách"
+      },
+      "items": {
+        "title": "Khoản mục lương",
+        "desc": "Xác định các thành phần lương và cách xử lý pháp định của chúng (EPF / SOCSO / PCB / HRDF).",
+        "cta": "Mở thành phần lương"
+      },
+      "period": {
+        "title": "Mẫu kỳ lương",
+        "desc": "Góc nhìn lập lịch của cấu hình công ty — thời điểm ngày chốt và ngày trả cho từng kỳ.",
+        "cta": "Mở thiết lập kỳ"
+      },
+      "submission": {
+        "title": "Kiểm soát nộp thanh toán",
+        "desc": "Góc nhìn kiểm soát nộp của cấu hình công ty — ngày chốt theo mục đích cho các khoản nộp pháp định.",
+        "cta": "Mở kiểm soát nộp"
+      },
+      "ea": {
+        "title": "Quản lý biểu mẫu EA",
+        "desc": "Ánh xạ các thành phần lương tới dòng biểu mẫu EA qua thiết lập eaFormLine trên mỗi thành phần.",
+        "cta": "Mở ánh xạ EA"
+      },
+      "statutory": {
+        "title": "Cấu hình pháp định",
+        "desc": "Các con số pháp định Malaysia chính xác mà bộ máy tính lương áp dụng — EPF, SOCSO, EIS, PCB và làm thêm giờ.",
+        "cta": "Mở cấu hình pháp định"
+      }
+    },
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
       "description": "Tải hàng loạt bảng lương lịch sử đã tính sẵn (tổng, EPF/SOCSO/EIS/PCB, thực nhận) từ CSV để di chuyển dữ liệu. Xác thực trước, sau đó nhập.",
@@ -2024,7 +2058,8 @@
       "batches": "Đợt",
       "reports": "Báo cáo",
       "configuration": "Cấu hình",
-      "transactions": "Giao dịch"
+      "transactions": "Giao dịch",
+      "setup": "Thiết lập"
     },
     "printButton": {
       "print": "In / Lưu PDF"

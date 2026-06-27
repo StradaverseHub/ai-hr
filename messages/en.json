@@ -1474,6 +1474,40 @@
         }
       }
     },
+    "setup": {
+      "title": "Payroll configuration",
+      "subtitle": "The central place to manage payroll setup. Open a sub-module to configure it; only the modules you can access are shown.",
+      "policies": {
+        "title": "Payroll Policies",
+        "desc": "Per-company payroll schedule — cut-off day, pay day, payment basis, HRDF and EPF modes.",
+        "cta": "Open policies"
+      },
+      "items": {
+        "title": "Payroll Items",
+        "desc": "Define pay components and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
+        "cta": "Open pay components"
+      },
+      "period": {
+        "title": "Payroll Period Template",
+        "desc": "The scheduling lens of the company config — cut-off and pay-day timing for each period.",
+        "cta": "Open period setup"
+      },
+      "submission": {
+        "title": "Payment Submission Control",
+        "desc": "The submission-control lens of the company config — per-purpose cut-offs for statutory payments.",
+        "cta": "Open submission control"
+      },
+      "ea": {
+        "title": "EA Form Management",
+        "desc": "Map pay components to their EA form lines via the eaFormLine setting on each component.",
+        "cta": "Open EA mapping"
+      },
+      "statutory": {
+        "title": "Statutory Configuration",
+        "desc": "The exact Malaysian statutory figures the payroll engine applies — EPF, SOCSO, EIS, PCB and overtime.",
+        "cta": "Open statutory config"
+      }
+    },
     "historyImport": {
       "title": "Import payroll history",
       "description": "Bulk-load pre-computed historical payroll (gross, EPF/SOCSO/EIS/PCB, net) from a CSV for data migration. Validate first, then import.",
@@ -2024,7 +2058,8 @@
       "batches": "Batches",
       "reports": "Reports",
       "configuration": "Configuration",
-      "transactions": "Transactions"
+      "transactions": "Transactions",
+      "setup": "Setup"
     },
     "printButton": {
       "print": "Print / Save PDF"

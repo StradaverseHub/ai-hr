@@ -1474,6 +1474,40 @@
         }
       }
     },
+    "setup": {
+      "title": "Konfigurasi gaji",
+      "subtitle": "Tempat utama untuk mengurus persediaan gaji. Buka sub-modul untuk mengkonfigurasinya; hanya modul yang anda boleh akses ditunjukkan.",
+      "policies": {
+        "title": "Dasar Gaji",
+        "desc": "Jadual gaji setiap syarikat — hari potongan, hari bayaran, asas bayaran, mod HRDF dan EPF.",
+        "cta": "Buka dasar"
+      },
+      "items": {
+        "title": "Item Gaji",
+        "desc": "Tentukan komponen gaji dan layanan berkanunnya (EPF / SOCSO / PCB / HRDF).",
+        "cta": "Buka komponen gaji"
+      },
+      "period": {
+        "title": "Templat Tempoh Gaji",
+        "desc": "Lensa penjadualan konfigurasi syarikat — masa hari potongan dan hari bayaran bagi setiap tempoh.",
+        "cta": "Buka persediaan tempoh"
+      },
+      "submission": {
+        "title": "Kawalan Penyerahan Bayaran",
+        "desc": "Lensa kawalan penyerahan konfigurasi syarikat — hari potongan mengikut tujuan untuk bayaran berkanun.",
+        "cta": "Buka kawalan penyerahan"
+      },
+      "ea": {
+        "title": "Pengurusan Borang EA",
+        "desc": "Petakan komponen gaji ke baris borang EA melalui tetapan eaFormLine pada setiap komponen.",
+        "cta": "Buka pemetaan EA"
+      },
+      "statutory": {
+        "title": "Konfigurasi Berkanun",
+        "desc": "Angka berkanun Malaysia tepat yang digunakan oleh enjin gaji — EPF, SOCSO, EIS, PCB dan kerja lebih masa.",
+        "cta": "Buka konfigurasi berkanun"
+      }
+    },
     "historyImport": {
       "title": "Import sejarah gaji",
       "description": "Muat naik pukal gaji sejarah pra-kira (kasar, KWSP/PERKESO/SIP/PCB, bersih) daripada CSV untuk migrasi data. Sahkan dahulu, kemudian import.",
@@ -2024,7 +2058,8 @@
       "batches": "Kelompok",
       "reports": "Laporan",
       "configuration": "Konfigurasi",
-      "transactions": "Transaksi"
+      "transactions": "Transaksi",
+      "setup": "Persediaan"
     },
     "printButton": {
       "print": "Cetak / Simpan PDF"

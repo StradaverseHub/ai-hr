@@ -1474,6 +1474,40 @@
         }
       }
     },
+    "setup": {
+      "title": "薪资配置",
+      "subtitle": "管理薪资设置的中心。打开子模块进行配置；仅显示您有权访问的模块。",
+      "policies": {
+        "title": "薪资政策",
+        "desc": "各公司的薪资计划——截止日、发薪日、计薪基准、HRDF 和 EPF 模式。",
+        "cta": "打开政策"
+      },
+      "items": {
+        "title": "薪资项目",
+        "desc": "定义薪资组件及其法定处理方式（EPF / SOCSO / PCB / HRDF）。",
+        "cta": "打开薪资组件"
+      },
+      "period": {
+        "title": "薪资周期模板",
+        "desc": "公司配置的排程视角——每个周期的截止日和发薪日时间。",
+        "cta": "打开周期设置"
+      },
+      "submission": {
+        "title": "付款提交控制",
+        "desc": "公司配置的提交控制视角——法定付款按用途的截止日。",
+        "cta": "打开提交控制"
+      },
+      "ea": {
+        "title": "EA 表单管理",
+        "desc": "通过每个组件的 eaFormLine 设置，将薪资组件映射到其 EA 表单行。",
+        "cta": "打开 EA 映射"
+      },
+      "statutory": {
+        "title": "法定配置",
+        "desc": "薪资引擎应用的准确马来西亚法定数字——EPF、SOCSO、EIS、PCB 和加班。",
+        "cta": "打开法定配置"
+      }
+    },
     "historyImport": {
       "title": "导入薪资历史",
       "description": "从 CSV 批量加载预先计算的历史薪资（总额、EPF/SOCSO/EIS/PCB、净额）以进行数据迁移。请先验证，再导入。",
@@ -2024,7 +2058,8 @@
       "batches": "批次",
       "reports": "报表",
       "configuration": "配置",
-      "transactions": "交易"
+      "transactions": "交易",
+      "setup": "设置"
     },
     "printButton": {
       "print": "打印 / 保存 PDF"
