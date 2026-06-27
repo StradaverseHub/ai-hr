@@ -942,6 +942,7 @@ export async function updateLeaveType(
     maxDocBytes?: number;
     employeeRemarkRequired?: boolean;
     hrRemarkRequired?: boolean; // stored only this slice; not enforced
+    sendToPayroll?: boolean; // unpaid payroll-impact gate (tri-state, like the doc fields); gates the on-approval signal only
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
@@ -958,6 +959,9 @@ export async function updateLeaveType(
     p.maxDocBytes !== undefined ||
     p.employeeRemarkRequired !== undefined ||
     p.hrRemarkRequired !== undefined;
+  // Unpaid payroll-impact gate — its OWN tri-state, NOT nested in touchDoc: a payroll-only save carries no
+  // document marker, so touchDoc is false; nesting would drop the flag from the set + event diff.
+  const touchPayroll = p.sendToPayroll !== undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
   }
@@ -989,6 +993,7 @@ export async function updateLeaveType(
         maxDocBytes: leaveType.maxDocBytes,
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
         hrRemarkRequired: leaveType.hrRemarkRequired,
+        sendToPayroll: leaveType.sendToPayroll,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -1000,6 +1005,7 @@ export async function updateLeaveType(
         ...(touchEligibility ? { eligibility: nextEligibility } : {}),
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
+        ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -1023,6 +1029,7 @@ export async function updateLeaveType(
                 hrRemarkRequired: before?.hrRemarkRequired ?? null,
               }
             : {}),
+          ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
         },
         after: {
           name,
@@ -1038,6 +1045,7 @@ export async function updateLeaveType(
                 hrRemarkRequired: p.hrRemarkRequired ?? before?.hrRemarkRequired ?? null,
               }
             : {}),
+          ...(touchPayroll ? { sendToPayroll: p.sendToPayroll ?? before?.sendToPayroll ?? null } : {}),
         },
       },
     });

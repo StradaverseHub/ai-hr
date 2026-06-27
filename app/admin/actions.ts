@@ -570,6 +570,11 @@ export async function updateLeaveTypeAction(fd: FormData) {
       hrRemarkRequired: fd.get('hrRemarkRequired') === 'on',
     };
   }
+  // Unpaid payroll-impact: the sub-form posts `payrollImpact=1` (marker) so a rename / eligibility / durations
+  // / document edit that omits it leaves send_to_payroll untouched (same tri-state guard). "Affects payroll
+  // deduction" is display-only (derived from !paid) and is NOT read/forwarded here.
+  const touchPayroll = fd.get('payrollImpact') === '1';
+  const payrollFields = touchPayroll ? { sendToPayroll: fd.get('sendToPayroll') === 'on' } : {};
   try {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
@@ -577,6 +582,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       eligibility,
       durations,
       ...docFields,
+      ...payrollFields,
     });
   } catch (e) {
     fail(LEAVE, e);

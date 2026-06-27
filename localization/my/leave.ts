@@ -8,6 +8,7 @@ export type MyLeaveTypeDef = {
   counting: 'working_days' | 'calendar_days';
   eligibility?: LeaveEligibility; // ADR-0038 2A-1 — lawful gate (only where the Act restricts)
   requiresDocument?: boolean; // ADR-0038 2A-2 — supporting document needed (e.g. MC)
+  sendToPayroll?: boolean; // Unpaid-leave payroll-impact: emit the on-approval payroll signal. Defaults to !paid in seed.
   i18n?: Record<string, { name: string }>; // ADR-0038 2F-2 / R37 — per-locale display names
 };
 
@@ -60,6 +61,7 @@ export const MY_LEAVE_TYPES: MyLeaveTypeDef[] = [
     name: 'Unpaid Leave',
     paid: false,
     counting: 'calendar_days',
+    sendToPayroll: true, // unpaid → emit the on-approval payroll signal by default (matches the migration backfill)
     i18n: { ms: { name: 'Cuti Tanpa Gaji' }, zh: { name: '无薪假' }, ta: { name: 'ஊதியமில்லா விடுப்பு' }, th: { name: 'การลาโดยไม่รับค่าจ้าง' }, vi: { name: 'Nghỉ không lương' } },
   },
 ];

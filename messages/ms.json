@@ -1508,7 +1508,12 @@
       "employeeRemarkRequiredLabel": "Catatan pekerja diperlukan",
       "hrRemarkRequiredLabel": "Catatan HR diperlukan (dikuatkuasakan dalam keluaran kemudian)",
       "saveDocumentRule": "Simpan tetapan dokumen",
-      "documentSectionHelp": "Tetapkan sama ada dokumen sokongan diperlukan, bila ia menjadi wajib, serta jenis dan saiz fail yang diterima."
+      "documentSectionHelp": "Tetapkan sama ada dokumen sokongan diperlukan, bila ia menjadi wajib, serta jenis dan saiz fail yang diterima.",
+      "payrollImpactSectionTitle": "Kesan gaji",
+      "affectsPayrollDeductionLabel": "Menjejaskan potongan gaji",
+      "affectsPayrollDeductionHelp": "Ditetapkan secara automatik: cuti tanpa gaji mengurangkan gaji, jenis cuti bergaji tidak. Ini mencerminkan sama ada jenis cuti itu bergaji dan tidak boleh disunting di sini.",
+      "sendToPayrollLabel": "Hantar ke modul gaji",
+      "payrollImpactHelp": "Modul cuti hanya menanda kesan semasa kelulusan; modul gaji mengira potongan sebenar."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

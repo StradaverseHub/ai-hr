@@ -1508,7 +1508,12 @@
       "employeeRemarkRequiredLabel": "要求员工备注",
       "hrRemarkRequiredLabel": "要求人力资源备注（将在后续版本中执行）",
       "saveDocumentRule": "保存文件设置",
-      "documentSectionHelp": "配置是否需要证明文件、何时变为强制，以及接受哪些文件类型和大小。"
+      "documentSectionHelp": "配置是否需要证明文件、何时变为强制，以及接受哪些文件类型和大小。",
+      "payrollImpactSectionTitle": "薪资影响",
+      "affectsPayrollDeductionLabel": "影响薪资扣减",
+      "affectsPayrollDeductionHelp": "自动设定：无薪假会扣减薪资，带薪假则不会。此项反映该假期类型是否带薪，无法在此编辑。",
+      "sendToPayrollLabel": "发送至薪资模块",
+      "payrollImpactHelp": "假期模块仅在批准时标记影响；实际扣减由薪资模块计算。"
     },
     "holidays": {
       "pageTitle": "公共假期",

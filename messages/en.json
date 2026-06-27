@@ -1508,7 +1508,12 @@
       "employeeRemarkRequiredLabel": "Employee remark required",
       "hrRemarkRequiredLabel": "HR remark required (enforced in a later release)",
       "saveDocumentRule": "Save document settings",
-      "documentSectionHelp": "Configure whether a supporting document is required, when it becomes mandatory, and which file types and sizes are accepted."
+      "documentSectionHelp": "Configure whether a supporting document is required, when it becomes mandatory, and which file types and sizes are accepted.",
+      "payrollImpactSectionTitle": "Payroll impact",
+      "affectsPayrollDeductionLabel": "Affects payroll deduction",
+      "affectsPayrollDeductionHelp": "Set automatically: unpaid leave types reduce pay, paid types do not. This reflects whether the type is paid and cannot be edited here.",
+      "sendToPayrollLabel": "Send to payroll module",
+      "payrollImpactHelp": "The leave module only flags the impact on approval; the payroll module computes the actual deduction."
     },
     "holidays": {
       "pageTitle": "Public holidays",

@@ -211,6 +211,8 @@ export function listLeaveTypes(
         maxDocBytes: leaveType.maxDocBytes,
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
         hrRemarkRequired: leaveType.hrRemarkRequired,
+        // Unpaid payroll-impact: gates the on-approval payroll signal — feeds the admin "Payroll impact" sub-form.
+        sendToPayroll: leaveType.sendToPayroll,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,

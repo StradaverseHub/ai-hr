@@ -423,6 +423,13 @@ export const leaveType = pgTable('leave_type', {
   //   hrRemarkRequired: STORED ONLY this slice — config round-trips so a later slice can enforce it on the
   //     decision surface; no enforcement, no hr_remark column ships now (deliberate deferral).
   hrRemarkRequired: boolean('hr_remark_required').notNull().default(false),
+  // Unpaid-leave payroll-impact integration: gates emission of the on-approval payroll signal (enriches the
+  // existing leave-request.approved event) — "activated once Payroll module integration is done". This column
+  // does NOT change what payroll deducts: payroll deduction itself is still driven by paid=false in
+  // core/payroll.ts (unpaidDaysByEmployment). The "Affects Payroll Deduction" flag the admin sees is derived
+  // read-only from !paid (no second stored column). Default false; the migration/seed backfill it true for
+  // existing unpaid (paid=false) types so they emit the signal by default.
+  sendToPayroll: boolean('send_to_payroll').notNull().default(false),
   // Wave 2 (ADR-0038 2F-2 / R37): per-locale display names, { ms: { name }, zh: { name }, ... }.
   // Mirrors kb_document.i18n. Reads resolve to the viewer's locale, falling back to `name`.
   i18n: jsonb('i18n').$type<Record<string, { name: string }>>(),

@@ -104,6 +104,8 @@ export default async function LeaveConfigPage({
               maxDocBytes={t.maxDocBytes}
               employeeRemarkRequired={t.employeeRemarkRequired}
               hrRemarkRequired={t.hrRemarkRequired}
+              paid={t.paid}
+              sendToPayroll={t.sendToPayroll}
               policies={polByType.get(t.id) ?? []}
               grades={gradeOptions}
               updateTypeAction={updateLeaveTypeAction}

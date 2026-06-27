@@ -80,6 +80,8 @@ export function LeaveTypePanel({
   maxDocBytes,
   employeeRemarkRequired,
   hrRemarkRequired,
+  paid,
+  sendToPayroll,
   policies,
   grades,
   updateTypeAction,
@@ -107,6 +109,10 @@ export function LeaveTypePanel({
   maxDocBytes: number;
   employeeRemarkRequired: boolean;
   hrRemarkRequired: boolean;
+  /** Whether this type is paid — drives the read-only "Affects payroll deduction" display (derived = !paid). */
+  paid: boolean;
+  /** Unpaid payroll-impact: emit the on-approval payroll signal. Editable in the "Payroll impact" sub-form. */
+  sendToPayroll: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   updateTypeAction: Action;
@@ -431,6 +437,38 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('documentSectionHelp')}</p>
+          </div>
+
+          {/* Payroll impact — the two checkboxes the feedback names. "Affects payroll deduction" is read-only,
+              derived from !paid (no second stored column); only "Send to payroll module" is editable. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('payrollImpactSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the send_to_payroll column (tri-state guard) */}
+              <input type="hidden" name="payrollImpact" value="1" />
+              {/* derived, informational, NOT posted — the disabled checkbox reflects whether the type is paid */}
+              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                <input type="checkbox" checked={!paid} disabled className="size-3.5 rounded border-border" />
+                {t('affectsPayrollDeductionLabel')}
+              </label>
+              <p className="text-xs text-muted-foreground">{t('affectsPayrollDeductionHelp')}</p>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="sendToPayroll"
+                  defaultChecked={sendToPayroll}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('sendToPayrollLabel')}
+              </label>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('payrollImpactHelp')}</p>
           </div>
 
           {/* entitlement timeline */}

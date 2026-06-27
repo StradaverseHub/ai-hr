@@ -552,7 +552,9 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
   }
 }
 
-type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string };
+// endDate is widened in (alongside days/startDate) for the on-approval payroll-impact enrichment below. At
+// runtime decideLeave passes the full leave_request row, so endDate is always present; the type just exposes it.
+type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string; endDate: string };
 
 /** Final approval: balance gate + ledger debit + status flip + event. */
 async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: DecidableLeave, deciderEmploymentId?: string) {
@@ -572,6 +574,14 @@ async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: Decidable
     .update(leaveRequest)
     .set({ status: 'approved', decidedByEmploymentId: deciderEmploymentId ?? null, decidedAt: sql`now()` })
     .where(eq(leaveRequest.id, req.id));
+  // Unpaid-leave payroll-impact: fetch the type's code + payroll-signal gate once. Both approval paths
+  // (multi-step final clearance and single-step) funnel through this function, so the enrichment fires
+  // exactly once at terminal approval and never at intermediate leave-request.step.approved.
+  const [lt] = await tx
+    .select({ code: leaveType.code, paid: leaveType.paid, sendToPayroll: leaveType.sendToPayroll })
+    .from(leaveType)
+    .where(eq(leaveType.id, req.leaveTypeId))
+    .limit(1);
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -579,7 +589,27 @@ async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: Decidable
     eventType: 'leave-request.approved',
     actor: actorOf(ctx),
     subjectEmploymentId: req.employmentId,
-    payload: { decision: 'approved', deciderEmploymentId: deciderEmploymentId ?? null },
+    payload: {
+      decision: 'approved',
+      deciderEmploymentId: deciderEmploymentId ?? null,
+      // When the type opts in (sendToPayroll), attach an ADVISORY payroll-impact contract for a future
+      // payroll integration to consume. It is telemetry, NOT a deduction source: the authoritative deduction
+      // remains unpaidDaysByEmployment()'s live status='approved' re-query (which auto-corrects on any future
+      // cancellation/reversal). No payPeriod is emitted — the consumer derives it with its own cutoff rule.
+      ...(lt?.sendToPayroll
+        ? {
+            payrollImpact: {
+              employmentId: req.employmentId,
+              leaveTypeId: req.leaveTypeId,
+              leaveTypeCode: lt.code,
+              days: req.days,
+              startDate: req.startDate,
+              endDate: req.endDate,
+              approvalStatus: 'approved' as const,
+            },
+          }
+        : {}),
+    },
   });
 }
 

@@ -1508,7 +1508,12 @@
       "employeeRemarkRequiredLabel": "Bắt buộc ghi chú của nhân viên",
       "hrRemarkRequiredLabel": "Bắt buộc ghi chú của HR (áp dụng trong bản phát hành sau)",
       "saveDocumentRule": "Lưu cài đặt tài liệu",
-      "documentSectionHelp": "Định cấu hình xem có cần tài liệu hỗ trợ hay không, khi nào bắt buộc, và những loại và kích thước tệp nào được chấp nhận."
+      "documentSectionHelp": "Định cấu hình xem có cần tài liệu hỗ trợ hay không, khi nào bắt buộc, và những loại và kích thước tệp nào được chấp nhận.",
+      "payrollImpactSectionTitle": "Ảnh hưởng lương",
+      "affectsPayrollDeductionLabel": "Ảnh hưởng đến khấu trừ lương",
+      "affectsPayrollDeductionHelp": "Được đặt tự động: nghỉ không lương làm giảm lương, các loại nghỉ có lương thì không. Mục này phản ánh loại nghỉ có được trả lương hay không và không thể chỉnh sửa tại đây.",
+      "sendToPayrollLabel": "Gửi đến mô-đun bảng lương",
+      "payrollImpactHelp": "Mô-đun nghỉ phép chỉ đánh dấu ảnh hưởng khi phê duyệt; mô-đun bảng lương tính khoản khấu trừ thực tế."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
