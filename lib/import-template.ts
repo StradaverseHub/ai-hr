@@ -7,14 +7,16 @@
  * is appended here (explicit per substrate discipline — this is a pure read-only client artifact).
  *
  * Single-source-of-truth scope:
- *  - employee   — columns are DERIVED from IMPORT_COLUMNS (the contract core/import enforces), so the
- *                 template can never silently drift from the validator. This is the real desync lock.
- *  - attendance / payroll — the parsers accept several header spellings (+ positional / aliases) and
- *                 have NO canonical contract, so these specs are a *suggested* format hand-authored
- *                 from each importer's existing SAMPLE. There is no second list to drift against.
+ *  - employee        — columns are DERIVED from IMPORT_COLUMNS (the contract core/import enforces), so
+ *                      the template can never silently drift from the validator. The real desync lock.
+ *  - payroll-history — columns DERIVED from PAYROLL_HISTORY_COLUMNS (the contract
+ *                      core/payroll-history-import enforces) — same desync lock as employee.
+ *  - attendance / payroll-components — the parsers accept several header spellings (+ positional /
+ *                      aliases) and have NO canonical contract, so these specs are a *suggested* format
+ *                      hand-authored from each importer's existing SAMPLE. No second list to drift.
  *
  * Honest limits (see PR notes):
- *  - Only the three existing paste-CSV importers get a template. `dependents` and `leave bulk` named
+ *  - Only the paste-CSV importers get a template. `dependents` and `leave bulk` named
  *    in the feedback have no importer, so they get no template here.
  *  - The surfaces ingest pasted text, not uploaded files; "download → fill → upload" is completed by
  *    pasting the saved CSV's contents. A true file <input> is a separate follow-up.
@@ -23,6 +25,7 @@
  */
 import { toCsv } from './csv';
 import { IMPORT_COLUMNS } from './import-schema';
+import { PAYROLL_HISTORY_COLUMNS } from './payroll-history-import-schema';
 
 export type TemplateSpec = {
   id: string;
@@ -149,4 +152,72 @@ export const payrollComponentTemplate: TemplateSpec = {
     { key: 'notes', required: false },
   ],
   sampleRows: sampleDataRows(COMPONENT_SAMPLE),
+};
+
+/**
+ * Payroll history (1.2.5) — columns DERIVED from the enforced contract (required first, then optional),
+ * the same desync lock as the employee template. Two sample rows for a *prior* year (so a copy-down
+ * download lands in an empty month) with internally-consistent figures:
+ *   net  = gross − (epf_employee + socso_employee + socso_skbbk + eis_employee + pcb + other_deductions)
+ *   cost = gross + epf_employer + socso_employer + eis_employer
+ * Resolution is by email; employee_code is an optional secondary disambiguator.
+ */
+export const payrollHistoryTemplate: TemplateSpec = {
+  id: 'payroll-history',
+  filename: 'payroll-history-import-template.csv',
+  columns: [
+    ...PAYROLL_HISTORY_COLUMNS.required.map((key) => ({ key, required: true })),
+    ...PAYROLL_HISTORY_COLUMNS.optional.map((key) => ({ key, required: false })),
+  ],
+  // Order matches columns above (required ∪ optional).
+  sampleRows: [
+    [
+      'aisyah@demo.test', // email
+      '2024-06', // period (prior year — an empty month for a fresh install)
+      '5000', // basic_salary
+      '5300', // gross_pay (basic + allowance)
+      '583.00', // epf_employee (11%)
+      '689.00', // epf_employer (13%)
+      '24.75', // socso_employee
+      '86.65', // socso_employer
+      '9.90', // eis_employee
+      '9.90', // eis_employer
+      '150.00', // pcb
+      '4532.35', // net_pay = 5300 − (583 + 24.75 + 9.90 + 150)
+      'E1001', // employee_code (secondary)
+      '300', // allowance
+      '0', // overtime_pay
+      '0', // bonus
+      '0', // socso_skbbk
+      '0', // lp
+      '0', // zakat
+      '0', // other_deductions
+      '6085.55', // employer_cost = 5300 + 689 + 86.65 + 9.90
+      '767.65', // total_deductions
+    ],
+    [
+      'meiling@demo.test', // email
+      '2024-06', // period
+      '4200', // basic_salary
+      '4200', // gross_pay
+      '462.00', // epf_employee (11%)
+      '546.00', // epf_employer (13%)
+      '19.75', // socso_employee
+      '69.15', // socso_employer
+      '8.40', // eis_employee
+      '8.40', // eis_employer
+      '60.00', // pcb
+      '3649.85', // net_pay = 4200 − (462 + 19.75 + 8.40 + 60)
+      'E1002', // employee_code
+      '0', // allowance
+      '0', // overtime_pay
+      '0', // bonus
+      '0', // socso_skbbk
+      '0', // lp
+      '0', // zakat
+      '0', // other_deductions
+      '4823.55', // employer_cost = 4200 + 546 + 69.15 + 8.40
+      '550.15', // total_deductions
+    ],
+  ],
 };

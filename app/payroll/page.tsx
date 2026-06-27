@@ -40,7 +40,17 @@ export default async function PayrollPage({
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div data-tour="payroll-intro">
-        <PageHeader title={t('title')} />
+        <PageHeader
+          title={t('title')}
+          actions={
+            <Link
+              href="/payroll/history-import"
+              className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+            >
+              {t('importHistory')}
+            </Link>
+          }
+        />
       </div>
       <PayrollTabs active="batches" />
       <ErrorBanner message={error} />

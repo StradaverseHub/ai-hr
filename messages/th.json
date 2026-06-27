@@ -1095,7 +1095,8 @@
       "scopeEmployeesSelected": "เลือกแล้ว {n} คน",
       "scopeEmployeesSelectAll": "เลือกทั้งหมด",
       "scopeEmployeesClear": "ล้าง",
-      "scopeHint": "แผนกที่เลือกและพนักงานที่ระบุจะถูกรวมเข้าด้วยกัน ปล่อยว่างทั้งหมดเพื่อรันเงินเดือนสำหรับทั้งบริษัท"
+      "scopeHint": "แผนกที่เลือกและพนักงานที่ระบุจะถูกรวมเข้าด้วยกัน ปล่อยว่างทั้งหมดเพื่อรันเงินเดือนสำหรับทั้งบริษัท",
+      "importHistory": "นำเข้าประวัติเงินเดือน"
     },
     "reports": {
       "pageTitle": "เงินเดือน",
@@ -1422,6 +1423,41 @@
           "adjustment": "การปรับปรุง"
         }
       }
+    },
+    "historyImport": {
+      "title": "นำเข้าประวัติเงินเดือน",
+      "description": "อัปโหลดเงินเดือนย้อนหลังที่คำนวณไว้ล่วงหน้า (รวม, EPF/SOCSO/EIS/PCB, สุทธิ) จาก CSV จำนวนมากเพื่อย้ายข้อมูล ตรวจสอบก่อนแล้วจึงนำเข้า",
+      "backLabel": "เงินเดือน",
+      "noCompanies": "สร้างบริษัทก่อนนำเข้าประวัติเงินเดือน",
+      "targetCompany": "บริษัทเป้าหมาย",
+      "csvData": "ข้อมูล CSV",
+      "csvPlaceholder": "วาง CSV พร้อมแถวส่วนหัว — email,period,basic_salary,gross_pay,epf_employee,…",
+      "validate": "ตรวจสอบ",
+      "validating": "กำลังตรวจสอบ…",
+      "loadSample": "โหลดตัวอย่าง",
+      "resolveHint": "จับคู่พนักงานด้วยอีเมลภายใน {company}",
+      "theCompany": "บริษัท",
+      "columnReference": "ข้อมูลอ้างอิงคอลัมน์",
+      "required": "จำเป็น",
+      "optional": "ไม่บังคับ",
+      "emptyMonthHint": "จัดเก็บตัวเลขตามที่ระบุ (ไม่คำนวณใหม่) งวดที่มีชุดเงินเดือนอยู่แล้วจะถูกข้าม ไม่รวมเข้าด้วยกัน — นำเข้าเฉพาะเดือนก่อนหน้าที่ระบบไม่เคยรัน",
+      "importedCount": "นำเข้าแล้ว {count, plural, other {# รายการ}}",
+      "skippedCount": "{count, plural, other {ข้าม # รายการ}}",
+      "failedCount": "{count, plural, other {ล้มเหลว # รายการ}}",
+      "row": "แถว {num}",
+      "viewPayroll": "ดูเงินเดือน →",
+      "importAnother": "นำเข้าไฟล์อื่น",
+      "preview": "ตัวอย่าง",
+      "readyCount": "{count, plural, other {# พร้อม}}",
+      "withErrorsCount": "{count, plural, other {# มีข้อผิดพลาด}}",
+      "importing": "กำลังนำเข้า…",
+      "importValid": "นำเข้า {count, plural, other {# รายการ}}",
+      "missingColumns": "คอลัมน์ที่จำเป็นขาดหายไป:",
+      "colEmail": "อีเมล",
+      "colPeriod": "งวด",
+      "colResult": "ผลลัพธ์",
+      "ready": "พร้อม",
+      "skipped": "ข้าม — งวดนี้มีเงินเดือนอยู่แล้ว"
     }
   },
   "admin": {

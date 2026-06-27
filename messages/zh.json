@@ -1095,7 +1095,8 @@
       "scopeEmployeesSelected": "已选 {n} 人",
       "scopeEmployeesSelectAll": "全选",
       "scopeEmployeesClear": "清除",
-      "scopeHint": "所选部门与指定员工将合并计入。全部不勾选则为整个公司运行薪资。"
+      "scopeHint": "所选部门与指定员工将合并计入。全部不勾选则为整个公司运行薪资。",
+      "importHistory": "导入薪资历史"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -1422,6 +1423,41 @@
           "adjustment": "调整"
         }
       }
+    },
+    "historyImport": {
+      "title": "导入薪资历史",
+      "description": "从 CSV 批量加载预先计算的历史薪资（总额、EPF/SOCSO/EIS/PCB、净额）以进行数据迁移。请先验证，再导入。",
+      "backLabel": "薪资",
+      "noCompanies": "导入薪资历史前请先创建公司。",
+      "targetCompany": "目标公司",
+      "csvData": "CSV 数据",
+      "csvPlaceholder": "粘贴带表头行的 CSV — email,period,basic_salary,gross_pay,epf_employee,…",
+      "validate": "验证",
+      "validating": "验证中…",
+      "loadSample": "加载示例",
+      "resolveHint": "员工在 {company} 内按电子邮件匹配。",
+      "theCompany": "该公司",
+      "columnReference": "列参考",
+      "required": "必填",
+      "optional": "可选",
+      "emptyMonthHint": "数值按原样存储（不重新计算）。已有薪资批次的期间将被跳过而非合并——仅导入系统从未运行过的过往月份。",
+      "importedCount": "已导入 {count, plural, other {# 条记录}}",
+      "skippedCount": "{count, plural, other {# 条跳过}}",
+      "failedCount": "{count, plural, other {# 条失败}}",
+      "row": "第 {num} 行",
+      "viewPayroll": "查看薪资 →",
+      "importAnother": "导入另一个文件",
+      "preview": "预览",
+      "readyCount": "{count, plural, other {# 条就绪}}",
+      "withErrorsCount": "{count, plural, other {# 条有错误}}",
+      "importing": "导入中…",
+      "importValid": "导入 {count, plural, other {# 条记录}}",
+      "missingColumns": "缺少必填列：",
+      "colEmail": "电子邮件",
+      "colPeriod": "期间",
+      "colResult": "结果",
+      "ready": "就绪",
+      "skipped": "已跳过——该期间已有薪资"
     }
   },
   "admin": {

@@ -1095,7 +1095,8 @@
       "scopeEmployeesSelected": "{n} dipilih",
       "scopeEmployeesSelectAll": "Pilih semua",
       "scopeEmployeesClear": "Kosongkan",
-      "scopeHint": "Jabatan yang dipilih dan pekerja yang dinamakan digabungkan. Biarkan semua tidak bertanda untuk menjalankan gaji bagi seluruh syarikat."
+      "scopeHint": "Jabatan yang dipilih dan pekerja yang dinamakan digabungkan. Biarkan semua tidak bertanda untuk menjalankan gaji bagi seluruh syarikat.",
+      "importHistory": "Import sejarah gaji"
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -1422,6 +1423,41 @@
           "adjustment": "Pelarasan"
         }
       }
+    },
+    "historyImport": {
+      "title": "Import sejarah gaji",
+      "description": "Muat naik pukal gaji sejarah pra-kira (kasar, KWSP/PERKESO/SIP/PCB, bersih) daripada CSV untuk migrasi data. Sahkan dahulu, kemudian import.",
+      "backLabel": "Gaji",
+      "noCompanies": "Cipta syarikat sebelum mengimport sejarah gaji.",
+      "targetCompany": "Syarikat sasaran",
+      "csvData": "Data CSV",
+      "csvPlaceholder": "Tampal CSV dengan baris pengepala — email,period,basic_salary,gross_pay,epf_employee,…",
+      "validate": "Sahkan",
+      "validating": "Mengesahkan…",
+      "loadSample": "Muat sampel",
+      "resolveHint": "Pekerja dipadankan mengikut e-mel dalam {company}.",
+      "theCompany": "syarikat",
+      "columnReference": "Rujukan lajur",
+      "required": "Diperlukan",
+      "optional": "Pilihan",
+      "emptyMonthHint": "Angka disimpan sebatang (tiada pengiraan semula). Tempoh yang sudah mempunyai kelompok gaji dilangkau, bukan digabung — import hanya bulan terdahulu yang sistem langsung tidak pernah jalankan.",
+      "importedCount": "{count, plural, one {# rekod} other {# rekod}} diimport",
+      "skippedCount": "{count, plural, one {# dilangkau} other {# dilangkau}}",
+      "failedCount": "{count, plural, one {# gagal} other {# gagal}}",
+      "row": "Baris {num}",
+      "viewPayroll": "Lihat gaji →",
+      "importAnother": "Import fail lain",
+      "preview": "Pratonton",
+      "readyCount": "{count, plural, one {# sedia} other {# sedia}}",
+      "withErrorsCount": "{count, plural, one {# dengan ralat} other {# dengan ralat}}",
+      "importing": "Mengimport…",
+      "importValid": "Import {count, plural, one {# rekod} other {# rekod}}",
+      "missingColumns": "{count, plural, one {Lajur} other {Lajur}} diperlukan yang tiada:",
+      "colEmail": "E-mel",
+      "colPeriod": "Tempoh",
+      "colResult": "Keputusan",
+      "ready": "Sedia",
+      "skipped": "Dilangkau — tempoh sudah ada gaji"
     }
   },
   "admin": {

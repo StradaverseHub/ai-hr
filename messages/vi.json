@@ -1095,7 +1095,8 @@
       "scopeEmployeesSelected": "Đã chọn {n}",
       "scopeEmployeesSelectAll": "Chọn tất cả",
       "scopeEmployeesClear": "Xóa",
-      "scopeHint": "Phòng ban đã chọn và nhân viên được chỉ định sẽ được gộp lại. Bỏ trống tất cả để chạy lương cho toàn công ty."
+      "scopeHint": "Phòng ban đã chọn và nhân viên được chỉ định sẽ được gộp lại. Bỏ trống tất cả để chạy lương cho toàn công ty.",
+      "importHistory": "Nhập lịch sử bảng lương"
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -1422,6 +1423,41 @@
           "adjustment": "Điều chỉnh"
         }
       }
+    },
+    "historyImport": {
+      "title": "Nhập lịch sử bảng lương",
+      "description": "Tải hàng loạt bảng lương lịch sử đã tính sẵn (tổng, EPF/SOCSO/EIS/PCB, thực nhận) từ CSV để di chuyển dữ liệu. Xác thực trước, sau đó nhập.",
+      "backLabel": "Bảng lương",
+      "noCompanies": "Tạo một công ty trước khi nhập lịch sử bảng lương.",
+      "targetCompany": "Công ty đích",
+      "csvData": "Dữ liệu CSV",
+      "csvPlaceholder": "Dán CSV có dòng tiêu đề — email,period,basic_salary,gross_pay,epf_employee,…",
+      "validate": "Xác thực",
+      "validating": "Đang xác thực…",
+      "loadSample": "Tải mẫu",
+      "resolveHint": "Nhân viên được khớp theo email trong {company}.",
+      "theCompany": "công ty",
+      "columnReference": "Tham chiếu cột",
+      "required": "Bắt buộc",
+      "optional": "Tùy chọn",
+      "emptyMonthHint": "Các con số được lưu nguyên văn (không tính lại). Kỳ đã có đợt bảng lương sẽ bị bỏ qua, không hợp nhất — chỉ nhập các tháng trước mà hệ thống chưa từng chạy.",
+      "importedCount": "Đã nhập {count, plural, other {# bản ghi}}",
+      "skippedCount": "{count, plural, other {# bị bỏ qua}}",
+      "failedCount": "{count, plural, other {# thất bại}}",
+      "row": "Hàng {num}",
+      "viewPayroll": "Xem bảng lương →",
+      "importAnother": "Nhập tệp khác",
+      "preview": "Xem trước",
+      "readyCount": "{count, plural, other {# sẵn sàng}}",
+      "withErrorsCount": "{count, plural, other {# có lỗi}}",
+      "importing": "Đang nhập…",
+      "importValid": "Nhập {count, plural, other {# bản ghi}}",
+      "missingColumns": "Thiếu các cột bắt buộc:",
+      "colEmail": "Email",
+      "colPeriod": "Kỳ",
+      "colResult": "Kết quả",
+      "ready": "Sẵn sàng",
+      "skipped": "Bị bỏ qua — kỳ này đã có bảng lương"
     }
   },
   "admin": {

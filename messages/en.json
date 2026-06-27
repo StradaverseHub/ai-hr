@@ -1095,7 +1095,8 @@
       "scopeEmployeesSelected": "{n} selected",
       "scopeEmployeesSelectAll": "Select all",
       "scopeEmployeesClear": "Clear",
-      "scopeHint": "Selected departments and named employees are combined. Leave everything unchecked to run payroll for the whole company."
+      "scopeHint": "Selected departments and named employees are combined. Leave everything unchecked to run payroll for the whole company.",
+      "importHistory": "Import payroll history"
     },
     "batch": {
       "back": "Payroll",
@@ -1422,6 +1423,41 @@
           "adjustment": "Adjustment"
         }
       }
+    },
+    "historyImport": {
+      "title": "Import payroll history",
+      "description": "Bulk-load pre-computed historical payroll (gross, EPF/SOCSO/EIS/PCB, net) from a CSV for data migration. Validate first, then import.",
+      "backLabel": "Payroll",
+      "noCompanies": "Create a company before importing payroll history.",
+      "targetCompany": "Target company",
+      "csvData": "CSV data",
+      "csvPlaceholder": "Paste CSV with a header row — email,period,basic_salary,gross_pay,epf_employee,…",
+      "validate": "Validate",
+      "validating": "Validating…",
+      "loadSample": "Load sample",
+      "resolveHint": "Employees resolve by email within {company}.",
+      "theCompany": "the company",
+      "columnReference": "Column reference",
+      "required": "Required",
+      "optional": "Optional",
+      "emptyMonthHint": "Figures are stored verbatim (no recompute). A period that already has a payroll batch is skipped, not merged — import only prior months the live system never ran.",
+      "importedCount": "Imported {count, plural, one {# record} other {# records}}",
+      "skippedCount": "{count, plural, one {# skipped} other {# skipped}}",
+      "failedCount": "{count, plural, one {# failed} other {# failed}}",
+      "row": "Row {num}",
+      "viewPayroll": "View payroll →",
+      "importAnother": "Import another file",
+      "preview": "Preview",
+      "readyCount": "{count, plural, one {# ready} other {# ready}}",
+      "withErrorsCount": "{count, plural, one {# with errors} other {# with errors}}",
+      "importing": "Importing…",
+      "importValid": "Import {count, plural, one {# record} other {# records}}",
+      "missingColumns": "Missing required {count, plural, one {column} other {columns}}:",
+      "colEmail": "Email",
+      "colPeriod": "Period",
+      "colResult": "Result",
+      "ready": "Ready",
+      "skipped": "Skipped — period already has payroll"
     }
   },
   "admin": {
