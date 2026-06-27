@@ -73,6 +73,10 @@ export const reportingLineTypeEnum = pgEnum('reporting_line_type', [
   'functional',
   'project',
   'dotted',
+  // Hierarchy Management (ADR-0052): an approver-routing edge. A `delegate` row means subordinate = the
+  // delegator (line-holder going on leave), manager = the delegate (stand-in approver), windowed by
+  // valid_from/valid_to. Reuses reporting_line; it does NOT grant visibility, only decision authority.
+  'delegate',
 ]);
 export const leaveEntryTypeEnum = pgEnum('leave_entry_type', ['accrual', 'debit', 'adjustment', 'in_lieu_accrual']);
 export const leaveRequestStatusEnum = pgEnum('leave_request_status', [

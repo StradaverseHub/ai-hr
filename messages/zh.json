@@ -332,7 +332,14 @@
       "holidayCalendar": "假期日历",
       "holidayCalendarDefault": "公司默认",
       "holidayCalendarGroupOptgroup": "分组",
-      "holidayCalendarStateOptgroup": "州属"
+      "holidayCalendarStateOptgroup": "州属",
+      "delegationsTitle": "审批委派",
+      "delegationsEmpty": "无有效委派。",
+      "delegationDelegate": "委派给",
+      "delegationFrom": "从",
+      "delegationTo": "至（可选）",
+      "delegationAdd": "添加委派",
+      "delegationEnd": "结束委派"
     },
     "import": {
       "title": "导入员工",

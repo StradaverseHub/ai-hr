@@ -332,7 +332,14 @@
       "holidayCalendar": "Lịch ngày lễ",
       "holidayCalendarDefault": "Mặc định công ty",
       "holidayCalendarGroupOptgroup": "Nhóm",
-      "holidayCalendarStateOptgroup": "Bang"
+      "holidayCalendarStateOptgroup": "Bang",
+      "delegationsTitle": "Ủy quyền phê duyệt",
+      "delegationsEmpty": "Không có ủy quyền đang hoạt động.",
+      "delegationDelegate": "Ủy quyền cho",
+      "delegationFrom": "Từ",
+      "delegationTo": "Đến (tùy chọn)",
+      "delegationAdd": "Thêm ủy quyền",
+      "delegationEnd": "Kết thúc ủy quyền"
     },
     "import": {
       "title": "Nhập nhân viên",

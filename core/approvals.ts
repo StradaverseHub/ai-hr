@@ -27,6 +27,9 @@ export async function assertCanDecide(
   const isSuperAdmin = roles.includes('super_admin');
   const isAdminRole = isSuperAdmin || roles.includes('hr_admin');
   const isSelf = ctx.personId != null && subject?.personId === ctx.personId;
+  // Self-approval ban (task #84) — preserved against the SUBJECT. A delegate who is themselves the
+  // subject (or routed into their own approval chain) is still blocked below by this guard, never
+  // re-opened by the delegation branch.
   if (isSelf && !isSuperAdmin) throw new Error(`You cannot decide your own ${label}`);
   if (isAdminRole) return;
   const mgr = ctx.personId
@@ -49,7 +52,20 @@ export async function assertCanDecide(
         )
         .limit(1)
     : [];
-  if (mgr.length === 0) {
-    throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
+  if (mgr.length > 0) return;
+
+  // Delegation branch (ADR-0052 Step 4): the caller is a valid decider if an ACTIVE `delegate` edge
+  // names them as the delegate AND the delegator is the subject's CURRENT direct administrative manager —
+  // re-validated at decision time (not merely at create time), window covering current_date, delegator
+  // still live, ONE hop only (no transitive chaining). This is encoded once in the SECURITY-DEFINER
+  // helper app.can_decide_via_delegation, which we reuse here: the delegate cannot SEE the delegator's
+  // employment under RLS (no visibility inheritance), so an in-statement join through `employment` would
+  // be wrongly filtered — the definer helper resolves it without leaking visibility. The self-ban above
+  // already blocked a delegate who is the subject.
+  if (ctx.personId) {
+    const res = await tx.execute(sql`SELECT app.can_decide_via_delegation(${subjectEmploymentId}) AS ok`);
+    const ok = (res as unknown as { ok: boolean }[])[0]?.ok;
+    if (ok) return;
   }
+  throw new Error(`Only an admin or the administrative manager can decide this ${label}`);
 }

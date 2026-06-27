@@ -768,7 +768,8 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
   });
 }
 
-/** Current reporting edges for an employment: who they report to, and their direct reports. */
+/** Current reporting edges for an employment: who they report to, and their direct reports. Excludes
+ *  `delegate` edges (approver-routing, surfaced separately by delegationsFor — ADR-0052). */
 export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
   return withTenant(ctx, async (tx) => {
     const managers = await tx
@@ -786,6 +787,7 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
           eq(reportingLine.subordinateEmploymentId, employmentId),
           isNull(reportingLine.validTo),
           isNull(reportingLine.supersededAt),
+          sql`${reportingLine.lineType} <> 'delegate'`,
         ),
       )
       .orderBy(reportingLine.lineType);
@@ -804,10 +806,38 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string) {
           eq(reportingLine.managerEmploymentId, employmentId),
           isNull(reportingLine.validTo),
           isNull(reportingLine.supersededAt),
+          sql`${reportingLine.lineType} <> 'delegate'`,
         ),
       )
       .orderBy(person.fullName);
     return { managers, reports };
+  });
+}
+
+/** Active approval delegations FROM this employment (ADR-0052): rows where this employment is the
+ *  delegator (subordinate of a `delegate` edge), naming the stand-in delegate (the edge's manager) and
+ *  the window. RLS scopes the join through employment (admin/self/manager visibility). */
+export function delegationsFor(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    return tx
+      .select({
+        id: reportingLine.id,
+        delegateEmploymentId: reportingLine.managerEmploymentId,
+        delegateName: person.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, employmentId),
+          eq(reportingLine.lineType, 'delegate'),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .orderBy(desc(reportingLine.validFrom));
   });
 }
 
@@ -840,14 +870,33 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
         ),
       )
       .orderBy(person.fullName);
-    const edges = await tx
+    // Hierarchy Management (ADR-0052 Step 6): the edge query SELECTs straight from reporting_line, whose
+    // RLS is tenant-only (it does NOT call can_see_employment), so previously it returned EVERY edge in
+    // the tenant — including edges where an endpoint is terminated. Scope it so only edges with BOTH
+    // endpoints visible to the caller AND both endpoints live (non-terminated) are returned: a mid-level
+    // manager's /org then shows only their subtree, and stale edges through a fired manager are dropped.
+    // `delegate` edges are approver-routing, not org structure, so they are excluded from the chart.
+    const edgeRows = await tx
       .select({
         manager: reportingLine.managerEmploymentId,
         subordinate: reportingLine.subordinateEmploymentId,
         type: reportingLine.lineType,
       })
       .from(reportingLine)
-      .where(and(isNull(reportingLine.validTo), isNull(reportingLine.supersededAt)));
+      .where(
+        and(
+          isNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+          sql`${reportingLine.lineType} <> 'delegate'`,
+          sql`app.can_see_employment(${reportingLine.managerEmploymentId})`,
+          sql`app.can_see_employment(${reportingLine.subordinateEmploymentId})`,
+          sql`EXISTS (SELECT 1 FROM employment mgr_e WHERE mgr_e.id = ${reportingLine.managerEmploymentId} AND mgr_e.terminated_on IS NULL)`,
+          sql`EXISTS (SELECT 1 FROM employment sub_e WHERE sub_e.id = ${reportingLine.subordinateEmploymentId} AND sub_e.terminated_on IS NULL)`,
+        ),
+      );
+    // delegate edges are filtered out in the query above, so the chart's edge type stays the structural
+    // union (administrative | functional | project | dotted) the OrgChart component expects.
+    const edges = edgeRows as { manager: string; subordinate: string; type: 'administrative' | 'functional' | 'project' | 'dotted' }[];
     return { employees, edges };
   });
 }

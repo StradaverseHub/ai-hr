@@ -97,6 +97,43 @@ export async function endReportingLineAction(formData: FormData) {
   redirect(`/people/${employmentId}?toast=Saved`);
 }
 
+/** Hierarchy Management (ADR-0052): create an approval delegation FROM this employment (the delegator
+ *  going on leave) TO a stand-in delegate, windowed by valid-from/valid-to. Reuses setReportingLine with
+ *  lineType 'delegate' — inheriting the bitemporal window, supersede, events, and RLS. */
+export async function addDelegationAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await setReportingLine(s, {
+      subordinateEmploymentId: employmentId, // the delegator
+      managerEmploymentId: String(formData.get('delegateEmploymentId')), // the stand-in
+      lineType: 'delegate',
+      validFrom: String(formData.get('validFrom')),
+      validTo: String(formData.get('validTo') ?? '').trim() || null,
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
+/** End an active delegation early (ADR-0052) — reuses endReportingLine (events + RLS). */
+export async function endDelegationAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await endReportingLine(s, {
+      reportingLineId: String(formData.get('reportingLineId')),
+      endDate: String(formData.get('endDate')),
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
 export async function setCompensationAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));

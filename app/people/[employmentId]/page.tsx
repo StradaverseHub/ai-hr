@@ -5,6 +5,7 @@ import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import {
   assignmentHistory,
+  delegationsFor,
   employeeAudit,
   employeeDetail,
   leaveBalances,
@@ -19,7 +20,9 @@ import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EpfElection } from '@/components/epf-election';
 import {
+  addDelegationAction,
   addReportingLineAction,
+  endDelegationAction,
   endReportingLineAction,
   setCompensationAction,
   setEmploymentComponentAction,
@@ -80,7 +83,7 @@ export default async function EmployeePage({
   if (!emp) notFound();
   const today = new Date().toISOString().slice(0, 10);
 
-  const [history, balances, requests, departments, reporting, employees, grades] = await Promise.all([
+  const [history, balances, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
     assignmentHistory(s, employmentId),
     leaveBalances(s, employmentId),
     leaveRequestsFor(s, employmentId),
@@ -88,6 +91,7 @@ export default async function EmployeePage({
     reportingLinesFor(s, employmentId),
     listEmployees(s),
     listJobGrades(s),
+    delegationsFor(s, employmentId),
   ]);
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
@@ -527,6 +531,67 @@ export default async function EmployeePage({
             </Field>
             <div>
               <button className={btnPrimary}>{t('addReportingLine')}</button>
+            </div>
+          </form>
+        )}
+      </Card>
+
+      {/* Hierarchy Management (ADR-0052): approval delegations. When this employee (a reporting-line
+          holder) is away, they assign a stand-in who can approve on their behalf for a window. This is
+          approver-routing only — the delegate gains NO visibility of the delegator's reports. */}
+      <Card>
+        <SectionHeader title={t('delegationsTitle')} />
+        <div className="p-4">
+          {delegations.length === 0 ? (
+            <div className="text-sm text-muted-foreground">{t('delegationsEmpty')}</div>
+          ) : (
+            <ul className="space-y-2">
+              {delegations.map((d) => (
+                <li key={d.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <Link href={`/people/${d.delegateEmploymentId}`} className="text-foreground hover:text-primary">
+                      {d.delegateName}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {d.validFrom} → {d.validTo ?? '—'}
+                    </span>
+                  </span>
+                  <form action={endDelegationAction}>
+                    <input type="hidden" name="employmentId" value={emp.employmentId} />
+                    <input type="hidden" name="reportingLineId" value={d.id} />
+                    <input type="hidden" name="endDate" value={today} />
+                    <button type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
+                      ×
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {!emp.terminatedOn && others.length > 0 && (
+          <form
+            action={addDelegationAction}
+            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+          >
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={t('delegationDelegate')}>
+              <select name="delegateEmploymentId" required className={inputCls}>
+                {others.map((o) => (
+                  <option key={o.employmentId} value={o.employmentId}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('delegationFrom')}>
+              <input name="validFrom" type="date" required defaultValue={today} className={inputCls} />
+            </Field>
+            <Field label={t('delegationTo')}>
+              <input name="validTo" type="date" className={inputCls} />
+            </Field>
+            <div>
+              <button className={btnPrimary}>{t('delegationAdd')}</button>
             </div>
           </form>
         )}

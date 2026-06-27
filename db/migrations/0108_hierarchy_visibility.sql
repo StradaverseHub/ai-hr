@@ -1,0 +1,11 @@
+-- Hierarchy Management (ADR-0052) — part 1 of 2: add the `delegate` reporting-line type.
+--
+-- An ADD VALUE on an enum must commit before that value can be referenced (a new enum value cannot be
+-- used in the same transaction it was added). The drizzle migrator wraps each migration FILE in one
+-- transaction, so this `ADD VALUE` is isolated in its own migration; migration 0109 then creates the
+-- helper functions and policies that reference 'delegate'.
+--
+-- A `delegate` row reuses reporting_line: subordinate_employment_id = the delegator (the line-holder
+-- going on leave), manager_employment_id = the delegate (the stand-in approver), windowed by
+-- valid_from/valid_to. It grants decision authority via approver-routing, NOT visibility.
+ALTER TYPE reporting_line_type ADD VALUE IF NOT EXISTS 'delegate';

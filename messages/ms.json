@@ -332,7 +332,14 @@
       "holidayCalendar": "Kalendar cuti",
       "holidayCalendarDefault": "Lalai syarikat",
       "holidayCalendarGroupOptgroup": "Kumpulan",
-      "holidayCalendarStateOptgroup": "Negeri"
+      "holidayCalendarStateOptgroup": "Negeri",
+      "delegationsTitle": "Perwakilan kelulusan",
+      "delegationsEmpty": "Tiada perwakilan aktif.",
+      "delegationDelegate": "Wakilkan kepada",
+      "delegationFrom": "Dari",
+      "delegationTo": "Hingga (pilihan)",
+      "delegationAdd": "Tambah perwakilan",
+      "delegationEnd": "Tamatkan perwakilan"
     },
     "import": {
       "title": "Import pekerja",

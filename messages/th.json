@@ -332,7 +332,14 @@
       "holidayCalendar": "ปฏิทินวันหยุด",
       "holidayCalendarDefault": "ค่าเริ่มต้นบริษัท",
       "holidayCalendarGroupOptgroup": "กลุ่ม",
-      "holidayCalendarStateOptgroup": "รัฐ"
+      "holidayCalendarStateOptgroup": "รัฐ",
+      "delegationsTitle": "การมอบหมายการอนุมัติ",
+      "delegationsEmpty": "ไม่มีการมอบหมายที่ใช้งานอยู่",
+      "delegationDelegate": "มอบหมายให้",
+      "delegationFrom": "ตั้งแต่",
+      "delegationTo": "จนถึง (ไม่บังคับ)",
+      "delegationAdd": "เพิ่มการมอบหมาย",
+      "delegationEnd": "สิ้นสุดการมอบหมาย"
     },
     "import": {
       "title": "นำเข้าพนักงาน",

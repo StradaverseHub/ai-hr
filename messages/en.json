@@ -332,7 +332,14 @@
       "holidayCalendar": "Holiday calendar",
       "holidayCalendarDefault": "Company default",
       "holidayCalendarGroupOptgroup": "Group",
-      "holidayCalendarStateOptgroup": "State"
+      "holidayCalendarStateOptgroup": "State",
+      "delegationsTitle": "Approval delegations",
+      "delegationsEmpty": "No active delegations.",
+      "delegationDelegate": "Delegate to",
+      "delegationFrom": "From",
+      "delegationTo": "Until (optional)",
+      "delegationAdd": "Add delegation",
+      "delegationEnd": "End delegation"
     },
     "import": {
       "title": "Import employees",

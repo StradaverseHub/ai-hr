@@ -229,12 +229,16 @@ describe('Reporting & Analytics — dashboards aggregation', () => {
   });
 
   it('RLS-scoped (non-admin) manager: leave + demographic queries run under the app role and return the viewer-scoped subset; nationality is withheld', async () => {
-    // Manager sees only their direct report (+ self) via the open admin reporting line; an unrelated
-    // employee is invisible to them under RLS (can_see_employment). This catches a missing app-role
-    // GRANT/policy on leave_ledger / employee_statutory_my that the admin-ctx tests can't.
-    const mgr = await hire('Scoped Mgr');
+    // Manager sees their direct report (+ self) via the open admin reporting line; an unrelated employee
+    // is invisible to them under RLS (can_see_employment). This catches a missing app-role GRANT/policy
+    // on leave_ledger / employee_statutory_my that the admin-ctx tests can't.
+    // ADR-0052: the manager is now also an HOD of THEIR OWN current department (the recursive can_see
+    // rewrite added a department-tree branch). The manager sits in deptB here (same dept as the sub) so
+    // the HOD branch covers exactly {mgr, sub}; the outsider is placed in deptA — a department the
+    // manager does not head — so they stay invisible, preserving this test's "unrelated → hidden" intent.
+    const mgr = await hire('Scoped Mgr', { dept: base.deptB });
     const sub = await hire('Scoped Sub', { dept: base.deptB });
-    const outsider = await hire('Outsider');
+    const outsider = await hire('Outsider', { dept: base.deptA });
     await setReportingLine(a, {
       subordinateEmploymentId: sub.employmentId,
       managerEmploymentId: mgr.employmentId,

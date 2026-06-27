@@ -42,7 +42,7 @@ export class ReportingCycleError extends Error {
 }
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
-type LineType = 'administrative' | 'functional' | 'project' | 'dotted';
+type LineType = 'administrative' | 'functional' | 'project' | 'dotted' | 'delegate';
 
 export type HireParams = {
   person: { id?: string; fullName?: string; primaryEmail?: string; phone?: string };
@@ -379,6 +379,39 @@ export async function terminateEmploymentTx(
   if (cur) {
     await tx.update(assignment).set({ validTo: p.terminationDate }).where(eq(assignment.id, cur.id));
   }
+
+  // Hierarchy Management (ADR-0052, Step 3): close this employment's OPEN administrative reporting-line
+  // edges — both as manager and as subordinate — at the termination date, so a multi-hop visibility
+  // DOWN-walk never traverses THROUGH a terminated manager (which would surface their former subtree).
+  // The recursive helper also filters terminated_on at each hop (belt-and-suspenders); ending the edges
+  // keeps the graph itself clean for the org chart and approver lookups. Each closure is evented.
+  const endedLines = await tx
+    .update(reportingLine)
+    .set({ validTo: p.terminationDate })
+    .where(
+      and(
+        eq(reportingLine.lineType, 'administrative'),
+        isNull(reportingLine.validTo),
+        isNull(reportingLine.supersededAt),
+        or(
+          eq(reportingLine.managerEmploymentId, p.employmentId),
+          eq(reportingLine.subordinateEmploymentId, p.employmentId),
+        ),
+      ),
+    )
+    .returning({ id: reportingLine.id, subordinate: reportingLine.subordinateEmploymentId });
+  for (const line of endedLines) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'reporting-line',
+      aggregateId: line.id,
+      eventType: 'reporting-line.ended',
+      actor: actorOf(ctx),
+      subjectEmploymentId: line.subordinate,
+      payload: { endDate: p.terminationDate, reason: 'employment.terminated' },
+    });
+  }
+
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employment',
@@ -427,16 +460,80 @@ async function wouldCreateAdminCycle(
   return res.length > 0;
 }
 
+export class DelegationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DelegationError';
+  }
+}
+
 export async function setReportingLine(
   ctx: SessionContext,
-  p: { subordinateEmploymentId: string; managerEmploymentId: string; lineType: LineType; validFrom: string },
+  p: {
+    subordinateEmploymentId: string;
+    managerEmploymentId: string;
+    lineType: LineType;
+    validFrom: string;
+    /** Hierarchy Management (ADR-0052): closing date of the edge window. Required-by-convention for
+     *  `delegate` lines (an absence has an end); optional for the structural types (open-ended). */
+    validTo?: string | null;
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
+    // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
+    // line type but is the load-bearing guard for a delegation window.
+    if (p.validTo != null && p.validTo < p.validFrom) {
+      throw new DelegationError('The end date must be on or after the start date');
+    }
     if (p.lineType === 'administrative') {
       if (await wouldCreateAdminCycle(tx, p.subordinateEmploymentId, p.managerEmploymentId, p.validFrom)) {
         throw new ReportingCycleError();
       }
+    }
+    if (p.lineType === 'delegate') {
+      // A delegation row reuses reporting_line: subordinate = delegator, manager = delegate. Reject an
+      // OVERLAPPING active delegation of the SAME delegator (rule #2) so two stand-ins can't both hold
+      // authority over the same window. Two windows overlap when each starts before the other ends.
+      const existing = await tx
+        .select({ id: reportingLine.id, validFrom: reportingLine.validFrom, validTo: reportingLine.validTo })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, p.subordinateEmploymentId),
+            eq(reportingLine.lineType, 'delegate'),
+            isNull(reportingLine.supersededAt),
+          ),
+        );
+      const newFrom = p.validFrom;
+      const newTo = p.validTo ?? null;
+      for (const e of existing) {
+        const eTo = e.validTo ?? null;
+        const overlaps =
+          (eTo === null || newFrom <= eTo) && (newTo === null || e.validFrom <= newTo);
+        if (overlaps) throw new DelegationError('An overlapping active delegation already exists for this period');
+      }
+      const [row] = await tx
+        .insert(reportingLine)
+        .values({
+          tenantId: ctx.tenantId,
+          subordinateEmploymentId: p.subordinateEmploymentId,
+          managerEmploymentId: p.managerEmploymentId,
+          lineType: 'delegate',
+          validFrom: p.validFrom,
+          validTo: p.validTo ?? null,
+        })
+        .returning({ id: reportingLine.id });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'reporting-line',
+        aggregateId: row.id,
+        eventType: 'reporting-line.set',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.subordinateEmploymentId,
+        payload: { ...p, lineType: 'delegate' },
+      });
+      return { reportingLineId: row.id };
     }
     // A subordinate has at most one *active* line per type (one admin manager, one functional, …).
     // There is no DB exclusion constraint, so adding a second of the same type would silently leave

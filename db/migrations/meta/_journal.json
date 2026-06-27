@@ -757,6 +757,20 @@
       "when": 1781861710000,
       "tag": "0107_employment_provisional_end",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1781861720000,
+      "tag": "0108_hierarchy_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1781861730000,
+      "tag": "0109_hierarchy_visibility_rls",
+      "breakpoints": true
     }
   ]
 }

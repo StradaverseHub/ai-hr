@@ -332,7 +332,14 @@
       "holidayCalendar": "விடுமுறை நாட்காட்டி",
       "holidayCalendarDefault": "நிறுவன இயல்புநிலை",
       "holidayCalendarGroupOptgroup": "குழு",
-      "holidayCalendarStateOptgroup": "மாநிலம்"
+      "holidayCalendarStateOptgroup": "மாநிலம்",
+      "delegationsTitle": "ஒப்புதல் பிரதிநிதித்துவம்",
+      "delegationsEmpty": "செயலில் உள்ள பிரதிநிதித்துவங்கள் இல்லை.",
+      "delegationDelegate": "பிரதிநிதிக்கு",
+      "delegationFrom": "முதல்",
+      "delegationTo": "வரை (விருப்பத்திற்குரியது)",
+      "delegationAdd": "பிரதிநிதித்துவம் சேர்",
+      "delegationEnd": "பிரதிநிதித்துவத்தை முடி"
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",
