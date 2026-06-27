@@ -2180,6 +2180,40 @@ export const statutoryComponentOverride = pgTable(
   (t) => [index('statutory_component_override_lookup_idx').on(t.tenantId, t.country, t.body, t.effectiveFrom)],
 );
 
+// ─────────────────── EA-form override layer (1.2.6, ADR-0059) ───────────────────
+// An EA-ONLY amendment layer: per (employmentId, year, field) the amount HR overlays onto the
+// payroll-derived EA (C.P.8A) figure at render time. Payroll records (payslip, payroll_input) are NEVER
+// mutated — the merge in localization/my/reports.ts overlays these rows on the live derived statement, so
+// amendments affect ONLY the generated EA form, not payroll, CP8D/Form E, or any other surface.
+//
+// Modelled on statutory_component_override: a plain text discriminator (`field`, validated in TS against
+// EA_FIELDS), NOT a pgEnum. No `original_amount` snapshot (the derived baseline is recomputed live every
+// read; the audit "before" lives in the DomainEvent payload). No soft-delete lifecycle — a plain upsert
+// keyed on (tenant, employment, year, field); clear = hard DELETE; the immutable event log is the trail.
+// RLS (0119): USING can_see_employment (subject reads their own amended EA), WITH CHECK can_admin_employment
+// (only HR admins write). `year` is a 4-char STRING (matches the payPeriod LIKE '<year>-%' convention).
+export const eaOverride = pgTable(
+  'ea_override',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    year: text('year').notNull(), // 'YYYY'
+    field: text('field').notNull(), // one of EA_FIELDS (core/ea-override.ts) — validated in TS
+    amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+    reason: text('reason').notNull(), // mandatory, for audit
+    createdByUserId: uuid('created_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('ea_override_field_uq').on(t.tenantId, t.employmentId, t.year, t.field),
+    index('ea_override_lookup_idx').on(t.tenantId, t.employmentId, t.year),
+  ],
+);
+
 // ───────────────────── Statutory data-pack distribution (ADR-0020) ─────────────────────
 // NATIONAL, vendor-signed statutory data — NOT tenant-scoped (no tenant_id). The trust boundary is enforced
 // in the RLS migration: SELECT granted to every tenant (USING(true)); INSERT/UPDATE/DELETE REVOKED from

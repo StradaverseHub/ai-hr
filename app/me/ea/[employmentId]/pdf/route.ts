@@ -33,6 +33,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     partD: ea.partD,
     partE: ea.partE,
     statutoryVersion: ea.statutoryVersion,
+    // 1.2.6 EA Data Overwrite — pass HR's EA-only amendments through so the PDF can print the "Amended"
+    // footnote. Built field-by-field here, so this line is REQUIRED or the marker silently drops.
+    overrides: ea.overrides,
   };
   const bytes = await renderEaPdf(data, {
     title: t('title'),
@@ -67,6 +70,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ employme
     socso: t('socso'),
     eisSip: t('eisSip'),
     disclaimer: t('disclaimer', { year: ea.year, version: ea.statutoryVersion }),
+    amendedNote: t('override.amendedNote'),
   });
 
   // Substrate: this is a read-only render (no state change), so it appends NO domain event — same as the

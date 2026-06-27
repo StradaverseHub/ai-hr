@@ -8,6 +8,7 @@ import { withTenant, type SessionContext } from '../../db/client';
 import {
   company,
   companyStatutoryMy,
+  eaOverride,
   employeeStatutoryMy,
   employment,
   payrollBatch,
@@ -484,6 +485,15 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
 }
 
 // ── EA statement (C.P.8A) — per employee ────────────────────────────────────
+// 1.2.6 EA Data Overwrite — the 8 EA-form fields HR may amend (overlay) WITHOUT touching payroll. A plain
+// const tuple (not a pgEnum), mirroring app/admin/pay-components discriminators. `gross` is independently
+// overridable (HR may set a known total directly); otherwise it is recomputed from the post-overlay
+// components so the printed Part B lines always sum to their own total (see the merge below).
+export const EA_FIELDS = ['grossSalary', 'bonus', 'allowances', 'gross', 'mtd', 'epf', 'socso', 'eis'] as const;
+export type EaField = (typeof EA_FIELDS)[number];
+/** One amended EA field, surfaced so the UI/PDF can render "original vs amended" + an "Amended" badge. */
+export type EaOverrideEntry = { field: EaField; original: number; amended: number; reason: string };
+
 export type EaStatement = {
   year: string;
   employer: { name: string; eNumber: string | null };
@@ -503,6 +513,9 @@ export type EaStatement = {
   partD: { mtd: number; zakat: number }; // total deduction — MTD/PCB + the year's zakat-via-salary (Z)
   partE: { epf: number; socso: number; eis: number }; // employee's share of EPF + SOCSO/EIS
   statutoryVersion: string;
+  /** EA-only amendments overlaid by HR (1.2.6). Empty = none. Additive + optional so existing consumers
+   *  keep compiling; the PDF/HTML surfaces read it to badge amended lines. */
+  overrides: EaOverrideEntry[];
 };
 
 /** Per-employee EA (C.P.8A) statement for a tax year, from the year's payslips. */
@@ -572,6 +585,39 @@ export async function eaStatement(
       socso += num(st.socsoEmployee);
       eis += num(st.eisEmployee);
     }
+    // ── 1.2.6 EA Data Overwrite — overlay HR's EA-only amendments onto the payroll-derived figures ──
+    // EA-ONLY: nothing above touched payroll; this only rewrites the figures the EA form renders. Read the
+    // override rows for (employment, year), apply each to its field, then recompute partB.gross from the
+    // post-overlay components (so the printed Part B lines always sum to their total) UNLESS an explicit
+    // `gross` override exists, in which case that wins. The merge appends NO event — it is a pure read.
+    const derived: Record<EaField, number> = {
+      grossSalary: round2(grossSalary),
+      bonus: round2(bonus),
+      allowances: round2(allowances),
+      gross: round2(gross),
+      mtd: round2(mtd),
+      epf: round2(epf),
+      socso: round2(socso),
+      eis: round2(eis),
+    };
+    const ovRows = await tx
+      .select({ field: eaOverride.field, amount: eaOverride.amount, reason: eaOverride.reason })
+      .from(eaOverride)
+      .where(and(eq(eaOverride.employmentId, p.employmentId), eq(eaOverride.year, p.year)));
+    const merged: Record<EaField, number> = { ...derived };
+    const overrides: EaOverrideEntry[] = [];
+    let grossOverridden = false;
+    for (const r of ovRows) {
+      const field = r.field as EaField;
+      if (!(EA_FIELDS as readonly string[]).includes(field)) continue; // defensive: ignore unknown discriminators
+      const amended = round2(num(r.amount));
+      overrides.push({ field, original: derived[field], amended, reason: r.reason });
+      merged[field] = amended;
+      if (field === 'gross') grossOverridden = true;
+    }
+    // Recompute the total from the (possibly amended) components, unless HR set `gross` directly.
+    if (!grossOverridden) merged.gross = round2(merged.grossSalary + merged.bonus + merged.allowances);
+
     return {
       year: p.year,
       employer: { name: info.companyName, eNumber: stat?.eNumber ?? null },
@@ -586,10 +632,11 @@ export async function eaStatement(
         hiredOn: info.hiredOn,
         terminatedOn: info.terminatedOn,
       },
-      partB: { grossSalary: round2(grossSalary), bonus: round2(bonus), allowances: round2(allowances), gross: round2(gross) },
-      partD: { mtd: round2(mtd), zakat: round2(zakat) },
-      partE: { epf: round2(epf), socso: round2(socso), eis: round2(eis) },
+      partB: { grossSalary: merged.grossSalary, bonus: merged.bonus, allowances: merged.allowances, gross: merged.gross },
+      partD: { mtd: merged.mtd, zakat: round2(zakat) },
+      partE: { epf: merged.epf, socso: merged.socso, eis: merged.eis },
       statutoryVersion: versionOf(slips.map((s) => s.statutory)),
+      overrides,
     };
   });
 }

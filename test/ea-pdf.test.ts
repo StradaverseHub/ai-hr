@@ -41,6 +41,7 @@ const labels: EaPdfLabels = {
   eisSip: 'EIS / SIP',
   disclaimer:
     'Generated from payroll for YA 2026 (statutory tables 2026.3). Verify against your records; this is not a substitute for the official LHDN form.',
+  amendedNote: 'Some figures on this EA form were amended by HR and differ from the payroll-derived values.',
 };
 
 const data: EaPdfData = {
@@ -90,5 +91,23 @@ describe('EA PDF renderer', () => {
     const bytes = await renderEaPdf({ ...data, employee: { ...data.employee, category: 4 } }, labels);
     expect(head(bytes)).toBe('%PDF-');
     expect(bytes.length).toBeGreaterThan(1000);
+  });
+
+  // 1.2.6 EA Data Overwrite — EaPdfData carries the optional `overrides[]` so the renderer can mark amended
+  // forms. A statement with an amendment renders the marker (longer doc) without crashing; the printed
+  // partB.gross is whatever the caller passes (the merge already recomputed it upstream).
+  it('accepts amended EaPdfData (overrides + recomputed gross) and renders the marker', async () => {
+    const amended: EaPdfData = {
+      ...data,
+      // allowances amended 6000 → 8000 ⇒ gross recomputed 60000 + 5000 + 8000 = 73000 by the merge upstream.
+      partB: { grossSalary: 60000, bonus: 5000, allowances: 8000, gross: 73000 },
+      overrides: [{ field: 'allowances', original: 6000, amended: 8000, reason: 'arrears' }],
+    };
+    expect(amended.partB.gross).toBe(amended.partB.grossSalary + amended.partB.bonus + amended.partB.allowances);
+    const withMarker = await renderEaPdf(amended, labels);
+    const without = await renderEaPdf({ ...amended, overrides: [] }, labels);
+    expect(head(withMarker)).toBe('%PDF-');
+    // The amended-note marker adds content, so the marked PDF is at least as large as the unmarked one.
+    expect(withMarker.length).toBeGreaterThanOrEqual(without.length);
   });
 });

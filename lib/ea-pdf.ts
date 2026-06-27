@@ -25,6 +25,9 @@ export type EaPdfData = {
   partD: { mtd: number };
   partE: { epf: number; socso: number; eis: number };
   statutoryVersion: string;
+  /** 1.2.6 EA Data Overwrite — EA-only amendments overlaid by HR; drives the footnote marker. Optional +
+   *  defaults to [] so existing callers keep compiling. */
+  overrides?: { field: string; original: number; amended: number; reason: string }[];
 };
 
 /** Localized labels (resolved from the `payroll.ea` namespace in the route). Mirrors the HTML EA page. */
@@ -61,6 +64,7 @@ export type EaPdfLabels = {
   socso: string;
   eisSip: string;
   disclaimer: string; // already interpolated with {year} + {version} by the caller
+  amendedNote: string; // 1.2.6 — printed only when ≥1 EA field was amended by HR
 };
 
 export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Array> {
@@ -155,6 +159,15 @@ export async function renderEaPdf(d: EaPdfData, t: EaPdfLabels): Promise<Uint8Ar
   row(t.epfKwsp, rm(d.partE.epf));
   row(t.socso, rm(d.partE.socso));
   row(t.eisSip, rm(d.partE.eis));
+
+  // 1.2.6 — "Amended" marker: print a footnote when ≥1 EA field was overwritten by HR (the merge already
+  // overlaid the figures above). Disclosure of which figures were amended is a compliance decision flagged
+  // in the plan; the default is this neutral marker.
+  if (d.overrides && d.overrides.length > 0) {
+    y -= 6;
+    text(t.amendedNote, M, 8, bold, accent);
+    y -= 4;
+  }
 
   // Disclaimer band
   y -= 8;
