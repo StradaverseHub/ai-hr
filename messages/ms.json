@@ -1347,7 +1347,43 @@
         "zakatTitle": "Zakat dibayar melalui gaji — dikreditkan terhadap PCB/MTD.",
         "save": "Simpan",
         "saved": "Disimpan.",
-        "unsupportedComponent": "Komponen itu tidak boleh digunakan pada kelompok dalam versi ini. Pilih komponen yang boleh dibayar."
+        "unsupportedComponent": "Komponen itu tidak boleh digunakan pada kelompok dalam versi ini. Pilih komponen yang boleh dibayar.",
+        "txnTitle": "Transaksi individu",
+        "txnIntro": "Transaksi sekali sahaja (bukan berulang) untuk kelompok draf ini. Setiap entri terikat pada tarikh transaksi dalam bulan tempoh gaji dan hanya terpakai untuk tempoh ini.",
+        "txnAdd": "Tambah transaksi",
+        "txnEmpty": "Tiada transaksi individu untuk kelompok ini lagi.",
+        "txnDate": "Tarikh transaksi",
+        "kind": "Jenis",
+        "quantity": "Kuantiti",
+        "actions": "Tindakan",
+        "edit": "Sunting",
+        "delete": "Padam",
+        "deleteTitle": "Padam transaksi ini?",
+        "deleteBody": "Ini akan mengeluarkan transaksi individu daripada kelompok. Tindakan ini tidak boleh dibatalkan.",
+        "monthLabel": "Bulan",
+        "cycleLabel": "Kitaran gaji",
+        "dateOutOfPeriod": "Tarikh transaksi berada di luar bulan tempoh gaji yang dipilih.",
+        "notDraft": "Kelompok ini bukan lagi draf — transaksi hanya boleh diubah sebelum kelompok dimuktamadkan.",
+        "kindLabel": {
+          "earning": "Pendapatan",
+          "deduction": "Potongan",
+          "overtime": "Kerja lebih masa",
+          "unpaid": "Tanpa gaji",
+          "leave": "Cuti"
+        },
+        "unitLabel": {
+          "amount": "Jumlah",
+          "qty": "Kuantiti",
+          "hours": "Jam",
+          "days": "Hari",
+          "units": "Unit"
+        },
+        "cycle": {
+          "regular": "Biasa",
+          "off_cycle": "Luar kitaran",
+          "bonus": "Bonus",
+          "adjustment": "Pelarasan"
+        }
       }
     }
   },

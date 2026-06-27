@@ -1347,7 +1347,43 @@
         "zakatTitle": "Zakat trả qua lương — được ghi có vào PCB/MTD.",
         "save": "Lưu",
         "saved": "Đã lưu.",
-        "unsupportedComponent": "Thành phần đó không thể dùng trên đợt trong phiên bản này. Hãy chọn một thành phần có thể chi trả."
+        "unsupportedComponent": "Thành phần đó không thể dùng trên đợt trong phiên bản này. Hãy chọn một thành phần có thể chi trả.",
+        "txnTitle": "Giao dịch cá nhân",
+        "txnIntro": "Các giao dịch một lần (không lặp lại) cho đợt nháp này. Mỗi mục được gắn với một ngày giao dịch trong tháng của kỳ lương và chỉ áp dụng cho kỳ này.",
+        "txnAdd": "Thêm giao dịch",
+        "txnEmpty": "Chưa có giao dịch cá nhân nào cho đợt này.",
+        "txnDate": "Ngày giao dịch",
+        "kind": "Loại",
+        "quantity": "Số lượng",
+        "actions": "Hành động",
+        "edit": "Sửa",
+        "delete": "Xóa",
+        "deleteTitle": "Xóa giao dịch này?",
+        "deleteBody": "Thao tác này xóa giao dịch cá nhân khỏi đợt. Không thể hoàn tác.",
+        "monthLabel": "Tháng",
+        "cycleLabel": "Chu kỳ lương",
+        "dateOutOfPeriod": "Ngày giao dịch nằm ngoài tháng của kỳ lương đã chọn.",
+        "notDraft": "Đợt này không còn là bản nháp — chỉ có thể thay đổi giao dịch trước khi đợt được hoàn tất.",
+        "kindLabel": {
+          "earning": "Thu nhập",
+          "deduction": "Khoản khấu trừ",
+          "overtime": "Làm thêm giờ",
+          "unpaid": "Không lương",
+          "leave": "Nghỉ phép"
+        },
+        "unitLabel": {
+          "amount": "Số tiền",
+          "qty": "SL",
+          "hours": "Giờ",
+          "days": "Ngày",
+          "units": "Đơn vị"
+        },
+        "cycle": {
+          "regular": "Thường",
+          "off_cycle": "Ngoài chu kỳ",
+          "bonus": "Thưởng",
+          "adjustment": "Điều chỉnh"
+        }
       }
     }
   },

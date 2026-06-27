@@ -1347,7 +1347,43 @@
         "zakatTitle": "通过薪资缴纳的天课 — 抵扣 PCB/MTD。",
         "save": "保存",
         "saved": "已保存。",
-        "unsupportedComponent": "该组件在此版本中不能用于批次。请选择可支付的组件。"
+        "unsupportedComponent": "该组件在此版本中不能用于批次。请选择可支付的组件。",
+        "txnTitle": "个人交易",
+        "txnIntro": "此草稿批次的一次性（非经常性）交易。每条记录都与发薪周期所在月份内的交易日期关联，且仅适用于该周期。",
+        "txnAdd": "添加交易",
+        "txnEmpty": "此批次暂无个人交易。",
+        "txnDate": "交易日期",
+        "kind": "类型",
+        "quantity": "数量",
+        "actions": "操作",
+        "edit": "编辑",
+        "delete": "删除",
+        "deleteTitle": "删除此交易？",
+        "deleteBody": "此操作将从批次中移除该个人交易，且无法撤销。",
+        "monthLabel": "月份",
+        "cycleLabel": "发薪周期",
+        "dateOutOfPeriod": "交易日期不在所选发薪周期月份内。",
+        "notDraft": "此批次已不再是草稿——只能在批次最终确定前修改交易。",
+        "kindLabel": {
+          "earning": "收入",
+          "deduction": "扣除",
+          "overtime": "加班",
+          "unpaid": "无薪",
+          "leave": "休假"
+        },
+        "unitLabel": {
+          "amount": "金额",
+          "qty": "数量",
+          "hours": "小时",
+          "days": "天",
+          "units": "单位"
+        },
+        "cycle": {
+          "regular": "常规",
+          "off_cycle": "非常规",
+          "bonus": "奖金",
+          "adjustment": "调整"
+        }
       }
     }
   },

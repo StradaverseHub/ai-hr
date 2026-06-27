@@ -1347,7 +1347,43 @@
         "zakatTitle": "Zakat paid via salary — credited against PCB/MTD.",
         "save": "Save",
         "saved": "Saved.",
-        "unsupportedComponent": "That component cannot be used on a batch in this version. Pick a payable component."
+        "unsupportedComponent": "That component cannot be used on a batch in this version. Pick a payable component.",
+        "txnTitle": "Individual transactions",
+        "txnIntro": "One-time (non-recurring) transactions for this draft batch. Each entry is tied to a transaction date within the pay-period month and applies only to this period.",
+        "txnAdd": "Add transaction",
+        "txnEmpty": "No individual transactions for this batch yet.",
+        "txnDate": "Transaction date",
+        "kind": "Kind",
+        "quantity": "Quantity",
+        "actions": "Actions",
+        "edit": "Edit",
+        "delete": "Delete",
+        "deleteTitle": "Delete this transaction?",
+        "deleteBody": "This removes the individual transaction from the batch. This cannot be undone.",
+        "monthLabel": "Month",
+        "cycleLabel": "Pay cycle",
+        "dateOutOfPeriod": "The transaction date is outside the selected pay-period month.",
+        "notDraft": "This batch is no longer a draft — transactions can only be changed before the batch is finalized.",
+        "kindLabel": {
+          "earning": "Earning",
+          "deduction": "Deduction",
+          "overtime": "Overtime",
+          "unpaid": "Unpaid",
+          "leave": "Leave"
+        },
+        "unitLabel": {
+          "amount": "Amount",
+          "qty": "Qty",
+          "hours": "Hours",
+          "days": "Days",
+          "units": "Units"
+        },
+        "cycle": {
+          "regular": "Regular",
+          "off_cycle": "Off-cycle",
+          "bonus": "Bonus",
+          "adjustment": "Adjustment"
+        }
       }
     }
   },

@@ -84,7 +84,9 @@ function deltaStat<T extends Record<string, unknown>>(now: T, before: T): T {
 }
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-function daysInMonth(year: number, month1: number): number {
+// Exported for core/payroll-individual-txn.ts (1.2.2) so the dated-ledger date-in-period check derives the
+// same month bounds the kernel uses, rather than replicating drifting calendar math.
+export function daysInMonth(year: number, month1: number): number {
   if (month1 === 2 && ((year % 4 === 0 && year % 100 !== 0) || year % 400 === 0)) return 29;
   return DAYS_IN_MONTH[month1 - 1];
 }

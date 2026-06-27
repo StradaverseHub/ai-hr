@@ -813,6 +813,13 @@
       "when": 1781861790000,
       "tag": "0115_fixed_transaction",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1781861800000,
+      "tag": "0116_payroll_individual_txn",
+      "breakpoints": true
     }
   ]
 }

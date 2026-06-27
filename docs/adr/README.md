@@ -26,5 +26,10 @@ decision, add a new ADR that supersedes the old one.
 | [0018](0018-system-user-onboarding.md) | System-user onboarding: first-login spotlight tour, role-aware, replayable | Accepted |
 | [0049](0049-job-function-partner-roles.md) | Job-function partner roles: additive `payroll_partner` + `performance_comp_partner` beside `hr_admin`, company-scopable, RLS+service gated | Accepted |
 | [0051](0051-feedback-loop-closure.md) | Feedback v2: post-deploy refute (deployed → contested, `reopened_count`) closes the loop; bulk review; in-app status dashboard | Accepted |
+| [0052](0052-hierarchy-visibility-and-delegation.md) | Hierarchy visibility (recursive manager + HOD) + delegate approver-routing; see≠decide asymmetry | Accepted |
+| [0053](0053-employment-review-workflow.md) | Automated probation/contract/internship review: employment_review aggregate, manager→HR state machine, sweep + PDF letter | Accepted |
+| [0054](0054-location-master-data.md) | Location master-data + unified state resolver (location.state ?? work_state ?? company default) for leave + attendance | Accepted |
+| [0055](0055-org-holiday-hierarchy.md) | Organization-based public-holiday hierarchy: National / State / Business-group scope, group→state→country resolution | Accepted |
+| [0056](0056-individual-payroll-transaction.md) | Individual (one-off) payroll transactions: dated, batch-scoped ledger (5 kinds), draft-gated, RLS | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

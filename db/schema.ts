@@ -1640,6 +1640,52 @@ export const payrollBatchComponent = pgTable(
   (t) => [uniqueIndex('payroll_batch_component_uq').on(t.batchId, t.employmentId, t.componentId)],
 );
 
+// ───────────────── 1.2.2 Individual Transaction (ADR-0055) ─────────────────
+// A pure dated one-off transaction ledger: per-employee, non-recurring earnings/deductions/overtime/
+// unpaid/leave entries tied to a transaction date, belonging to exactly one month+cycle (payroll_batch).
+// "No carry-forward" is satisfied by construction by the batchId FK — a row belongs to a single batch and
+// nothing copies it forward. This slice is RECORD / VIEW / EDIT / DELETE only (admin, before finalize);
+// kernel consumption of these rows is a deliberately deferred future slice (see ADR-0055).
+export const payrollTxnKindEnum = pgEnum('payroll_txn_kind', [
+  'earning',
+  'deduction',
+  'overtime',
+  'unpaid',
+  'leave',
+]);
+export type PayrollTxnKind = (typeof payrollTxnKindEnum.enumValues)[number];
+
+export const payrollIndividualTxn = pgTable(
+  'payroll_individual_txn',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // The resolved month+cycle target. A row belongs to exactly one batch — this FK IS the no-carry-forward
+    // guarantee (nothing copies a row into a sibling/next-month batch).
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    kind: payrollTxnKindEnum('kind').notNull(),
+    // The per-entry transaction date; validated app-side to fall within the batch's pay-period month.
+    txnDate: date('txn_date').notNull(),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    // Descriptive qty/hours/days/units figure (nullable). NOT read by any kernel math in this slice.
+    quantity: numeric('quantity', { precision: 12, scale: 2 }),
+    // One of TXN_UNITS ('amount'|'qty'|'hours'|'days'|'units'); validated app-side (mirror ROUNDING_METHODS).
+    unit: text('unit'),
+    notes: text('notes'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // No unique constraint — multiple dated entries per (batch, employment) are allowed by design.
+    index('payroll_individual_txn_batch_emp_idx').on(t.batchId, t.employmentId),
+    index('payroll_individual_txn_tenant_batch_idx').on(t.tenantId, t.batchId),
+  ],
+);
+
 // Statutory / compliance report artefact (ADR-0010). Append-only record of a generated filing —
 // derived from payslips but persisted for audit/idempotency (who generated what, against which
 // statutory-table version). Filed per legal entity (company_id); never mutated after submission.

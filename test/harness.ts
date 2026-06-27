@@ -14,7 +14,7 @@ const ALL_TABLES = [
   'leave_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'holiday', 'attendance', 'attendance_policy',
-  'payroll_batch', 'payslip', 'payroll_input', 'company_statutory_my',
+  'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'company_statutory_my',
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
   'performance_goal', 'review_goal', 'performance_checkin', 'peer_feedback_request', 'peer_feedback', 'calibration_session', 'calibration_entry', 'performance_attachment',
