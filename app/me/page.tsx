@@ -14,6 +14,7 @@ import {
   myTaxReliefEmploymentIds,
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
+import { listLoansForEmployment } from '@/core/loans';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
 import { MeReviewCard } from './review-card';
@@ -112,7 +113,7 @@ export default async function MePage({
   // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
   const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
   const locale = await getLocale(); // R37: render leave-type names in the employee's language
-  const [balances, requests, leaveTypes, payslips, taxRelief, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation] =
+  const [balances, requests, leaveTypes, payslips, taxRelief, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
     await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       leaveRequestsFor(s, me.employmentId, locale),
@@ -129,6 +130,9 @@ export default async function MePage({
       myCheckIns(s),
       myFeedbackRequests(s),
       myResignation(s, me.employmentId),
+      // 1.2.8 (ADR-0060): read-only "My loans" — RLS scopes to the caller's own employment. ESS NEVER calls
+      // a loan write service (the loan write methods are admin-only; this is a read helper).
+      listLoansForEmployment(s, me.employmentId),
     ]);
   // Group TP1 rows by company — each entity files its own PCB, so a single blended YTD would mislead.
   const taxReliefByCompany = taxRelief.rows.reduce<Record<string, typeof taxRelief.rows>>((acc, r) => {
@@ -767,6 +771,37 @@ export default async function MePage({
           </div>
         )}
       </Card>
+
+      {/* 1.2.8 My loans (ADR-0060) — read-only: outstanding balance + per-instalment schedule. */}
+      {myLoans.length > 0 && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('myLoans')} count={myLoans.length} />
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">{t('loanType')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('loanInstalment')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('loanOutstanding')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('loanProgress')}</th>
+                <th className="px-4 py-2 font-medium">{t('loanStatus')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {myLoans.map((l) => (
+                <tr key={l.id}>
+                  <td className="px-4 py-2.5">{t(`loanTypeName.${l.loanType}`)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{rm(l.monthlyInstalment)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{rm(l.outstandingBalance)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">
+                    {l.instalmentsPaid}/{l.durationMonths}
+                  </td>
+                  <td className="px-4 py-2.5">{t(`loanStatusName.${l.status}`)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
           </section>
 
           <section id="performance" className="scroll-mt-4 space-y-6">

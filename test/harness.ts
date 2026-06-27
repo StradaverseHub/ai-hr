@@ -17,6 +17,7 @@ const ALL_TABLES = [
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
+  'employee_loan', 'loan_repayment',
   'performance_goal', 'review_goal', 'performance_checkin', 'peer_feedback_request', 'peer_feedback', 'calibration_session', 'calibration_entry', 'performance_attachment',
   'shift', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',

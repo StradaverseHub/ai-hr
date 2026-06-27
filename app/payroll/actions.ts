@@ -15,6 +15,7 @@ import {
   setPayrollInput,
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
+import { prefillLoansForBatch } from '@/core/loans';
 import { listEmployees } from '@/core/read';
 
 export async function createBatchAction(formData: FormData) {
@@ -161,6 +162,28 @@ export async function prefillClaimsAction(formData: FormData) {
       : `Queued ${claims} claim${claims === 1 ? '' : 's'} (RM ${total.toLocaleString('en-MY', {
           minimumFractionDigits: 2,
         })}) onto ${applied} payslip${applied === 1 ? '' : 's'}`;
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+// 1.2.8 Loan deductions (ADR-0060) — RESERVE the next instalment of each active loan onto a REGULAR DRAFT
+// batch. The ledger is advanced at generation, not here. Actor passed through via the session.
+export async function prefillLoansAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  let loans = 0;
+  let total = 0;
+  try {
+    ({ loans, total } = await prefillLoansForBatch(s, { batchId }));
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  const note =
+    loans === 0
+      ? 'No active loans to deduct this cycle'
+      : `Reserved ${loans} loan instalment${loans === 1 ? '' : 's'} (RM ${total.toLocaleString('en-MY', {
+          minimumFractionDigits: 2,
+        })})`;
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
 }
 

@@ -87,7 +87,8 @@
     "leaveApproval": "ஒப்புதல் சங்கிலி",
     "feedback": "கருத்து",
     "reviews": "மதிப்பாய்வுகள்",
-    "locations": "இடங்கள்"
+    "locations": "இடங்கள்",
+    "loans": "கடன்கள்"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",
@@ -817,7 +818,24 @@
     "resignationWasRejected": "உங்கள் முந்தைய ராஜினாமா நிராகரிக்கப்பட்டது. கீழே புதியதை சமர்ப்பிக்கலாம்.",
     "resignationWasWithdrawn": "உங்கள் முந்தைய ராஜினாமாவை திரும்பப் பெற்றீர்கள். கீழே புதியதை சமர்ப்பிக்கலாம்.",
     "employeeRemarkLabel": "பணியாளர் குறிப்பு",
-    "employeeRemarkRequiredHint": "சில விடுப்பு வகைகளுக்கு ஒரு குறிப்பு தேவை."
+    "employeeRemarkRequiredHint": "சில விடுப்பு வகைகளுக்கு ஒரு குறிப்பு தேவை.",
+    "myLoans": "எனது கடன்கள்",
+    "loanType": "வகை",
+    "loanInstalment": "தவணை",
+    "loanOutstanding": "நிலுவை",
+    "loanProgress": "செலுத்தியது",
+    "loanStatus": "நிலை",
+    "loanTypeName": {
+      "personal": "தனிப்பட்ட",
+      "housing": "வீட்டு",
+      "advance": "முன்பணம்"
+    },
+    "loanStatusName": {
+      "active": "செயலில்",
+      "suspended": "நிறுத்தப்பட்டது",
+      "settled": "தீர்க்கப்பட்டது",
+      "cancelled": "ரத்து செய்யப்பட்டது"
+    }
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
@@ -1365,7 +1383,9 @@
         "colAmount": "தொகை",
         "colStatus": "நிலை"
       },
-      "prefillFixedZakat": "நிலையான ஜகாத்தை முன்நிரப்பு"
+      "prefillFixedZakat": "நிலையான ஜகாத்தை முன்நிரப்பு",
+      "prefillLoans": "கடன் கழிவுகளை முன்நிரப்பு",
+      "loanSummary": "{count} கடன் தவணை · RM {amount}"
     },
     "transactions": {
       "title": "பரிவர்த்தனைகள்",
@@ -2774,6 +2794,64 @@
       "managerEvaluatedBody": "மேலாளர் மதிப்பீடு தயார் — மனிதவள முடிவைப் பதிவு செய்.",
       "decidedTitle": "உங்கள் மதிப்பாய்வு முடிந்தது",
       "decidedBody": "உங்கள் மதிப்பாய்வு இறுதி செய்யப்பட்டது."
+    }
+  },
+  "loans": {
+    "title": "கடன்கள்",
+    "subtitle": "பணியாளர் கடன் தவணைகள் — ஒவ்வொரு ஊதியச் சுழற்சியிலும் தானாகக் கழிக்கப்படும்.",
+    "loansTitle": "கடன்கள்",
+    "newTitle": "புதிய கடன்",
+    "empty": "இன்னும் கடன்கள் இல்லை.",
+    "colEmployee": "பணியாளர்",
+    "colType": "வகை",
+    "colPrincipal": "அசல்",
+    "colInstalment": "தவணை",
+    "colOutstanding": "நிலுவை",
+    "colProgress": "செலுத்தியது",
+    "colStatus": "நிலை",
+    "manage": "நிர்வகி",
+    "hide": "மறை",
+    "amend": "திருத்து",
+    "suspend": "நிறுத்து",
+    "resume": "மீண்டும் தொடங்கு",
+    "settle": "தீர்வு",
+    "cancel": "ரத்து",
+    "scheduleTitle": "திருப்பிச் செலுத்தும் அட்டவணை",
+    "seq": "எண்.",
+    "due": "செலுத்த வேண்டியது",
+    "applied": "பயன்படுத்தியது",
+    "employee": "பணியாளர்",
+    "loanTypeLabel": "கடன் வகை",
+    "principal": "அசல்",
+    "interestMethod": "வட்டி முறை",
+    "interestRate": "ஆண்டு விகிதம் (%)",
+    "durationMonths": "காலம் (மாதங்கள்)",
+    "startDate": "தொடக்க தேதி",
+    "notes": "குறிப்புகள்",
+    "notesPlaceholder": "விருப்பக் குறிப்புகள்",
+    "previewInstalment": "மாதாந்திர தவணை",
+    "previewTotal": "மொத்த திருப்பிச் செலுத்தும் தொகை",
+    "createButton": "கடனை உருவாக்கு",
+    "loanType": {
+      "personal": "தனிப்பட்ட",
+      "housing": "வீட்டு",
+      "advance": "முன்பணம்"
+    },
+    "method": {
+      "flat": "நிலையான (ஆண்டு)",
+      "none": "வட்டி இல்லை"
+    },
+    "status": {
+      "active": "செயலில்",
+      "suspended": "நிறுத்தப்பட்டது",
+      "settled": "தீர்க்கப்பட்டது",
+      "cancelled": "ரத்து செய்யப்பட்டது"
+    },
+    "repaymentStatus": {
+      "scheduled": "திட்டமிடப்பட்டது",
+      "reserved": "ஒதுக்கப்பட்டது",
+      "applied": "பயன்படுத்தப்பட்டது",
+      "skipped": "தவிர்க்கப்பட்டது"
     }
   }
 }

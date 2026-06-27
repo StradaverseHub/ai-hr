@@ -87,7 +87,8 @@
     "leaveApproval": "Approval chain",
     "feedback": "Feedback",
     "reviews": "Reviews",
-    "locations": "Locations"
+    "locations": "Locations",
+    "loans": "Loans"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -817,7 +818,24 @@
     "submitResignation": "Submit resignation",
     "resignationAcceptedNote": "Your resignation has been accepted. Your last working day is {date}.",
     "resignationWasRejected": "Your previous resignation was declined. You can submit a new one below.",
-    "resignationWasWithdrawn": "You withdrew your previous resignation. You can submit a new one below."
+    "resignationWasWithdrawn": "You withdrew your previous resignation. You can submit a new one below.",
+    "myLoans": "My loans",
+    "loanType": "Type",
+    "loanInstalment": "Instalment",
+    "loanOutstanding": "Outstanding",
+    "loanProgress": "Paid",
+    "loanStatus": "Status",
+    "loanTypeName": {
+      "personal": "Personal",
+      "housing": "Housing",
+      "advance": "Advance"
+    },
+    "loanStatusName": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "settled": "Settled",
+      "cancelled": "Cancelled"
+    }
   },
   "approvals": {
     "title": "Approvals",
@@ -1176,7 +1194,9 @@
         "colAmount": "Amount",
         "colStatus": "Status"
       },
-      "prefillFixedZakat": "Prefill fixed zakat"
+      "prefillFixedZakat": "Prefill fixed zakat",
+      "prefillLoans": "Prefill loan deductions",
+      "loanSummary": "{count} loan instalment(s) · RM {amount}"
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -2774,6 +2794,64 @@
       "managerEvaluatedBody": "A manager evaluation is ready — record the HR decision.",
       "decidedTitle": "Your review is complete",
       "decidedBody": "Your review has been finalized."
+    }
+  },
+  "loans": {
+    "title": "Loans",
+    "subtitle": "Employee loan instalments — auto-deducted each payroll cycle.",
+    "loansTitle": "Loans",
+    "newTitle": "New loan",
+    "empty": "No loans yet.",
+    "colEmployee": "Employee",
+    "colType": "Type",
+    "colPrincipal": "Principal",
+    "colInstalment": "Instalment",
+    "colOutstanding": "Outstanding",
+    "colProgress": "Paid",
+    "colStatus": "Status",
+    "manage": "Manage",
+    "hide": "Hide",
+    "amend": "Amend",
+    "suspend": "Suspend",
+    "resume": "Resume",
+    "settle": "Settle",
+    "cancel": "Cancel",
+    "scheduleTitle": "Repayment schedule",
+    "seq": "No.",
+    "due": "Due",
+    "applied": "Applied",
+    "employee": "Employee",
+    "loanTypeLabel": "Loan type",
+    "principal": "Principal",
+    "interestMethod": "Interest method",
+    "interestRate": "Annual rate (%)",
+    "durationMonths": "Duration (months)",
+    "startDate": "Start date",
+    "notes": "Notes",
+    "notesPlaceholder": "Optional notes",
+    "previewInstalment": "Monthly instalment",
+    "previewTotal": "Total repayable",
+    "createButton": "Create loan",
+    "loanType": {
+      "personal": "Personal",
+      "housing": "Housing",
+      "advance": "Advance"
+    },
+    "method": {
+      "flat": "Flat (annual)",
+      "none": "No interest"
+    },
+    "status": {
+      "active": "Active",
+      "suspended": "Suspended",
+      "settled": "Settled",
+      "cancelled": "Cancelled"
+    },
+    "repaymentStatus": {
+      "scheduled": "Scheduled",
+      "reserved": "Reserved",
+      "applied": "Applied",
+      "skipped": "Skipped"
     }
   }
 }

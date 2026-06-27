@@ -841,6 +841,13 @@
       "when": 1781861830000,
       "tag": "0119_ea_override",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1781861840000,
+      "tag": "0120_loan_management",
+      "breakpoints": true
     }
   ]
 }

@@ -1546,6 +1546,10 @@ export const payrollInput = pgTable(
     // Sum of approved TAXABLE claims prefilled into this batch (ADR-0021). Added to the taxable allowance
     // base in generatePayslips → contributes to PCB/EPF/SOCSO/EIS like a regular monthly allowance.
     claimAllowance: numeric('claim_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
+    // 1.2.8 Loan instalment(s) reserved for this batch (ADR-0060). POST-TAX — read UNCONDITIONALLY (not
+    // behind TYPED_PAY_COMPONENTS_ENABLED) and subtracted after statutory, like tp1_deduction/zakat; it
+    // touches NO statutory base. Set (not blind-added) by prefillLoansForBatch from the reserved repayments.
+    loanDeduction: numeric('loan_deduction', { precision: 12, scale: 2 }).notNull().default('0'),
     // OT rate-bucket decomposition (UI-entry convenience). The clerk splits employer-policy overtime
     // pay across four rate-labelled buckets (1.0× flat / 1.5× normal working day / 2.0× rest day /
     // 3.0× public holiday); the UI sums them into `overtime_amount`, which is the persisted sum and
@@ -2403,6 +2407,73 @@ export const claimAttachment = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('claim_attachment_claim_idx').on(t.claimRequestId)],
+);
+
+// ─────────────── Employee loan instalments (1.2.8, ADR-0060) ───────────────
+// HR-administered staff loans recovered by a fixed monthly POST-TAX net-pay deduction over an agreed
+// duration. Two-phase reserve→apply (mirrors claims): prefill RESERVES the next instalment; the ledger
+// (outstanding_balance / instalments_paid / status) advances ONLY inside generatePayslips. One terminal
+// repaid status ('settled' covers manual payoff + auto-stop). 'cancelled' = voided before any instalment.
+export const loanStatusEnum = pgEnum('loan_status', ['active', 'suspended', 'settled', 'cancelled']);
+
+export const employeeLoan = pgTable(
+  'employee_loan',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // Catalog-as-text (constrained app-side to 'personal' | 'housing' | 'advance'), not a hard enum.
+    loanType: text('loan_type').notNull(),
+    principal: numeric('principal', { precision: 12, scale: 2 }).notNull(),
+    // Annual flat % (ADR-0060). interestMethod: 'flat' → add-on on original principal; 'none' → no interest.
+    interestRate: numeric('interest_rate', { precision: 6, scale: 3 }).notNull().default('0'),
+    interestMethod: text('interest_method').notNull().default('none'), // 'flat' | 'none'
+    durationMonths: integer('duration_months').notNull(),
+    startDate: date('start_date').notNull(),
+    // Persisted at creation (audit). monthlyInstalment is the equal instalment; the final one reconciles.
+    monthlyInstalment: numeric('monthly_instalment', { precision: 12, scale: 2 }).notNull(),
+    totalRepayable: numeric('total_repayable', { precision: 12, scale: 2 }).notNull(),
+    // The single authoritative mutable counter — only ever mutated inside generatePayslips (ADR-0060).
+    outstandingBalance: numeric('outstanding_balance', { precision: 12, scale: 2 }).notNull(),
+    instalmentsPaid: integer('instalments_paid').notNull().default(0),
+    status: loanStatusEnum('status').notNull().default('active'),
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('employee_loan_employment_idx').on(t.employmentId, t.status)],
+);
+
+// The persisted repayment schedule + reservation/apply ledger. The idempotency anchor (partial-unique on
+// 'reserved' guarantees ≤1 reserved instalment per loan at a time) and the source for per-cycle
+// skip/partial history (ADR-0060). employment_id denormalized for RLS (like claim_attachment).
+export const loanRepayment = pgTable(
+  'loan_repayment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    loanId: uuid('loan_id')
+      .notNull()
+      .references(() => employeeLoan.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    sequenceNo: integer('sequence_no').notNull(), // 1..durationMonths
+    dueAmount: numeric('due_amount', { precision: 12, scale: 2 }).notNull(),
+    appliedAmount: numeric('applied_amount', { precision: 12, scale: 2 }).notNull().default('0'),
+    reservedBatchId: uuid('reserved_batch_id').references(() => payrollBatch.id),
+    appliedBatchId: uuid('applied_batch_id').references(() => payrollBatch.id),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+    status: text('status').notNull().default('scheduled'), // 'scheduled'|'reserved'|'applied'|'skipped'
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('loan_repayment_loan_seq_uq').on(t.loanId, t.sequenceNo),
+    // At most one RESERVED instalment per loan at a time — closes the re-prefill double-pick gap in the DB.
+    uniqueIndex('loan_repayment_one_reserved_uq').on(t.loanId).where(sql`status = 'reserved'`),
+  ],
 );
 
 // ─────────────── In-product feedback → AI-plan → review → build loop (ADR-0043) ───────────────

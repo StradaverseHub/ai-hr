@@ -87,7 +87,8 @@
     "leaveApproval": "Chuỗi phê duyệt",
     "feedback": "Phản hồi",
     "reviews": "Đánh giá",
-    "locations": "Địa điểm"
+    "locations": "Địa điểm",
+    "loans": "Khoản vay"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -817,7 +818,24 @@
     "resignationWasRejected": "Đơn trước của bạn đã bị từ chối. Bạn có thể gửi đơn mới bên dưới.",
     "resignationWasWithdrawn": "Bạn đã rút đơn trước đó. Bạn có thể gửi đơn mới bên dưới.",
     "employeeRemarkLabel": "Ghi chú của nhân viên",
-    "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú."
+    "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú.",
+    "myLoans": "Khoản vay của tôi",
+    "loanType": "Loại",
+    "loanInstalment": "Trả góp",
+    "loanOutstanding": "Còn lại",
+    "loanProgress": "Đã trả",
+    "loanStatus": "Trạng thái",
+    "loanTypeName": {
+      "personal": "Cá nhân",
+      "housing": "Nhà ở",
+      "advance": "Tạm ứng"
+    },
+    "loanStatusName": {
+      "active": "Đang hoạt động",
+      "suspended": "Tạm dừng",
+      "settled": "Đã tất toán",
+      "cancelled": "Đã hủy"
+    }
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -1365,7 +1383,9 @@
         "colAmount": "Số tiền",
         "colStatus": "Trạng thái"
       },
-      "prefillFixedZakat": "Điền sẵn zakat cố định"
+      "prefillFixedZakat": "Điền sẵn zakat cố định",
+      "prefillLoans": "Điền sẵn khấu trừ khoản vay",
+      "loanSummary": "{count} kỳ trả góp · RM {amount}"
     },
     "transactions": {
       "title": "Giao dịch",
@@ -2774,6 +2794,64 @@
       "managerEvaluatedBody": "Đánh giá của quản lý đã sẵn sàng — ghi quyết định của HR.",
       "decidedTitle": "Đánh giá của bạn đã hoàn tất",
       "decidedBody": "Đánh giá của bạn đã được hoàn tất."
+    }
+  },
+  "loans": {
+    "title": "Khoản vay",
+    "subtitle": "Khoản trả góp vay của nhân viên — tự động khấu trừ mỗi kỳ lương.",
+    "loansTitle": "Khoản vay",
+    "newTitle": "Khoản vay mới",
+    "empty": "Chưa có khoản vay nào.",
+    "colEmployee": "Nhân viên",
+    "colType": "Loại",
+    "colPrincipal": "Gốc",
+    "colInstalment": "Trả góp",
+    "colOutstanding": "Còn lại",
+    "colProgress": "Đã trả",
+    "colStatus": "Trạng thái",
+    "manage": "Quản lý",
+    "hide": "Ẩn",
+    "amend": "Sửa",
+    "suspend": "Tạm dừng",
+    "resume": "Tiếp tục",
+    "settle": "Tất toán",
+    "cancel": "Hủy",
+    "scheduleTitle": "Lịch trả nợ",
+    "seq": "STT",
+    "due": "Phải trả",
+    "applied": "Đã khấu trừ",
+    "employee": "Nhân viên",
+    "loanTypeLabel": "Loại vay",
+    "principal": "Gốc",
+    "interestMethod": "Phương thức lãi",
+    "interestRate": "Lãi suất năm (%)",
+    "durationMonths": "Thời hạn (tháng)",
+    "startDate": "Ngày bắt đầu",
+    "notes": "Ghi chú",
+    "notesPlaceholder": "Ghi chú tùy chọn",
+    "previewInstalment": "Trả góp hàng tháng",
+    "previewTotal": "Tổng phải trả",
+    "createButton": "Tạo khoản vay",
+    "loanType": {
+      "personal": "Cá nhân",
+      "housing": "Nhà ở",
+      "advance": "Tạm ứng"
+    },
+    "method": {
+      "flat": "Cố định (năm)",
+      "none": "Không lãi"
+    },
+    "status": {
+      "active": "Đang hoạt động",
+      "suspended": "Tạm dừng",
+      "settled": "Đã tất toán",
+      "cancelled": "Đã hủy"
+    },
+    "repaymentStatus": {
+      "scheduled": "Đã lên lịch",
+      "reserved": "Đã giữ chỗ",
+      "applied": "Đã khấu trừ",
+      "skipped": "Đã bỏ qua"
     }
   }
 }

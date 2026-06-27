@@ -87,7 +87,8 @@
     "leaveApproval": "สายอนุมัติ",
     "feedback": "ข้อเสนอแนะ",
     "reviews": "การประเมิน",
-    "locations": "สถานที่"
+    "locations": "สถานที่",
+    "loans": "เงินกู้"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -817,7 +818,24 @@
     "resignationWasRejected": "ใบลาออกก่อนหน้าของคุณถูกปฏิเสธ คุณสามารถส่งใหม่ด้านล่าง",
     "resignationWasWithdrawn": "คุณถอนใบลาออกก่อนหน้าแล้ว คุณสามารถส่งใหม่ด้านล่าง",
     "employeeRemarkLabel": "หมายเหตุของพนักงาน",
-    "employeeRemarkRequiredHint": "การลาบางประเภทจำเป็นต้องมีหมายเหตุ"
+    "employeeRemarkRequiredHint": "การลาบางประเภทจำเป็นต้องมีหมายเหตุ",
+    "myLoans": "เงินกู้ของฉัน",
+    "loanType": "ประเภท",
+    "loanInstalment": "งวดผ่อน",
+    "loanOutstanding": "คงค้าง",
+    "loanProgress": "ชำระแล้ว",
+    "loanStatus": "สถานะ",
+    "loanTypeName": {
+      "personal": "ส่วนบุคคล",
+      "housing": "ที่อยู่อาศัย",
+      "advance": "เงินเบิกล่วงหน้า"
+    },
+    "loanStatusName": {
+      "active": "ใช้งาน",
+      "suspended": "ระงับ",
+      "settled": "ชำระปิดแล้ว",
+      "cancelled": "ยกเลิกแล้ว"
+    }
   },
   "approvals": {
     "title": "การอนุมัติ",
@@ -1365,7 +1383,9 @@
         "colAmount": "จำนวนเงิน",
         "colStatus": "สถานะ"
       },
-      "prefillFixedZakat": "เติมซะกาตแบบคงที่ล่วงหน้า"
+      "prefillFixedZakat": "เติมซะกาตแบบคงที่ล่วงหน้า",
+      "prefillLoans": "เติมรายการหักเงินกู้",
+      "loanSummary": "{count} งวดเงินกู้ · RM {amount}"
     },
     "transactions": {
       "title": "ธุรกรรม",
@@ -2774,6 +2794,64 @@
       "managerEvaluatedBody": "การประเมินของผู้จัดการพร้อมแล้ว — บันทึกการตัดสินใจของ HR",
       "decidedTitle": "การประเมินของคุณเสร็จสมบูรณ์",
       "decidedBody": "การประเมินของคุณได้รับการสรุปแล้ว"
+    }
+  },
+  "loans": {
+    "title": "เงินกู้",
+    "subtitle": "งวดผ่อนเงินกู้พนักงาน — หักอัตโนมัติทุกรอบจ่ายเงินเดือน",
+    "loansTitle": "เงินกู้",
+    "newTitle": "เงินกู้ใหม่",
+    "empty": "ยังไม่มีเงินกู้",
+    "colEmployee": "พนักงาน",
+    "colType": "ประเภท",
+    "colPrincipal": "เงินต้น",
+    "colInstalment": "งวดผ่อน",
+    "colOutstanding": "คงค้าง",
+    "colProgress": "ชำระแล้ว",
+    "colStatus": "สถานะ",
+    "manage": "จัดการ",
+    "hide": "ซ่อน",
+    "amend": "แก้ไข",
+    "suspend": "ระงับ",
+    "resume": "ดำเนินต่อ",
+    "settle": "ชำระปิด",
+    "cancel": "ยกเลิก",
+    "scheduleTitle": "ตารางการชำระคืน",
+    "seq": "ลำดับ",
+    "due": "ต้องชำระ",
+    "applied": "หักแล้ว",
+    "employee": "พนักงาน",
+    "loanTypeLabel": "ประเภทเงินกู้",
+    "principal": "เงินต้น",
+    "interestMethod": "วิธีคิดดอกเบี้ย",
+    "interestRate": "อัตราต่อปี (%)",
+    "durationMonths": "ระยะเวลา (เดือน)",
+    "startDate": "วันที่เริ่ม",
+    "notes": "หมายเหตุ",
+    "notesPlaceholder": "หมายเหตุ (ถ้ามี)",
+    "previewInstalment": "งวดผ่อนต่อเดือน",
+    "previewTotal": "ยอดชำระคืนรวม",
+    "createButton": "สร้างเงินกู้",
+    "loanType": {
+      "personal": "ส่วนบุคคล",
+      "housing": "ที่อยู่อาศัย",
+      "advance": "เงินเบิกล่วงหน้า"
+    },
+    "method": {
+      "flat": "คงที่ (ต่อปี)",
+      "none": "ไม่มีดอกเบี้ย"
+    },
+    "status": {
+      "active": "ใช้งาน",
+      "suspended": "ระงับ",
+      "settled": "ชำระปิดแล้ว",
+      "cancelled": "ยกเลิกแล้ว"
+    },
+    "repaymentStatus": {
+      "scheduled": "กำหนดไว้",
+      "reserved": "จองไว้",
+      "applied": "หักแล้ว",
+      "skipped": "ข้าม"
     }
   }
 }

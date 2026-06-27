@@ -87,7 +87,8 @@
     "leaveApproval": "Rantaian kelulusan",
     "feedback": "Maklum Balas",
     "reviews": "Penilaian",
-    "locations": "Lokasi"
+    "locations": "Lokasi",
+    "loans": "Pinjaman"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -817,7 +818,24 @@
     "resignationWasRejected": "Peletakan jawatan anda sebelum ini ditolak. Anda boleh menghantar yang baharu di bawah.",
     "resignationWasWithdrawn": "Anda telah menarik balik peletakan jawatan sebelum ini. Anda boleh menghantar yang baharu di bawah.",
     "employeeRemarkLabel": "Catatan pekerja",
-    "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti."
+    "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti.",
+    "myLoans": "Pinjaman saya",
+    "loanType": "Jenis",
+    "loanInstalment": "Ansuran",
+    "loanOutstanding": "Baki",
+    "loanProgress": "Dibayar",
+    "loanStatus": "Status",
+    "loanTypeName": {
+      "personal": "Peribadi",
+      "housing": "Perumahan",
+      "advance": "Pendahuluan"
+    },
+    "loanStatusName": {
+      "active": "Aktif",
+      "suspended": "Digantung",
+      "settled": "Selesai",
+      "cancelled": "Dibatalkan"
+    }
   },
   "approvals": {
     "title": "Kelulusan",
@@ -1365,7 +1383,9 @@
         "colAmount": "Jumlah",
         "colStatus": "Status"
       },
-      "prefillFixedZakat": "Isi awal zakat tetap"
+      "prefillFixedZakat": "Isi awal zakat tetap",
+      "prefillLoans": "Praisi potongan pinjaman",
+      "loanSummary": "{count} ansuran pinjaman · RM {amount}"
     },
     "transactions": {
       "title": "Transaksi",
@@ -2774,6 +2794,64 @@
       "managerEvaluatedBody": "Penilaian pengurus sedia — rekod keputusan HR.",
       "decidedTitle": "Penilaian anda selesai",
       "decidedBody": "Penilaian anda telah dimuktamadkan."
+    }
+  },
+  "loans": {
+    "title": "Pinjaman",
+    "subtitle": "Ansuran pinjaman pekerja — ditolak automatik setiap kitaran gaji.",
+    "loansTitle": "Pinjaman",
+    "newTitle": "Pinjaman baharu",
+    "empty": "Tiada pinjaman lagi.",
+    "colEmployee": "Pekerja",
+    "colType": "Jenis",
+    "colPrincipal": "Prinsipal",
+    "colInstalment": "Ansuran",
+    "colOutstanding": "Baki",
+    "colProgress": "Dibayar",
+    "colStatus": "Status",
+    "manage": "Urus",
+    "hide": "Sembunyi",
+    "amend": "Pinda",
+    "suspend": "Gantung",
+    "resume": "Sambung semula",
+    "settle": "Selesai",
+    "cancel": "Batal",
+    "scheduleTitle": "Jadual bayaran balik",
+    "seq": "No.",
+    "due": "Perlu dibayar",
+    "applied": "Dikenakan",
+    "employee": "Pekerja",
+    "loanTypeLabel": "Jenis pinjaman",
+    "principal": "Prinsipal",
+    "interestMethod": "Kaedah faedah",
+    "interestRate": "Kadar tahunan (%)",
+    "durationMonths": "Tempoh (bulan)",
+    "startDate": "Tarikh mula",
+    "notes": "Catatan",
+    "notesPlaceholder": "Catatan pilihan",
+    "previewInstalment": "Ansuran bulanan",
+    "previewTotal": "Jumlah perlu dibayar",
+    "createButton": "Cipta pinjaman",
+    "loanType": {
+      "personal": "Peribadi",
+      "housing": "Perumahan",
+      "advance": "Pendahuluan"
+    },
+    "method": {
+      "flat": "Tetap (tahunan)",
+      "none": "Tanpa faedah"
+    },
+    "status": {
+      "active": "Aktif",
+      "suspended": "Digantung",
+      "settled": "Selesai",
+      "cancelled": "Dibatalkan"
+    },
+    "repaymentStatus": {
+      "scheduled": "Dijadualkan",
+      "reserved": "Ditempah",
+      "applied": "Dikenakan",
+      "skipped": "Dilangkau"
     }
   }
 }

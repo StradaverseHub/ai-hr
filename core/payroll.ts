@@ -33,6 +33,7 @@ import {
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
 import { cp38ForPeriod } from './cp38';
+import { applyLoansForBatch } from './loans';
 import type { ShiftDifferential, PayRule } from '../db/schema';
 import { resolvePayRule } from './pay-rule';
 
@@ -1052,6 +1053,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         tp1: payrollInput.tp1Deduction,
         zakat: payrollInput.zakat,
         claimAllowance: payrollInput.claimAllowance,
+        loanDeduction: payrollInput.loanDeduction,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
@@ -1061,6 +1063,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
     // Approved taxable claims prefilled into this batch (ADR-0021): ride the taxable allowance base.
     const claimAllowanceByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.claimAllowance)]));
+    // 1.2.8 Loan instalment(s) reserved on this batch (ADR-0060): POST-TAX, read unconditionally, subtracted
+    // after statutory like tp1/zakat. The ledger is advanced by applyLoansForBatch AFTER the payslip loop.
+    const loanByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.loanDeduction)]));
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
     // ── PCB accumulators (ADR-0014) ──
@@ -1467,8 +1472,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // 1.2.3 CP38 folds into the SINGLE extra-deduction source: otherDeductions (line below) and
       // totalDeductions/net then reflect it automatically — no separate add-to-total (that would double-count).
       const slipExtraDeduct = isAdditionalRun ? 0 : round2(en.deduct + cp38);
+      // 1.2.8 Loan instalment (ADR-0060) — POST-TAX: only reduces net, touches NO statutory base (exactly
+      // like slipUnpaid/slipExtraDeduct). An additional/off-cycle run charges no loan (handled like cp38/hrdf).
+      const slipLoan = isAdditionalRun ? 0 : round2(loanByEmp.get(e.employmentId) ?? 0);
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
-      const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct);
+      const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
       const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
       const net = round2(grossPay - totalDeductions);
       const employerCost = isAdditionalRun
@@ -1486,7 +1494,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         daysWorked: isAdditionalRun ? null : String(daysWorked),
         grossPay: grossPay.toFixed(2),
         statutory: { ...st, ...statutoryProvenance }, // `version` + (when source=pack) packVersion/signedKeyId snapshot
-        otherDeductions: round2(slipUnpaid + slipExtraDeduct).toFixed(2),
+        otherDeductions: round2(slipUnpaid + slipExtraDeduct + slipLoan).toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
@@ -1513,6 +1521,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       .update(payrollBatch)
       .set({ status: 'processed', employeeCount: emps.length, totals })
       .where(eq(payrollBatch.id, p.batchId));
+
+    // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
+    // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.
+    // Placed beside the claim-paid block so every irreversible loan mutation ties to a written payslip.
+    await applyLoansForBatch(tx, ctx, p.batchId);
 
     // Taxable claims prefilled into this batch are now on a payslip → mark them paid (ADR-0021).
     const paidClaims = await tx
@@ -1867,6 +1880,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         bonus: payrollInput.bonusAmount,
         tp1: payrollInput.tp1Deduction,
         zakat: payrollInput.zakat,
+        loanDeduction: payrollInput.loanDeduction,
         otBreakdown: payrollInput.otBreakdown,
       })
       .from(payrollInput)
@@ -1875,6 +1889,9 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     const bonusMap = new Map(inputs.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1Map = new Map(inputs.map((r) => [r.employmentId, Number(r.tp1)]));
     const zakatMap = new Map(inputs.map((r) => [r.employmentId, Number(r.zakat)]));
+    // 1.2.8 (ADR-0060): surface the reserved loan deduction so the admin's pre-generation net preview
+    // matches the generated payslip (omitting it would create a silent reconciliation gap).
+    const loanMap = new Map(inputs.map((r) => [r.employmentId, Number(r.loanDeduction)]));
     const otBreakdownMap = new Map(inputs.map((r) => [r.employmentId, r.otBreakdown ?? null]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
     return emps.map((e) => ({
@@ -1887,6 +1904,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       bonusAmount: bonusMap.get(e.employmentId) ?? 0,
       tp1Deduction: tp1Map.get(e.employmentId) ?? 0,
       zakat: zakatMap.get(e.employmentId) ?? 0,
+      loanDeduction: loanMap.get(e.employmentId) ?? 0,
       unpaidDays: unpaid.get(e.employmentId) ?? 0,
     }));
   });

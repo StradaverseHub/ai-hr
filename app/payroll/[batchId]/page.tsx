@@ -3,8 +3,9 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
+import { loanSummaryForBatch } from '@/core/loans';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillOvertimeAction, prefillShiftDifferentialAction, setPayrollInputAction } from '../actions';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, setPayrollInputAction } from '../actions';
 import { ComponentImport } from './component-import';
 
 const rm = (n: unknown) =>
@@ -27,6 +28,9 @@ export default async function BatchPage({
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
+  // 1.2.8 (ADR-0060): loan deductions are RESERVED onto a regular draft run only; show the running summary.
+  const isRegular = batch.runType === 'regular';
+  const loanSummary = batch.status === 'draft' && isRegular ? await loanSummaryForBatch(s, batchId) : { loans: 0, total: 0 };
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
   // Bulk component import (1D) is only meaningful when the kernel reads typed components.
@@ -139,6 +143,23 @@ export default async function BatchPage({
                   {t('prefillClaims')}
                 </Button>
               </form>
+              {/* 1.2.8 Loan deductions — reserve onto a regular draft run only (ADR-0060). */}
+              {isRegular && (
+                <form action={prefillLoansAction} className="flex items-center gap-2">
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  <Button type="submit" size="sm" variant="secondary">
+                    {t('prefillLoans')}
+                  </Button>
+                  {loanSummary.loans > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {t('loanSummary', {
+                        count: loanSummary.loans,
+                        amount: loanSummary.total.toLocaleString('en-MY', { minimumFractionDigits: 2 }),
+                      })}
+                    </span>
+                  )}
+                </form>
+              )}
               <form action={prefillShiftDifferentialAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
                 <Button type="submit" size="sm" variant="secondary">
