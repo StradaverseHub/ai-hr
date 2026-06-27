@@ -363,7 +363,27 @@
       "locationCurrent": "当前地点：{location}",
       "locationNone": "无地点",
       "locationSelect": "地点",
-      "setLocation": "设置地点"
+      "setLocation": "设置地点",
+      "cp38Title": "CP38 扣款",
+      "cp38Ref": "LHDN 参考编号",
+      "cp38Amount": "每月金额（RM）",
+      "cp38From": "生效起始",
+      "cp38To": "生效结束",
+      "cp38Remarks": "备注",
+      "cp38Status": "状态",
+      "cp38Actions": "操作",
+      "cp38Add": "添加 CP38",
+      "cp38Save": "保存",
+      "cp38Edit": "编辑",
+      "cp38Terminate": "终止",
+      "cp38StatusActive": "生效中",
+      "cp38StatusClosed": "已关闭",
+      "cp38Hint": "CP38 按薪资月份适用——周期以月份对齐（月中的指令将按其起始的整个月计算），金额在每月所得税预扣（PCB）之外另行扣除。",
+      "cp38ProcessedError": "该薪资周期已处理——无法为其修改 CP38 记录。",
+      "cp38None": "没有 CP38 记录。",
+      "cp38RefPlaceholder": "例如 CP38/2026/00123",
+      "cp38RemarksPlaceholder": "可选备注",
+      "cp38Open": "无结束日期"
     },
     "import": {
       "title": "导入员工",
@@ -714,7 +734,8 @@
       "payPeriodLabel": "薪资周期",
       "employeeCodeLabel": "员工编号",
       "generatedNote": "本薪资单由系统自动生成。",
-      "downloadPdf": "下载 PDF"
+      "downloadPdf": "下载 PDF",
+      "cp38": "CP38（LHDN 分期扣款）"
     },
     "goalsTitle": "我的目标",
     "goalsEmpty": "暂无目标。添加一个，跟踪您正在努力实现的方向。",

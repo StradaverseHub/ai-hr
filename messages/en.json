@@ -363,7 +363,27 @@
       "locationCurrent": "Current location: {location}",
       "locationNone": "No location",
       "locationSelect": "Location",
-      "setLocation": "Set location"
+      "setLocation": "Set location",
+      "cp38Title": "CP38 Deduction",
+      "cp38Ref": "LHDN reference",
+      "cp38Amount": "Monthly amount (RM)",
+      "cp38From": "Effective from",
+      "cp38To": "Effective to",
+      "cp38Remarks": "Remarks",
+      "cp38Status": "Status",
+      "cp38Actions": "Actions",
+      "cp38Add": "Add CP38",
+      "cp38Save": "Save",
+      "cp38Edit": "Edit",
+      "cp38Terminate": "Terminate",
+      "cp38StatusActive": "Active",
+      "cp38StatusClosed": "Closed",
+      "cp38Hint": "CP38 applies by payroll month — periods are month-aligned (a mid-month instruction charges the whole month it starts in) and the amount is deducted in addition to monthly PCB.",
+      "cp38ProcessedError": "This pay period is already processed — the CP38 record cannot be changed for it.",
+      "cp38None": "No CP38 records.",
+      "cp38RefPlaceholder": "e.g. CP38/2026/00123",
+      "cp38RemarksPlaceholder": "Optional note",
+      "cp38Open": "Open-ended"
     },
     "import": {
       "title": "Import employees",
@@ -747,7 +767,8 @@
       "payPeriodLabel": "Pay period",
       "employeeCodeLabel": "Employee code",
       "generatedNote": "This is a system-generated payslip.",
-      "downloadPdf": "Download PDF"
+      "downloadPdf": "Download PDF",
+      "cp38": "CP38 (LHDN instalment)"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",

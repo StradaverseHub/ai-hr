@@ -32,6 +32,7 @@ import {
   tp1Relief,
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
+import { cp38ForPeriod } from './cp38';
 import type { ShiftDifferential, PayRule } from '../db/schema';
 import { resolvePayRule } from './pay-rule';
 
@@ -990,6 +991,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       lpAccumulated: number;
     };
     const empIds = emps.map((e) => e.employmentId);
+    // 1.2.3 CP38 Deduction — the LHDN/court instalment in effect for THIS payroll month, per employment
+    // (auto-apply by month). Folded into deductions + stamped onto statutory.cp38 below; an additional run
+    // re-charges nothing (handled per-employee with isAdditionalRun, like slipUnpaid/hrdf).
+    const cp38ByEmp = await cp38ForPeriod(tx, empIds, payPeriod);
     const priorSlips = empIds.length
       ? await tx
           .select({
@@ -1279,6 +1284,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const hrdfBase = Math.max(0, round2(basic + fixedAllowance - unpaidDeduction));
       // #6: HRDF rates come from the resolved ruleset (rules.hrdf) when overridden, else the built-in MY_HRDF.
       const hrdf = pack.payroll.hrdfLevy(hrdfBase, hrdfStatus, rules.hrdf);
+      // 1.2.3 CP38 — the month's LHDN instalment. Charged on the REGULAR run only: like basic/OT/unpaid/hrdf,
+      // an additional (off-cycle/bonus/adjustment) run carries cp38 = 0 (a re-issue re-runs the regular batch,
+      // not an adjustment run). So a regular + bonus run in one month charges exactly one instalment.
+      const cp38 = isAdditionalRun ? 0 : round2(cp38ByEmp.get(e.employmentId)?.amount ?? 0);
       // Statutory contribution. Regular run: computed directly as today (byte-identical). Additional run
       // (Wave 2C): the INCREMENT of the cumulative month — re-run with/without this run's additional
       // remuneration and take the delta, so the normal wage's SOCSO/EPF (already charged by the regular
@@ -1325,6 +1334,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         zakat,
         // HRD Corp levy rides the normal wage (regular run only); a bonus/off-cycle run adds none.
         hrdf: isAdditionalRun ? 0 : hrdf,
+        // 1.2.3 CP38 — stamped as the DISTINCT CP39 source (separate from PCB) + its LHDN ref, only when
+        // non-zero (regular run). `statutory` is plain jsonb with no allow-list validator, so this is safe;
+        // it is NOT a DELTA_KEY (that would corrupt additional-run delta math). The net figure is folded
+        // once into otherDeductions below, so net/total reconcile without double-counting.
+        ...(cp38 > 0 ? { cp38, cp38Ref: cp38ByEmp.get(e.employmentId)?.cp38Ref } : {}),
         // EPF contribution mode applied (Wave 2B audit) — 'auto' unless an i-Topup/exempt election.
         epfMode: e.epfMode ?? 'auto',
         // #6 (ADR-0037): per-body version map, present only when a component override is in effect.
@@ -1342,7 +1356,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const slipAllowance = isAdditionalRun ? 0 : allowance;
       const slipOvertime = isAdditionalRun ? 0 : overtime;
       const slipUnpaid = isAdditionalRun ? 0 : unpaidDeduction;
-      const slipExtraDeduct = isAdditionalRun ? 0 : en.deduct;
+      // 1.2.3 CP38 folds into the SINGLE extra-deduction source: otherDeductions (line below) and
+      // totalDeductions/net then reflect it automatically — no separate add-to-total (that would double-count).
+      const slipExtraDeduct = isAdditionalRun ? 0 : round2(en.deduct + cp38);
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
       const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct);
       const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);

@@ -22,6 +22,7 @@ const labels: PayslipPdfLabels = {
   skbbk: 'SKBBK',
   eis: 'EIS',
   pcb: 'PCB',
+  cp38: 'CP38',
   otherDeductions: 'Other deductions',
   totalDeductions: 'Total deductions',
   netPay: 'Net pay',
@@ -46,6 +47,7 @@ const data: PayslipPdfData = {
   socsoSkbbk: 0,
   eisEmployee: 9.9,
   pcb: 350,
+  cp38: 0,
   otherDeductions: 0,
   totalDeductions: 1099.65,
   net: 6020.35,
@@ -63,6 +65,17 @@ describe('ADR-0036 — payslip PDF', () => {
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes.length).toBeGreaterThan(1000);
     expect(head(bytes)).toBe('%PDF-');
+  });
+
+  it('renders a distinct CP38 deduction line when cp38 > 0 (web/PDF parity)', async () => {
+    // pdf-lib FlateDecode-compresses the content stream, so the label is not greppable in raw bytes.
+    // The deterministic, meaningful signal: the extra drawn CP38 row makes the document strictly larger
+    // than the cp38-less render (a renderer that dropped the line would produce an identical-size PDF).
+    const withCp38 = await renderPayslipPdf({ ...data, cp38: 200 }, labels);
+    const without = await renderPayslipPdf({ ...data, cp38: 0 }, labels);
+    expect(withCp38.length).toBeGreaterThan(without.length);
+    // And a zero CP38 omits the row (no growth vs. the baseline, which is also cp38: 0).
+    expect(without.length).toBe((await renderPayslipPdf(data, labels)).length);
   });
 
   it('degrades gracefully: null code/reg, no skbbk/other rows, no proration, non-Latin name', async () => {

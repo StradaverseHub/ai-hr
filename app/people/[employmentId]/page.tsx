@@ -33,6 +33,8 @@ import {
   transferAction,
 } from './actions';
 import { currentCompensation } from '@/core/comp';
+import { listCp38 } from '@/core/cp38';
+import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listHolidayGroups } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { ReviewSection } from './review-section';
@@ -68,13 +70,13 @@ export default async function EmployeePage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ error?: string; from?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('people.detail');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from } = await searchParams;
+  const { error, from, cp38Error } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -114,6 +116,9 @@ export default async function EmployeePage({
   // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
   const payComps = admin ? await listEmploymentPayComponents(s, employmentId) : [];
   const componentCatalog = admin ? await listPayComponents(s) : [];
+  // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data).
+  const cp38Records = admin ? await listCp38(s, { employmentId }) : [];
+  const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
@@ -269,6 +274,104 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('payComponentSave')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
+        </Card>
+      )}
+
+      {admin && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
+          {cp38Error === 'processed' && (
+            <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              {t('cp38ProcessedError')}
+            </p>
+          )}
+          {cp38Records.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">{t('cp38Ref')}</th>
+                  <th className="px-4 py-2 text-right font-medium">{t('cp38Amount')}</th>
+                  <th className="px-4 py-2 font-medium">{t('cp38From')}</th>
+                  <th className="px-4 py-2 font-medium">{t('cp38To')}</th>
+                  <th className="px-4 py-2 font-medium">{t('cp38Remarks')}</th>
+                  <th className="px-4 py-2 font-medium">{t('cp38Status')}</th>
+                  <th className="px-4 py-2 font-medium">{t('cp38Actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {cp38Records.map((r) => {
+                  // CLOSED once superseded, or once its inclusive end-date is before this month. Otherwise ACTIVE.
+                  const closed =
+                    r.supersededAt != null || (r.validTo != null && r.validTo < thisMonthStart);
+                  // A closed/superseded row's period is historical → its edit/terminate is hidden (the
+                  // service guard would also block any processed period).
+                  return (
+                    <tr key={r.id}>
+                      <td className="px-4 py-2.5 font-mono text-xs">{r.cp38Ref}</td>
+                      <td className="px-4 py-2.5 text-right font-medium tabular-nums">{Number(r.amount).toFixed(2)}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{r.validFrom}</td>
+                      <td className="px-4 py-2.5 tabular-nums">{r.validTo ?? t('cp38Open')}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground">{r.remarks ?? '—'}</td>
+                      <td className="px-4 py-2.5">
+                        <Badge variant={closed ? 'default' : 'success'}>
+                          {closed ? t('cp38StatusClosed') : t('cp38StatusActive')}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {!closed && (
+                          <div className="flex items-center gap-3">
+                            <form action={editCp38Action} className="flex flex-wrap items-end gap-1.5">
+                              <input type="hidden" name="employmentId" value={emp.employmentId} />
+                              <input type="hidden" name="id" value={r.id} />
+                              <input
+                                name="amount"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                defaultValue={Number(r.amount).toFixed(2)}
+                                className={`${inputCls} w-28`}
+                                aria-label={t('cp38Amount')}
+                              />
+                              <button className="text-xs font-medium text-primary hover:underline">{t('cp38Save')}</button>
+                            </form>
+                            <form action={terminateCp38Action}>
+                              <input type="hidden" name="employmentId" value={emp.employmentId} />
+                              <input type="hidden" name="id" value={r.id} />
+                              <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                                {t('cp38Terminate')}
+                              </button>
+                            </form>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t('cp38None')}</p>
+          )}
+          <form action={addCp38Action} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={t('cp38Ref')}>
+              <input name="cp38Ref" required placeholder={t('cp38RefPlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('cp38Amount')}>
+              <input name="amount" type="number" min="0" step="0.01" required className={inputCls} />
+            </Field>
+            <Field label={t('cp38Remarks')}>
+              <input name="remarks" type="text" placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('cp38From')}>
+              <input name="validFrom" type="date" required defaultValue={thisMonthStart} className={inputCls} />
+            </Field>
+            <Field label={t('cp38To')}>
+              <input name="validTo" type="date" className={inputCls} />
+            </Field>
+            <button className={btnPrimary}>{t('cp38Add')}</button>
+          </form>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('cp38Hint')}</p>
         </Card>
       )}
 

@@ -35,7 +35,7 @@ export type Cp39Row = {
   countryCode?: string | null;
   /** Monthly MTD in RM (e.g. 110.00). */
   mtd: number;
-  /** CP38 instalment in RM (we do not track CP38 — 0). */
+  /** CP38 instalment in RM (1.2.3 — the LHDN/court instalment, distinct from MTD; 0 if none). */
   cp38?: number;
   employeeNo?: string | null;
 };
@@ -173,7 +173,7 @@ export function cp39FileForBatch(
       .where(inArray(payslip.batchId, batchIds))
       .orderBy(person.fullName);
     // One CP39 row per employee: sum MTD across the period's runs (= the month's total MTD).
-    type Agg = { name: string; tin: string | null; ic: string | null; employeeNo: string | null; mtd: number };
+    type Agg = { name: string; tin: string | null; ic: string | null; employeeNo: string | null; mtd: number; cp38: number };
     const byEmp = new Map<string, Agg>();
     const versionSet = new Set<string>();
     for (const s of slips) {
@@ -181,10 +181,13 @@ export function cp39FileForBatch(
       if (v) versionSet.add(v);
       let r = byEmp.get(s.employmentId);
       if (!r) {
-        r = { name: s.name, tin: s.tin, ic: s.ic, employeeNo: s.employeeNo, mtd: 0 };
+        r = { name: s.name, tin: s.tin, ic: s.ic, employeeNo: s.employeeNo, mtd: 0, cp38: 0 };
         byEmp.set(s.employmentId, r);
       }
       r.mtd = Math.round((r.mtd + Number((s.statutory as { pcb?: number } | null)?.pcb ?? 0)) * 100) / 100;
+      // 1.2.3 CP38 — distinct from MTD. Stamped non-zero on the REGULAR run only (kernel), so summing across
+      // the period's runs single-counts the month's one instalment (asserted by the cross-run agg test).
+      r.cp38 = Math.round((r.cp38 + Number((s.statutory as { cp38?: number } | null)?.cp38 ?? 0)) * 100) / 100;
     }
     const empRows = [...byEmp.values()];
     const missing = empRows.filter((r) => !r.tin || !digits(r.tin)).map((r) => r.name);
@@ -203,6 +206,7 @@ export function cp39FileForBatch(
         name: r.name,
         newIc: r.ic,
         mtd: r.mtd,
+        cp38: r.cp38,
         employeeNo: r.employeeNo,
       })),
     });

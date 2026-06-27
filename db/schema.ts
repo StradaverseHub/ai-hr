@@ -1617,6 +1617,33 @@ export const employmentPayComponent = pgTable(
   (t) => [index('employment_pay_component_idx').on(t.employmentId, t.validFrom)],
 );
 
+// 1.2.3 CP38 Deduction — an LHDN/court instalment deducted each month IN ADDITION to monthly MTD/PCB.
+// Effective-dated, per-employment, supersede-on-write (mirrors `compensation`): a change CLOSEs the open
+// row (set its `valid_to`) and INSERTs a new open row, so at most one row applies to a given month. Dates
+// are MONTH-ALIGNED (the service normalises any input to the first of its month). The `amount` is a
+// garnishment figure (tenant data) — kept OUT of the DomainEvent payload (ADR-0030 Layer 0).
+export const employeeCp38 = pgTable(
+  'employee_cp38',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    // The LHDN CP38 instruction reference (the order/letter number).
+    cp38Ref: text('cp38_ref').notNull(),
+    // Monthly instalment in RM.
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    // Month-aligned effective window. validTo is the INCLUSIVE last month it applies (null = open-ended).
+    validFrom: date('valid_from').notNull(),
+    validTo: date('valid_to'),
+    remarks: text('remarks'),
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('employee_cp38_employment_idx').on(t.employmentId, t.validFrom)],
+);
+
 // One-off per-batch component values (an off-cycle allowance/deduction for this run). RLS: admin-only
 // (like payroll_input).
 export const payrollBatchComponent = pgTable(

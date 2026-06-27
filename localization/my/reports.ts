@@ -442,8 +442,9 @@ const CP8D_COLS: ReportColumn[] = [
 
 const CP8D_NOTE =
   'Covers payroll-derived figures only: gross cash remuneration, EPF, SOCSO and MTD/PCB. Benefits-in-kind, ' +
-  'value of living accommodation, ESOS, tax-exempt allowances, zakat and CP38 are not tracked here — add them ' +
-  'in MyTax / e-CP8D before filing.';
+  'value of living accommodation, ESOS, tax-exempt allowances and zakat are not tracked in this view — add ' +
+  'them in MyTax / e-CP8D before filing. (CP38 instalments are tracked and flow into the CP39 e-Data file, ' +
+  'but are not summed into this annual CP8D view.)';
 
 /** Form E / CP8D — annual employer return (per-employee remuneration + Part A headcounts). */
 async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {

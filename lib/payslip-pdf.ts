@@ -19,6 +19,7 @@ export type PayslipPdfData = {
   socsoSkbbk: number;
   eisEmployee: number;
   pcb: number;
+  cp38: number;
   otherDeductions: number;
   totalDeductions: number;
   net: number;
@@ -46,6 +47,7 @@ export type PayslipPdfLabels = {
   skbbk: string;
   eis: string;
   pcb: string;
+  cp38: string;
   otherDeductions: string;
   totalDeductions: string;
   netPay: string;
@@ -127,6 +129,7 @@ export async function renderPayslipPdf(d: PayslipPdfData, t: PayslipPdfLabels): 
   if (d.socsoSkbbk > 0) row(t.skbbk, rm(d.socsoSkbbk));
   row(t.eis, rm(d.eisEmployee));
   row(t.pcb, rm(d.pcb));
+  if (d.cp38 > 0) row(t.cp38, rm(d.cp38));
   if (d.otherDeductions > 0) row(t.otherDeductions, rm(d.otherDeductions));
   hr(y + 8);
   row(t.totalDeductions, '- ' + rm(d.totalDeductions), { bold: true });

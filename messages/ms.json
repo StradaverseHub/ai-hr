@@ -363,7 +363,27 @@
       "locationCurrent": "Lokasi semasa: {location}",
       "locationNone": "Tiada lokasi",
       "locationSelect": "Lokasi",
-      "setLocation": "Tetapkan lokasi"
+      "setLocation": "Tetapkan lokasi",
+      "cp38Title": "Potongan CP38",
+      "cp38Ref": "Rujukan LHDN",
+      "cp38Amount": "Jumlah bulanan (RM)",
+      "cp38From": "Berkuat kuasa dari",
+      "cp38To": "Berkuat kuasa hingga",
+      "cp38Remarks": "Catatan",
+      "cp38Status": "Status",
+      "cp38Actions": "Tindakan",
+      "cp38Add": "Tambah CP38",
+      "cp38Save": "Simpan",
+      "cp38Edit": "Sunting",
+      "cp38Terminate": "Tamatkan",
+      "cp38StatusActive": "Aktif",
+      "cp38StatusClosed": "Ditutup",
+      "cp38Hint": "CP38 dikenakan mengikut bulan gaji — tempoh adalah sejajar bulan (arahan pertengahan bulan dikenakan untuk keseluruhan bulan ia bermula) dan jumlahnya dipotong sebagai tambahan kepada PCB bulanan.",
+      "cp38ProcessedError": "Tempoh gaji ini telah diproses — rekod CP38 tidak boleh diubah untuknya.",
+      "cp38None": "Tiada rekod CP38.",
+      "cp38RefPlaceholder": "cth. CP38/2026/00123",
+      "cp38RemarksPlaceholder": "Catatan pilihan",
+      "cp38Open": "Tiada tarikh tamat"
     },
     "import": {
       "title": "Import pekerja",
@@ -714,7 +734,8 @@
       "payPeriodLabel": "Tempoh gaji",
       "employeeCodeLabel": "Kod pekerja",
       "generatedNote": "Ini ialah slip gaji yang dijana oleh sistem.",
-      "downloadPdf": "Muat turun PDF"
+      "downloadPdf": "Muat turun PDF",
+      "cp38": "CP38 (ansuran LHDN)"
     },
     "goalsTitle": "Matlamat saya",
     "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",

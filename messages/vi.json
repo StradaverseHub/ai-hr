@@ -363,7 +363,27 @@
       "locationCurrent": "Địa điểm hiện tại: {location}",
       "locationNone": "Không có địa điểm",
       "locationSelect": "Địa điểm",
-      "setLocation": "Đặt địa điểm"
+      "setLocation": "Đặt địa điểm",
+      "cp38Title": "Khấu trừ CP38",
+      "cp38Ref": "Số tham chiếu LHDN",
+      "cp38Amount": "Số tiền hàng tháng (RM)",
+      "cp38From": "Hiệu lực từ",
+      "cp38To": "Hiệu lực đến",
+      "cp38Remarks": "Ghi chú",
+      "cp38Status": "Trạng thái",
+      "cp38Actions": "Thao tác",
+      "cp38Add": "Thêm CP38",
+      "cp38Save": "Lưu",
+      "cp38Edit": "Sửa",
+      "cp38Terminate": "Chấm dứt",
+      "cp38StatusActive": "Đang áp dụng",
+      "cp38StatusClosed": "Đã đóng",
+      "cp38Hint": "CP38 áp dụng theo tháng lương — các kỳ được căn theo tháng (lệnh giữa tháng tính cho cả tháng bắt đầu) và số tiền được khấu trừ thêm ngoài thuế PCB hàng tháng.",
+      "cp38ProcessedError": "Kỳ lương này đã được xử lý — không thể thay đổi bản ghi CP38 cho kỳ đó.",
+      "cp38None": "Chưa có bản ghi CP38.",
+      "cp38RefPlaceholder": "vd. CP38/2026/00123",
+      "cp38RemarksPlaceholder": "Ghi chú tùy chọn",
+      "cp38Open": "Không có ngày kết thúc"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -714,7 +734,8 @@
       "payPeriodLabel": "Kỳ lương",
       "employeeCodeLabel": "Mã nhân viên",
       "generatedNote": "Đây là phiếu lương do hệ thống tạo.",
-      "downloadPdf": "Tải PDF"
+      "downloadPdf": "Tải PDF",
+      "cp38": "CP38 (khoản trả góp LHDN)"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",

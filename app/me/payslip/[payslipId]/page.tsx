@@ -19,6 +19,7 @@ type Stat = {
   eisEmployee?: number;
   eisEmployer?: number;
   pcb?: number;
+  cp38?: number;
   recordLines?: RecordLine[];
 };
 
@@ -96,6 +97,7 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           {Number(st.socsoSkbbk) > 0 && <Row label={t('skbbk')} value={rm(st.socsoSkbbk)} />}
           <Row label={t('eis')} value={rm(st.eisEmployee)} />
           <Row label={t('pcb')} value={rm(st.pcb)} />
+          {Number(st.cp38) > 0 && <Row label={t('cp38')} value={rm(st.cp38)} />}
           {Number(p.otherDeductions) > 0 && <Row label={t('otherDeductions')} value={rm(p.otherDeductions)} />}
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('totalDeductions')}</span>
