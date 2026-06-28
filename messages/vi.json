@@ -494,14 +494,24 @@
     "hoursUnit": "{hours} giờ",
     "emergency": {
       "formHint": "Nghỉ khẩn cấp sẽ dùng Nghỉ phép năm của bạn trước; phần còn lại được tính là Nghỉ không lương.",
-      "groupLabel": "Nghỉ khẩn cấp"
+      "groupLabel": "Nghỉ khẩn cấp",
+      "reasonCategoryLabel": "Loại lý do",
+      "reasonCategoryHint": "Chọn “Ốm đau” để dùng số dư Nghỉ ốm có lương trước khi dùng phép năm/nghỉ không lương.",
+      "reasonCategory": {
+        "illness": "Ốm đau (dùng Nghỉ ốm có lương trước)",
+        "personal": "Cá nhân",
+        "other": "Khác"
+      },
+      "splitNotice": "Số dư có lương được dùng trước. Những ngày còn lại sẽ được tính là Nghỉ không lương (không làm việc không lương).",
+      "unpaidConsentLabel": "Tôi xác nhận rằng những ngày không được bù sẽ được tính là nghỉ không lương."
     },
     "errors": {
       "documentRequiredAfter": "Cần có tài liệu hỗ trợ cho {typeName} vượt quá {days} ngày.",
       "documentRequired": "Cần có tài liệu hỗ trợ cho {typeName} (ví dụ: giấy chứng nhận y tế).",
       "employeeRemarkRequired": "Cần có ghi chú của nhân viên cho {typeName}.",
       "fileTypeNotAllowed": "Loại tệp không được phép — chấp nhận: {allowed}.",
-      "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB."
+      "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB.",
+      "unpaidConsentRequired": "Nghỉ khẩn cấp này sẽ tính {days} ngày là nghỉ không lương. Vui lòng tích vào ô để xác nhận những ngày không lương."
     }
   },
   "attendance": {

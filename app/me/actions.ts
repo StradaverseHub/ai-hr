@@ -9,10 +9,12 @@ import {
   addLeaveAttachment,
   requestLeave,
   validateLeaveDocument,
+  isEmergencyReasonCategory,
   LeaveDocumentRequiredError,
   LeaveRemarkRequiredError,
   LeaveDocumentTypeError,
   LeaveDocumentSizeError,
+  UnpaidConsentRequiredError,
   type LeaveDurationType,
 } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
@@ -51,6 +53,11 @@ export async function myRequestLeave(formData: FormData) {
   const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
   const file = formData.get('document');
   const hasFile = file instanceof File && file.size > 0;
+  // Emergency Leave (Phase-B #12): reason category routes the cascade (illness → paid SICK first), and the
+  // unpaid-consent checkbox gates an UNPAID child. Both are inert for non-EL types (the service ignores them).
+  const reasonCategoryRaw = String(formData.get('reasonCategory') ?? '').trim();
+  const reasonCategory = isEmergencyReasonCategory(reasonCategoryRaw) ? reasonCategoryRaw : undefined;
+  const unpaidConsent = String(formData.get('unpaidConsent') ?? '') === 'on';
 
   const locale = await getLocale();
   // Supporting-document config: resolve the selected type once — supplies the localized name for error
@@ -77,6 +84,8 @@ export async function myRequestLeave(formData: FormData) {
       employeeRemark,
       durationType,
       hours: durationType === 'hourly' && hoursRaw !== '' ? Number(hoursRaw) : undefined,
+      reasonCategory,
+      unpaidConsent,
     });
     if (hasFile) {
       await addLeaveAttachment(s, {
@@ -109,6 +118,7 @@ async function localizeLeaveError(e: unknown, typeName?: string): Promise<string
     return t('fileTypeNotAllowed', { allowed: e.allowed.map((m) => labels[m] ?? m).join(', ') });
   }
   if (e instanceof LeaveDocumentSizeError) return t('fileTooLarge', { mb: e.maxMb });
+  if (e instanceof UnpaidConsentRequiredError) return t('unpaidConsentRequired', { days: e.unpaidDays ?? 0 });
   return (e as Error).message;
 }
 

@@ -1,0 +1,25 @@
+-- Phase-B #12 (audit #12) — Emergency-Leave consent for the unpaid portion (ADR-0061).
+--
+-- Before this column, an Emergency-Leave application whose Annual balance fell short silently created an
+-- UNPAID child for the remainder — converting an absence to no-work-no-pay without the employee electing it.
+-- requestEmergencyLeave now REQUIRES an explicit `unpaidConsent` when the cascade would create an UNPAID
+-- child (else it throws UnpaidConsentRequiredError and persists nothing). When consent is given, the moment
+-- it was captured is stamped on the UNPAID child so the audit trail proves the election.
+--
+--   leave_request.unpaid_consent_at  the timestamp the employee acknowledged the unpaid days. NULL for every
+--                                    paid child (ANNUAL / SICK), every ordinary (non-EL) request, and all
+--                                    pre-existing rows. Only the decomposed UNPAID child of a consented EL
+--                                    submission carries a value.
+--   leave_request.unpaid_consent_by  the app_user id of the actor who supplied consent (the requesting
+--                                    employee in the self-service flow; an HR admin when filed on their
+--                                    behalf). NULL when unpaid_consent_at is NULL.
+--
+-- Additive + nullable + backfill-safe. The column is reachable by the existing leave_request FOR ALL
+-- tenant + can_see_employment policies (same inheritance as 0106's parent_group_id), so it needs no new RLS
+-- policy and the ai_hr_app DML grants cover it by inheritance.
+--
+-- Rollback:
+--   ALTER TABLE leave_request DROP COLUMN unpaid_consent_by;
+--   ALTER TABLE leave_request DROP COLUMN unpaid_consent_at;
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "unpaid_consent_at" timestamptz;--> statement-breakpoint
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "unpaid_consent_by" uuid;

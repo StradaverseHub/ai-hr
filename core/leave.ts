@@ -38,6 +38,38 @@ export class InsufficientLeaveBalanceError extends Error {
   }
 }
 
+// ── Emergency-Leave unpaid consent (Phase-B #12, ADR-0061) ─────────────────────────────────────────
+// An Emergency-Leave application whose paid balances (Annual, and Sick for illness) fall short would have
+// the remainder taken as UNPAID (no-work-no-pay). That conversion is lawful only if the employee elects it,
+// so requestEmergencyLeave throws this when the cascade would create an UNPAID child and unpaidConsent was
+// not supplied — and persists nothing. The frontend surfaces the computed split + an acknowledgement
+// checkbox so the consent is informed.
+export class UnpaidConsentRequiredError extends Error {
+  /** The unpaid days the employee must consent to (informational; the EL form shows the full split). */
+  readonly unpaidDays?: number;
+  constructor(unpaidDays?: number) {
+    super(
+      unpaidDays != null
+        ? `This emergency leave would take ${unpaidDays} day(s) as unpaid leave. Your acknowledgement of the unpaid days is required.`
+        : 'This emergency leave would take some days as unpaid leave. Your acknowledgement of the unpaid days is required.',
+    );
+    this.name = 'UnpaidConsentRequiredError';
+    this.unpaidDays = unpaidDays;
+  }
+}
+
+// Reason category for an Emergency-Leave application (Phase-B #12). 'illness' routes the cascade through the
+// employee's paid SICK balance first (EA s.60F) before Annual/Unpaid; 'personal'/'other' keep Annual→Unpaid.
+export type EmergencyReasonCategory = 'illness' | 'personal' | 'other';
+export const EMERGENCY_REASON_CATEGORIES: readonly EmergencyReasonCategory[] = [
+  'illness',
+  'personal',
+  'other',
+] as const;
+export function isEmergencyReasonCategory(v: unknown): v is EmergencyReasonCategory {
+  return typeof v === 'string' && (EMERGENCY_REASON_CATEGORIES as readonly string[]).includes(v);
+}
+
 // ── Duration types (ADR-0048) ──────────────────────────────────────────────────────────────────────
 // A request can be a full day, a half-day (AM or PM), or a number of hours. The deduction is full=1,
 // half=0.5, hourly = round(hours / DEFAULT_STANDARD_HOURS, 2). The denominator "hours in a workday" is a
@@ -229,6 +261,25 @@ export function resolveEmergencyCascade(
   return { alCovered, alShortfall };
 }
 
+/**
+ * Pure SICK→ANNUAL→UPL cascade for an illness-driven emergency (Phase-B #12, ADR-0061). Cover as much of
+ * the working-days span as the paid SICK balance allows FIRST (EA s.60F is paid), then Annual, then the
+ * remainder as Unpaid. `sickCovered` + `alCovered` + `alShortfall` always sum to the span (within 2 dp).
+ * Negative balances clamp to 0. No DB — unit-testable. When sickBalance ≤ 0 this degrades to exactly the
+ * AL→UPL split (sickCovered 0), so the non-illness path can reuse the same shape.
+ */
+export function resolveEmergencyIllnessCascade(
+  sickBalance: number,
+  alBalance: number,
+  workingDays: number,
+): { sickCovered: number; alCovered: number; alShortfall: number } {
+  const sickCovered = round2(Math.max(0, Math.min(sickBalance, workingDays)));
+  const afterSick = round2(workingDays - sickCovered);
+  const alCovered = round2(Math.max(0, Math.min(alBalance, afterSick)));
+  const alShortfall = round2(afterSick - alCovered);
+  return { sickCovered, alCovered, alShortfall };
+}
+
 /** Inclusive whole-day count between two ISO dates (Slice 0 — no public-holiday logic yet). */
 function dayCount(start: string, end: string): number {
   const s = Date.parse(`${start}T00:00:00Z`);
@@ -306,6 +357,9 @@ async function insertLeaveRequest(
     employeeRemark: string | null;
     parentGroupId: string | null;
     mandatoryAfterDays: number | null;
+    // Phase-B #12 (ADR-0061): set on the UNPAID child of a consented Emergency-Leave submission only.
+    unpaidConsentAt?: Date | null;
+    unpaidConsentBy?: string | null;
   },
 ): Promise<{ id: string }> {
   const [row] = await tx
@@ -323,6 +377,8 @@ async function insertLeaveRequest(
       reason: v.reason,
       employeeRemark: v.employeeRemark,
       parentGroupId: v.parentGroupId,
+      unpaidConsentAt: v.unpaidConsentAt ?? null,
+      unpaidConsentBy: v.unpaidConsentBy ?? null,
     })
     .returning({ id: leaveRequest.id });
   await appendEvent(tx, {
@@ -372,6 +428,9 @@ export async function requestLeave(
     employeeRemark?: string; // doc-config: required when the type sets employeeRemarkRequired
     durationType?: LeaveDurationType; // ADR-0048: defaults to 'full_day'
     hours?: number; // ADR-0048: required (and only used) when durationType === 'hourly'
+    // Phase-B #12 (ADR-0061) — Emergency-Leave only:
+    reasonCategory?: EmergencyReasonCategory; // 'illness' routes through paid SICK first
+    unpaidConsent?: boolean; // the employee's acknowledgement of the unpaid days (gates UNPAID children)
   },
 ): Promise<RequestLeaveResult> {
   return withTenant(ctx, async (tx) => {
@@ -516,20 +575,23 @@ export async function requestLeave(
 }
 
 /**
- * Emergency-Leave decomposition (0106). EL is an application type only: this resolves the AL→UPL split at
- * submission against the Annual balance and creates up to two ordinary child requests over the same dates,
- * linked by one parent_group_id. Each child is a full-day request of its own type, so it counts in its own
- * mode natively (ANNUAL = working-days, UNPAID = calendar-days) — the counting-mode mismatch cannot occur.
+ * Emergency-Leave decomposition (0106 + Phase-B #12 / ADR-0061). EL is an application type only: this resolves
+ * the paid→UPL split at submission against the employee's balances and creates up to three ordinary child
+ * requests over the same dates, linked by one parent_group_id. Each child is a full-day request of its own
+ * type, so it counts in its own mode natively (ANNUAL/SICK = their own counting, UNPAID = calendar-days).
  *
- * Boundary policy (earliest-days-to-AL): the ANNUAL child covers the earliest working-days up to the
- * AL-covered amount and the UNPAID child covers the remainder of the span. The common cases are trivial —
- * one child spans the whole range when the split is all-AL or all-UPL. For a partial split we walk the
- * span's working days and cut at the boundary working-day: the ANNUAL child runs [start, boundary] and the
- * UNPAID child runs [dayAfterBoundary, end].
+ * Cascade (frozen at submit):
+ *   - reasonCategory 'illness' → paid SICK FIRST (EA s.60F), then ANNUAL, then UNPAID(consent). (Phase-B #12B)
+ *   - otherwise               → ANNUAL, then UNPAID(consent). (the original 0106 behaviour, unchanged)
  *
- * The split is frozen at submission (against AL balance at that instant). Each child still gates its own
- * balance at its own approval — the ANNUAL child throws InsufficientLeaveBalanceError if AL was drained
- * meanwhile, exactly as a normal AL request would (predictable, already-tested behaviour).
+ * Boundary policy (earliest-working-days-to-paid): each paid segment carves the earliest WHOLE working-days
+ * (its day count floored to ≤ its real balance, H4) off the front of the span; the UNPAID child takes the
+ * remaining calendar-day suffix. The split is frozen at submission; each child still gates its own balance at
+ * its own approval (InsufficientLeaveBalanceError if drained meanwhile — predictable, already-tested).
+ *
+ * Consent gate (Phase-B #12A): when the cascade would create an UNPAID child, `unpaidConsent` MUST be true —
+ * else UnpaidConsentRequiredError is thrown BEFORE any insert (nothing persisted). With consent the UNPAID
+ * child is stamped with unpaid_consent_at/by and the EL event records the consent.
  */
 async function requestEmergencyLeave(
   tx: Tx,
@@ -541,104 +603,122 @@ async function requestEmergencyLeave(
     endDate: string;
     reason?: string;
     durationType?: LeaveDurationType;
+    reasonCategory?: EmergencyReasonCategory;
+    unpaidConsent?: boolean;
   },
 ): Promise<RequestLeaveResult> {
   // EL is full-day-range only (no durations allow-list) — reject a non-full-day request explicitly.
   if (p.durationType && p.durationType !== 'full_day') {
     throw new LeaveDurationNotAllowedError();
   }
-  // Resolve ANNUAL + UNPAID type ids for the tenant. Both are seeded in MY_LEAVE_TYPES; if either is
-  // absent, EL cannot decompose — a plain Error (no typed-error / i18n scaffolding).
+  const isIllness = p.reasonCategory === 'illness';
+  // Resolve ANNUAL + UNPAID (+ SICK for illness) type ids for the tenant. ANNUAL + UNPAID are required for the
+  // decomposition; SICK is only needed (and only used) for the illness path.
   const childTypes = await tx
     .select({ id: leaveType.id, code: leaveType.code })
     .from(leaveType)
-    .where(inArray(leaveType.code, ['ANNUAL', 'UNPAID']));
+    .where(inArray(leaveType.code, ['ANNUAL', 'UNPAID', 'SICK']));
   const annualId = childTypes.find((t) => t.code === 'ANNUAL')?.id;
   const unpaidId = childTypes.find((t) => t.code === 'UNPAID')?.id;
+  const sickId = childTypes.find((t) => t.code === 'SICK')?.id;
   if (!annualId || !unpaidId) {
     throw new Error('Emergency Leave requires Annual and Unpaid leave types to be configured');
   }
 
-  // Count the span twice — once as the ANNUAL child would (working-days, honouring the employee's
-  // holidays/state + configured rest-day roster) and once as the UNPAID child would (calendar-days).
+  // Count the span as the working-days (paid) children would (honouring the employee's holidays/state +
+  // configured rest-day roster) and as the UNPAID child would (calendar-days).
   const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
   const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
-  const alSpanDays = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
+  const spanWorkingDays = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
   const uplSpanDays = dayCount(p.startDate, p.endDate);
   if (uplSpanDays <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
 
-  const alBalance = await leaveBalance(tx, p.employmentId, annualId);
-  const { alCovered, alShortfall } = resolveEmergencyCascade(alBalance, alSpanDays);
-
-  const parentGroupId = randomUUID();
-  const children: { id: string; code: string; days: number }[] = [];
-
-  // The span's working-day dates (ANNUAL counts these). The boundary split assigns the earliest `alCovered`
-  // working-days to ANNUAL; the UNPAID child starts the calendar day after the last AL working-day. Rest
+  // The span's working-day dates in order — paid segments cut at boundary working-days off the front. Rest
   // days come from the SAME configured roster as the count above (audit H#3), not a hardcoded Sat/Sun.
   const workingDates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
 
-  if (alShortfall === 0 && alCovered > 0) {
-    // Annual fully covers the working-days span → a single ANNUAL child over the whole range.
-    const { id } = await insertLeaveRequest(tx, ctx, {
-      employmentId: p.employmentId, leaveTypeId: annualId, startDate: p.startDate, endDate: p.endDate,
-      days: alCovered, durationType: 'full_day', hours: null, reason: p.reason ?? null,
-      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
-    });
-    children.push({ id, code: 'ANNUAL', days: alCovered });
-  } else if (alCovered === 0) {
-    // No Annual balance (or empty working-days span) → a single UNPAID child over the whole range.
-    const { id } = await insertLeaveRequest(tx, ctx, {
-      employmentId: p.employmentId, leaveTypeId: unpaidId, startDate: p.startDate, endDate: p.endDate,
-      days: uplSpanDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
-      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
-    });
-    children.push({ id, code: 'UNPAID', days: uplSpanDays });
-  } else if (Math.floor(alCovered) === 0) {
-    // alCovered is a positive FRACTION below one whole working-day (e.g. 0.5 from prorated accrual / a
-    // half-day debit). A leave_request is whole-day-count only, so no ANNUAL child can be carved without
-    // exceeding the balance — the entire span falls to a single UNPAID child (H4: never create an
-    // unapprovable ANNUAL child whose floor()-of-fractional days exceed the AL balance).
-    const { id } = await insertLeaveRequest(tx, ctx, {
-      employmentId: p.employmentId, leaveTypeId: unpaidId, startDate: p.startDate, endDate: p.endDate,
-      days: uplSpanDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
-      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
-    });
-    children.push({ id, code: 'UNPAID', days: uplSpanDays });
-  } else {
-    // Partial split: ANNUAL covers the earliest WHOLE working-days [start, boundary]; UNPAID covers the
-    // suffix [dayAfter(boundary), end] counted in calendar-days. alCovered may be fractional (prorated
-    // accrual / half-day debits), so FLOOR it to whole working-days for the ANNUAL child — its day count
-    // must be <= the real AL balance or it can never be approved (H4). The fractional remainder (and the
-    // shortfall days) fall to the UNPAID child, which has no such ceiling.
-    const alWholeDays = Math.floor(alCovered);
-    const boundaryWorkingDay = workingDates[alWholeDays - 1];
-    const annualEnd = boundaryWorkingDay;
-    const uplStart = eachDate(boundaryWorkingDay, p.endDate)[1]; // the calendar day after the boundary
+  // Build the ordered list of PAID segments and the unpaid remainder. SICK is prepended only for an illness
+  // emergency with a real SICK type + positive balance; ANNUAL always follows. Each segment's `cover` is its
+  // balance-limited working-day count from resolveEmergencyIllnessCascade (sickCovered then alCovered) — which
+  // degrades to exactly the AL→UPL split when there is no sick component, so the non-illness path is unchanged.
+  const sickBalance = isIllness && sickId ? await leaveBalance(tx, p.employmentId, sickId) : 0;
+  const alBalance = await leaveBalance(tx, p.employmentId, annualId);
+  const { sickCovered, alCovered, alShortfall } = resolveEmergencyIllnessCascade(
+    sickBalance,
+    alBalance,
+    spanWorkingDays,
+  );
+
+  // Each paid segment carves whole working-days (FLOORed to ≤ its real balance — H4) off the front in order.
+  const paidSegments: { typeId: string; code: string; cover: number }[] = [];
+  if (isIllness && sickId && sickCovered > 0) paidSegments.push({ typeId: sickId, code: 'SICK', cover: sickCovered });
+  if (alCovered > 0) paidSegments.push({ typeId: annualId, code: 'ANNUAL', cover: alCovered });
+
+  // How many whole working-days each paid segment will actually consume, walking the span front-to-back. A
+  // fractional remainder of any segment's balance (prorated accrual / half-day debit) cannot be carved as a
+  // whole-day child, so it falls through to the next segment / the unpaid remainder.
+  let wholeConsumed = 0;
+  const plannedPaid: { typeId: string; code: string; wholeDays: number }[] = [];
+  for (const seg of paidSegments) {
+    const whole = Math.min(Math.floor(seg.cover), workingDates.length - wholeConsumed);
+    if (whole > 0) {
+      plannedPaid.push({ typeId: seg.typeId, code: seg.code, wholeDays: whole });
+      wholeConsumed += whole;
+    }
+  }
+  // The unpaid remainder is every calendar day after the last paid working-day (or the whole span if no paid
+  // days were carved). uplDays is in calendar-days, the UNPAID type's own counting mode.
+  const hasUnpaid = wholeConsumed < spanWorkingDays;
+
+  // Consent gate (Phase-B #12A): an UNPAID child requires explicit consent — throw BEFORE any insert so a
+  // missing acknowledgement leaves nothing persisted.
+  if (hasUnpaid && !p.unpaidConsent) {
+    // The unpaid remainder in calendar-days, for the error message (the form shows the full split itself).
+    const lastPaidWorkingDay = wholeConsumed > 0 ? workingDates[wholeConsumed - 1] : null;
+    const uplStart = lastPaidWorkingDay ? eachDate(lastPaidWorkingDay, p.endDate)[1] : p.startDate;
     const uplDays = dayCount(uplStart, p.endDate);
-    const annualDays = workingDays(p.startDate, annualEnd, hols, workingDaysIso);
-    const { id: alId } = await insertLeaveRequest(tx, ctx, {
-      employmentId: p.employmentId, leaveTypeId: annualId, startDate: p.startDate, endDate: annualEnd,
-      days: annualDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+    throw new UnpaidConsentRequiredError(uplDays);
+  }
+
+  const parentGroupId = randomUUID();
+  const consentAt = hasUnpaid ? new Date() : null;
+  const children: { id: string; code: string; days: number }[] = [];
+
+  // Insert each paid segment as a contiguous full-day child [segStart, boundaryWorkingDay].
+  let cursor = 0; // index into workingDates of the next un-assigned working-day
+  for (const seg of plannedPaid) {
+    const segStart = cursor === 0 ? p.startDate : eachDate(workingDates[cursor - 1], p.endDate)[1];
+    const boundaryWorkingDay = workingDates[cursor + seg.wholeDays - 1];
+    const segDays = workingDays(segStart, boundaryWorkingDay, hols, workingDaysIso);
+    const { id } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId, leaveTypeId: seg.typeId, startDate: segStart, endDate: boundaryWorkingDay,
+      days: segDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
       employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
     });
-    children.push({ id: alId, code: 'ANNUAL', days: annualDays });
-    const { id: uplId } = await insertLeaveRequest(tx, ctx, {
+    children.push({ id, code: seg.code, days: segDays });
+    cursor += seg.wholeDays;
+  }
+
+  // Insert the UNPAID remainder child (consent-stamped), if any.
+  if (hasUnpaid) {
+    const uplStart = cursor > 0 ? eachDate(workingDates[cursor - 1], p.endDate)[1] : p.startDate;
+    const uplDays = dayCount(uplStart, p.endDate);
+    const { id } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId, leaveTypeId: unpaidId, startDate: uplStart, endDate: p.endDate,
       days: uplDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
       employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+      unpaidConsentAt: consentAt, unpaidConsentBy: ctx.userId ?? null,
     });
-    children.push({ id: uplId, code: 'UNPAID', days: uplDays });
+    children.push({ id, code: 'UNPAID', days: uplDays });
   }
 
+  const sickChild = children.find((c) => c.code === 'SICK');
   const alChild = children.find((c) => c.code === 'ANNUAL');
   const uplChild = children.find((c) => c.code === 'UNPAID');
-  const alChildId = alChild?.id;
-  const uplChildId = uplChild?.id;
   // A single EL command event keyed on parentGroupId, alongside each child's own leave-request.submitted —
-  // gives the audit trail / substrate one traceable EL submission. alDays/uplDays report the ACTUAL child
-  // day-counts (ANNUAL floored to whole working-days, UNPAID carries the rest — H4), not the raw resolver
-  // split, so the audit trail matches the persisted children.
+  // gives the audit trail / substrate one traceable EL submission. The day counts report the ACTUAL child
+  // counts (paid segments floored to whole working-days, UNPAID carries the rest — H4). The consent stamp is
+  // recorded here so the audit trail proves the unpaid days were elected.
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -648,20 +728,25 @@ async function requestEmergencyLeave(
     subjectEmploymentId: p.employmentId,
     payload: {
       employmentId: p.employmentId,
-      ...(alChildId ? { alChildId } : {}),
-      ...(uplChildId ? { uplChildId } : {}),
+      reasonCategory: p.reasonCategory ?? 'other',
+      ...(sickChild ? { sickChildId: sickChild.id } : {}),
+      ...(alChild ? { alChildId: alChild.id } : {}),
+      ...(uplChild ? { uplChildId: uplChild.id } : {}),
+      sickDays: sickChild?.days ?? 0,
       alDays: alChild?.days ?? 0,
       uplDays: uplChild?.days ?? 0,
       startDate: p.startDate,
       endDate: p.endDate,
+      ...(hasUnpaid ? { unpaidConsent: true, unpaidConsentAt: consentAt!.toISOString() } : {}),
     },
   });
 
-  // Keep `leaveRequestId` populated (the AL child when present, else the UPL child) so the existing action
-  // layer's destructure stays valid; `days` is the total span (AL + UPL) for parity with the ordinary path.
+  // Keep `leaveRequestId` populated (the first paid child when present, else the UPL child) so the existing
+  // action layer's destructure stays valid; `days` is the total covered span for parity with the ordinary path.
+  const firstChildId = (sickChild ?? alChild ?? uplChild)!.id;
   return {
-    leaveRequestId: (alChildId ?? uplChildId)!,
-    days: round2(alCovered + alShortfall),
+    leaveRequestId: firstChildId,
+    days: round2(sickCovered + alCovered + alShortfall),
     parentGroupId,
     children,
   };

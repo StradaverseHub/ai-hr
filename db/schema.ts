@@ -579,6 +579,12 @@ export const leaveRequest = pgTable(
     // into up to two ordinary child requests over the same dates, linked by this shared UUID so surfaces
     // can group them as one logical absence. NULL for all pre-existing and ordinary (non-EL) rows.
     parentGroupId: uuid('parent_group_id'),
+    // Phase-B #12 (ADR-0061): Emergency-Leave unpaid-consent stamp. When an EL submission's cascade creates
+    // an UNPAID child for the AL/SICK shortfall, the employee must explicitly consent to the no-work-no-pay
+    // days; the moment consent was captured is stamped here (and unpaid_consent_by records the actor). NULL
+    // for every paid child (ANNUAL / SICK), every ordinary (non-EL) request, and all pre-existing rows.
+    unpaidConsentAt: timestamp('unpaid_consent_at', { withTimezone: true }),
+    unpaidConsentBy: uuid('unpaid_consent_by'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

@@ -366,6 +366,7 @@ export default async function MePage({
                 id: lt.id,
                 label: lt.requiresDocument ? `${lt.name} · ${t('documentRequired')}` : lt.name,
                 durations: lt.durations ?? null,
+                code: lt.code,
               }))}
             />
             <Field label={t('documentLabel')}>

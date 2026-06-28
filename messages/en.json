@@ -494,14 +494,24 @@
     "hoursUnit": "{hours}h",
     "emergency": {
       "formHint": "Emergency Leave uses your Annual Leave first; any remainder is taken as Unpaid Leave.",
-      "groupLabel": "Emergency Leave"
+      "groupLabel": "Emergency Leave",
+      "reasonCategoryLabel": "Reason category",
+      "reasonCategoryHint": "Choose “Illness” to use your paid Sick Leave balance first before annual/unpaid.",
+      "reasonCategory": {
+        "illness": "Illness (use paid Sick Leave first)",
+        "personal": "Personal",
+        "other": "Other"
+      },
+      "splitNotice": "Paid balances are used first. Any remaining days are taken as Unpaid Leave (no-work-no-pay).",
+      "unpaidConsentLabel": "I acknowledge that any uncovered days will be taken as unpaid leave."
     },
     "errors": {
       "documentRequiredAfter": "A supporting document is required for {typeName} exceeding {days} days.",
       "documentRequired": "A supporting document is required for {typeName} (e.g. a medical certificate).",
       "employeeRemarkRequired": "An employee remark is required for {typeName}.",
       "fileTypeNotAllowed": "File type not allowed — accepted: {allowed}.",
-      "fileTooLarge": "File exceeds the {mb} MB limit."
+      "fileTooLarge": "File exceeds the {mb} MB limit.",
+      "unpaidConsentRequired": "This emergency leave would take {days} day(s) as unpaid leave. Please tick the box to acknowledge the unpaid days."
     }
   },
   "attendance": {

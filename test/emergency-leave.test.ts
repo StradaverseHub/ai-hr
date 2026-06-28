@@ -22,10 +22,13 @@ import {
   LeaveDurationNotAllowedError,
   requestLeave,
   resolveEmergencyCascade,
+  resolveEmergencyIllnessCascade,
+  UnpaidConsentRequiredError,
 } from '../core/leave';
 import {
   adminCtx,
   closeAll,
+  latestEventPayload,
   ledgerBalance,
   migrateTestDb,
   owner,
@@ -38,6 +41,7 @@ let b: Base;
 let employmentId: string;
 let annualId: string; // seedBase's ANNUAL type, counting = working_days (default for ANNUAL)
 let unpaidId: string;
+let sickId: string;
 let emergencyId: string;
 
 async function hire() {
@@ -85,6 +89,8 @@ const grantAnnual = (days: string) => grantLedger(annualId, days);
 // tenant grants an unpaid allowance before unpaid requests can be approved — exactly as a direct UNPAID
 // request requires. EL inherits this unchanged; tests that approve the UPL child grant it first.
 const grantUnpaid = (days: string) => grantLedger(unpaidId, days);
+// Phase-B #12: a paid SICK balance, so the illness path can prefer it before annual/unpaid.
+const grantSick = (days: string) => grantLedger(sickId, days);
 
 /** The decomposed child rows for an EL submission, ordered by start date. */
 async function childRows(parentGroupId: string) {
@@ -119,6 +125,8 @@ beforeEach(async () => {
     .set({ counting: 'working_days' })
     .where(eq(schema.leaveType.id, annualId));
   unpaidId = await insertType({ code: 'UNPAID', paid: false, counting: 'calendar_days' });
+  // Phase-B #12: SICK is paid (EA s.60F) and counted in calendar-days, like the seeded MY SICK type.
+  sickId = await insertType({ code: 'SICK', paid: true, counting: 'calendar_days' });
   emergencyId = await insertType({ code: 'EMERGENCY', paid: true, counting: 'calendar_days' });
 });
 afterAll(async () => {
@@ -140,6 +148,26 @@ describe('Emergency Leave — pure resolver', () => {
   });
   it('fractional remainder rounds to 2 dp', () => {
     expect(resolveEmergencyCascade(1.256, 3)).toEqual({ alCovered: 1.26, alShortfall: 1.74 });
+  });
+});
+
+describe('Emergency Leave — illness pure resolver (SICK → ANNUAL → UNPAID)', () => {
+  it('SICK fully covers the span → all Sick, no Annual, no shortfall', () => {
+    expect(resolveEmergencyIllnessCascade(10, 5, 3)).toEqual({ sickCovered: 3, alCovered: 0, alShortfall: 0 });
+  });
+  it('SICK partial → Sick first, then Annual for the remainder', () => {
+    // 2 sick days cover 2; the remaining 3 days draw from a 5-day Annual balance (fully covered).
+    expect(resolveEmergencyIllnessCascade(2, 5, 5)).toEqual({ sickCovered: 2, alCovered: 3, alShortfall: 0 });
+  });
+  it('SICK + ANNUAL exhausted → remainder is the unpaid shortfall', () => {
+    // 1 sick + 1 annual cover 2 of 5; 3 days fall to UNPAID.
+    expect(resolveEmergencyIllnessCascade(1, 1, 5)).toEqual({ sickCovered: 1, alCovered: 1, alShortfall: 3 });
+  });
+  it('no SICK balance → behaves exactly like the AL→UPL cascade', () => {
+    expect(resolveEmergencyIllnessCascade(0, 2, 5)).toEqual({ sickCovered: 0, alCovered: 2, alShortfall: 3 });
+  });
+  it('negative balances clamp to 0', () => {
+    expect(resolveEmergencyIllnessCascade(-3, -1, 4)).toEqual({ sickCovered: 0, alCovered: 0, alShortfall: 4 });
   });
 });
 
@@ -177,6 +205,7 @@ describe('Emergency Leave — decomposition on submit', () => {
       leaveTypeId: emergencyId,
       startDate: '2026-07-06',
       endDate: '2026-07-08',
+      unpaidConsent: true, // the split creates an UNPAID child → consent is required
     });
     expect(res.children).toHaveLength(2);
     const al = res.children.find((c) => c.code === 'ANNUAL');
@@ -197,6 +226,7 @@ describe('Emergency Leave — decomposition on submit', () => {
       leaveTypeId: emergencyId,
       startDate: '2026-07-06',
       endDate: '2026-07-08',
+      unpaidConsent: true, // the whole span falls to UNPAID → consent is required
     });
     expect(res.children).toHaveLength(1);
     expect(res.children[0]).toMatchObject({ code: 'UNPAID', days: 3 }); // 3 calendar days
@@ -216,6 +246,7 @@ describe('Emergency Leave — counting-mode correctness', () => {
       leaveTypeId: emergencyId,
       startDate: '2026-07-10',
       endDate: '2026-07-13',
+      unpaidConsent: true, // no AL → whole span is UNPAID → consent required
     });
     expect(uplRes.children[0]).toMatchObject({ code: 'UNPAID', days: 4 }); // calendar-days
 
@@ -254,6 +285,7 @@ describe('Emergency Leave — approval reuses the existing ledger path', () => {
       leaveTypeId: emergencyId,
       startDate: '2026-07-06',
       endDate: '2026-07-08',
+      unpaidConsent: true, // AL covers 1, the rest is UNPAID → consent required
     });
     const rows = await childRows(res.parentGroupId!);
     const alChild = rows.find((r) => r.leaveTypeId === annualId)!;
@@ -277,6 +309,7 @@ describe('Emergency Leave — drained-AL safety (frozen-at-submit semantics)', (
       leaveTypeId: emergencyId,
       startDate: '2026-07-06',
       endDate: '2026-07-09', // Mon..Thu = 4 working days; AL covers 2, UPL 2.
+      unpaidConsent: true, // AL covers 2, the remaining 2 days are UNPAID → consent required
     });
     const rows = await childRows(res.parentGroupId!);
     const alChild = rows.find((r) => r.leaveTypeId === annualId)!;
@@ -309,6 +342,7 @@ describe('Emergency Leave — fractional AL balance (H4)', () => {
       leaveTypeId: emergencyId,
       startDate: '2026-07-06',
       endDate: '2026-07-09', // Mon..Thu = 4 working days, 4 calendar days
+      unpaidConsent: true, // the fractional remainder + shortfall fall to an UNPAID child → consent required
     });
     expect(res.children).toHaveLength(2);
     const al = res.children.find((c) => c.code === 'ANNUAL')!;
@@ -392,6 +426,7 @@ describe('Emergency Leave — payroll integration (no payroll code change)', () 
       leaveTypeId: emergencyId,
       startDate: '2026-07-06',
       endDate: '2026-07-08',
+      unpaidConsent: true, // AL covers 1, Tue+Wed are UNPAID → consent required
     });
     const rows = await childRows(res.parentGroupId!);
     const uplChild = rows.find((r) => r.leaveTypeId === unpaidId)!;
@@ -417,6 +452,161 @@ describe('Emergency Leave — payroll integration (no payroll code change)', () 
     const total = unpaidRows.reduce((s, x) => s + Number(x.days), 0);
     expect(total).toBeCloseTo(2, 2); // the UPL remainder flows through unchanged
     expect(unpaidRows).toHaveLength(1);
+  });
+});
+
+describe('Emergency Leave — unpaid consent gate (Phase-B #12)', () => {
+  it('AL exhausted + no consent → UnpaidConsentRequiredError, no child rows created', async () => {
+    // No AL grant → the whole span would fall to UNPAID. Without consent this must throw and create nothing.
+    await expect(
+      requestLeave(adminCtx(b), {
+        employmentId,
+        leaveTypeId: emergencyId,
+        startDate: '2026-07-06',
+        endDate: '2026-07-08',
+        // unpaidConsent omitted (false)
+      }),
+    ).rejects.toBeInstanceOf(UnpaidConsentRequiredError);
+
+    // No leave_request rows were created (the throw happened before any insert).
+    const rows = await owner.db
+      .select({ id: schema.leaveRequest.id })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.employmentId, employmentId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('partial AL + no consent → UnpaidConsentRequiredError (the shortfall would be unpaid)', async () => {
+    await grantAnnual('1.00'); // covers 1 of 3 working days; the remaining 2 would be UNPAID
+    await expect(
+      requestLeave(adminCtx(b), {
+        employmentId,
+        leaveTypeId: emergencyId,
+        startDate: '2026-07-06',
+        endDate: '2026-07-08',
+      }),
+    ).rejects.toBeInstanceOf(UnpaidConsentRequiredError);
+    const rows = await owner.db
+      .select({ id: schema.leaveRequest.id })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.employmentId, employmentId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it('AL fully covers the span → no consent needed (no UNPAID child)', async () => {
+    await grantAnnual('10.00');
+    // 3 working days fully covered by AL → a single ANNUAL child, no consent flag required.
+    const res = await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: emergencyId,
+      startDate: '2026-07-06',
+      endDate: '2026-07-08',
+    });
+    expect(res.children).toHaveLength(1);
+    expect(res.children[0]).toMatchObject({ code: 'ANNUAL' });
+  });
+
+  it('with consent → ANNUAL + UNPAID children created, unpaid_consent_at stamped on the UNPAID child + EL event', async () => {
+    await grantAnnual('1.00');
+    const res = await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: emergencyId,
+      startDate: '2026-07-06',
+      endDate: '2026-07-08',
+      unpaidConsent: true,
+    });
+    expect(res.children).toHaveLength(2);
+    const rows = await childRows(res.parentGroupId!);
+    const alRow = rows.find((r) => r.leaveTypeId === annualId)!;
+    const uplRow = rows.find((r) => r.leaveTypeId === unpaidId)!;
+
+    // The consent stamp lands on the UNPAID child (the row whose unpaid status the employee consented to).
+    const [uplFull] = await owner.db
+      .select({ unpaidConsentAt: schema.leaveRequest.unpaidConsentAt })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, uplRow.id));
+    expect(uplFull.unpaidConsentAt).not.toBeNull();
+    // The ANNUAL child carries no consent stamp (it is paid).
+    const [alFull] = await owner.db
+      .select({ unpaidConsentAt: schema.leaveRequest.unpaidConsentAt })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, alRow.id));
+    expect(alFull.unpaidConsentAt).toBeNull();
+
+    // The EL command event records that consent was captured.
+    const payload = await latestEventPayload(b.tenantId, res.parentGroupId!, 'leave-request.emergency.submitted');
+    expect(payload?.unpaidConsent).toBe(true);
+    expect(payload?.unpaidConsentAt).toBeTruthy();
+  });
+});
+
+describe('Emergency Leave — illness routing prefers paid SICK (Phase-B #12)', () => {
+  it('illness + SICK balance → a paid SICK child is created before any ANNUAL/UNPAID', async () => {
+    await grantSick('10.00'); // ample paid sick balance
+    await grantAnnual('5.00'); // annual exists but must NOT be used first for an illness
+    // 3 working days, all covered by SICK → a single SICK child, no UNPAID, no consent needed.
+    const res = await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: emergencyId,
+      startDate: '2026-07-06',
+      endDate: '2026-07-08',
+      reasonCategory: 'illness',
+    });
+    expect(res.children).toHaveLength(1);
+    expect(res.children[0]).toMatchObject({ code: 'SICK' });
+    const rows = await childRows(res.parentGroupId!);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].leaveTypeId).toBe(sickId);
+    expect(rows[0].days).toBe('3.00');
+    // Annual balance is untouched (no ANNUAL child).
+    expect(await ledgerBalance(employmentId, annualId)).toBeCloseTo(5, 2);
+  });
+
+  it('illness + partial SICK → SICK then ANNUAL, no unpaid (no consent needed)', async () => {
+    await grantSick('1.00'); // covers 1 working day
+    await grantAnnual('5.00'); // covers the remaining 2 working days
+    const res = await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: emergencyId,
+      startDate: '2026-07-06',
+      endDate: '2026-07-08',
+      reasonCategory: 'illness',
+    });
+    const codes = res.children.map((c) => c.code).sort();
+    expect(codes).toEqual(['ANNUAL', 'SICK']);
+    // No UNPAID child → consent was not required even though it was not passed.
+    expect(res.children.some((c) => c.code === 'UNPAID')).toBe(false);
+  });
+
+  it('illness + SICK & ANNUAL exhausted + no consent → UnpaidConsentRequiredError', async () => {
+    await grantSick('1.00');
+    await grantAnnual('1.00');
+    // 3 working days: SICK covers 1, ANNUAL covers 1, the last day would be UNPAID → consent required.
+    await expect(
+      requestLeave(adminCtx(b), {
+        employmentId,
+        leaveTypeId: emergencyId,
+        startDate: '2026-07-06',
+        endDate: '2026-07-08',
+        reasonCategory: 'illness',
+      }),
+    ).rejects.toBeInstanceOf(UnpaidConsentRequiredError);
+  });
+
+  it('non-illness category keeps the ANNUAL→UNPAID path (SICK is ignored)', async () => {
+    await grantSick('10.00'); // a sick balance exists but must NOT be used for a 'personal' emergency
+    await grantAnnual('1.00');
+    const res = await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: emergencyId,
+      startDate: '2026-07-06',
+      endDate: '2026-07-08',
+      reasonCategory: 'personal',
+      unpaidConsent: true,
+    });
+    // ANNUAL covers 1, the rest UNPAID — no SICK child.
+    expect(res.children.some((c) => c.code === 'SICK')).toBe(false);
+    expect(res.children.map((c) => c.code).sort()).toEqual(['ANNUAL', 'UNPAID']);
   });
 });
 

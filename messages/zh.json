@@ -494,14 +494,24 @@
     "hoursUnit": "{hours} 小时",
     "emergency": {
       "formHint": "紧急假会先使用您的年假；剩余部分将作为无薪假处理。",
-      "groupLabel": "紧急假"
+      "groupLabel": "紧急假",
+      "reasonCategoryLabel": "原因类别",
+      "reasonCategoryHint": "选择“疾病”以优先使用带薪病假余额，再使用年假/无薪假。",
+      "reasonCategory": {
+        "illness": "疾病（优先使用带薪病假）",
+        "personal": "个人",
+        "other": "其他"
+      },
+      "splitNotice": "优先使用带薪余额。任何剩余天数将按无薪假处理（不工作不发薪）。",
+      "unpaidConsentLabel": "我确认任何未被覆盖的天数将按无薪假处理。"
     },
     "errors": {
       "documentRequiredAfter": "{typeName}超过 {days} 天时需要提供证明文件。",
       "documentRequired": "{typeName}需要提供证明文件（例如医疗证明）。",
       "employeeRemarkRequired": "{typeName}需要填写员工备注。",
       "fileTypeNotAllowed": "不允许的文件类型 — 接受：{allowed}。",
-      "fileTooLarge": "文件超过 {mb} MB 上限。"
+      "fileTooLarge": "文件超过 {mb} MB 上限。",
+      "unpaidConsentRequired": "此紧急假将有 {days} 天按无薪假处理。请勾选以确认无薪天数。"
     }
   },
   "attendance": {

@@ -232,7 +232,7 @@ export default async function LeavePage({
               </select>
             </Field>
             <LeaveDurationFields
-              types={leaveTypes.map((lt) => ({ id: lt.id, label: lt.name, durations: lt.durations ?? null }))}
+              types={leaveTypes.map((lt) => ({ id: lt.id, label: lt.name, durations: lt.durations ?? null, code: lt.code }))}
               startDefault={today}
             />
             <Field label={t('fieldReason')}>

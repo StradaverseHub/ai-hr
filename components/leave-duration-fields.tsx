@@ -8,7 +8,7 @@ import { Field, inputCls } from './ui';
 const ALL_DURATIONS = ['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as const;
 type Duration = (typeof ALL_DURATIONS)[number];
 
-export type LeaveTypeOption = { id: string; label: string; durations: string[] | null };
+export type LeaveTypeOption = { id: string; label: string; durations: string[] | null; code?: string };
 
 /**
  * ADR-0048 client wrapper for the leave apply forms. It owns the Leave Type <select>, the Leave Duration
@@ -38,6 +38,10 @@ export function LeaveDurationFields({
   // If the selected type does not allow the current duration, fall back to full_day (defensive).
   const effectiveDuration: Duration = allowed.has(duration) ? duration : 'full_day';
   void layout; // layout currently affects only the parent wrapper; the date row is two-up in both.
+  // Emergency Leave (Phase-B #12, ADR-0061): when EL is selected, surface the reason-category select (illness
+  // routes through paid SICK first) and the unpaid-days acknowledgement. The server is the authoritative gate
+  // — it throws UnpaidConsentRequiredError when the cascade would create an UNPAID child without this consent.
+  const isEmergency = selected?.code === 'EMERGENCY';
 
   return (
     <>
@@ -110,6 +114,26 @@ export function LeaveDurationFields({
           <input type="hidden" name="endDate" value={start} readOnly />
         )}
       </div>
+
+      {isEmergency && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+          <Field label={t('emergency.reasonCategoryLabel')}>
+            <select name="reasonCategory" defaultValue="personal" className={inputCls}>
+              <option value="illness">{t('emergency.reasonCategory.illness')}</option>
+              <option value="personal">{t('emergency.reasonCategory.personal')}</option>
+              <option value="other">{t('emergency.reasonCategory.other')}</option>
+            </select>
+            <p className="mt-1 text-xs text-muted-foreground">{t('emergency.reasonCategoryHint')}</p>
+          </Field>
+          {/* The computed split (paid days vs unpaid days) is resolved server-side at submit; this notice +
+              acknowledgement is required because any AL/SICK shortfall becomes UNPAID (no-work-no-pay). */}
+          <p className="text-xs text-muted-foreground">{t('emergency.splitNotice')}</p>
+          <label className="flex items-start gap-2 text-xs text-foreground">
+            <input type="checkbox" name="unpaidConsent" className="mt-0.5 h-4 w-4 rounded border-border" />
+            <span>{t('emergency.unpaidConsentLabel')}</span>
+          </label>
+        </div>
+      )}
     </>
   );
 }

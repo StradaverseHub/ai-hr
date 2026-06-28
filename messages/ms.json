@@ -494,14 +494,24 @@
     "hoursUnit": "{hours} jam",
     "emergency": {
       "formHint": "Cuti Kecemasan menggunakan Cuti Tahunan anda dahulu; bakinya diambil sebagai Cuti Tanpa Gaji.",
-      "groupLabel": "Cuti Kecemasan"
+      "groupLabel": "Cuti Kecemasan",
+      "reasonCategoryLabel": "Kategori sebab",
+      "reasonCategoryHint": "Pilih “Sakit” untuk menggunakan baki Cuti Sakit berbayar dahulu sebelum cuti tahunan/tanpa gaji.",
+      "reasonCategory": {
+        "illness": "Sakit (guna Cuti Sakit berbayar dahulu)",
+        "personal": "Peribadi",
+        "other": "Lain-lain"
+      },
+      "splitNotice": "Baki berbayar digunakan dahulu. Hari yang berbaki diambil sebagai Cuti Tanpa Gaji (tiada kerja tiada gaji).",
+      "unpaidConsentLabel": "Saya mengakui bahawa mana-mana hari yang tidak dilindungi akan diambil sebagai cuti tanpa gaji."
     },
     "errors": {
       "documentRequiredAfter": "Dokumen sokongan diperlukan untuk {typeName} yang melebihi {days} hari.",
       "documentRequired": "Dokumen sokongan diperlukan untuk {typeName} (cth. sijil perubatan).",
       "employeeRemarkRequired": "Catatan pekerja diperlukan untuk {typeName}.",
       "fileTypeNotAllowed": "Jenis fail tidak dibenarkan — diterima: {allowed}.",
-      "fileTooLarge": "Fail melebihi had {mb} MB."
+      "fileTooLarge": "Fail melebihi had {mb} MB.",
+      "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji."
     }
   },
   "attendance": {
