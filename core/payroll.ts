@@ -1066,6 +1066,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // 1.2.8 Loan instalment(s) reserved on this batch (ADR-0060): POST-TAX, read unconditionally, subtracted
     // after statutory like tp1/zakat. The ledger is advanced by applyLoansForBatch AFTER the payslip loop.
     const loanByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.loanDeduction)]));
+    // 1.2.8 C1 fix: the ACTUAL loan recovered per employee after the authoritative net≥0 clamp (cents). The
+    // payslip loop fills this; applyLoansForBatch advances the ledger by these actuals (NOT the reserved due).
+    const appliedLoanCentsByEmp = new Map<string, number>();
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
     // ── PCB accumulators (ADR-0014) ──
@@ -1472,12 +1475,17 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // 1.2.3 CP38 folds into the SINGLE extra-deduction source: otherDeductions (line below) and
       // totalDeductions/net then reflect it automatically — no separate add-to-total (that would double-count).
       const slipExtraDeduct = isAdditionalRun ? 0 : round2(en.deduct + cp38);
+      const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
       // 1.2.8 Loan instalment (ADR-0060) — POST-TAX: only reduces net, touches NO statutory base (exactly
       // like slipUnpaid/slipExtraDeduct). An additional/off-cycle run charges no loan (handled like cp38/hrdf).
-      const slipLoan = isAdditionalRun ? 0 : round2(loanByEmp.get(e.employmentId) ?? 0);
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
+      const rawLoan = isAdditionalRun ? 0 : round2(loanByEmp.get(e.employmentId) ?? 0);
+      // C1: the loan must YIELD to statutory + CP38 + unpaid + everything else — never drive net below zero.
+      const slipLoan = Math.max(0, Math.min(rawLoan, round2(grossPay - statDeductions - slipUnpaid - slipExtraDeduct)));
+      // Record the ACTUAL loan recovered (cents) so applyLoansForBatch advances the ledger by the clamped
+      // amount — the reserved due may exceed it; the shortfall re-schedules (C2/H1/H3 fix).
+      appliedLoanCentsByEmp.set(e.employmentId, Math.round(slipLoan * 100));
       const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
-      const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
       const net = round2(grossPay - totalDeductions);
       const employerCost = isAdditionalRun
         ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
@@ -1525,7 +1533,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // 1.2.8 Loan instalments reserved on this batch are now on a finalized payslip → advance the loan ledger
     // (decrement outstanding, increment instalments_paid, mark applied, auto-settle) — ADR-0060 two-phase.
     // Placed beside the claim-paid block so every irreversible loan mutation ties to a written payslip.
-    await applyLoansForBatch(tx, ctx, p.batchId);
+    await applyLoansForBatch(tx, ctx, p.batchId, appliedLoanCentsByEmp);
 
     // Taxable claims prefilled into this batch are now on a payslip → mark them paid (ADR-0021).
     const paidClaims = await tx

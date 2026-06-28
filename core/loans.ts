@@ -14,7 +14,6 @@ import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
-  compensation,
   employeeLoan,
   employment,
   loanRepayment,
@@ -385,16 +384,9 @@ export async function prefillLoansForBatch(
         ),
       );
 
-    // Estimated net-before-loan per employment (statutory deductions have priority — negative-net guard).
-    const availableNetByEmp = await estimateNetBeforeLoan(
-      tx,
-      batch.companyId,
-      periodStart,
-      periodEnd,
-      [...new Set(activeLoans.map((l) => l.employmentId))],
-    );
-    const reservedCentsByEmp = new Map<string, number>(); // running sum of newly-reserved this run
-
+    // C1 fix: NO blind pre-clamp here. The authoritative net≥0 clamp lives in generatePayslips, where the
+    // full statutory + CP38 + unpaid + manual-deduction picture is known. Prefill reserves the FULL scheduled
+    // instalment, capped only at the loan's outstanding balance (a legitimate final-instalment cap).
     for (const loan of activeLoans) {
       // The single next scheduled repayment (lowest sequenceNo). If the loan already has a reserved row,
       // the partial-unique index makes a second reservation impossible — skip it (no-op convergence).
@@ -413,18 +405,15 @@ export async function prefillLoansForBatch(
         .limit(1);
       if (!next) continue; // nothing left to reserve
 
-      const dueCents = Math.min(toCents(Number(next.dueAmount)), toCents(Number(loan.outstanding)));
-      // Negative-net clamp: never let loans drive net below zero. availableNet is per-employment for the
-      // cycle; subtract what we've already reserved for this employment this run.
-      const availableCents = toCents(availableNetByEmp.get(loan.employmentId) ?? 0) - (reservedCentsByEmp.get(loan.employmentId) ?? 0);
-      const takeCents = Math.max(0, Math.min(dueCents, availableCents));
-      if (takeCents <= 0) continue; // no headroom — leave it on the schedule for a later cycle
+      // Reserve the full scheduled instalment, capped only at the outstanding balance (final-instalment cap,
+      // NOT a net-clamp). The net≥0 clamp is applied authoritatively in generatePayslips / applyLoansForBatch.
+      const takeCents = Math.min(toCents(Number(next.dueAmount)), toCents(Number(loan.outstanding)));
+      if (takeCents <= 0) continue; // nothing recoverable (outstanding already 0)
 
       await tx
         .update(loanRepayment)
         .set({ status: 'reserved', reservedBatchId: p.batchId, dueAmount: money(fromCents(takeCents)) })
         .where(eq(loanRepayment.id, next.id));
-      reservedCentsByEmp.set(loan.employmentId, (reservedCentsByEmp.get(loan.employmentId) ?? 0) + takeCents);
 
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -473,71 +462,66 @@ export async function prefillLoansForBatch(
   });
 }
 
-/**
- * Estimate net-before-loan per employment for the cycle (negative-net guard input). Approximates net as
- * basic + allowance (current compensation) less an indicative statutory load; we use a conservative 50% of
- * (basic+allowance) as the floor headroom so a loan never strands net at/below zero. This is intentionally
- * coarse — the authoritative net is computed in generatePayslips; this only CLAMPS the reservation.
- */
-async function estimateNetBeforeLoan(
-  tx: Tx,
-  companyId: string,
-  periodStart: string,
-  periodEnd: string,
-  employmentIds: string[],
-): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  if (employmentIds.length === 0) return out;
-  const rows = await tx
-    .select({
-      employmentId: compensation.employmentId,
-      basic: compensation.basicSalary,
-      allowance: compensation.monthlyAllowance,
-    })
-    .from(compensation)
-    .where(
-      and(
-        inArray(compensation.employmentId, employmentIds),
-        sql`${compensation.validTo} is null`,
-        sql`${compensation.supersededAt} is null`,
-      ),
-    );
-  for (const r of rows) {
-    const gross = Number(r.basic) + Number(r.allowance ?? 0);
-    // Conservative net headroom: half of gross (covers EPF+SOCSO+EIS+PCB worst-case for our pay band) —
-    // a loan can take at most this much, so net stays strictly positive.
-    out.set(r.employmentId, Math.max(0, gross * 0.5));
-  }
-  void companyId;
-  void periodStart;
-  void periodEnd;
-  return out;
-}
-
 // ─────────────────────────────── Apply (inside generatePayslips ONLY) ───────────────────────────────
 
 /**
  * Advance the loan ledger for every repayment reserved to this batch — called ONLY from generatePayslips,
- * inside its transaction, after the payslip loop. Sets the repayment 'applied', decrements outstanding,
- * increments instalments_paid, and auto-settles when fully repaid. NO admin assert (the caller is the
- * payroll kernel, already admin-gated at createBatch/generatePayslips).
+ * inside its transaction, after the payslip loop. Sets each repayment 'applied' with the ACTUAL applied
+ * amount (the per-employee net≥0 clamp computed in generatePayslips, NOT the reserved due), decrements
+ * outstanding by the actual, re-schedules any shortfall so the schedule still covers the residual, and
+ * settles ONLY when the outstanding balance reaches zero. NO admin assert (the caller is the payroll kernel,
+ * already admin-gated at createBatch/generatePayslips).
+ *
+ * `appliedLoanCentsByEmp` — per-employment ACTUAL loan cents recovered this cycle (Σ clamped slipLoan). The
+ * reserved repayments of an employment are applied in order against this budget; the unfunded remainder of
+ * any reservation re-schedules and the loan stays active (C2/H1/H3 fix — never a silent write-off).
  */
-export async function applyLoansForBatch(tx: Tx, ctx: SessionContext, batchId: string): Promise<void> {
+export async function applyLoansForBatch(
+  tx: Tx,
+  ctx: SessionContext,
+  batchId: string,
+  appliedLoanCentsByEmp: Map<string, number>,
+): Promise<void> {
   const reserved = await tx
     .select()
     .from(loanRepayment)
     .where(and(eq(loanRepayment.reservedBatchId, batchId), eq(loanRepayment.status, 'reserved')));
+  // A mutable per-employment running budget (copy of the actual-applied cents) consumed in reservation order.
+  const remaining = new Map<string, number>(appliedLoanCentsByEmp);
   for (const rep of reserved) {
     const loan = await loadLoan(tx, rep.loanId);
     if (!loan) continue;
-    const appliedCents = toCents(Number(rep.dueAmount));
+    const dueCents = toCents(Number(rep.dueAmount));
+    const budget = remaining.get(rep.employmentId) ?? 0;
+    const applyCents = Math.max(0, Math.min(dueCents, budget));
+    remaining.set(rep.employmentId, budget - applyCents);
+
+    // Mark the reservation applied with the ACTUAL recovered amount (not the reserved due).
     await tx
       .update(loanRepayment)
-      .set({ status: 'applied', appliedBatchId: batchId, appliedAmount: rep.dueAmount, appliedAt: new Date() })
+      .set({ status: 'applied', appliedBatchId: batchId, appliedAmount: money(fromCents(applyCents)), appliedAt: new Date() })
       .where(eq(loanRepayment.id, rep.id));
-    const newOutstandingCents = Math.max(0, toCents(Number(loan.outstandingBalance)) - appliedCents);
-    const newInstalmentsPaid = loan.instalmentsPaid + 1;
-    const fullyRepaid = newOutstandingCents <= 0 || newInstalmentsPaid >= loan.durationMonths;
+
+    // Re-schedule any shortfall so the schedule still covers the outstanding and is re-reservable next cycle.
+    if (applyCents < dueCents) {
+      const [{ maxSeq } = { maxSeq: loan.durationMonths }] = await tx
+        .select({ maxSeq: sql<number>`coalesce(max(${loanRepayment.sequenceNo}), 0)` })
+        .from(loanRepayment)
+        .where(eq(loanRepayment.loanId, loan.id));
+      await tx.insert(loanRepayment).values({
+        tenantId: loan.tenantId,
+        loanId: loan.id,
+        employmentId: loan.employmentId,
+        sequenceNo: Number(maxSeq) + 1,
+        dueAmount: money(fromCents(dueCents - applyCents)),
+        status: 'scheduled',
+      });
+    }
+
+    const newOutstandingCents = Math.max(0, toCents(Number(loan.outstandingBalance)) - applyCents);
+    const newInstalmentsPaid = loan.instalmentsPaid + (applyCents > 0 ? 1 : 0);
+    // C2/H1 fix: settle ONLY when the real balance reaches zero — never on the instalment count alone.
+    const fullyRepaid = newOutstandingCents <= 0;
     await tx
       .update(employeeLoan)
       .set({
@@ -554,10 +538,10 @@ export async function applyLoansForBatch(tx: Tx, ctx: SessionContext, batchId: s
       eventType: 'loan.instalment.applied',
       actor: actorOf(ctx),
       subjectEmploymentId: loan.employmentId,
-      payload: { batchId },
+      payload: { batchId, appliedAmount: money(fromCents(applyCents)) },
     });
     if (fullyRepaid) {
-      // Mark any leftover scheduled rows skipped (auto-stop).
+      // Balance cleared — mark any leftover scheduled rows skipped (auto-stop) and emit settled.
       await tx
         .update(loanRepayment)
         .set({ status: 'skipped' })
