@@ -1,0 +1,20 @@
+-- Follow-on #15b (ADR-0063) — editable + tentative state holidays.
+--
+-- Malaysian state public holidays that shift (ruler birthdays, state lunar observances) are often gazetted
+-- only days ahead. HR needs to load a best-estimate date EARLY (so leave/payroll counts are not short) and
+-- confirm/adjust it once the gazette lands. The `tentative` flag marks such a row as a provisional date:
+--
+--   holiday.tentative  TRUE  → the date is HR's best estimate for a not-yet-gazetted holiday. It STILL counts
+--                              as a holiday everywhere (leave/rest-day/payroll); the flag is purely a visible
+--                              "confirm me" marker — excluding it would under-count and re-introduce the bug
+--                              the operator reported.
+--                      FALSE → confirmed/gazetted (the default; every existing row backfills to false).
+--
+-- Additive + NOT NULL with a default, so the column is backfill-safe (existing rows = confirmed) and needs no
+-- data migration. The holiday table's existing RLS (migration 0006: tenant_isolation FOR ALL, admin WITH
+-- CHECK) already covers SELECT/UPDATE on the new column by inheritance — no new policy, and the ai_hr_app
+-- DML grants reach it.
+--
+-- Rollback:
+--   ALTER TABLE "holiday" DROP COLUMN "tentative";
+ALTER TABLE "holiday" ADD COLUMN IF NOT EXISTS "tentative" boolean NOT NULL DEFAULT false;

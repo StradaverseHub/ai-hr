@@ -946,6 +946,10 @@ export const holiday = pgTable(
     companyId: uuid('company_id').references((): AnyPgColumn => company.id),
     holidayDate: date('holiday_date').notNull(),
     name: text('name').notNull(),
+    // Follow-on #15b (ADR-0063): TRUE = a provisional, not-yet-gazetted date (shifting state holidays are
+    // gazetted only days ahead). A tentative holiday STILL counts as a holiday everywhere (leave/rest-day/
+    // payroll) — the flag is purely a visible "confirm me" marker; excluding it would under-count.
+    tentative: boolean('tentative').notNull().default(false),
     createdAt: createdAt(),
   },
   // One holiday per (tenant, country, date, state-or-national, company-or-nil). coalesce keeps the NULL

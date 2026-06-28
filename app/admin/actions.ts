@@ -21,6 +21,7 @@ import {
   deleteHoliday,
   deleteHolidayGroup,
   deleteLeavePolicy,
+  updateHoliday,
   updateHolidayGroup,
   deleteCompany,
   deleteCostCenter,
@@ -367,6 +368,25 @@ export async function createHolidayAction(formData: FormData) {
       name: String(formData.get('name') ?? ''),
       state: scope === 'state' ? String(formData.get('state') ?? '') || null : null,
       companyId: scope === 'group' ? String(formData.get('companyId') ?? '') || null : null,
+      // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
+      tentative: formData.get('tentative') === 'on',
+    });
+  } catch (e) {
+    fail(path, e);
+  }
+  ok(path);
+}
+
+/** ADR-0063: edit an existing holiday's date + name + tentative flag (scope stays fixed). */
+export async function updateHolidayAction(formData: FormData) {
+  const s = await getSession();
+  const path = holidaysPath(formData);
+  try {
+    await updateHoliday(s, {
+      id: String(formData.get('id')),
+      holidayDate: String(formData.get('holidayDate') ?? ''),
+      name: String(formData.get('name') ?? ''),
+      tentative: formData.get('tentative') === 'on',
     });
   } catch (e) {
     fail(path, e);

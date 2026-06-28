@@ -1846,7 +1846,11 @@
       "scopeLabel": "Scope",
       "scopeBadge": "{label}: {name}",
       "companyLabel": "Business group",
-      "companyPlaceholder": "Select a company…"
+      "companyPlaceholder": "Select a company…",
+      "save": "Save",
+      "tentativeLabel": "Tentative",
+      "tentativeBadge": "Tentative",
+      "tentativeCreateLabel": "Tentative (date not yet gazetted)"
     },
     "users": {
       "title": "Users & roles",

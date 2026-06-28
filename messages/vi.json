@@ -1846,7 +1846,11 @@
       "scopeLabel": "Phạm vi",
       "scopeBadge": "{label}: {name}",
       "companyLabel": "Nhóm doanh nghiệp",
-      "companyPlaceholder": "Chọn một công ty…"
+      "companyPlaceholder": "Chọn một công ty…",
+      "save": "Lưu",
+      "tentativeLabel": "Tạm thời",
+      "tentativeBadge": "Tạm thời",
+      "tentativeCreateLabel": "Tạm thời (ngày chưa được công bố)"
     },
     "users": {
       "title": "Người dùng & vai trò",

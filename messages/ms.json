@@ -1846,7 +1846,11 @@
       "scopeLabel": "Skop",
       "scopeBadge": "{label}: {name}",
       "companyLabel": "Kumpulan perniagaan",
-      "companyPlaceholder": "Pilih syarikat…"
+      "companyPlaceholder": "Pilih syarikat…",
+      "save": "Simpan",
+      "tentativeLabel": "Tentatif",
+      "tentativeBadge": "Tentatif",
+      "tentativeCreateLabel": "Tentatif (tarikh belum diwartakan)"
     },
     "users": {
       "title": "Pengguna & peranan",

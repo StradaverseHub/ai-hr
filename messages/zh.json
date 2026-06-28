@@ -1846,7 +1846,11 @@
       "scopeLabel": "范围",
       "scopeBadge": "{label}：{name}",
       "companyLabel": "业务集团",
-      "companyPlaceholder": "选择公司…"
+      "companyPlaceholder": "选择公司…",
+      "save": "保存",
+      "tentativeLabel": "暂定",
+      "tentativeBadge": "暂定",
+      "tentativeCreateLabel": "暂定（日期尚未宪报公布）"
     },
     "users": {
       "title": "用户与角色",

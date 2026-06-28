@@ -622,6 +622,8 @@ export function listHolidays(
         companyName: company.legalName,
         holidayDate: holiday.holidayDate,
         name: holiday.name,
+        // Follow-on #15b (ADR-0063): surface the provisional marker so the UI can render a Tentative badge.
+        tentative: holiday.tentative,
       })
       .from(holiday)
       .leftJoin(company, eq(company.id, holiday.companyId))
@@ -644,13 +646,22 @@ export function listHolidayYears(ctx: SessionContext) {
 
 export async function createHoliday(
   ctx: SessionContext,
-  p: { country: string; holidayDate: string; name: string; state?: string | null; companyId?: string | null },
+  p: {
+    country: string;
+    holidayDate: string;
+    name: string;
+    state?: string | null;
+    companyId?: string | null;
+    // Follow-on #15b (ADR-0063): provisional date for a not-yet-gazetted holiday. Still counts as a holiday.
+    tentative?: boolean;
+  },
 ) {
   const country = isoCode(p.country, 'MY', 'Country');
   const name = cleanName(p.name, 'Holiday name');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) throw new Error('Holiday date must be YYYY-MM-DD');
   const state = p.state?.trim() || null; // 2C: null = national (applies everywhere)
   const companyId = p.companyId?.trim() || null; // ADR-0055: set = business-group (company-subtree) scope
+  const tentative = p.tentative ?? false;
   // Scope is single-axis: national, state, OR business-group — never two at once (mirrors the DB CHECK
   // holiday_scope_excl; thrown here so the user gets a clear message before hitting the constraint).
   if (state && companyId) throw new Error('A holiday is either state-scoped or company-scoped, not both.');
@@ -669,7 +680,7 @@ export async function createHoliday(
     }
     const [row] = await tx
       .insert(holiday)
-      .values({ tenantId: ctx.tenantId, country, state, companyId, holidayDate: p.holidayDate, name })
+      .values({ tenantId: ctx.tenantId, country, state, companyId, holidayDate: p.holidayDate, name, tentative })
       .returning({ id: holiday.id })
       .catch((e) => {
         if (isUniqueViolation(e)) {
@@ -685,9 +696,86 @@ export async function createHoliday(
       eventType: 'holiday.created',
       actor: actorOf(ctx),
       // Scope-in-audit (ADR-0055 acceptance goal): carry state AND companyId, not just country/date/name.
-      payload: { country, holidayDate: p.holidayDate, name, state, companyId },
+      payload: { country, holidayDate: p.holidayDate, name, state, companyId, tentative },
     });
     return row;
+  });
+}
+
+/**
+ * Follow-on #15b (ADR-0063) — edit an existing holiday's date, name and/or tentative flag. The missing
+ * CRUD op: until now HR could only add + delete, so correcting a shifted (often last-minute gazetted) state
+ * holiday meant losing the row's identity. Only the supplied fields change; scope (country/state/companyId)
+ * is IMMUTABLE here — a scope change is delete + recreate (keeps the single-axis holiday_scope_excl CHECK
+ * out of update churn). Loads the before-row (throws if missing), maps a moved-date collision to
+ * DuplicateError (same scope-aware message as create), and appends holiday.updated {before, after}.
+ */
+export async function updateHoliday(
+  ctx: SessionContext,
+  p: { id: string; holidayDate?: string; name?: string; tentative?: boolean },
+) {
+  // Validate up front (before any DB work), reusing create's guards so update is no laxer than create.
+  if (p.holidayDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) {
+    throw new Error('Holiday date must be YYYY-MM-DD');
+  }
+  const nextName = p.name !== undefined ? cleanName(p.name, 'Holiday name') : undefined;
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({
+        country: holiday.country,
+        state: holiday.state,
+        companyId: holiday.companyId,
+        holidayDate: holiday.holidayDate,
+        name: holiday.name,
+        tentative: holiday.tentative,
+      })
+      .from(holiday)
+      .where(eq(holiday.id, p.id))
+      .limit(1);
+    if (!before) throw new Error('Holiday not found');
+
+    const after = {
+      holidayDate: p.holidayDate ?? before.holidayDate,
+      name: nextName ?? before.name,
+      tentative: p.tentative ?? before.tentative,
+    };
+    await tx
+      .update(holiday)
+      .set({ holidayDate: after.holidayDate, name: after.name, tentative: after.tentative })
+      .where(eq(holiday.id, p.id))
+      .catch((e) => {
+        if (isUniqueViolation(e)) {
+          // Scope is immutable here, so reuse the BEFORE scope for the message (mirrors create).
+          const scope = before.companyId ? 'group ' : before.state ? `${before.state} ` : '';
+          throw new DuplicateError(`A ${before.country} ${scope}holiday on ${after.holidayDate} already exists.`);
+        }
+        throw e;
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'holiday',
+      aggregateId: p.id,
+      eventType: 'holiday.updated',
+      actor: actorOf(ctx),
+      // Scope-in-audit (ADR-0055): carry the unchanged scope on both sides alongside date/name/tentative.
+      payload: {
+        before: {
+          holidayDate: before.holidayDate,
+          name: before.name,
+          tentative: before.tentative,
+          country: before.country,
+          state: before.state,
+          companyId: before.companyId,
+        },
+        after: {
+          ...after,
+          country: before.country,
+          state: before.state,
+          companyId: before.companyId,
+        },
+      },
+    });
+    return { id: p.id };
   });
 }
 

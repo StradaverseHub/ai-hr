@@ -9,6 +9,7 @@ import {
   createHolidayGroupAction,
   deleteHolidayAction,
   deleteHolidayGroupAction,
+  updateHolidayAction,
   updateHolidayGroupAction,
 } from '../actions';
 
@@ -166,19 +167,34 @@ export default async function HolidaysPage({
               <div className="bg-muted/40 px-4 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {y}
               </div>
-              <table className="w-full text-sm">
-                <tbody className="divide-y divide-border">
-                  {items.map((h) => (
-                    <tr key={h.id} className="hover:bg-muted/40">
-                      <td className="px-4 py-2.5 font-mono text-xs tabular-nums text-muted-foreground">
-                        {h.holidayDate}
-                      </td>
-                      <td className="px-4 py-2.5 font-medium text-foreground">{h.name}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="divide-y divide-border">
+                {items.map((h) => (
+                  // ADR-0063: each row is an inline edit form (date + name + Tentative toggle) wired to
+                  // updateHolidayAction. Scope stays fixed (a scope change is delete + re-add) and is shown
+                  // read-only via the badges. Delete posts to deleteHolidayAction from the same row.
+                  <form
+                    key={h.id}
+                    action={updateHolidayAction}
+                    className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-[auto_1fr_auto_auto]"
+                  >
+                    <input type="hidden" name="id" value={h.id} />
+                    {filterFields}
+                    <Field label={t('dateLabel')}>
+                      <input
+                        name="holidayDate"
+                        type="date"
+                        required
+                        defaultValue={h.holidayDate}
+                        className={`${inputCls} font-mono tabular-nums`}
+                      />
+                    </Field>
+                    <Field label={t('nameLabel')}>
+                      <div className="flex items-center gap-2">
+                        <input name="name" required defaultValue={h.name} className={inputCls} />
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                           {h.country}
                         </span>
-                        <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                           {/* Scope badge via a STATIC i18n key map (scope.national/state/group), name
                               interpolated through the ICU "{label}: {name}" template — never a dynamic
                               `scope.${type}` key (those escape the coverage test and fall back to English). */}
@@ -188,24 +204,31 @@ export default async function HolidaysPage({
                               ? t('scopeBadge', { label: t('scope.state'), name: h.state })
                               : t('scope.national')}
                         </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        <form action={deleteHolidayAction} className="inline">
-                          <input type="hidden" name="id" value={h.id} />
-                          {filterFields}
-                          <button
-                            type="submit"
-                            title={t('remove')}
-                            className="text-muted-foreground transition-colors hover:text-red-500"
-                          >
-                            {t('remove')}
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        {h.tentative && (
+                          // Distinct, muted "Tentative" badge: a provisional state date HR must still confirm.
+                          <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                            {t('tentativeBadge')}
+                          </span>
+                        )}
+                      </div>
+                    </Field>
+                    <label className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
+                      <input type="checkbox" name="tentative" defaultChecked={h.tentative} className="size-3.5" />
+                      {t('tentativeLabel')}
+                    </label>
+                    <div className="flex items-center gap-2 pb-1">
+                      <button className={btnPrimary}>{t('save')}</button>
+                      <button
+                        formAction={deleteHolidayAction}
+                        title={t('remove')}
+                        className="text-sm text-muted-foreground transition-colors hover:text-red-500"
+                      >
+                        {t('remove')}
+                      </button>
+                    </div>
+                  </form>
+                ))}
+              </div>
             </div>
           ))
         )}
@@ -265,6 +288,11 @@ export default async function HolidaysPage({
               ))}
             </select>
           </Field>
+          {/* ADR-0063: load a not-yet-gazetted state date provisionally — it still counts as a holiday. */}
+          <label className="flex items-center gap-2 self-end pb-2.5 text-sm text-muted-foreground sm:col-span-3">
+            <input type="checkbox" name="tentative" className="size-4" />
+            {t('tentativeCreateLabel')}
+          </label>
           <div className="sm:col-span-3">
             <button className={btnPrimary}>{t('addHoliday')}</button>
           </div>

@@ -1846,7 +1846,11 @@
       "scopeLabel": "ขอบเขต",
       "scopeBadge": "{label}: {name}",
       "companyLabel": "กลุ่มธุรกิจ",
-      "companyPlaceholder": "เลือกบริษัท…"
+      "companyPlaceholder": "เลือกบริษัท…",
+      "save": "บันทึก",
+      "tentativeLabel": "ชั่วคราว",
+      "tentativeBadge": "ชั่วคราว",
+      "tentativeCreateLabel": "ชั่วคราว (ยังไม่ได้ประกาศในราชกิจจานุเบกษา)"
     },
     "users": {
       "title": "ผู้ใช้และบทบาท",

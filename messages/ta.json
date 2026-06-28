@@ -1846,7 +1846,11 @@
       "scopeLabel": "நோக்கெல்லை",
       "scopeBadge": "{label}: {name}",
       "companyLabel": "வணிகக் குழு",
-      "companyPlaceholder": "ஒரு நிறுவனத்தைத் தேர்ந்தெடுக்கவும்…"
+      "companyPlaceholder": "ஒரு நிறுவனத்தைத் தேர்ந்தெடுக்கவும்…",
+      "save": "சேமி",
+      "tentativeLabel": "தற்காலிகம்",
+      "tentativeBadge": "தற்காலிகம்",
+      "tentativeCreateLabel": "தற்காலிகம் (தேதி இன்னும் அறிவிக்கப்படவில்லை)"
     },
     "users": {
       "title": "பயனர்கள் & பாத்திரங்கள்",
