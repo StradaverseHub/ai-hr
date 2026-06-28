@@ -10,7 +10,13 @@ import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
-import { holidayDatesFor } from './holidays';
+import {
+  holidayDatesFor,
+  effectiveHolidayState,
+  warnIfHolidaysIncomplete,
+  yearsSpanned,
+  type HolidayCompletenessWarning,
+} from './holidays';
 import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
@@ -502,6 +508,10 @@ export type RequestLeaveResult = {
   // (surviving-children + confinement date), so the allowance eligibility could not be confirmed. The leave
   // is still granted PAID (the conservative default), but HR is warned the paid-allowance is unconfirmed.
   maternityAllowanceWarning?: boolean;
+  // Phase-B #15: NON-BLOCKING holiday-completeness warning(s) — present when the request's (state, year)
+  // has fewer than the EA s.60D minimum of 11 gazetted holidays loaded, so the working-day count may be
+  // wrong until HR finishes loading the state gazette. The request is still created.
+  holidayWarnings?: HolidayCompletenessWarning[];
 };
 
 export async function requestLeave(
@@ -721,13 +731,48 @@ export async function requestLeave(
       allowanceEligible: maternity?.allowanceEligible ?? null,
       maternityAllowanceEvent: maternity?.event ?? null,
     });
+
+    // Phase-B #15 — holiday-completeness guard. A working_days request's day count depends on the gazetted
+    // holidays loaded for the employee's (state, year). If fewer than the s.60D minimum of 11 are loaded,
+    // warn LOUDLY (domain event + returned warning) but do NOT block — the count may be wrong until HR loads
+    // the rest of the state gazette. Only meaningful for working_days types (calendar types ignore holidays).
+    const holidayWarnings = lt?.counting === 'working_days'
+      ? await warnLeaveHolidayCompleteness(tx, ctx, p.employmentId, p.startDate, p.endDate, id)
+      : [];
+
     return {
       leaveRequestId: id,
       days,
       parentGroupId: null,
       children: [{ id, code: lt?.code ?? '', days }],
       ...(maternityAllowanceWarning ? { maternityAllowanceWarning: true } : {}),
+      ...(holidayWarnings.length ? { holidayWarnings } : {}),
     };
+  });
+}
+
+/** Phase-B #15: resolve the request's effective (country, state) and span years, then emit a non-blocking
+ *  holiday-completeness warning event for any (state, year) below the s.60D minimum. Returns the warnings so
+ *  the leave screen can surface them. Threaded onto the leave-request aggregate for the audit trail. */
+async function warnLeaveHolidayCompleteness(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  startDate: string,
+  endDate: string,
+  leaveRequestId: string,
+): Promise<HolidayCompletenessWarning[]> {
+  const eff = await effectiveHolidayState(tx, employmentId);
+  if (!eff) return [];
+  return warnIfHolidaysIncomplete(tx, ctx, {
+    country: eff.country,
+    state: eff.state,
+    years: yearsSpanned(startDate, endDate),
+    module: 'leave',
+    aggregateType: 'leave-request',
+    aggregateId: leaveRequestId,
+    subjectEmploymentId: employmentId,
+    context: { leaveRequestId, startDate, endDate },
   });
 }
 

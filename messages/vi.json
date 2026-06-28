@@ -524,7 +524,8 @@
       "employeeRemarkRequired": "Cần có ghi chú của nhân viên cho {typeName}.",
       "fileTypeNotAllowed": "Loại tệp không được phép — chấp nhận: {allowed}.",
       "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB.",
-      "unpaidConsentRequired": "Nghỉ khẩn cấp này sẽ tính {days} ngày là nghỉ không lương. Vui lòng tích vào ô để xác nhận những ngày không lương."
+      "unpaidConsentRequired": "Nghỉ khẩn cấp này sẽ tính {days} ngày là nghỉ không lương. Vui lòng tích vào ô để xác nhận những ngày không lương.",
+      "holidaysIncomplete": "Chỉ có {loaded} trên tối thiểu 11 ngày lễ công cộng được công báo đã được tải cho {state} {year}; việc tính ngày nghỉ phép/ngày nghỉ có thể sai cho đến khi tải đầy đủ công báo."
     }
   },
   "attendance": {

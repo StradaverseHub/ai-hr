@@ -34,6 +34,7 @@ import {
 import { setPayrollBatchComponent } from './pay-components';
 import { cp38ForPeriod } from './cp38';
 import { applyLoansForBatch } from './loans';
+import { warnIfHolidaysIncomplete, type HolidayCompletenessWarning } from './holidays';
 import type { ShiftDifferential, PayRule } from '../db/schema';
 import { resolvePayRule } from './pay-rule';
 
@@ -225,7 +226,40 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       actor: actorOf(ctx),
       payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: periodId, runSeq: 1, runType: 'regular', scope: normalizeScope(p.scope) },
     });
-    return { batchId: row.id };
+
+    // Phase-B #15 — holiday-completeness guard. The payroll period spans a (company-state, year); if fewer
+    // than the EA s.60D minimum of 11 gazetted holidays are loaded for it, the rest-day / OT-class day
+    // arithmetic may be wrong. Warn LOUDLY (domain event + returned warning) but never block the batch.
+    const holidayWarnings = await warnBatchHolidayCompleteness(tx, ctx, p.companyId, p.payPeriod, row.id);
+    return { batchId: row.id, ...(holidayWarnings.length ? { holidayWarnings } : {}) };
+  });
+}
+
+/** Phase-B #15: for a payroll batch, resolve the company's country + default work state and the period's
+ *  year, then emit a non-blocking holiday-completeness warning when the loaded gazette is below the s.60D
+ *  minimum. Returns the warnings so the payroll screen can surface them. */
+async function warnBatchHolidayCompleteness(
+  tx: Tx,
+  ctx: SessionContext,
+  companyId: string,
+  payPeriod: string,
+  batchId: string,
+): Promise<HolidayCompletenessWarning[]> {
+  const [co] = await tx
+    .select({ country: company.country, state: company.defaultWorkState })
+    .from(company)
+    .where(eq(company.id, companyId))
+    .limit(1);
+  if (!co) return [];
+  const year = Number(payPeriod.slice(0, 4));
+  return warnIfHolidaysIncomplete(tx, ctx, {
+    country: co.country,
+    state: co.state ?? null,
+    years: [year],
+    module: 'payroll',
+    aggregateType: 'payroll-batch',
+    aggregateId: batchId,
+    context: { companyId, payPeriod },
   });
 }
 

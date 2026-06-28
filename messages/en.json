@@ -524,7 +524,8 @@
       "employeeRemarkRequired": "An employee remark is required for {typeName}.",
       "fileTypeNotAllowed": "File type not allowed — accepted: {allowed}.",
       "fileTooLarge": "File exceeds the {mb} MB limit.",
-      "unpaidConsentRequired": "This emergency leave would take {days} day(s) as unpaid leave. Please tick the box to acknowledge the unpaid days."
+      "unpaidConsentRequired": "This emergency leave would take {days} day(s) as unpaid leave. Please tick the box to acknowledge the unpaid days.",
+      "holidaysIncomplete": "Only {loaded} of the minimum 11 gazetted public holidays are loaded for {state} {year}; leave/rest-day counting may be wrong until the full gazette is loaded."
     }
   },
   "attendance": {

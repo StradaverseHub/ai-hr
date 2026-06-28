@@ -21,7 +21,14 @@ const REQ_STATUS: Record<string, string> = {
 export default async function LeavePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    // Phase-B #15: non-blocking holiday-completeness warning surfaced after a request was created.
+    warnHoliday?: string;
+    loaded?: string;
+    state?: string;
+    year?: string;
+  }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const t = await getTranslations('leave');
@@ -66,6 +73,16 @@ export default async function LeavePage({
       {sp.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {sp.error}
+        </div>
+      )}
+
+      {sp.warnHoliday && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          {t('errors.holidaysIncomplete', {
+            loaded: sp.loaded ?? '0',
+            state: sp.state || '—',
+            year: sp.year ?? '',
+          })}
         </div>
       )}
 

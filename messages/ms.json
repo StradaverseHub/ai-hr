@@ -524,7 +524,8 @@
       "employeeRemarkRequired": "Catatan pekerja diperlukan untuk {typeName}.",
       "fileTypeNotAllowed": "Jenis fail tidak dibenarkan — diterima: {allowed}.",
       "fileTooLarge": "Fail melebihi had {mb} MB.",
-      "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji."
+      "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji.",
+      "holidaysIncomplete": "Hanya {loaded} daripada minimum 11 cuti umum yang diwartakan dimuatkan untuk {state} {year}; pengiraan cuti/hari rehat mungkin salah sehingga warta penuh dimuatkan."
     }
   },
   "attendance": {

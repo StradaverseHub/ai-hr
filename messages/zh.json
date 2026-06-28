@@ -524,7 +524,8 @@
       "employeeRemarkRequired": "{typeName}需要填写员工备注。",
       "fileTypeNotAllowed": "不允许的文件类型 — 接受：{allowed}。",
       "fileTooLarge": "文件超过 {mb} MB 上限。",
-      "unpaidConsentRequired": "此紧急假将有 {days} 天按无薪假处理。请勾选以确认无薪天数。"
+      "unpaidConsentRequired": "此紧急假将有 {days} 天按无薪假处理。请勾选以确认无薪天数。",
+      "holidaysIncomplete": "{state} {year} 年仅加载了最低 11 个法定公共假日中的 {loaded} 个；在加载完整公报之前，请假/休息日计算可能有误。"
     }
   },
   "attendance": {

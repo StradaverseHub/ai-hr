@@ -18,8 +18,11 @@ export async function requestLeaveAction(formData: FormData) {
   // service only reads them for a MATERNITY request). Empty inputs ⇒ undefined ⇒ conservative paid default.
   const survivingChildrenRaw = String(formData.get('survivingChildren') ?? '').trim();
   const confinementDateRaw = String(formData.get('confinementDate') ?? '').trim();
+  // Phase-B #15: a non-blocking holiday-completeness warning is surfaced via ?warn= when the request's
+  // (state, year) has fewer than the s.60D minimum of 11 gazetted holidays loaded.
+  let warnQuery = '';
   try {
-    await requestLeave(session, {
+    const res = await requestLeave(session, {
       employmentId: String(formData.get('employmentId')),
       leaveTypeId: String(formData.get('leaveTypeId')),
       startDate: String(formData.get('startDate')),
@@ -32,11 +35,15 @@ export async function requestLeaveAction(formData: FormData) {
       survivingChildren: survivingChildrenRaw !== '' ? Number(survivingChildrenRaw) : undefined,
       confinementDate: confinementDateRaw !== '' ? confinementDateRaw : undefined,
     });
+    const w = res.holidayWarnings?.[0];
+    if (w) {
+      warnQuery = `?warnHoliday=1&loaded=${w.loaded}&state=${encodeURIComponent(w.state ?? '')}&year=${w.year}`;
+    }
   } catch (e) {
     redirect(`/leave?error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/leave');
-  redirect('/leave');
+  redirect(`/leave${warnQuery}`);
 }
 
 export async function decideLeaveAction(formData: FormData) {
