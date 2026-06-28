@@ -79,10 +79,10 @@ export async function setPayrollInputAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   try {
-    // OT is now split into four rate-labelled buckets (1.0× flat / 1.5× normal working day /
-    // 2.0× rest day / 3.0× public holiday). The four RM amounts sum into overtimeAmount — the single
-    // scalar every downstream reader uses — and the decomposition is persisted as ot_breakdown so the
-    // four inputs can be re-prefilled on reload.
+    // Fix-5 (#4/#28): OT is keyed as four MANUAL RM amounts the admin computes against the s.60/60D
+    // structure (normal-day / rest-day / public-holiday OT + a flat bucket) — these are NOT rates the
+    // system applies. The four amounts sum into overtimeAmount (the single scalar every downstream reader
+    // uses) and the split is persisted as ot_breakdown so the four inputs can be re-prefilled on reload.
     const otFlat = Math.max(0, Number(formData.get('otFlat')) || 0);
     const otNormal = Math.max(0, Number(formData.get('otNormal')) || 0);
     const otRest = Math.max(0, Number(formData.get('otRest')) || 0);
@@ -92,6 +92,9 @@ export async function setPayrollInputAction(formData: FormData) {
       employmentId: String(formData.get('employmentId')),
       overtimeAmount: otFlat + otNormal + otRest + otHoliday,
       otBreakdown: { flat: otFlat, normal: otNormal, rest: otRest, holiday: otHoliday },
+      // Fix-5 (M#17): this form is the admin's manual OT entry — stamp provenance so a later attendance
+      // prefill (and the editor's clobber warning) can tell the figure was hand-keyed.
+      otSource: 'manual',
       bonusAmount: Number(formData.get('bonusAmount')) || 0,
       tp1Deduction: Number(formData.get('tp1Deduction')) || 0,
       zakat: Number(formData.get('zakat')) || 0,

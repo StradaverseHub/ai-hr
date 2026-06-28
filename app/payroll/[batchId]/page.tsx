@@ -4,9 +4,10 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, setPayrollInputAction } from '../actions';
+import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction } from '../actions';
 import { ComponentImport } from './component-import';
+import { OtInputRow } from './ot-input-row';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -190,97 +191,24 @@ export default async function BatchPage({
                     <td className="px-4 py-2.5 font-medium">{r.name}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.basic)}</td>
                     <td className="px-4 py-2.5">
-                      <form action={setPayrollInputAction} className="flex items-end justify-end gap-2">
-                        <input type="hidden" name="batchId" value={batch.id} />
-                        <input type="hidden" name="employmentId" value={r.employmentId} />
-                        {/* OT by rate (1.0× / 1.5× / 2.0× / 3.0×): four RM-amount buckets summed into
-                            overtime_amount. Stacked 2×2 so the row grows by one line, not horizontally. */}
-                        <fieldset className="flex flex-col gap-1">
-                          <span className="text-[10px] uppercase text-muted-foreground">{t('fieldOt')}</span>
-                          <div className="grid grid-cols-2 gap-1">
-                            <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldOtFlatTitle')}>
-                              {t('fieldOtFlat')}
-                              <input
-                                name="otFlat"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={r.otBreakdown?.flat ?? 0}
-                                className={`${inputCls} w-20 text-right`}
-                              />
-                            </label>
-                            <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldOtNormalTitle')}>
-                              {t('fieldOtNormal')}
-                              <input
-                                name="otNormal"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={r.otBreakdown?.normal ?? 0}
-                                className={`${inputCls} w-20 text-right`}
-                              />
-                            </label>
-                            <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldOtRestTitle')}>
-                              {t('fieldOtRest')}
-                              <input
-                                name="otRest"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={r.otBreakdown?.rest ?? 0}
-                                className={`${inputCls} w-20 text-right`}
-                              />
-                            </label>
-                            <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldOtHolidayTitle')}>
-                              {t('fieldOtHoliday')}
-                              <input
-                                name="otHoliday"
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                defaultValue={r.otBreakdown?.holiday ?? 0}
-                                className={`${inputCls} w-20 text-right`}
-                              />
-                            </label>
-                          </div>
-                        </fieldset>
-                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground">
-                          {t('fieldBonus')}
-                          <input
-                            name="bonusAmount"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            defaultValue={r.bonusAmount}
-                            className={`${inputCls} w-24 text-right`}
-                          />
-                        </label>
-                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldTp1Title')}>
-                          {t('fieldTp1')}
-                          <input
-                            name="tp1Deduction"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            defaultValue={r.tp1Deduction}
-                            className={`${inputCls} w-20 text-right`}
-                          />
-                        </label>
-                        <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('fieldZakatTitle')}>
-                          {t('fieldZakat')}
-                          <input
-                            name="zakat"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            defaultValue={r.zakat}
-                            className={`${inputCls} w-20 text-right`}
-                          />
-                        </label>
-                        <Button type="submit" variant="secondary">
-                          {t('save')}
-                        </Button>
-                      </form>
+                      {/* Fix-5: manual OT (RM you enter) with the s.60I(1A) ORP/hourly basis surfaced, a
+                          >RM4,000 eligibility note, and a clobber warning before overwriting an
+                          attendance-prefilled row. See ot-input-row.tsx. */}
+                      <OtInputRow
+                        batchId={batch.id}
+                        row={{
+                          employmentId: r.employmentId,
+                          otBreakdown: r.otBreakdown,
+                          otSource: r.otSource,
+                          orp: r.orp,
+                          hourly: r.hourly,
+                          otEligible: r.otEligible,
+                          otWageCeiling: r.otWageCeiling,
+                          bonusAmount: r.bonusAmount,
+                          tp1Deduction: r.tp1Deduction,
+                          zakat: r.zakat,
+                        }}
+                      />
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                       {r.unpaidDays > 0 ? r.unpaidDays : '—'}

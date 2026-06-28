@@ -1556,6 +1556,11 @@ export const payrollInput = pgTable(
     // the ONLY field downstream reads. Nullable on purpose: NULL ⇒ no per-bucket decomposition recorded
     // (legacy rows, attendance-prefilled rows, bonus-enact rows). RM amounts, not hours.
     otBreakdown: jsonb('ot_breakdown').$type<{ flat: number; normal: number; rest: number; holiday: number } | null>(),
+    // Fix-5 (audit M#17) provenance: which method last produced overtime_amount. 'attendance' = the
+    // statutory s.60/60A/60D engine via prefillOvertimeFromAttendance; 'manual' = the admin keyed it
+    // via setPayrollInput; NULL = legacy / no OT write recorded. Mirrors the tp1_source pattern above and
+    // is snapshotted onto the payslip statutory blob so an auditor can see how the OT figure was derived.
+    otSource: text('ot_source').$type<'attendance' | 'manual' | null>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

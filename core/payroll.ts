@@ -289,6 +289,13 @@ export async function setPayrollInput(
      *  `overtimeAmount` — this is persisted only so the four UI inputs can be re-prefilled; nothing
      *  downstream reads it. Omit to leave the stored decomposition untouched (insert ⇒ NULL). */
     otBreakdown?: { flat: number; normal: number; rest: number; holiday: number };
+    /** Fix-5 (M#17) provenance. `setPayrollInput` IS the manual-save path, so it stamps ot_source='manual'
+     *  by DEFAULT — a direct call (admin form, importer, test) records that the OT figure was hand-keyed,
+     *  so a later attendance prefill (and the editor's clobber warning) can tell. The read-modify-write
+     *  callers that merely carry the existing OT forward unchanged — the deduction-only (TP1/zakat) wrapper
+     *  and the bonus enact — pass `'preserve'` to leave the stored provenance untouched (NULL on insert).
+     */
+    otSource?: 'manual' | 'preserve';
   },
   /** Optional caller transaction — pass it so this participates in an enclosing transaction
    *  (the performance bonus enact) and commits/rolls back atomically with it. */
@@ -317,6 +324,9 @@ export async function setPayrollInput(
             rest: Math.max(0, Number(p.otBreakdown.rest) || 0),
             holiday: Math.max(0, Number(p.otBreakdown.holiday) || 0),
           };
+    // Fix-5 (M#17): resolve OT provenance. Default 'manual' (this is the manual-save path); 'preserve'
+    // (deduction-only / bonus-enact) ⇒ leave the stored column untouched on update, NULL on insert.
+    const otSource: 'manual' | undefined = p.otSource === 'preserve' ? undefined : 'manual';
     const [existing] = await tx
       .select({ id: payrollInput.id })
       .from(payrollInput)
@@ -337,6 +347,9 @@ export async function setPayrollInput(
           // Persist the OT decomposition only when supplied; omit the key entirely otherwise so a
           // TP1-only / bonus-enact round-trip leaves the existing breakdown untouched (not nulled).
           ...(otBreakdown !== undefined ? { otBreakdown } : {}),
+          // Fix-5 (M#17): stamp OT provenance ('manual') unless the caller asked to preserve it; a
+          // 'preserve' (deduction-only / bonus-enact) round-trip leaves the existing ot_source untouched.
+          ...(otSource !== undefined ? { otSource } : {}),
           updatedAt: sql`now()`,
         })
         .where(eq(payrollInput.id, existing.id));
@@ -356,6 +369,9 @@ export async function setPayrollInput(
           zakat: zakat.toFixed(2),
           // NULL when the caller omitted the decomposition (legacy / wrapper paths).
           otBreakdown: otBreakdown ?? null,
+          // Fix-5 (M#17): 'manual' by default; NULL when the caller asked to preserve (deduction-only /
+          // bonus-enact inserts have no OT figure of their own to attribute).
+          otSource: otSource ?? null,
         })
         .returning({ id: payrollInput.id });
       payrollInputId = row.id;
@@ -378,6 +394,7 @@ export async function setPayrollInput(
           'tp1Deduction',
           'zakat',
           ...(otBreakdown !== undefined ? ['otBreakdown'] : []),
+          ...(otSource !== undefined ? ['otSource'] : []),
         ],
       },
     });
@@ -423,6 +440,9 @@ export async function setPayrollDeductionInput(
         zakat: p.zakat ?? Number(existing?.zakat ?? 0),
         // Preserve the OT decomposition too (undefined ⇒ leave the column untouched).
         otBreakdown: existing?.otBreakdown ?? undefined,
+        // Fix-5 (M#17): a TP1/zakat-only write is NOT an OT change — preserve the existing ot_source
+        // (attendance-derived stays attendance-derived).
+        otSource: 'preserve',
       },
       tx,
     );
@@ -815,7 +835,9 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           // Reset any prior manual rate-bucket split: the statutory total is now the source, and a stale
           // decomposition that no longer sums to overtimeAmount would only confuse a later re-edit. Nothing
           // downstream reads ot_breakdown, so NULL is harmless and avoids the mismatch.
-          .set({ overtimeAmount: result.total.toFixed(2), otBreakdown: null, updatedAt: sql`now()` })
+          // Fix-5 (M#17): stamp ot_source='attendance' so the editor knows this row is engine-derived and
+          // warns before a casual manual Save overwrites it.
+          .set({ overtimeAmount: result.total.toFixed(2), otBreakdown: null, otSource: 'attendance', updatedAt: sql`now()` })
           .where(eq(payrollInput.id, prior.id));
       } else {
         await tx.insert(payrollInput).values({
@@ -824,6 +846,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           employmentId,
           overtimeAmount: result.total.toFixed(2),
           bonusAmount: bonusAmount.toFixed(2),
+          // Fix-5 (M#17): attendance-derived provenance.
+          otSource: 'attendance',
         });
       }
       await appendEvent(tx, {
@@ -1054,10 +1078,14 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         zakat: payrollInput.zakat,
         claimAllowance: payrollInput.claimAllowance,
         loanDeduction: payrollInput.loanDeduction,
+        // Fix-5 (M#17): OT provenance, snapshotted onto each payslip below so an auditor can see whether the
+        // overtime figure was attendance-derived (statutory engine) or hand-keyed by the admin.
+        otSource: payrollInput.otSource,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
     const overtimeByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.overtime)]));
+    const otSourceByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otSource ?? null]));
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
     const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
@@ -1529,7 +1557,17 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         bonus: bonus.toFixed(2),
         daysWorked: isAdditionalRun ? null : String(daysWorked),
         grossPay: grossPay.toFixed(2),
-        statutory: { ...st, ...statutoryProvenance }, // `version` + (when source=pack) packVersion/signedKeyId snapshot
+        // Fix-5 (M#17): carry the OT provenance onto the immutable statutory snapshot so an auditor reading a
+        // closed payslip can tell whether the overtime was attendance-derived or manually keyed. Only stamped
+        // when this slip actually pays OT and the input row carries a provenance (no misleading flag on a
+        // zero-OT slip / additional run, which sets slipOvertime to 0).
+        statutory: {
+          ...st,
+          ...statutoryProvenance,
+          ...(slipOvertime > 0 && otSourceByEmp.get(e.employmentId)
+            ? { otSource: otSourceByEmp.get(e.employmentId) }
+            : {}),
+        }, // `version` + (when source=pack) packVersion/signedKeyId snapshot + (when OT paid) otSource
         otherDeductions: round2(slipUnpaid + slipExtraDeduct + slipLoan).toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
@@ -1900,16 +1938,27 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
 export function batchInputRows(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, country: company.country })
       .from(payrollBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
     if (!batch) return [];
     const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;
     const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+    // Fix-5 (#4/#29): resolve the OT engine + statutory ruleset so we can surface each employee's
+    // s.60I(1A) ORP (wages/26) + hourly (ORP/8) basis and the RM4,000 eligibility — READ-ONLY, computed
+    // from the same overtimePay/compensation source the kernel uses. Pack may be absent (non-MY) ⇒ skip.
+    const pack = packFor(batch.country);
+    const otCeiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).ot.wageCeiling : undefined;
     const emps = await tx
-      .select({ employmentId: employment.id, name: person.fullName, basic: compensation.basicSalary })
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        basic: compensation.basicSalary,
+        allowance: compensation.monthlyAllowance,
+      })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
       .innerJoin(
@@ -1937,6 +1986,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
         zakat: payrollInput.zakat,
         loanDeduction: payrollInput.loanDeduction,
         otBreakdown: payrollInput.otBreakdown,
+        otSource: payrollInput.otSource,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, batchId));
@@ -1948,19 +1998,37 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     // matches the generated payslip (omitting it would create a silent reconciliation gap).
     const loanMap = new Map(inputs.map((r) => [r.employmentId, Number(r.loanDeduction)]));
     const otBreakdownMap = new Map(inputs.map((r) => [r.employmentId, r.otBreakdown ?? null]));
+    const otSourceMap = new Map(inputs.map((r) => [r.employmentId, r.otSource ?? null]));
     const unpaid = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
-    return emps.map((e) => ({
-      employmentId: e.employmentId,
-      name: e.name,
-      basic: Number(e.basic),
-      overtimeAmount: otMap.get(e.employmentId) ?? 0,
-      // Per-bucket rate split for prefilling the four OT inputs; null ⇒ inputs default to 0 each.
-      otBreakdown: otBreakdownMap.get(e.employmentId) ?? null,
-      bonusAmount: bonusMap.get(e.employmentId) ?? 0,
-      tp1Deduction: tp1Map.get(e.employmentId) ?? 0,
-      zakat: zakatMap.get(e.employmentId) ?? 0,
-      loanDeduction: loanMap.get(e.employmentId) ?? 0,
-      unpaidDays: unpaid.get(e.employmentId) ?? 0,
-    }));
+    return emps.map((e) => {
+      const wages = round2(Number(e.basic) + Number(e.allowance ?? 0));
+      // s.60I(1A): ORP = wages/26, hourly = ORP/8. Run the engine with no days to get just the basis +
+      // eligibility against the statutory wage ceiling — the SAME computation that monetizes a prefill.
+      const basis = pack ? pack.payroll.overtimePay({ monthlyWages: wages, days: [], wageCeiling: otCeiling }) : null;
+      return {
+        employmentId: e.employmentId,
+        name: e.name,
+        basic: Number(e.basic),
+        overtimeAmount: otMap.get(e.employmentId) ?? 0,
+        // Per-bucket rate split for prefilling the four OT inputs; null ⇒ inputs default to 0 each.
+        otBreakdown: otBreakdownMap.get(e.employmentId) ?? null,
+        // Fix-5 (M#17): provenance of the current OT figure ('attendance' | 'manual' | null) — drives the
+        // editor's clobber warning before a manual Save overwrites an attendance-derived row.
+        otSource: otSourceMap.get(e.employmentId) ?? null,
+        // Fix-5 (#4): read-only s.60I(1A) basis surfaced beside the manual OT inputs so the admin keys
+        // against the correct ORP/hourly. orp/hourly null when no pack resolves (non-MY).
+        orp: basis ? basis.orp : null,
+        hourly: basis ? basis.hourly : null,
+        // Fix-5 (#29): false ⇒ wages above the s.60A RM4,000 ceiling, statutory OT not mandated (any OT
+        // here is contractual). null ⇒ no pack/ceiling to assess against.
+        otEligible: basis ? basis.eligible : null,
+        otWageCeiling: otCeiling ?? null,
+        bonusAmount: bonusMap.get(e.employmentId) ?? 0,
+        tp1Deduction: tp1Map.get(e.employmentId) ?? 0,
+        zakat: zakatMap.get(e.employmentId) ?? 0,
+        loanDeduction: loanMap.get(e.employmentId) ?? 0,
+        unpaidDays: unpaid.get(e.employmentId) ?? 0,
+      };
+    });
   });
 }

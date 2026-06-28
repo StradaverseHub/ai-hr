@@ -954,6 +954,9 @@ export async function enactCompAction(
           tp1Deduction: existing ? Number(existing.tp1Deduction) : 0,
           zakat: existing ? Number(existing.zakat) : 0,
           otBreakdown: existing?.otBreakdown ?? undefined,
+          // Fix-5 (M#17): enacting a bonus carries the existing OT forward unchanged — preserve its
+          // provenance rather than re-stamping it 'manual'.
+          otSource: 'preserve',
         },
         tx,
       );
