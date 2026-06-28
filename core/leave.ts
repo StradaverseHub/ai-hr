@@ -11,8 +11,10 @@ import { assertCanDecide } from './approvals';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
 import { holidayDatesFor } from './holidays';
+import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
+  attendancePolicy,
   company,
   employment,
   leaveApprovalStep,
@@ -24,6 +26,10 @@ import {
   person,
   reportingLine,
 } from '../db/schema';
+
+/** The engine default working-day roster (ISO weekday 1=Mon … 7=Sun) — Mon–Fri. Mirrors core/attendance.ts
+ *  DEFAULTS.workingDays so leave classifies rest days the same way attendance does (audit H#3). */
+const DEFAULT_WORKING_DAYS_ISO = [1, 2, 3, 4, 5];
 
 export class InsufficientLeaveBalanceError extends Error {
   constructor() {
@@ -238,15 +244,34 @@ function eachDate(start: string, end: string): string[] {
   return out;
 }
 
-/** Working days in [start, end]: excludes Sat/Sun and the given holiday dates. */
-function workingDays(start: string, end: string, holidays: Set<string>): number {
+/** True when `date` is a working day for the given ISO working-day roster (1=Mon … 7=Sun) and is not a
+ *  holiday. Resolves rest days from the SAME source the attendance engine uses (audit H#3), never a
+ *  hardcoded Sat/Sun. */
+function isWorkingDay(date: string, workingDaysIso: number[], holidays: Set<string>): boolean {
+  return workingDaysIso.includes(isoWeekday(date)) && !holidays.has(date);
+}
+
+/** Working days in [start, end]: counts only days on the employee's configured working-day roster (ISO
+ *  weekdays, default Mon–Fri) that are not holidays. */
+function workingDays(start: string, end: string, holidays: Set<string>, workingDaysIso: number[]): number {
   let n = 0;
   for (const d of eachDate(start, end)) {
-    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
-    if (dow === 0 || dow === 6 || holidays.has(d)) continue;
-    n++;
+    if (isWorkingDay(d, workingDaysIso, holidays)) n++;
   }
   return n;
+}
+
+/** The company's configured working-day roster for an employment (ISO weekday array, 1=Mon … 7=Sun),
+ *  resolved from attendance_policy.workingDays — the SAME source core/attendance.ts uses. Falls back to the
+ *  Mon–Fri default when no policy row exists, so existing single-company behaviour is unchanged (audit H#3). */
+async function resolveWorkingDaysIso(tx: Tx, employmentId: string): Promise<number[]> {
+  const [row] = await tx
+    .select({ workingDays: attendancePolicy.workingDays })
+    .from(employment)
+    .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  return row?.workingDays ?? DEFAULT_WORKING_DAYS_ISO;
 }
 
 /** The set of holiday dates in [start, end] for an employment, resolved business-group → state →
@@ -409,7 +434,8 @@ export async function requestLeave(
       // national (state null) ∪ those states, resolved holiday_group → work_state →
       // company.default_work_state → national-only (see resolveHolidaySet).
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      workingDayCount = workingDays(p.startDate, p.endDate, hols);
+      const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
+      workingDayCount = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
     }
 
     let days: number;
@@ -534,9 +560,10 @@ async function requestEmergencyLeave(
   }
 
   // Count the span twice — once as the ANNUAL child would (working-days, honouring the employee's
-  // holidays/state) and once as the UNPAID child would (calendar-days).
+  // holidays/state + configured rest-day roster) and once as the UNPAID child would (calendar-days).
   const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-  const alSpanDays = workingDays(p.startDate, p.endDate, hols);
+  const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
+  const alSpanDays = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
   const uplSpanDays = dayCount(p.startDate, p.endDate);
   if (uplSpanDays <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
 
@@ -547,11 +574,9 @@ async function requestEmergencyLeave(
   const children: { id: string; code: string; days: number }[] = [];
 
   // The span's working-day dates (ANNUAL counts these). The boundary split assigns the earliest `alCovered`
-  // working-days to ANNUAL; the UNPAID child starts the calendar day after the last AL working-day.
-  const workingDates = eachDate(p.startDate, p.endDate).filter((d) => {
-    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
-    return dow !== 0 && dow !== 6 && !hols.has(d);
-  });
+  // working-days to ANNUAL; the UNPAID child starts the calendar day after the last AL working-day. Rest
+  // days come from the SAME configured roster as the count above (audit H#3), not a hardcoded Sat/Sun.
+  const workingDates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
 
   if (alShortfall === 0 && alCovered > 0) {
     // Annual fully covers the working-days span → a single ANNUAL child over the whole range.
@@ -591,7 +616,7 @@ async function requestEmergencyLeave(
     const annualEnd = boundaryWorkingDay;
     const uplStart = eachDate(boundaryWorkingDay, p.endDate)[1]; // the calendar day after the boundary
     const uplDays = dayCount(uplStart, p.endDate);
-    const annualDays = workingDays(p.startDate, annualEnd, hols);
+    const annualDays = workingDays(p.startDate, annualEnd, hols, workingDaysIso);
     const { id: alId } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId, leaveTypeId: annualId, startDate: p.startDate, endDate: annualEnd,
       days: annualDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,

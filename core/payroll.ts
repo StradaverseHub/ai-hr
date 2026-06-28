@@ -1069,6 +1069,13 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // 1.2.8 C1 fix: the ACTUAL loan recovered per employee after the authoritative net≥0 clamp (cents). The
     // payslip loop fills this; applyLoansForBatch advances the ledger by these actuals (NOT the reserved due).
     const appliedLoanCentsByEmp = new Map<string, number>();
+    // M#16 (EA s.24 net-floor): per-employee record of any post-tax deduction the period's headroom could
+    // not fully recover (manual deduct / CP38 / loan clamped). Surfaced as a batch-level warning event so a
+    // clamp is never silent. Empty ⇒ no event (byte-identical no-clamp path).
+    const deductionClampsByEmp = new Map<
+      string,
+      { manualRequested: number; manualApplied: number; cp38Requested: number; cp38Applied: number; loanRequested: number; loanApplied: number }
+    >();
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
 
     // ── PCB accumulators (ADR-0014) ──
@@ -1472,16 +1479,37 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const slipAllowance = isAdditionalRun ? 0 : allowance;
       const slipOvertime = isAdditionalRun ? 0 : overtime;
       const slipUnpaid = isAdditionalRun ? 0 : unpaidDeduction;
-      // 1.2.3 CP38 folds into the SINGLE extra-deduction source: otherDeductions (line below) and
-      // totalDeductions/net then reflect it automatically — no separate add-to-total (that would double-count).
-      const slipExtraDeduct = isAdditionalRun ? 0 : round2(en.deduct + cp38);
       const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
-      // 1.2.8 Loan instalment (ADR-0060) — POST-TAX: only reduces net, touches NO statutory base (exactly
-      // like slipUnpaid/slipExtraDeduct). An additional/off-cycle run charges no loan (handled like cp38/hrdf).
       const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
+      // M#16 (EA s.24 net-floor): clamp EVERY post-tax deduction in priority order so net ≥ 0 BY
+      // CONSTRUCTION, never as a downstream patch. Headroom after statutory + unpaid is the cash that
+      // remains; manual deduction (en.deduct) takes first claim, then CP38 (court/LHDN order — exempt from
+      // the private 50% cap but still cannot produce a negative net), then the loan (ADR-0060, lowest
+      // priority). Each clamp is round2()'d. The byte-identical guarantee holds: with no manual deduct, no
+      // CP38, and no loan, manual/cp38/loan all clamp to 0 ⇒ slipExtraDeduct=0, slipLoan=0, exactly as
+      // before. Statutory: EA 1955 s.24(1)/(8).
+      const rawManual = isAdditionalRun ? 0 : round2(en.deduct);
+      const rawCp38 = isAdditionalRun ? 0 : round2(cp38);
+      // 1.2.8 Loan instalment (ADR-0060) — POST-TAX: only reduces net, touches NO statutory base. An
+      // additional/off-cycle run charges no loan (handled like cp38/hrdf).
       const rawLoan = isAdditionalRun ? 0 : round2(loanByEmp.get(e.employmentId) ?? 0);
-      // C1: the loan must YIELD to statutory + CP38 + unpaid + everything else — never drive net below zero.
-      const slipLoan = Math.max(0, Math.min(rawLoan, round2(grossPay - statDeductions - slipUnpaid - slipExtraDeduct)));
+      const avail = round2(grossPay - statDeductions - slipUnpaid);
+      const manualApplied = Math.max(0, Math.min(rawManual, avail));
+      const afterManual = round2(avail - manualApplied);
+      const cp38Applied = Math.max(0, Math.min(rawCp38, afterManual));
+      const afterCp38 = round2(afterManual - cp38Applied);
+      const slipLoan = Math.max(0, Math.min(rawLoan, afterCp38));
+      // 1.2.3 CP38 + the manual deduction fold into the SINGLE extra-deduction source: otherDeductions
+      // (line below) and totalDeductions/net then reflect them automatically — no separate add-to-total.
+      const slipExtraDeduct = round2(manualApplied + cp38Applied);
+      // Record any deduction the headroom could not fully recover so the batch warns (M#16) — never silent.
+      if (manualApplied + 0.005 < rawManual || cp38Applied + 0.005 < rawCp38 || slipLoan + 0.005 < rawLoan) {
+        deductionClampsByEmp.set(e.employmentId, {
+          manualRequested: rawManual, manualApplied,
+          cp38Requested: rawCp38, cp38Applied,
+          loanRequested: rawLoan, loanApplied: slipLoan,
+        });
+      }
       // Record the ACTUAL loan recovered (cents) so applyLoansForBatch advances the ledger by the clamped
       // amount — the reserved due may exceed it; the shortfall re-schedules (C2/H1/H3 fix).
       appliedLoanCentsByEmp.set(e.employmentId, Math.round(slipLoan * 100));
@@ -1550,6 +1578,25 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         actor: actorOf(ctx),
         subjectEmploymentId: c.employmentId,
         payload: { via: 'payroll', batchId: p.batchId },
+      });
+    }
+
+    // M#16 (EA s.24 net-floor): if the period's headroom could not fully recover a manual deduction, CP38,
+    // or loan for any employee, emit a batch-level clamp warning so the reduction is never silent (visible
+    // on the batch summary / audit trail). Only the field NAMES + per-employee RM amounts of the clamped
+    // deductions are recorded; no other cleartext pay. Omitted entirely when nothing was clamped.
+    if (deductionClampsByEmp.size > 0) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-batch',
+        aggregateId: p.batchId,
+        eventType: 's24.deduction.clamped',
+        actor: actorOf(ctx),
+        payload: {
+          batchId: p.batchId,
+          clampedCount: deductionClampsByEmp.size,
+          clamps: [...deductionClampsByEmp.entries()].map(([employmentId, c]) => ({ employmentId, ...c })),
+        },
       });
     }
 

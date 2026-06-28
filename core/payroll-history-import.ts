@@ -210,10 +210,23 @@ async function analyze(
     const employerCostRaw = norm(rec.employer_cost);
 
     // Net-pay arithmetic: gross − (employee deductions) ≈ net (verbatim figures, just consistency).
+    // ZAKAT-AWARE (audit H#5): zakat is accepted as a column AND summed into EA Part-D Z, but it can be
+    // encoded two ways in the wild. Accept the row if `net` matches EITHER convention within MONEY_TOL:
+    //   (a) reduce-pcb convention — zakat folded into pcb, NOT separately deducted from net:
+    //         net = gross − (epf + socso + skbbk + eis + pcb + other)
+    //   (b) separate-cash convention (the dominant MY encoding) — zakat is a real cash deduction and the
+    //       remitted `pcb` is already net-of-zakat:
+    //         net = gross − (epf + socso + skbbk + eis + pcb + other + zakat)
+    // The importer expects the REMITTED, net-of-zakat `pcb` (cp39FileForBatch files `pcb` verbatim), so the
+    // zakat term is ADDED — not folded into pcb. Either reconciliation passes; only a row matching neither
+    // is rejected. Statutory: ITA 1967 s.6A(3); EA Form C.P.8A Part D.
     if (errors.length === 0) {
       const eeDeductions = epfEmployee + socsoEmployee + socsoSkbbk + eisEmployee + pcb + otherDeductions;
       const expectedNet = round2(grossPay - eeDeductions);
-      if (Math.abs(expectedNet - netPay) > MONEY_TOL) {
+      const expectedNetWithZakat = round2(grossPay - eeDeductions - zakat);
+      const matchesEitherConvention =
+        Math.abs(expectedNet - netPay) <= MONEY_TOL || Math.abs(expectedNetWithZakat - netPay) <= MONEY_TOL;
+      if (!matchesEitherConvention) {
         errors.push(`net_pay ${netPay.toFixed(2)} ≠ gross − deductions ${expectedNet.toFixed(2)}`);
       }
       // Employer-cost consistency (warning — HRDF / other employer adds vary).
