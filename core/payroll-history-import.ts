@@ -49,7 +49,7 @@
  */
 import { and, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { employment, payPeriod, payrollBatch, payslip, person } from '../db/schema';
+import { employeeStatutoryMy, employment, payPeriod, payrollBatch, payslip, person } from '../db/schema';
 import { appendEvent, actorOf } from '../db/events';
 import { MY_STATUTORY_VERSION } from '../localization/my/statutory-tables';
 import {
@@ -83,6 +83,11 @@ type ImportedStat = {
   lp: number;
   zakat: number;
   version: string;
+  // 1.2.3 CP38 — the LHDN/court instalment, DISTINCT from MTD. Conditionally present (the kernel only
+  // stamps it on a regular run when > 0) so a migrated month carrying a CP38 is CP39-complete: cp39FileForBatch
+  // sums statutory.cp38 into the e-Data file's CP38 column. cp38Ref is its LHDN reference (free-text).
+  cp38?: number;
+  cp38Ref?: string;
 };
 
 type ResolvedRow = {
@@ -121,9 +126,17 @@ async function analyze(
 ): Promise<{ preview: HistoryImportPreview; resolved: ResolvedRow[] }> {
   const { byEmail, occupiedPeriods } = await withTenant(ctx, async (tx) => {
     const emps = await tx
-      .select({ employmentId: employment.id, email: person.primaryEmail, code: employment.employeeCode })
+      .select({
+        employmentId: employment.id,
+        email: person.primaryEmail,
+        code: employment.employeeCode,
+        // #30 — the employee's TIN (tax number), so analyze() can warn on a pcb>0 row with no TIN (the
+        // month would be un-fileable to CP39 until the TIN is backfilled). leftJoin: profile may be absent.
+        taxNumber: employeeStatutoryMy.taxNumber,
+      })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
       .where(eq(employment.companyId, companyId));
     const periods = [...new Set(records.map((r) => norm(r.period)).filter((p) => PERIOD_RE.test(p)))];
     // Which of the file's periods already have ANY batch (the period-level skip set).
@@ -154,6 +167,7 @@ async function analyze(
 
     // Email → employment (the canonical resolution path).
     let employmentId = '';
+    let resolvedTaxNumber: string | null = null;
     if (!email) errors.push('Missing email');
     else if (!EMAIL_RE.test(email)) errors.push(`Invalid email "${email}"`);
     else {
@@ -161,6 +175,7 @@ async function analyze(
       if (!emp) errors.push(`Unknown employee "${email}"`);
       else {
         employmentId = emp.employmentId;
+        resolvedTaxNumber = emp.taxNumber ?? null;
         // employee_code is a secondary disambiguator only — warn on mismatch, never block.
         const code = norm(rec.employee_code);
         if (code && emp.code && code.toLowerCase() !== emp.code.toLowerCase()) {
@@ -177,7 +192,7 @@ async function analyze(
     const moneyCols = [
       'basic_salary', 'gross_pay', 'epf_employee', 'epf_employer', 'socso_employee',
       'socso_employer', 'eis_employee', 'eis_employer', 'pcb', 'net_pay',
-      'allowance', 'overtime_pay', 'bonus', 'socso_skbbk', 'lp', 'zakat',
+      'allowance', 'overtime_pay', 'bonus', 'socso_skbbk', 'lp', 'zakat', 'cp38',
       'other_deductions', 'employer_cost', 'total_deductions',
     ];
     for (const col of moneyCols) {
@@ -205,6 +220,8 @@ async function analyze(
     const pcb = money(rec.pcb);
     const lp = money(rec.lp);
     const zakat = money(rec.zakat);
+    const cp38 = money(rec.cp38);
+    const cp38Ref = norm(rec.cp38_ref);
     const otherDeductions = money(rec.other_deductions);
     const netPay = money(rec.net_pay);
     const employerCostRaw = norm(rec.employer_cost);
@@ -236,11 +253,25 @@ async function analyze(
           warnings.push(`employer_cost differs from gross + employer contributions (${expectedCost.toFixed(2)})`);
         }
       }
-      // EA-breakdown warning: gross > basic but no allowance/overtime/bonus ⇒ the EA line-item
-      // breakdown will land entirely in "basic".
+      // #31 EA Part-B split warning (PROMINENT): gross > basic but no allowance/overtime/bonus split ⇒ the
+      // EA line-item breakdown — and the printed Part B total, which reports.ts recomputes from the split —
+      // lands entirely in "basic", mis-stating the itemisation. Supply the allowance/overtime/bonus split for
+      // any month where gross ≠ basic. (Post-import, HR can correct it via EA-overwrite of
+      // grossSalary/allowances/bonus on the EA form — see core/ea-override.ts.) The leading "⚠" lets the
+      // import preview elevate this above the ordinary row note (see history-import.tsx eaSplitWarning).
       if (grossPay > basicSalary + MONEY_TOL && allowance + overtimePay + bonus <= MONEY_TOL) {
-        warnings.push('gross exceeds basic but allowance/overtime/bonus are 0 — EA breakdown lands entirely in basic');
+        warnings.push(
+          '⚠ gross exceeds basic but allowance/overtime/bonus are 0 — supply the split or the EA Part B breakdown ' +
+            'lands entirely in basic (correctable post-import via EA-overwrite of grossSalary/allowances/bonus)',
+        );
       }
+    }
+
+    // #30 CP39 readiness: a resolved employee with pcb>0 but no TIN (taxNumber) makes the month un-fileable
+    // to the CP39 e-Data file (cp39FileForBatch throws Cp39NotReadyError) until the TIN is backfilled. WARN
+    // (do not block) at import time — mirrors the cp39 readiness gate so the migrator fixes it up front.
+    if (employmentId && pcb > MONEY_TOL && !resolvedTaxNumber) {
+      warnings.push('pcb > 0 but employee has no TIN — month un-fileable to CP39 until the TIN is backfilled');
     }
 
     // Duplicate (email, period) in-file.
@@ -272,6 +303,9 @@ async function analyze(
       statutory: {
         epfEmployee, epfEmployer, socsoEmployee, socsoEmployer, socsoSkbbk,
         eisEmployee, eisEmployer, pcb, lp, zakat, version: MY_STATUTORY_VERSION,
+        // 1.2.3 CP38 — stamp ONLY when > 0 (mirrors the kernel's conditional stamp), with its ref when
+        // supplied, so cp39FileForBatch sums the instalment into the e-Data file's CP38 column.
+        ...(cp38 > 0 ? { cp38, ...(cp38Ref !== '' ? { cp38Ref } : {}) } : {}),
       },
     });
   });

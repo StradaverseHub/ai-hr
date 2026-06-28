@@ -1216,7 +1216,9 @@
         "fieldMtd": "每月预扣税（MTD / PCB）",
         "fieldEpf": "公积金 / KWSP",
         "fieldSocso": "社险（SOCSO）",
-        "fieldEis": "就业保险（EIS / SIP）"
+        "fieldEis": "就业保险（EIS / SIP）",
+        "filedTotal": "已申报 CP39 / 机构合计",
+        "cp39DivergenceWarning": "此修订金额与当年已申报的 CP39 / 机构合计不一致（{filed}；差额 {delta}）。该修订及其差额已记录在审计轨迹中。"
       }
     },
     "config": {
@@ -1547,7 +1549,11 @@
       "colPeriod": "期间",
       "colResult": "结果",
       "ready": "就绪",
-      "skipped": "已跳过——该期间已有薪资"
+      "skipped": "已跳过——该期间已有薪资",
+      "eaSplitWarningTitle": "缺少 EA B 部分明细拆分",
+      "eaSplitWarningBody": "{count, plural, one {第 {rows} 行} other {第 {rows} 行}}：总收入高于基本工资但无津贴/加班/奖金拆分——EA B 部分的明细将全部归入“基本”。请提供拆分，或在导入后通过对总工资 / 津贴 / 奖金的 EA 覆写进行更正。",
+      "eaSplitHint": "对于总收入 ≠ 基本工资的任何月份，请提供津贴 / 加班 / 奖金拆分，以使 EA B 部分明细正确。你也可以在导入后通过员工 EA 表单上对总工资 / 津贴 / 奖金的 EA 覆写进行更正。",
+      "cp38Hint": "对于任何含 CP38 法院 / LHDN 分期的月份，请加入 cp38 列（及 cp38_ref），以使迁移的月份对 CP39 e-Data 文件保持完整。"
     }
   },
   "admin": {

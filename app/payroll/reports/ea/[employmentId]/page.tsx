@@ -93,6 +93,9 @@ export default async function EaStatementPage({
     socso: ovByField.get('socso')?.original ?? ea.partE.socso,
     eis: ovByField.get('eis')?.original ?? ea.partE.eis,
   };
+  // #18 — the statutory EA fields reconciled against the year's filed CP39/agency total. For these, the
+  // payroll-derived value IS the filed total (same payslip.statutory.* source), so filedTotal = derived.
+  const STATUTORY_EA_FIELDS = new Set(['mtd', 'epf', 'socso', 'eis']);
   const amendFields: AmendField[] = (
     ['grossSalary', 'bonus', 'allowances', 'gross', 'mtd', 'epf', 'socso', 'eis'] as const
   ).map((field) => ({
@@ -101,6 +104,8 @@ export default async function EaStatementPage({
     original: derivedFor[field],
     amended: ovByField.get(field)?.amended ?? null,
     reason: ovByField.get(field)?.reason ?? null,
+    statutory: STATUTORY_EA_FIELDS.has(field),
+    filedTotal: STATUTORY_EA_FIELDS.has(field) ? derivedFor[field] : null,
   }));
 
   return (

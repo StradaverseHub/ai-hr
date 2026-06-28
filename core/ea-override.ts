@@ -33,6 +33,21 @@ export class EaOverrideError extends Error {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const isField = (s: string): s is EaField => (EA_FIELDS as readonly string[]).includes(s);
 
+/**
+ * #18 — the EA statutory fields that correspond to a REMITTED figure on a monthly statutory return, so an
+ * amendment must be reconciled against the year's FILED total:
+ *   - `mtd`   → the CP39 / e-Data MTD (sum of payslip.statutory.pcb — the same source cp39-file.ts files)
+ *   - `epf`   → the KWSP employee-share total (sum of payslip.statutory.epfEmployee)
+ *   - `socso` → the PERKESO employee-share total (sum of payslip.statutory.socsoEmployee)
+ *   - `eis`   → the EIS/SIP employee-share total (sum of payslip.statutory.eisEmployee)
+ * For these, the payroll-DERIVED value IS the filed total (both read the stored payslip statutory scalars),
+ * so divergence = amended ≠ derived/filed. Part B income fields (grossSalary/bonus/allowances/gross) carry
+ * no remittance and are NOT reconciled.
+ */
+const STATUTORY_FIELDS = new Set<EaField>(['mtd', 'epf', 'socso', 'eis']);
+const isStatutoryField = (f: EaField): boolean => STATUTORY_FIELDS.has(f);
+const MONEY_TOL = 0.005;
+
 /** Service-layer write guard (the primary gate; RLS is the SQL backstop). Admin OR payroll partner. */
 function assertCanAmend(ctx: SessionContext) {
   if (!isAdmin(ctx) && !canManagePayroll(ctx)) {
@@ -88,17 +103,35 @@ export async function listEaOverrides(
   });
 }
 
+/** Outcome of an EA amend. For a STATUTORY field (#18) the year's filed CP39/agency total + the amend's
+ *  delta + a divergence flag are surfaced (and persisted structurally on the event); non-statutory fields
+ *  carry filedTotal=null, delta=0, diverges=false. */
+export type SetEaOverrideResult = {
+  cleared: boolean;
+  /** The year's filed total from payslip.statutory.* for a statutory field; null for non-statutory. */
+  filedTotal: number | null;
+  /** amended − filedTotal (0 for non-statutory or a cleared no-op). */
+  delta: number;
+  /** true when a statutory amend diverges from the filed total beyond rounding tolerance. */
+  diverges: boolean;
+};
+
 /**
  * Set (upsert) an EA-only amendment for one field. RBAC-gated (service guard + RLS WITH CHECK). Validates
  * field ∈ EA_FIELDS, amount finite ≥ 0 (zeroing a derived figure is legitimate), year `^\d{4}$`, reason
  * non-empty. If the amended value equals the derived value to 2dp it is a NO-OP CLEAR (delete any row),
  * not a redundant override. Appends `ea.override.set` (or `ea.override.cleared` on the no-op path) with the
  * derived `before` and amended `after` in the payload.
+ *
+ * #18 — for a STATUTORY field (mtd/epf/socso/eis) the year's FILED total (the same payslip.statutory.* the
+ * CP39/KWSP/PERKESO returns file) equals the derived `before`; we compute its divergence from the amended
+ * figure and persist { filedTotal, delta } STRUCTURALLY on the event (not just in the free-text reason) so an
+ * LHDN/agency audit can read "derived/filed vs amended". The result surfaces it for the amend panel's warning.
  */
 export async function setEaOverride(
   ctx: SessionContext,
   p: { employmentId: string; year: string; field: string; amount: number; reason: string },
-): Promise<{ cleared: boolean }> {
+): Promise<SetEaOverrideResult> {
   assertCanAmend(ctx);
   if (!isField(p.field)) throw new EaOverrideError(`Unknown EA field: ${p.field}`, 'invalidField');
   if (!/^\d{4}$/.test(p.year)) throw new EaOverrideError(`Invalid year: ${p.year}`, 'invalidYear');
@@ -114,6 +147,16 @@ export async function setEaOverride(
   const ea = await employeeEaStatement(ctx, { employmentId: p.employmentId, year: p.year });
   if (!ea) throw new EaOverrideError('Employment not found', 'notFound');
   const before = derivedField(ea, field);
+
+  // #18 — for a statutory field, the year's FILED total IS the derived baseline (both read the stored
+  // payslip statutory scalars — the same source CP39/KWSP/PERKESO files). Compute its divergence so the
+  // event carries the structured { filedTotal, delta } trail and the caller can warn.
+  const isStatutory = isStatutoryField(field);
+  const filedTotal = isStatutory ? round2(before) : null;
+  const delta = filedTotal !== null ? round2(amount - filedTotal) : 0;
+  const diverges = filedTotal !== null && Math.abs(delta) > MONEY_TOL;
+  /** Structured CP39/agency reconciliation, persisted on the event payload — statutory fields only. */
+  const recon = filedTotal !== null ? { filedTotal, delta } : {};
 
   return withTenant(ctx, async (tx) => {
     // No-op: amended == derived ⇒ drop any existing override rather than persist a redundant one.
@@ -133,7 +176,8 @@ export async function setEaOverride(
           payload: { field, before, after: before, reason },
         });
       }
-      return { cleared: true };
+      // amended == filed ⇒ delta 0, no divergence (a no-op clear is reconciled by definition).
+      return { cleared: true, filedTotal, delta: 0, diverges: false };
     }
 
     const [row] = await tx
@@ -161,9 +205,10 @@ export async function setEaOverride(
       eventType: 'ea.override.set',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { field, before, after: amount, reason },
+      // #18 — { filedTotal, delta } is spread for statutory fields (auditable "filed CP39 vs amended").
+      payload: { field, before, after: amount, reason, ...recon },
     });
-    return { cleared: false };
+    return { cleared: false, filedTotal, delta, diverges };
   });
 }
 

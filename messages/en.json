@@ -1304,7 +1304,9 @@
         "fieldMtd": "Monthly tax deduction (MTD / PCB)",
         "fieldEpf": "EPF / KWSP",
         "fieldSocso": "SOCSO",
-        "fieldEis": "EIS / SIP"
+        "fieldEis": "EIS / SIP",
+        "filedTotal": "Filed CP39 / agency total",
+        "cp39DivergenceWarning": "This amended figure diverges from the year’s filed CP39 / agency total ({filed}; delta {delta}). The override and its delta are recorded in the audit trail."
       }
     },
     "config": {
@@ -1547,7 +1549,11 @@
       "colPeriod": "Period",
       "colResult": "Result",
       "ready": "Ready",
-      "skipped": "Skipped — period already has payroll"
+      "skipped": "Skipped — period already has payroll",
+      "eaSplitWarningTitle": "EA Part B split missing",
+      "eaSplitWarningBody": "{count, plural, one {Row {rows}} other {Rows {rows}}}: gross exceeds basic with no allowance/overtime/bonus split — the EA Part B itemisation will land entirely in “basic”. Supply the split, or correct it after import via EA-overwrite of gross salary / allowances / bonus.",
+      "eaSplitHint": "For any month where gross ≠ basic, supply the allowance / overtime / bonus split so the EA Part B itemisation is correct. You can also correct it after import via EA-overwrite of gross salary / allowances / bonus on the employee’s EA form.",
+      "cp38Hint": "Include the cp38 column (and cp38_ref) for any month with a CP38 court / LHDN instalment, so the migrated month stays complete for the CP39 e-Data file."
     }
   },
   "admin": {

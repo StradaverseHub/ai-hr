@@ -1216,7 +1216,9 @@
         "fieldMtd": "Potongan cukai bulanan (PCB / MTD)",
         "fieldEpf": "EPF / KWSP",
         "fieldSocso": "PERKESO",
-        "fieldEis": "SIP / EIS"
+        "fieldEis": "SIP / EIS",
+        "filedTotal": "Jumlah CP39 / agensi difailkan",
+        "cp39DivergenceWarning": "Angka pindaan ini berbeza daripada jumlah CP39 / agensi yang difailkan bagi tahun tersebut ({filed}; delta {delta}). Pindaan dan deltanya direkodkan dalam jejak audit."
       }
     },
     "config": {
@@ -1547,7 +1549,11 @@
       "colPeriod": "Tempoh",
       "colResult": "Keputusan",
       "ready": "Sedia",
-      "skipped": "Dilangkau — tempoh sudah ada gaji"
+      "skipped": "Dilangkau — tempoh sudah ada gaji",
+      "eaSplitWarningTitle": "Pecahan EA Bahagian B tiada",
+      "eaSplitWarningBody": "{count, plural, one {Baris {rows}} other {Baris {rows}}}: gaji kasar melebihi gaji asas tanpa pecahan elaun/kerja lebih masa/bonus — perincian EA Bahagian B akan jatuh sepenuhnya di bawah “asas”. Sediakan pecahan, atau betulkan selepas import melalui tulis-ganti EA bagi gaji kasar / elaun / bonus.",
+      "eaSplitHint": "Bagi mana-mana bulan yang gaji kasar ≠ gaji asas, sediakan pecahan elaun / kerja lebih masa / bonus supaya perincian EA Bahagian B tepat. Anda juga boleh membetulkannya selepas import melalui tulis-ganti EA bagi gaji kasar / elaun / bonus pada borang EA pekerja.",
+      "cp38Hint": "Sertakan lajur cp38 (dan cp38_ref) bagi mana-mana bulan dengan ansuran CP38 mahkamah / LHDN, supaya bulan yang dimigrasikan kekal lengkap untuk fail e-Data CP39."
     }
   },
   "admin": {

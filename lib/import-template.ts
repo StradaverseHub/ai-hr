@@ -191,6 +191,8 @@ export const payrollHistoryTemplate: TemplateSpec = {
       '0', // socso_skbbk
       '0', // lp
       '0', // zakat
+      '0', // cp38 (LHDN/court instalment, distinct from MTD)
+      '', // cp38_ref (LHDN reference for the CP38 instalment)
       '0', // other_deductions
       '6085.55', // employer_cost = 5300 + 689 + 86.65 + 9.90
       '767.65', // total_deductions
@@ -215,6 +217,8 @@ export const payrollHistoryTemplate: TemplateSpec = {
       '0', // socso_skbbk
       '0', // lp
       '0', // zakat
+      '0', // cp38 (LHDN/court instalment, distinct from MTD)
+      '', // cp38_ref (LHDN reference for the CP38 instalment)
       '0', // other_deductions
       '4823.55', // employer_cost = 4200 + 546 + 69.15 + 8.40
       '550.15', // total_deductions

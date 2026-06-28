@@ -154,6 +154,10 @@ export function HistoryImport({
             </div>
           </div>
           <p className="mt-2 text-muted-foreground">{t('emptyMonthHint')}</p>
+          {/* #31 — document the allowance/OT/bonus split expectation + the EA-overwrite fix path. */}
+          <p className="mt-2 text-muted-foreground">{t('eaSplitHint')}</p>
+          {/* #30 — document the CP38 column so migrated months stay CP39-complete. */}
+          <p className="mt-2 text-muted-foreground">{t('cp38Hint')}</p>
         </details>
       </Card>
 
@@ -217,6 +221,9 @@ function PreviewTable({
 }) {
   const t = useTranslations('payroll.historyImport');
   const errorCount = preview.total - preview.validCount - preview.skippedCount;
+  // #31 — elevate the EA Part-B split warning (the importer prefixes it with "⚠") above the per-row note so
+  // a migrator can't miss that the EA itemisation will collapse to "basic". Count the affected ROW numbers.
+  const splitWarnRows = preview.rows.filter((r) => r.warnings.some((w) => w.startsWith('⚠'))).map((r) => r.rowNum);
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
@@ -255,6 +262,15 @@ function PreviewTable({
               {c}
             </code>
           ))}
+        </div>
+      )}
+
+      {/* #31 — prominent EA Part-B split banner: gross≠basic rows with no allowance/OT/bonus split will
+          itemise entirely under "basic". Surfaced here (not buried in the per-row note) with the fix path. */}
+      {splitWarnRows.length > 0 && (
+        <div className="border-b border-amber-300 bg-amber-50 px-4 py-2.5 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+          <span className="font-semibold">⚠ {t('eaSplitWarningTitle')}</span>{' '}
+          {t('eaSplitWarningBody', { rows: splitWarnRows.join(', '), count: splitWarnRows.length })}
         </div>
       )}
 

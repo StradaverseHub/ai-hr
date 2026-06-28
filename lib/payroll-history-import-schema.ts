@@ -75,6 +75,8 @@ export const PAYROLL_HISTORY_COLUMNS = {
     'socso_skbbk',
     'lp', // TP1 / approved-deductions relief that accrues to the EA relief lines
     'zakat', // zakat-via-salary that accrues to the EA Part D
+    'cp38', // 1.2.3 CP38 — the LHDN/court instalment, DISTINCT from MTD; summed into the CP39 e-Data file
+    'cp38_ref', // LHDN reference for the CP38 instalment (free-text; not a money column)
     'other_deductions',
     'employer_cost',
     'total_deductions',

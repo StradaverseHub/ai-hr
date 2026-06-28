@@ -1216,7 +1216,9 @@
         "fieldMtd": "Khấu trừ thuế hàng tháng (MTD / PCB)",
         "fieldEpf": "EPF / KWSP",
         "fieldSocso": "SOCSO",
-        "fieldEis": "EIS / SIP"
+        "fieldEis": "EIS / SIP",
+        "filedTotal": "Tổng CP39 / cơ quan đã nộp",
+        "cp39DivergenceWarning": "Con số được sửa đổi này khác với tổng CP39 / cơ quan đã nộp của năm ({filed}; chênh lệch {delta}). Việc sửa đổi và chênh lệch được ghi lại trong nhật ký kiểm toán."
       }
     },
     "config": {
@@ -1547,7 +1549,11 @@
       "colPeriod": "Kỳ",
       "colResult": "Kết quả",
       "ready": "Sẵn sàng",
-      "skipped": "Bị bỏ qua — kỳ này đã có bảng lương"
+      "skipped": "Bị bỏ qua — kỳ này đã có bảng lương",
+      "eaSplitWarningTitle": "Thiếu phân tách EA Phần B",
+      "eaSplitWarningBody": "{count, plural, one {Hàng {rows}} other {Các hàng {rows}}}: thu nhập gộp vượt lương cơ bản mà không có phân tách phụ cấp/làm thêm giờ/thưởng — chi tiết EA Phần B sẽ dồn hết vào “cơ bản”. Hãy cung cấp phân tách, hoặc sửa sau khi nhập thông qua ghi đè EA cho lương gộp / phụ cấp / thưởng.",
+      "eaSplitHint": "Đối với bất kỳ tháng nào có thu nhập gộp ≠ lương cơ bản, hãy cung cấp phân tách phụ cấp / làm thêm giờ / thưởng để chi tiết EA Phần B chính xác. Bạn cũng có thể sửa sau khi nhập thông qua ghi đè EA cho lương gộp / phụ cấp / thưởng trên mẫu EA của nhân viên.",
+      "cp38Hint": "Bao gồm cột cp38 (và cp38_ref) cho bất kỳ tháng nào có khoản trả góp CP38 của tòa án / LHDN, để tháng đã di chuyển vẫn đầy đủ cho tệp e-Data CP39."
     }
   },
   "admin": {

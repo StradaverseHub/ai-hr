@@ -12,6 +12,10 @@ export type AmendField = {
   original: number;
   amended: number | null; // null = no override; else the active amended value
   reason: string | null;
+  // #18 — true for a statutory field (mtd/epf/socso/eis) reconciled against the year's filed CP39/agency
+  // total. `filedTotal` is that figure; the panel surfaces it and warns when the amended input diverges.
+  statutory?: boolean;
+  filedTotal?: number | null;
 };
 
 const rm = (n: number) =>
@@ -66,6 +70,11 @@ function FieldRow({
   const amended = f.amended != null;
   const parsed = Number(amount);
   const canSave = reason.trim().length > 0 && Number.isFinite(parsed) && parsed >= 0;
+  // #18 — a statutory field is reconciled against the year's filed CP39/agency total (`filedTotal`).
+  // Warn (live) when the entered amount diverges from it beyond rounding tolerance.
+  const filedTotal = f.statutory ? f.filedTotal ?? f.original : null;
+  const diverges =
+    filedTotal != null && Number.isFinite(parsed) && Math.abs(parsed - filedTotal) > 0.005;
 
   return (
     <form ref={formRef} action={amendEaFieldAction} className="rounded-lg border border-border p-3">
@@ -85,6 +94,12 @@ function FieldRow({
           <span className="text-xs text-muted-foreground">
             {t('original')}: <span className="tabular-nums">{rm(f.original)}</span>
           </span>
+          {/* #18 — for a statutory field, surface the year's FILED CP39/agency total alongside the derived. */}
+          {filedTotal != null && (
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {t('filedTotal')}: <span className="tabular-nums">{rm(filedTotal)}</span>
+            </span>
+          )}
         </div>
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-muted-foreground">{t('amended')}</span>
@@ -162,6 +177,13 @@ function FieldRow({
           )}
         </div>
       </div>
+      {/* #18 — live warning when a statutory amend diverges from the filed CP39/agency total (an LHDN audit
+          flag). The structured { filedTotal, delta } is also persisted on the domain event by the service. */}
+      {diverges && filedTotal != null && (
+        <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          {t('cp39DivergenceWarning', { filed: rm(filedTotal), delta: rm(parsed - filedTotal) })}
+        </div>
+      )}
     </form>
   );
 }
