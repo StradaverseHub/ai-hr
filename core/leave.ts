@@ -838,8 +838,11 @@ async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: Decidable
   // RL Control Engine (0113): when the consumed type is REPLACEMENT, decrement the toil_accrual register
   // FIFO-by-expiry so the active/expired split stays authoritative and the year-end close never double-debits
   // already-spent credits. The ledger debit above is the balance authority; this only updates the register.
-  // Gated by TOIL_ENABLED (the register is invisible when TOIL is off, so there is nothing to decrement).
-  if (lt?.code === 'REPLACEMENT' && process.env.TOIL_ENABLED === 'true') {
+  // NOT gated by TOIL_ENABLED (bug #21): if a register row exists it MUST be consumed on approval, else a
+  // later expiry/close re-debits the full credit (negative balance + spurious convert-to-pay). The flag
+  // gates accrual/UI, not this consume-on-approve invariant — consumeReplacementLeaveTx is a safe no-op
+  // when there is no active accrual to decrement.
+  if (lt?.code === 'REPLACEMENT') {
     await consumeReplacementLeaveTx(tx, ctx, {
       employmentId: req.employmentId,
       requestId: req.id,

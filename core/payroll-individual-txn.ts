@@ -31,6 +31,15 @@ export const TXN_UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
 export type TxnUnit = (typeof TXN_UNITS)[number];
 export const isTxnUnit = (v: unknown): v is TxnUnit => TXN_UNITS.includes(v as TxnUnit);
 
+/** Thrown when an individual-transaction row is absent (missing / already-deleted id). Distinct from
+ *  `BatchNotDraftError`, which is reserved for the real non-draft batch case. */
+export class TxnNotFoundError extends Error {
+  constructor(public readonly id: string) {
+    super(`Individual transaction ${id} was not found.`);
+    this.name = 'TxnNotFoundError';
+  }
+}
+
 /** Thrown when an entry's `kind` is not one of the five supported kinds. */
 export class InvalidTxnKindError extends Error {
   constructor(public readonly kind: string) {
@@ -200,7 +209,7 @@ export function updateIndividualTxn(
       .from(payrollIndividualTxn)
       .where(eq(payrollIndividualTxn.id, p.id))
       .limit(1);
-    if (!existing) throw new BatchNotDraftError();
+    if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
     const { payPeriod } = await loadDraftBatch(tx, existing.batchId);
     const nextKind = p.kind ?? existing.kind;
     if (!isTxnKind(nextKind)) throw new InvalidTxnKindError(nextKind);
@@ -243,7 +252,7 @@ export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Pro
       .from(payrollIndividualTxn)
       .where(eq(payrollIndividualTxn.id, p.id))
       .limit(1);
-    if (!existing) throw new BatchNotDraftError();
+    if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
     await loadDraftBatch(tx, existing.batchId);
     await tx.delete(payrollIndividualTxn).where(eq(payrollIndividualTxn.id, p.id));
     await appendEvent(tx, {

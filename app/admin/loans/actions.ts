@@ -43,11 +43,15 @@ export async function amendLoanAction(formData: FormData) {
   try {
     const duration = String(formData.get('durationMonths') ?? '').trim();
     const rate = String(formData.get('interestRate') ?? '').trim();
+    // Only forward `notes` when the field is actually present in the submission. The inline duration-amend
+    // form has no notes input; passing `null` there would map to a DEFINED value and wipe the loan's notes
+    // (amendLoan treats `undefined` as "leave unchanged"). Mirror the interestRate absent→undefined path.
+    const rawNotes = formData.get('notes');
     await amendLoan(s, {
       loanId: String(formData.get('loanId')),
       durationMonths: duration === '' ? undefined : Number(duration),
       interestRate: rate === '' ? undefined : Number(rate),
-      notes: String(formData.get('notes') ?? '').trim() || null,
+      notes: rawNotes === null ? undefined : String(rawNotes).trim() || null,
     });
   } catch (e) {
     fail(e);

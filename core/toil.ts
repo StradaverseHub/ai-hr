@@ -658,10 +658,9 @@ export async function closeReplacementLeaveYear(
       .limit(1);
     if (marker) return { ...empty, alreadyClosed: true };
 
-    // The leave cycle drives whether the boundary is a single calendar date or per-employment anniversary.
-    const [co] = await tx.select({ leaveCycle: company.leaveCycle }).from(company).limit(1);
-    const anniversary = co?.leaveCycle === 'anniversary';
-
+    // The leave cycle drives the boundary, and it is PER-COMPANY: a mixed-cycle tenant must sweep each
+    // company at its OWN boundary. Join `company` so each accrual carries its own employment's leave cycle
+    // (the previous single-company SELECT applied one arbitrary company's cycle tenant-wide — bug #19).
     const active = await tx
       .select({
         id: toilAccrual.id,
@@ -672,48 +671,44 @@ export async function closeReplacementLeaveYear(
         carryForwardAtYearEnd: toilAccrual.carryForwardAtYearEnd,
         workedDate: toilAccrual.workedDate,
         hiredOn: employment.hiredOn,
+        leaveCycle: company.leaveCycle,
       })
       .from(toilAccrual)
       .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
+      .innerJoin(company, eq(company.id, employment.companyId))
       .where(eq(toilAccrual.status, 'active'));
 
     let carriedForward = 0;
-    const rows: SweepRow[] = [];
+    // Each row carries its own per-company boundary; calendar rows resolve to `asOf`, anniversary rows to the
+    // employee's own cycle start. We branch per row so a mixed-cycle tenant closes every company correctly.
+    const rows: (SweepRow & { boundary: string })[] = [];
     for (const a of active) {
       if (a.carryForwardAtYearEnd) {
         carriedForward += 1;
         continue; // survives the close — frozen opt-in carry-forward
       }
-      // Anniversary tenants: the close boundary is each employee's own cycle start (the day BEFORE it is the
-      // close date). We forfeit accruals as of that employee's boundary. Calendar tenants share `asOf`.
-      const boundary = anniversary ? earnedCycleStart(a.hiredOn, p.asOf, 'anniversary') : p.asOf;
+      const boundary = a.leaveCycle === 'anniversary' ? earnedCycleStart(a.hiredOn, p.asOf, 'anniversary') : p.asOf;
       rows.push({
         id: a.id,
         employmentId: a.employmentId,
         remaining: round2(Number(a.daysCredited) - Number(a.daysTaken)),
         expiryAction: a.expiryAction,
         workedDate: a.workedDate,
-        // carry the per-employment boundary through for the ledger effectiveOn
-        ...(anniversary ? { boundary } : {}),
-      } as SweepRow & { boundary?: string });
+        boundary,
+      });
     }
 
-    // Sweep each row at its own boundary (calendar tenants all share `asOf`).
+    // Sweep each row at its own per-company boundary.
     let agg: ToilExpiryResult = { processed: 0, converted: 0, lapsed: 0, convertedDays: 0, convertedAmount: 0 };
-    if (anniversary) {
-      for (const r of rows) {
-        const boundary = (r as SweepRow & { boundary?: string }).boundary ?? p.asOf;
-        const part = await expireAccrualsTx(tx, ctx, [r], boundary);
-        agg = {
-          processed: agg.processed + part.processed,
-          converted: agg.converted + part.converted,
-          lapsed: agg.lapsed + part.lapsed,
-          convertedDays: round2(agg.convertedDays + part.convertedDays),
-          convertedAmount: round2(agg.convertedAmount + part.convertedAmount),
-        };
-      }
-    } else {
-      agg = await expireAccrualsTx(tx, ctx, rows, p.asOf);
+    for (const r of rows) {
+      const part = await expireAccrualsTx(tx, ctx, [r], r.boundary);
+      agg = {
+        processed: agg.processed + part.processed,
+        converted: agg.converted + part.converted,
+        lapsed: agg.lapsed + part.lapsed,
+        convertedDays: round2(agg.convertedDays + part.convertedDays),
+        convertedAmount: round2(agg.convertedAmount + part.convertedAmount),
+      };
     }
 
     // One summary marker event; the per-accrual toil.converted/toil.lapsed rows are the audit (mirrors the
@@ -726,7 +721,9 @@ export async function closeReplacementLeaveYear(
       aggregateId: ctx.tenantId,
       eventType: 'replacement-leave-year.closed',
       actor: actorOf(ctx),
-      payload: { asOf: p.asOf, leaveCycle: co?.leaveCycle ?? 'calendar', ...agg, carriedForward },
+      // leaveCycle is now per-company (bug #19): record the distinct cycles swept rather than one arbitrary
+      // company's value. The idempotency guard keys on payload->>'asOf', so this field is descriptive only.
+      payload: { asOf: p.asOf, leaveCycles: [...new Set(active.map((a) => a.leaveCycle))].sort(), ...agg, carriedForward },
     });
     return { ...agg, alreadyClosed: false, carriedForward };
   });

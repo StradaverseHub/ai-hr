@@ -14,7 +14,7 @@
  * Substrate discipline (ADR-0006 / ADR-0030 Layer 0): every write appends a DomainEvent whose payload
  * carries references + dates only — never the cleartext CP38 amount, which lives on the aggregate row.
  */
-import { and, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employeeCp38, payrollBatch, payslip } from '../db/schema';
@@ -264,6 +264,45 @@ export function terminateCp38(ctx: SessionContext, p: { id: string }): Promise<{
   });
 }
 
+/** A raw CP38 window row matching a payroll month (no per-employment dedup applied). */
+export type Cp38PeriodRow = { employmentId: string; amount: string; cp38Ref: string; validFrom: string };
+
+/**
+ * The RAW window query behind `cp38ForPeriod` (no dedup). `validTo` is treated as EXCLUSIVE to align with
+ * the schema's `[)` daterange EXCLUDE constraint and with `setCp38`, which closes a superseded row at
+ * `validTo = newValidFrom`: a row closed at the boundary month MUST NOT also match that same month as its
+ * successor. Hence `gt(validTo, periodMonthStart)`, not `gte`. Ordered latest-effective first.
+ */
+export async function cp38RowsForPeriod(
+  tx: Tx,
+  empIds: string[],
+  periodKey: string, // 'YYYY-MM'
+): Promise<Cp38PeriodRow[]> {
+  if (empIds.length === 0) return [];
+  const periodMonthStart = `${periodKey}-01`;
+  return tx
+    .select({
+      employmentId: employeeCp38.employmentId,
+      amount: employeeCp38.amount,
+      cp38Ref: employeeCp38.cp38Ref,
+      validFrom: employeeCp38.validFrom,
+    })
+    .from(employeeCp38)
+    .where(
+      and(
+        inArray(employeeCp38.employmentId, empIds),
+        isNull(employeeCp38.supersededAt),
+        lte(employeeCp38.validFrom, periodMonthStart),
+        // EXCLUSIVE upper bound (gt, not gte): setCp38 closes a superseded row at validTo = newValidFrom and
+        // the schema's gist EXCLUDE uses an exclusive `[)` daterange. With gte, the closed row and its
+        // successor would BOTH match the boundary month (bug #34, masked today only by the first-per-row
+        // dedup). gt aligns the predicate with the constraint so only the successor matches.
+        or(isNull(employeeCp38.validTo), gt(employeeCp38.validTo, periodMonthStart)),
+      ),
+    )
+    .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id));
+}
+
 /**
  * Kernel helper — the CP38 instalment in effect for each employment in a payroll period (auto-apply by
  * payroll month). Selects rows whose month-aligned window covers the period's month, supersede-free, and
@@ -277,24 +316,7 @@ export async function cp38ForPeriod(
 ): Promise<Map<string, { amount: number; cp38Ref: string }>> {
   const out = new Map<string, { amount: number; cp38Ref: string }>();
   if (empIds.length === 0) return out;
-  const periodMonthStart = `${periodKey}-01`;
-  const rows = await tx
-    .select({
-      employmentId: employeeCp38.employmentId,
-      amount: employeeCp38.amount,
-      cp38Ref: employeeCp38.cp38Ref,
-      validFrom: employeeCp38.validFrom,
-    })
-    .from(employeeCp38)
-    .where(
-      and(
-        inArray(employeeCp38.employmentId, empIds),
-        isNull(employeeCp38.supersededAt),
-        lte(employeeCp38.validFrom, periodMonthStart),
-        or(isNull(employeeCp38.validTo), gte(employeeCp38.validTo, periodMonthStart)),
-      ),
-    )
-    .orderBy(desc(employeeCp38.validFrom), desc(employeeCp38.id));
+  const rows = await cp38RowsForPeriod(tx, empIds, periodKey);
   // First row per employment wins (latest valid_from) — overlap is impossible, so this is deterministic.
   for (const r of rows) {
     if (out.has(r.employmentId)) continue;

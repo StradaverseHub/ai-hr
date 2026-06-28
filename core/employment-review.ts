@@ -63,6 +63,11 @@ type EmploymentEndDates = {
   probationEndDate: string | null;
   contractEndDate: string | null;
   internshipEndDate: string | null;
+  /** The end date captured at hire (`hireEmployee` only writes this column, not the type-specific ones).
+   *  Used as a fallback so a new hire's review still opens before the type-specific column is set (#20).
+   *  Optional so existing callers that only pass the type-specific columns keep compiling (absent ⇒ no
+   *  fallback). The live read paths (`liveTypeAndDates` / `sweepDueReviews`) always supply it. */
+  provisionalEndOn?: string | null;
 };
 
 /**
@@ -88,6 +93,9 @@ export function computeReviewWindow(
   } else {
     return null; // part_time — no review
   }
+  // Fallback to the at-hire provisional end (bug #20): hireEmployee writes only `employment.provisionalEndOn`,
+  // never the type-specific column, so without this a new hire's review window stays null and never opens.
+  if (endDate == null) endDate = emp.provisionalEndOn ?? null;
   const dueDate = endDate ? subtractReviewLead(endDate) : null;
   return { reviewType, endDate, dueDate };
 }
@@ -104,6 +112,7 @@ async function liveTypeAndDates(
       probationEndDate: employment.probationEndDate,
       contractEndDate: employment.contractEndDate,
       internshipEndDate: employment.internshipEndDate,
+      provisionalEndOn: employment.provisionalEndOn,
     })
     .from(assignment)
     .innerJoin(employment, eq(employment.id, assignment.employmentId))
@@ -123,6 +132,7 @@ async function liveTypeAndDates(
       probationEndDate: row.probationEndDate,
       contractEndDate: row.contractEndDate,
       internshipEndDate: row.internshipEndDate,
+      provisionalEndOn: row.provisionalEndOn,
     },
   };
 }
@@ -582,6 +592,7 @@ export async function sweepDueReviews(
         probationEndDate: employment.probationEndDate,
         contractEndDate: employment.contractEndDate,
         internshipEndDate: employment.internshipEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
       })
       .from(employment)
       .innerJoin(
