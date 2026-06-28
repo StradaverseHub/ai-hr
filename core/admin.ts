@@ -6,6 +6,7 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { CrossCompanyError } from './org';
 import { LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
 import { MY_STATES } from '../localization/my/holidays';
 import {
@@ -171,6 +172,17 @@ export async function createDepartment(
 ) {
   const name = cleanName(p.name, 'Department name');
   return withTenant(ctx, async (tx) => {
+    // Belt-and-braces (mirrors the RLS clamp in app.heads_department_of, migration 0121): a parent
+    // department must belong to the SAME company, so a cross-company department tree — which would leak
+    // employees across companies to a HOD of the parent — can never be built in the first place.
+    if (p.parentDepartmentId) {
+      const [parent] = await tx
+        .select({ companyId: department.companyId })
+        .from(department)
+        .where(eq(department.id, p.parentDepartmentId))
+        .limit(1);
+      if (!parent || parent.companyId !== p.companyId) throw new CrossCompanyError('department');
+    }
     const [row] = await tx
       .insert(department)
       .values({

@@ -24,6 +24,7 @@ import {
   CrossCompanyError,
   hireEmployee,
 } from '../core/org';
+import { createDepartment } from '../core/admin';
 import { listManagerCandidates } from '../core/read';
 import * as schema from '../db/schema';
 
@@ -244,6 +245,31 @@ describe('hireEmployee — organization + employment info', () => {
         hiredOn: '2026-01-01',
       }),
     ).rejects.toBeInstanceOf(CrossCompanyError);
+  });
+
+  it('createDepartment rejects a cross-company parentDepartmentId (belt-and-braces against the H2 leak)', async () => {
+    // A second company with its own department, used as a cross-company parent.
+    const [c2] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Parent-Co Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const [dept2] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: b.tenantId, companyId: c2.id, name: 'Cross Parent' })
+      .returning({ id: schema.department.id });
+
+    // Creating a Company-A department under a Company-B parent must throw (no cross-company tree allowed).
+    await expect(
+      createDepartment(adminCtx(b), { companyId: b.companyId, name: 'Mis-parented', parentDepartmentId: dept2.id }),
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+
+    // A same-company parent is accepted.
+    const ok = await createDepartment(adminCtx(b), {
+      companyId: b.companyId,
+      name: 'Same-Co Child',
+      parentDepartmentId: b.deptA,
+    });
+    expect(ok.id).toBeTruthy();
   });
 
   it('listManagerCandidates returns active in-scope employments and excludes terminated', async () => {

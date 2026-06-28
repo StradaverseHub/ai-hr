@@ -176,6 +176,36 @@ describe('ADR-0052 — recursive + HOD visibility', () => {
     expect(await employeeDetail(ctx, sibReport.employmentId)).toBeFalsy();
   });
 
+  it('H2 — a cross-company-mis-parented A-dept does NOT leak to a HOD of the B-parent', async () => {
+    // Sibling company B (not a descendant of companyId, which is company A here).
+    const [coB] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'CompanyB Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    // B has a parent department; A has a department that gets MIS-PARENTED under the B-parent.
+    const [bParent] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: b.tenantId, companyId: coB.id, name: 'B-Parent' })
+      .returning({ id: schema.department.id });
+    const [aMisparented] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, name: 'A-Misparented', parentDepartmentId: bParent.id })
+      .returning({ id: schema.department.id });
+
+    // The HOD heads the B-parent department (current assignment dept = bParent) and manages a report there.
+    const hodB = await hire('HodB', coB.id, bParent.id);
+    const reportB = await hire('ReportB', coB.id, bParent.id);
+    await adminLine(reportB.employmentId, hodB.employmentId);
+
+    // A Company-A employee sits in the mis-parented A-department (a descendant of bParent in the dept tree).
+    const aVictim = await hire('AVictim', b.companyId, aMisparented.id);
+
+    const hodCtx = await userCtx(hodB.personId, 'manager');
+    // The B-parent HOD sees their own B report (sanity), but must NOT see the Company-A employee.
+    expect((await employeeDetail(hodCtx, reportB.employmentId))?.name).toBe('ReportB');
+    expect(await employeeDetail(hodCtx, aVictim.employmentId)).toBeFalsy();
+  });
+
   it('7. termination: a terminated mid-level manager breaks the chain — their subtree is not reachable', async () => {
     const topA = await hire('TTop', b.companyId, b.deptA);
     const midB = await hire('TMid', b.companyId, b.deptA);
