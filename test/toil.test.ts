@@ -110,11 +110,12 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     expect(await replacementBalance(employmentId)).toBe(0);
   });
 
-  it('allows the First-Schedule employee when the toggle is ON — forced convert + compliance warning', async () => {
+  it('allows the First-Schedule employee when the toggle is ON + per-election consent — forced convert + compliance warning', async () => {
     process.env.TOIL_ENABLED = 'true';
     const { a, employmentId } = await hireWithWorkedRestDay(3000);
     await setToilPolicy(a, policy(b.companyId, { allowFirstScheduleEligible: true }));
-    const r = await accrueToil(a, { employmentId, workedDate: REST_DAY });
+    // Phase-B #14: the toggle ON is no longer enough on its own — explicit per-election consent is required.
+    const r = await accrueToil(a, { employmentId, workedDate: REST_DAY, firstScheduleConsent: true });
     expect(r.daysCredited).toBe(1);
     expect(r.forcedConvertOnExpiry).toBe(true);
     expect(r.complianceWarning).toMatch(/convert to pay/i);
@@ -144,7 +145,7 @@ describe('TOIL core (ADR-0033 33-3)', () => {
     const A = await hireWithWorkedRestDay(3000); // not banked ⇒ cash OT
     const B = await hireWithWorkedRestDay(3000); // banked ⇒ excluded from cash OT
     await setToilPolicy(A.a, policy(b.companyId, { allowFirstScheduleEligible: true }));
-    await accrueToil(B.a, { employmentId: B.employmentId, workedDate: REST_DAY });
+    await accrueToil(B.a, { employmentId: B.employmentId, workedDate: REST_DAY, firstScheduleConsent: true });
     // One company-wide July batch covers both; only A's rest-day OT should be monetised.
     const { batchId } = await createBatch(A.a, { companyId: b.companyId, payPeriod: '2026-07' });
     expect((await prefillOvertimeFromAttendance(A.a, { batchId })).applied).toBe(1);

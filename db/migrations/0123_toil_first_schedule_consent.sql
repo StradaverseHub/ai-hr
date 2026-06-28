@@ -1,0 +1,24 @@
+-- Phase-B #14 (audit #14) — TOIL OT-floor guard: safer First-Schedule default.
+--
+-- ADR-0033 addendum (2026-06-28). For a First-Schedule-eligible (≤ RM4,000) employee the statutory cash OT
+-- under EA s.60(3)/s.60A/s.60D(3) is a non-waivable minimum. Substituting paid time-off (TOIL) for that cash
+-- premium is lawful ONLY by prior mutual agreement — never a unilateral company default. Before this column
+-- the only gate was the per-COMPANY toggle `toil_policy.allow_first_schedule_eligible`, which a blanket
+-- company setting could turn into an imposed default. This column records, per accrual, that explicit
+-- per-election employee consent was captured at the moment the credit was banked.
+--
+--   first_schedule_consent = true   the election was made with explicit per-employee consent
+--   first_schedule_consent = NULL   not applicable (the employee is NOT First-Schedule-eligible — > RM4,000 —
+--                                    so no statutory floor is being substituted; or a legacy row pre-dating
+--                                    this column). The accrual service only WRITES true for eligible employees.
+--
+-- The accrual path now BLOCKS a First-Schedule-eligible accrual unless BOTH the company toggle is on AND this
+-- per-election consent is supplied; > RM4,000 employees are unaffected (consent is moot, column stays NULL).
+--
+-- Additive + nullable + backfill-safe. The existing toil_accrual RLS policies and ai_hr_app DML grants cover
+-- this column by inheritance — a column add needs no new policy or grant.
+--
+-- Rollback:
+--   ALTER TABLE toil_accrual DROP COLUMN first_schedule_consent;
+ALTER TABLE "toil_accrual"
+  ADD COLUMN IF NOT EXISTS "first_schedule_consent" boolean;

@@ -40,6 +40,20 @@ export class ToilNotEligibleError extends Error {
     this.name = 'ToilNotEligibleError';
   }
 }
+/**
+ * Phase-B #14: a First-Schedule (≤ ceiling) election was refused because explicit per-election consent was not
+ * supplied (the company toggle alone must not be a blanket default). Extends `ToilNotEligibleError` so existing
+ * not-eligible handling (auto-accrual swallowing, the elect-button surface) still treats it correctly, while the
+ * roster action can detect it specifically and prompt the user to record the employee's agreement.
+ */
+export class ToilFirstScheduleConsentRequiredError extends ToilNotEligibleError {
+  constructor(
+    msg = 'This employee is within the First Schedule (statutory overtime pay applies). Banking time in lieu instead of the statutory cash premium requires the employee’s explicit prior agreement; record per-election consent to proceed.',
+  ) {
+    super(msg);
+    this.name = 'ToilFirstScheduleConsentRequiredError';
+  }
+}
 export class ToilNoOvertimeError extends Error {
   constructor(msg = 'No overtime was recorded for that day to bank in lieu.') {
     super(msg);
@@ -133,15 +147,20 @@ export async function setToilPolicy(ctx: SessionContext, p: ToilPolicyInput) {
       })
       .returning({ id: toilPolicy.id });
     if (p.enabled) await ensureReplacementLeaveType(tx, ctx.tenantId);
+    // Phase-B #14: premium_equivalent banking combined with allowing First-Schedule staff can over/under-bank
+    // vs the exact s.60(3) split-rule cash — surface a warning at policy save so the risk is visible (the
+    // convert-to-pay path still reconciles to the exact statutory entitlement; this flags the banking choice).
+    const premiumEquivalentWarning =
+      p.accrualBasis === 'premium_equivalent' && p.allowFirstScheduleEligible ? PREMIUM_EQUIVALENT_FS_WARNING : undefined;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'toil-policy',
       aggregateId: row.id,
       eventType: 'toil-policy.updated',
       actor: actorOf(ctx),
-      payload: { ...p },
+      payload: { ...p, ...(premiumEquivalentWarning ? { premiumEquivalentWarning: true } : {}) },
     });
-    return row;
+    return { ...row, premiumEquivalentWarning };
   });
 }
 
@@ -189,7 +208,17 @@ export type AccrueToilResult = {
   /** true ⇒ a First-Schedule-eligible employee: unused TOIL must convert to pay on expiry (floor protection). */
   forcedConvertOnExpiry: boolean;
   complianceWarning?: string;
+  /** Phase-B #14: set when premium_equivalent banking is used for a First-Schedule employee — the banked
+   *  credit may not reproduce the exact s.60(3)/s.60D(3) statutory cash (over/under-banks vs the split-rule). */
+  premiumEquivalentWarning?: string;
 };
+
+// Phase-B #14: the premium_equivalent basis uplifts the banked time by the day-type OT multiplier, which does
+// NOT reproduce the EA s.60(3) ½/1-day split-rule cash. For a First-Schedule employee the banked credit can
+// therefore diverge from the exact statutory entitlement — surface this so the risk is visible (the
+// convert-to-pay path still reconciles to the exact statutory cash; this warns at the banking decision).
+const PREMIUM_EQUIVALENT_FS_WARNING =
+  'Premium-equivalent banking uplifts time by the day-type multiplier and may not reproduce the exact statutory cash (EA s.60(3)/s.60D(3)) for this First-Schedule employee. Unused credit converts to pay at the exact statutory entitlement on expiry.';
 
 // RL Control Engine (0113): only work on a Rest Day or Public Holiday is eligible for replacement leave.
 // A plain workday's OT is cash-only (PREMIUM_MULT carries a 'workday' key for the multiplier, but banking a
@@ -211,7 +240,16 @@ const RL_ELIGIBLE_DAY_TYPES: ReadonlySet<'rest_day' | 'holiday'> = new Set(['res
 export async function accrueToilTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentId: string; workedDate: string; requireDecideAuth: boolean; viaAutoApproval?: boolean },
+  p: {
+    employmentId: string;
+    workedDate: string;
+    requireDecideAuth: boolean;
+    viaAutoApproval?: boolean;
+    /** Phase-B #14: explicit per-election consent to substitute TOIL for the statutory cash OT premium. Only
+     *  meaningful for a First-Schedule-eligible (≤ ceiling) employee — required (with the company toggle) before
+     *  such an accrual is permitted; moot for > ceiling staff. */
+    firstScheduleConsent?: boolean;
+  },
 ): Promise<AccrueToilResult> {
   if (p.requireDecideAuth) await assertCanDecide(tx, ctx, p.employmentId, 'time off in lieu');
 
@@ -265,11 +303,21 @@ export async function accrueToilTx(
       'Statutory overtime pay applies to this employee (within the First Schedule), so time in lieu is not permitted under the current policy. Enable "allow First-Schedule staff" on the company TOIL policy to override.',
     );
   }
+  // Phase-B #14 (safer default): the company toggle alone must NOT be a blanket default. Substituting TOIL for
+  // a First-Schedule employee's statutory cash OT (EA s.60(3)/s.60A/s.60D(3)) is lawful only by explicit prior
+  // agreement, so an eligible accrual also requires per-election consent — even with the toggle ON.
+  if (eligible && policy.allowFirstScheduleEligible && p.firstScheduleConsent !== true) {
+    throw new ToilFirstScheduleConsentRequiredError();
+  }
 
   // 5 · days credited + expiry.
   const mult = policy.accrualBasis === 'premium_equivalent' ? PREMIUM_MULT[dayType] : 1;
   const daysCredited = round2((otMinutes / STD_DAY_MINUTES) * mult);
   const expiresOn = addDays(p.workedDate, policy.expiryDays);
+  // Phase-B #14: premium_equivalent banking for a First-Schedule employee can over/under-bank vs the exact
+  // s.60(3) split-rule cash — flag the risk (the convert-to-pay path still reconciles to the exact statutory
+  // entitlement; this surfaces the divergence at the banking decision).
+  const premiumEquivalentWarning = eligible && policy.accrualBasis === 'premium_equivalent';
 
   // 6 · the leave-ledger credit (balance = Σ days, so this just works) + the register row.
   const replacementTypeId = await ensureReplacementLeaveType(tx, ctx.tenantId);
@@ -301,6 +349,9 @@ export async function accrueToilTx(
       // 0113: freeze the carry-forward decision at accrual time (mirrors expiryAction). The year-end close
       // sweep reads this per-accrual flag, so a later policy flip cannot retroactively change its fate.
       carryForwardAtYearEnd: policy.carryForwardAtYearEnd,
+      // Phase-B #14: record the explicit per-election consent for a First-Schedule election (true only when
+      // eligible — moot/NULL for > ceiling staff who need no statutory-floor substitution agreement).
+      firstScheduleConsent: eligible ? true : null,
       policyId: policy.id,
       ledgerEntryId: ledger.id,
     })
@@ -323,6 +374,9 @@ export async function accrueToilTx(
       forcedConvertOnExpiry: eligible,
       expiresOn,
       carryForwardAtYearEnd: policy.carryForwardAtYearEnd,
+      // Phase-B #14: stamp the consent + premium-equivalent-risk flags onto the audit record.
+      ...(eligible ? { firstScheduleConsent: true } : {}),
+      ...(premiumEquivalentWarning ? { premiumEquivalentWarning: true } : {}),
       ...(p.viaAutoApproval ? { viaAutoApproval: true } : {}),
     },
   });
@@ -335,6 +389,7 @@ export async function accrueToilTx(
     complianceWarning: eligible
       ? 'This employee is within the First Schedule (statutory overtime pay normally applies). Unused time in lieu will convert to pay on expiry, not lapse.'
       : undefined,
+    premiumEquivalentWarning: premiumEquivalentWarning ? PREMIUM_EQUIVALENT_FS_WARNING : undefined,
   };
 }
 
@@ -344,7 +399,7 @@ export async function accrueToilTx(
  */
 export async function accrueToil(
   ctx: SessionContext,
-  p: { employmentId: string; workedDate: string },
+  p: { employmentId: string; workedDate: string; firstScheduleConsent?: boolean },
 ): Promise<AccrueToilResult> {
   if (!toilEnabled()) throw new ToilDisabledError();
   return withTenant(ctx, (tx) => accrueToilTx(tx, ctx, { ...p, requireDecideAuth: true }));
@@ -496,13 +551,17 @@ export type ToilExpiryResult = {
   convertedAmount: number;
 };
 
-/** One accrual to sweep. `remaining` = daysCredited − daysTaken (only the still-unspent in-lieu days). */
+/** One accrual to sweep. `remaining` = daysCredited − daysTaken (only the still-unspent in-lieu days).
+ *  Phase-B #14 adds the worked-day shape (`dayType`, `otMinutes`) so a First-Schedule convert-to-pay can
+ *  reconcile to the EXACT s.60(3)/s.60D(3) cash for that day-type rather than a generic ORP × banked-days. */
 type SweepRow = {
   id: string;
   employmentId: string;
   remaining: number;
   expiryAction: ToilExpiryAction;
   workedDate: string;
+  dayType: 'workday' | 'rest_day' | 'holiday';
+  otMinutes: number;
 };
 
 /**
@@ -525,14 +584,58 @@ async function expireAccrualsTx(
   // Current s.2 wages for the employees whose TOIL converts to pay (ORP = wages / 26 per day).
   const convertEmpIds = [...new Set(rows.filter((d) => d.expiryAction === 'convert_to_pay').map((d) => d.employmentId))];
   const wagesBy = new Map<string, number>();
+  // Phase-B #14: the employee's company/country so a First-Schedule (≤ ceiling) convert can reconcile to the
+  // exact s.60(3)/s.60D(3) cash for the worked day-type via the localization OT math (not a generic ORP×days).
+  const countryBy = new Map<string, string | null>();
   if (convertEmpIds.length) {
     const comps = await tx
-      .select({ employmentId: compensation.employmentId, basic: compensation.basicSalary, allowance: compensation.monthlyAllowance })
+      .select({
+        employmentId: compensation.employmentId,
+        basic: compensation.basicSalary,
+        allowance: compensation.monthlyAllowance,
+        country: company.country,
+      })
       .from(compensation)
+      .innerJoin(employment, eq(employment.id, compensation.employmentId))
+      .innerJoin(company, eq(company.id, employment.companyId))
       .where(and(inArray(compensation.employmentId, convertEmpIds), isNull(compensation.validTo), isNull(compensation.supersededAt)));
-    for (const c of comps) wagesBy.set(c.employmentId, round2(Number(c.basic) + Number(c.allowance ?? 0)));
+    for (const c of comps) {
+      wagesBy.set(c.employmentId, round2(Number(c.basic) + Number(c.allowance ?? 0)));
+      countryBy.set(c.employmentId, c.country);
+    }
   }
   const replacementTypeId = await ensureReplacementLeaveType(tx, ctx.tenantId);
+
+  // Phase-B #14: resolve the wage ceiling per distinct country once (the OT-eligibility threshold). The exact
+  // statutory entitlement only governs a First-Schedule employee (wages ≤ ceiling); above it, OT comp is
+  // contractual and the generic ORP × banked-days basis is kept unchanged.
+  const ceilingByCountry = new Map<string | null, number>();
+  for (const country of new Set(countryBy.values())) {
+    const pack = packFor(country);
+    const ceiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf })).ot.wageCeiling : 4000;
+    ceilingByCountry.set(country, ceiling);
+  }
+
+  /**
+   * The cash a convert-to-pay row owes. For a First-Schedule employee (wages ≤ ceiling) this is the EXACT
+   * s.60(3)/s.60D(3) statutory entitlement for the original worked day-type — reusing the localization
+   * `overtimePay` math — NOT the generic `daysCredited × ORP` (which over/under-pays under premium_equivalent
+   * banking). Above the ceiling (no statutory floor), the generic ORP × banked-days basis is preserved.
+   * Returns the amount + which basis was used (recorded on the event for auditability).
+   */
+  const convertAmountFor = (a: SweepRow): { amount: number; basis: 'statutory_exact' | 'generic_orp' } => {
+    const wages = wagesBy.get(a.employmentId) ?? 0;
+    const country = countryBy.get(a.employmentId) ?? null;
+    const ceiling = ceilingByCountry.get(country) ?? 4000;
+    const pack = packFor(country);
+    if (pack && wages > 0 && wages <= ceiling) {
+      // Exact statutory cash for the worked day-type (s.60(3) rest day, s.60D(3) holiday, s.60A workday OT).
+      const otp = pack.payroll.overtimePay({ monthlyWages: wages, days: [{ dayType: a.dayType, minutes: a.otMinutes }], wageCeiling: ceiling });
+      if (otp.eligible) return { amount: round2(otp.total), basis: 'statutory_exact' };
+    }
+    // Not First-Schedule (or no pack): contractual ORP × remaining banked days.
+    return { amount: round2(a.remaining * (wages / ORP_DIVISOR)), basis: 'generic_orp' };
+  };
 
   let converted = 0;
   let lapsed = 0;
@@ -551,7 +654,10 @@ async function expireAccrualsTx(
       days: (-days).toFixed(2),
       effectiveOn: asOf,
     });
-    const amount = convert ? round2(days * ((wagesBy.get(a.employmentId) ?? 0) / ORP_DIVISOR)) : 0;
+    // Phase-B #14: exact s.60(3)/s.60D(3) cash for a First-Schedule employee (statutory_exact); generic
+    // ORP × banked-days for > ceiling staff (generic_orp). Basis is recorded on the event for auditability.
+    const owed = convert ? convertAmountFor(a) : { amount: 0, basis: 'generic_orp' as const };
+    const amount = owed.amount;
     await tx.update(toilAccrual).set({ status: convert ? 'converted_to_pay' : 'lapsed' }).where(eq(toilAccrual.id, a.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -565,7 +671,18 @@ async function expireAccrualsTx(
         daysCredited: days,
         asOf,
         ...(convert
-          ? { amountOwed: amount, orpDivisor: ORP_DIVISOR, valuationNote: 'ORP computed at close-run wages; reconcile to the correct pay period.' }
+          ? {
+              amountOwed: amount,
+              orpDivisor: ORP_DIVISOR,
+              // Phase-B #14: 'statutory_exact' ⇒ reconciled to the exact EA s.60(3)/s.60D(3) cash for the
+              // worked day-type (First Schedule); 'generic_orp' ⇒ contractual ORP × banked days (> ceiling).
+              valuationBasis: owed.basis,
+              dayType: a.dayType,
+              valuationNote:
+                owed.basis === 'statutory_exact'
+                  ? 'Exact s.60(3)/s.60D(3) cash for the worked day-type, valued at close-run wages; reconcile to the correct pay period.'
+                  : 'ORP computed at close-run wages; reconcile to the correct pay period.',
+            }
           : {}),
       },
     });
@@ -597,6 +714,9 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
         daysTaken: toilAccrual.daysTaken,
         expiryAction: toilAccrual.expiryAction,
         workedDate: toilAccrual.workedDate,
+        // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
+        dayType: toilAccrual.dayType,
+        otMinutes: toilAccrual.otMinutes,
       })
       .from(toilAccrual)
       .where(and(eq(toilAccrual.status, 'active'), lte(toilAccrual.expiresOn, p.today)));
@@ -606,6 +726,8 @@ export async function runToilExpiry(ctx: SessionContext, p: { today: string }): 
       remaining: round2(Number(d.daysCredited) - Number(d.daysTaken)),
       expiryAction: d.expiryAction,
       workedDate: d.workedDate,
+      dayType: d.dayType as 'workday' | 'rest_day' | 'holiday',
+      otMinutes: d.otMinutes,
     }));
     return expireAccrualsTx(tx, ctx, rows, p.today);
   });
@@ -670,6 +792,9 @@ export async function closeReplacementLeaveYear(
         expiryAction: toilAccrual.expiryAction,
         carryForwardAtYearEnd: toilAccrual.carryForwardAtYearEnd,
         workedDate: toilAccrual.workedDate,
+        // Phase-B #14: the worked-day shape so a First-Schedule convert reconciles to the exact statutory cash.
+        dayType: toilAccrual.dayType,
+        otMinutes: toilAccrual.otMinutes,
         hiredOn: employment.hiredOn,
         leaveCycle: company.leaveCycle,
       })
@@ -694,6 +819,8 @@ export async function closeReplacementLeaveYear(
         remaining: round2(Number(a.daysCredited) - Number(a.daysTaken)),
         expiryAction: a.expiryAction,
         workedDate: a.workedDate,
+        dayType: a.dayType as 'workday' | 'rest_day' | 'holiday',
+        otMinutes: a.otMinutes,
         boundary,
       });
     }

@@ -644,8 +644,10 @@ export async function closeReplacementLeaveYearAction() {
 // ADR-0033 33-5 — upsert one company's TOIL (leave-in-lieu) policy. Checkboxes ⇒ presence test.
 export async function setToilPolicyAction(fd: FormData) {
   const s = await getSession();
+  let warning: string | undefined;
   try {
-    await setToilPolicy(s, {
+    // Phase-B #14: premium_equivalent + allowing First-Schedule staff returns a banking-risk warning.
+    const r = await setToilPolicy(s, {
       companyId: String(fd.get('companyId') ?? ''),
       enabled: fd.get('enabled') === 'on',
       accrualBasis: String(fd.get('accrualBasis') ?? 'hours_worked') as ToilAccrualBasis,
@@ -655,8 +657,13 @@ export async function setToilPolicyAction(fd: FormData) {
       autoAccrueOnApproval: fd.get('autoAccrueOnApproval') === 'on',
       carryForwardAtYearEnd: fd.get('carryForwardAtYearEnd') === 'on',
     });
+    warning = r.premiumEquivalentWarning;
   } catch (e) {
     fail(TOIL_POLICY, e);
+  }
+  if (warning) {
+    revalidatePath(TOIL_POLICY);
+    redirect(`${TOIL_POLICY}?warning=${encodeURIComponent(warning)}`);
   }
   ok(TOIL_POLICY);
 }

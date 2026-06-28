@@ -42,7 +42,8 @@
     "noRestWarningHint": "Scheduled every day this week — EA 1955 s.59 requires one rest day per week.",
     "bankInLieu": "Bank in lieu",
     "bankInLieuPending": "Banking…",
-    "bankInLieuDone": "Banked {days, plural, =1 {# day} other {# days}}"
+    "bankInLieuDone": "Banked {days, plural, =1 {# day} other {# days}}",
+    "bankInLieuConsentPrompt": "This employee is within the First Schedule (statutory overtime pay applies). Banking time in lieu instead of the statutory cash premium needs the employee's explicit prior agreement. Confirm consent to proceed?"
   },
   "common": {
     "appName": "AI HR",

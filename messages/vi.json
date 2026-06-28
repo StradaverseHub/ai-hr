@@ -42,7 +42,8 @@
     "noRestWarningHint": "Xếp lịch mỗi ngày trong tuần này — EA 1955 mục 59 yêu cầu một ngày nghỉ mỗi tuần.",
     "bankInLieu": "Lưu nghỉ bù",
     "bankInLieuPending": "Đang lưu…",
-    "bankInLieuDone": "Đã lưu {days, plural, other {# ngày}}"
+    "bankInLieuDone": "Đã lưu {days, plural, other {# ngày}}",
+    "bankInLieuConsentPrompt": "Nhân viên này thuộc Biểu thứ Nhất (được hưởng tiền làm thêm giờ theo luật). Việc tích lũy nghỉ bù thay cho khoản phụ cấp tiền mặt theo luật cần có sự đồng ý trước rõ ràng của nhân viên. Xác nhận đồng ý để tiếp tục?"
   },
   "common": {
     "appName": "AI HR",

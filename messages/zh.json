@@ -42,7 +42,8 @@
     "noRestWarningHint": "本周每天都排班——《1955年雇佣法》第59条要求每周一天休息。",
     "bankInLieu": "存为调休",
     "bankInLieuPending": "存入中…",
-    "bankInLieuDone": "已存 {days, plural, other {# 天}}"
+    "bankInLieuDone": "已存 {days, plural, other {# 天}}",
+    "bankInLieuConsentPrompt": "该员工属于第一附表（适用法定加班费）。以补休代替法定现金加班费需要员工事先明确同意。确认同意后继续？"
   },
   "common": {
     "appName": "AI HR",

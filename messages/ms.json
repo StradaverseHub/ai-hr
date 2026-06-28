@@ -42,7 +42,8 @@
     "noRestWarningHint": "Dijadualkan setiap hari minggu ini — EA 1955 s.59 memerlukan satu hari rehat seminggu.",
     "bankInLieu": "Simpan cuti ganti",
     "bankInLieuPending": "Menyimpan…",
-    "bankInLieuDone": "Disimpan {days, plural, other {# hari}}"
+    "bankInLieuDone": "Disimpan {days, plural, other {# hari}}",
+    "bankInLieuConsentPrompt": "Pekerja ini termasuk dalam Jadual Pertama (gaji kerja lebih masa berkanun terpakai). Menyimpan cuti ganti dan bukannya premium tunai berkanun memerlukan persetujuan awal yang jelas daripada pekerja. Sahkan persetujuan untuk meneruskan?"
   },
   "common": {
     "appName": "AI HR",

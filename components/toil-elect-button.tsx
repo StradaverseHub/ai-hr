@@ -14,17 +14,23 @@ export function ToilElectButton({ employmentId, workedDate }: { employmentId: st
   const [done, setDone] = useState<{ days: number; warning?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const click = () =>
+  const submit = (firstScheduleConsent?: boolean) =>
     start(async () => {
       setError(null);
-      const r = await accrueToilAction({ employmentId, workedDate });
+      const r = await accrueToilAction({ employmentId, workedDate, firstScheduleConsent });
       if (r.ok) {
-        setDone({ days: r.daysCredited, warning: r.warning });
+        // Phase-B #14: a premium_equivalent First-Schedule election carries an extra banking-risk note.
+        setDone({ days: r.daysCredited, warning: r.warning ?? r.premiumEquivalentWarning });
         router.refresh();
+      } else if ('needsConsent' in r) {
+        // Phase-B #14: First-Schedule election — record the employee's explicit prior agreement, then retry.
+        if (typeof window !== 'undefined' && window.confirm(t('bankInLieuConsentPrompt'))) submit(true);
       } else {
         setError(r.error);
       }
     });
+
+  const click = () => submit();
 
   if (done) {
     return (

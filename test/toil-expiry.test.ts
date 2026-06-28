@@ -47,7 +47,8 @@ async function accrue(basic: number, over: Partial<ToilPolicyInput> = {}) {
   await setRestDay(a, { employmentId: e.employmentId, shiftDate: REST_DAY });
   await checkIn(a, { employmentId: e.employmentId, date: REST_DAY, time: '08:00:00' });
   await checkOut(a, { employmentId: e.employmentId, date: REST_DAY, time: '17:00:00' });
-  const r = await accrueToil(a, { employmentId: e.employmentId, workedDate: REST_DAY });
+  // Phase-B #14: pass per-election consent (moot for > ceiling employees, required for First-Schedule ones).
+  const r = await accrueToil(a, { employmentId: e.employmentId, workedDate: REST_DAY, firstScheduleConsent: true });
   return { a, employmentId: e.employmentId, accrualId: r.accrualId };
 }
 
