@@ -8,8 +8,9 @@ import { submitFeedbackAction } from './actions';
 import { BulkTable } from './bulk-table';
 
 const CATEGORIES = ['issue', 'enhancement', 'new_function'] as const;
-// Dashboard chip order; statuses with a zero count are hidden.
-const BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'building', 'done', 'deployed', 'cancelled'] as const;
+// Dashboard chip order; statuses with a zero count are hidden. Includes every feedbackStatusEnum value
+// so the chips sum to the "All" total and any ?status= filter is honoured (e.g. ?status=rejected).
+const BOARD_STATUSES = ['open', 'planned', 'contested', 'approved', 'building', 'done', 'deployed', 'rejected', 'cancelled'] as const;
 
 export function statusTone(status: string): string {
   switch (status) {
@@ -25,6 +26,8 @@ export function statusTone(status: string): string {
     case 'done':
     case 'deployed':
       return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400';
+    case 'rejected':
+      return 'bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300';
     default:
       return 'bg-muted text-muted-foreground';
   }
@@ -33,14 +36,38 @@ export function statusTone(status: string): string {
 export default async function FeedbackPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; toast?: string; status?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    toast?: string;
+    toastKey?: string;
+    count?: string;
+    action?: string;
+    skipped?: string;
+    status?: string;
+  }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('feedback');
-  const { error, toast, status } = await searchParams;
+  const { error, toast, toastKey, count, action, skipped, status } = await searchParams;
   const activeStatus = (BOARD_STATUSES as readonly string[]).includes(status ?? '')
     ? (status as FeedbackStatus)
     : undefined;
+
+  // Structured (localized) toast — e.g. the bulk-review result, rendered through t() with an ICU plural
+  // and a per-action verb key. Falls back to the literal ?toast= used by the single-item actions.
+  const VERB_KEYS: Record<string, string> = {
+    approve: 'bulkVerb_approve',
+    cancel: 'bulkVerb_cancel',
+    contest: 'bulkVerb_contest',
+  };
+  const toastMessage =
+    toastKey === 'bulkResult' && action && action in VERB_KEYS
+      ? t('bulkResult', {
+          count: Number(count ?? 0),
+          action: t(VERB_KEYS[action]),
+          skipped: Number(skipped ?? 0),
+        })
+      : (toast ?? null);
 
   const [counts, rows] = await Promise.all([
     feedbackStatusCounts(s),
@@ -55,9 +82,9 @@ export default async function FeedbackPage({
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={error} />
-      {toast && (
+      {toastMessage && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-          {toast}
+          {toastMessage}
         </div>
       )}
 

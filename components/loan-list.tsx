@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { LoanRow, RepaymentRow } from '@/core/loans';
 import {
@@ -50,8 +50,8 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
       </thead>
       <tbody className="divide-y divide-border">
         {loans.map((l) => (
-          <>
-            <tr key={l.id} className="hover:bg-muted/40">
+          <Fragment key={l.id}>
+            <tr className="hover:bg-muted/40">
               <td className="px-4 py-2.5 font-medium">{l.employeeName}</td>
               <td className="px-4 py-2.5">{tType(l.loanType)}</td>
               <td className="px-4 py-2.5 tabular-nums">{money(l.principal)}</td>
@@ -76,7 +76,7 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
               </td>
             </tr>
             {open === l.id && (
-              <tr key={`${l.id}-detail`} className="bg-muted/20">
+              <tr className="bg-muted/20">
                 <td colSpan={8} className="px-4 py-4">
                   <div className="space-y-4">
                     {/* Lifecycle actions, gated by status. */}
@@ -141,7 +141,7 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
                 </td>
               </tr>
             )}
-          </>
+          </Fragment>
         ))}
       </tbody>
     </table>

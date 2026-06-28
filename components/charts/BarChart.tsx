@@ -85,7 +85,10 @@ export function BarChart({ id, categories, series, grouped = false, height = 220
                   width={barW}
                   height={Math.max(0, padT + plotH - by)}
                   rx={2}
-                  fill={colorAt(grouped ? si : ci)}
+                  // Single-series: one consistent colour for every bar (it's one series, one legend label —
+                  // a per-category palette implies categories/series that don't exist). Grouped (multi-series):
+                  // colour by series index so the side-by-side bars match the legend.
+                  fill={colorAt(grouped ? si : 0)}
                 >
                   <title>{`${cat} · ${s.label}: ${v}`}</title>
                 </rect>

@@ -7,12 +7,13 @@
  * and the slice0 subtree-scope pattern.
  */
 import { randomUUID } from 'node:crypto';
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { createCompany, createDepartment, assignRole } from '../core/admin';
 import { hireEmployee } from '../core/org';
+import { employeeDetail } from '../core/read';
 import { currentCompensation, setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import {
@@ -378,32 +379,44 @@ describe('job-function partner roles (ADR-0049)', () => {
     });
   });
 
-  // ───────────────────── DB helpers are additive (the OR adds partner access only) ─────────────────────
+  // ───────────────────── Cross-company partner visibility (the actual requirement) ─────────────────────
+  // The widened employment/person SELECT policies (0099) and the can_admin_*_for helpers exist to serve
+  // ONE requirement: a company-scoped partner CAN read its own company's person/employment to do its job,
+  // but CANNOT read another company's. After Fix-2 tightened the read path, assert that REQUIREMENT
+  // behaviourally through the read API (employeeDetail = the employment⨝person read), not the helper's
+  // raw boolean — a green helper boolean does not prove the partner can actually read the row.
 
-  describe('helpers are additive (compat)', () => {
-    it('can_admin_payroll_for / can_admin_perfcomp_for: true for admin, false for non-admin/non-partner', async () => {
-      const { coA } = await twoCompanies();
-      const admin = adminCtx(base);
-      const adminRows = await withTenant(admin, (tx) =>
-        tx.execute(
-          sql`select app.can_admin_payroll_for(${coA}::uuid) as payroll, app.can_admin_perfcomp_for(${coA}::uuid) as perf`,
-        ),
-      );
-      const adminRow = adminRows[0] as unknown as { payroll: boolean; perf: boolean };
-      expect(adminRow.payroll).toBe(true);
-      expect(adminRow.perf).toBe(true);
+  describe('cross-company partner visibility (read API)', () => {
+    it('payroll partner of Co A CAN read Co A employment+person, CANNOT read Co B (cross-company deny)', async () => {
+      const { coA, empA, empB } = await twoCompanies();
+      const pp = await partnerCtx(base, 'payroll_partner', coA);
 
-      // A plain employee (no admin, no partner) sees false on both.
+      const visibleOwn = await employeeDetail(pp, empA.employmentId);
+      expect(visibleOwn, 'payroll partner must see its own company employment').not.toBeNull();
+      expect(visibleOwn?.name).toBe('Alice A'); // the person row joined through RLS, not null/a key path
+
+      const crossCompany = await employeeDetail(pp, empB.employmentId);
+      expect(crossCompany, 'payroll partner must NOT see another company employment').toBeNull();
+    });
+
+    it('perf-comp partner of Co A CAN read Co A employment+person, CANNOT read Co B (cross-company deny)', async () => {
+      const { coA, empA, empB } = await twoCompanies();
+      const pc = await partnerCtx(base, 'performance_comp_partner', coA);
+
+      const visibleOwn = await employeeDetail(pc, empA.employmentId);
+      expect(visibleOwn, 'perf-comp partner must see its own company employment').not.toBeNull();
+      expect(visibleOwn?.name).toBe('Alice A');
+
+      const crossCompany = await employeeDetail(pc, empB.employmentId);
+      expect(crossCompany, 'perf-comp partner must NOT see another company employment').toBeNull();
+    });
+
+    it('a plain employee (no partner grant) sees neither company employment', async () => {
+      const { empA, empB } = await twoCompanies();
       const empUserId = await mkUser(base);
       const empCtx: SessionContext = { tenantId: base.tenantId, userId: empUserId, grants: [{ role: 'employee', companyId: null }] };
-      const empRows = await withTenant(empCtx, (tx) =>
-        tx.execute(
-          sql`select app.can_admin_payroll_for(${coA}::uuid) as payroll, app.can_admin_perfcomp_for(${coA}::uuid) as perf`,
-        ),
-      );
-      const empRow = empRows[0] as unknown as { payroll: boolean; perf: boolean };
-      expect(empRow.payroll).toBe(false);
-      expect(empRow.perf).toBe(false);
+      expect(await employeeDetail(empCtx, empA.employmentId)).toBeNull();
+      expect(await employeeDetail(empCtx, empB.employmentId)).toBeNull();
     });
   });
 

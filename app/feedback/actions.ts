@@ -118,13 +118,18 @@ export async function bulkReviewAction(formData: FormData) {
   const s = await getSession();
   const ids = formData.getAll('ids').map(String).filter(Boolean);
   const action = String(formData.get('action')) as BulkAction;
-  let toast = '';
+  let count = 0;
+  let skipped = 0;
   try {
     const { succeeded, failed } = await bulkReview(s, { ids, action, reason: String(formData.get('reason') ?? '') });
-    toast = `${succeeded.length} item${succeeded.length === 1 ? '' : 's'} ${action}d` + (failed.length ? ` · ${failed.length} skipped` : '');
+    count = succeeded.length;
+    skipped = failed.length;
   } catch (e) {
     fail(e);
   }
   revalidatePath(BASE);
-  redirect(`${BASE}?toast=${encodeURIComponent(toast)}`);
+  // Structured toast (key + params) so the page renders a grammatical, localized message — never a
+  // verb derived by appending 'd' (the old `${action}d` printed "canceld"/"contestd").
+  const qs = new URLSearchParams({ toastKey: 'bulkResult', count: String(count), action, skipped: String(skipped) });
+  redirect(`${BASE}?${qs.toString()}`);
 }
