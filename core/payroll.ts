@@ -138,7 +138,14 @@ async function unpaidDaysByEmployment(
     .where(
       and(
         eq(leaveRequest.status, 'approved'),
-        eq(leaveType.paid, false),
+        // Unpaid days are: (a) any request of an unpaid leave type, OR (b) Phase-B #13 (ADR-0062) — a
+        // MATERNITY request whose s.37 paid ALLOWANCE was withheld (allowance_eligible=false), which keeps
+        // the paid MATERNITY leave-type but is unpaid for the period. The per-request override wins over the
+        // type default; allowance_eligible TRUE/NULL on a paid type stays paid.
+        or(
+          eq(leaveType.paid, false),
+          eq(leaveRequest.allowanceEligible, false),
+        ),
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),
       ),

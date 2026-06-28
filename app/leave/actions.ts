@@ -14,6 +14,10 @@ export async function requestLeaveAction(formData: FormData) {
   const reasonCategoryRaw = String(formData.get('reasonCategory') ?? '').trim();
   const reasonCategory = isEmergencyReasonCategory(reasonCategoryRaw) ? reasonCategoryRaw : undefined;
   const unpaidConsent = String(formData.get('unpaidConsent') ?? '') === 'on';
+  // Phase-B #13 (ADR-0062): maternity-only s.37 paid-allowance facts. Inert for non-maternity types (the
+  // service only reads them for a MATERNITY request). Empty inputs ⇒ undefined ⇒ conservative paid default.
+  const survivingChildrenRaw = String(formData.get('survivingChildren') ?? '').trim();
+  const confinementDateRaw = String(formData.get('confinementDate') ?? '').trim();
   try {
     await requestLeave(session, {
       employmentId: String(formData.get('employmentId')),
@@ -25,6 +29,8 @@ export async function requestLeaveAction(formData: FormData) {
       hours: durationType === 'hourly' && hoursRaw !== '' ? Number(hoursRaw) : undefined,
       reasonCategory,
       unpaidConsent,
+      survivingChildren: survivingChildrenRaw !== '' ? Number(survivingChildrenRaw) : undefined,
+      confinementDate: confinementDateRaw !== '' ? confinementDateRaw : undefined,
     });
   } catch (e) {
     redirect(`/leave?error=${encodeURIComponent((e as Error).message)}`);

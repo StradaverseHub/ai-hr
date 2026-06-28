@@ -505,6 +505,19 @@
       "splitNotice": "Baki berbayar digunakan dahulu. Hari yang berbaki diambil sebagai Cuti Tanpa Gaji (tiada kerja tiada gaji).",
       "unpaidConsentLabel": "Saya mengakui bahawa mana-mana hari yang tidak dilindungi akan diambil sebagai cuti tanpa gaji."
     },
+    "maternity": {
+      "allowanceNotice": "Cuti bersalin sentiasa 98 hari. Elaun bersalin berbayar bergantung pada Akta Kerja s.37 — sila berikan butiran di bawah supaya kelayakan dapat disahkan.",
+      "confinementDateLabel": "Tarikh bersalin",
+      "survivingChildrenLabel": "Anak yang masih hidup",
+      "allowanceHint": "Elaun ditahan (cuti diberi tanpa gaji) jika perkhidmatan kelayakan tidak dipenuhi atau bagi anak kelima yang masih hidup. Biarkan kosong untuk lalai berbayar (tertakluk pengesahan HR).",
+      "allowanceWithheld": "Elaun berbayar ditahan — {reason}; cuti diberi tanpa gaji.",
+      "allowancePaid": "Layak menerima elaun berbayar.",
+      "allowanceUnconfirmed": "Kelayakan elaun berbayar belum disahkan (lalai berbayar).",
+      "reason": {
+        "qualifying_service": "perkhidmatan kelayakan tidak dipenuhi",
+        "fifth_child": "anak kelima yang masih hidup"
+      }
+    },
     "errors": {
       "documentRequiredAfter": "Dokumen sokongan diperlukan untuk {typeName} yang melebihi {days} hari.",
       "documentRequired": "Dokumen sokongan diperlukan untuk {typeName} (cth. sijil perubatan).",

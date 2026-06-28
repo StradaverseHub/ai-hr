@@ -585,6 +585,15 @@ export const leaveRequest = pgTable(
     // for every paid child (ANNUAL / SICK), every ordinary (non-EL) request, and all pre-existing rows.
     unpaidConsentAt: timestamp('unpaid_consent_at', { withTimezone: true }),
     unpaidConsentBy: uuid('unpaid_consent_by'),
+    // Phase-B #13 (ADR-0062): EA s.37 maternity paid-ALLOWANCE eligibility. The 98-day maternity LEAVE is
+    // unconditional; the paid ALLOWANCE is a separate entitlement withheld when qualifying-service fails or
+    // for a 5th+ surviving child. These two point-in-time facts (supplied on a MATERNITY request) let the
+    // service compute the decision; allowance_eligible is the per-request OVERRIDE of the leave-type paid
+    // default (FALSE ⇒ leave granted UNPAID — drives unpaidDaysByEmployment; NULL ⇒ not a maternity decision
+    // or inputs unconfirmed → conservative paid default). NULL for every non-maternity / legacy row.
+    survivingChildren: integer('surviving_children'),
+    confinementDate: date('confinement_date'),
+    allowanceEligible: boolean('allowance_eligible'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

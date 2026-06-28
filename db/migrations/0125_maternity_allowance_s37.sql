@@ -1,0 +1,34 @@
+-- Phase-B #13 (audit #13) — EA s.37 maternity paid-ALLOWANCE eligibility (ADR-0062).
+--
+-- The 98-day maternity LEAVE is unconditional for a female employee. The paid maternity ALLOWANCE is a
+-- SEPARATE entitlement that EA-1955 s.37 withholds when EITHER qualifying-service fails (she must have been
+-- employed at any time in the 4 months immediately before confinement AND for ≥90 days in the 9 months
+-- immediately before confinement) OR she already has ≥5 surviving children. When the allowance is withheld
+-- the leave is still granted but UNPAID — driving the existing leave_type.paid=false → unpaidDaysByEmployment
+-- payroll path. Capturing the two point-in-time facts at the request lets the service compute the decision
+-- and record it (the leave_request.allowance_eligible override + the domain-event payload).
+--
+--   leave_request.surviving_children  the surviving-children count at confinement supplied on a MATERNITY
+--                                     request. NULL for every non-maternity request and every legacy row,
+--                                     and for a maternity request whose UI hasn't supplied it yet (the
+--                                     service then defaults to the conservative paid behaviour + a warning).
+--   leave_request.confinement_date    the (expected/actual) confinement date supplied on a MATERNITY request,
+--                                     against which qualifying-service is computed. NULL as above.
+--   leave_request.allowance_eligible  the per-request OVERRIDE of the leave-type paid default for maternity:
+--                                       TRUE  → allowance eligible (paid, current behaviour)
+--                                       FALSE → allowance WITHHELD (leave granted UNPAID; the reason is on the
+--                                               domain event). unpaidDaysByEmployment treats FALSE as unpaid.
+--                                       NULL  → not a maternity decision, or inputs unconfirmed (paid default).
+--                                     NULL for every non-maternity request and legacy row.
+--
+-- Additive + nullable + backfill-safe. All three columns are reachable by the existing leave_request FOR ALL
+-- tenant + can_see_employment policies (same inheritance as 0124's unpaid_consent_* and 0106's
+-- parent_group_id), so they need no new RLS policy and the ai_hr_app DML grants cover them by inheritance.
+--
+-- Rollback:
+--   ALTER TABLE leave_request DROP COLUMN allowance_eligible;
+--   ALTER TABLE leave_request DROP COLUMN confinement_date;
+--   ALTER TABLE leave_request DROP COLUMN surviving_children;
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "surviving_children" integer;--> statement-breakpoint
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "confinement_date" date;--> statement-breakpoint
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "allowance_eligible" boolean;

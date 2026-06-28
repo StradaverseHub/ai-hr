@@ -158,6 +158,24 @@ export default async function ApprovalsPage({
                         {tLeave('emergency.groupLabel')}
                       </span>
                     )}
+                    {/* Phase-B #13 (ADR-0062): the EA s.37 paid-allowance decision for a maternity request.
+                        FALSE ⇒ the allowance was withheld → the 98-day leave is granted UNPAID (with a reason);
+                        TRUE ⇒ paid; NULL on a maternity row ⇒ inputs unconfirmed → defaulted to paid. */}
+                    {r.typeCode === 'MATERNITY' && (
+                      <div className="mt-0.5 text-xs">
+                        {r.allowanceEligible === false ? (
+                          <span className="text-amber-700 dark:text-amber-400">
+                            {tLeave('maternity.allowanceWithheld', {
+                              reason: tLeave(`maternity.reason.${r.maternityReason ?? 'qualifying_service'}`),
+                            })}
+                          </span>
+                        ) : r.allowanceEligible === true ? (
+                          <span className="text-muted-foreground">{tLeave('maternity.allowancePaid')}</span>
+                        ) : (
+                          <span className="text-muted-foreground">{tLeave('maternity.allowanceUnconfirmed')}</span>
+                        )}
+                      </div>
+                    )}
                     {r.hasDocument && (
                       <a
                         href={`/me/leave/attachment/${r.id}?inline=1`}

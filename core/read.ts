@@ -331,6 +331,14 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
         // surface can group them as one logical absence. NULL for ordinary requests.
         parentGroupId: leaveRequest.parentGroupId,
+        // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
+        // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
+        // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
+        // is read off the submitted-event payload (qualifying_service | fifth_child | null).
+        allowanceEligible: leaveRequest.allowanceEligible,
+        survivingChildren: leaveRequest.survivingChildren,
+        confinementDate: leaveRequest.confinementDate,
+        maternityReason: sql<string | null>`(select (e.payload #>> '{maternityAllowance,reason}') from domain_event e where e.aggregate_id = leave_request.id and e.event_type = 'leave-request.submitted' order by e.sequence desc limit 1)`,
         hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,

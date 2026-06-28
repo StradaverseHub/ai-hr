@@ -505,6 +505,19 @@
       "splitNotice": "Số dư có lương được dùng trước. Những ngày còn lại sẽ được tính là Nghỉ không lương (không làm việc không lương).",
       "unpaidConsentLabel": "Tôi xác nhận rằng những ngày không được bù sẽ được tính là nghỉ không lương."
     },
+    "maternity": {
+      "allowanceNotice": "Nghỉ thai sản luôn là 98 ngày. Trợ cấp thai sản có lương phụ thuộc vào Luật Việc làm điều 37 — vui lòng cung cấp thông tin bên dưới để xác nhận điều kiện.",
+      "confinementDateLabel": "Ngày sinh",
+      "survivingChildrenLabel": "Số con còn sống",
+      "allowanceHint": "Trợ cấp bị giữ lại (nghỉ phép không lương) nếu không đủ thời gian làm việc đủ điều kiện hoặc đối với con thứ 5 còn sống. Để trống để mặc định có lương (tùy thuộc xác nhận của HR).",
+      "allowanceWithheld": "Đã giữ lại trợ cấp có lương — {reason}; nghỉ phép không lương.",
+      "allowancePaid": "Đủ điều kiện nhận trợ cấp có lương.",
+      "allowanceUnconfirmed": "Chưa xác nhận điều kiện trợ cấp có lương (mặc định có lương).",
+      "reason": {
+        "qualifying_service": "không đủ thời gian làm việc đủ điều kiện",
+        "fifth_child": "con thứ 5 còn sống"
+      }
+    },
     "errors": {
       "documentRequiredAfter": "Cần có tài liệu hỗ trợ cho {typeName} vượt quá {days} ngày.",
       "documentRequired": "Cần có tài liệu hỗ trợ cho {typeName} (ví dụ: giấy chứng nhận y tế).",

@@ -42,6 +42,11 @@ export function LeaveDurationFields({
   // routes through paid SICK first) and the unpaid-days acknowledgement. The server is the authoritative gate
   // — it throws UnpaidConsentRequiredError when the cascade would create an UNPAID child without this consent.
   const isEmergency = selected?.code === 'EMERGENCY';
+  // Maternity (Phase-B #13, ADR-0062): when MATERNITY is selected, capture the EA s.37 paid-allowance facts —
+  // surviving-children count + confinement date. The 98-day leave is always granted; the server computes
+  // whether the paid ALLOWANCE is withheld (qualifying-service / 5th-child) and, if so, grants the leave
+  // UNPAID. Missing inputs default to paid + a "paid-allowance unconfirmed" warning, so they are optional.
+  const isMaternity = selected?.code === 'MATERNITY';
 
   return (
     <>
@@ -132,6 +137,28 @@ export function LeaveDurationFields({
             <input type="checkbox" name="unpaidConsent" className="mt-0.5 h-4 w-4 rounded border-border" />
             <span>{t('emergency.unpaidConsentLabel')}</span>
           </label>
+        </div>
+      )}
+
+      {isMaternity && (
+        <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">
+          <p className="text-xs text-muted-foreground">{t('maternity.allowanceNotice')}</p>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={t('maternity.confinementDateLabel')}>
+              <input name="confinementDate" type="date" className={inputCls} />
+            </Field>
+            <Field label={t('maternity.survivingChildrenLabel')}>
+              <input
+                name="survivingChildren"
+                type="number"
+                min="0"
+                step="1"
+                placeholder="0"
+                className={inputCls}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('maternity.allowanceHint')}</p>
         </div>
       )}
     </>

@@ -505,6 +505,19 @@
       "splitNotice": "优先使用带薪余额。任何剩余天数将按无薪假处理（不工作不发薪）。",
       "unpaidConsentLabel": "我确认任何未被覆盖的天数将按无薪假处理。"
     },
+    "maternity": {
+      "allowanceNotice": "产假始终为98天。带薪产假津贴取决于《雇佣法》第37条——请在下方填写详情以便确认资格。",
+      "confinementDateLabel": "分娩日期",
+      "survivingChildrenLabel": "存活子女数",
+      "allowanceHint": "若不符合合格服务条件或属第五名存活子女，则津贴被扣留（假期按无薪发放）。留空则默认为带薪（须经人力资源确认）。",
+      "allowanceWithheld": "带薪津贴被扣留——{reason}；假期按无薪发放。",
+      "allowancePaid": "符合带薪津贴资格。",
+      "allowanceUnconfirmed": "带薪津贴资格未确认（默认为带薪）。",
+      "reason": {
+        "qualifying_service": "不符合合格服务条件",
+        "fifth_child": "第五名存活子女"
+      }
+    },
     "errors": {
       "documentRequiredAfter": "{typeName}超过 {days} 天时需要提供证明文件。",
       "documentRequired": "{typeName}需要提供证明文件（例如医疗证明）。",

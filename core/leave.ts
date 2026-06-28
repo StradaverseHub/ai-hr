@@ -211,6 +211,79 @@ function assertEligible(
   }
 }
 
+// ── Maternity paid-allowance eligibility (EA s.37, Phase-B #13 / ADR-0062) ────────────────────────────
+// The 98-day maternity LEAVE is unconditional (the female-only gate above is the only check on the leave).
+// The paid maternity ALLOWANCE is a SEPARATE entitlement that EA-1955 s.37 withholds when EITHER:
+//   1. qualifying-service fails — she must have been employed at ANY time in the 4 months immediately before
+//      confinement AND for a total of ≥90 days in the 9 months immediately before confinement, OR
+//   2. she already has ≥5 surviving children at confinement (the 5th-child proviso).
+// When withheld, the leave is still granted but UNPAID (allowance_eligible=false + a reason), which drives
+// the existing leave_type.paid=false → unpaidDaysByEmployment payroll path.
+export const MATERNITY_LEAVE_CODE = 'MATERNITY';
+/** EA s.37: the maximum number of surviving children for which the paid allowance is still payable (the 5th+
+ *  child is excluded). */
+const MATERNITY_MAX_SURVIVING_CHILDREN = 5;
+
+export type MaternityAllowanceReason = 'qualifying_service' | 'fifth_child';
+export type MaternityAllowanceDecision = {
+  eligible: boolean;
+  reason?: MaternityAllowanceReason;
+  /** Whether the s.37 qualifying-service test passed (independent of the 5th-child proviso). */
+  qualifyingService: boolean;
+};
+
+/** Whole days from `start` (inclusive) to `end` (exclusive), both ISO yyyy-mm-dd. Negative if end < start. */
+function daysBetween(start: string, end: string): number {
+  const s = Date.parse(`${start}T00:00:00Z`);
+  const e = Date.parse(`${end}T00:00:00Z`);
+  return Math.round((e - s) / 86_400_000);
+}
+
+/** Subtract whole calendar months from an ISO date, clamping the day to the target month's length. */
+function subtractMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1 - months, 1));
+  const ty = base.getUTCFullYear();
+  const tm = base.getUTCMonth(); // 0-based
+  const dim = new Date(Date.UTC(ty, tm + 1, 0)).getUTCDate();
+  const day = Math.min(d, dim);
+  return `${ty}-${String(tm + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/**
+ * EA s.37 maternity paid-ALLOWANCE eligibility. Pure (no DB), unit-testable. Returns the decision the
+ * service applies as a per-request OVERRIDE of the maternity leave-type paid default:
+ *   - qualifying service met AND survivingChildren < 5 → { eligible: true }
+ *   - qualifying service FAILS                          → { eligible: false, reason: 'qualifying_service' }
+ *   - qualifying met but survivingChildren ≥ 5          → { eligible: false, reason: 'fifth_child' }
+ * Qualifying-service precedence: when BOTH fail, 'qualifying_service' is reported (it is the threshold check).
+ * Qualifying service = employed at any time in the 4 months immediately before confinement AND for ≥90 days
+ * in the 9 months immediately before confinement (computed from hiredOn vs the confinement date).
+ */
+export function maternityAllowanceEligibility(
+  hiredOn: string,
+  confinementDate: string,
+  survivingChildren: number,
+): MaternityAllowanceDecision {
+  // Employed at any time in the 4 months immediately before confinement: the employment [hiredOn, …)
+  // overlaps the window [conf−4mo, conf) iff she was hired strictly before confinement (hiredOn ≥ conf would
+  // mean she was not yet employed at confinement at all).
+  const employedInFourMonthWindow = hiredOn < confinementDate;
+  // ≥90 days in the 9 months immediately before confinement: days employed inside [conf−9mo, conf).
+  const nineMonthsBefore = subtractMonths(confinementDate, 9);
+  const windowStart = hiredOn > nineMonthsBefore ? hiredOn : nineMonthsBefore;
+  const daysInNineMonthWindow = Math.max(0, daysBetween(windowStart, confinementDate));
+  const qualifyingService = employedInFourMonthWindow && daysInNineMonthWindow >= 90;
+
+  if (!qualifyingService) {
+    return { eligible: false, reason: 'qualifying_service', qualifyingService: false };
+  }
+  if (survivingChildren >= MATERNITY_MAX_SURVIVING_CHILDREN) {
+    return { eligible: false, reason: 'fifth_child', qualifyingService: true };
+  }
+  return { eligible: true, qualifyingService: true };
+}
+
 /** Boolean form of the eligibility gate (assertEligible throws; this just answers). Used by reads to
  *  show an employee only the leave types they could actually take (2F-1 / R18). */
 export function isLeaveEligible(
@@ -360,6 +433,12 @@ async function insertLeaveRequest(
     // Phase-B #12 (ADR-0061): set on the UNPAID child of a consented Emergency-Leave submission only.
     unpaidConsentAt?: Date | null;
     unpaidConsentBy?: string | null;
+    // Phase-B #13 (ADR-0062): EA s.37 maternity paid-allowance facts + per-request override. Non-null only
+    // for a MATERNITY request; maternityAllowanceEvent carries the decision onto the submitted event.
+    survivingChildren?: number | null;
+    confinementDate?: string | null;
+    allowanceEligible?: boolean | null;
+    maternityAllowanceEvent?: Record<string, unknown> | null;
   },
 ): Promise<{ id: string }> {
   const [row] = await tx
@@ -379,6 +458,9 @@ async function insertLeaveRequest(
       parentGroupId: v.parentGroupId,
       unpaidConsentAt: v.unpaidConsentAt ?? null,
       unpaidConsentBy: v.unpaidConsentBy ?? null,
+      survivingChildren: v.survivingChildren ?? null,
+      confinementDate: v.confinementDate ?? null,
+      allowanceEligible: v.allowanceEligible ?? null,
     })
     .returning({ id: leaveRequest.id });
   await appendEvent(tx, {
@@ -399,6 +481,8 @@ async function insertLeaveRequest(
       mandatoryAfterDays: v.mandatoryAfterDays,
       hasRemark: !!v.employeeRemark,
       ...(v.parentGroupId ? { parentGroupId: v.parentGroupId } : {}),
+      // Phase-B #13 (ADR-0062): the s.37 paid-allowance decision for the audit trail / approver view.
+      ...(v.maternityAllowanceEvent ? { maternityAllowance: v.maternityAllowanceEvent } : {}),
     },
   });
   // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
@@ -414,6 +498,10 @@ export type RequestLeaveResult = {
   days: number;
   parentGroupId: string | null;
   children: { id: string; code: string; days: number }[];
+  // Phase-B #13 (ADR-0062): set true when a MATERNITY request was submitted WITHOUT the s.37 inputs
+  // (surviving-children + confinement date), so the allowance eligibility could not be confirmed. The leave
+  // is still granted PAID (the conservative default), but HR is warned the paid-allowance is unconfirmed.
+  maternityAllowanceWarning?: boolean;
 };
 
 export async function requestLeave(
@@ -431,6 +519,11 @@ export async function requestLeave(
     // Phase-B #12 (ADR-0061) — Emergency-Leave only:
     reasonCategory?: EmergencyReasonCategory; // 'illness' routes through paid SICK first
     unpaidConsent?: boolean; // the employee's acknowledgement of the unpaid days (gates UNPAID children)
+    // Phase-B #13 (ADR-0062) — MATERNITY only: the s.37 paid-allowance facts at confinement. When both are
+    // supplied the per-request allowance eligibility is computed and OVERRIDES the leave-type paid default
+    // (withheld ⇒ leave granted UNPAID). When absent the leave stays paid + a maternityAllowanceWarning fires.
+    survivingChildren?: number;
+    confinementDate?: string;
   },
 ): Promise<RequestLeaveResult> {
   return withTenant(ctx, async (tx) => {
@@ -557,6 +650,60 @@ export async function requestLeave(
       throw new LeaveRemarkRequiredError(lt.name);
     }
 
+    // Phase-B #13 (ADR-0062): EA s.37 maternity paid-ALLOWANCE eligibility. The 98-day LEAVE is granted
+    // regardless; the paid ALLOWANCE is a separate entitlement. When the s.37 facts (surviving-children +
+    // confinement date) are supplied, compute the decision — it OVERRIDES the maternity leave-type paid
+    // default: withheld ⇒ allowance_eligible=false ⇒ unpaidDaysByEmployment treats the days as unpaid. When
+    // the inputs are absent (legacy/UI-not-updated), default conservatively to PAID (allowance_eligible left
+    // NULL) and surface a "paid-allowance unconfirmed" warning so HR can confirm — never silently wrong.
+    let maternity: {
+      survivingChildren: number | null;
+      confinementDate: string | null;
+      allowanceEligible: boolean | null;
+      event: Record<string, unknown>;
+    } | null = null;
+    let maternityAllowanceWarning = false;
+    if (lt?.code === MATERNITY_LEAVE_CODE) {
+      const hasInputs = p.confinementDate != null && p.survivingChildren != null;
+      if (hasInputs) {
+        const [emp] = await tx
+          .select({ hiredOn: employment.hiredOn })
+          .from(employment)
+          .where(eq(employment.id, p.employmentId))
+          .limit(1);
+        const decision = maternityAllowanceEligibility(emp!.hiredOn, p.confinementDate!, p.survivingChildren!);
+        maternity = {
+          survivingChildren: p.survivingChildren!,
+          confinementDate: p.confinementDate!,
+          allowanceEligible: decision.eligible,
+          event: {
+            allowanceEligible: decision.eligible,
+            reason: decision.reason ?? null,
+            qualifyingService: decision.qualifyingService,
+            survivingChildren: p.survivingChildren!,
+            confinementDate: p.confinementDate!,
+            unconfirmed: false,
+          },
+        };
+      } else {
+        // Belt-and-braces: inputs unconfirmed → keep the leave paid (allowance_eligible NULL) + warn.
+        maternityAllowanceWarning = true;
+        maternity = {
+          survivingChildren: p.survivingChildren ?? null,
+          confinementDate: p.confinementDate ?? null,
+          allowanceEligible: null,
+          event: {
+            allowanceEligible: null,
+            reason: null,
+            qualifyingService: null,
+            survivingChildren: p.survivingChildren ?? null,
+            confinementDate: p.confinementDate ?? null,
+            unconfirmed: true,
+          },
+        };
+      }
+    }
+
     const { id } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId,
       leaveTypeId: p.leaveTypeId,
@@ -569,8 +716,18 @@ export async function requestLeave(
       employeeRemark,
       parentGroupId: null,
       mandatoryAfterDays: lt?.mandatoryAfterDays ?? null,
+      survivingChildren: maternity?.survivingChildren ?? null,
+      confinementDate: maternity?.confinementDate ?? null,
+      allowanceEligible: maternity?.allowanceEligible ?? null,
+      maternityAllowanceEvent: maternity?.event ?? null,
     });
-    return { leaveRequestId: id, days, parentGroupId: null, children: [{ id, code: lt?.code ?? '', days }] };
+    return {
+      leaveRequestId: id,
+      days,
+      parentGroupId: null,
+      children: [{ id, code: lt?.code ?? '', days }],
+      ...(maternityAllowanceWarning ? { maternityAllowanceWarning: true } : {}),
+    };
   });
 }
 

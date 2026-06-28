@@ -505,6 +505,19 @@
       "splitNotice": "Paid balances are used first. Any remaining days are taken as Unpaid Leave (no-work-no-pay).",
       "unpaidConsentLabel": "I acknowledge that any uncovered days will be taken as unpaid leave."
     },
+    "maternity": {
+      "allowanceNotice": "Maternity leave is always 98 days. The paid maternity allowance depends on EA s.37 — supply the details below so eligibility can be confirmed.",
+      "confinementDateLabel": "Confinement date",
+      "survivingChildrenLabel": "Surviving children",
+      "allowanceHint": "The allowance is withheld (leave granted unpaid) if qualifying service is not met or for a 5th surviving child. Leave these blank to default to paid (subject to HR confirmation).",
+      "allowanceWithheld": "Paid allowance withheld — {reason}; leave granted unpaid.",
+      "allowancePaid": "Paid allowance eligible.",
+      "allowanceUnconfirmed": "Paid-allowance eligibility unconfirmed (defaulted to paid).",
+      "reason": {
+        "qualifying_service": "qualifying service not met",
+        "fifth_child": "5th surviving child"
+      }
+    },
     "errors": {
       "documentRequiredAfter": "A supporting document is required for {typeName} exceeding {days} days.",
       "documentRequired": "A supporting document is required for {typeName} (e.g. a medical certificate).",
