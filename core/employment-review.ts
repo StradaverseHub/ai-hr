@@ -193,20 +193,21 @@ async function startReviewTx(
 
   const managerEmploymentId = await currentAdminManager(tx, ctx.tenantId, p.employmentId);
 
-  // Pre-insert SELECT for an existing open review (mirror offboarding.ts) — the partial-unique index is
-  // the backstop if two callers race past this SELECT.
-  const [open] = await tx
+  // Pre-insert SELECT for ANY existing review — open OR completed — for this (employment, type). v1 has no
+  // legitimate re-trigger: the due_date derives from the unchanged *_end_date, so a completed review must
+  // block re-opening, otherwise the sweep re-opens a fresh duplicate every cron run (H5). The partial-unique
+  // index only forbids two OPEN rows, so this SELECT is the real gate for the completed case.
+  const [existing] = await tx
     .select({ id: employmentReview.id })
     .from(employmentReview)
     .where(
       and(
         eq(employmentReview.employmentId, p.employmentId),
         eq(employmentReview.reviewType, window.reviewType),
-        or(eq(employmentReview.status, 'pending_manager'), eq(employmentReview.status, 'pending_hr')),
       ),
     )
     .limit(1);
-  if (open) throw new ReviewError('A review is already in progress.');
+  if (existing) throw new ReviewError('A review already exists for this employee.');
 
   let row: { id: string };
   try {
@@ -612,27 +613,29 @@ export async function sweepDueReviews(
         .limit(1);
       if (resign) continue;
 
-      // Gate on "no OPEN review for this type" only (the partial-unique window). A COMPLETED review does
-      // NOT block — v1 has no re-trigger, so a completed review simply means it isn't due again.
-      const [open] = await tx
+      // Gate on "no review at all for this type" — open OR completed. due_date derives from the unchanged
+      // *_end_date, so a completed review keeps dueDate <= today; gating only on OPEN reviews would re-open a
+      // fresh duplicate every cron run forever (H5). v1 has no legitimate re-trigger, so one review per
+      // (employment, type) is the lifetime cap.
+      const [existing] = await tx
         .select({ id: employmentReview.id })
         .from(employmentReview)
         .where(
           and(
             eq(employmentReview.employmentId, r.employmentId),
             eq(employmentReview.reviewType, window.reviewType),
-            or(eq(employmentReview.status, 'pending_manager'), eq(employmentReview.status, 'pending_hr')),
           ),
         )
         .limit(1);
-      if (open) continue;
+      if (existing) continue;
 
       try {
         await startReviewTx(tx, ctx, { employmentId: r.employmentId, auto: true });
         opened += 1;
       } catch (e) {
-        // A concurrent insert (partial-unique backstop) is benign — keep sweeping.
-        if (!/already in progress/i.test((e as Error).message)) throw e;
+        // A concurrent insert (the startReviewTx existing-review gate / partial-unique backstop) is
+        // benign — keep sweeping.
+        if (!/already/i.test((e as Error).message)) throw e;
       }
     }
     return { opened };

@@ -110,7 +110,7 @@ describe('startReview', () => {
     const E = await hire('Twice');
     await setEnd(E.employmentId, 'probationEndDate', '2026-04-30');
     await startReview(adminCtx(b), { employmentId: E.employmentId });
-    await expect(startReview(adminCtx(b), { employmentId: E.employmentId })).rejects.toThrow(/already in progress/i);
+    await expect(startReview(adminCtx(b), { employmentId: E.employmentId })).rejects.toThrow(/already/i);
   });
 });
 
@@ -373,5 +373,31 @@ describe('sweepDueReviews', () => {
     expect(await owner.db.select().from(schema.employmentReview)).toHaveLength(1);
     // sanity: a, just to keep adminCtx referenced
     expect(a.tenantId).toBe(b.tenantId);
+  });
+
+  it('a COMPLETED review is not re-opened on a later sweep (H5)', async () => {
+    const a = adminCtx(b);
+    const E = await hire('Reviewed');
+    await setEnd(E.employmentId, 'probationEndDate', '2026-04-30'); // due 2026-03-30
+
+    // First sweep opens the review.
+    const r1 = await sweepDueReviews({ tenantId: b.tenantId, roles: ['hr_admin'] }, { today: '2026-04-01' });
+    expect(r1.opened).toBe(1);
+    const [rev] = await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.employmentId, E.employmentId));
+
+    // Complete it (manager evaluation → HR decision). The *_end_date is unchanged, so dueDate stays <= today.
+    await submitManagerEvaluation(a, { reviewId: rev.id, recommendation: 'recommend_confirm' });
+    await decideReview(a, { reviewId: rev.id, decision: 'confirm' });
+    const [done] = await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.id, rev.id));
+    expect(done.status).toBe('completed');
+
+    // A later sweep must NOT re-open a duplicate review for the same (employment, type) — a completed
+    // review blocks just like an open one (v1 has no legitimate re-trigger).
+    const r2 = await sweepDueReviews({ tenantId: b.tenantId, roles: ['hr_admin'] }, { today: '2026-05-01' });
+    expect(r2.opened).toBe(0);
+    expect(await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.employmentId, E.employmentId))).toHaveLength(1);
+
+    // startReviewTx is gated too: a manual re-open after completion is rejected.
+    await expect(startReview(a, { employmentId: E.employmentId })).rejects.toThrow(/already/i);
   });
 });

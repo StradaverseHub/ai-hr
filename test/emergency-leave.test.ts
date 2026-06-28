@@ -297,6 +297,44 @@ describe('Emergency Leave — drained-AL safety (frozen-at-submit semantics)', (
   });
 });
 
+describe('Emergency Leave — fractional AL balance (H4)', () => {
+  it('a fractional AL balance floors the ANNUAL child to whole working-days; both children are approvable', async () => {
+    // 1.5 AL days (e.g. from prorated accrual / a half-day debit) over Mon..Thu (4 working days).
+    // resolveEmergencyCascade returns alCovered = 1.5 (fractional). The ANNUAL child must NOT be a 2-day
+    // whole-working-day count (which would exceed the 1.5 balance and be permanently unapprovable);
+    // it floors to 1 working day (<= 1.5 balance) and the fractional remainder falls to UNPAID.
+    await grantAnnual('1.50');
+    const res = await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: emergencyId,
+      startDate: '2026-07-06',
+      endDate: '2026-07-09', // Mon..Thu = 4 working days, 4 calendar days
+    });
+    expect(res.children).toHaveLength(2);
+    const al = res.children.find((c) => c.code === 'ANNUAL')!;
+    const upl = res.children.find((c) => c.code === 'UNPAID')!;
+    // ANNUAL child = floor(1.5) = 1 working day (<= the 1.5 balance, so it is approvable).
+    expect(al.days).toBe(1);
+    // The UNPAID child carries the rest of the span: Tue..Thu = 3 calendar days.
+    expect(upl.days).toBe(3);
+
+    const rows = await childRows(res.parentGroupId!);
+    const alChild = rows.find((r) => r.leaveTypeId === annualId)!;
+    const uplChild = rows.find((r) => r.leaveTypeId === unpaidId)!;
+    expect(alChild.days).toBe('1.00');
+    expect(uplChild.days).toBe('3.00');
+
+    // Both children clear their own balance gate at approval — neither is permanently unapprovable.
+    await grantUnpaid('5.00'); // unpaid allowance so the UPL child clears the same balance gate
+    const alBefore = await ledgerBalance(employmentId, annualId);
+    await decideLeave(adminCtx(b), { leaveRequestId: alChild.id, decision: 'approved' });
+    expect(await ledgerBalance(employmentId, annualId)).toBeCloseTo(alBefore - 1, 2);
+    await decideLeave(adminCtx(b), { leaveRequestId: uplChild.id, decision: 'approved' });
+    // Remaining AL balance after the AL child's 1-day debit is the leftover fraction (0.5), un-consumed.
+    expect(await ledgerBalance(employmentId, annualId)).toBeCloseTo(0.5, 2);
+  });
+});
+
 describe('Emergency Leave — invariants & guards', () => {
   it('irreversibility: no cancellation/reversal path exists for an approved child', async () => {
     await grantAnnual('5.00');

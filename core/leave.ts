@@ -569,11 +569,25 @@ async function requestEmergencyLeave(
       employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
     });
     children.push({ id, code: 'UNPAID', days: uplSpanDays });
+  } else if (Math.floor(alCovered) === 0) {
+    // alCovered is a positive FRACTION below one whole working-day (e.g. 0.5 from prorated accrual / a
+    // half-day debit). A leave_request is whole-day-count only, so no ANNUAL child can be carved without
+    // exceeding the balance — the entire span falls to a single UNPAID child (H4: never create an
+    // unapprovable ANNUAL child whose floor()-of-fractional days exceed the AL balance).
+    const { id } = await insertLeaveRequest(tx, ctx, {
+      employmentId: p.employmentId, leaveTypeId: unpaidId, startDate: p.startDate, endDate: p.endDate,
+      days: uplSpanDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+      employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
+    });
+    children.push({ id, code: 'UNPAID', days: uplSpanDays });
   } else {
-    // Partial split: ANNUAL covers the earliest `alCovered` working-days [start, boundary]; UNPAID covers
-    // the suffix [dayAfter(boundary), end] counted in calendar-days. alCovered is an integer working-day
-    // count here (a full-day EL range has no fractional AL coverage).
-    const boundaryWorkingDay = workingDates[Math.ceil(alCovered) - 1];
+    // Partial split: ANNUAL covers the earliest WHOLE working-days [start, boundary]; UNPAID covers the
+    // suffix [dayAfter(boundary), end] counted in calendar-days. alCovered may be fractional (prorated
+    // accrual / half-day debits), so FLOOR it to whole working-days for the ANNUAL child — its day count
+    // must be <= the real AL balance or it can never be approved (H4). The fractional remainder (and the
+    // shortfall days) fall to the UNPAID child, which has no such ceiling.
+    const alWholeDays = Math.floor(alCovered);
+    const boundaryWorkingDay = workingDates[alWholeDays - 1];
     const annualEnd = boundaryWorkingDay;
     const uplStart = eachDate(boundaryWorkingDay, p.endDate)[1]; // the calendar day after the boundary
     const uplDays = dayCount(uplStart, p.endDate);
@@ -592,10 +606,14 @@ async function requestEmergencyLeave(
     children.push({ id: uplId, code: 'UNPAID', days: uplDays });
   }
 
-  const alChildId = children.find((c) => c.code === 'ANNUAL')?.id;
-  const uplChildId = children.find((c) => c.code === 'UNPAID')?.id;
+  const alChild = children.find((c) => c.code === 'ANNUAL');
+  const uplChild = children.find((c) => c.code === 'UNPAID');
+  const alChildId = alChild?.id;
+  const uplChildId = uplChild?.id;
   // A single EL command event keyed on parentGroupId, alongside each child's own leave-request.submitted —
-  // gives the audit trail / substrate one traceable EL submission.
+  // gives the audit trail / substrate one traceable EL submission. alDays/uplDays report the ACTUAL child
+  // day-counts (ANNUAL floored to whole working-days, UNPAID carries the rest — H4), not the raw resolver
+  // split, so the audit trail matches the persisted children.
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'leave-request',
@@ -607,8 +625,8 @@ async function requestEmergencyLeave(
       employmentId: p.employmentId,
       ...(alChildId ? { alChildId } : {}),
       ...(uplChildId ? { uplChildId } : {}),
-      alDays: alCovered,
-      uplDays: alShortfall,
+      alDays: alChild?.days ?? 0,
+      uplDays: uplChild?.days ?? 0,
       startDate: p.startDate,
       endDate: p.endDate,
     },
