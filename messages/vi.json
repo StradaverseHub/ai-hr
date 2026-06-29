@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "Chính sách lương",
     "description": "Các quy tắc có tên, tái sử dụng được cho cách xử lý lương của từng nhân viên. Gán chính sách cho nhân viên và lương sẽ tự động áp dụng.",
-    "previewNotice": "Chính sách Hàng tháng và Hàng ngày đã hoạt động. Chính sách Theo giờ giờ đây có thể cấu hình (mức theo giờ và thiết lập lịch ca), nhưng việc tạo phiếu lương theo giờ trực tiếp là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Loại Kỳ tùy chỉnh vẫn được dự trữ cho đến khi phép tính của nó được phê duyệt.",
+    "previewNotice": "Chính sách Hàng tháng và Hàng ngày đã hoạt động. Chính sách Theo giờ giờ đây có thể cấu hình (mức theo giờ và thiết lập lịch ca), nhưng việc tạo phiếu lương theo giờ trực tiếp là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Chính sách Kỳ tùy chỉnh giờ đây có thể cấu hình: bạn có thể ghi lại cửa sổ chốt sổ (một ngày neo cho kỳ không theo lịch dương), nhưng việc áp dụng cửa sổ đó cho làm thêm giờ, chấm công và nghỉ phép là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Các tháng theo luật (EPF, SOCSO, EIS, PCB) luôn giữ theo tháng dương lịch theo quy định của pháp luật.",
     "emptyScope": "Không có công ty nào trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
     "catalogTitle": "Chính sách",
     "searchPlaceholder": "Tìm chính sách…",
@@ -2747,7 +2747,7 @@
     "fieldType": "Loại",
     "fieldDescription": "Mô tả",
     "descriptionPlaceholder": "Ghi chú tùy chọn",
-    "typeHint": "Hàng tháng và Hàng ngày được áp dụng cho bảng lương. Chính sách Hàng ngày trả mức theo ngày cho số ngày làm việc đủ điều kiện trong kỳ — không áp dụng tính theo tỷ lệ hàng tháng. Theo giờ giờ đây có thể cấu hình (mức cùng thiết lập lịch ca) nhưng việc tạo phiếu lương trực tiếp là phần tiếp theo cần phê duyệt; Kỳ tùy chỉnh vẫn được dự trữ cho đến khi phép tính được phê duyệt.",
+    "typeHint": "Hàng tháng và Hàng ngày được áp dụng cho bảng lương. Chính sách Hàng ngày trả mức theo ngày cho số ngày làm việc đủ điều kiện trong kỳ — không áp dụng tính theo tỷ lệ hàng tháng. Theo giờ giờ đây có thể cấu hình (mức cùng thiết lập lịch ca) nhưng việc tạo phiếu lương trực tiếp là phần tiếp theo cần phê duyệt. Kỳ tùy chỉnh giờ đây có thể cấu hình (cửa sổ chốt sổ với một ngày neo); việc áp dụng cửa sổ đó cho làm thêm giờ, chấm công và nghỉ phép là phần tiếp theo cần phê duyệt.",
     "savePolicy": "Tạo chính sách",
     "saveChanges": "Lưu thay đổi",
     "cancelEdit": "Hủy",
@@ -2777,6 +2777,16 @@
     "fieldOnlyWithinShift": "Chỉ lấy giờ trong lịch ca",
     "onlyWithinShiftHint": "Khi bật, chỉ những giờ làm việc trong ca được phân công cho nhân viên mới được trả lương. Giờ chấm công ngoài ca, giờ làm thêm vượt quá ca, và bất kỳ ngày nào không có ca được phân công đều bị loại trừ. Khi tắt, mọi giờ làm việc đều được tính.",
     "hourlyHint": "Chính sách Theo giờ trả mức theo giờ cho số giờ làm việc trong kỳ. Bắt buộc nhập mức theo giờ cho chính sách Theo giờ. Việc tạo phiếu lương theo giờ trọn vẹn trực tiếp là phần tiếp theo cần phê duyệt; hiện tại chính sách Theo giờ lưu mức và thiết lập lịch ca và có thể được gán, nhưng chưa được áp dụng cho một lần chạy bảng lương.",
+    "customPeriodHint": "Chính sách Kỳ tùy chỉnh ghi lại một cửa sổ chốt sổ — một ngày neo cho kỳ trả lương không theo lịch dương. Chọn \"Kỳ tùy chỉnh\" và đặt ngày neo để lưu cửa sổ. Cửa sổ được lưu và xác thực ngay bây giờ, nhưng chưa được áp dụng cho một lần chạy bảng lương (việc áp dụng cho làm thêm giờ, chấm công và nghỉ phép là phần tiếp theo cần phê duyệt). Các tháng theo luật (EPF, SOCSO, EIS, PCB) luôn giữ theo tháng dương lịch theo quy định của pháp luật và không bao giờ bị cửa sổ dịch chuyển.",
+    "cutOff": {
+      "title": "Cửa sổ chốt sổ",
+      "modeLabel": "Chế độ kỳ",
+      "modeCalendar": "Tháng dương lịch",
+      "modeCustom": "Kỳ tùy chỉnh",
+      "anchorDay": "Ngày neo",
+      "anchorDayPlaceholder": "vd. 25",
+      "anchorDayHint": "Chỉ dùng cho chế độ \"Kỳ tùy chỉnh\". Ngày neo (1–28) là ngày trong tháng mà cửa sổ mở — ví dụ, neo 25 nghĩa là cửa sổ chạy từ ngày 25 của tháng trước đến ngày 24 của tháng kỳ. Chỉ áp dụng cho chính sách Kỳ tùy chỉnh; các tháng theo luật vẫn giữ theo tháng dương lịch."
+    },
     "copy": "Sao chép",
     "copySuffix": "(bản sao)"
   },

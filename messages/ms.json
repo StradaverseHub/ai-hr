@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "Dasar gaji",
     "description": "Peraturan bernama yang boleh diguna semula untuk cara gaji setiap pekerja diproses. Tetapkan dasar kepada pekerja dan gaji akan menggunakannya secara automatik.",
-    "previewNotice": "Dasar Bulanan dan Harian telah aktif. Dasar Sejam kini boleh dikonfigur (kadar sejam dan tetapan jadual syif), tetapi penjanaan slip gaji sejam secara langsung ialah susulan yang perlu kelulusan dan belum digunakan dalam gaji. Jenis Tempoh tersuai kekal dikhaskan sehingga pengiraannya diluluskan.",
+    "previewNotice": "Dasar Bulanan dan Harian telah aktif. Dasar Sejam kini boleh dikonfigur (kadar sejam dan tetapan jadual syif), tetapi penjanaan slip gaji sejam secara langsung ialah susulan yang perlu kelulusan dan belum digunakan dalam gaji. Dasar Tempoh tersuai kini boleh dikonfigur: anda boleh merekod tetingkap potongan (hari sauh untuk tempoh bukan kalendar), tetapi penggunaan tetingkap itu pada kerja lebih masa, kehadiran dan cuti ialah susulan yang perlu kelulusan dan belum digunakan dalam gaji. Bulan berkanun (KWSP, PERKESO, SIP, PCB) sentiasa kekal pada bulan kalendar mengikut undang-undang.",
     "emptyScope": "Tiada syarikat dalam skop semasa. Gunakan penukar syarikat di atas.",
     "catalogTitle": "Dasar",
     "searchPlaceholder": "Cari dasar…",
@@ -2747,7 +2747,7 @@
     "fieldType": "Jenis",
     "fieldDescription": "Penerangan",
     "descriptionPlaceholder": "Nota pilihan",
-    "typeHint": "Bulanan dan Harian digunakan dalam gaji. Dasar Harian membayar kadar sehari bagi hari layak yang bekerja dalam tempoh — pembahagian bulanan tidak digunakan. Sejam kini boleh dikonfigur (kadar serta tetapan jadual syif) tetapi penjanaan slip gajinya secara langsung ialah susulan yang perlu kelulusan; Tempoh tersuai kekal dikhaskan sehingga pengiraannya diluluskan.",
+    "typeHint": "Bulanan dan Harian digunakan dalam gaji. Dasar Harian membayar kadar sehari bagi hari layak yang bekerja dalam tempoh — pembahagian bulanan tidak digunakan. Sejam kini boleh dikonfigur (kadar serta tetapan jadual syif) tetapi penjanaan slip gajinya secara langsung ialah susulan yang perlu kelulusan. Tempoh tersuai kini boleh dikonfigur (tetingkap potongan dengan hari sauh); penggunaan tetingkap itu pada kerja lebih masa, kehadiran dan cuti ialah susulan yang perlu kelulusan.",
     "savePolicy": "Cipta dasar",
     "saveChanges": "Simpan perubahan",
     "cancelEdit": "Batal",
@@ -2777,6 +2777,16 @@
     "fieldOnlyWithinShift": "Tarik jam dalam jadual syif sahaja",
     "onlyWithinShiftHint": "Apabila dihidupkan, hanya jam yang bekerja dalam syif berjadual yang ditetapkan kepada pekerja boleh dibayar. Jam yang direkod di luar syif, kerja lebih masa melebihi syif, dan mana-mana hari tanpa syif berjadual dikecualikan. Apabila dimatikan, semua jam bekerja dikira.",
     "hourlyHint": "Dasar Sejam membayar kadar sejam bagi jam yang bekerja dalam tempoh. Kadar sejam diperlukan untuk dasar Sejam. Penjanaan slip gaji sejam hujung-ke-hujung secara langsung ialah susulan yang perlu kelulusan; pada masa ini dasar Sejam menyimpan kadarnya dan tetapan jadual syif serta boleh diberikan, tetapi belum digunakan dalam larian gaji.",
+    "customPeriodHint": "Dasar Tempoh tersuai merekod tetingkap potongan — hari sauh untuk tempoh gaji bukan kalendar. Pilih \"Tempoh tersuai\" dan tetapkan hari sauh untuk menyimpan tetingkap itu. Tetingkap disimpan dan disahkan sekarang, tetapi belum digunakan dalam larian gaji (penggunaannya pada kerja lebih masa, kehadiran dan cuti ialah susulan yang perlu kelulusan). Bulan berkanun (KWSP, PERKESO, SIP, PCB) sentiasa kekal pada bulan kalendar mengikut undang-undang dan tidak sekali-kali dialih oleh tetingkap.",
+    "cutOff": {
+      "title": "Tetingkap potongan",
+      "modeLabel": "Mod tempoh",
+      "modeCalendar": "Bulan kalendar",
+      "modeCustom": "Tempoh tersuai",
+      "anchorDay": "Hari sauh",
+      "anchorDayPlaceholder": "cth. 25",
+      "anchorDayHint": "Digunakan hanya untuk mod \"Tempoh tersuai\". Hari sauh (1–28) ialah hari dalam bulan apabila tetingkap dibuka — contohnya, sauh 25 bermaksud tetingkap berjalan dari 25 hari bulan sebelumnya hingga 24 hari bulan tempoh. Hanya digunakan untuk dasar Tempoh tersuai; bulan berkanun kekal pada bulan kalendar."
+    },
     "copy": "Salin",
     "copySuffix": "(salinan)"
   },

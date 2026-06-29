@@ -382,6 +382,89 @@ describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () 
   });
 });
 
+describe('2.1.4 Custom-period Payroll Policy — config (cut-off window) + substrate', () => {
+  it('creates / reads / updates / copies a custom_period policy with a cut-off window and emits events', async () => {
+    const a = adminCtx(b);
+    // Create with a custom cut-off window (anchor day 25). No pay_rule (custom_period carries none, like monthly).
+    const { id } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: 'Site Custom',
+      description: '25th→24th window',
+      policyType: 'custom_period',
+      config: { cutOff: { mode: 'custom', anchorDay: 25 } },
+    });
+    const pol = await getPolicy(a, id);
+    expect(pol).toMatchObject({ name: 'Site Custom', policyType: 'custom_period', status: 'active', payRule: null });
+    expect(pol?.config).toEqual({ cutOff: { mode: 'custom', anchorDay: 25 } });
+
+    // Edit the anchor day (type stays custom_period).
+    await updatePolicy(a, { id, config: { cutOff: { mode: 'custom', anchorDay: 1 } } });
+    expect((await getPolicy(a, id))?.config).toEqual({ cutOff: { mode: 'custom', anchorDay: 1 } });
+
+    // Switching back to calendar clears the window (calendar = legacy default ⇒ config persists as null).
+    await updatePolicy(a, { id, config: { cutOff: { mode: 'calendar' } } });
+    expect((await getPolicy(a, id))?.config).toBeNull();
+
+    // Copy preserves the type (+ window) under a new unique name, starts active.
+    await updatePolicy(a, { id, config: { cutOff: { mode: 'custom', anchorDay: 15 } } });
+    const { id: copyId } = await copyPolicy(a, { sourceId: id, name: 'Site Custom (copy)' });
+    const copied = await getPolicy(a, copyId);
+    expect(copied).toMatchObject({ name: 'Site Custom (copy)', policyType: 'custom_period', status: 'active' });
+    expect(copied?.config).toEqual({ cutOff: { mode: 'custom', anchorDay: 15 } });
+
+    // activate/deactivate/delete are type-agnostic and work on a custom_period policy.
+    await setStatus(a, { id: copyId, status: 'inactive' });
+    expect((await getPolicy(a, copyId))?.status).toBe('inactive');
+    await expect(deletePolicy(a, { id: copyId })).resolves.toMatchObject({ id: copyId });
+
+    expect(await eventTypesFor(b.tenantId, id)).toEqual(
+      expect.arrayContaining(['payroll-policy.created', 'payroll-policy.updated']),
+    );
+    expect(await eventTypesFor(b.tenantId, copyId)).toEqual(
+      expect.arrayContaining(['payroll-policy.created', 'payroll-policy.deactivated', 'payroll-policy.deleted']),
+    );
+  });
+
+  it('validation clamps an out-of-range anchorDay back to null (1..28, never throws)', async () => {
+    const a = adminCtx(b);
+    // anchorDay 31 is out of the 1..28 range ⇒ the whole config cleans to null (no custom window persisted).
+    const { id } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: 'BadAnchor',
+      policyType: 'custom_period',
+      config: { cutOff: { mode: 'custom', anchorDay: 31 } },
+    });
+    expect((await getPolicy(a, id))?.config).toBeNull();
+    // A custom_period policy with no config at all is also valid (null window).
+    const { id: id2 } = await createPolicy(a, { companyId: b.companyId, name: 'NoWindow', policyType: 'custom_period' });
+    expect((await getPolicy(a, id2))?.config).toBeNull();
+  });
+
+  it('resolveAssignedPolicy returns an active assigned custom_period policy, else null', async () => {
+    const a = adminCtx(b);
+    const { id } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: 'ResolvableCustom',
+      policyType: 'custom_period',
+      config: { cutOff: { mode: 'custom', anchorDay: 25 } },
+    });
+    const e = await hire('CustomResolver');
+
+    // Unassigned → null.
+    expect(await withTenant(a, (tx) => resolveAssignedPolicy(tx, e.employmentId))).toBeNull();
+
+    // Assigned + active → the policy (with its window config).
+    await assignPolicy(a, { employmentId: e.employmentId, policyId: id });
+    const resolved = await withTenant(a, (tx) => resolveAssignedPolicy(tx, e.employmentId));
+    expect(resolved?.id).toBe(id);
+    expect(resolved?.config).toEqual({ cutOff: { mode: 'custom', anchorDay: 25 } });
+
+    // Inactive → null (falls back to the monthly default).
+    await setStatus(a, { id, status: 'inactive' });
+    expect(await withTenant(a, (tx) => resolveAssignedPolicy(tx, e.employmentId))).toBeNull();
+  });
+});
+
 describe('2.1 Payroll Policy — RLS', () => {
   it('tenant-wide READ but admin-only WRITE (non-admin / cross-company)', async () => {
     const a = adminCtx(b);
@@ -482,6 +565,39 @@ describe('2.1 Payroll Policy — kernel non-perturbation + history', () => {
     expect(assigned.cols).toEqual(unassigned.cols);
     expect(assigned.statutory).toEqual(unassigned.statutory);
     // Sanity: this scenario actually produced non-trivial figures (basic 5000 + allowance 500 = 5500 gross).
+    expect(Number((unassigned.cols as Record<string, string>).grossPay)).toBeCloseTo(5500, 2);
+  });
+
+  it('2.1.4 byte-identical: a custom_period policy with a cut-off window does NOT change the payslip (window recorded, not yet applied)', async () => {
+    const a = adminCtx(b);
+    // Two identical employees in ONE batch; one gets a custom_period policy (with a 25th-anchor window) assigned,
+    // the other stays unassigned (monthly default). Because applying the window to OT/attendance/leave selection
+    // is a DEFERRED follow-up (this slice only RECORDS the window), the two payslips must be byte-identical — the
+    // recorded window is inert in the kernel today.
+    const eUnassigned = await seedPayable('CustomUnassigned');
+    const eAssigned = await seedPayable('CustomAssigned');
+    const { id } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: 'CustomWindow25',
+      policyType: 'custom_period',
+      config: { cutOff: { mode: 'custom', anchorDay: 25 } },
+    });
+    await assignPolicy(a, { employmentId: eAssigned.employmentId, policyId: id });
+
+    const { batchId } = await createBatch(a, {
+      companyId: b.companyId,
+      payPeriod: '2026-05',
+      scope: { employmentIds: [eUnassigned.employmentId, eAssigned.employmentId] },
+    });
+    await generatePayslips(a, { batchId });
+
+    const unassigned = snap(await payslipOf(batchId, eUnassigned.employmentId));
+    const assigned = snap(await payslipOf(batchId, eAssigned.employmentId));
+
+    // The custom_period policy + its recorded window changes nothing — the window is configurable but not effective.
+    expect(assigned.cols).toEqual(unassigned.cols);
+    expect(assigned.statutory).toEqual(unassigned.statutory);
+    // Sanity: non-trivial figures (basic 5000 + allowance 500 = 5500 gross).
     expect(Number((unassigned.cols as Record<string, string>).grossPay)).toBeCloseTo(5500, 2);
   });
 

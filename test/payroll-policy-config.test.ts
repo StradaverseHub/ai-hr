@@ -65,6 +65,26 @@ describe('2.1.1 cleanPayrollPolicyConfig — validation + s.60A floor', () => {
     });
   });
 
+  it('2.1.4 — custom-period cut-off window: keeps a valid anchorDay, drops calendar / out-of-range / non-custom', () => {
+    // mode='custom' + a valid 1..28 anchorDay is kept.
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 25 } })).toEqual({
+      cutOff: { mode: 'custom', anchorDay: 25 },
+    });
+    // Boundaries: 1 and 28 are valid; 0 and 29..31 are dropped (the month-length trap guard).
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 1 } })).toEqual({ cutOff: { mode: 'custom', anchorDay: 1 } });
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 28 } })).toEqual({ cutOff: { mode: 'custom', anchorDay: 28 } });
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 0 } })).toBeNull();
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 29 } })).toBeNull();
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 31 } })).toBeNull();
+    // mode='custom' with a missing / non-numeric anchorDay ⇒ dropped (a custom window with no anchor is a no-op).
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom' } })).toBeNull();
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'custom', anchorDay: 'bogus' } })).toBeNull();
+    // mode='calendar' (the legacy default) ⇒ dropped, even if an anchorDay rides along (byte-identical to null).
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'calendar', anchorDay: 25 } })).toBeNull();
+    // An unknown mode falls back to calendar ⇒ dropped.
+    expect(cleanPayrollPolicyConfig({ cutOff: { mode: 'weird', anchorDay: 25 } })).toBeNull();
+  });
+
   it('keeps a non-default leave divisor', () => {
     expect(cleanPayrollPolicyConfig({ leave: { unpaidLeaveDivisor: 'custom_days', customDays: 26 } })).toEqual({
       leave: { unpaidLeaveDivisor: 'custom_days', customDays: 26 },

@@ -16,6 +16,7 @@ import {
   updatePolicy,
 } from '@/core/payroll-policy';
 import type { PayRule } from '@/core/pay-rule';
+import type { PayrollPolicyConfig } from '@/db/schema';
 
 const PAGE = '/admin/payroll-policy';
 
@@ -37,6 +38,19 @@ function payRuleFromForm(fd: FormData, policyType: string): PayRule | null {
     };
   }
   return null;
+}
+
+/** 2.1.4 (Custom period) — build the policy `config` carrying the cut-off WINDOW for a custom_period policy.
+ *  When the cut-off toggle is "custom", emits `{ cutOff: { mode:'custom', anchorDay } }`; the service's
+ *  cleanPayrollPolicyConfig validates anchorDay ∈ 1..28 and drops an invalid/calendar value back to null
+ *  (byte-identical). Any other type ⇒ null (no config). This records the window only — it is NOT yet applied
+ *  to payroll calculation (deferred follow-up); statutory months stay calendar-bound by law. */
+function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig | null {
+  if (policyType !== 'custom_period') return null;
+  if (String(fd.get('cutOffMode') ?? 'calendar') !== 'custom') return null;
+  const raw = String(fd.get('anchorDay') ?? '').trim();
+  if (!raw) return null;
+  return { cutOff: { mode: 'custom', anchorDay: Number(raw) } };
 }
 
 /** Map a known service error to its localized message; fall back to the raw message otherwise. */
@@ -68,8 +82,9 @@ async function run(write: () => Promise<void>, toastKey: string, page = PAGE) {
 
 export async function createPolicyAction(formData: FormData) {
   const s = await getSession();
-  // 2.1.2 — Monthly and Daily are both selectable now. Read the submitted type (defaulting to monthly) and,
-  // for daily, build the per_day pay-rule from the rate field; the service's resolveRule validates it.
+  // 2.1.2/2.1.3/2.1.4 — Monthly, Daily, Hourly and Custom-period are selectable. Read the submitted type and,
+  // for daily/hourly, build the pay-rule from the rate field; for custom_period, build the cut-off-window config.
+  // The service's resolveRule + cleanPayrollPolicyConfig validate both.
   const policyType = str(formData, 'policyType') ?? 'monthly';
   await run(
     () =>
@@ -79,6 +94,7 @@ export async function createPolicyAction(formData: FormData) {
         description: str(formData, 'description') ?? null,
         policyType,
         payRule: payRuleFromForm(formData, policyType),
+        config: configFromForm(formData, policyType),
       }).then(() => undefined),
     'saved',
   );
@@ -86,8 +102,9 @@ export async function createPolicyAction(formData: FormData) {
 
 export async function updatePolicyAction(formData: FormData) {
   const s = await getSession();
-  // 2.1.2/2.1.3 — the type is read-only on edit (the hidden field carries the existing type); for a daily or
-  // hourly policy pass the edited rate (and, for hourly, the shift toggle) through so they can be revised.
+  // 2.1.2/2.1.3/2.1.4 — the type is read-only on edit (the hidden field carries the existing type); for a daily
+  // or hourly policy pass the edited rate (and, for hourly, the shift toggle) through; for a custom_period policy
+  // pass the edited cut-off-window config (null when the toggle is back on "calendar", clearing the window).
   const policyType = str(formData, 'policyType') ?? 'monthly';
   await run(
     () =>
@@ -98,6 +115,7 @@ export async function updatePolicyAction(formData: FormData) {
         ...(policyType === 'daily' || policyType === 'hourly'
           ? { payRule: payRuleFromForm(formData, policyType) }
           : {}),
+        ...(policyType === 'custom_period' ? { config: configFromForm(formData, policyType) } : {}),
       }).then(() => undefined),
     'saved',
   );

@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "Payroll policies",
     "description": "Named, reusable rules for how each employee's payroll is processed. Assign a policy to an employee and payroll applies it automatically.",
-    "previewNotice": "Monthly and Daily policies are live. Hourly policies are configurable now (per-hour rate and shift-schedule setting), but live hourly payslip generation is a signed-off follow-up and not yet applied to payroll. The Custom-period type stays reserved until its calculation is signed off.",
+    "previewNotice": "Monthly and Daily policies are live. Hourly policies are configurable now (per-hour rate and shift-schedule setting), but live hourly payslip generation is a signed-off follow-up and not yet applied to payroll. Custom-period policies are configurable now: you can record a cut-off window (an anchor day for a non-calendar period), but applying that window to overtime, attendance and leave is a signed-off follow-up and not yet applied to payroll. Statutory months (EPF, SOCSO, EIS, PCB) always stay on the calendar month by law.",
     "emptyScope": "No companies in the current scope. Use the company switcher above.",
     "catalogTitle": "Policies",
     "searchPlaceholder": "Search policies…",
@@ -2747,7 +2747,7 @@
     "fieldType": "Type",
     "fieldDescription": "Description",
     "descriptionPlaceholder": "Optional note",
-    "typeHint": "Monthly and Daily are applied to payroll. A Daily policy pays its per-day rate for the eligible days worked in the period — monthly proration does not apply. Hourly is configurable now (rate plus shift-schedule setting) but its live payslip generation is a signed-off follow-up; Custom-period stays reserved until its calculation is signed off.",
+    "typeHint": "Monthly and Daily are applied to payroll. A Daily policy pays its per-day rate for the eligible days worked in the period — monthly proration does not apply. Hourly is configurable now (rate plus shift-schedule setting) but its live payslip generation is a signed-off follow-up. Custom-period is configurable now (a cut-off window with an anchor day); applying that window to overtime, attendance and leave is a signed-off follow-up.",
     "savePolicy": "Create policy",
     "saveChanges": "Save changes",
     "cancelEdit": "Cancel",
@@ -2777,6 +2777,16 @@
     "fieldOnlyWithinShift": "Only pull hours within shift schedule",
     "onlyWithinShiftHint": "When on, only hours worked within the employee's assigned rostered shift are payable. Hours clocked outside the shift, overtime beyond the shift, and any day with no rostered shift are excluded. When off, all worked hours count.",
     "hourlyHint": "Hourly policies pay a per-hour rate for the hours worked in the period. The per-hour rate is required for an Hourly policy. Live end-to-end hourly payslip generation is a signed-off follow-up; today an Hourly policy stores its rate and shift-schedule setting and can be assigned, but is not yet applied to a payroll run.",
+    "customPeriodHint": "Custom-period policies record a cut-off window — an anchor day for a non-calendar pay period. Choose \"Custom period\" and set the anchor day to store the window. The window is saved and validated now, but is not yet applied to a payroll run (applying it to overtime, attendance and leave is a signed-off follow-up). Statutory months (EPF, SOCSO, EIS, PCB) always stay on the calendar month by law and are never moved by the window.",
+    "cutOff": {
+      "title": "Cut-off window",
+      "modeLabel": "Period mode",
+      "modeCalendar": "Calendar month",
+      "modeCustom": "Custom period",
+      "anchorDay": "Anchor day",
+      "anchorDayPlaceholder": "e.g. 25",
+      "anchorDayHint": "Used only for the \"Custom period\" mode. The anchor day (1–28) is the day of the month the window opens — for example, anchor 25 means the window runs from the 25th of the previous month to the 24th of the period month. Applies only to Custom-period policies; statutory months stay on the calendar month."
+    },
     "copy": "Copy",
     "copySuffix": "(copy)"
   },

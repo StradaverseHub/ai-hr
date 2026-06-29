@@ -16,6 +16,7 @@
  * statutory and are NOT user-configurable.
  */
 import type {
+  CutOffMode,
   LeaveDivisor,
   NegativeNetMode,
   OtDayType,
@@ -30,6 +31,12 @@ export type { PayrollPolicyConfig };
 // be raised (employer generosity) but never dropped below the legal floor.
 export const EA_S60A_WORKDAY_OT_FLOOR = 1.5;
 
+// 2.1.4 (Custom period) — the inclusive anchor-day range for a custom cut-off window. Capped at 28 (not
+// 29–31) so the window opens on the SAME day-of-month in every calendar month, side-stepping the February /
+// 30-day month-length trap. A value outside [1,28] (or a non-custom mode) falls back to the calendar default.
+export const CUT_OFF_ANCHOR_MIN = 1;
+export const CUT_OFF_ANCHOR_MAX = 28;
+
 const ROUNDING_MODES: RoundingMode[] = ['none', 'up', 'down', 'nearest'];
 const PRORATION_DIVISORS: ProrationDivisor[] = ['calendar_month', 'custom_days'];
 const OT_DAY_TYPES: OtDayType[] = ['workday', 'rest_day', 'holiday'];
@@ -42,6 +49,9 @@ const LEAVE_DIVISORS: LeaveDivisor[] = [
   'custom_hours',
   'custom_minutes',
 ];
+
+const CUT_OFF_MODES: CutOffMode[] = ['calendar', 'custom'];
+const cleanCutOffMode = (v: unknown): CutOffMode => (CUT_OFF_MODES.includes(v as CutOffMode) ? (v as CutOffMode) : 'calendar');
 
 const cleanRounding = (v: unknown): RoundingMode => (ROUNDING_MODES.includes(v as RoundingMode) ? (v as RoundingMode) : 'none');
 const cleanProrationDivisor = (v: unknown): ProrationDivisor =>
@@ -157,6 +167,17 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   const lcm = cleanNonNegNum(lRaw.customMinutes);
   if (lcm !== undefined && lcm > 0) leave.customMinutes = lcm;
   if (Object.keys(leave).length) out.leave = leave;
+
+  // 2.1.4 (Custom period) — the cut-off WINDOW. Only persisted when mode='custom' AND anchorDay is a valid
+  // 1..28 integer; a 'calendar' mode (or a custom mode missing/with an out-of-range anchorDay) is the legacy
+  // default and drops out, so a non-custom config stays byte-identical to NULL. NEVER throws (clamp-not-throw):
+  // an out-of-range anchorDay simply falls back to the calendar default rather than corrupting the row.
+  const coRaw = (r.cutOff ?? {}) as Record<string, unknown>;
+  const cutOffMode = cleanCutOffMode(coRaw.mode);
+  if (cutOffMode === 'custom') {
+    const anchorDay = cleanPosInt(coRaw.anchorDay, CUT_OFF_ANCHOR_MIN, CUT_OFF_ANCHOR_MAX);
+    if (anchorDay !== undefined) out.cutOff = { mode: 'custom', anchorDay };
+  }
 
   return Object.keys(out).length ? out : null;
 }

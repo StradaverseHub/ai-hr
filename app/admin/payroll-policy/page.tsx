@@ -9,11 +9,15 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { copyPolicyAction, createPolicyAction, deletePolicyAction, setStatusAction, updatePolicyAction } from './actions';
 
 const PAGE = '/admin/payroll-policy';
-// 2.1.3 — Monthly, Daily and Hourly are selectable. Hourly persists its per-hour rate + the
+// 2.1.4 — Monthly, Daily, Hourly and Custom-period are all selectable. Hourly persists its per-hour rate + the
 // "only pull hours within shift schedule" toggle; the live end-to-end hourly payslip computation is a deferred
-// follow-up (gated on the rate-storage decision), so an hourly policy configures but does not yet run payroll.
-// Custom-period remains reserved (disabled) until its calculation is signed off.
-const ENABLED_TYPES = new Set(['monthly', 'daily', 'hourly']);
+// follow-up (gated on the rate-storage decision). Custom-period persists a cut-off WINDOW (an anchor day for a
+// non-calendar operational window) — recorded + validated now, but NOT yet applied to payroll calculation
+// (deferred follow-up); statutory months stay calendar-bound by law.
+const ENABLED_TYPES = new Set(['monthly', 'daily', 'hourly', 'custom_period']);
+// Anchor-day bounds mirror core/payroll-policy-config.ts (1..28 — avoids the 29–31 month-length trap).
+const ANCHOR_MIN = 1;
+const ANCHOR_MAX = 28;
 type SortKey = 'name' | 'type' | 'status' | 'updated';
 
 export default async function PayrollPolicyPage({
@@ -46,6 +50,9 @@ export default async function PayrollPolicyPage({
   });
 
   const editing: PolicyRow | null = edit ? policies.find((p) => p.id === edit) ?? null : null;
+  // 2.1.4 — the editing policy's stored cut-off window (custom_period only), for prefilling the form.
+  const editingCutOff = editing?.config?.cutOff;
+  const editingCutOffCustom = editingCutOff?.mode === 'custom';
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -257,12 +264,43 @@ export default async function PayrollPolicyPage({
                   </span>
                 </span>
               </label>
+              {/* 2.1.4 — Custom-period cut-off WINDOW. Always rendered (server component, no client toggle); the
+                  action reads it ONLY when the type is custom_period. "Calendar month" (default) leaves the
+                  window calendar-bound (byte-identical); "Custom period" anchors a non-calendar window on the
+                  given day. The window is RECORDED + VALIDATED but not yet applied to payroll calculation — a
+                  deferred follow-up; statutory months (EPF/SOCSO/EIS/PCB) stay calendar-bound by law. */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('cutOff.title')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('cutOff.modeLabel')}>
+                    <select name="cutOffMode" defaultValue={editingCutOffCustom ? 'custom' : 'calendar'} className={inputCls}>
+                      <option value="calendar">{t('cutOff.modeCalendar')}</option>
+                      <option value="custom">{t('cutOff.modeCustom')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('cutOff.anchorDay')}>
+                    <input
+                      name="anchorDay"
+                      type="number"
+                      min={ANCHOR_MIN}
+                      max={ANCHOR_MAX}
+                      step="1"
+                      inputMode="numeric"
+                      defaultValue={editingCutOffCustom && editingCutOff?.anchorDay ? String(editingCutOff.anchorDay) : ''}
+                      placeholder={t('cutOff.anchorDayPlaceholder')}
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.anchorDayHint')}</p>
+              </div>
               <Field label={t('fieldDescription')}>
                 <input name="description" defaultValue={editing?.description ?? ''} placeholder={t('descriptionPlaceholder')} className={`${inputCls} sm:col-span-2`} />
               </Field>
               <p className="text-xs text-muted-foreground sm:col-span-2">{t('typeHint')}</p>
               <p className="text-xs text-muted-foreground sm:col-span-2">{t('dailyHint')}</p>
               <p className="text-xs text-muted-foreground sm:col-span-2">{t('hourlyHint')}</p>
+              <p className="text-xs text-muted-foreground sm:col-span-2">{t('customPeriodHint')}</p>
               <div className="flex items-center gap-3 sm:col-span-2">
                 <button className={btnPrimary}>{editing ? t('saveChanges') : t('savePolicy')}</button>
                 {editing && (

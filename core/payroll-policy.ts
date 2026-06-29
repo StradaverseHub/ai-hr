@@ -5,8 +5,10 @@
  *
  * Scope: only `monthly` is wired to calculation in this slice (it is the existing behaviour — a null/`fixed`
  * pay_rule). daily/hourly carry a PayRule the existing kernel resolver already understands, but the kernel
- * wiring is a deferred slice gated on the rate-storage decision; custom_period is a deferred architecture
- * slice. The enum carries all four values now so no later migration is needed.
+ * wiring is a deferred slice gated on the rate-storage decision. custom_period (2.1.4) carries a configurable
+ * cut-off WINDOW in `config.cutOff` (mode='custom' + anchorDay) — recorded + validated here, but NOT yet read
+ * by the kernel (applying the window to OT/attendance/leave selection is a deferred follow-up; statutory months
+ * stay calendar-bound by law). The enum carries all four values now so no later migration is needed.
  *
  * Substrate: every write appends a DomainEvent (actorOf/appendEvent) before returning.
  */

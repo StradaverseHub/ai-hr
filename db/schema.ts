@@ -709,6 +709,13 @@ export type LeaveDivisor =
   | 'working_days'
   | 'custom_hours'
   | 'custom_minutes';
+// 2.1.4 (Custom period) — the cut-off WINDOW mode. 'calendar' (default/absent) = the statutory calendar month
+// (1st→last), today's exact behaviour. 'custom' anchors a non-calendar operational window on `anchorDay`: for a
+// statutory month M, the window is [anchorDay of M-1 .. (anchorDay-1) of M]. STATUTORY contributions
+// (EPF/SOCSO/EIS/PCB) stay calendar-bound BY LAW regardless of the window. This slice STORES + VALIDATES the
+// window only — applying it to OT/attendance/leave input selection is a deferred follow-up gated on the kernel
+// seam, so a custom cut-off changes no payslip numbers yet.
+export type CutOffMode = 'calendar' | 'custom';
 export type PayrollPolicyConfig = {
   // 1a — earnings / deductions / net-pay rounding (default 'none' on each = byte-identical).
   rounding?: { earnings?: RoundingMode; deductions?: RoundingMode; netPay?: RoundingMode };
@@ -739,6 +746,15 @@ export type PayrollPolicyConfig = {
     customDays?: number; //                     used when a *_Divisor is 'custom_days'
     customHours?: number; //                    used when a *_Divisor is 'custom_hours'
     customMinutes?: number; //                  used when a *_Divisor is 'custom_minutes'
+  };
+  // 2.1.4 (Custom period) — the operational cut-off WINDOW. Default (absent / mode='calendar') = the statutory
+  // calendar month, byte-identical to today. mode='custom' records an anchor day so the window runs
+  // [anchorDay of M-1 .. (anchorDay-1) of M] for statutory month M. anchorDay ∈ 1..28 (avoids the 29–31
+  // month-length trap). CONFIGURABLE ONLY in this slice — not yet read by the kernel; statutory months stay
+  // calendar-bound by law.
+  cutOff?: {
+    mode?: CutOffMode;
+    anchorDay?: number; //                      day-of-month the custom window opens (1..28), when mode='custom'
   };
 };
 
