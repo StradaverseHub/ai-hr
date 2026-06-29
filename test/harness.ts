@@ -15,6 +15,7 @@ const ALL_TABLES = [
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'holiday', 'attendance', 'attendance_policy',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',
+  'payroll_policy',
   'statutory_ruleset', 'statutory_pack', 'statutory_signing_key', 'statutory_pack_sync_log',
   'claim_type', 'claim_policy', 'claim_request', 'claim_attachment',
   'employee_loan', 'loan_repayment',

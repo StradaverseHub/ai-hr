@@ -21,6 +21,7 @@ import {
   leaveType,
   location,
   payrollBatch,
+  payrollPolicy,
   payslip,
   person,
   position,
@@ -519,6 +520,10 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         holidayGroupName: holidayGroup.name,
         gradeId: employment.gradeId,
         gradeName: jobGrade.name,
+        // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
+        payrollPolicyId: employment.payrollPolicyId,
+        payrollPolicyName: payrollPolicy.name,
+        payrollPolicyStatus: payrollPolicy.status,
         // ADR-0054: the location on the employee's CURRENT open assignment (null = none).
         locationId: location.id,
         locationCode: location.code,
@@ -529,6 +534,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+      .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
       .leftJoin(
         assignment,
         and(

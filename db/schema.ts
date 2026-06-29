@@ -119,6 +119,10 @@ export const aiProviderEnum = pgEnum('ai_provider', ['anthropic', 'openai', 'goo
 export const goalStageStatusEnum = pgEnum('perf_goal_stage_status', ['pending', 'locked']);
 export const goalApprovalEnum = pgEnum('perf_goal_approval', ['draft', 'proposed', 'approved']);
 export const perfAbcClassEnum = pgEnum('perf_abc_class', ['A', 'B', 'C']);
+// 2.1 Payroll Policy — how an employee's payroll is processed. All four values exist now (no later
+// migration to add one); only `monthly` is wired to calculation in this slice (it is the existing
+// behaviour). daily/hourly/custom_period are reserved for a follow-up gated on the rate-storage decision.
+export const payrollPolicyTypeEnum = pgEnum('payroll_policy_type', ['monthly', 'daily', 'hourly', 'custom_period']);
 
 // Reusable column fragments.
 const id = () => uuid('id').primaryKey().defaultRandom();
@@ -361,6 +365,12 @@ export const employment = pgTable(
     // one") — enforced by the service XOR and the employment_holiday_assignment_xor DB CHECK. ON DELETE
     // SET NULL: deleting a group falls the employee back to work_state/default/national, never an FK error.
     holidayGroupId: uuid('holiday_group_id').references((): AnyPgColumn => holidayGroup.id, {
+      onDelete: 'set null',
+    }),
+    // 2.1 Payroll Policy: the named, reusable pay-processing template applied to this employment. Null =
+    // monthly default (today's behaviour). ON DELETE SET NULL so deleting a policy never errors an FK; the
+    // service additionally blocks deleting a policy that is still assigned (PolicyInUseError).
+    payrollPolicyId: uuid('payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id, {
       onDelete: 'set null',
     }),
     terminatedOn: date('terminated_on'),
@@ -674,6 +684,35 @@ export const leaveApprovalPolicy = pgTable(
     uniqueIndex('leave_approval_policy_company_type_uq')
       .on(t.companyId, t.leaveTypeId)
       .where(sql`leave_type_id is not null`),
+  ],
+);
+
+// 2.1 Payroll Policy — a named, reusable, company-scoped template for HOW an employee gets paid. Assigned
+// to an employment via employment.payroll_policy_id (null = monthly default). For `monthly` the pay_rule is
+// null/{kind:'fixed'} (byte-identical to today); daily/hourly (deferred) carry a PayRule the existing kernel
+// resolver already understands. Catalog RLS: readable tenant-wide (the kernel resolves the assigned policy
+// under the caller's session), writable only by an admin for the company (see 0128_payroll_policy_rls.sql).
+export const payrollPolicy = pgTable(
+  'payroll_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    name: text('name').notNull(),
+    description: text('description'),
+    policyType: payrollPolicyTypeEnum('policy_type').notNull(),
+    // Reuses core/pay-rule.ts's PayRule (no new config shape). Null for monthly. For daily/hourly (deferred)
+    // this holds { kind:'per_day'|'per_hour', rate } — the rule the kernel's resolvePayRule already evaluates.
+    payRule: jsonb('pay_rule').$type<PayRule | null>(),
+    status: text('status').notNull().default('active'), // 'active' | 'inactive'
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('payroll_policy_company_name_uq').on(t.companyId, t.name),
+    index('payroll_policy_company_status_idx').on(t.companyId, t.status),
   ],
 );
 

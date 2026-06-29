@@ -35,6 +35,8 @@ import {
 import { currentCompensation } from '@/core/comp';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
+import { listAssignablePolicies } from '@/core/payroll-policy';
+import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listHolidayGroups } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { ReviewSection } from './review-section';
@@ -74,6 +76,7 @@ export default async function EmployeePage({
 }) {
   const s = await getSession();
   const t = await getTranslations('people.detail');
+  const tp = await getTranslations('payrollPolicy');
   const admin = isAdmin(s);
   const { employmentId } = await params;
   const { error, from, cp38Error } = await searchParams;
@@ -118,6 +121,8 @@ export default async function EmployeePage({
   const componentCatalog = admin ? await listPayComponents(s) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data).
   const cp38Records = admin ? await listCp38(s, { employmentId }) : [];
+  // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
+  const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
@@ -372,6 +377,30 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('cp38Add')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('cp38Hint')}</p>
+        </Card>
+      )}
+
+      {/* 2.1 Payroll Policy — assign the named pay-processing template applied to this employee. Admin-only;
+          payroll uses it automatically on the next run. Null = monthly default. */}
+      {admin && !emp.terminatedOn && (
+        <Card>
+          <SectionHeader title={tp('assignTitle')} />
+          <form action={assignPolicyAction} className="flex flex-wrap items-end gap-3 p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={tp('assignLabel')}>
+              <select name="policyId" defaultValue={emp.payrollPolicyId ?? ''} className={inputCls}>
+                <option value="">{tp('assignNone')}</option>
+                {assignablePolicies.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </Field>
+            <button className={btnPrimary}>{tp('assignSave')}</button>
+          </form>
+          {emp.payrollPolicyId && emp.payrollPolicyStatus !== 'active' && (
+            <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
+          )}
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{tp('assignHint')}</p>
         </Card>
       )}
 
