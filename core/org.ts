@@ -213,7 +213,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
       const pack = packFor(co?.country);
       if (pack) {
         const policies = await tx
-          .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
+          .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
           .from(leavePolicy)
           .where(
             and(
@@ -235,7 +235,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         }
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
-          const polFor = resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null);
+          // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
+          const polFor = resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null, p.companyId);
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);

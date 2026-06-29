@@ -540,13 +540,19 @@ export const leavePolicy = pgTable(
       .references(() => leaveType.id),
     // Wave 2 (ADR-0041 2E): grade this policy applies to. null = all grades (the company default).
     gradeId: uuid('grade_id').references(() => jobGrade.id),
+    // ADR-0066: company this policy applies to. null = group default (all companies). A company-scoped
+    // policy ALWAYS wins for employees of that company (resolveGradePolicy short-circuit) — even when lower.
+    companyId: uuid('company_id').references(() => company.id),
     // e.g. { annualDays: 16, method: 'grant_on_hire_prorated' }
     accrual: jsonb('accrual').notNull(),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
     createdAt: createdAt(),
   },
-  (t) => [index('leave_policy_type_idx').on(t.leaveTypeId)],
+  (t) => [
+    index('leave_policy_type_idx').on(t.leaveTypeId),
+    index('leave_policy_company_idx').on(t.companyId, t.leaveTypeId),
+  ],
 );
 
 // leave_ledger = append-only entries; accrual (+), debit (−) on approval, adjustment (±).
@@ -565,6 +571,8 @@ export const leaveLedger = pgTable(
     days: numeric('days', { precision: 6, scale: 2 }).notNull(), // signed
     sourceRequestId: uuid('source_request_id').references((): AnyPgColumn => leaveRequest.id),
     effectiveOn: date('effective_on').notNull(),
+    // ADR-0066: human reason for a festive / one-off `adjustment` grant (e.g. "CNY 2026"). null otherwise.
+    reason: text('reason'),
     createdAt: createdAt(),
   },
   (t) => [index('leave_ledger_employment_idx').on(t.employmentId, t.leaveTypeId)],

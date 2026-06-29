@@ -3,7 +3,7 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
@@ -15,6 +15,7 @@ import {
   company,
   costCenter,
   department,
+  domainEvent,
   employment,
   holiday,
   holidayGroup,
@@ -409,6 +410,9 @@ export async function createLeavePolicy(
     method?: string;
     /** ADR-0041 2E: grade this policy applies to. null/undefined = all grades (the company default). */
     gradeId?: string | null;
+    /** ADR-0066: company this policy applies to. null/undefined = group default (all companies). A company
+     *  override ALWAYS wins for that company in the resolver — even when it grants fewer days. */
+    companyId?: string | null;
     validFrom: string;
   },
 ) {
@@ -416,12 +420,14 @@ export async function createLeavePolicy(
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
+    const companyId = p.companyId ?? null;
     const [row] = await tx
       .insert(leavePolicy)
       .values({
         tenantId: ctx.tenantId,
         leaveTypeId: p.leaveTypeId,
         gradeId: p.gradeId ?? null,
+        companyId,
         accrual: {
           annualDays: p.annualDays,
           carryForwardMax,
@@ -439,7 +445,7 @@ export async function createLeavePolicy(
       aggregateId: row.id,
       eventType: 'leave-policy.created',
       actor: actorOf(ctx),
-      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax, ...expiry, ...carryFlags },
+      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax, companyId, ...expiry, ...carryFlags },
     });
     return row;
   });
@@ -462,6 +468,8 @@ export async function updateLeavePolicy(
     carryForwardIncludeEarned?: boolean;
     method?: string;
     gradeId?: string | null;
+    /** ADR-0066: company this policy applies to. null/undefined = group default (all companies). */
+    companyId?: string | null;
     validFrom: string;
   },
 ) {
@@ -469,10 +477,12 @@ export async function updateLeavePolicy(
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
+    const companyId = p.companyId ?? null;
     await tx
       .update(leavePolicy)
       .set({
         gradeId: p.gradeId ?? null,
+        companyId,
         accrual: {
           annualDays: p.annualDays,
           carryForwardMax,
@@ -489,7 +499,7 @@ export async function updateLeavePolicy(
       aggregateId: p.id,
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
-      payload: { annualDays: p.annualDays, carryForwardMax, validFrom: p.validFrom, ...expiry, ...carryFlags },
+      payload: { annualDays: p.annualDays, carryForwardMax, companyId, validFrom: p.validFrom, ...expiry, ...carryFlags },
     });
   });
 }
@@ -627,14 +637,53 @@ export function listLeavePolicies(ctx: SessionContext) {
         accrual: leavePolicy.accrual,
         gradeId: leavePolicy.gradeId,
         gradeName: jobGrade.name,
+        // ADR-0066: the owning company (null = group default) + its name for the policy-row scope badge.
+        companyId: leavePolicy.companyId,
+        companyName: company.legalName,
         validFrom: leavePolicy.validFrom,
         validTo: leavePolicy.validTo,
       })
       .from(leavePolicy)
       .innerJoin(leaveType, eq(leaveType.id, leavePolicy.leaveTypeId))
       .leftJoin(jobGrade, eq(jobGrade.id, leavePolicy.gradeId))
+      .leftJoin(company, eq(company.id, leavePolicy.companyId))
       .orderBy(leaveType.name),
   );
+}
+
+export type AdHocLeaveGrantRow = {
+  occurredAt: Date;
+  leaveTypeId: string | null;
+  companyId: string | null;
+  days: number | null;
+  count: number | null;
+  reason: string | null;
+  effectiveOn: string | null;
+};
+
+/** ADR-0066: recent festive / one-off grants, reconstructed from the `leave.ad-hoc.granted` event log
+ *  (no dedicated table — the summary event is the record). Newest first. */
+export function listAdHocLeaveGrants(ctx: SessionContext, limit = 10) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ occurredAt: domainEvent.occurredAt, payload: domainEvent.payload })
+      .from(domainEvent)
+      .where(eq(domainEvent.eventType, 'leave.ad-hoc.granted'))
+      .orderBy(desc(domainEvent.occurredAt))
+      .limit(limit);
+    return rows.map((r): AdHocLeaveGrantRow => {
+      const p = (r.payload ?? {}) as Record<string, unknown>;
+      return {
+        occurredAt: r.occurredAt,
+        leaveTypeId: (p.leaveTypeId as string | null) ?? null,
+        companyId: (p.companyId as string | null) ?? null,
+        days: p.days != null ? Number(p.days) : null,
+        count: p.count != null ? Number(p.count) : null,
+        reason: (p.reason as string | null) ?? null,
+        effectiveOn: (p.effectiveOn as string | null) ?? null,
+      };
+    });
+  });
 }
 
 // ───────────────────────── Public holiday calendar ─────────────────────────

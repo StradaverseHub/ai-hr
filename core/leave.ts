@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
-import { isAdmin } from '../lib/authz';
+import { isAdmin, isGroupAdmin, hasGrantFor } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
 import {
@@ -235,6 +235,15 @@ export class LeaveBackdatingNotAllowedError extends Error {
     this.name = 'LeaveBackdatingNotAllowedError';
     this.typeName = typeName;
     this.limitDays = limitDays;
+  }
+}
+
+// ADR-0066 festive / one-off grant: invalid input (bad days/date/leave-type) or an authority violation
+// (a company-scoped admin attempting a group-wide grant, or a grant for a company they don't administer).
+export class AdHocLeaveGrantError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AdHocLeaveGrantError';
   }
 }
 
@@ -1920,6 +1929,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         hiredOn: employment.hiredOn,
         country: company.country,
         gradeId: employment.gradeId,
+        companyId: employment.companyId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -1949,7 +1959,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
     // 2E (ADR-0041): active policies per type as of Jan 1, grouped so each employee resolves the policy
     // for their grade (resolveGradePolicy) — same resolution the hire grant uses.
     const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -1989,7 +1999,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           skipped += 1;
           continue;
         }
-        const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId);
+        const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId);
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
         const days = Math.max(pack.leave.entitlement(t.code, years), pol?.days ?? 0);
@@ -2067,7 +2077,7 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
 }
 
 // ── Grade-based policy resolution (ADR-0041 / 2E) ─────────────────────────────────────────────────
-export type GradePolicyRow = { gradeId: string | null; accrual: unknown };
+export type GradePolicyRow = { gradeId: string | null; accrual: unknown; companyId?: string | null };
 /** ADR-0038 carry-forward expiry: the month+day on which the carried-forward ANNUAL portion expires
  *  (e.g. {month:3, day:31} = 31 March of the leave year following the one it was carried into). Stored
  *  as an OFFSET, not a hardcoded date, so it works for any leave-year start. null = never expires. */
@@ -2115,8 +2125,21 @@ function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null {
 /** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
  *  policy scoped to the employee's grade, else the most-generous null-grade (all-grades) policy, else
  *  null. With no grades assigned (employee + every policy null-grade) this is exactly the pre-2E
- *  "most generous active policy" pick, so existing behavior is unchanged. */
-export function resolveGradePolicy(rows: GradePolicyRow[], employeeGradeId: string | null): ResolvedPolicy | null {
+ *  "most generous active policy" pick, so existing behavior is unchanged.
+ *
+ *  ADR-0066 — PER-COMPANY SCOPE (strict short-circuit). When `employeeCompanyId` is provided, resolution
+ *  happens entirely within ONE scope tier: if ANY active policy is scoped to the employee's company, the
+ *  company-scoped subset RESOLVES the policy (grade-match beats null-grade, max-days within that subset) and
+ *  the group (null-company) tier is NEVER consulted — so a company override ALWAYS wins for that company,
+ *  even when it grants FEWER days than the group default. Otherwise we fall back to the group (null-company)
+ *  subset, resolved exactly as before. Grade tiering (grade > null-grade) and the max-days "most generous"
+ *  pick are preserved WITHIN whichever scope wins. When `employeeCompanyId` is undefined OR no row is
+ *  company-scoped, behaviour is byte-identical to the pre-0066 resolver (the back-compat guarantee). */
+export function resolveGradePolicy(
+  rows: GradePolicyRow[],
+  employeeGradeId: string | null,
+  employeeCompanyId?: string | null,
+): ResolvedPolicy | null {
   const pick = (subset: GradePolicyRow[]): ResolvedPolicy | null => {
     let best: ResolvedPolicy | null = null;
     for (const r of subset) {
@@ -2141,8 +2164,21 @@ export function resolveGradePolicy(rows: GradePolicyRow[], employeeGradeId: stri
     }
     return best;
   };
-  const graded = employeeGradeId ? pick(rows.filter((r) => r.gradeId === employeeGradeId)) : null;
-  return graded ?? pick(rows.filter((r) => r.gradeId == null));
+  // Resolve grade tiering (grade-match beats null-grade) within a single scope subset.
+  const resolveWithinScope = (scope: GradePolicyRow[]): ResolvedPolicy | null => {
+    const graded = employeeGradeId ? pick(scope.filter((r) => r.gradeId === employeeGradeId)) : null;
+    return graded ?? pick(scope.filter((r) => r.gradeId == null));
+  };
+  // ADR-0066 strict scope short-circuit: if the employee's company has ANY policy, resolve entirely
+  // within that company tier and NEVER fall back to group — even if the group default is more generous.
+  if (employeeCompanyId != null) {
+    const companyScope = rows.filter((r) => r.companyId === employeeCompanyId);
+    if (companyScope.length > 0) return resolveWithinScope(companyScope);
+  }
+  // Group tier: only null-company policies. Filtering to companyId == null keeps a company-scoped policy
+  // from leaking into the group fallback for employees of OTHER companies.
+  const groupScope = rows.filter((r) => r.companyId == null);
+  return resolveWithinScope(groupScope);
 }
 
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
@@ -2161,7 +2197,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
     if (typeIds.length === 0) return { granted: 0, forfeits: 0 };
 
     const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -2191,6 +2227,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         country: company.country,
         leaveCycle: company.leaveCycle,
         gradeId: employment.gradeId,
+        companyId: employment.companyId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -2290,8 +2327,9 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       const years = serviceYearsAt(e.hiredOn, cycleStart);
       for (const typeId of earnedTypeIds) {
         // 2E: this employee's grade may resolve to a lump (or no) policy even when the type is earned for
-        // another grade — accrue only when THEIR resolved policy is earned.
-        const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId);
+        // another grade — accrue only when THEIR resolved policy is earned. ADR-0066: scoped to the
+        // employee's company so a company override drives their accrued amount.
+        const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId);
         if (!isEarnedMethod(pol?.method)) continue;
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
@@ -2428,6 +2466,7 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
         employmentId: employment.id,
         hiredOn: employment.hiredOn,
         gradeId: employment.gradeId,
+        companyId: employment.companyId,
         terminatedOn: employment.terminatedOn,
       })
       .from(employment)
@@ -2440,7 +2479,7 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
     // governed by the policy version that was active at that year's open. resolveGradePolicy below picks
     // the most-generous one per (year, grade).
     const policies = await tx
-      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom, validTo: leavePolicy.validTo })
+      .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual, validFrom: leavePolicy.validFrom, validTo: leavePolicy.validTo })
       .from(leavePolicy)
       .where(inArray(leavePolicy.leaveTypeId, typeIds));
     if (policies.length === 0) return { swept: 0, forfeited: 0 };
@@ -2453,11 +2492,12 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
     if (expiryPolicyYears.length === 0) return { swept: 0, forfeited: 0 };
     const earliestYear = Math.min(...expiryPolicyYears);
 
-    // For a given leave year, the policies active at its year-open (Jan 1).
+    // For a given leave year, the policies active at its year-open (Jan 1). ADR-0066: carry companyId so
+    // the resolver short-circuits onto the employee's own company tier (never another company's carry-cap).
     const activeAt = (yearOpen: string): GradePolicyRow[] =>
       policies
         .filter((pol) => pol.validFrom <= yearOpen && (pol.validTo == null || pol.validTo > yearOpen))
-        .map((pol) => ({ gradeId: pol.gradeId, accrual: pol.accrual }));
+        .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
 
     let swept = 0;
     let forfeitedTotal = 0;
@@ -2467,7 +2507,7 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
         // arrived. Each year is independently reconstructed + idempotent on its own year-qualified date.
         for (let y = earliestYear; y <= todayYear; y++) {
           const yearStart = `${y}-01-01`;
-          const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId);
+          const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId, e.companyId);
           // Carry-forward enhancement: a policy whose carry rule is explicitly disabled never carries
           // anything (openLeaveYear forfeits the whole prior balance at open), so there is nothing for
           // the later expiry sweep to forfeit — skip even if a stale expiry offset is still populated.
@@ -2565,5 +2605,135 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
       payload: { today: p.today, swept, forfeited: forfeitedTotal },
     });
     return { swept, forfeited: forfeitedTotal };
+  });
+}
+
+// ═════════════════════ Festive / one-off leave grant (ADR-0066, Model 3) ═════════════════════
+// A festive grant credits N extra days to EVERY active employee in a chosen (company, leave_type) on a chosen
+// date, with a human reason (e.g. "CNY 2026"). No new table: each grant is one `leaveLedger` `adjustment`
+// (+days) per targeted employment + ONE summary DomainEvent. Festive leave types are expected to live OUTSIDE
+// STANDING_LEAVE_CODES so the accrual / openLeaveYear / expiry engines never touch them (deliberate — see
+// ADR-0066: this is why festive days escape annual carry-cap/forfeit). Expiry clawback is DEFERRED; `expiresOn`
+// is accepted and stored only as a payload/reason note (no sweep this pass).
+
+/** Credit `days` to every active employee of (companyId, leaveTypeId) as a dated `adjustment`. Returns the
+ *  number of newly-credited employments (idempotent re-runs return 0 newly credited). */
+export async function grantAdHocLeave(
+  ctx: SessionContext,
+  p: {
+    /** Target company. null = group-wide (every active employment) — requires a GROUP admin. */
+    companyId: string | null;
+    leaveTypeId: string;
+    days: number;
+    reason: string;
+    /** Date the grant takes effect (the ledger `effective_on`). */
+    effectiveOn: string;
+    /** Optional metadata only — DEFERRED: no auto-clawback this pass (ADR-0066). Stored in the event payload. */
+    expiresOn?: string | null;
+  },
+) {
+  // ── Validation (before opening the transaction; a bad grant persists nothing) ──
+  const days = Math.round(Number(p.days) * 100) / 100;
+  if (!Number.isFinite(days) || days <= 0) throw new AdHocLeaveGrantError('Days must be a positive number.');
+  const reason = p.reason?.trim();
+  if (!reason) throw new AdHocLeaveGrantError('A reason is required (e.g. "CNY 2026").');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveOn)) throw new AdHocLeaveGrantError('A valid effective date is required.');
+
+  // ── Authority (resolves the silent-partial-write critique): a group-wide grant needs a GROUP admin; a
+  // company-scoped grant needs admin authority over that company. A company-scoped admin attempting a
+  // group-wide grant is rejected outright — never silently scoped down. ──
+  // Back-compat: a roles-only session (no `grants`) is group-wide, exactly as withTenant treats it. Build the
+  // effective grants the same way so isGroupAdmin / hasGrantFor see a group-wide admin (e.g. test adminCtx).
+  const effective: SessionContext =
+    ctx.grants != null
+      ? ctx
+      : { ...ctx, grants: (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null })) };
+  if (p.companyId == null) {
+    if (!isGroupAdmin(effective)) {
+      throw new AdHocLeaveGrantError('A group-wide festive grant requires a group administrator.');
+    }
+  } else if (!(isGroupAdmin(effective) || hasGrantFor(effective, 'hr_admin', p.companyId))) {
+    throw new AdHocLeaveGrantError('You are not permitted to grant leave for this company.');
+  }
+
+  return withTenant(ctx, async (tx) => {
+    // Validate the leave type exists (visible) so a typo doesn't post orphaned ledger rows.
+    const [lt] = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.leaveTypeId))
+      .limit(1);
+    if (!lt) throw new AdHocLeaveGrantError('Leave type not found.');
+
+    // Target set = active employments as of effectiveOn. Edge rules (documented): include only employments
+    // hired on/before effectiveOn and not terminated before it (mirror openLeaveYear's terminatedOn >= start
+    // convention). Target by employment.companyId so multi-company employment isn't double-granted under one
+    // company-scoped grant.
+    const targets = await tx
+      .select({ employmentId: employment.id })
+      .from(employment)
+      .where(
+        and(
+          p.companyId != null ? eq(employment.companyId, p.companyId) : undefined,
+          lte(employment.hiredOn, p.effectiveOn),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, p.effectiveOn)),
+        ),
+      );
+    // Resolved cohort count = intent. Surfaced in the return so a partial write under can_see_employment RLS
+    // shows up as an explicit number, never a silent partial.
+    const targeted = targets.length;
+
+    // Idempotency (resolves the double-click critique): skip any employment that already has an adjustment
+    // for this exact (leaveTypeId, effectiveOn, reason) — re-running the identical grant is a no-op. Mirrors
+    // openLeaveYear's openedSet dedupe.
+    const existing = await tx
+      .select({ employmentId: leaveLedger.employmentId })
+      .from(leaveLedger)
+      .where(
+        and(
+          targeted > 0 ? inArray(leaveLedger.employmentId, targets.map((e) => e.employmentId)) : sql`false`,
+          eq(leaveLedger.leaveTypeId, p.leaveTypeId),
+          eq(leaveLedger.entryType, 'adjustment'),
+          eq(leaveLedger.effectiveOn, p.effectiveOn),
+          eq(leaveLedger.reason, reason),
+        ),
+      );
+    const already = new Set(existing.map((r) => r.employmentId));
+
+    let granted = 0;
+    for (const e of targets) {
+      if (already.has(e.employmentId)) continue;
+      await tx.insert(leaveLedger).values({
+        tenantId: ctx.tenantId,
+        employmentId: e.employmentId,
+        leaveTypeId: p.leaveTypeId,
+        entryType: 'adjustment',
+        days: days.toFixed(2),
+        effectiveOn: p.effectiveOn,
+        reason,
+      });
+      granted += 1;
+    }
+
+    // Substrate: ONE summary DomainEvent. The per-employment ledger rows are the per-item audit (deliberate
+    // skip documented inline, matching openLeaveYear / accrueEarnedLeave).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-grant',
+      aggregateId: ctx.tenantId,
+      eventType: 'leave.ad-hoc.granted',
+      actor: actorOf(ctx),
+      payload: {
+        leaveTypeId: p.leaveTypeId,
+        companyId: p.companyId,
+        days,
+        count: granted,
+        targeted,
+        reason,
+        effectiveOn: p.effectiveOn,
+        expiresOn: p.expiresOn ?? null,
+      },
+    });
+    return { granted, targeted, days, reason, effectiveOn: p.effectiveOn };
   });
 }

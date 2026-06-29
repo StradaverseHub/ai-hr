@@ -22,11 +22,15 @@ export type EntitlementPolicy = {
   /** Grade this policy applies to (ADR-0041 2E); null = all grades (company default). */
   gradeId?: string | null;
   gradeName?: string | null;
+  /** Company this policy applies to (ADR-0066); null = group default (all companies). */
+  companyId?: string | null;
+  companyName?: string | null;
   validFrom: string;
   validTo: string | null;
 };
 
 export type GradeOption = { id: string; name: string };
+export type CompanyOption = { id: string; name: string };
 
 /** #25 visibility: who may see + apply for this type. null = open to all. */
 export type LeaveEligibilityRule = {
@@ -94,6 +98,7 @@ export function LeaveTypePanel({
   sendToPayroll,
   policies,
   grades,
+  companies,
   updateTypeAction,
   archiveTypeAction,
   deleteTypeAction,
@@ -128,6 +133,8 @@ export function LeaveTypePanel({
   sendToPayroll: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
+  /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
+  companies: CompanyOption[];
   updateTypeAction: Action;
   archiveTypeAction: Action;
   deleteTypeAction: Action;
@@ -631,6 +638,18 @@ export function LeaveTypePanel({
                       </select>
                     </Field>
                   )}
+                  {/* ADR-0066: per-company scope. Group default = applies to every company; a specific
+                      company OVERRIDES the group default for that company (even when lower). */}
+                  <Field label={t('policyCompanyLabel')}>
+                    <select name="companyId" defaultValue={p.companyId ?? ''} className={`${inputCls} w-44`}>
+                      <option value="">{t('policyCompanyGroupDefault')}</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>
@@ -677,6 +696,10 @@ export function LeaveTypePanel({
                       </span>
                     )}
                     {p.gradeId && p.gradeName && <span className={badge.muted}>{p.gradeName}</span>}
+                    {/* ADR-0066: scope badge — the owning company, or the group-default label. */}
+                    <span className={badge.muted}>
+                      {p.companyId && p.companyName ? p.companyName : t('policyCompanyGroupDefault')}
+                    </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditingPolicyId(p.id)}>
@@ -806,6 +829,17 @@ export function LeaveTypePanel({
                   </select>
                 </Field>
               )}
+              {/* ADR-0066: per-company scope on a new entitlement. */}
+              <Field label={t('policyCompanyLabel')}>
+                <select name="companyId" defaultValue="" className={`${inputCls} w-44`}>
+                  <option value="">{t('policyCompanyGroupDefault')}</option>
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
               <Button type="submit" size="sm">
                 {t('add')}
               </Button>

@@ -798,6 +798,10 @@ export type LeaveEntitlementBreakdown = {
   carryForwardExpiryDate: string | null;
   /** Days forfeited for the in-scope cycle (cap-excess at open + any realised expiry lapse) as at asOf. */
   forfeited: number;
+  /** ADR-0066: net `adjustment` days within the current cycle that are NOT the boundary forfeit — i.e.
+   *  festive / one-off grants (and any manual +/- adjustment). Surfaced as its own line so the displayed
+   *  breakdown reconciles with `balance` (accrual aggregates exclude `adjustment`). 0 when none. */
+  otherAdjustments: number;
   /** Ledger balance as at asOf minus pending requests (mirrors leaveBalances' `available`). */
   totalAvailable: number;
   /** Raw in-scope ledger rows so the UI can show the source of each component. */
@@ -821,7 +825,7 @@ export function leaveEntitlementBreakdown(
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
       tx
-        .select({ hiredOn: employment.hiredOn, gradeId: employment.gradeId, leaveCycle: company.leaveCycle })
+        .select({ hiredOn: employment.hiredOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle })
         .from(employment)
         .innerJoin(company, eq(company.id, employment.companyId))
         .where(eq(employment.id, employmentId))
@@ -833,7 +837,7 @@ export function leaveEntitlementBreakdown(
 
     // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
     const policies = await tx
-      .select({ gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
+      .select({ gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
       .from(leavePolicy)
       .where(
         and(
@@ -843,7 +847,8 @@ export function leaveEntitlementBreakdown(
           sql`(${leavePolicy.validTo} is null or ${leavePolicy.validTo} > ${asOf})`,
         ),
       );
-    const policy = resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId);
+    // ADR-0066: resolve under the employee's company so /me + admin show the per-company entitlement.
+    const policy = resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId);
     const earned = isEarnedMethod(policy?.method);
     const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
     const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;
@@ -860,6 +865,10 @@ export function leaveEntitlementBreakdown(
         .select({
           // Fresh entitlement granted within the current cycle (accruals + in-lieu top-ups).
           cycleAccrual: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual','in_lieu_accrual') and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // ADR-0066: positive `adjustment` credits within the current cycle (festive / one-off grants). The
+          // accrual aggregates above exclude `adjustment`, so these are surfaced separately to reconcile the
+          // breakdown with `balance`. Negative adjustments (boundary forfeits) are accounted via `forfeited`.
+          otherAdjustments: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and ${leaveLedger.days} > 0 and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
           // Signed balance as at asOf (the headline number this view explains).
           balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
           // Signed balance strictly before the cycle start = what carried into the cycle.
@@ -952,6 +961,7 @@ export function leaveEntitlementBreakdown(
       carryForwardRemaining,
       carryForwardExpiryDate,
       forfeited,
+      otherAdjustments: num(agg?.otherAdjustments),
       totalAvailable: Math.round((balance - num(pendRow?.pending)) * 100) / 100,
       transactions: rows.map((r) => ({
         effectiveOn: r.effectiveOn,

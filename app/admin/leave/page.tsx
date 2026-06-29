@@ -1,11 +1,12 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listLeavePolicies } from '@/core/admin';
+import { listLeavePolicies, listAdHocLeaveGrants } from '@/core/admin';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
+import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import {
   archiveLeaveTypeAction,
   createLeavePolicyAction,
@@ -29,13 +30,30 @@ export default async function LeaveConfigPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades] = await Promise.all([
+  const [types, policies, companies, grades, adHocGrants] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listLeavePolicies(s),
     listCompanies(s),
     listJobGrades(s),
+    listAdHocLeaveGrants(s),
   ]);
   const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
+  // ADR-0066: companies for the per-policy scope select + the festive-grant card (reuse the page's load).
+  const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
+  // ADR-0066: festive-grant inputs — active leave types + name lookups for the recent-grants list.
+  const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
+  const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
+  const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+  const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
+    occurredAt: g.occurredAt.toISOString(),
+    companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
+    leaveTypeName: g.leaveTypeId ? (typeNameById.get(g.leaveTypeId) ?? null) : null,
+    days: g.days,
+    count: g.count,
+    reason: g.reason,
+    effectiveOn: g.effectiveOn,
+  }));
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   // Statutory floor display (MY pack): sample the three service bands. 6 (not 5)
   // catches the top band on both boundary conventions (annual ≤5 vs sick <5).
@@ -69,6 +87,9 @@ export default async function LeaveConfigPage({
       method: acc?.method,
       gradeId: p.gradeId,
       gradeName: p.gradeName,
+      // ADR-0066: the owning company (null = group default) + its name for the scope badge.
+      companyId: p.companyId,
+      companyName: p.companyName,
       validFrom: p.validFrom,
       validTo: p.validTo,
     };
@@ -115,6 +136,7 @@ export default async function LeaveConfigPage({
               sendToPayroll={t.sendToPayroll}
               policies={polByType.get(t.id) ?? []}
               grades={gradeOptions}
+              companies={companyOptions}
               updateTypeAction={updateLeaveTypeAction}
               archiveTypeAction={archiveLeaveTypeAction}
               deleteTypeAction={deleteLeaveTypeAction}
@@ -258,6 +280,17 @@ export default async function LeaveConfigPage({
             {t('addGrade')}
           </Button>
         </form>
+      </Card>
+
+      {/* ADR-0066: festive / one-off leave grant — hand N extra days to everyone in a company + leave type. */}
+      <Card>
+        <SectionHeader title={t('festiveTitle')} />
+        <FestiveGrantCard
+          companies={companyOptions}
+          leaveTypes={activeTypeOptions}
+          recent={recentGrants}
+          defaultDate={todayIso}
+        />
       </Card>
     </div>
   );

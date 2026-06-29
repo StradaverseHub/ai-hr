@@ -40,7 +40,7 @@ import {
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
-import { openLeaveYear, accrueEarnedLeave, type LeaveDurationType } from '@/core/leave';
+import { openLeaveYear, accrueEarnedLeave, grantAdHocLeave, type LeaveDurationType } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import { requireAdmin } from '@/lib/authz';
@@ -265,6 +265,7 @@ export async function createLeavePolicyAction(formData: FormData) {
       carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
+      companyId: String(formData.get('companyId') || '') || null,
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
@@ -286,12 +287,35 @@ export async function updateLeavePolicyAction(formData: FormData) {
       carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
+      companyId: String(formData.get('companyId') || '') || null,
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
     fail(LEAVE, e);
   }
   ok(LEAVE);
+}
+
+/** ADR-0066: festive / one-off leave grant. Returns the affected-employee count for the confirm step
+ *  (no redirect — a client card shows the count + toast, then refreshes). */
+export async function grantAdHocLeaveAction(
+  formData: FormData,
+): Promise<{ granted?: number; targeted?: number; error?: string }> {
+  const s = await getSession();
+  try {
+    const res = await grantAdHocLeave(s, {
+      companyId: String(formData.get('companyId') || '') || null,
+      leaveTypeId: String(formData.get('leaveTypeId') || ''),
+      days: Number(formData.get('days')),
+      reason: String(formData.get('reason') || ''),
+      effectiveOn: String(formData.get('effectiveOn') || ''),
+      expiresOn: String(formData.get('expiresOn') || '') || null,
+    });
+    revalidatePath(LEAVE);
+    return { granted: res.granted, targeted: res.targeted };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
 }
 
 /** ADR-0040 (2D-1): top earned policies up to today's accrued amount. Idempotent — admins can run it
