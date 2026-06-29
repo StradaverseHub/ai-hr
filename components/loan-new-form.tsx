@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from '@/components/ui';
-import { computeLoan, LOAN_INTEREST_METHODS, LOAN_TYPES, type LoanInterestMethod } from '@/core/loans';
+// RSC: import the pure calc engine + constants from core/loans-compute (NO db import), not core/loans
+// (which imports postgres at module scope and would be dragged into this client bundle → next build fails).
+import { computeLoan, LOAN_INTEREST_METHODS, LOAN_TYPES, type LoanInterestMethod } from '@/core/loans-compute';
 import { createLoanAction } from '@/app/admin/loans/actions';
 
 type EmpOption = { employmentId: string; name: string };
