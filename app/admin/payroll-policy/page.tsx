@@ -6,12 +6,12 @@ import { listPolicies, POLICY_TYPES, type PolicyRow } from '@/core/payroll-polic
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { createPolicyAction, deletePolicyAction, setStatusAction, updatePolicyAction } from './actions';
+import { copyPolicyAction, createPolicyAction, deletePolicyAction, setStatusAction, updatePolicyAction } from './actions';
 
 const PAGE = '/admin/payroll-policy';
-// Monthly is the only type wired to calculation in this slice; the other three are reserved (calculation
-// pending sign-off) and rendered disabled in the type dropdown so an unsigned-off calculation is never created.
-const ENABLED_TYPES = new Set(['monthly']);
+// 2.1.2 — Monthly and Daily are wired to calculation. Hourly and Custom-period remain reserved (calculation
+// pending sign-off) and stay disabled in the type dropdown so an unsigned-off calculation is never created.
+const ENABLED_TYPES = new Set(['monthly', 'daily']);
 type SortKey = 'name' | 'type' | 'status' | 'updated';
 
 export default async function PayrollPolicyPage({
@@ -124,6 +124,14 @@ export default async function PayrollPolicyPage({
                           <Link href={`${PAGE}?edit=${p.id}`} className="text-xs font-medium text-primary hover:underline">
                             {t('edit')}
                           </Link>
+                          {/* 2.1.2 — Copy: duplicate the policy (type + rate + config) under a "(copy)" name. */}
+                          <form action={copyPolicyAction}>
+                            <input type="hidden" name="id" value={p.id} />
+                            <input type="hidden" name="name" value={`${p.name} ${t('copySuffix')}`} />
+                            <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+                              {t('copy')}
+                            </button>
+                          </form>
                           <form action={setStatusAction}>
                             <input type="hidden" name="id" value={p.id} />
                             <input type="hidden" name="status" value={p.status === 'active' ? 'inactive' : 'active'} />
@@ -177,20 +185,47 @@ export default async function PayrollPolicyPage({
                 <input name="name" required defaultValue={editing?.name ?? ''} placeholder={t('namePlaceholder')} className={inputCls} />
               </Field>
               <Field label={t('fieldType')}>
-                {/* Edit keeps the existing type read-only (Monthly-only slice can't change the calculation type);
-                    create exposes all four but disables the three not yet signed off. */}
-                <select name="policyType" defaultValue={editing?.policyType ?? 'monthly'} disabled className={`${inputCls} opacity-70`}>
-                  {POLICY_TYPES.map((ty) => (
-                    <option key={ty} value={ty} disabled={!ENABLED_TYPES.has(ty)}>
-                      {t(`types.${ty}`)}{!ENABLED_TYPES.has(ty) ? ` — ${t('typePending')}` : ''}
-                    </option>
-                  ))}
-                </select>
+                {/* Edit keeps the existing type read-only (the calculation type is fixed once chosen) — a hidden
+                    field carries it so the action still receives it; create exposes the enabled types and
+                    disables the ones not yet signed off. */}
+                {editing ? (
+                  <>
+                    <input type="hidden" name="policyType" value={editing.policyType} />
+                    <select defaultValue={editing.policyType} disabled className={`${inputCls} opacity-70`}>
+                      {POLICY_TYPES.map((ty) => (
+                        <option key={ty} value={ty}>{t(`types.${ty}`)}</option>
+                      ))}
+                    </select>
+                  </>
+                ) : (
+                  <select name="policyType" defaultValue="monthly" className={inputCls}>
+                    {POLICY_TYPES.map((ty) => (
+                      <option key={ty} value={ty} disabled={!ENABLED_TYPES.has(ty)}>
+                        {t(`types.${ty}`)}{!ENABLED_TYPES.has(ty) ? ` — ${t('typePending')}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              {/* 2.1.2 — per-day rate. Always rendered (server component, no client toggle); the action reads it
+                  ONLY when the type is daily. Pre-filled when editing a daily policy. */}
+              <Field label={t('fieldDailyRate')}>
+                <input
+                  name="dailyRate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  defaultValue={editing?.payRule?.kind === 'per_day' ? String(editing.payRule.rate) : ''}
+                  placeholder={t('dailyRatePlaceholder')}
+                  className={inputCls}
+                />
               </Field>
               <Field label={t('fieldDescription')}>
                 <input name="description" defaultValue={editing?.description ?? ''} placeholder={t('descriptionPlaceholder')} className={`${inputCls} sm:col-span-2`} />
               </Field>
               <p className="text-xs text-muted-foreground sm:col-span-2">{t('typeHint')}</p>
+              <p className="text-xs text-muted-foreground sm:col-span-2">{t('dailyHint')}</p>
               <div className="flex items-center gap-3 sm:col-span-2">
                 <button className={btnPrimary}>{editing ? t('saveChanges') : t('savePolicy')}</button>
                 {editing && (

@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "Payroll policies",
     "description": "Named, reusable rules for how each employee's payroll is processed. Assign a policy to an employee and payroll applies it automatically.",
-    "previewNotice": "Monthly policies are live. Daily, Hourly and Custom-period types are configurable but their calculation is pending sign-off and not yet applied to payroll.",
+    "previewNotice": "Monthly and Daily policies are live. Hourly and Custom-period types are configurable but their calculation is pending sign-off and not yet applied to payroll.",
     "emptyScope": "No companies in the current scope. Use the company switcher above.",
     "catalogTitle": "Policies",
     "searchPlaceholder": "Search policies…",
@@ -2747,7 +2747,7 @@
     "fieldType": "Type",
     "fieldDescription": "Description",
     "descriptionPlaceholder": "Optional note",
-    "typeHint": "Only Monthly is applied to payroll in this release. The other types are reserved and disabled until their calculation is signed off.",
+    "typeHint": "Monthly and Daily are applied to payroll. A Daily policy pays its per-day rate for the eligible days worked in the period — monthly proration does not apply. Hourly and Custom-period are reserved and disabled until their calculation is signed off.",
     "savePolicy": "Create policy",
     "saveChanges": "Save changes",
     "cancelEdit": "Cancel",
@@ -2761,13 +2761,19 @@
       "saved": "Payroll policy saved",
       "statusChanged": "Policy status updated",
       "deleted": "Payroll policy deleted",
-      "assigned": "Payroll policy assigned"
+      "assigned": "Payroll policy assigned",
+      "copied": "Payroll policy copied"
     },
     "errors": {
       "duplicateName": "A payroll policy with this name already exists for this company.",
       "inUse": "This policy is assigned to employees and cannot be deleted. Unassign it first.",
       "companyMismatch": "A payroll policy can only be assigned to employees in its own company."
-    }
+    },
+    "fieldDailyRate": "Per-day rate (Daily)",
+    "dailyRatePlaceholder": "e.g. 120.00",
+    "dailyHint": "Daily policies pay a per-day rate for the days worked in the period; monthly proration does not apply. The per-day rate is required for a Daily policy.",
+    "copy": "Copy",
+    "copySuffix": "(copy)"
   },
   "leaveApproval": {
     "title": "Leave Approval Chain",

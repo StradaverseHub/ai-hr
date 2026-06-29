@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "Chính sách lương",
     "description": "Các quy tắc có tên, tái sử dụng được cho cách xử lý lương của từng nhân viên. Gán chính sách cho nhân viên và lương sẽ tự động áp dụng.",
-    "previewNotice": "Chính sách Hàng tháng đã hoạt động. Các loại Hàng ngày, Theo giờ và Kỳ tùy chỉnh có thể cấu hình nhưng phép tính của chúng đang chờ phê duyệt và chưa được áp dụng cho lương.",
+    "previewNotice": "Chính sách Hàng tháng và Hàng ngày đã hoạt động. Loại Theo giờ và Kỳ tùy chỉnh có thể cấu hình nhưng phép tính của chúng đang chờ phê duyệt và chưa được áp dụng cho bảng lương.",
     "emptyScope": "Không có công ty nào trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
     "catalogTitle": "Chính sách",
     "searchPlaceholder": "Tìm chính sách…",
@@ -2747,7 +2747,7 @@
     "fieldType": "Loại",
     "fieldDescription": "Mô tả",
     "descriptionPlaceholder": "Ghi chú tùy chọn",
-    "typeHint": "Chỉ Hàng tháng được áp dụng cho lương trong bản phát hành này. Các loại khác được dành riêng và vô hiệu hóa cho đến khi phép tính được phê duyệt.",
+    "typeHint": "Hàng tháng và Hàng ngày được áp dụng cho bảng lương. Chính sách Hàng ngày trả mức theo ngày cho số ngày làm việc đủ điều kiện trong kỳ — không áp dụng tính theo tỷ lệ hàng tháng. Theo giờ và Kỳ tùy chỉnh được dự trữ và vô hiệu hóa cho đến khi phép tính được phê duyệt.",
     "savePolicy": "Tạo chính sách",
     "saveChanges": "Lưu thay đổi",
     "cancelEdit": "Hủy",
@@ -2761,13 +2761,19 @@
       "saved": "Đã lưu chính sách lương",
       "statusChanged": "Đã cập nhật trạng thái chính sách",
       "deleted": "Đã xóa chính sách lương",
-      "assigned": "Đã gán chính sách lương"
+      "assigned": "Đã gán chính sách lương",
+      "copied": "Đã sao chép chính sách lương"
     },
     "errors": {
       "duplicateName": "Đã có chính sách lương với tên này cho công ty này.",
       "inUse": "Chính sách này được gán cho nhân viên và không thể xóa. Hãy bỏ gán trước.",
       "companyMismatch": "Chính sách lương chỉ có thể gán cho nhân viên trong chính công ty của nó."
-    }
+    },
+    "fieldDailyRate": "Mức theo ngày (Hàng ngày)",
+    "dailyRatePlaceholder": "ví dụ 120.00",
+    "dailyHint": "Chính sách Hàng ngày trả mức theo ngày cho số ngày làm việc trong kỳ; không áp dụng tính theo tỷ lệ hàng tháng. Bắt buộc nhập mức theo ngày cho chính sách Hàng ngày.",
+    "copy": "Sao chép",
+    "copySuffix": "(bản sao)"
   },
   "leaveApproval": {
     "title": "Chuỗi phê duyệt nghỉ phép",

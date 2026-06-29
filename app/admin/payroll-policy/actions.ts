@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   assignPolicy,
+  copyPolicy,
   createPolicy,
   deletePolicy,
   DuplicatePolicyNameError,
@@ -14,6 +15,7 @@ import {
   setStatus,
   updatePolicy,
 } from '@/core/payroll-policy';
+import type { PayRule } from '@/core/pay-rule';
 
 const PAGE = '/admin/payroll-policy';
 
@@ -21,6 +23,13 @@ const str = (fd: FormData, k: string): string | undefined => {
   const v = String(fd.get(k) ?? '').trim();
   return v || undefined;
 };
+
+/** Build the pay-rule from the submitted form for the given type. Daily ⇒ a per_day rule from `dailyRate`
+ *  (NaN/blank ⇒ 0, which the service's resolveRule validation then rejects as out of range). Monthly ⇒ null. */
+function payRuleFromForm(fd: FormData, policyType: string): PayRule | null {
+  if (policyType === 'daily') return { kind: 'per_day', rate: Number(fd.get('dailyRate') ?? '') };
+  return null;
+}
 
 /** Map a known service error to its localized message; fall back to the raw message otherwise. */
 async function errorMessage(e: unknown): Promise<string> {
@@ -51,15 +60,17 @@ async function run(write: () => Promise<void>, toastKey: string, page = PAGE) {
 
 export async function createPolicyAction(formData: FormData) {
   const s = await getSession();
-  // Monthly-only slice: the server pins policyType to 'monthly' so an unsigned-off calculation type can never
-  // be created, regardless of what the disabled dropdown submits.
+  // 2.1.2 — Monthly and Daily are both selectable now. Read the submitted type (defaulting to monthly) and,
+  // for daily, build the per_day pay-rule from the rate field; the service's resolveRule validates it.
+  const policyType = str(formData, 'policyType') ?? 'monthly';
   await run(
     () =>
       createPolicy(s, {
         companyId: String(formData.get('companyId') ?? ''),
         name: String(formData.get('name') ?? ''),
         description: str(formData, 'description') ?? null,
-        policyType: 'monthly',
+        policyType,
+        payRule: payRuleFromForm(formData, policyType),
       }).then(() => undefined),
     'saved',
   );
@@ -67,14 +78,31 @@ export async function createPolicyAction(formData: FormData) {
 
 export async function updatePolicyAction(formData: FormData) {
   const s = await getSession();
+  // 2.1.2 — the type is read-only on edit (the hidden field carries the existing type); for a daily policy
+  // pass the edited per-day rate through so the rate can be revised.
+  const policyType = str(formData, 'policyType') ?? 'monthly';
   await run(
     () =>
       updatePolicy(s, {
         id: String(formData.get('id') ?? ''),
         name: String(formData.get('name') ?? ''),
         description: str(formData, 'description') ?? null,
+        ...(policyType === 'daily' ? { payRule: payRuleFromForm(formData, policyType) } : {}),
       }).then(() => undefined),
     'saved',
+  );
+}
+
+/** 2.1.2 — Copy an existing policy into a new one under a new name (type + rate + config preserved). */
+export async function copyPolicyAction(formData: FormData) {
+  const s = await getSession();
+  await run(
+    () =>
+      copyPolicy(s, {
+        sourceId: String(formData.get('id') ?? ''),
+        name: String(formData.get('name') ?? ''),
+      }).then(() => undefined),
+    'copied',
   );
 }
 

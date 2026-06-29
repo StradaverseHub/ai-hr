@@ -192,6 +192,29 @@ export async function updatePolicy(
   });
 }
 
+/**
+ * 2.1.2 — Copy an existing policy into a new one under a new (unique) name, preserving its type + pay-rule +
+ * config + priority. Re-runs the same create-path validation (resolveRule rejects a daily policy missing its
+ * per_day rule). The new policy starts ACTIVE (createPolicy default). Net-new primitive (no generic clone in
+ * this slice); the create event already records the copied policyType + payRule.
+ */
+export async function copyPolicy(
+  ctx: SessionContext,
+  p: { sourceId: string; name: string },
+): Promise<{ id: string }> {
+  const src = await getPolicy(ctx, p.sourceId);
+  if (!src) throw new Error('Payroll policy not found');
+  return createPolicy(ctx, {
+    companyId: src.companyId,
+    name: p.name,
+    description: src.description,
+    policyType: src.policyType,
+    payRule: src.payRule,
+    config: src.config,
+    priority: src.priority,
+  });
+}
+
 export async function setStatus(
   ctx: SessionContext,
   p: { id: string; status: string },

@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "薪资政策",
     "description": "命名的、可复用的规则，用于定义每位员工的薪资处理方式。将政策分配给员工后，薪资会自动应用。",
-    "previewNotice": "月薪政策已上线。每日、每时和自定义周期类型可配置，但其计算尚待批准，暂未应用于薪资。",
+    "previewNotice": "月薪和日薪政策已启用。时薪和自定义周期类型可配置，但其计算尚待批准，暂未应用于薪资。",
     "emptyScope": "当前范围内没有公司。请使用上方的公司切换器。",
     "catalogTitle": "政策",
     "searchPlaceholder": "搜索政策…",
@@ -2747,7 +2747,7 @@
     "fieldType": "类型",
     "fieldDescription": "描述",
     "descriptionPlaceholder": "可选备注",
-    "typeHint": "本版本仅将月薪应用于薪资。其他类型已保留并禁用，直至其计算获得批准。",
+    "typeHint": "月薪和日薪已应用于薪资。日薪政策按每日费率支付期间内符合条件的工作天数——不适用按月比例计算。时薪和自定义周期已保留并停用，直至其计算获得批准。",
     "savePolicy": "创建政策",
     "saveChanges": "保存更改",
     "cancelEdit": "取消",
@@ -2761,13 +2761,19 @@
       "saved": "薪资政策已保存",
       "statusChanged": "政策状态已更新",
       "deleted": "薪资政策已删除",
-      "assigned": "薪资政策已分配"
+      "assigned": "薪资政策已分配",
+      "copied": "薪资政策已复制"
     },
     "errors": {
       "duplicateName": "该公司已存在使用此名称的薪资政策。",
       "inUse": "此政策已分配给员工，无法删除。请先取消分配。",
       "companyMismatch": "薪资政策只能分配给其所属公司的员工。"
-    }
+    },
+    "fieldDailyRate": "每日费率（日薪）",
+    "dailyRatePlaceholder": "例如 120.00",
+    "dailyHint": "日薪政策按每日费率支付期间内的工作天数；不适用按月比例计算。日薪政策须填写每日费率。",
+    "copy": "复制",
+    "copySuffix": "（副本）"
   },
   "leaveApproval": {
     "title": "请假审批链",

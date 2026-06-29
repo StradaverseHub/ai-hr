@@ -158,6 +158,36 @@ function prorationFactor(
 }
 
 /**
+ * 2.1.2 — Eligible WORKING days for a DAILY-rated employee in a wage period. Counts the employee's working
+ * days (Mon–Fri roster) within [hiredOn, terminatedOn] ∩ the calendar month, MINUS public holidays. This is a
+ * raw day COUNT (not a proration factor): a daily employee is paid `rate × this count`, so the monthly
+ * proration path is bypassed entirely. A fully-out-of-window employment (hired after the period, or terminated
+ * before it) yields 0 — the multiply then makes basic = 0, never a divide-by-zero. The Mon–Fri roster mirrors
+ * the working-day basis the leave/proration primitives use; Sat/Sun and listed holidays are non-working.
+ */
+function eligibleWorkingDays(
+  payPeriod: string,
+  hiredOn: string,
+  terminatedOn: string | null,
+  holidays: Set<string>,
+): number {
+  const [year, month1] = payPeriod.split('-').map(Number);
+  const dim = daysInMonth(year, month1);
+  const periodStart = `${payPeriod}-01`;
+  const periodEnd = `${payPeriod}-${String(dim).padStart(2, '0')}`;
+  const start = hiredOn > periodStart ? hiredOn : periodStart;
+  const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
+  if (start > periodEnd || end < periodStart) return 0;
+  let days = 0;
+  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
+    const d = new Date(t).toISOString().slice(0, 10);
+    const iso = ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
+    if (iso <= 5 && !holidays.has(d)) days++;
+  }
+  return days;
+}
+
+/**
  * Unpaid-leave days per employment for a wage period, auto-derived from APPROVED requests of an
  * unpaid leave type (leave_type.paid = false) that START within the period. Single source of truth
  * with the leave module — no double entry. (Requests straddling a month boundary are attributed to
@@ -1207,6 +1237,13 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // Working-day proration needs the holiday set per employment; resolve it lazily only when a config asks
     // for a working-day basis, so the default (calendar) path issues NO extra query.
     const prorationOptsByEmp = new Map<string, { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } }>();
+    // ── 2.1.2 — Daily payroll policy: rate × eligible days worked, NO monthly proration ──
+    // For an employment on an ACTIVE policyType='daily' policy carrying a per_day PayRule, basic pay is the
+    // per-day rate × the number of eligible working days in the period (Mon–Fri roster minus holidays, clamped
+    // to the employment's tenure window) — the monthly-salary proration path is BYPASSED entirely. A null /
+    // inactive / monthly / unassigned policy never populates this map, so the legacy monthly path is unchanged
+    // (proven byte-identical). Resolved ONCE here so the per-employee loop reads a map, not a re-query.
+    const dailyPayByEmp = new Map<string, { rate: number; eligibleDays: number; basic: number }>();
     for (const e of emps) {
       const policy = await resolveAssignedPolicy(tx, e.employmentId);
       const cfg = policy?.config ?? null;
@@ -1222,6 +1259,15 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         opts.workingDayBasis = { roster: workingDayRoster(cfg), holidays };
       }
       if (opts.divisorDays !== undefined || opts.workingDayBasis) prorationOptsByEmp.set(e.employmentId, opts);
+      // 2.1.2 daily branch — only when the resolved policy is daily AND carries a per_day rate. Eligible days
+      // = the employee's working days (Mon–Fri) in the period, less public holidays, within their tenure
+      // window. Zero eligible days ⇒ basic = 0 (no divide-by-zero: this is a multiply, not a divide).
+      if (policy?.policyType === 'daily' && policy.payRule?.kind === 'per_day') {
+        const rate = Number(policy.payRule.rate);
+        const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
+        const eligibleDays = eligibleWorkingDays(payPeriod, e.hiredOn, e.terminatedOn, dailyHolidays);
+        dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: round2(rate * eligibleDays) });
+      }
     }
 
     // 1f — working-days-in-period per employment, computed ONLY for employments whose leave config selects a
@@ -1591,16 +1637,20 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // Allowance prorates with basic — EA-1955 incomplete-month treats fixed monthly wages as a whole.
       // 1b — the divisor + working-day basis come from the policy (default ⇒ EA s.18A calendar daysInMonth).
       const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn, prorationOptsByEmp.get(e.employmentId));
-      const daysWorked = Math.round(factor * dim); // proration basis surfaced on the payslip
+      // 2.1.2 — a daily-rated employee is paid rate × eligible days; the monthly proration basis does not apply.
+      // Surface the eligible-day count as `daysWorked` (a real day count, not factor×dim) for the daily path.
+      const daily = dailyPayByEmp.get(e.employmentId) ?? null;
+      const daysWorked = daily ? daily.eligibleDays : Math.round(factor * dim); // proration basis surfaced on the payslip
       // Earnings come from the typed components (flag on) or compensation + payroll_input (flag off).
       // Either way these reproduce the same variables, so the agency-base math below is unchanged.
       const en = earningsOf(e, factor);
       // 1c — salary-increment proration: when the policy enables it AND a mid-period increment straddles the
       // period, the basic is the two-row blend (already day-weighted across the increment date), NOT
       // basic×factor. Default (off / no straddle) ⇒ undefined ⇒ the kernel's normal basicGross is used.
+      // 2.1.2 — for a daily policy, basic = per_day rate × eligible days (no proration, no increment blend).
       const incrementBasic = incrementBasicByEmp.get(e.employmentId);
-      const basicRaw = incrementBasic ?? en.basicRaw;
-      const basic = incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross;
+      const basicRaw = daily ? daily.basic : (incrementBasic ?? en.basicRaw);
+      const basic = daily ? daily.basic : (incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross);
       // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
       // "reimbursement" earning (paid but untaxed). Claim/reimbursement do not prorate (ADR-0021/0025).
       const allowance = round2(en.allowanceApplied + en.reimburse);
@@ -1615,7 +1665,9 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         cutoffDays: dim, //                       cut-off-day-driven divisor is a deferred spec; calendar fallback
         workingDays: workingDaysInPeriodFor(e.employmentId),
       });
-      const unpaidDeduction = round2((basicRaw / unpaidDivisor) * (unpaidByEmp.get(e.employmentId) ?? 0));
+      // 2.1.2 — a daily wage already pays ONLY eligible worked days, so an unpaid-leave day is simply not a
+      // worked day (never counted into `basic`); deducting again off basicRaw/divisor would double-count it.
+      const unpaidDeduction = daily ? 0 : round2((basicRaw / unpaidDivisor) * (unpaidByEmp.get(e.employmentId) ?? 0));
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false

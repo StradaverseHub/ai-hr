@@ -2700,7 +2700,7 @@
   "payrollPolicy": {
     "title": "Dasar gaji",
     "description": "Peraturan bernama yang boleh diguna semula untuk cara gaji setiap pekerja diproses. Tetapkan dasar kepada pekerja dan gaji akan menggunakannya secara automatik.",
-    "previewNotice": "Dasar Bulanan telah aktif. Jenis Harian, Sejam dan Tempoh tersuai boleh dikonfigur tetapi pengiraannya menunggu kelulusan dan belum digunakan dalam gaji.",
+    "previewNotice": "Dasar Bulanan dan Harian telah aktif. Jenis Sejam dan Tempoh tersuai boleh dikonfigur tetapi pengiraannya menunggu kelulusan dan belum digunakan dalam gaji.",
     "emptyScope": "Tiada syarikat dalam skop semasa. Gunakan penukar syarikat di atas.",
     "catalogTitle": "Dasar",
     "searchPlaceholder": "Cari dasar…",
@@ -2747,7 +2747,7 @@
     "fieldType": "Jenis",
     "fieldDescription": "Penerangan",
     "descriptionPlaceholder": "Nota pilihan",
-    "typeHint": "Hanya Bulanan digunakan dalam gaji buat masa ini. Jenis lain dikhaskan dan dilumpuhkan sehingga pengiraannya diluluskan.",
+    "typeHint": "Bulanan dan Harian digunakan dalam gaji. Dasar Harian membayar kadar sehari bagi hari layak yang bekerja dalam tempoh — pembahagian bulanan tidak digunakan. Sejam dan Tempoh tersuai dikhaskan dan dilumpuhkan sehingga pengiraannya diluluskan.",
     "savePolicy": "Cipta dasar",
     "saveChanges": "Simpan perubahan",
     "cancelEdit": "Batal",
@@ -2761,13 +2761,19 @@
       "saved": "Dasar gaji disimpan",
       "statusChanged": "Status dasar dikemas kini",
       "deleted": "Dasar gaji dipadam",
-      "assigned": "Dasar gaji ditetapkan"
+      "assigned": "Dasar gaji ditetapkan",
+      "copied": "Dasar gaji disalin"
     },
     "errors": {
       "duplicateName": "Dasar gaji dengan nama ini sudah wujud untuk syarikat ini.",
       "inUse": "Dasar ini ditetapkan kepada pekerja dan tidak boleh dipadam. Nyahtetapkan dahulu.",
       "companyMismatch": "Dasar gaji hanya boleh ditetapkan kepada pekerja dalam syarikatnya sendiri."
-    }
+    },
+    "fieldDailyRate": "Kadar sehari (Harian)",
+    "dailyRatePlaceholder": "cth. 120.00",
+    "dailyHint": "Dasar Harian membayar kadar sehari bagi hari yang bekerja dalam tempoh; pembahagian bulanan tidak digunakan. Kadar sehari diperlukan untuk dasar Harian.",
+    "copy": "Salin",
+    "copySuffix": "(salinan)"
   },
   "leaveApproval": {
     "title": "Rantaian Kelulusan Cuti",

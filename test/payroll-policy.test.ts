@@ -20,6 +20,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, BatchNotDraftError } from '../core/payroll';
 import {
   assignPolicy,
+  copyPolicy,
   createPolicy,
   deletePolicy,
   DuplicatePolicyNameError,
@@ -168,6 +169,216 @@ describe('2.1 Payroll Policy — service + substrate', () => {
     // Assigned but inactive → null (falls back to monthly default).
     await setStatus(a, { id, status: 'inactive' });
     expect(await withTenant(a, (tx) => resolveAssignedPolicy(tx, e.employmentId))).toBeNull();
+  });
+});
+
+describe('2.1.2 Daily Payroll Policy — service + substrate', () => {
+  it('creates a Daily policy with a per_day rate, copies it, and emits events', async () => {
+    const a = adminCtx(b);
+    const { id } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: 'Site Daily',
+      policyType: 'daily',
+      payRule: { kind: 'per_day', rate: 150 },
+    });
+    const pol = await getPolicy(a, id);
+    expect(pol).toMatchObject({ name: 'Site Daily', policyType: 'daily', status: 'active' });
+    expect(pol?.payRule).toEqual({ kind: 'per_day', rate: 150 });
+
+    // Edit the per-day rate (type stays daily).
+    await updatePolicy(a, { id, payRule: { kind: 'per_day', rate: 175 } });
+    expect((await getPolicy(a, id))?.payRule).toEqual({ kind: 'per_day', rate: 175 });
+
+    // Copy preserves type + rate under a new unique name, starts active.
+    const { id: copyId } = await copyPolicy(a, { sourceId: id, name: 'Site Daily (copy)' });
+    const copied = await getPolicy(a, copyId);
+    expect(copied).toMatchObject({ name: 'Site Daily (copy)', policyType: 'daily', status: 'active' });
+    expect(copied?.payRule).toEqual({ kind: 'per_day', rate: 175 });
+
+    // activate/deactivate/delete are type-agnostic and work on a Daily policy.
+    await setStatus(a, { id: copyId, status: 'inactive' });
+    expect((await getPolicy(a, copyId))?.status).toBe('inactive');
+    await expect(deletePolicy(a, { id: copyId })).resolves.toMatchObject({ id: copyId });
+
+    expect(await eventTypesFor(b.tenantId, id)).toEqual(
+      expect.arrayContaining(['payroll-policy.created', 'payroll-policy.updated']),
+    );
+    expect(await eventTypesFor(b.tenantId, copyId)).toEqual(
+      expect.arrayContaining(['payroll-policy.created', 'payroll-policy.deactivated', 'payroll-policy.deleted']),
+    );
+  });
+
+  it('rejects a Daily policy with no pay rule (resolveRule throws)', async () => {
+    const a = adminCtx(b);
+    await expect(createPolicy(a, { companyId: b.companyId, name: 'BadDaily', policyType: 'daily' })).rejects.toThrow(
+      /Daily\/Hourly policy requires a pay rule/,
+    );
+    // A monthly-shaped rule on a daily policy is also rejected (wrong kind).
+    await expect(
+      createPolicy(a, { companyId: b.companyId, name: 'BadDaily2', policyType: 'daily', payRule: { kind: 'fixed' } }),
+    ).rejects.toThrow(/requires a per_day rule/);
+  });
+
+  it('allows multiple Daily policies per company but still enforces the per-company unique name', async () => {
+    const a = adminCtx(b);
+    await createPolicy(a, { companyId: b.companyId, name: 'Daily A', policyType: 'daily', payRule: { kind: 'per_day', rate: 100 } });
+    await expect(
+      createPolicy(a, { companyId: b.companyId, name: 'Daily B', policyType: 'daily', payRule: { kind: 'per_day', rate: 200 } }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+    await expect(
+      createPolicy(a, { companyId: b.companyId, name: 'Daily A', policyType: 'daily', payRule: { kind: 'per_day', rate: 300 } }),
+    ).rejects.toBeInstanceOf(DuplicatePolicyNameError);
+  });
+});
+
+describe('2.1.2 Daily Payroll Policy — kernel pays rate × eligible days', () => {
+  const payslipOf = async (batchId: string, employmentId?: string) => {
+    const rows = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    return employmentId ? rows.find((r) => r.employmentId === employmentId)! : rows[0];
+  };
+  // May 2026: 31 calendar days, 21 Mon–Fri working days; seedBase loads NO holidays, so eligible days = 21.
+  const PERIOD = '2026-05';
+  const ELIGIBLE_MAY_2026 = 21;
+
+  let icSeq = 0;
+  const nextIc = () => `880202${String(220000 + icSeq++).padStart(6, '0')}`;
+  /** A payable employee with NO allowance (so the daily wage is exactly rate × days for the statutory oracle). */
+  async function seedDailyPayable(name: string, basicSalary: number) {
+    const a = adminCtx(b);
+    const e = await hire(name);
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
+    return e;
+  }
+  /** Hire on a specific date (mid-month-start edge) with no allowance. */
+  async function seedDailyHiredOn(name: string, basicSalary: number, hiredOn: string) {
+    const a = adminCtx(b);
+    const e = await hireEmployee(a, {
+      person: { fullName: name, primaryEmail: `dp_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn,
+    });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary, monthlyAllowance: 0, effectiveFrom: hiredOn });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
+    return e;
+  }
+
+  it('positive oracle: a Daily employee is paid rate × eligible days, no proration, and the statutory equals a same-wage monthly', async () => {
+    const a = adminCtx(b);
+    const rate = 300;
+    const dailyWage = rate * ELIGIBLE_MAY_2026; // 6300
+
+    // Daily employee on an active Daily policy.
+    const eDaily = await seedDailyPayable('DailyWorker', 9999); // basicSalary is ignored on the daily path
+    const { id: dailyPol } = await createPolicy(a, {
+      companyId: b.companyId,
+      name: 'Daily300',
+      policyType: 'daily',
+      payRule: { kind: 'per_day', rate },
+    });
+    await assignPolicy(a, { employmentId: eDaily.employmentId, policyId: dailyPol });
+
+    // A monthly employee whose basic is EXACTLY the daily wage, no allowance — the statutory oracle.
+    const eMonthly = await seedDailyPayable('MonthlyOracle', dailyWage);
+
+    const { batchId } = await createBatch(a, {
+      companyId: b.companyId,
+      payPeriod: PERIOD,
+      scope: { employmentIds: [eDaily.employmentId, eMonthly.employmentId] },
+    });
+    await generatePayslips(a, { batchId });
+
+    const daily = await payslipOf(batchId, eDaily.employmentId);
+    const monthly = await payslipOf(batchId, eMonthly.employmentId);
+
+    // Basic = rate × eligible days, surfaced days = the eligible-day count (NOT factor × 31).
+    expect(Number(daily.basicSalary)).toBeCloseTo(dailyWage, 2);
+    expect(Number(daily.daysWorked)).toBe(ELIGIBLE_MAY_2026);
+    expect(Number(daily.allowance)).toBeCloseTo(0, 2);
+
+    // Statutory on the resulting monthly wage equals the same-wage monthly employee's statutory (golden oracle).
+    expect(Number(daily.grossPay)).toBeCloseTo(Number(monthly.grossPay), 2);
+    expect(daily.statutory).toEqual(monthly.statutory);
+    expect(Number(daily.netPay)).toBeCloseTo(Number(monthly.netPay), 2);
+    // Sanity: the statutory is non-trivial (the wage actually bit on 6300).
+    expect(Number(monthly.grossPay)).toBeCloseTo(dailyWage, 2);
+  });
+
+  it('byte-identical: a monthly/unassigned employee is unchanged whether or not a Daily policy exists in the company', async () => {
+    const a = adminCtx(b);
+    // Two companies in ONE tenant, SAME period (PCB month identical → no period drift). Company A has a
+    // monthly employee assigned a Daily policy + a separate daily worker; company B has an identical monthly
+    // employee with NO Daily policy anywhere. The monthly employee's payslip must be byte-identical across both.
+    const [{ id: c2 }] = await owner.db
+      .insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Gamma Sdn Bhd' }).returning({ id: schema.company.id });
+    const [{ id: d2 }] = await owner.db
+      .insert(schema.department).values({ tenantId: b.tenantId, companyId: c2, name: 'Gamma Ops' }).returning({ id: schema.department.id });
+
+    // Company B baseline: a monthly employee, no Daily policy in the company at all.
+    const eBase = await (async () => {
+      const e = await hireEmployee(a, { person: { fullName: 'NoDailyAround', primaryEmail: `dp_${randomUUID().slice(0,8)}@t.local` }, companyId: c2, departmentId: d2, employmentType: 'full_time', hiredOn: '2024-01-01' });
+      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
+      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: nextIc() });
+      return e;
+    })();
+    const { batchId: bb1 } = await createBatch(a, { companyId: c2, payPeriod: PERIOD, scope: { employmentIds: [eBase.employmentId] } });
+    await generatePayslips(a, { batchId: bb1 });
+    const before = await payslipOf(bb1, eBase.employmentId);
+
+    // Company A: a Daily policy + a daily worker assigned, AND an identical monthly employee left unassigned.
+    const { id: dailyPol } = await createPolicy(a, { companyId: b.companyId, name: 'DailyElsewhere', policyType: 'daily', payRule: { kind: 'per_day', rate: 250 } });
+    const eOther = await seedDailyPayable('DailyAssignee', 1);
+    await assignPolicy(a, { employmentId: eOther.employmentId, policyId: dailyPol });
+    const eSame = await seedDailyPayable('StillMonthly', 5000);
+    const { batchId: bb2 } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD, scope: { employmentIds: [eSame.employmentId, eOther.employmentId] } });
+    await generatePayslips(a, { batchId: bb2 });
+    const after = await payslipOf(bb2, eSame.employmentId);
+
+    // The monthly employee is byte-identical (including daysWorked) — a Daily policy in the same batch/company
+    // does not perturb a monthly employee at all.
+    const cols = (ps: typeof before) => ({
+      basicSalary: ps.basicSalary, allowance: ps.allowance, overtimePay: ps.overtimePay, bonus: ps.bonus,
+      daysWorked: ps.daysWorked, grossPay: ps.grossPay, totalDeductions: ps.totalDeductions, netPay: ps.netPay,
+      employerCost: ps.employerCost, statutory: ps.statutory,
+    });
+    expect(cols(after)).toEqual(cols(before));
+  });
+
+  it('edge — zero eligible days: a Daily employee with only weekend days employed has basic = 0 (no divide-by-zero)', async () => {
+    const a = adminCtx(b);
+    // Hired 2026-05-30 (a Sat); the only days employed in May are 30 (Sat) + 31 (Sun) → 0 eligible Mon–Fri days.
+    const e = await seedDailyHiredOn('WeekendOnly', 1, '2026-05-30');
+    const { id } = await createPolicy(a, { companyId: b.companyId, name: 'DailyZero', policyType: 'daily', payRule: { kind: 'per_day', rate: 400 } });
+    await assignPolicy(a, { employmentId: e.employmentId, policyId: id });
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD, scope: { employmentIds: [e.employmentId] } });
+    await generatePayslips(a, { batchId });
+    const ps = await payslipOf(batchId, e.employmentId);
+    // The load-bearing daily invariant: 0 eligible working days ⇒ basic = rate × 0 = 0 (no divide-by-zero;
+    // the batch completes). Gross is 0; net is at most a sub-ringgit statutory-rounding artifact, never a real wage.
+    expect(Number(ps.basicSalary)).toBeCloseTo(0, 2);
+    expect(Number(ps.daysWorked)).toBe(0);
+    expect(Number(ps.grossPay)).toBeCloseTo(0, 2);
+    expect(Math.abs(Number(ps.netPay))).toBeLessThan(1);
+  });
+
+  it('edge — mid-month start + below-SOCSO-floor: paid only for eligible days from the hire date, on a small wage', async () => {
+    const a = adminCtx(b);
+    // Hired 2026-05-20 (a Wed). Eligible Mon–Fri days from 20→31 May 2026: 20,21,22,25,26,27,28,29 = 8 days.
+    const rate = 50; // 50 × 8 = 400 → below the SOCSO/EIS floor, exercises the small-wage path
+    const e = await seedDailyHiredOn('MidMonthSmall', 1, '2026-05-20');
+    const { id } = await createPolicy(a, { companyId: b.companyId, name: 'DailySmall', policyType: 'daily', payRule: { kind: 'per_day', rate } });
+    await assignPolicy(a, { employmentId: e.employmentId, policyId: id });
+    const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD, scope: { employmentIds: [e.employmentId] } });
+    await generatePayslips(a, { batchId });
+    const ps = await payslipOf(batchId, e.employmentId);
+    const EXPECTED_ELIGIBLE = 8;
+    expect(Number(ps.daysWorked)).toBe(EXPECTED_ELIGIBLE);
+    expect(Number(ps.basicSalary)).toBeCloseTo(rate * EXPECTED_ELIGIBLE, 2); // 400, NOT 50 × 21
+    // The wage is below floor but the batch completes (no abort) and net is the wage less any EPF.
+    expect(Number(ps.grossPay)).toBeCloseTo(rate * EXPECTED_ELIGIBLE, 2);
+    expect(Number(ps.netPay)).toBeGreaterThan(0);
   });
 });
 
