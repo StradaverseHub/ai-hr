@@ -317,7 +317,8 @@ describe('Supporting Document Configuration — no HR-remark regression', () => 
       startDate: '2026-08-01',
       endDate: '2026-08-01',
     });
-    await expect(decideLeave(a, { leaveRequestId: r2, decision: 'rejected' })).resolves.toBeDefined();
+    // Partial Leave Approval (0131): a reject now requires a reason.
+    await expect(decideLeave(a, { leaveRequestId: r2, decision: 'rejected', rejectReason: 'declined' })).resolves.toBeDefined();
 
     const rows = await owner.db
       .select({ id: schema.leaveRequest.id, status: schema.leaveRequest.status })

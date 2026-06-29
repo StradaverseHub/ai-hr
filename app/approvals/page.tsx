@@ -55,6 +55,46 @@ function DecideButtons({
   );
 }
 
+/** Partial Leave Approval (0131): leave-specific decide controls. Reject now requires a reason — the reject
+ *  form carries a `required` textarea (client-side guard), and decideLeave enforces MissingRejectReasonError
+ *  server-side. Approve is unchanged. Used per leave row; since multi-day per-date requests are independent
+ *  pending children, the manager approves/rejects each date row on its own. */
+function LeaveDecideButtons({
+  action,
+  id,
+  labels,
+}: {
+  action: (fd: FormData) => void | Promise<void>;
+  id: string;
+  labels: { approve: string; reject: string; rejectReason: string };
+}) {
+  return (
+    <div className="flex flex-col items-end gap-2">
+      <form action={action}>
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="decision" value="approved" />
+        <Button type="submit" size="sm">
+          {labels.approve}
+        </Button>
+      </form>
+      <form action={action} className="flex flex-col items-end gap-1">
+        <input type="hidden" name="id" value={id} />
+        <input type="hidden" name="decision" value="rejected" />
+        <textarea
+          name="rejectReason"
+          required
+          rows={2}
+          placeholder={labels.rejectReason}
+          className={`${inputCls} w-48 resize-none text-xs`}
+        />
+        <Button type="submit" size="sm" variant="outline">
+          {labels.reject}
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 /** One inbox for everything awaiting a decision: leave, attendance corrections and (admin-only)
  *  profile changes. The decide authz lives in the services — this page only assembles the
  *  queues; RLS already trims each list to what the viewer may see. */
@@ -74,6 +114,12 @@ export default async function ApprovalsPage({
     yourRequest: t('yourRequest'),
     approve: t('approve'),
     reject: t('reject'),
+  };
+  // Partial Leave Approval (0131): leave reject now requires a reason — its own label set for the textarea.
+  const leaveDecideLabels = {
+    approve: t('approve'),
+    reject: t('reject'),
+    rejectReason: t('rejectReasonPlaceholder'),
   };
 
   const [leave, corrections, profileChanges, claims, resignations] = await Promise.all([
@@ -217,7 +263,9 @@ export default async function ApprovalsPage({
                     ) : r.currentStepKind === 'hr_admin' && !admin ? (
                       <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
                     ) : (
-                      <DecideButtons action={approveLeaveAction} id={r.id} labels={decideLabels} />
+                      // Partial Leave Approval (0131): leave reject requires a reason — use the leave-specific
+                      // decide controls (each pending date-row decided independently).
+                      <LeaveDecideButtons action={approveLeaveAction} id={r.id} labels={leaveDecideLabels} />
                     )}
                   </td>
                 </tr>

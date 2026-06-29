@@ -1,0 +1,25 @@
+-- Partial Leave Approval (feedback: "Partial Leave Approval").
+--
+-- Today a multi-day leave request is approved or rejected ALL-OR-NOTHING. This change lets a manager
+-- approve some dates and reject others within one application. It reuses the existing Emergency-Leave
+-- per-date decomposition: when a leave type opts in, a multi-day WORKING-DAYS full-day request is split at
+-- submission into one full-day child per working date, all sharing a synthetic parent_group_id (exactly as
+-- requestEmergencyLeave already does). Each child is an independent `pending` request the manager decides
+-- via the existing decideLeave path, so balance/calendar/notifications/audit reuse the unchanged code.
+--
+--   leave_type.per_date_approval  when true, a multi-day full-day WORKING-DAYS request of this type is
+--                                 split into per-working-date children at submission so the approver can
+--                                 approve/reject each date. Default false = today's single multi-day
+--                                 request behaviour (no regression). NOT applied to half/hourly (single-day
+--                                 by definition), calendar-counted types, or Emergency Leave (own cascade).
+--
+-- RLS: this is an additive, non-null DEFAULT-false column on leave_type. leave_type's existing tenant-read +
+-- admin-write policies cover it by inheritance (same as 0083 eligibility / send_to_payroll), so it needs no
+-- new policy and the ai_hr_app DML grants reach it.
+--
+-- The mandatory reject-reason that accompanies this feature is carried in the leave-request.rejected event
+-- payload (finalizeLeaveRejection's `extra`), so it needs NO column.
+--
+-- Rollback:
+--   ALTER TABLE leave_type DROP COLUMN per_date_approval;
+ALTER TABLE "leave_type" ADD COLUMN IF NOT EXISTS "per_date_approval" boolean NOT NULL DEFAULT false;

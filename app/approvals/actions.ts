@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { decideLeave } from '@/core/leave';
+import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
 import { decideClaim } from '@/core/claims';
@@ -31,10 +32,15 @@ function fail(e: unknown): never {
 export async function approveLeaveAction(formData: FormData) {
   const s = await getSession();
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  // Partial Leave Approval (0131): the reject-reason textarea (required when rejecting). Threaded through so
+  // decideLeave can enforce the mandatory reason and stamp it onto the leave-request.rejected event.
+  const rejectReason = String(formData.get('rejectReason') || '') || undefined;
   try {
-    await decideLeave(s, { leaveRequestId: String(formData.get('id')), decision });
+    await decideLeave(s, { leaveRequestId: String(formData.get('id')), decision, rejectReason });
   } catch (e) {
-    fail(e);
+    // Partial Leave Approval (0131): re-localize the new MissingRejectReasonError (and the existing typed
+    // leave errors) into the viewer's language, like the /me + leave-tab flows do.
+    fail(new Error(await localizeLeaveError(e)));
   }
   done(`Leave ${decision}`);
 }

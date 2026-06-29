@@ -175,7 +175,8 @@ describe('Unpaid Leave Payroll Impact — on-approval signal', () => {
       startDate: '2026-07-10',
       endDate: '2026-07-10',
     });
-    await decideLeave(adminCtx(b), { leaveRequestId, decision: 'rejected' });
+    // Partial Leave Approval (0131): a reject now requires a reason.
+    await decideLeave(adminCtx(b), { leaveRequestId, decision: 'rejected', rejectReason: 'not approved' });
     const approved = await latestEventPayload(b.tenantId, leaveRequestId, 'leave-request.approved');
     expect(approved).toBeNull();
     const rejected = await latestEventPayload(b.tenantId, leaveRequestId, 'leave-request.rejected');

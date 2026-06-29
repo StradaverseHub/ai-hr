@@ -107,7 +107,8 @@ describe('ADR-0038 2B-1 — multi-level leave approval', () => {
 
   it('a rejection at any step is terminal', async () => {
     const { leaveRequestId } = await request('2026-07-03');
-    await decideLeave(mgrCtx, { leaveRequestId, decision: 'rejected' });
+    // Partial Leave Approval (0131): a reject now requires a reason; rejection at any step is still terminal.
+    await decideLeave(mgrCtx, { leaveRequestId, decision: 'rejected', rejectReason: 'not this week' });
     expect(await statusOf(leaveRequestId)).toBe('rejected');
     const debit = await owner.db
       .select({ id: schema.leaveLedger.id })

@@ -16,6 +16,7 @@ import {
   LeaveDocumentSizeError,
   UnpaidConsentRequiredError,
   HourlyLeaveTimeRangeError,
+  MissingRejectReasonError,
   type LeaveDurationType,
 } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
@@ -126,6 +127,9 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   }
   if (e instanceof LeaveDocumentSizeError) return t('fileTooLarge', { mb: e.maxMb });
   if (e instanceof UnpaidConsentRequiredError) return t('unpaidConsentRequired', { days: e.unpaidDays ?? 0 });
+  // Partial Leave Approval (0131): a manager rejected a leave date without a reason. Localized so the
+  // approvals inbox shows the translated mandatory-reason message, not the raw English Error string.
+  if (e instanceof MissingRejectReasonError) return t('rejectReasonRequired');
   // Hourly-leave time window (0129): a missing window or to <= from. Localized so admins (via leave/actions)
   // and employees (via /me) both see a translated message, not the raw English Error string.
   if (e instanceof HourlyLeaveTimeRangeError) return t('hourlyTimeRange');

@@ -107,13 +107,17 @@ export async function requestLeaveAction(formData: FormData) {
 
 export async function decideLeaveAction(formData: FormData) {
   const session = await getSession();
+  // Partial Leave Approval (0131): thread the reject-reason (required on rejection) through the Leave-tab
+  // decide path too, so decideLeave enforces it uniformly and stamps it onto the rejected event.
+  const rejectReason = String(formData.get('rejectReason') || '') || undefined;
   try {
     await decideLeave(session, {
       leaveRequestId: String(formData.get('leaveRequestId')),
       decision: String(formData.get('decision')) as 'approved' | 'rejected',
+      rejectReason,
     });
   } catch (e) {
-    redirect(`/leave?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }
   revalidatePath('/leave');
   redirect('/leave');

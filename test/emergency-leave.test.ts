@@ -384,9 +384,10 @@ describe('Emergency Leave — invariants & guards', () => {
     const api = await import('../core/leave');
     const names = Object.keys(api).map((k) => k.toLowerCase());
     expect(names.some((n) => /cancel|withdraw|revers|undo/.test(n))).toBe(false);
-    // Re-deciding an already-approved request is rejected (terminal).
+    // Re-deciding an already-approved request is rejected (terminal). Pass a reason (0131) so the call
+    // reaches the terminal-status guard rather than the mandatory-reason guard.
     await expect(
-      decideLeave(adminCtx(b), { leaveRequestId: rows[0].id, decision: 'rejected' }),
+      decideLeave(adminCtx(b), { leaveRequestId: rows[0].id, decision: 'rejected', rejectReason: 'n/a' }),
     ).rejects.toThrow(/already approved/i);
   });
 

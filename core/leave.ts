@@ -44,6 +44,19 @@ export class InsufficientLeaveBalanceError extends Error {
   }
 }
 
+// ── Partial Leave Approval (0131) ────────────────────────────────────────────────────────────────────
+// A manager may approve some dates and reject others within one multi-day request (the request is split at
+// submission into per-working-date children sharing a parent_group_id — see the per_date_approval gate in
+// requestLeave). Rejecting ANY date requires a reason, so the employee knows WHY that date was declined. This
+// applies uniformly to the existing decideLeave path (single-day, half, hourly, and per-date child), so a
+// blank reject reason is refused BEFORE any write — nothing is persisted.
+export class MissingRejectReasonError extends Error {
+  constructor() {
+    super('A reason is required to reject a leave request');
+    this.name = 'MissingRejectReasonError';
+  }
+}
+
 // ── Emergency-Leave unpaid consent (Phase-B #12, ADR-0061) ─────────────────────────────────────────
 // An Emergency-Leave application whose paid balances (Annual, and Sick for illness) fall short would have
 // the remainder taken as UNPAID (no-work-no-pay). That conversion is lawful only if the employee elects it,
@@ -597,6 +610,7 @@ export async function requestLeave(
         mandatoryAfterDays: leaveType.mandatoryAfterDays,
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
         durations: leaveType.durations,
+        perDateApproval: leaveType.perDateApproval,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -785,6 +799,65 @@ export async function requestLeave(
             confinementDate: p.confinementDate ?? null,
             unconfirmed: true,
           },
+        };
+      }
+    }
+
+    // Partial Leave Approval (0131): when the type opts into per-date approval, a multi-day FULL-DAY
+    // WORKING-DAYS request is split at submission into one full-day child per working date (sharing a
+    // synthetic parent_group_id, exactly as Emergency Leave decomposes — same insertLeaveRequest funnel, so
+    // each child gets its own leave-request.submitted event + approval steps + per-date notifications). The
+    // manager then decides each child independently via decideLeave, so only the approved dates debit the
+    // balance / land on the calendar. Restricted to working_days full-day types to dodge the calendar-vs-
+    // working-days counting bug (calendar types keep dayCount over the calendar span); half/hourly are
+    // single-day by definition (the durationType !== 'full_day' guard above forced start === end); and EL was
+    // already routed to its own cascade above. All per-request gates (eligibility/document/remark) ran above
+    // against the full span before we reach here, so we don't re-run them per child.
+    if (
+      durationType === 'full_day' &&
+      lt?.counting === 'working_days' &&
+      lt?.perDateApproval &&
+      p.startDate !== p.endDate
+    ) {
+      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
+      const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
+      const splitDates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+      if (splitDates.length > 1) {
+        const parentGroupId = randomUUID();
+        const children: { id: string; code: string; days: number }[] = [];
+        for (const d of splitDates) {
+          // Each child is one working day on its own date. workingDays(d, d, ...) is 1 (d is a working day by
+          // construction), so sum(child.days) === the parent span's working-day count (guards fractional drift).
+          const childDays = workingDays(d, d, hols, workingDaysIso);
+          const { id: childId } = await insertLeaveRequest(tx, ctx, {
+            employmentId: p.employmentId,
+            leaveTypeId: p.leaveTypeId,
+            startDate: d,
+            endDate: d,
+            days: childDays,
+            durationType: 'full_day',
+            hours: null,
+            reason: p.reason ?? null,
+            employeeRemark,
+            parentGroupId,
+            mandatoryAfterDays: lt?.mandatoryAfterDays ?? null,
+          });
+          children.push({ id: childId, code: lt?.code ?? '', days: childDays });
+        }
+        const holidayWarnings = await warnLeaveHolidayCompleteness(
+          tx,
+          ctx,
+          p.employmentId,
+          p.startDate,
+          p.endDate,
+          children[0].id,
+        );
+        return {
+          leaveRequestId: children[0].id,
+          days,
+          parentGroupId,
+          children,
+          ...(holidayWarnings.length ? { holidayWarnings } : {}),
         };
       }
     }
@@ -1273,8 +1346,19 @@ async function finalizeLeaveRejection(
  *  single approval (the original behavior). */
 export async function decideLeave(
   ctx: SessionContext,
-  p: { leaveRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
+  p: {
+    leaveRequestId: string;
+    decision: 'approved' | 'rejected';
+    deciderEmploymentId?: string;
+    // Partial Leave Approval (0131): a reason is MANDATORY whenever a date is rejected (so the employee knows
+    // why). Enforced uniformly here for whole-request, single-day, half/hourly, and per-date-child rejections.
+    rejectReason?: string;
+  },
 ) {
+  // Partial Leave Approval (0131): refuse a blank reject reason BEFORE opening the transaction, so a missing
+  // reason persists nothing (no status flip, no ledger row, no event). Trim to reject whitespace-only input.
+  const rejectReason = p.rejectReason?.trim() || null;
+  if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
   return withTenant(ctx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
@@ -1296,7 +1380,8 @@ export async function decideLeave(
         .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
         .where(eq(leaveApprovalStep.id, current.id));
       if (p.decision === 'rejected') {
-        await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind });
+        // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
+        await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { step: current.stepIndex, kind: current.approverKind, rejectReason });
         return { status: 'rejected' as const };
       }
       const next = steps.find((s) => s.stepIndex > current.stepIndex && s.status === 'pending');
@@ -1319,7 +1404,8 @@ export async function decideLeave(
     // Single-step (no chain) — original behavior.
     await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
     if (p.decision === 'approved') await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId);
-    else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId);
+    // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
+    else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
     return { status: p.decision };
   });
 }

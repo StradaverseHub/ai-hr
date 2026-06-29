@@ -497,6 +497,11 @@ export const leaveType = pgTable('leave_type', {
   // ["full_day","half_day_am","half_day_pm","hourly"]. null ⇒ full-day-only (preserves existing types).
   // requestLeave rejects a chosen duration not in this list.
   durations: jsonb('durations').$type<string[]>(),
+  // Partial Leave Approval (0131): when true, a multi-day full-day WORKING-DAYS request of this type is split
+  // at submission into one full-day child per working date (sharing a parent_group_id, exactly as Emergency
+  // Leave decomposes), so a manager can approve some dates and reject others. Default false = today's single
+  // multi-day request behaviour. NOT applied to half/hourly (single-day), calendar-counted types, or EL.
+  perDateApproval: boolean('per_date_approval').notNull().default(false),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

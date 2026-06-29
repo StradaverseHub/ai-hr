@@ -530,7 +530,8 @@
       "fileTooLarge": "Fail melebihi had {mb} MB.",
       "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji.",
       "holidaysIncomplete": "Hanya {loaded} daripada minimum 11 cuti umum yang diwartakan dimuatkan untuk {state} {year}; pengiraan cuti/hari rehat mungkin salah sehingga warta penuh dimuatkan.",
-      "hourlyTimeRange": "Cuti berjam memerlukan Masa mula dan Masa tamat, dan Masa tamat mesti selepas Masa mula."
+      "hourlyTimeRange": "Cuti berjam memerlukan Masa mula dan Masa tamat, dan Masa tamat mesti selepas Masa mula.",
+      "rejectReasonRequired": "Sebab diperlukan untuk menolak tarikh cuti."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -937,7 +938,8 @@
     "managerReviews": "Penilaian pengurus",
     "hrReviews": "Keputusan penilaian",
     "noManagerReviews": "Tiada penilaian menunggu penilaian anda.",
-    "noHrReviews": "Tiada penilaian menunggu keputusan."
+    "noHrReviews": "Tiada penilaian menunggu keputusan.",
+    "rejectReasonPlaceholder": "Sebab penolakan (wajib)"
   },
   "performance": {
     "list": {

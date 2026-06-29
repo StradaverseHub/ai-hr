@@ -918,6 +918,13 @@
       "when": 1781861940000,
       "tag": "0130_payroll_policy_config",
       "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1781861950000,
+      "tag": "0131_leave_per_date_approval",
+      "breakpoints": true
     }
   ]
 }
