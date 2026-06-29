@@ -12,6 +12,10 @@ export type EntitlementPolicy = {
   /** ADR-0038 carry-forward expiry: month/day the carried-forward portion auto-forfeits; null = never. */
   carryForwardExpiryMonth?: number | null;
   carryForwardExpiryDay?: number | null;
+  /** Carry-forward enhancement: explicit on/off switch. null = unset ⇒ back-compat default (cap > 0). */
+  carryForwardEnabled?: boolean | null;
+  /** Carry-forward enhancement (config-only): include monthly-earned balance — persisted, engine deferred. */
+  carryForwardIncludeEarned?: boolean | null;
   /** Accrual cadence (ADR-0040): 'earned_monthly' | 'earned_quarterly' earn through the year; anything
    *  else is a lump grant at hire / year-open. */
   method?: string;
@@ -57,6 +61,11 @@ const badge = {
 };
 
 const fmt = (d: number) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
+
+/** Carry-forward enhancement: resolve the enable checkbox's default — the explicit flag when set, else
+ *  the back-compat default (carry is on iff the cap is positive). Mirrors `carryEnabled` in core/leave. */
+const carryRuleEnabled = (p: { carryForwardEnabled?: boolean | null; carryForwardMax: number }) =>
+  typeof p.carryForwardEnabled === 'boolean' ? p.carryForwardEnabled : p.carryForwardMax > 0;
 
 /**
  * One leave type as an expandable row. The body manages that type's own effective-dated
@@ -500,6 +509,20 @@ export function LeaveTypePanel({
                   </Field>
                   {isAnnual ? (
                     <>
+                      {/* Carry-forward enhancement: marker lets the action tell "block rendered, checkbox
+                          unchecked" (⇒ false) apart from "block not shown" (⇒ leave default). */}
+                      <input type="hidden" name="carryBlockRendered" value="1" />
+                      <Field label={t('carryEnabledLabel')}>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryEnabledHelp')}>
+                          <input
+                            type="checkbox"
+                            name="carryForwardEnabled"
+                            defaultChecked={carryRuleEnabled(p)}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                          {t('carryEnabledLabel')}
+                        </label>
+                      </Field>
                       <Field label={t('carryCapLabel')}>
                         <input
                           name="carryForwardMax"
@@ -536,6 +559,17 @@ export function LeaveTypePanel({
                             className={`${inputCls} w-16`}
                           />
                         </div>
+                      </Field>
+                      <Field label={t('carryIncludeEarnedLabel')}>
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryIncludeEarnedHelp')}>
+                          <input
+                            type="checkbox"
+                            name="carryForwardIncludeEarned"
+                            defaultChecked={!!p.carryForwardIncludeEarned}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                          {t('carryIncludeEarnedHelp')}
+                        </label>
                       </Field>
                     </>
                   ) : (
@@ -583,6 +617,11 @@ export function LeaveTypePanel({
                       <span className="text-muted-foreground">
                         {t('carryCapText', { max: fmt(p.carryForwardMax) })}
                       </span>
+                    )}
+                    {/* Carry-forward enhancement: a single explicit indicator when carry is disabled —
+                        a cap-set-but-disabled policy is otherwise confusing now the toggle exists. */}
+                    {isAnnual && !carryRuleEnabled(p) && (
+                      <span className={badge.muted}>{t('carryOffText')}</span>
                     )}
                     {isAnnual &&
                       p.carryForwardMax > 0 &&
@@ -648,6 +687,20 @@ export function LeaveTypePanel({
               </Field>
               {isAnnual ? (
                 <>
+                  {/* Carry-forward enhancement: marker + enable toggle (defaults on, matching the cap > 0
+                      back-compat convention since a new policy usually sets a cap to enable carry). */}
+                  <input type="hidden" name="carryBlockRendered" value="1" />
+                  <Field label={t('carryEnabledLabel')}>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryEnabledHelp')}>
+                      <input
+                        type="checkbox"
+                        name="carryForwardEnabled"
+                        defaultChecked
+                        className="h-4 w-4 rounded border-border"
+                      />
+                      {t('carryEnabledLabel')}
+                    </label>
+                  </Field>
                   <Field label={t('carryCapLabel')}>
                     <input
                       name="carryForwardMax"
@@ -682,6 +735,16 @@ export function LeaveTypePanel({
                         className={`${inputCls} w-16`}
                       />
                     </div>
+                  </Field>
+                  <Field label={t('carryIncludeEarnedLabel')}>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryIncludeEarnedHelp')}>
+                      <input
+                        type="checkbox"
+                        name="carryForwardIncludeEarned"
+                        className="h-4 w-4 rounded border-border"
+                      />
+                      {t('carryIncludeEarnedHelp')}
+                    </label>
                   </Field>
                 </>
               ) : (

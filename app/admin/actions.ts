@@ -243,6 +243,15 @@ const carryExpiryField = (raw: FormDataEntryValue | null): number | null => {
   return raw != null && String(raw) !== '' && Number.isFinite(n) ? n : null;
 };
 
+/**
+ * Carry-forward enhancement — only send a carry boolean when the carry block was actually rendered for
+ * this policy (the ANNUAL-only block emits a hidden `carryBlockRendered=1` marker). With the marker we
+ * map an unchecked checkbox to `false`; WITHOUT it we return undefined so the service omits the key and
+ * the back-compat `carryForwardMax > 0` default is preserved — preventing a non-ANNUAL edit (which never
+ * renders the block) from silently flipping carry off. */
+const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
+  fd.get('carryBlockRendered') == null ? undefined : fd.get(name) === 'on';
+
 export async function createLeavePolicyAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -252,6 +261,8 @@ export async function createLeavePolicyAction(formData: FormData) {
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
       carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+      carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
+      carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
       validFrom: String(formData.get('validFrom')),
@@ -271,6 +282,8 @@ export async function updateLeavePolicyAction(formData: FormData) {
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
       carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+      carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
+      carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
       validFrom: String(formData.get('validFrom')),

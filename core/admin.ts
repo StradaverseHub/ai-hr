@@ -373,6 +373,25 @@ function carryExpiryAccrual(month?: number | null, day?: number | null): {
   return {};
 }
 
+/**
+ * Carry-forward enhancement — JSONB-rebuild safety. createLeavePolicy/updateLeavePolicy rebuild the
+ * whole `accrual` JSONB on every save, so a key the form did not submit is dropped. We therefore
+ * distinguish ABSENT (`undefined`) from explicit-off (`false`): when the carry block was not rendered
+ * for this policy (e.g. a non-ANNUAL edit), the action leaves `enabled` undefined and we OMIT the key
+ * entirely so the back-compat `carryForwardMax > 0` default still governs. Only an explicit boolean is
+ * persisted. The include-earned flag is config-only (persisted, not yet read by the engine) and follows
+ * the same omit-when-undefined rule so it can't be silently lost either.
+ */
+function carryFlagsAccrual(
+  enabled?: boolean,
+  includeEarned?: boolean,
+): { carryForwardEnabled?: boolean; carryForwardIncludeEarned?: boolean } {
+  const out: { carryForwardEnabled?: boolean; carryForwardIncludeEarned?: boolean } = {};
+  if (typeof enabled === 'boolean') out.carryForwardEnabled = enabled;
+  if (typeof includeEarned === 'boolean') out.carryForwardIncludeEarned = includeEarned;
+  return out;
+}
+
 export async function createLeavePolicy(
   ctx: SessionContext,
   p: {
@@ -383,6 +402,10 @@ export async function createLeavePolicy(
     /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
     carryForwardExpiryMonth?: number | null;
     carryForwardExpiryDay?: number | null;
+    /** Carry-forward enhancement: explicit on/off switch. undefined = omit (back-compat `cap > 0` default). */
+    carryForwardEnabled?: boolean;
+    /** Carry-forward enhancement (config-only): include monthly-earned balance. Persisted; engine wiring deferred. */
+    carryForwardIncludeEarned?: boolean;
     method?: string;
     /** ADR-0041 2E: grade this policy applies to. null/undefined = all grades (the company default). */
     gradeId?: string | null;
@@ -392,13 +415,20 @@ export async function createLeavePolicy(
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
+    const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
     const [row] = await tx
       .insert(leavePolicy)
       .values({
         tenantId: ctx.tenantId,
         leaveTypeId: p.leaveTypeId,
         gradeId: p.gradeId ?? null,
-        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated', ...expiry },
+        accrual: {
+          annualDays: p.annualDays,
+          carryForwardMax,
+          method: p.method || 'grant_on_hire_prorated',
+          ...expiry,
+          ...carryFlags,
+        },
         validFrom: p.validFrom,
         validTo: null,
       })
@@ -409,7 +439,7 @@ export async function createLeavePolicy(
       aggregateId: row.id,
       eventType: 'leave-policy.created',
       actor: actorOf(ctx),
-      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax, ...expiry },
+      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax, ...expiry, ...carryFlags },
     });
     return row;
   });
@@ -426,6 +456,10 @@ export async function updateLeavePolicy(
     /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
     carryForwardExpiryMonth?: number | null;
     carryForwardExpiryDay?: number | null;
+    /** Carry-forward enhancement: explicit on/off switch. undefined = omit (back-compat `cap > 0` default). */
+    carryForwardEnabled?: boolean;
+    /** Carry-forward enhancement (config-only): include monthly-earned balance. Persisted; engine wiring deferred. */
+    carryForwardIncludeEarned?: boolean;
     method?: string;
     gradeId?: string | null;
     validFrom: string;
@@ -434,11 +468,18 @@ export async function updateLeavePolicy(
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
+    const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
     await tx
       .update(leavePolicy)
       .set({
         gradeId: p.gradeId ?? null,
-        accrual: { annualDays: p.annualDays, carryForwardMax, method: p.method || 'grant_on_hire_prorated', ...expiry },
+        accrual: {
+          annualDays: p.annualDays,
+          carryForwardMax,
+          method: p.method || 'grant_on_hire_prorated',
+          ...expiry,
+          ...carryFlags,
+        },
         validFrom: p.validFrom,
       })
       .where(eq(leavePolicy.id, p.id));
@@ -448,7 +489,7 @@ export async function updateLeavePolicy(
       aggregateId: p.id,
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
-      payload: { annualDays: p.annualDays, carryForwardMax, validFrom: p.validFrom, ...expiry },
+      payload: { annualDays: p.annualDays, carryForwardMax, validFrom: p.validFrom, ...expiry, ...carryFlags },
     });
   });
 }

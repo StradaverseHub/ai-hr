@@ -53,6 +53,8 @@ export default async function LeaveConfigPage({
       method?: string;
       carryForwardExpiryMonth?: number;
       carryForwardExpiryDay?: number;
+      carryForwardEnabled?: boolean;
+      carryForwardIncludeEarned?: boolean;
     } | null;
     const ep: EntitlementPolicy = {
       id: p.id,
@@ -60,6 +62,10 @@ export default async function LeaveConfigPage({
       carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
       carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
       carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
+      // Carry-forward enhancement: absent ⇒ undefined so the panel's back-compat default (cap > 0) drives
+      // the checkbox; an explicit boolean round-trips.
+      carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
+      carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
       method: acc?.method,
       gradeId: p.gradeId,
       gradeName: p.gradeName,

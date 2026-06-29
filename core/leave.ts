@@ -1446,7 +1446,10 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         const days = Math.max(pack.leave.entitlement(t.code, years), pol?.days ?? 0);
         if (days <= 0) continue;
         const before = balanceBy.get(key) ?? 0;
-        const carryMax = t.code === 'ANNUAL' ? (pol?.carryMax ?? 0) : 0;
+        // Carry-forward enhancement: ANNUAL carries only when the explicit toggle is on (back-compat
+        // default = cap > 0). When disabled, carryMax collapses to 0 ⇒ full forfeit — the requested
+        // "disable carry" behaviour. SICK/HOSPITALIZATION stay 0 (statutory annual reset, EA s.60F).
+        const carryMax = t.code === 'ANNUAL' && carryEnabled(pol) ? (pol?.carryMax ?? 0) : 0;
         const carry = Math.min(Math.max(before, 0), carryMax);
         const forfeit = Math.max(0, before - carry);
         if (forfeit > 0) {
@@ -1520,7 +1523,15 @@ export type GradePolicyRow = { gradeId: string | null; accrual: unknown };
  *  (e.g. {month:3, day:31} = 31 March of the leave year following the one it was carried into). Stored
  *  as an OFFSET, not a hardcoded date, so it works for any leave-year start. null = never expires. */
 export type CarryExpiry = { month: number; day: number };
-export type ResolvedPolicy = { days: number; carryMax: number; method?: string; carryExpiry?: CarryExpiry | null };
+export type ResolvedPolicy = {
+  days: number;
+  carryMax: number;
+  method?: string;
+  carryExpiry?: CarryExpiry | null;
+  /** Carry-forward enhancement: explicit on/off switch for the carry rule. When absent, carry is
+   *  enabled iff `carryMax > 0` (the back-compat default — see `carryEnabled`). */
+  carryForwardEnabled?: boolean;
+};
 /** Shape of the `leave_policy.accrual` JSONB (a documented JSONB extension point — no DDL). */
 type AccrualConfig = {
   annualDays?: number;
@@ -1528,7 +1539,23 @@ type AccrualConfig = {
   method?: string;
   carryForwardExpiryMonth?: number;
   carryForwardExpiryDay?: number;
+  /** Carry-forward enhancement: explicit on/off switch. Absent ⇒ back-compat default (`carryForwardMax > 0`). */
+  carryForwardEnabled?: boolean;
+  // config-only (carry-forward follow-up): persisted but NOT yet read by the year-end engine. The
+  // include-monthly-earned-balance behaviour is deferred (see "Out of scope"); the flag round-trips so
+  // the admin can configure it now.
+  carryForwardIncludeEarned?: boolean;
 };
+/**
+ * Whether carry-forward is enabled for a resolved policy. The carry-forward rule has an explicit
+ * on/off switch (`carryForwardEnabled`); when it is absent (every pre-existing policy) we fall back
+ * to the original implicit rule: carry is on iff the cap is positive. An explicit `false` disables
+ * carry even when a positive cap or an expiry offset is still present in the JSONB.
+ */
+export function carryEnabled(pol: ResolvedPolicy | null | undefined): boolean {
+  if (pol == null) return false;
+  return pol.carryForwardEnabled ?? (pol.carryMax ?? 0) > 0;
+}
 /** Parse the two optional offset fields into a {month, day} (or null when either is absent/out of range). */
 function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null {
   const m = Number(acc?.carryForwardExpiryMonth ?? 0);
@@ -1555,6 +1582,11 @@ export function resolveGradePolicy(rows: GradePolicyRow[], employeeGradeId: stri
           carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
           method: acc?.method,
           carryExpiry: parseCarryExpiry(acc),
+          // Same discipline as carryExpiry above: take the enable flag from the SAME winning policy —
+          // never let a rejected lower-`days` policy's flag leak onto the selected one. Absent ⇒ undefined
+          // (the `carryEnabled` back-compat default then applies).
+          carryForwardEnabled:
+            typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
         };
       }
     }
@@ -1887,6 +1919,10 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
         for (let y = earliestYear; y <= todayYear; y++) {
           const yearStart = `${y}-01-01`;
           const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId);
+          // Carry-forward enhancement: a policy whose carry rule is explicitly disabled never carries
+          // anything (openLeaveYear forfeits the whole prior balance at open), so there is nothing for
+          // the later expiry sweep to forfeit — skip even if a stale expiry offset is still populated.
+          if (!carryEnabled(pol)) continue;
           const expiry = pol?.carryExpiry ?? null;
           if (!expiry) continue;
           const expiryDate = `${y}-${String(expiry.month).padStart(2, '0')}-${String(expiry.day).padStart(2, '0')}`;

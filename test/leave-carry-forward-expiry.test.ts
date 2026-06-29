@@ -17,7 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { createJobGrade, createLeavePolicy } from '../core/admin';
-import { expireCarriedLeave, openLeaveYear, resolveGradePolicy } from '../core/leave';
+import { carryEnabled, expireCarriedLeave, openLeaveYear, resolveGradePolicy } from '../core/leave';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -79,7 +79,15 @@ const hire = (hiredOn: string, gradeId: string | null = null) =>
 
 /** Annual policy active from `from` with carry cap + optional expiry offset. */
 const annualPolicy = (
-  p: { annualDays?: number; carryForwardMax?: number; expiry?: { month: number; day: number } | null; from?: string },
+  p: {
+    annualDays?: number;
+    carryForwardMax?: number;
+    expiry?: { month: number; day: number } | null;
+    from?: string;
+    /** Carry-forward enhancement: explicit on/off switch. undefined ⇒ back-compat (cap > 0) default. */
+    carryForwardEnabled?: boolean;
+    carryForwardIncludeEarned?: boolean;
+  },
 ) =>
   createLeavePolicy(adminCtx(b), {
     leaveTypeId: b.annualLeaveTypeId,
@@ -87,8 +95,19 @@ const annualPolicy = (
     carryForwardMax: p.carryForwardMax ?? 5,
     carryForwardExpiryMonth: p.expiry?.month ?? null,
     carryForwardExpiryDay: p.expiry?.day ?? null,
+    carryForwardEnabled: p.carryForwardEnabled,
+    carryForwardIncludeEarned: p.carryForwardIncludeEarned,
     validFrom: p.from ?? '2025-01-01',
   });
+
+/** Read back a leave_policy's raw accrual JSONB (owner role bypasses RLS) — for round-trip assertions. */
+const readAccrual = async (leaveTypeId: string): Promise<Record<string, unknown>> => {
+  const [row] = await owner.db
+    .select({ accrual: schema.leavePolicy.accrual })
+    .from(schema.leavePolicy)
+    .where(eq(schema.leavePolicy.leaveTypeId, leaveTypeId));
+  return (row?.accrual as Record<string, unknown>) ?? {};
+};
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -246,6 +265,9 @@ describe('ADR-0038 carry-forward expiry — expireCarriedLeave', () => {
     expect(await balance(emp.employmentId)).toBe(12); // stays forfeited, not re-inflated
   });
 
+  // (i) stays valid precisely because the carry-forward enhancement did NOT generalize the sweep beyond
+  // ANNUAL (expireCarriedLeave keeps its eq(code,'ANNUAL') filter — see core/leave.ts). A future change
+  // that widens the sweep to other leave types must keep SICK/HOSPITALIZATION excluded (EA s.60F resets).
   it('(i) sick/hospitalization (non-annual) carry is never swept by this annual-only function', async () => {
     const sickTypeId = await addType('SICK', 'Sick Leave');
     await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 3, day: 31 } });
@@ -303,5 +325,90 @@ describe('ADR-0038 carry-forward expiry — resolveGradePolicy carryExpiry', () 
     expect(r.swept).toBe(1);
     expect(r.forfeited).toBe(5);
     expect(await balance(emp.employmentId)).toBe(18);
+  });
+});
+
+describe('Carry-forward enhancement — carryForwardEnabled toggle at year-open (openLeaveYear)', () => {
+  // The three-way truth table for the explicit enable switch vs. the cap, observed at year-open.
+  it('(k) explicit false + positive cap ⇒ everything forfeits (the toggle overrides the cap)', async () => {
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, carryForwardEnabled: false });
+    const emp = await hire('2025-01-01'); // 12 granted at hire
+    expect(await balance(emp.employmentId)).toBe(12);
+    // Carry disabled ⇒ carryMax collapses to 0 ⇒ the whole prior 12 forfeits, +12 fresh = 12.
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+    expect(await balance(emp.employmentId)).toBe(12);
+  });
+
+  it('(l) explicit true + cap 0 ⇒ full forfeit (same observable result as off — pins the ambiguity)', async () => {
+    await annualPolicy({ annualDays: 12, carryForwardMax: 0, carryForwardEnabled: true });
+    const emp = await hire('2025-01-01');
+    expect(await balance(emp.employmentId)).toBe(12);
+    // Enabled but the cap is 0, so min(prior, 0) = 0 carries ⇒ prior 12 forfeits, +12 fresh = 12.
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+    expect(await balance(emp.employmentId)).toBe(12);
+  });
+
+  it('(m) absent flag + positive cap ⇒ carries (back-compat default holds)', async () => {
+    // No carryForwardEnabled in the JSONB at all — the back-compat `cap > 0` default must still carry.
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5 });
+    const acc = await readAccrual(b.annualLeaveTypeId);
+    expect('carryForwardEnabled' in acc).toBe(false); // key omitted, not written as undefined/false
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(12,5)=5 + 12 fresh = 17
+    expect(await balance(emp.employmentId)).toBe(17);
+  });
+});
+
+describe('Carry-forward enhancement — disabled policy is inert in the expiry sweep', () => {
+  it('(n) carryForwardEnabled:false + a populated expiry ⇒ expireCarriedLeave is a no-op', async () => {
+    // A stale expiry offset is still present in the JSONB, but the rule is disabled. openLeaveYear already
+    // forfeited the whole prior balance at open (carry 0), so the later sweep must find nothing AND must
+    // not fire even though carryExpiry parses — proving the carryEnabled guard in expireCarriedLeave.
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 3, day: 31 }, carryForwardEnabled: false });
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // disabled ⇒ prior 12 forfeits, +12 = 12
+    expect(await balance(emp.employmentId)).toBe(12);
+
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2026-12-31' });
+    expect(r.swept).toBe(0);
+    expect(r.forfeited).toBe(0);
+    expect(await balance(emp.employmentId)).toBe(12); // untouched
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2026-03-31')).toBe(0);
+  });
+});
+
+describe('Carry-forward enhancement — resolveGradePolicy carryForwardEnabled + carryEnabled default', () => {
+  it('(o) carryForwardEnabled is resolved from the WINNING (higher-days) policy, not a losing one', async () => {
+    // The loser disables carry; the winner (higher days) enables it. The winner's flag must win — mirror of (j).
+    const rows = [
+      { gradeId: null, accrual: { annualDays: 10, carryForwardMax: 3, carryForwardEnabled: false } },
+      { gradeId: null, accrual: { annualDays: 14, carryForwardMax: 5, carryForwardEnabled: true } },
+    ];
+    const resolved = resolveGradePolicy(rows, null);
+    expect(resolved).not.toBeNull();
+    expect(resolved!.days).toBe(14);
+    expect(resolved!.carryForwardEnabled).toBe(true); // from the 14-day winner, not the disabled 10-day loser
+    expect(carryEnabled(resolved)).toBe(true);
+  });
+
+  it('(p) carryEnabled back-compat default: absent flag ⇒ enabled iff carryMax > 0', () => {
+    expect(carryEnabled({ days: 12, carryMax: 5 })).toBe(true); // cap > 0, no flag ⇒ on
+    expect(carryEnabled({ days: 12, carryMax: 0 })).toBe(false); // cap 0, no flag ⇒ off
+    expect(carryEnabled({ days: 12, carryMax: 5, carryForwardEnabled: false })).toBe(false); // explicit off overrides
+    expect(carryEnabled({ days: 12, carryMax: 0, carryForwardEnabled: true })).toBe(true); // explicit on overrides
+    expect(carryEnabled(null)).toBe(false);
+  });
+});
+
+describe('Carry-forward enhancement — carryForwardIncludeEarned round-trips (config-only, no ledger effect)', () => {
+  it('(q) the include-earned flag persists through createLeavePolicy and changes no ledger outcome', async () => {
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, carryForwardIncludeEarned: true });
+    const acc = await readAccrual(b.annualLeaveTypeId);
+    expect(acc.carryForwardIncludeEarned).toBe(true); // persisted
+
+    // It must not influence the year-end engine this round: a normal open carries exactly as without it.
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(12,5)=5 + 12 = 17, identical to the no-flag case
+    expect(await balance(emp.employmentId)).toBe(17);
   });
 });
