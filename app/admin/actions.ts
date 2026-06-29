@@ -616,6 +616,14 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // deduction" is display-only (derived from !paid) and is NOT read/forwarded here.
   const touchPayroll = fd.get('payrollImpact') === '1';
   const payrollFields = touchPayroll ? { sendToPayroll: fd.get('sendToPayroll') === 'on' } : {};
+  // Configurable backdated-leave restriction (0133): its own sub-form posts `backdating=1` (marker) so a
+  // rename / eligibility / durations / document / payroll edit that omits it leaves backdating_limit_days
+  // untouched (same tri-state guard). Empty input ⇒ null (clears the limit ⇒ unrestricted); a number sets it.
+  const touchBackdating = fd.get('backdating') === '1';
+  const backdatingRaw = String(fd.get('backdatingLimitDays') ?? '').trim();
+  const backdatingFields = touchBackdating
+    ? { backdatingLimitDays: backdatingRaw === '' ? null : Number(backdatingRaw) }
+    : {};
   try {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
@@ -624,6 +632,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       durations,
       ...docFields,
       ...payrollFields,
+      ...backdatingFields,
     });
   } catch (e) {
     fail(LEAVE, e);

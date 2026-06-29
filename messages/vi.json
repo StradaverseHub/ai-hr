@@ -531,6 +531,7 @@
       "documentRequiredAfter": "Cần có tài liệu hỗ trợ cho {typeName} vượt quá {days} ngày.",
       "documentRequired": "Cần có tài liệu hỗ trợ cho {typeName} (ví dụ: giấy chứng nhận y tế).",
       "employeeRemarkRequired": "Cần có ghi chú của nhân viên cho {typeName}.",
+      "backdatingNotAllowed": "{typeName} không thể đặt ngày lùi quá {days} ngày.",
       "fileTypeNotAllowed": "Loại tệp không được phép — chấp nhận: {allowed}.",
       "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB.",
       "unpaidConsentRequired": "Nghỉ khẩn cấp này sẽ tính {days} ngày là nghỉ không lương. Vui lòng tích vào ô để xác nhận những ngày không lương.",
@@ -1865,7 +1866,10 @@
       "affectsPayrollDeductionLabel": "Ảnh hưởng đến khấu trừ lương",
       "affectsPayrollDeductionHelp": "Được đặt tự động: nghỉ không lương làm giảm lương, các loại nghỉ có lương thì không. Mục này phản ánh loại nghỉ có được trả lương hay không và không thể chỉnh sửa tại đây.",
       "sendToPayrollLabel": "Gửi đến mô-đun bảng lương",
-      "payrollImpactHelp": "Mô-đun nghỉ phép chỉ đánh dấu ảnh hưởng khi phê duyệt; mô-đun bảng lương tính khoản khấu trừ thực tế."
+      "payrollImpactHelp": "Mô-đun nghỉ phép chỉ đánh dấu ảnh hưởng khi phê duyệt; mô-đun bảng lương tính khoản khấu trừ thực tế.",
+      "backdatingSectionTitle": "Nghỉ phép đặt ngày lùi",
+      "backdatingLimitDaysLabel": "Giới hạn đặt ngày lùi (ngày)",
+      "backdatingSectionHelp": "Nhân viên có thể nộp đơn xin loại nghỉ phép này lùi về trước bao nhiêu ngày kể từ hôm nay. Để trống nếu không giới hạn. Quản trị viên HR không bao giờ bị chặn bởi giới hạn này."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

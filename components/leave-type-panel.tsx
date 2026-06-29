@@ -89,6 +89,7 @@ export function LeaveTypePanel({
   maxDocBytes,
   employeeRemarkRequired,
   hrRemarkRequired,
+  backdatingLimitDays,
   paid,
   sendToPayroll,
   policies,
@@ -118,6 +119,9 @@ export function LeaveTypePanel({
   maxDocBytes: number;
   employeeRemarkRequired: boolean;
   hrRemarkRequired: boolean;
+  /** Configurable backdated-leave restriction (0133): how many days back a leave of this type may be applied;
+   *  null = no limit. Threaded so the sub-form round-trips. Field hidden for Emergency Leave (code === 'EMERGENCY'). */
+  backdatingLimitDays: number | null;
   /** Whether this type is paid — drives the read-only "Affects payroll deduction" display (derived = !paid). */
   paid: boolean;
   /** Unpaid payroll-impact: emit the on-approval payroll signal. Editable in the "Payroll impact" sub-form. */
@@ -479,6 +483,36 @@ export function LeaveTypePanel({
             </form>
             <p className="text-xs text-muted-foreground">{t('payrollImpactHelp')}</p>
           </div>
+
+          {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
+              `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
+              so showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
+          {code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('backdatingSectionTitle')}</span>
+              <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the backdating_limit_days column (tri-state guard) */}
+                <input type="hidden" name="backdating" value="1" />
+                <Field label={t('backdatingLimitDaysLabel')}>
+                  <input
+                    name="backdatingLimitDays"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={backdatingLimitDays ?? ''}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('backdatingSectionHelp')}</p>
+            </div>
+          )}
 
           {/* entitlement timeline */}
           <div className="space-y-1.5">

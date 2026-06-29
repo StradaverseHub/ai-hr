@@ -531,6 +531,7 @@
       "documentRequiredAfter": "{typeName}超过 {days} 天时需要提供证明文件。",
       "documentRequired": "{typeName}需要提供证明文件（例如医疗证明）。",
       "employeeRemarkRequired": "{typeName}需要填写员工备注。",
+      "backdatingNotAllowed": "{typeName}的申请回溯日期不能超过 {days} 天。",
       "fileTypeNotAllowed": "不允许的文件类型 — 接受：{allowed}。",
       "fileTooLarge": "文件超过 {mb} MB 上限。",
       "unpaidConsentRequired": "此紧急假将有 {days} 天按无薪假处理。请勾选以确认无薪天数。",
@@ -1865,7 +1866,10 @@
       "affectsPayrollDeductionLabel": "影响薪资扣减",
       "affectsPayrollDeductionHelp": "自动设定：无薪假会扣减薪资，带薪假则不会。此项反映该假期类型是否带薪，无法在此编辑。",
       "sendToPayrollLabel": "发送至薪资模块",
-      "payrollImpactHelp": "假期模块仅在批准时标记影响；实际扣减由薪资模块计算。"
+      "payrollImpactHelp": "假期模块仅在批准时标记影响；实际扣减由薪资模块计算。",
+      "backdatingSectionTitle": "回溯休假",
+      "backdatingLimitDaysLabel": "回溯天数上限（天）",
+      "backdatingSectionHelp": "员工可从今天起最多回溯多少天申请此假期类型。留空表示不限制。HR 管理员不受此上限限制。"
     },
     "holidays": {
       "pageTitle": "公共假期",

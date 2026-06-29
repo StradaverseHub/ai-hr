@@ -531,6 +531,7 @@
       "documentRequiredAfter": "Dokumen sokongan diperlukan untuk {typeName} yang melebihi {days} hari.",
       "documentRequired": "Dokumen sokongan diperlukan untuk {typeName} (cth. sijil perubatan).",
       "employeeRemarkRequired": "Catatan pekerja diperlukan untuk {typeName}.",
+      "backdatingNotAllowed": "{typeName} tidak boleh diundurkan tarikh lebih daripada {days} hari.",
       "fileTypeNotAllowed": "Jenis fail tidak dibenarkan — diterima: {allowed}.",
       "fileTooLarge": "Fail melebihi had {mb} MB.",
       "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji.",
@@ -1865,7 +1866,10 @@
       "affectsPayrollDeductionLabel": "Menjejaskan potongan gaji",
       "affectsPayrollDeductionHelp": "Ditetapkan secara automatik: cuti tanpa gaji mengurangkan gaji, jenis cuti bergaji tidak. Ini mencerminkan sama ada jenis cuti itu bergaji dan tidak boleh disunting di sini.",
       "sendToPayrollLabel": "Hantar ke modul gaji",
-      "payrollImpactHelp": "Modul cuti hanya menanda kesan semasa kelulusan; modul gaji mengira potongan sebenar."
+      "payrollImpactHelp": "Modul cuti hanya menanda kesan semasa kelulusan; modul gaji mengira potongan sebenar.",
+      "backdatingSectionTitle": "Cuti diundurkan tarikh",
+      "backdatingLimitDaysLabel": "Had pengunduran tarikh (hari)",
+      "backdatingSectionHelp": "Berapa hari ke belakang dari hari ini pekerja boleh memohon jenis cuti ini. Biarkan kosong untuk tiada had. Pentadbir HR tidak sekali-kali disekat oleh had ini."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

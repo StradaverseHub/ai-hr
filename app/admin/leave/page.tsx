@@ -110,6 +110,7 @@ export default async function LeaveConfigPage({
               maxDocBytes={t.maxDocBytes}
               employeeRemarkRequired={t.employeeRemarkRequired}
               hrRemarkRequired={t.hrRemarkRequired}
+              backdatingLimitDays={t.backdatingLimitDays ?? null}
               paid={t.paid}
               sendToPayroll={t.sendToPayroll}
               policies={polByType.get(t.id) ?? []}

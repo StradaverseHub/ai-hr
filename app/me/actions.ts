@@ -10,6 +10,8 @@ import {
   requestLeave,
   validateLeaveDocument,
   isEmergencyReasonCategory,
+  todayInKualaLumpur,
+  LeaveBackdatingNotAllowedError,
   LeaveDocumentRequiredError,
   LeaveRemarkRequiredError,
   LeaveDocumentTypeError,
@@ -96,6 +98,9 @@ export async function myRequestLeave(formData: FormData) {
       toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
       reasonCategory,
       unpaidConsent,
+      // Configurable backdated-leave restriction (0133): pass the tenant-local (MYT) "today" so the boundary
+      // is judged in Malaysian time, not server/UTC.
+      today: todayInKualaLumpur(),
     });
     if (hasFile) {
       await addLeaveAttachment(s, {
@@ -125,6 +130,8 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
       : t('documentRequired', { typeName: name });
   }
   if (e instanceof LeaveRemarkRequiredError) return t('employeeRemarkRequired', { typeName: name });
+  if (e instanceof LeaveBackdatingNotAllowedError)
+    return t('backdatingNotAllowed', { typeName: name, days: e.limitDays });
   if (e instanceof LeaveDocumentTypeError) {
     const labels: Record<string, string> = { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG' };
     return t('fileTypeNotAllowed', { allowed: e.allowed.map((m) => labels[m] ?? m).join(', ') });

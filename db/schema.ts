@@ -502,6 +502,13 @@ export const leaveType = pgTable('leave_type', {
   // Leave decomposes), so a manager can approve some dates and reject others. Default false = today's single
   // multi-day request behaviour. NOT applied to half/hourly (single-day), calendar-counted types, or EL.
   perDateApproval: boolean('per_date_approval').notNull().default(false),
+  // Configurable backdated-leave restriction (0133): how many days back from today a leave of this type may
+  // be applied. null ⇒ no limit (existing behaviour). 0 ⇒ no backdating (start date must be today or later).
+  // Enforced in requestLeave against the request's start date; HR admins (isAdmin) bypass it (override path).
+  // Mirrors mandatoryAfterDays (nullable integer); has its OWN tri-state in updateLeaveType, not nested under
+  // the document config. Intentionally not enforced for Emergency Leave (inherently retroactive; field hidden
+  // in the admin UI for EL).
+  backdatingLimitDays: integer('backdating_limit_days'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

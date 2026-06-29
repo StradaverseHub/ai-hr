@@ -531,6 +531,7 @@
       "documentRequiredAfter": "A supporting document is required for {typeName} exceeding {days} days.",
       "documentRequired": "A supporting document is required for {typeName} (e.g. a medical certificate).",
       "employeeRemarkRequired": "An employee remark is required for {typeName}.",
+      "backdatingNotAllowed": "{typeName} cannot be backdated more than {days} day(s).",
       "fileTypeNotAllowed": "File type not allowed — accepted: {allowed}.",
       "fileTooLarge": "File exceeds the {mb} MB limit.",
       "unpaidConsentRequired": "This emergency leave would take {days} day(s) as unpaid leave. Please tick the box to acknowledge the unpaid days.",
@@ -1865,7 +1866,10 @@
       "affectsPayrollDeductionLabel": "Affects payroll deduction",
       "affectsPayrollDeductionHelp": "Set automatically: unpaid leave types reduce pay, paid types do not. This reflects whether the type is paid and cannot be edited here.",
       "sendToPayrollLabel": "Send to payroll module",
-      "payrollImpactHelp": "The leave module only flags the impact on approval; the payroll module computes the actual deduction."
+      "payrollImpactHelp": "The leave module only flags the impact on approval; the payroll module computes the actual deduction.",
+      "backdatingSectionTitle": "Backdated leave",
+      "backdatingLimitDaysLabel": "Backdating limit (days)",
+      "backdatingSectionHelp": "How many days back from today an employee may apply for this leave type. Leave blank for no limit. HR admins are never blocked by this limit."
     },
     "holidays": {
       "pageTitle": "Public holidays",

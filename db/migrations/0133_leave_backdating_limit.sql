@@ -1,0 +1,16 @@
+-- Configurable Backdated Leave Restriction by Leave Type (feedback: "Configurable Backdated Leave
+-- Restriction by Leave Type"; ADR-0066).
+--
+-- Adds a per-leave-type setting limiting how far back from today a leave of that type may be applied.
+-- backdating_limit_days = null ⇒ no limit (existing behaviour; nothing breaks for current types). A value N
+-- means the request's start date may be at most N days before today; older requests are rejected in
+-- core/leave.ts requestLeave with a typed, localized error. HR admins (isAdmin) bypass the limit (override
+-- path) and the override is stamped onto the created leave-request DomainEvent payload for audit.
+--
+-- Mirrors the existing mandatory_after_days nullable-integer doc-config column end-to-end; edited on the
+-- same Leave configuration admin screen via its OWN tri-state (not nested under the document sub-form).
+-- "today" is judged in the tenant's local (Asia/Kuala_Lumpur) calendar, supplied by the action layer.
+--
+-- No RLS change: leave_type already has tenant-read + admin-write policies; a new column inherits the
+-- table's row-level policies.
+ALTER TABLE leave_type ADD COLUMN backdating_limit_days integer;

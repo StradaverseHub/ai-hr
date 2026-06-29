@@ -12,6 +12,7 @@ import {
   requestLeaveCancellation,
   validateLeaveDocument,
   isEmergencyReasonCategory,
+  todayInKualaLumpur,
   type LeaveDurationType,
 } from '@/core/leave';
 import { localizeLeaveError } from '@/app/me/actions';
@@ -83,6 +84,9 @@ export async function requestLeaveAction(formData: FormData) {
       unpaidConsent,
       survivingChildren: survivingChildrenRaw !== '' ? Number(survivingChildrenRaw) : undefined,
       confinementDate: confinementDateRaw !== '' ? confinementDateRaw : undefined,
+      // Configurable backdated-leave restriction (0133): tenant-local (MYT) "today" for the boundary. The
+      // on-behalf admin path bypasses the limit anyway (isAdmin override), but pass it for correctness/parity.
+      today: todayInKualaLumpur(),
     });
     if (attach && file instanceof File) {
       // Same server-action session that just created the row, so the new pending request is visible to this

@@ -259,6 +259,9 @@ export function listLeaveTypes(
         hrRemarkRequired: leaveType.hrRemarkRequired,
         // Unpaid payroll-impact: gates the on-approval payroll signal — feeds the admin "Payroll impact" sub-form.
         sendToPayroll: leaveType.sendToPayroll,
+        // Configurable backdated-leave restriction (0133): feeds the admin panel's "Backdating limit (days)"
+        // input (MUST be projected here or the input renders empty on every reload — "my setting didn't save").
+        backdatingLimitDays: leaveType.backdatingLimitDays,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
@@ -300,6 +303,9 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           allowedMimeTypes: leaveType.allowedMimeTypes,
           maxDocBytes: leaveType.maxDocBytes,
           employeeRemarkRequired: leaveType.employeeRemarkRequired,
+          // Configurable backdated-leave restriction (0133): projected so the panel projection (which feeds
+          // off this select too) carries the value — same reason as listLeaveTypes above.
+          backdatingLimitDays: leaveType.backdatingLimitDays,
           eligibility: leaveType.eligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,

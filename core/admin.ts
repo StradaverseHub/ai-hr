@@ -1116,6 +1116,10 @@ export async function updateLeaveType(
     employeeRemarkRequired?: boolean;
     hrRemarkRequired?: boolean; // stored only this slice; not enforced
     sendToPayroll?: boolean; // unpaid payroll-impact gate (tri-state, like the doc fields); gates the on-approval signal only
+    // Configurable backdated-leave restriction (0133): how many days back a leave of this type may be applied.
+    // OWN tri-state (undefined = leave column), NOT nested under touchDoc — it is a request-validation rule,
+    // not a document setting, so a doc-only save must not touch it and the audit diff must label it correctly.
+    backdatingLimitDays?: number | null;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
@@ -1135,8 +1139,15 @@ export async function updateLeaveType(
   // Unpaid payroll-impact gate — its OWN tri-state, NOT nested in touchDoc: a payroll-only save carries no
   // document marker, so touchDoc is false; nesting would drop the flag from the set + event diff.
   const touchPayroll = p.sendToPayroll !== undefined;
+  // Configurable backdated-leave restriction (0133): its OWN tri-state, mirroring touchPayroll above — a
+  // doc-only save carries no backdating marker, so nesting it under touchDoc would drop it from the set and
+  // mislabel the audit diff.
+  const touchBackdating = p.backdatingLimitDays !== undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
+  }
+  if (p.backdatingLimitDays != null && (!Number.isInteger(p.backdatingLimitDays) || p.backdatingLimitDays < 0)) {
+    throw new Error('“Backdating limit (days)” must be a whole number ≥ 0.');
   }
   if (p.allowedMimeTypes !== undefined && p.allowedMimeTypes.some((m) => !DOC_MIME_SET.includes(m as (typeof DOC_MIME_SET)[number]))) {
     throw new Error('Allowed file types must be a subset of PDF, JPG, PNG.');
@@ -1153,6 +1164,8 @@ export async function updateLeaveType(
     ...(p.employeeRemarkRequired !== undefined ? { employeeRemarkRequired: p.employeeRemarkRequired } : {}),
     ...(p.hrRemarkRequired !== undefined ? { hrRemarkRequired: p.hrRemarkRequired } : {}),
   };
+  // Configurable backdated-leave restriction (0133): its own set fragment, merged alongside docSet.
+  const backdatingSet = touchBackdating ? { backdatingLimitDays: p.backdatingLimitDays } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -1167,6 +1180,7 @@ export async function updateLeaveType(
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
         hrRemarkRequired: leaveType.hrRemarkRequired,
         sendToPayroll: leaveType.sendToPayroll,
+        backdatingLimitDays: leaveType.backdatingLimitDays,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -1178,6 +1192,7 @@ export async function updateLeaveType(
         ...(touchEligibility ? { eligibility: nextEligibility } : {}),
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
+        ...backdatingSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
       })
       .where(eq(leaveType.id, p.id));
@@ -1203,6 +1218,7 @@ export async function updateLeaveType(
               }
             : {}),
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
+          ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
         },
         after: {
           name,
@@ -1219,6 +1235,9 @@ export async function updateLeaveType(
               }
             : {}),
           ...(touchPayroll ? { sendToPayroll: p.sendToPayroll ?? before?.sendToPayroll ?? null } : {}),
+          ...(touchBackdating
+            ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
+            : {}),
         },
       },
     });

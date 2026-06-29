@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
+import { isAdmin } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
 import {
@@ -222,6 +223,21 @@ export class LeaveDocumentRequiredError extends Error {
   }
 }
 
+// Configurable backdated-leave restriction (0133): a non-HR request whose start date is older than the
+// leave type's backdatingLimitDays window. Carries STRUCTURED fields (typeName, limitDays) so the action
+// layer can re-localize via getTranslations('leave.errors') before redirecting with ?error=. HR admins
+// (isAdmin) bypass this in requestLeave (the override path), so this only throws for ordinary employees.
+export class LeaveBackdatingNotAllowedError extends Error {
+  readonly typeName?: string;
+  readonly limitDays: number;
+  constructor(limitDays: number, typeName?: string) {
+    super(`${typeName ?? 'This leave type'} cannot be backdated more than ${limitDays} day(s).`);
+    this.name = 'LeaveBackdatingNotAllowedError';
+    this.typeName = typeName;
+    this.limitDays = limitDays;
+  }
+}
+
 // Supporting-document config: the applicant must supply a remark when the type sets employeeRemarkRequired.
 export class LeaveRemarkRequiredError extends Error {
   readonly typeName?: string;
@@ -330,6 +346,24 @@ function daysBetween(start: string, end: string): number {
   const s = Date.parse(`${start}T00:00:00Z`);
   const e = Date.parse(`${end}T00:00:00Z`);
   return Math.round((e - s) / 86_400_000);
+}
+
+/** "Today" in the tenant's local (Asia/Kuala_Lumpur) calendar as ISO yyyy-mm-dd. Used so the backdating
+ *  boundary is not UTC-skewed for a late-night request near MYT midnight (this is a Malaysia product). The
+ *  action layer computes this and passes it into requestLeave; core defaults to it when a caller omits it. */
+export function todayInKualaLumpur(now: Date = new Date()): string {
+  // en-CA yields yyyy-mm-dd; the timeZone shifts the wall-clock date to MYT before formatting.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }).format(now);
+}
+
+/** Configurable backdated-leave restriction (0133). True when `startDate` is backdated beyond `limitDays`
+ *  from `today` (both ISO yyyy-mm-dd). limitDays null ⇒ never blocked (existing behaviour). limitDays 0 ⇒
+ *  any past date is blocked (start must be today or later). daysBetween(start, today) is positive when start
+ *  is before today and negative for a future date, so future dates are never blocked. Pure + `today`-
+ *  injectable for deterministic tests. */
+export function exceedsBackdatingLimit(startDate: string, today: string, limitDays: number | null): boolean {
+  if (limitDays == null) return false;
+  return daysBetween(startDate, today) > limitDays;
 }
 
 /** Subtract whole calendar months from an ISO date, clamping the day to the target month's length. */
@@ -536,6 +570,12 @@ async function insertLeaveRequest(
     confinementDate?: string | null;
     allowanceEligible?: boolean | null;
     maternityAllowanceEvent?: Record<string, unknown> | null;
+    // Configurable backdated-leave restriction (0133): set only when an HR admin SUCCESSFULLY overrode the
+    // limit (the request is backdated beyond the type's window but isAdmin let it through). Stamps the
+    // override onto the submitted event payload for the audit trail (CLAUDE.md substrate discipline: an admin
+    // bypassing a configured control must be captured). null/absent ⇒ normal in-window request; payload
+    // unchanged so existing assertions stay green.
+    backdatingAudit?: { daysBackdated: number; backdatingLimitDays: number | null } | null;
   },
 ): Promise<{ id: string }> {
   const [row] = await tx
@@ -588,6 +628,16 @@ async function insertLeaveRequest(
       ...(v.parentGroupId ? { parentGroupId: v.parentGroupId } : {}),
       // Phase-B #13 (ADR-0062): the s.37 paid-allowance decision for the audit trail / approver view.
       ...(v.maternityAllowanceEvent ? { maternityAllowance: v.maternityAllowanceEvent } : {}),
+      // Configurable backdated-leave restriction (0133): when an HR admin overrode the type's backdating
+      // limit, stamp it so an auditor can see this was a backdated override (vs an in-window request). Only
+      // present on the override path — the normal-path payload is byte-identical to before.
+      ...(v.backdatingAudit
+        ? {
+            backdatedOverride: true,
+            daysBackdated: v.backdatingAudit.daysBackdated,
+            backdatingLimitDays: v.backdatingAudit.backdatingLimitDays,
+          }
+        : {}),
     },
   });
   // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
@@ -638,6 +688,10 @@ export async function requestLeave(
     // (withheld ⇒ leave granted UNPAID). When absent the leave stays paid + a maternityAllowanceWarning fires.
     survivingChildren?: number;
     confinementDate?: string;
+    // Configurable backdated-leave restriction (0133): the tenant-local "today" (ISO yyyy-mm-dd) against
+    // which the backdating window is judged. The action layer computes it in Asia/Kuala_Lumpur and passes it
+    // in; core defaults to todayInKualaLumpur() so importer/legacy callers still work.
+    today?: string;
   },
 ): Promise<RequestLeaveResult> {
   return withTenant(ctx, async (tx) => {
@@ -653,6 +707,7 @@ export async function requestLeave(
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
         durations: leaveType.durations,
         perDateApproval: leaveType.perDateApproval,
+        backdatingLimitDays: leaveType.backdatingLimitDays,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -677,6 +732,19 @@ export async function requestLeave(
         .where(eq(employment.id, p.employmentId))
         .limit(1);
       assertEligible(elig, emp, p.startDate);
+    }
+
+    // Configurable backdated-leave restriction (0133). Non-HR users are blocked when the request's start date
+    // (the earliest, most-backdated day of the request) is older than the type's window; HR admins (isAdmin)
+    // bypass for exceptional cases (the override path). `today` is judged in the tenant's local (MYT) calendar
+    // — supplied by the action layer, defaulting to todayInKualaLumpur() — so the boundary is not UTC-skewed.
+    // It does not depend on `days`, so it fails fast like the eligibility gate. Emergency Leave already
+    // returned above (it is inherently retroactive and the field is hidden for it in the admin UI).
+    const today = p.today ?? todayInKualaLumpur();
+    const limit = lt?.backdatingLimitDays ?? null;
+    const backdatedOverride = isAdmin(ctx) && exceedsBackdatingLimit(p.startDate, today, limit);
+    if (!isAdmin(ctx) && exceedsBackdatingLimit(p.startDate, today, limit)) {
+      throw new LeaveBackdatingNotAllowedError(limit!, lt?.name);
     }
 
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
@@ -922,6 +990,11 @@ export async function requestLeave(
       confinementDate: maternity?.confinementDate ?? null,
       allowanceEligible: maternity?.allowanceEligible ?? null,
       maternityAllowanceEvent: maternity?.event ?? null,
+      // Configurable backdated-leave restriction (0133): stamp the override onto the submitted event only when
+      // an HR admin actually bypassed the type's limit (computed at the guard above).
+      backdatingAudit: backdatedOverride
+        ? { daysBackdated: daysBetween(p.startDate, today), backdatingLimitDays: limit }
+        : null,
     });
 
     // Phase-B #15 — holiday-completeness guard. A working_days request's day count depends on the gazetted
