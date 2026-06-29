@@ -204,6 +204,97 @@ function deriveAttendance(
   return { status, workedMinutes, otMinutes };
 }
 
+// ─────────────────── 2.1.3 Hourly · shift-bounded payable hours ───────────────────
+//
+// payableHoursForCycle — the ONE genuinely-new behaviour for the Hourly payroll policy. Given an employment and
+// a date window, return the payable HOURS (decimal) for that window, with one switch:
+//
+//   • onlyPullHoursWithinShiftSchedule = false (or omitted) → sum(workedMinutes)/60 over the window. Byte-
+//     identical to "all worked hours count" (today's behaviour for a per_hour rule).
+//
+//   • onlyPullHoursWithinShiftSchedule = true → for each attendance row, clamp that day's worked minutes to the
+//     ROSTERED shift's net scheduled minutes (source:'roster-shift'). Concretely the day's payable minutes are
+//     min(workedMinutes, scheduledMinutes). Edge semantics, each decided + documented:
+//       – Rostered workday/holiday-with-roster (source:'roster-shift'): payable = min(worked, scheduled). This
+//         means OVERTIME (worked − scheduled) is NEVER paid when ON — that IS the meaning of "only pay hours
+//         within the assigned shift". OT is a premium concern owned by the OT path, not this clamp.
+//       – Rest day with a rostered shift is impossible (the shift-xor-rest DB invariant); a rostered REST day
+//         (source:'roster-rest') has scheduledMinutes via the policy branch but is NOT an assigned shift → 0
+//         payable when ON.
+//       – No roster row (source:'policy', the company-default working-day schedule) is NOT an assigned shift →
+//         0 payable when ON. "Within the assigned shift" is read as roster-only: a day the employee was not
+//         rostered onto a shift contributes nothing under the toggle.
+//       – Cross-midnight shift (e.g. 22:00→06:00): scheduleFor/scheduledMinutes are cross-midnight aware; the
+//         worked minutes already live on the shift's start-date attendance row (the punch importer keys a night
+//         shift to its start date). We clamp per attendance-date row against THAT date's resolved schedule —
+//         the simplest consistent rule — so a cross-midnight shift's scheduled span is the clamp ceiling.
+//
+// Efficiency: ONE grouped attendance query + ONE grouped roster/shift query for the whole window, then clamp in
+// memory. We deliberately do NOT call scheduleFor per (employee, date) in a loop (that is an N-query pattern);
+// holiday-class is irrelevant to the clamp (a rostered shift on a holiday still bounds payable hours by its
+// scheduled span), so we resolve roster→shift directly here, mirroring the single-aggregate pattern elsewhere.
+//
+// This helper is PURE-READ (no DomainEvent — substrate rule) and is NOT wired into core/payroll.ts live compute:
+// feeding shift-bounded hours into the per_hour rate to produce a payslip is the deferred follow-up.
+export async function payableHoursForCycle(
+  tx: Tx,
+  employmentId: string,
+  window: { from: string; to: string },
+  opts: { onlyPullHoursWithinShiftSchedule: boolean },
+): Promise<number> {
+  const rows = await tx
+    .select({ date: attendance.attendanceDate, workedMinutes: attendance.workedMinutes })
+    .from(attendance)
+    .where(
+      and(
+        eq(attendance.employmentId, employmentId),
+        gte(attendance.attendanceDate, window.from),
+        lte(attendance.attendanceDate, window.to),
+      ),
+    );
+
+  // Toggle OFF → all worked minutes count (byte-identical to "all worked hours count").
+  if (!opts.onlyPullHoursWithinShiftSchedule) {
+    const mins = rows.reduce((acc, r) => acc + (r.workedMinutes ?? 0), 0);
+    return mins / 60;
+  }
+
+  // Toggle ON → clamp each day to its rostered shift's net scheduled minutes. One grouped query for the roster
+  // shifts in the window; a day with no rostered shift (or a rest-day roster) has no entry → 0 payable.
+  const ras = await tx
+    .select({
+      shiftDate: rosterAssignment.shiftDate,
+      isRestDay: rosterAssignment.isRestDay,
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      crosses: shift.crossesMidnight,
+    })
+    .from(rosterAssignment)
+    .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
+    .where(
+      and(
+        eq(rosterAssignment.employmentId, employmentId),
+        gte(rosterAssignment.shiftDate, window.from),
+        lte(rosterAssignment.shiftDate, window.to),
+      ),
+    );
+  // scheduledMinutes-within-shift per date, ONLY for an actual rostered shift (rest-day rosters → none).
+  const schedByDate = new Map<string, number>();
+  for (const r of ras) {
+    if (r.isRestDay || !r.start || !r.end) continue; // a rostered rest day is not an assigned shift
+    schedByDate.set(r.shiftDate, Math.max(0, shiftSpan(r.start, r.end, r.crosses!) - r.brk!));
+  }
+
+  let payableMinutes = 0;
+  for (const row of rows) {
+    const scheduled = schedByDate.get(row.date);
+    if (scheduled === undefined) continue; // no assigned shift that day → 0 payable when ON
+    payableMinutes += Math.min(row.workedMinutes ?? 0, scheduled);
+  }
+  return payableMinutes / 60;
+}
+
 export async function checkIn(
   ctx: SessionContext,
   p: { employmentId: string; date: string; time: string },

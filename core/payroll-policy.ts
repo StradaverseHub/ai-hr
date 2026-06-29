@@ -77,14 +77,21 @@ function normalizeType(v: string | undefined): PolicyType {
   return v as PolicyType;
 }
 
-/** Validate a pay_rule against the policy type. Monthly carries no rule (null === today's `fixed`). For the
- *  deferred daily/hourly types the rule must be a per_day/per_hour rule with prorates=false (the kernel scope
- *  encodes proration); custom_period carries no rule yet. Reuses core/pay-rule.ts — never re-implements. */
+/** Validate a pay_rule against the policy type. Monthly carries no rule (null === today's `fixed`). Daily
+ *  requires a per_day rule; hourly (2.1.3) a per_hour rule that may carry the `onlyPullHoursWithinShiftSchedule`
+ *  shift-clamp toggle. Both must have prorates=false (the kernel scope encodes proration); custom_period carries
+ *  no rule yet. Reuses core/pay-rule.ts validation — never re-implements. The shift-clamp toggle is per_hour-only:
+ *  a per_day rule that smuggles the flag in (runtime JSONB) is rejected here, mirroring validatePayRule's intent. */
 function resolveRule(policyType: PolicyType, rule: PayRule | null | undefined): PayRule | null {
   if (policyType === 'monthly' || policyType === 'custom_period') return null;
   if (rule == null) throw new Error('Daily/Hourly policy requires a pay rule');
   const expected: PayRuleKind = policyType === 'daily' ? 'per_day' : 'per_hour';
   if (rule.kind !== expected) throw new Error(`A ${policyType} policy requires a ${expected} rule`);
+  // 2.1.3 — the shift-clamp toggle rides ONLY on a per_hour rule. Reject it on a per_day rule (a corrupted
+  // JSONB blob could carry it even though the TS union forbids it at compile time).
+  if (rule.kind !== 'per_hour' && 'onlyPullHoursWithinShiftSchedule' in (rule as Record<string, unknown>)) {
+    throw new Error('onlyPullHoursWithinShiftSchedule is only valid on an hourly (per_hour) rule');
+  }
   // per_day/per_hour rules encode their own period scaling, so the component must NOT also prorate.
   const v = validatePayRule(rule, false);
   if (!v.ok) throw new Error(`Invalid pay rule: ${v.code}`);

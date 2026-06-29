@@ -9,9 +9,11 @@ import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { copyPolicyAction, createPolicyAction, deletePolicyAction, setStatusAction, updatePolicyAction } from './actions';
 
 const PAGE = '/admin/payroll-policy';
-// 2.1.2 — Monthly and Daily are wired to calculation. Hourly and Custom-period remain reserved (calculation
-// pending sign-off) and stay disabled in the type dropdown so an unsigned-off calculation is never created.
-const ENABLED_TYPES = new Set(['monthly', 'daily']);
+// 2.1.3 — Monthly, Daily and Hourly are selectable. Hourly persists its per-hour rate + the
+// "only pull hours within shift schedule" toggle; the live end-to-end hourly payslip computation is a deferred
+// follow-up (gated on the rate-storage decision), so an hourly policy configures but does not yet run payroll.
+// Custom-period remains reserved (disabled) until its calculation is signed off.
+const ENABLED_TYPES = new Set(['monthly', 'daily', 'hourly']);
 type SortKey = 'name' | 'type' | 'status' | 'updated';
 
 export default async function PayrollPolicyPage({
@@ -221,11 +223,46 @@ export default async function PayrollPolicyPage({
                   className={inputCls}
                 />
               </Field>
+              {/* 2.1.3 — per-hour rate. Always rendered; the action reads it ONLY when the type is hourly.
+                  Pre-filled when editing an hourly policy. */}
+              <Field label={t('fieldHourlyRate')}>
+                <input
+                  name="hourlyRate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  defaultValue={editing?.payRule?.kind === 'per_hour' ? String(editing.payRule.rate) : ''}
+                  placeholder={t('hourlyRatePlaceholder')}
+                  className={inputCls}
+                />
+              </Field>
+              {/* 2.1.3 — "Only pull hours within shift schedule" toggle. A plain checkbox (server component, no
+                  client state); the action reads it ONLY for an hourly policy. Pre-checked when editing an
+                  hourly policy that has the flag on. */}
+              <label className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <input
+                  type="checkbox"
+                  name="onlyPullHoursWithinShift"
+                  value="on"
+                  defaultChecked={
+                    editing?.payRule?.kind === 'per_hour' && editing.payRule.onlyPullHoursWithinShiftSchedule === true
+                  }
+                  className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary dark:border-border"
+                />
+                <span>
+                  <span className="font-medium text-foreground dark:text-foreground">{t('fieldOnlyWithinShift')}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground dark:text-muted-foreground">
+                    {t('onlyWithinShiftHint')}
+                  </span>
+                </span>
+              </label>
               <Field label={t('fieldDescription')}>
                 <input name="description" defaultValue={editing?.description ?? ''} placeholder={t('descriptionPlaceholder')} className={`${inputCls} sm:col-span-2`} />
               </Field>
               <p className="text-xs text-muted-foreground sm:col-span-2">{t('typeHint')}</p>
               <p className="text-xs text-muted-foreground sm:col-span-2">{t('dailyHint')}</p>
+              <p className="text-xs text-muted-foreground sm:col-span-2">{t('hourlyHint')}</p>
               <div className="flex items-center gap-3 sm:col-span-2">
                 <button className={btnPrimary}>{editing ? t('saveChanges') : t('savePolicy')}</button>
                 {editing && (

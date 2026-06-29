@@ -56,11 +56,24 @@ export function validatePayRule(rule: PayRule | null, componentProrates: boolean
       if (rule.base !== 'basic') return { ok: false, code: 'BAD_KIND' };
       return inPct(rule.pct) ? { ok: true } : { ok: false, code: 'OUT_OF_RANGE' };
     case 'per_day':
-    case 'per_hour':
       if (!inMoney(rule.rate)) return { ok: false, code: 'OUT_OF_RANGE' };
       // A per-period rule already reflects the partial period via days_worked / hours — the component must
       // NOT also prorate, or a mid-period joiner is scaled twice.
       if (componentProrates) return { ok: false, code: 'PRORATION_CONFLICT' };
+      return { ok: true };
+    case 'per_hour':
+      if (!inMoney(rule.rate)) return { ok: false, code: 'OUT_OF_RANGE' };
+      if (componentProrates) return { ok: false, code: 'PRORATION_CONFLICT' };
+      // 2.1.3 (Hourly) — the shift-clamp toggle is per_hour-only and, when present, must be a boolean. A
+      // non-boolean value is a corrupted rule (BAD_KIND). validatePayRule never sees the flag on another kind
+      // because the discriminated union forbids it at compile time; resolveRule guards the runtime shape too.
+      if (
+        'onlyPullHoursWithinShiftSchedule' in rule &&
+        rule.onlyPullHoursWithinShiftSchedule !== undefined &&
+        typeof rule.onlyPullHoursWithinShiftSchedule !== 'boolean'
+      ) {
+        return { ok: false, code: 'BAD_KIND' };
+      }
       return { ok: true };
     case 'flat_capped':
       if (!inMoney(rule.value) || !inMoney(rule.cap)) return { ok: false, code: 'OUT_OF_RANGE' };

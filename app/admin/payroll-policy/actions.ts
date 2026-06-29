@@ -24,10 +24,18 @@ const str = (fd: FormData, k: string): string | undefined => {
   return v || undefined;
 };
 
-/** Build the pay-rule from the submitted form for the given type. Daily ⇒ a per_day rule from `dailyRate`
- *  (NaN/blank ⇒ 0, which the service's resolveRule validation then rejects as out of range). Monthly ⇒ null. */
+/** Build the pay-rule from the submitted form for the given type. Daily ⇒ a per_day rule from `dailyRate`;
+ *  Hourly (2.1.3) ⇒ a per_hour rule from `hourlyRate` plus the `onlyPullHoursWithinShiftSchedule` checkbox.
+ *  (NaN/blank rate ⇒ 0, which the service's resolveRule validation then rejects as out of range.) Monthly ⇒ null. */
 function payRuleFromForm(fd: FormData, policyType: string): PayRule | null {
   if (policyType === 'daily') return { kind: 'per_day', rate: Number(fd.get('dailyRate') ?? '') };
+  if (policyType === 'hourly') {
+    return {
+      kind: 'per_hour',
+      rate: Number(fd.get('hourlyRate') ?? ''),
+      onlyPullHoursWithinShiftSchedule: fd.get('onlyPullHoursWithinShift') === 'on',
+    };
+  }
   return null;
 }
 
@@ -78,8 +86,8 @@ export async function createPolicyAction(formData: FormData) {
 
 export async function updatePolicyAction(formData: FormData) {
   const s = await getSession();
-  // 2.1.2 — the type is read-only on edit (the hidden field carries the existing type); for a daily policy
-  // pass the edited per-day rate through so the rate can be revised.
+  // 2.1.2/2.1.3 — the type is read-only on edit (the hidden field carries the existing type); for a daily or
+  // hourly policy pass the edited rate (and, for hourly, the shift toggle) through so they can be revised.
   const policyType = str(formData, 'policyType') ?? 'monthly';
   await run(
     () =>
@@ -87,7 +95,9 @@ export async function updatePolicyAction(formData: FormData) {
         id: String(formData.get('id') ?? ''),
         name: String(formData.get('name') ?? ''),
         description: str(formData, 'description') ?? null,
-        ...(policyType === 'daily' ? { payRule: payRuleFromForm(formData, policyType) } : {}),
+        ...(policyType === 'daily' || policyType === 'hourly'
+          ? { payRule: payRuleFromForm(formData, policyType) }
+          : {}),
       }).then(() => undefined),
     'saved',
   );

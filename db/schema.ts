@@ -1198,11 +1198,18 @@ export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_sh
 // loop and component order is arbitrary, so a gross-relative rule is unimplementable without a kernel
 // restructure. `percent_of` is restricted to `base: 'basic'`, resolved from the employee's BASIC component
 // amount (read in the same query batch, order-independent). Only read when TYPED_PAY_COMPONENTS_ENABLED.
+// 2.1.3 (Hourly) — `onlyPullHoursWithinShiftSchedule` rides on the per_hour rule (rate + behaviour together,
+// zero DDL — it's why pay_rule is JSONB). When true, payableHoursForCycle() clamps each day's payable hours to
+// the intersection of clocked time and the employee's rostered shift (hours outside the shift, or on a day with
+// no roster, are excluded); when false/absent the full worked total counts (today's behaviour). The boolean is
+// only meaningful on per_hour rules — validatePayRule rejects it on any other kind. The flag does NOT change the
+// `rate × scope.hours` math in resolvePayRule; the live hourly compute that feeds shift-bounded hours into that
+// scope is a deferred follow-up (gated on the rate-storage decision).
 export type PayRule =
   | { kind: 'fixed' } //                                    = current behaviour; the component's `amount` is the value
   | { kind: 'percent_of'; base: 'basic'; pct: number } //   pct% of the employee's resolved BASIC component amount
   | { kind: 'per_day'; rate: number } //                    rate × days_worked (component MUST have prorates=false)
-  | { kind: 'per_hour'; rate: number } //                   rate × attendance hours (component MUST have prorates=false)
+  | { kind: 'per_hour'; rate: number; onlyPullHoursWithinShiftSchedule?: boolean } // rate × attendance hours (component MUST have prorates=false)
   | { kind: 'flat_capped'; value: number; cap: number }; // min(value, cap)
 
 // A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
