@@ -102,8 +102,17 @@ const results = await pipeline(
       .join('\n\n');
     return agent(
       `Refine the implementation plan below to address EVERY valid critique from the panel. Where a critique ` +
-        `is wrong, briefly note why you are not changing that part. Cut anything flagged as scope-creep. Keep ` +
-        `it a concrete, ordered, verifiable plan in Markdown — this is what the reporter will review.\n\n` +
+        `is wrong, briefly note why you are not changing that part. Cut anything flagged as scope-creep.\n\n` +
+        `STRUCTURE (REQUIRED) — the person who reviews and approves this on /feedback is a CONSULTANT / ` +
+        `business stakeholder, NOT an engineer. Write for THEM first:\n` +
+        `  • Lead with a "## Summary (for review)" section in PLAIN BUSINESS LANGUAGE: the problem in everyday ` +
+        `terms, what will change for the user, the visible outcome/benefit, a rough effort (small / medium / ` +
+        `large) + risk read, and explicitly call out anything that ALREADY exists today. NO file paths, line ` +
+        `numbers, table/column names, migration numbers, or framework jargon (RSC, RLS, etc.) in this section — ` +
+        `a non-technical reader must be able to approve or push back on it.\n` +
+        `  • THEN a "## For the build team" section carrying ALL the technical detail (files, schema/migrations, ` +
+        `ordered steps, tests, edge cases) the build agent needs. The reviewer reads the top; the build agent ` +
+        `reads the bottom — keep both, concrete + verifiable, in Markdown.\n\n` +
         `FEEDBACK:\n${briefOf(fb)}\n\nORIGINAL PLAN:\n${prev.draft.plan}\n\nPANEL CRITIQUES:\n${critiqueText}`,
       { schema: PLAN_SCHEMA, phase: 'Refine', label: `refine ${tag(fb, idx)}`, effort: 'xhigh' },
     ).then((refined) => ({
