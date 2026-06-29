@@ -11,7 +11,7 @@ export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 const ALL_TABLES = [
   'tenant', 'company', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
-  'leave_request', 'app_user', 'role_assignment', 'domain_event',
+  'leave_request', 'leave_cancellation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
   'holiday', 'attendance', 'attendance_policy',
   'payroll_batch', 'payslip', 'payroll_input', 'payroll_individual_txn', 'employee_cp38', 'company_statutory_my',

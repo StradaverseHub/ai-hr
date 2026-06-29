@@ -17,6 +17,10 @@ import {
   UnpaidConsentRequiredError,
   HourlyLeaveTimeRangeError,
   MissingRejectReasonError,
+  LeaveCancellationNotAllowedError,
+  LeaveCancellationTooLateError,
+  LeaveCancellationDateInvalidError,
+  LeaveCancellationPeriodClosedError,
   type LeaveDurationType,
 } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
@@ -133,6 +137,11 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // Hourly-leave time window (0129): a missing window or to <= from. Localized so admins (via leave/actions)
   // and employees (via /me) both see a translated message, not the raw English Error string.
   if (e instanceof HourlyLeaveTimeRangeError) return t('hourlyTimeRange');
+  // Partial Leave Cancellation (ADR-0065): localize the cancellation gate errors.
+  if (e instanceof LeaveCancellationTooLateError) return t('cancellationTooLate', { date: e.date ?? '' });
+  if (e instanceof LeaveCancellationDateInvalidError) return t('cancelDateInvalid', { date: e.date ?? '' });
+  if (e instanceof LeaveCancellationPeriodClosedError) return t('cancellationPeriodClosed', { date: e.date ?? '' });
+  if (e instanceof LeaveCancellationNotAllowedError) return t('cancellationNotAllowed');
   return (e as Error).message;
 }
 

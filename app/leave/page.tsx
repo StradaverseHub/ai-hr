@@ -6,7 +6,7 @@ import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/
 import { styleFor } from '@/components/planned-absences';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
-import { requestLeaveAction } from './actions';
+import { requestLeaveAction, requestLeaveCancellationAction } from './actions';
 
 const REQ_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -23,6 +23,8 @@ export default async function LeavePage({
 }: {
   searchParams: Promise<{
     error?: string;
+    // Partial Leave Cancellation (ADR-0065): success toast after a cancellation request is submitted.
+    toast?: string;
     // Phase-B #15: non-blocking holiday-completeness warning surfaced after a request was created.
     warnHoliday?: string;
     loaded?: string;
@@ -35,6 +37,20 @@ export default async function LeavePage({
   const admin = isAdmin(session);
   const today = new Date().toISOString().slice(0, 10);
   const sp = await searchParams;
+
+  // Partial Leave Cancellation (ADR-0065): the FUTURE working-day candidates for a row's cancel disclosure.
+  // Best-effort hint (strictly-after-today weekdays in the span) — the service re-validates each posted date
+  // against the real roster/holidays/closed-periods, so a weekend the heuristic might miss is rejected there.
+  const futureCancelDates = (start: string, end: string): string[] => {
+    const out: string[] = [];
+    for (let tms = Date.parse(`${start}T00:00:00Z`); tms <= Date.parse(`${end}T00:00:00Z`); tms += 86_400_000) {
+      const d = new Date(tms);
+      const iso = d.toISOString().slice(0, 10);
+      const dow = d.getUTCDay(); // 0=Sun … 6=Sat
+      if (iso > today && dow !== 0 && dow !== 6) out.push(iso);
+    }
+    return out;
+  };
 
   const [employees, leaveTypes, requests, balances] = await Promise.all([
     listEmployees(session, scopeIds),
@@ -73,6 +89,12 @@ export default async function LeavePage({
       {sp.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {sp.error}
+        </div>
+      )}
+
+      {sp.toast === 'cancellationRequested' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+          {t('cancelRequestedToast')}
         </div>
       )}
 
@@ -173,6 +195,7 @@ export default async function LeavePage({
                 <th className="px-4 py-2 font-medium">{t('colDates')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
                 <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                <th className="px-4 py-2 font-medium">{t('colAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -224,13 +247,60 @@ export default async function LeavePage({
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>
                         {t(`status.${r.status}`)}
                       </span>
+                      {/* Partial Leave Cancellation (ADR-0065): a pending give-back request shows a pill. */}
+                      {r.pendingCancellationId && (
+                        <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                          {t('cancelPendingBadge')}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {(() => {
+                        // Affordance shown only on the viewer's OWN approved, full-day, non-EL, multi-day row
+                        // with ≥1 future working day and no pending cancellation. parentGroupId != null hides
+                        // EL / per-date children (§2 — they'd throw). Admins viewing others' rows never see it
+                        // (subject-only), matching the service's subject assertion.
+                        const isOwn = session.personId != null && r.personId === session.personId;
+                        const cands = futureCancelDates(r.startDate, r.endDate);
+                        const eligible =
+                          isOwn &&
+                          r.status === 'approved' &&
+                          r.durationType === 'full_day' &&
+                          r.parentGroupId == null &&
+                          !r.pendingCancellationId &&
+                          cands.length > 0;
+                        if (!eligible) return <span className="text-muted-foreground">—</span>;
+                        return (
+                          <details>
+                            <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                              {t('cancelDatesToggle')}
+                            </summary>
+                            <form action={requestLeaveCancellationAction} className="mt-2 space-y-2">
+                              <input type="hidden" name="leaveRequestId" value={r.id} />
+                              <p className="text-[11px] text-muted-foreground">{t('cancelDatesHint')}</p>
+                              <div className="space-y-1">
+                                {cands.map((d) => (
+                                  <label key={d} className="flex items-center gap-2 text-xs">
+                                    <input type="checkbox" name="cancelDate" value={d} />
+                                    <span className="tabular-nums">{d}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
+                              <Button type="submit" size="sm" variant="outline">
+                                {t('cancelSubmit')}
+                              </Button>
+                            </form>
+                          </details>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );
               })}
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                     {t('requestsEmpty')}
                   </td>
                 </tr>

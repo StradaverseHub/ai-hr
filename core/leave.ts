@@ -24,11 +24,14 @@ import {
   company,
   employment,
   leaveApprovalStep,
+  leaveCancellationRequest,
   leaveLedger,
   leavePolicy,
   leaveRequest,
   leaveRequestAttachment,
   leaveType,
+  payrollBatch,
+  payslip,
   person,
   reportingLine,
 } from '../db/schema';
@@ -54,6 +57,45 @@ export class MissingRejectReasonError extends Error {
   constructor() {
     super('A reason is required to reject a leave request');
     this.name = 'MissingRejectReasonError';
+  }
+}
+
+// ── Partial Leave Cancellation (ADR-0065) ────────────────────────────────────────────────────────────
+// After a leave is approved, the employee can give back a SUBSET of the approved dates. The gates below are
+// hard service-layer rejections (typed so the UI can localize and so the affordance can be hidden, not just
+// throw). None of these persist anything — they run BEFORE any write.
+export class LeaveCancellationNotAllowedError extends Error {
+  constructor(reason?: string) {
+    super(reason ? `Leave date(s) cannot be cancelled: ${reason}` : 'Leave date(s) cannot be cancelled.');
+    this.name = 'LeaveCancellationNotAllowedError';
+  }
+}
+/** A requested cancel date is on/before "today" (tenant working-day frame) — too late to give back. */
+export class LeaveCancellationTooLateError extends Error {
+  readonly date?: string;
+  constructor(date?: string) {
+    super(date ? `Leave for ${date} can no longer be cancelled (it has started or passed).` : 'Leave can no longer be cancelled.');
+    this.name = 'LeaveCancellationTooLateError';
+    this.date = date;
+  }
+}
+/** A requested cancel date is outside the request span, or is not a working day inside it. */
+export class LeaveCancellationDateInvalidError extends Error {
+  readonly date?: string;
+  constructor(date?: string) {
+    super(date ? `${date} is not a cancellable working day in this leave.` : 'An invalid cancellation date was supplied.');
+    this.name = 'LeaveCancellationDateInvalidError';
+    this.date = date;
+  }
+}
+/** A requested cancel date falls in a payroll period whose batch is already closed — the deduction was
+ *  already taken and there is no reversal path, so the finalised payslip must not be retroactively altered. */
+export class LeaveCancellationPeriodClosedError extends Error {
+  readonly date?: string;
+  constructor(date?: string) {
+    super(date ? `${date} falls in a closed payroll period and can no longer be cancelled.` : 'A cancellation date falls in a closed payroll period.');
+    this.name = 'LeaveCancellationPeriodClosedError';
+    this.date = date;
   }
 }
 
@@ -1407,6 +1449,354 @@ export async function decideLeave(
     // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
     else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
     return { status: p.decision };
+  });
+}
+
+// ═════════════════════ Partial Leave Cancellation (ADR-0065) ═════════════════════
+// After a leave is approved, the employee can give back a SUBSET of the approved dates. The approval splits
+// the approved span into contiguous sibling leave_request rows (the Emergency-Leave parent_group_id model),
+// each with its own ledger debit, then flips the cancelled segment(s) to status='cancelled' and reverses
+// their debit. Because every span consumer (payroll unpaidDaysByEmployment, attendance onLeave,
+// plannedAbsences) filters status='approved', a cancelled segment disappears from balance/calendar/payroll
+// for free — no read-layer span math. See ADR-0065.
+
+/** Pure date math (no DB) so the service and tests share one implementation. Given the request's full
+ *  ordered list of WORKING dates and the set of dates to cancel, partition the working dates into maximal
+ *  contiguous runs such that every cancelled date sits in its own single-date segment. Returns the segments
+ *  (each `{ from, to, days }`, days = the run's working-day count) in date order, plus the indexes of the
+ *  segments that are fully cancelled. Cancelling ALL working dates yields every segment cancelled — the
+ *  "cancel-all == cancel request" case falls out with no special path. */
+export function splitSpanForCancellation(
+  allWorkingDates: string[],
+  cancelDates: string[],
+): { segments: { from: string; to: string; days: number }[]; cancelledSegmentIndexes: number[] } {
+  const cancelSet = new Set(cancelDates);
+  const ordered = [...allWorkingDates].sort();
+  const segments: { from: string; to: string; days: number }[] = [];
+  const cancelledSegmentIndexes: number[] = [];
+  let run: string[] = [];
+  let runCancelled: boolean | null = null;
+  const flush = () => {
+    if (run.length === 0) return;
+    const idx = segments.length;
+    segments.push({ from: run[0], to: run[run.length - 1], days: run.length });
+    if (runCancelled) cancelledSegmentIndexes.push(idx);
+    run = [];
+    runCancelled = null;
+  };
+  for (const d of ordered) {
+    const isCancelled = cancelSet.has(d);
+    // A cancelled date is always its own single-date segment; a surviving date extends the current surviving
+    // run. So flush whenever the cancelled-ness flips OR the current date is cancelled (force a new segment).
+    if (run.length > 0 && (isCancelled || runCancelled !== isCancelled)) flush();
+    run.push(d);
+    runCancelled = isCancelled;
+    if (isCancelled) flush(); // a cancelled date never merges with a following date
+  }
+  flush();
+  return { segments, cancelledSegmentIndexes };
+}
+
+/** Resolve the person behind an employment (for the subject-only assertion). */
+async function personIdForEmployment(tx: Tx, employmentId: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ personId: employment.personId })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  return row?.personId ?? null;
+}
+
+/** True when the cancel date's payroll period (YYYY-MM by start date) has a CLOSED batch that already produced
+ *  THIS employee's payslip — the deduction was finalised, so the day can't be retroactively given back
+ *  (ADR-0065 §2). We join payroll_batch → payslip on the employee so the check works under the employee's own
+ *  RLS session (an employee can see their own payslip, and therefore the batch it belongs to). Checking the
+ *  employee's OWN finalised payslip is also more precise than "any closed batch in the period". */
+async function cancelDatePeriodClosed(tx: Tx, employmentId: string, cancelDate: string): Promise<boolean> {
+  const period = cancelDate.slice(0, 7); // YYYY-MM
+  const [closed] = await tx
+    .select({ id: payrollBatch.id })
+    .from(payrollBatch)
+    .innerJoin(payslip, eq(payslip.batchId, payrollBatch.id))
+    .where(
+      and(
+        eq(payrollBatch.payPeriod, period),
+        eq(payrollBatch.status, 'closed'),
+        eq(payslip.employmentId, employmentId),
+      ),
+    )
+    .limit(1);
+  return !!closed;
+}
+
+/**
+ * Employee-initiated request to cancel a SUBSET of an approved leave's dates. Runs every §2 gate + the §6
+ * subject check + the §3 pending-overlap guard, then inserts a pending leave_cancellation_request and
+ * appends `leave-cancellation.requested`. No ledger / leave_request change here — the give-back happens only
+ * on manager approval (decideLeaveCancellation).
+ */
+export async function requestLeaveCancellation(
+  ctx: SessionContext,
+  p: { leaveRequestId: string; cancelDates: string[]; reason?: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+
+    // §6(1): subject-only. RLS is symmetric (a manager can SEE a subordinate's leave) so the "employee-
+    // initiated" rule is enforced here in code, not by RLS. Resolve the person behind the leave's employment
+    // and require the caller is that person.
+    const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+    if (!ctx.personId || ctx.personId !== subjectPersonId) {
+      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave');
+    }
+
+    // §2 gates against the request itself.
+    if (req.status !== 'approved') throw new LeaveCancellationNotAllowedError('the leave is not approved');
+    if (req.durationType !== 'full_day') {
+      throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled');
+    }
+    if (req.parentGroupId != null) {
+      // Blocks Emergency-Leave / per-date-approval child rows (each already a single date under a group).
+      throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled');
+    }
+    const [lt] = await tx
+      .select({ code: leaveType.code })
+      .from(leaveType)
+      .where(eq(leaveType.id, req.leaveTypeId))
+      .limit(1);
+    if (lt?.code === 'REPLACEMENT') {
+      // Restoring a REPLACEMENT day via the ledger without re-crediting the toil_accrual register would
+      // reintroduce the ghost-credit / negative-balance bug — and there is no inverse of consumeReplacementLeaveTx.
+      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
+    }
+
+    // The request's working dates (the only cancellable dates), in the tenant calendar frame.
+    const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
+    const workingDaysIso = await resolveWorkingDaysIso(tx, req.employmentId);
+    const workingDates = eachDate(req.startDate, req.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+    const workingSet = new Set(workingDates);
+    // "Today" in the same working-day frame the rest of leave.ts uses (UTC ISO date — eachDate/isWorkingDay
+    // operate on yyyy-mm-dd strings). Per-date future check: each cancelDate must be strictly after today.
+    const today = new Date().toISOString().slice(0, 10);
+
+    const cancelDates = [...new Set(p.cancelDates.map((d) => d.trim()))].sort();
+    if (cancelDates.length === 0) throw new LeaveCancellationDateInvalidError();
+    for (const d of cancelDates) {
+      if (!workingSet.has(d)) throw new LeaveCancellationDateInvalidError(d); // outside span or non-working day
+      if (d <= today) throw new LeaveCancellationTooLateError(d); // per-date future gate
+      if (await cancelDatePeriodClosed(tx, req.employmentId, d)) throw new LeaveCancellationPeriodClosedError(d);
+    }
+
+    // §3: another PENDING cancellation request on the same leave may already target one of these dates.
+    // Reject the overlap so two pending requests can't both approve and double-restore.
+    const pendings = await tx
+      .select({ cancelDates: leaveCancellationRequest.cancelDates })
+      .from(leaveCancellationRequest)
+      .where(
+        and(
+          eq(leaveCancellationRequest.leaveRequestId, req.id),
+          eq(leaveCancellationRequest.status, 'pending'),
+        ),
+      );
+    const pendingSet = new Set(pendings.flatMap((r) => (r.cancelDates as string[]) ?? []));
+    if (cancelDates.some((d) => pendingSet.has(d))) {
+      throw new LeaveCancellationNotAllowedError('a pending cancellation already covers one of these dates');
+    }
+
+    // requestedDays = working-day count of the cancel dates (each is a working day by the check above).
+    const requestedDays = cancelDates.length;
+    const [row] = await tx
+      .insert(leaveCancellationRequest)
+      .values({
+        tenantId: ctx.tenantId,
+        leaveRequestId: req.id,
+        employmentId: req.employmentId,
+        cancelDates,
+        requestedDays: requestedDays.toFixed(2),
+        reason: p.reason?.trim() || null,
+        status: 'pending',
+      })
+      .returning({ id: leaveCancellationRequest.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-cancellation-request',
+      aggregateId: row.id,
+      eventType: 'leave-cancellation.requested',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { leaveRequestId: req.id, cancelDates, requestedDays },
+    });
+    return { cancellationRequestId: row.id, requestedDays };
+  });
+}
+
+/**
+ * Manager decision on a cancellation request (single step). Reject ⇒ flip to 'rejected', nothing else. Approve
+ * ⇒ in one transaction: split the approved span into contiguous sibling rows (each with its own debit), flip
+ * the cancelled segment(s) to 'cancelled' and reverse their debit, and append events on BOTH aggregates.
+ */
+export async function decideLeaveCancellation(
+  ctx: SessionContext,
+  p: { cancellationRequestId: string; decision: 'approved' | 'rejected'; deciderEmploymentId?: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [cr] = await tx
+      .select()
+      .from(leaveCancellationRequest)
+      .where(eq(leaveCancellationRequest.id, p.cancellationRequestId))
+      .limit(1);
+    if (!cr) throw new Error('cancellation request not found (or not visible)');
+    if (cr.status !== 'pending') throw new Error(`cancellation request is already ${cr.status}`);
+
+    // Self-approval ban + manager/admin authorization — service-layer (RLS is symmetric, §6(2)).
+    await assertCanDecide(tx, ctx, cr.employmentId, 'leave cancellation');
+
+    if (p.decision === 'rejected') {
+      await tx
+        .update(leaveCancellationRequest)
+        .set({ status: 'rejected', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
+        .where(eq(leaveCancellationRequest.id, cr.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-cancellation-request',
+        aggregateId: cr.id,
+        eventType: 'leave-cancellation.rejected',
+        actor: actorOf(ctx),
+        subjectEmploymentId: cr.employmentId,
+        payload: { leaveRequestId: cr.leaveRequestId, cancelDates: cr.cancelDates },
+      });
+      return { status: 'rejected' as const };
+    }
+
+    // ── Approved ──────────────────────────────────────────────────────────────────────────────────────
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, cr.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found');
+    // Re-assert the request is still a cancellable approved single row (a prior approval may have split it,
+    // but the row-status backstop in §3 means the targeted dates are still in this approved row).
+    if (req.status !== 'approved' || req.parentGroupId != null) {
+      throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state');
+    }
+
+    const cancelDates = (cr.cancelDates as string[]) ?? [];
+    const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
+    const workingDaysIso = await resolveWorkingDaysIso(tx, req.employmentId);
+    const workingDates = eachDate(req.startDate, req.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+    const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
+
+    // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
+    // create new sibling rows for the rest, all sharing a fresh parent_group_id. The original carried ONE
+    // debit over the whole span (finalizeLeaveApproval), so we first reverse that whole-span debit, then give
+    // each segment its own debit — net zero for survivors, net +1×cancelled-days restored for cancelled ones.
+    const parentGroupId = randomUUID();
+    // 1) Reverse the original whole-span debit (inverse of finalizeLeaveApproval's single debit).
+    await tx.insert(leaveLedger).values({
+      tenantId: ctx.tenantId,
+      employmentId: req.employmentId,
+      leaveTypeId: req.leaveTypeId,
+      entryType: 'debit',
+      days: Number(req.days).toFixed(2), // positive = reversal of the original negative debit
+      sourceRequestId: req.id,
+      effectiveOn: req.startDate, // same cycle/carry window as the original debit (window-consistent, §1 caveat)
+    });
+
+    const cancelledRowIds: string[] = [];
+    const remainingDates: string[] = [];
+    let restoredDays = 0;
+    let remainingDays = 0;
+
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const isCancelled = cancelledSegmentIndexes.includes(i);
+      const segDays = seg.days;
+      let rowId: string;
+      if (i === 0) {
+        // Reuse the original row for the first segment (preserve its attachments / approval-step FKs).
+        rowId = req.id;
+        await tx
+          .update(leaveRequest)
+          .set({
+            startDate: seg.from,
+            endDate: seg.to,
+            days: segDays.toFixed(2),
+            parentGroupId,
+            status: isCancelled ? 'cancelled' : 'approved',
+          })
+          .where(eq(leaveRequest.id, req.id));
+      } else {
+        const [created] = await tx
+          .insert(leaveRequest)
+          .values({
+            tenantId: ctx.tenantId,
+            employmentId: req.employmentId,
+            leaveTypeId: req.leaveTypeId,
+            startDate: seg.from,
+            endDate: seg.to,
+            days: segDays.toFixed(2),
+            durationType: 'full_day',
+            status: isCancelled ? 'cancelled' : 'approved',
+            reason: req.reason,
+            parentGroupId,
+            decidedByEmploymentId: req.decidedByEmploymentId,
+            decidedAt: req.decidedAt,
+          })
+          .returning({ id: leaveRequest.id });
+        rowId = created.id;
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'leave-request',
+          aggregateId: rowId,
+          eventType: 'leave-request.split',
+          actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
+          payload: { parentGroupId, from: seg.from, to: seg.to, days: segDays },
+        });
+      }
+
+      // Each segment gets its OWN debit sourced to its own row (mirrors the EL per-row sourcing). A cancelled
+      // segment is NOT debited (its days were restored by the whole-span reversal above), so the net effect is
+      // exactly: balance up + taken down by the cancelled days, survivors unchanged.
+      if (!isCancelled) {
+        await tx.insert(leaveLedger).values({
+          tenantId: ctx.tenantId,
+          employmentId: req.employmentId,
+          leaveTypeId: req.leaveTypeId,
+          entryType: 'debit',
+          days: (-segDays).toFixed(2),
+          sourceRequestId: rowId,
+          effectiveOn: seg.from,
+        });
+        remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isWorkingDay(d, workingDaysIso, hols)));
+        remainingDays += segDays;
+      } else {
+        cancelledRowIds.push(rowId);
+        restoredDays += segDays;
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'leave-request',
+          aggregateId: rowId,
+          eventType: 'leave-request.cancelled',
+          actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
+          payload: { cancelDate: seg.from, restoredDays: segDays, parentGroupId },
+        });
+      }
+    }
+
+    await tx
+      .update(leaveCancellationRequest)
+      .set({ status: 'approved', decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
+      .where(eq(leaveCancellationRequest.id, cr.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-cancellation-request',
+      aggregateId: cr.id,
+      eventType: 'leave-cancellation.approved',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { leaveRequestId: req.id, parentGroupId, cancelledRowIds, restoredDays, remainingDays, remainingDates },
+    });
+    return { status: 'approved' as const, restoredDays, remainingDays, remainingDates };
   });
 }
 

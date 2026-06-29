@@ -671,6 +671,39 @@ export const leaveApprovalStep = pgTable(
   (t) => [index('leave_approval_step_request_idx').on(t.leaveRequestId, t.stepIndex)],
 );
 
+// Partial Leave Cancellation (ADR-0065): an employee-initiated request to give back a SUBSET of the dates
+// of an already-approved leave. The manager approves/rejects (single step). On approval the service splits
+// the approved span into contiguous sibling rows (shared parent_group_id, the Emergency-Leave model) and
+// flips the cancelled segment(s) to status='cancelled' + reverses their ledger debit. cancel_dates is a
+// jsonb array of ISO yyyy-mm-dd. employment_id is denormalized from the leave_request for RLS (same
+// can_see_employment rule as leave_request_attachment / attendance_correction). status reuses the
+// pending/approved/rejected 3-value space as a text + check (the attendance_correction precedent). RLS is
+// intentionally SYMMETRIC (can_see_employment in USING + WITH CHECK); the subject-only INSERT rule and the
+// self-approval ban live in the SERVICE layer (requestLeaveCancellation / decideLeaveCancellation), exactly
+// as the attendance_correction RLS does — see 0132 migration comment.
+export const leaveCancellationRequest = pgTable(
+  'leave_cancellation_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    leaveRequestId: uuid('leave_request_id')
+      .notNull()
+      .references(() => leaveRequest.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    cancelDates: jsonb('cancel_dates').notNull(), // string[] of ISO yyyy-mm-dd
+    requestedDays: numeric('requested_days', { precision: 6, scale: 2 }).notNull(),
+    reason: text('reason'),
+    // pending | approved | rejected — text + check (attendance_correction_status precedent reused as a check).
+    status: text('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('leave_cancellation_request_request_idx').on(t.leaveRequestId)],
+);
+
 // Wave 2 (ADR-0039 2B-2): the configurable approval chain. `levels` is an ordered array of level kinds
 // ('direct_manager' | 'hr_admin'). A null leave_type_id is the company default; a non-null one overrides
 // for that type. Resolved at request time (type-specific → default → built-in fallback). Catalog RLS:

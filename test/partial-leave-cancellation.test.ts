@@ -1,0 +1,558 @@
+/**
+ * Partial Leave Cancellation after Approval (ADR-0065).
+ *
+ * After an approved multi-day leave, the employee can give back a SUBSET of the dates. On approval the
+ * service splits the approved span into contiguous sibling rows (parent_group_id, the Emergency-Leave model),
+ * each with its own ledger debit, and flips the cancelled segment(s) to status='cancelled' + reverses their
+ * debit. Because every span consumer filters status='approved', the cancelled day disappears from the leave
+ * balance, the calendar/plannedAbsences, attendance onLeave, and payroll unpaidDays — for free.
+ *
+ * Dates: "today" in tests is the real wall-clock date (the service uses new Date()), so all leave dates are in
+ * August 2026 (well in the future) so the per-date future gate passes. 10/11/12 Aug 2026 are Mon/Tue/Wed.
+ */
+import { and, eq, gte, lte } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import * as schema from '../db/schema';
+import { hireEmployee, setReportingLine } from '../core/org';
+import {
+  decideLeave,
+  decideLeaveCancellation,
+  requestLeave,
+  requestLeaveCancellation,
+  splitSpanForCancellation,
+  LeaveCancellationNotAllowedError,
+  LeaveCancellationTooLateError,
+  LeaveCancellationDateInvalidError,
+  LeaveCancellationPeriodClosedError,
+} from '../core/leave';
+import { leaveBalances, leaveEntitlementBreakdown, plannedAbsences } from '../core/read';
+import type { SessionContext } from '../db/client';
+import {
+  adminCtx,
+  closeAll,
+  createAppUser,
+  eventTypesFor,
+  migrateTestDb,
+  owner,
+  resetDb,
+  seedBase,
+  type Base,
+} from './harness';
+
+let b: Base;
+let subject: { personId: string; employmentId: string };
+let subjectCtx: SessionContext;
+let mgrCtx: SessionContext;
+let manager: { personId: string; employmentId: string };
+
+const hire = (name: string) =>
+  hireEmployee(adminCtx(b), {
+    person: { fullName: name, primaryEmail: `plc_${randomUUID().slice(0, 8)}@t.local` },
+    companyId: b.companyId,
+    departmentId: b.deptA,
+    employmentType: 'full_time',
+    hiredOn: '2024-01-01',
+  });
+
+async function grantAnnual(days: string, typeId = b.annualLeaveTypeId) {
+  await owner.db.insert(schema.leaveLedger).values({
+    tenantId: b.tenantId,
+    employmentId: subject.employmentId,
+    leaveTypeId: typeId,
+    entryType: 'accrual',
+    days,
+    effectiveOn: '2026-01-01',
+  });
+}
+
+/** Status of every row for a leave_request id or its parent group, ordered by start date. */
+async function siblingRows(parentGroupId: string) {
+  return owner.db
+    .select({
+      id: schema.leaveRequest.id,
+      startDate: schema.leaveRequest.startDate,
+      endDate: schema.leaveRequest.endDate,
+      days: schema.leaveRequest.days,
+      status: schema.leaveRequest.status,
+    })
+    .from(schema.leaveRequest)
+    .where(eq(schema.leaveRequest.parentGroupId, parentGroupId))
+    .orderBy(schema.leaveRequest.startDate);
+}
+
+/** Mirror core/payroll.ts unpaidDaysByEmployment (private): sum of approved unpaid-type days in the period. */
+async function unpaidDaysInPeriod(employmentId: string, periodStart: string, periodEnd: string) {
+  const rows = await owner.db
+    .select({ days: schema.leaveRequest.days })
+    .from(schema.leaveRequest)
+    .innerJoin(schema.leaveType, eq(schema.leaveType.id, schema.leaveRequest.leaveTypeId))
+    .where(
+      and(
+        eq(schema.leaveRequest.status, 'approved'),
+        eq(schema.leaveType.paid, false),
+        eq(schema.leaveRequest.employmentId, employmentId),
+        gte(schema.leaveRequest.startDate, periodStart),
+        lte(schema.leaveRequest.startDate, periodEnd),
+      ),
+    );
+  return rows.reduce((s, r) => s + Number(r.days), 0);
+}
+
+/** Mirror core/attendance.ts onLeave predicate: a full_day approved row covering `date`. */
+async function onLeave(employmentId: string, date: string) {
+  const rows = await owner.db
+    .select({ id: schema.leaveRequest.id })
+    .from(schema.leaveRequest)
+    .where(
+      and(
+        eq(schema.leaveRequest.status, 'approved'),
+        eq(schema.leaveRequest.durationType, 'full_day'),
+        lte(schema.leaveRequest.startDate, date),
+        gte(schema.leaveRequest.endDate, date),
+        eq(schema.leaveRequest.employmentId, employmentId),
+      ),
+    );
+  return rows.length > 0;
+}
+
+/** Submit + single-step approve a 10–12 Aug ANNUAL leave; returns the (single) approved row id. */
+async function approvedThreeDay() {
+  const res = await requestLeave(subjectCtx, {
+    employmentId: subject.employmentId,
+    leaveTypeId: b.annualLeaveTypeId,
+    startDate: '2026-08-10',
+    endDate: '2026-08-12',
+  });
+  await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+  return res.leaveRequestId;
+}
+
+beforeAll(async () => {
+  await migrateTestDb();
+});
+beforeEach(async () => {
+  await resetDb();
+  b = await seedBase();
+  subject = await hire('Subject');
+  const u = await createAppUser(b.tenantId, subject.personId, 'employee');
+  subjectCtx = { tenantId: b.tenantId, userId: u, personId: subject.personId, roles: ['employee'] };
+  manager = await hire('Manager');
+  const uM = await createAppUser(b.tenantId, manager.personId, 'manager');
+  await setReportingLine(adminCtx(b), {
+    subordinateEmploymentId: subject.employmentId,
+    managerEmploymentId: manager.employmentId,
+    lineType: 'administrative',
+    validFrom: '2024-01-01',
+  });
+  mgrCtx = { tenantId: b.tenantId, userId: uM, personId: manager.personId, roles: ['manager'] };
+  await grantAnnual('20.00');
+});
+afterAll(async () => {
+  await closeAll();
+});
+
+describe('splitSpanForCancellation (pure)', () => {
+  it('puts each cancelled date in its own segment and merges surviving runs', () => {
+    const all = ['2026-08-10', '2026-08-11', '2026-08-12'];
+    const r = splitSpanForCancellation(all, ['2026-08-11']);
+    expect(r.segments).toEqual([
+      { from: '2026-08-10', to: '2026-08-10', days: 1 },
+      { from: '2026-08-11', to: '2026-08-11', days: 1 },
+      { from: '2026-08-12', to: '2026-08-12', days: 1 },
+    ]);
+    // The middle segment (index 1) is the cancelled one.
+    expect(r.cancelledSegmentIndexes).toEqual([1]);
+  });
+  it('cancelling every date marks every segment cancelled (cancel-all == cancel request)', () => {
+    const all = ['2026-08-10', '2026-08-11', '2026-08-12'];
+    const r = splitSpanForCancellation(all, all);
+    expect(r.cancelledSegmentIndexes).toEqual([0, 1, 2]);
+  });
+  it('keeps a contiguous surviving block as one segment', () => {
+    const all = ['2026-08-10', '2026-08-11', '2026-08-12', '2026-08-13'];
+    const r = splitSpanForCancellation(all, ['2026-08-10']);
+    expect(r.segments).toEqual([
+      { from: '2026-08-10', to: '2026-08-10', days: 1 },
+      { from: '2026-08-11', to: '2026-08-13', days: 3 },
+    ]);
+    expect(r.cancelledSegmentIndexes).toEqual([0]);
+  });
+});
+
+describe('Partial Leave Cancellation — happy path', () => {
+  it('cancelling the middle day splits the span, restores 1 day, keeps the rest approved', async () => {
+    const reqId = await approvedThreeDay();
+    const balBefore = await leaveBalances(subjectCtx, subject.employmentId);
+    const annBefore = balBefore.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!;
+
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-11'],
+    });
+    const dec = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+    expect(dec.status).toBe('approved');
+    expect(dec.restoredDays).toBe(1);
+
+    // The original row now belongs to a parent group; siblings are 10 (approved) + 11 (cancelled) + 12 (approved).
+    const [orig] = await owner.db
+      .select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, reqId));
+    const rows = await siblingRows(orig.parentGroupId!);
+    expect(rows.map((r) => [r.startDate, r.status])).toEqual([
+      ['2026-08-10', 'approved'],
+      ['2026-08-11', 'cancelled'],
+      ['2026-08-12', 'approved'],
+    ]);
+
+    // Balance restored by exactly 1, taken reduced by 1.
+    const balAfter = await leaveBalances(subjectCtx, subject.employmentId);
+    const annAfter = balAfter.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!;
+    expect(Number(annAfter.balance) - Number(annBefore.balance)).toBeCloseTo(1, 2);
+    expect(Number(annBefore.taken) - Number(annAfter.taken)).toBeCloseTo(1, 2);
+
+    // Events on BOTH aggregates.
+    const crEvents = await eventTypesFor(b.tenantId, cancellationRequestId);
+    expect(crEvents).toContain('leave-cancellation.requested');
+    expect(crEvents).toContain('leave-cancellation.approved');
+    const cancelledRow = rows.find((r) => r.status === 'cancelled')!;
+    expect(await eventTypesFor(b.tenantId, cancelledRow.id)).toContain('leave-request.cancelled');
+  });
+
+  it('the cancelled day disappears from attendance, payroll unpaid-days, and plannedAbsences; the others remain', async () => {
+    // Use an UNPAID type so the payroll unpaid-days check is meaningful.
+    const [upl] = await owner.db
+      .insert(schema.leaveType)
+      .values({ tenantId: b.tenantId, code: 'UNPAID', name: 'Unpaid', paid: false, counting: 'working_days' })
+      .returning({ id: schema.leaveType.id });
+    await grantAnnual('20.00', upl.id);
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: upl.id,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+
+    // Before: all 3 days are unpaid + on-leave.
+    expect(await unpaidDaysInPeriod(subject.employmentId, '2026-08-01', '2026-08-31')).toBeCloseTo(3, 2);
+    expect(await onLeave(subject.employmentId, '2026-08-11')).toBe(true);
+
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-11'],
+    });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+
+    // After: 11 Aug is gone from every downstream; 10 + 12 remain.
+    expect(await onLeave(subject.employmentId, '2026-08-11')).toBe(false);
+    expect(await onLeave(subject.employmentId, '2026-08-10')).toBe(true);
+    expect(await onLeave(subject.employmentId, '2026-08-12')).toBe(true);
+    expect(await unpaidDaysInPeriod(subject.employmentId, '2026-08-01', '2026-08-31')).toBeCloseTo(2, 2);
+
+    // plannedAbsences renders only approved/pending rows (id is keyed by personId) — the cancelled segment is
+    // not drawn, so no drawn span covers 11 Aug while 10 + 12 remain.
+    const pa = await plannedAbsences(adminCtx(b), [b.companyId], { from: '2026-08-01', to: '2026-08-31' });
+    const mine = pa.find((p) => p.id === subject.personId);
+    const covers = (date: string) =>
+      (mine?.leaves ?? []).some((l) => l.startDate <= date && date <= l.endDate);
+    expect(covers('2026-08-11')).toBe(false);
+    expect(covers('2026-08-10')).toBe(true);
+    expect(covers('2026-08-12')).toBe(true);
+  });
+});
+
+describe('Partial Leave Cancellation — reject + cancel-all', () => {
+  it('reject leaves all 3 dates approved and the balance unchanged', async () => {
+    const reqId = await approvedThreeDay();
+    const balBefore = await leaveBalances(subjectCtx, subject.employmentId);
+    const before = Number(balBefore.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.balance);
+
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-11'],
+    });
+    const dec = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'rejected' });
+    expect(dec.status).toBe('rejected');
+
+    const [row] = await owner.db
+      .select({ status: schema.leaveRequest.status, parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, reqId));
+    expect(row.status).toBe('approved');
+    expect(row.parentGroupId).toBeNull(); // no split on reject
+
+    const balAfter = await leaveBalances(subjectCtx, subject.employmentId);
+    const after = Number(balAfter.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.balance);
+    expect(after).toBeCloseTo(before, 2);
+    expect(await eventTypesFor(b.tenantId, cancellationRequestId)).toContain('leave-cancellation.rejected');
+  });
+
+  it('cancelling all 3 dates is equivalent to cancelling the request (every segment cancelled, full restore)', async () => {
+    const reqId = await approvedThreeDay();
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-10', '2026-08-11', '2026-08-12'],
+    });
+    const dec = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+    expect(dec.restoredDays).toBe(3);
+    expect(dec.remainingDays).toBe(0);
+
+    const [orig] = await owner.db
+      .select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, reqId));
+    const rows = await siblingRows(orig.parentGroupId!);
+    expect(rows.every((r) => r.status === 'cancelled')).toBe(true);
+
+    // Balance fully restored: taken back to 0 for this type.
+    const bal = await leaveBalances(subjectCtx, subject.employmentId);
+    expect(Number(bal.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.taken)).toBeCloseTo(0, 2);
+  });
+});
+
+describe('Partial Leave Cancellation — gates', () => {
+  it('cannot cancel a pending (not yet approved) leave', async () => {
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+
+  it('cannot cancel a half-day leave', async () => {
+    // Allow half-day on the ANNUAL type so the request is accepted, then the cancellation gate rejects it.
+    await owner.db
+      .update(schema.leaveType)
+      .set({ durations: ['full_day', 'half_day_am', 'half_day_pm'] })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-10',
+      endDate: '2026-08-10',
+      durationType: 'half_day_am',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+
+  it('cannot cancel a REPLACEMENT (time-off-in-lieu) leave', async () => {
+    const [repl] = await owner.db
+      .insert(schema.leaveType)
+      .values({ tenantId: b.tenantId, code: 'REPLACEMENT', name: 'Replacement', paid: true, counting: 'working_days' })
+      .returning({ id: schema.leaveType.id });
+    await grantAnnual('10.00', repl.id);
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: repl.id,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+
+  it('cannot cancel a per-date-approval / EL child (parentGroupId != null)', async () => {
+    // A per-date-approval WORKING-DAYS request decomposes into child rows that each carry parentGroupId (the
+    // same shape as Emergency-Leave children). Such children are excluded from cancellation by code.
+    await owner.db
+      .update(schema.leaveType)
+      .set({ counting: 'working_days', perDateApproval: true })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+    // res.leaveRequestId is the first child (parentGroupId != null). Approve it, then try to cancel it.
+    expect(res.parentGroupId).not.toBeNull();
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+
+  it('cannot cancel a date on/before today, but a later future date in the same request is allowed', async () => {
+    // Build an approved leave directly spanning [today-10 … today+10] with its own ledger debit (the shape
+    // finalizeLeaveApproval produces). Then pick a genuinely PAST working day and a genuinely FUTURE working
+    // day from that window, regardless of when the test runs.
+    const iso = (d: Date) => d.toISOString().slice(0, 10);
+    const shift = (delta: number) => {
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() + delta);
+      return d;
+    };
+    const isWeekday = (d: Date) => d.getUTCDay() >= 1 && d.getUTCDay() <= 5;
+    // Nearest past weekday strictly before today.
+    let past = shift(-1);
+    while (!isWeekday(past)) past = new Date(Date.UTC(past.getUTCFullYear(), past.getUTCMonth(), past.getUTCDate() - 1));
+    // Nearest future weekday strictly after today.
+    let future = shift(1);
+    while (!isWeekday(future)) future = new Date(Date.UTC(future.getUTCFullYear(), future.getUTCMonth(), future.getUTCDate() + 1));
+    const start = iso(shift(-10));
+    const end = iso(shift(10));
+    const [row] = await owner.db
+      .insert(schema.leaveRequest)
+      .values({
+        tenantId: b.tenantId,
+        employmentId: subject.employmentId,
+        leaveTypeId: b.annualLeaveTypeId,
+        startDate: start,
+        endDate: end,
+        days: '15.00',
+        durationType: 'full_day',
+        status: 'approved',
+      })
+      .returning({ id: schema.leaveRequest.id });
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'debit',
+      days: '-15.00',
+      sourceRequestId: row.id,
+      effectiveOn: start,
+    });
+    // Cancelling the past working day is too late.
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: row.id, cancelDates: [iso(past)] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationTooLateError);
+    // But a future working day in the SAME request is allowed.
+    const ok = await requestLeaveCancellation(subjectCtx, { leaveRequestId: row.id, cancelDates: [iso(future)] });
+    expect(ok.cancellationRequestId).toBeTruthy();
+  });
+
+  it('cannot cancel a date whose payroll period batch is closed (employee has a finalised payslip)', async () => {
+    const reqId = await approvedThreeDay();
+    // A closed payroll batch for Aug 2026 in the subject's company, WITH the subject's own payslip in it —
+    // mirrors a finalised period (the deduction was already taken; no reversal path).
+    const [pp] = await owner.db
+      .insert(schema.payPeriod)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, period: '2026-08', status: 'closed' })
+      .returning({ id: schema.payPeriod.id });
+    const [batch] = await owner.db
+      .insert(schema.payrollBatch)
+      .values({
+        tenantId: b.tenantId,
+        companyId: b.companyId,
+        payPeriodId: pp.id,
+        payPeriod: '2026-08',
+        batchDate: '2026-08-31',
+        status: 'closed',
+      })
+      .returning({ id: schema.payrollBatch.id });
+    await owner.db.insert(schema.payslip).values({
+      tenantId: b.tenantId,
+      batchId: batch.id,
+      employmentId: subject.employmentId,
+      basicSalary: '5000.00',
+      grossPay: '5000.00',
+      statutory: {},
+      totalDeductions: '500.00',
+      netPay: '4500.00',
+      employerCost: '5600.00',
+    });
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationPeriodClosedError);
+  });
+
+  it('cannot cancel a date outside the span', async () => {
+    const reqId = await approvedThreeDay();
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-20'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationDateInvalidError);
+  });
+});
+
+describe('Partial Leave Cancellation — concurrency', () => {
+  it('a second pending request overlapping the first is rejected (no double-restore)', async () => {
+    const reqId = await approvedThreeDay();
+    await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
+    // A second request that also targets 11 Aug must be rejected while the first is still pending.
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11', '2026-08-12'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+});
+
+describe('Partial Leave Cancellation — authz / RLS', () => {
+  it('the subject can request on their own leave but a manager cannot insert one on the subordinate', async () => {
+    const reqId = await approvedThreeDay();
+    // Manager (who can SEE the leave via RLS) must NOT be able to insert a cancellation — subject-only.
+    await expect(
+      requestLeaveCancellation(mgrCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+
+  it('a non-manager peer cannot decide; self-approval is banned; the manager can', async () => {
+    const reqId = await approvedThreeDay();
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-11'],
+    });
+    // Self-approval: the subject cannot decide their own cancellation.
+    await expect(
+      decideLeaveCancellation(subjectCtx, { cancellationRequestId, decision: 'approved' }),
+    ).rejects.toThrow();
+    // A peer with no reporting line over the subject cannot decide.
+    const peer = await hire('Peer');
+    const uP = await createAppUser(b.tenantId, peer.personId, 'manager');
+    const peerCtx: SessionContext = { tenantId: b.tenantId, userId: uP, personId: peer.personId, roles: ['manager'] };
+    await expect(
+      decideLeaveCancellation(peerCtx, { cancellationRequestId, decision: 'approved' }),
+    ).rejects.toThrow();
+    // The real administrative manager can.
+    const dec = await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+    expect(dec.status).toBe('approved');
+  });
+
+  it('the subject CAN read their own cancellation request under RLS (positive grant check)', async () => {
+    const reqId = await approvedThreeDay();
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-11'],
+    });
+    // Read back through the app (RLS) role as the subject — must be visible (not a missing-grant false-green).
+    const { withTenant } = await import('../db/client');
+    const visible = await withTenant(subjectCtx, async (tx) =>
+      tx
+        .select({ id: schema.leaveCancellationRequest.id })
+        .from(schema.leaveCancellationRequest)
+        .where(eq(schema.leaveCancellationRequest.id, cancellationRequestId)),
+    );
+    expect(visible).toHaveLength(1);
+  });
+});
+
+describe('Partial Leave Cancellation — carry-forward window consistency', () => {
+  it('restores balance/taken without disturbing carryForwardRemaining across the carry-expiry boundary', async () => {
+    // The reversing debit is dated at the original debit effectiveOn (the request start), so it lands in the
+    // same carry window as the original — net-of-cancellation carryForwardRemaining is unchanged.
+    const reqId = await approvedThreeDay();
+    const asOf = '2026-08-31';
+    const before = await leaveEntitlementBreakdown(subjectCtx, subject.employmentId, b.annualLeaveTypeId, asOf);
+    const carryBefore = before?.carryForwardRemaining ?? 0;
+
+    const { cancellationRequestId } = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-11'],
+    });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId, decision: 'approved' });
+
+    const after = await leaveEntitlementBreakdown(subjectCtx, subject.employmentId, b.annualLeaveTypeId, asOf);
+    const carryAfter = after?.carryForwardRemaining ?? 0;
+    expect(carryAfter).toBeCloseTo(carryBefore, 2);
+  });
+});

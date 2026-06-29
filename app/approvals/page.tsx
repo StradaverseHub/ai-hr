@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listLeaveRequests } from '@/core/read';
+import { listLeaveRequests, listPendingLeaveCancellations } from '@/core/read';
 import { listAttendanceCorrections } from '@/core/attendance';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
@@ -16,6 +16,7 @@ import {
   approveCorrectionAction,
   approveLeaveAction,
   approveProfileChangeAction,
+  decideLeaveCancellationAction,
   decideResignationAction,
   decideReviewAction,
   submitManagerEvaluationAction,
@@ -122,8 +123,9 @@ export default async function ApprovalsPage({
     rejectReason: t('rejectReasonPlaceholder'),
   };
 
-  const [leave, corrections, profileChanges, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations] = await Promise.all([
     listLeaveRequests(s, scopeIds),
+    listPendingLeaveCancellations(s, scopeIds),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     listPendingClaims(s),
@@ -140,12 +142,19 @@ export default async function ApprovalsPage({
 
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
+  // Partial Leave Cancellation (ADR-0065): exclude the viewer's OWN cancellation requests (self-approval ban).
+  const pendingCancellations = leaveCancellations.filter((c) => !mine(c.personId));
   // 2B-1: a request may sit at a manager step or an HR step. A manager step is decidable by the
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
   const stageLabel = (kind: string | null) =>
     kind === 'hr_admin' ? t('stageHr') : kind === 'direct_manager' ? t('stageManager') : '';
   const total =
-    pendingLeave.length + corrections.length + profileChanges.length + claims.length + resignations.length;
+    pendingLeave.length +
+    pendingCancellations.length +
+    corrections.length +
+    profileChanges.length +
+    claims.length +
+    resignations.length;
   const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
 
   return (
@@ -267,6 +276,61 @@ export default async function ApprovalsPage({
                       // decide controls (each pending date-row decided independently).
                       <LeaveDecideButtons action={approveLeaveAction} id={r.id} labels={leaveDecideLabels} />
                     )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      {/* Partial Leave Cancellation (ADR-0065): pending employee requests to give back a subset of approved
+          leave dates. Each card shows the ORIGINAL dates, the date(s) to cancel (highlighted), the remaining
+          dates, days, and reason, with Approve/Reject. Self-requests are excluded above (self-approval ban). */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('leaveCancellationTitle')} count={pendingCancellations.length} />
+        {pendingCancellations.length === 0 ? (
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingCancellations')}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                <th className="px-4 py-2 font-medium">{t('type')}</th>
+                <th className="px-4 py-2 font-medium">{t('originalDates')}</th>
+                <th className="px-4 py-2 font-medium">{t('datesToCancel')}</th>
+                <th className="px-4 py-2 font-medium">{t('remainingDates')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('days')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pendingCancellations.map((c) => (
+                <tr key={c.id}>
+                  <td className="px-4 py-2.5 font-medium">{c.employee}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{c.leaveType}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
+                    {c.originalStart} → {c.originalEnd}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <div className="flex flex-wrap gap-1">
+                      {c.cancelDates.map((d) => (
+                        <span
+                          key={d}
+                          className="inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium tabular-nums text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+                        >
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+                    {c.reason && <div className="mt-1 text-xs text-muted-foreground">{c.reason}</div>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs tabular-nums text-muted-foreground">
+                    {c.remainingDates.length > 0 ? c.remainingDates.join(', ') : '—'}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{Number(c.requestedDays)}</td>
+                  <td className="px-4 py-2.5">
+                    <DecideButtons action={decideLeaveCancellationAction} id={c.id} labels={decideLabels} />
                   </td>
                 </tr>
               ))}

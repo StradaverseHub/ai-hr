@@ -925,6 +925,13 @@
       "when": 1781861950000,
       "tag": "0131_leave_per_date_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1781861960000,
+      "tag": "0132_partial_leave_cancellation",
+      "breakpoints": true
     }
   ]
 }

@@ -11,7 +11,7 @@
  */
 import { isAdmin } from '../lib/authz';
 import type { SessionContext } from '../db/client';
-import { listLeaveRequests } from './read';
+import { listLeaveRequests, listPendingLeaveCancellations } from './read';
 import { listAttendanceCorrections } from './attendance';
 import { listProfileChangeRequests } from './profile';
 import { listPendingClaims } from './claims';
@@ -34,8 +34,11 @@ export async function pendingApprovalsCount(
 
   if (!admin && !manager && managerReviews.length === 0) return 0;
 
-  const [leave, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
+  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
     listLeaveRequests(ctx, scopeIds),
+    // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
+    // decision as a leave request, so they belong in the badge — with the same self-exclusion below.
+    listPendingLeaveCancellations(ctx, scopeIds),
     listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     listPendingClaims(ctx),
@@ -48,8 +51,13 @@ export async function pendingApprovalsCount(
   const actionableLeave = leave.filter(
     (r) => r.status === 'pending' && (ctx.personId == null || r.personId !== ctx.personId),
   );
+  // Self-exclusion: an employee's own cancellation request is not "awaiting your action".
+  const actionableCancellations = leaveCancellations.filter(
+    (r) => ctx.personId == null || r.personId !== ctx.personId,
+  );
   return (
     actionableLeave.length +
+    actionableCancellations.length +
     corrections.length +
     profileChanges.length +
     claims.length +

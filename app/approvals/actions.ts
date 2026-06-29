@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { decideLeave } from '@/core/leave';
+import { decideLeave, decideLeaveCancellation } from '@/core/leave';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
@@ -43,6 +43,25 @@ export async function approveLeaveAction(formData: FormData) {
     fail(new Error(await localizeLeaveError(e)));
   }
   done(`Leave ${decision}`);
+}
+
+// Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a
+// subset of approved leave dates. Authz lives in decideLeaveCancellation (assertCanDecide bans self-approval
+// + requires manager/admin). Resolve the decider employment like the claim/resignation actions.
+export async function decideLeaveCancellationAction(formData: FormData) {
+  const s = await getSession();
+  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  try {
+    const me = await myEmployment(s);
+    await decideLeaveCancellation(s, {
+      cancellationRequestId: String(formData.get('id')),
+      decision,
+      deciderEmploymentId: me?.employmentId,
+    });
+  } catch (e) {
+    fail(new Error(await localizeLeaveError(e)));
+  }
+  done(`Cancellation ${decision}`);
 }
 
 export async function approveCorrectionAction(formData: FormData) {

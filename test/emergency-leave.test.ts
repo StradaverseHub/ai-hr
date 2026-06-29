@@ -380,10 +380,14 @@ describe('Emergency Leave — invariants & guards', () => {
     });
     const rows = await childRows(res.parentGroupId!);
     await decideLeave(adminCtx(b), { leaveRequestId: rows[0].id, decision: 'approved' });
-    // Mirrors the grep finding: core/leave.ts exposes no cancel/withdraw/reverse leave function. Guard it.
+    // Partial Leave Cancellation (ADR-0065) added a cancellation primitive, but it deliberately EXCLUDES
+    // Emergency-Leave children (parentGroupId != null) — restoring an EL child via the ledger without
+    // re-running its cascade is unsafe. So an approved EL child has no give-back path: requestLeaveCancellation
+    // rejects it, and re-deciding it is terminal.
     const api = await import('../core/leave');
-    const names = Object.keys(api).map((k) => k.toLowerCase());
-    expect(names.some((n) => /cancel|withdraw|revers|undo/.test(n))).toBe(false);
+    await expect(
+      api.requestLeaveCancellation(adminCtx(b), { leaveRequestId: rows[0].id, cancelDates: [rows[0].startDate] }),
+    ).rejects.toBeInstanceOf(api.LeaveCancellationNotAllowedError);
     // Re-deciding an already-approved request is rejected (terminal). Pass a reason (0131) so the call
     // reaches the terminal-status guard rather than the mandatory-reason guard.
     await expect(

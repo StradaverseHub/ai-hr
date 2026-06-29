@@ -24,6 +24,7 @@ import {
   holiday,
   holidayGroup,
   jobGrade,
+  leaveCancellationRequest,
   leaveLedger,
   leavePolicy,
   leaveRequest,
@@ -361,6 +362,10 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
         // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
         applicantBalance: sql<string>`coalesce((select sum(ll.days) from leave_ledger ll where ll.employment_id = leave_request.employment_id and ll.leave_type_id = leave_request.leave_type_id), 0)`,
+        // Partial Leave Cancellation (ADR-0065): the pending cancellation request (if any) on this row, so the
+        // UI can show a "cancellation pending" pill and suppress a second cancel affordance. NULL when none.
+        pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+        pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
       })
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
@@ -372,6 +377,64 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
       .orderBy(desc(leaveRequest.createdAt))
       .limit(limit),
   );
+}
+
+/** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card
+ *  shows the original leave dates, the date(s) being given back, the remaining dates, days, and reason. RLS
+ *  already scopes visibility (subject + manager + admin via can_see_employment); we additionally narrow to
+ *  the company scope the inbox is viewing. The decide authorization (manager/admin, no self-approval) lives
+ *  in decideLeaveCancellation. */
+export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: string[], locale?: string) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: leaveCancellationRequest.id,
+        leaveRequestId: leaveCancellationRequest.leaveRequestId,
+        employmentId: leaveCancellationRequest.employmentId,
+        personId: employment.personId,
+        employee: person.fullName,
+        leaveType: leaveType.name,
+        i18n: leaveType.i18n,
+        typeCode: leaveType.code,
+        originalStart: leaveRequest.startDate,
+        originalEnd: leaveRequest.endDate,
+        cancelDates: leaveCancellationRequest.cancelDates,
+        requestedDays: leaveCancellationRequest.requestedDays,
+        reason: leaveCancellationRequest.reason,
+        createdAt: leaveCancellationRequest.createdAt,
+      })
+      .from(leaveCancellationRequest)
+      .innerJoin(leaveRequest, eq(leaveRequest.id, leaveCancellationRequest.leaveRequestId))
+      .innerJoin(employment, eq(employment.id, leaveCancellationRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .where(
+        and(
+          eq(leaveCancellationRequest.status, 'pending'),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(desc(leaveCancellationRequest.createdAt));
+    return rows.map(({ i18n, cancelDates, ...r }) => {
+      const cancel = (cancelDates as string[]) ?? [];
+      const cancelSet = new Set(cancel);
+      // The original full date span (every calendar day inclusive); remaining = original minus cancelled.
+      const allDays: string[] = [];
+      for (
+        let t = Date.parse(`${r.originalStart}T00:00:00Z`);
+        t <= Date.parse(`${r.originalEnd}T00:00:00Z`);
+        t += 86_400_000
+      ) {
+        allDays.push(new Date(t).toISOString().slice(0, 10));
+      }
+      return {
+        ...r,
+        leaveType: pickName(r.leaveType, i18n, locale),
+        cancelDates: cancel,
+        remainingDates: allDays.filter((d) => !cancelSet.has(d)),
+      };
+    });
+  });
 }
 
 /** Planned-absences timeline: every active employee in scope, each with their approved +

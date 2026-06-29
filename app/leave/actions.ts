@@ -9,6 +9,7 @@ import {
   addLeaveAttachment,
   decideLeave,
   requestLeave,
+  requestLeaveCancellation,
   validateLeaveDocument,
   isEmergencyReasonCategory,
   type LeaveDurationType,
@@ -103,6 +104,27 @@ export async function requestLeaveAction(formData: FormData) {
   }
   revalidatePath('/leave');
   redirect(`/leave${warnQuery}`);
+}
+
+// Partial Leave Cancellation (ADR-0065): an employee gives back a SUBSET of an approved leave's dates. The
+// checkboxes post one `cancelDate` value per ticked future working day. requestLeaveCancellation re-runs every
+// gate server-side (subject-only, approved+full_day+non-EL+non-REPLACEMENT, per-date future, closed-period,
+// pending-overlap) so a stale form can't slip a bad date through. Revalidate /leave, /approvals, and / so the
+// manager's inbox and the dashboard Planned Absences both pick up the new pending request.
+export async function requestLeaveCancellationAction(formData: FormData) {
+  const session = await getSession();
+  const leaveRequestId = String(formData.get('leaveRequestId'));
+  const cancelDates = formData.getAll('cancelDate').map((d) => String(d)).filter(Boolean);
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  try {
+    await requestLeaveCancellation(session, { leaveRequestId, cancelDates, reason });
+  } catch (e) {
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
+  }
+  revalidatePath('/leave');
+  revalidatePath('/approvals');
+  revalidatePath('/');
+  redirect('/leave?toast=cancellationRequested');
 }
 
 export async function decideLeaveAction(formData: FormData) {
