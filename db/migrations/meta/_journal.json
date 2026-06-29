@@ -946,6 +946,13 @@
       "when": 1781861980000,
       "tag": "0134_leave_policy_company_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1781861990000,
+      "tag": "0135_location_holiday_calendars",
+      "breakpoints": true
     }
   ]
 }

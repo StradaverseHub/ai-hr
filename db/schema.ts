@@ -191,6 +191,13 @@ export const location = pgTable(
     name: text('name').notNull(),
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2 (display only)
     state: text('state'), // holiday-state override; null = inherit work_state/default/national
+    // PH-calendars-by-location (ADR-0067): the NAMED holiday calendar every employee at this location
+    // follows. Null = unmapped → byte-identical to today's resolution (state override → company default →
+    // national). A holiday_group with an `archetype` IS the calendar. ON DELETE SET NULL: deleting a group
+    // un-maps the location rather than erroring (the deleteHolidayGroup service guard is the friendly path).
+    holidayGroupId: uuid('holiday_group_id').references((): AnyPgColumn => holidayGroup.id, {
+      onDelete: 'set null',
+    }),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -1146,6 +1153,15 @@ export const holiday = pgTable(
 // `employment.work_state` are mutually exclusive (DB CHECK + service XOR): a group is "one or more
 // states", a bare work-state is "exactly one state". Deleting a group SETs NULL on referencing
 // employments (FK), falling back to work_state/company-default/national.
+// PH-calendars-by-location (ADR-0067). A holiday_group, once it carries an `archetype` and is mapped to a
+// location, IS a named public-holiday CALENDAR. The archetype decides how the resolver builds the calendar:
+//   standard — official gazette only (national ∪ the group's states[]). Behaviourally IDENTICAL to today's
+//              state/group path; the resolver does NOT branch for it (it falls through unchanged).
+//   extended — official gazette ∪ company-defined ad-hoc days (the existing company-subtree holiday rows).
+//   custom   — fully HR-managed: ONLY the company-scoped ad-hoc rows; national holidays are NOT added.
+// Default 'standard' makes every existing group backfill-safe and byte-identical to today.
+export const holidayGroupArchetypeEnum = pgEnum('holiday_group_archetype', ['standard', 'extended', 'custom']);
+
 export const holidayGroup = pgTable(
   'holiday_group',
   {
@@ -1153,6 +1169,7 @@ export const holidayGroup = pgTable(
     tenantId: tenantId(),
     name: text('name').notNull(),
     states: jsonb('states').notNull().default(sql`'[]'::jsonb`), // string[] of MY_STATES labels
+    archetype: holidayGroupArchetypeEnum('archetype').notNull().default('standard'),
     createdAt: createdAt(),
   },
   // Case-insensitive per-tenant name uniqueness (follows the org_catalog_integrity pattern, 0030).

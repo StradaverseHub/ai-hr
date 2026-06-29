@@ -43,6 +43,14 @@ export default async function HolidaysPage({
   }
   const groups = [...byYear.entries()].sort((a, b) => b[0] - a[0]);
 
+  // STATIC archetype key map (never t(`archetype.${x}`) — the i18n coverage test check C requires literal keys).
+  const ARCHETYPES = ['standard', 'extended', 'custom'] as const;
+  const archetypeLabel: Record<(typeof ARCHETYPES)[number], string> = {
+    standard: t('archetype.standard'),
+    extended: t('archetype.extended'),
+    custom: t('archetype.custom'),
+  };
+
   const today = new Date().toISOString().slice(0, 10);
   const defaultCountry = country ?? countries[0] ?? 'MY';
   // Hidden fields echo the active filter so actions can redirect back into the same view.
@@ -69,17 +77,25 @@ export default async function HolidaysPage({
               <form
                 key={g.id}
                 action={updateHolidayGroupAction}
-                className="grid grid-cols-1 items-start gap-3 p-4 sm:grid-cols-[1fr_2fr_auto]"
+                className="grid grid-cols-1 items-start gap-3 p-4 sm:grid-cols-[1fr_1fr_2fr_auto]"
               >
                 <input type="hidden" name="id" value={g.id} />
                 <Field label={t('groupNameLabel')}>
                   <input name="name" required defaultValue={g.name} className={inputCls} />
                 </Field>
+                <Field label={t('archetypeLabel')}>
+                  <select name="archetype" defaultValue={g.archetype ?? 'standard'} className={inputCls}>
+                    {ARCHETYPES.map((a) => (
+                      <option key={a} value={a}>
+                        {archetypeLabel[a]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label={t('groupStatesLabel')}>
                   <select
                     name="states"
                     multiple
-                    required
                     defaultValue={(g.states as string[]) ?? []}
                     className={`${inputCls} h-32`}
                   >
@@ -90,7 +106,10 @@ export default async function HolidaysPage({
                     ))}
                   </select>
                 </Field>
-                <div className="flex items-end gap-2 self-stretch pt-6">
+                <div className="flex flex-col items-start gap-2 self-stretch pt-6">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {archetypeLabel[(g.archetype as (typeof ARCHETYPES)[number]) ?? 'standard']}
+                  </span>
                   <button className={btnPrimary}>{t('editGroup')}</button>
                   <button
                     formAction={deleteHolidayGroupAction}
@@ -105,13 +124,22 @@ export default async function HolidaysPage({
         )}
         <form
           action={createHolidayGroupAction}
-          className="grid grid-cols-1 items-start gap-3 border-t border-border p-4 sm:grid-cols-[1fr_2fr_auto]"
+          className="grid grid-cols-1 items-start gap-3 border-t border-border p-4 sm:grid-cols-[1fr_1fr_2fr_auto]"
         >
           <Field label={t('groupNameLabel')}>
             <input name="name" required placeholder={t('groupNamePlaceholder')} className={inputCls} />
           </Field>
+          <Field label={t('archetypeLabel')}>
+            <select name="archetype" defaultValue="standard" className={inputCls}>
+              {ARCHETYPES.map((a) => (
+                <option key={a} value={a}>
+                  {archetypeLabel[a]}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label={t('groupStatesLabel')}>
-            <select name="states" multiple required className={`${inputCls} h-32`}>
+            <select name="states" multiple className={`${inputCls} h-32`}>
               {MY_STATES.map((st) => (
                 <option key={st} value={st}>
                   {st}
@@ -123,6 +151,7 @@ export default async function HolidaysPage({
             <button className={btnPrimary}>{t('addGroup')}</button>
           </div>
         </form>
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">{t('archetypeHint')}</p>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">{t('groupsHint')}</p>
       </Card>
 

@@ -3,6 +3,7 @@ import { requireAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listLocations } from '@/core/location';
+import { listHolidayGroups } from '@/core/admin';
 import { MY_STATES } from '@/localization/my/holidays';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import {
@@ -25,6 +26,8 @@ export default async function LocationsPage({
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   const visible = companies.filter((c) => scopeIds.includes(c.id));
   const locations = await listLocations(s, visible.map((c) => c.id), { includeArchived: true });
+  // Named holiday calendars (holiday_group rows) to populate the per-location Calendar dropdown (ADR-0067).
+  const calendars = await listHolidayGroups(s);
   const byCompany = new Map<string, typeof locations>();
   for (const l of locations) {
     const arr = byCompany.get(l.companyId);
@@ -77,10 +80,25 @@ export default async function LocationsPage({
                             ))}
                           </select>
                         </Field>
+                        <Field label={t('calendar')}>
+                          <select
+                            name="holidayGroupId"
+                            defaultValue={l.holidayGroupId ?? ''}
+                            className={`${inputCls} min-w-[10rem]`}
+                          >
+                            <option value="">{t('calendarNone')}</option>
+                            {calendars.map((cal) => (
+                              <option key={cal.id} value={cal.id}>
+                                {cal.name}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
                         <span className="pb-2 text-xs text-muted-foreground">
                           {t('headcountLabel', { count: l.headcount })}
                           {' · '}
                           {stateLabel(l.state)}
+                          {l.holidayGroupName ? ` · ${l.holidayGroupName}` : ''}
                         </span>
                         <button className={btnGhost}>{t('save')}</button>
                       </form>
@@ -100,7 +118,7 @@ export default async function LocationsPage({
                 </ul>
               )}
 
-              <form action={createLocationAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-5">
+              <form action={createLocationAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6">
                 <input type="hidden" name="companyId" value={c.id} />
                 <Field label={t('code')}>
                   <input name="code" required placeholder={t('codePlaceholder')} className={`${inputCls} uppercase`} />
@@ -117,6 +135,16 @@ export default async function LocationsPage({
                     {MY_STATES.map((st) => (
                       <option key={st} value={st}>
                         {st}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label={t('calendar')}>
+                  <select name="holidayGroupId" defaultValue="" className={inputCls}>
+                    <option value="">{t('calendarNone')}</option>
+                    {calendars.map((cal) => (
+                      <option key={cal.id} value={cal.id}>
+                        {cal.name}
                       </option>
                     ))}
                   </select>

@@ -6,10 +6,25 @@
  * the existing effective-dated transferEmployee path in core/org.ts (no assign function here).
  */
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, location } from '../db/schema';
+import { company, holidayGroup, location } from '../db/schema';
 import { MY_STATES } from '../localization/my/holidays';
+
+/** Resolve a holiday-group (calendar) id to a tenant-scoped group, or null when no calendar is assigned.
+ *  Throws if the id is non-empty but does not resolve in scope (RLS already tenant-scopes the read), so a
+ *  stale/cross-tenant id can't be stored on a location. */
+async function resolveHolidayGroupId(tx: Tx, holidayGroupId: string | null | undefined): Promise<string | null> {
+  const id = (holidayGroupId ?? '').trim();
+  if (!id) return null;
+  const [g] = await tx
+    .select({ id: holidayGroup.id })
+    .from(holidayGroup)
+    .where(eq(holidayGroup.id, id))
+    .limit(1);
+  if (!g) throw new Error('Unknown holiday calendar');
+  return g.id;
+}
 
 /** Trim + uppercase the code (0030 catalog-integrity pattern); the partial-unique index is exact-match. */
 function cleanCode(v: string | undefined): string {
@@ -43,6 +58,9 @@ export type CreateLocationInput = {
   name: string;
   country?: string;
   state?: string | null;
+  // ADR-0067: the named holiday CALENDAR (holiday_group) every employee at this location follows. Null =
+  // unmapped → today's resolution (state override → company default → national), byte-identical.
+  holidayGroupId?: string | null;
 };
 
 export async function createLocation(ctx: SessionContext, p: CreateLocationInput) {
@@ -51,9 +69,10 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
   const country = cleanCountry(p.country);
   const state = cleanState(p.state);
   return withTenant(ctx, async (tx) => {
+    const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
     const [row] = await tx
       .insert(location)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, country, state, holidayGroupId })
       .returning({ id: location.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -61,7 +80,7 @@ export async function createLocation(ctx: SessionContext, p: CreateLocationInput
       aggregateId: row.id,
       eventType: 'location.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, code, name, country, state },
+      payload: { companyId: p.companyId, code, name, country, state, holidayGroupId },
     });
     return { id: row.id };
   });
@@ -73,6 +92,7 @@ export type UpdateLocationInput = {
   name: string;
   country?: string;
   state?: string | null;
+  holidayGroupId?: string | null;
 };
 
 export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput) {
@@ -82,14 +102,21 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
   const state = cleanState(p.state);
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
-      .select({ code: location.code, name: location.name, country: location.country, state: location.state })
+      .select({
+        code: location.code,
+        name: location.name,
+        country: location.country,
+        state: location.state,
+        holidayGroupId: location.holidayGroupId,
+      })
       .from(location)
       .where(eq(location.id, p.locationId))
       .limit(1);
     if (!before) throw new Error('Location not found');
+    const holidayGroupId = await resolveHolidayGroupId(tx, p.holidayGroupId);
     await tx
       .update(location)
-      .set({ code, name, country, state })
+      .set({ code, name, country, state, holidayGroupId })
       .where(eq(location.id, p.locationId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -97,7 +124,7 @@ export async function updateLocation(ctx: SessionContext, p: UpdateLocationInput
       aggregateId: p.locationId,
       eventType: 'location.updated',
       actor: actorOf(ctx),
-      payload: { before, after: { code, name, country, state } },
+      payload: { before, after: { code, name, country, state, holidayGroupId } },
     });
     return { id: p.locationId };
   });
@@ -141,11 +168,16 @@ export type LocationRow = {
   name: string;
   country: string;
   state: string | null;
+  // ADR-0067: the mapped holiday calendar (null = unmapped). name + archetype let the admin row show it.
+  holidayGroupId: string | null;
+  holidayGroupName: string | null;
+  holidayGroupArchetype: string | null;
   archivedAt: Date | null;
   headcount: number;
 };
 
-/** Locations in scope, joined with company name + active headcount (open assignment rows pointing here).
+/** Locations in scope, joined with company name + active headcount (open assignment rows pointing here) +
+ *  the mapped holiday calendar's name/archetype (left join — null when unmapped).
  *  RLS already scopes rows to admin-of-company; companyIds further narrows to the UI's active scope. */
 export function listLocations(
   ctx: SessionContext,
@@ -165,6 +197,9 @@ export function listLocations(
         name: location.name,
         country: location.country,
         state: location.state,
+        holidayGroupId: location.holidayGroupId,
+        holidayGroupName: holidayGroup.name,
+        holidayGroupArchetype: holidayGroup.archetype,
         archivedAt: location.archivedAt,
         headcount: sql<number>`(
           select count(*)::int from assignment a
@@ -174,6 +209,7 @@ export function listLocations(
       })
       .from(location)
       .innerJoin(company, eq(company.id, location.companyId))
+      .leftJoin(holidayGroup, eq(holidayGroup.id, location.holidayGroupId))
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(company.legalName), asc(location.code));
   });

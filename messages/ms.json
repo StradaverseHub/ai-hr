@@ -1933,7 +1933,14 @@
       "save": "Simpan",
       "tentativeLabel": "Tentatif",
       "tentativeBadge": "Tentatif",
-      "tentativeCreateLabel": "Tentatif (tarikh belum diwartakan)"
+      "tentativeCreateLabel": "Tentatif (tarikh belum diwartakan)",
+      "archetypeLabel": "Jenis",
+      "archetype": {
+        "standard": "Standard",
+        "extended": "Diperluas",
+        "custom": "Tersuai"
+      },
+      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kalendar). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = senarai yang diuruskan sepenuhnya secara manual; cuti kebangsaan tidak ditambah secara automatik."
     },
     "users": {
       "title": "Pengguna & peranan",
@@ -2141,7 +2148,9 @@
       "save": "Simpan",
       "archive": "Arkib",
       "restore": "Pulih",
-      "stateNote": "Negeri lokasi mengatasi negeri kerja pekerja untuk penentuan cuti umum; biarkan kosong untuk menggunakan lalai syarikat."
+      "stateNote": "Negeri lokasi mengatasi negeri kerja pekerja untuk penentuan cuti umum; biarkan kosong untuk menggunakan lalai syarikat.",
+      "calendar": "Kalendar cuti",
+      "calendarNone": "Tiada (penyelesaian lalai)"
     }
   },
   "topbar": {

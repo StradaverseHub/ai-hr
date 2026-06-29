@@ -1933,7 +1933,14 @@
       "save": "保存",
       "tentativeLabel": "暂定",
       "tentativeBadge": "暂定",
-      "tentativeCreateLabel": "暂定（日期尚未宪报公布）"
+      "tentativeCreateLabel": "暂定（日期尚未宪报公布）",
+      "archetypeLabel": "类型",
+      "archetype": {
+        "standard": "标准",
+        "extended": "扩展",
+        "custom": "自定义"
+      },
+      "archetypeHint": "标准 = 仅官方公布的假日（全国 + 该日历的州属假日）。扩展 = 官方假日加上公司自定的额外日期。自定义 = 完全手动管理的列表；不会自动添加全国假日。"
     },
     "users": {
       "title": "用户与角色",
@@ -2141,7 +2148,9 @@
       "save": "保存",
       "archive": "归档",
       "restore": "恢复",
-      "stateNote": "地点的州属在公共假期判定中会覆盖员工的工作州属；留空则使用公司默认值。"
+      "stateNote": "地点的州属在公共假期判定中会覆盖员工的工作州属；留空则使用公司默认值。",
+      "calendar": "假日日历",
+      "calendarNone": "无（默认解析）"
     }
   },
   "topbar": {

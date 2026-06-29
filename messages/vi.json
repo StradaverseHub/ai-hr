@@ -1933,7 +1933,14 @@
       "save": "Lưu",
       "tentativeLabel": "Tạm thời",
       "tentativeBadge": "Tạm thời",
-      "tentativeCreateLabel": "Tạm thời (ngày chưa được công bố)"
+      "tentativeCreateLabel": "Tạm thời (ngày chưa được công bố)",
+      "archetypeLabel": "Loại",
+      "archetype": {
+        "standard": "Tiêu chuẩn",
+        "extended": "Mở rộng",
+        "custom": "Tùy chỉnh"
+      },
+      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của lịch). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = danh sách hoàn toàn quản lý thủ công; ngày lễ quốc gia không được thêm tự động."
     },
     "users": {
       "title": "Người dùng & vai trò",
@@ -2141,7 +2148,9 @@
       "save": "Lưu",
       "archive": "Lưu trữ",
       "restore": "Khôi phục",
-      "stateNote": "Tiểu bang của địa điểm ghi đè tiểu bang làm việc của nhân viên khi xác định ngày lễ công cộng; để trống để dùng mặc định của công ty."
+      "stateNote": "Tiểu bang của địa điểm ghi đè tiểu bang làm việc của nhân viên khi xác định ngày lễ công cộng; để trống để dùng mặc định của công ty.",
+      "calendar": "Lịch ngày lễ",
+      "calendarNone": "Không (phân giải mặc định)"
     }
   },
   "topbar": {

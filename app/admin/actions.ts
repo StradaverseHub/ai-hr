@@ -449,6 +449,7 @@ export async function createHolidayGroupAction(formData: FormData) {
     await createHolidayGroup(s, {
       name: String(formData.get('name') ?? ''),
       states: formData.getAll('states').map(String),
+      archetype: String(formData.get('archetype') ?? '') || undefined,
     });
   } catch (e) {
     fail(HOLIDAYS, e);
@@ -463,6 +464,7 @@ export async function updateHolidayGroupAction(formData: FormData) {
       id: String(formData.get('id')),
       name: String(formData.get('name') ?? ''),
       states: formData.getAll('states').map(String),
+      archetype: String(formData.get('archetype') ?? '') || undefined,
     });
   } catch (e) {
     fail(HOLIDAYS, e);
@@ -763,6 +765,7 @@ export async function createLocationAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
+      holidayGroupId: (fd.get('holidayGroupId') as string) || null,
     });
   } catch (e) {
     fail(LOCATIONS, e);
@@ -779,6 +782,7 @@ export async function updateLocationAction(fd: FormData) {
       name: String(fd.get('name') ?? ''),
       country: String(fd.get('country') ?? '') || undefined,
       state: (fd.get('state') as string) || null,
+      holidayGroupId: (fd.get('holidayGroupId') as string) || null,
     });
   } catch (e) {
     fail(LOCATIONS, e);

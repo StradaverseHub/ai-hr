@@ -1933,7 +1933,14 @@
       "save": "Save",
       "tentativeLabel": "Tentative",
       "tentativeBadge": "Tentative",
-      "tentativeCreateLabel": "Tentative (date not yet gazetted)"
+      "tentativeCreateLabel": "Tentative (date not yet gazetted)",
+      "archetypeLabel": "Kind",
+      "archetype": {
+        "standard": "Standard",
+        "extended": "Extended",
+        "custom": "Custom"
+      },
+      "archetypeHint": "Standard = official gazetted holidays only (national + the calendar’s states). Extended = official holidays plus company-defined extra days. Custom = a fully hand-managed list; national holidays are not added automatically."
     },
     "users": {
       "title": "Users & roles",
@@ -2141,7 +2148,9 @@
       "save": "Save",
       "archive": "Archive",
       "restore": "Restore",
-      "stateNote": "A location’s state overrides the employee’s work state for public-holiday resolution; leave blank to use the company default."
+      "stateNote": "A location’s state overrides the employee’s work state for public-holiday resolution; leave blank to use the company default.",
+      "calendar": "Holiday calendar",
+      "calendarNone": "None (default resolution)"
     }
   },
   "topbar": {

@@ -24,10 +24,22 @@ import {
   leavePolicy,
   leaveRequest,
   leaveType,
+  location,
   person,
   position,
   roleAssignment,
 } from '../db/schema';
+
+/** The three holiday-calendar KINDS (ADR-0067). 'standard' = official gazette only (no resolver branch);
+ *  'extended' = gazette ∪ company ad-hoc; 'custom' = company ad-hoc only (national NOT auto-added). */
+export const HOLIDAY_GROUP_ARCHETYPES = ['standard', 'extended', 'custom'] as const;
+export type HolidayGroupArchetype = (typeof HOLIDAY_GROUP_ARCHETYPES)[number];
+function cleanArchetype(v: string | undefined): HolidayGroupArchetype {
+  const s = (v ?? 'standard').trim();
+  if (!(HOLIDAY_GROUP_ARCHETYPES as readonly string[]).includes(s))
+    throw new Error(`Unknown holiday-calendar kind “${s}”.`);
+  return s as HolidayGroupArchetype;
+}
 
 /** Thrown when a hard delete is attempted on a referenced record (archive it instead). Pass `message`
  *  to override the default "archive it instead" sentence with a record-specific one. */
@@ -900,23 +912,31 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
 // member states and feeds them into the same holiday.state UNION predicate as work_state. Admin-only
 // writes (RLS 0100). Assignment lives on employment.holiday_group_id (mutually exclusive with work_state).
 
-/** Sanitise + validate a group's member states: non-empty, each ∈ MY_STATES, de-duplicated. A zero-state
- *  group is meaningless (== national, which already exists), so it's rejected. */
-function cleanHolidayGroupStates(states: string[] | undefined): string[] {
+/** Sanitise + validate a group's member states: each ∈ MY_STATES, de-duplicated. For a 'custom' calendar
+ *  states supply nothing (national is NOT auto-added) so an empty list is allowed; for 'standard'/'extended'
+ *  the states[] ARE the gazette state source, so at least one is required (a zero-state non-custom group ==
+ *  national, which already exists). */
+function cleanHolidayGroupStates(states: string[] | undefined, archetype: HolidayGroupArchetype): string[] {
   const valid = new Set<string>(MY_STATES);
   const out = [...new Set((states ?? []).map((s) => (s ?? '').trim()).filter(Boolean))];
-  if (out.length === 0) throw new Error('A holiday group must include at least one state.');
+  if (archetype !== 'custom' && out.length === 0)
+    throw new Error('A standard or extended holiday calendar must include at least one state.');
   for (const s of out) {
     if (!valid.has(s)) throw new Error(`Unknown state “${s}”.`);
   }
   return out;
 }
 
-/** All holiday groups for the tenant (id, name, states), ordered by name. Read-only — no event. */
+/** All holiday groups for the tenant (id, name, states, archetype), ordered by name. Read-only — no event. */
 export function listHolidayGroups(ctx: SessionContext) {
   return withTenant(ctx, (tx) =>
     tx
-      .select({ id: holidayGroup.id, name: holidayGroup.name, states: holidayGroup.states })
+      .select({
+        id: holidayGroup.id,
+        name: holidayGroup.name,
+        states: holidayGroup.states,
+        archetype: holidayGroup.archetype,
+      })
       .from(holidayGroup)
       .orderBy(holidayGroup.name),
   );
@@ -924,14 +944,15 @@ export function listHolidayGroups(ctx: SessionContext) {
 
 export async function createHolidayGroup(
   ctx: SessionContext,
-  p: { name: string; states: string[] },
+  p: { name: string; states: string[]; archetype?: string },
 ) {
   const name = cleanName(p.name, 'Group name');
-  const states = cleanHolidayGroupStates(p.states);
+  const archetype = cleanArchetype(p.archetype);
+  const states = cleanHolidayGroupStates(p.states, archetype);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(holidayGroup)
-      .values({ tenantId: ctx.tenantId, name, states })
+      .values({ tenantId: ctx.tenantId, name, states, archetype })
       .returning({ id: holidayGroup.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
@@ -943,7 +964,7 @@ export async function createHolidayGroup(
       aggregateId: row.id,
       eventType: 'holiday-group.created',
       actor: actorOf(ctx),
-      payload: { name, states },
+      payload: { name, states, archetype },
     });
     return row;
   });
@@ -951,20 +972,24 @@ export async function createHolidayGroup(
 
 export async function updateHolidayGroup(
   ctx: SessionContext,
-  p: { id: string; name?: string; states?: string[] },
+  p: { id: string; name?: string; states?: string[]; archetype?: string },
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
-      .select({ name: holidayGroup.name, states: holidayGroup.states })
+      .select({ name: holidayGroup.name, states: holidayGroup.states, archetype: holidayGroup.archetype })
       .from(holidayGroup)
       .where(eq(holidayGroup.id, p.id))
       .limit(1);
     if (!before) throw new Error('Holiday group not found');
     const name = p.name !== undefined ? cleanName(p.name, 'Group name') : before.name;
-    const states = p.states !== undefined ? cleanHolidayGroupStates(p.states) : (before.states as string[]);
+    const archetype = p.archetype !== undefined ? cleanArchetype(p.archetype) : (before.archetype as HolidayGroupArchetype);
+    const states = p.states !== undefined ? cleanHolidayGroupStates(p.states, archetype) : (before.states as string[]);
+    // A standard/extended calendar still needs ≥1 gazette state even if only the archetype changed.
+    if (archetype !== 'custom' && states.length === 0)
+      throw new Error('A standard or extended holiday calendar must include at least one state.');
     await tx
       .update(holidayGroup)
-      .set({ name, states })
+      .set({ name, states, archetype })
       .where(eq(holidayGroup.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
@@ -976,7 +1001,10 @@ export async function updateHolidayGroup(
       aggregateId: p.id,
       eventType: 'holiday-group.updated',
       actor: actorOf(ctx),
-      payload: { before: { name: before.name, states: before.states }, after: { name, states } },
+      payload: {
+        before: { name: before.name, states: before.states, archetype: before.archetype },
+        after: { name, states, archetype },
+      },
     });
     return { id: p.id };
   });
@@ -996,6 +1024,20 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
       throw new InUseError(
         'holiday group',
         `This holiday group is still assigned to ${refs.length} employee${refs.length === 1 ? '' : 's'}. Reassign them before deleting it.`,
+      );
+    }
+    // ADR-0067: also block when a LOCATION maps to this calendar (lock those rows too). The ON DELETE SET
+    // NULL FK is the backstop; the guard is the authoritative friendly path so a mapped calendar can't be
+    // silently un-mapped from every location at its site.
+    const locRefs = await tx
+      .select({ id: location.id })
+      .from(location)
+      .where(eq(location.holidayGroupId, p.id))
+      .for('update');
+    if (locRefs.length > 0) {
+      throw new InUseError(
+        'holiday group',
+        `This holiday calendar is still assigned to ${locRefs.length} location${locRefs.length === 1 ? '' : 's'}. Unassign it there before deleting it.`,
       );
     }
     const [deleted] = await tx

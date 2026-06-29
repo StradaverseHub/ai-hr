@@ -1038,6 +1038,9 @@ async function warnLeaveHolidayCompleteness(
 ): Promise<HolidayCompletenessWarning[]> {
   const eff = await effectiveHolidayState(tx, employmentId);
   if (!eff) return [];
+  // ADR-0067: a Custom location-calendar deliberately ignores the public gazette, so the s.60D "<11" guard
+  // is false noise — suppress it entirely (no event, no returned warning) for those employees.
+  if (eff.skipCompleteness) return [];
   return warnIfHolidaysIncomplete(tx, ctx, {
     country: eff.country,
     state: eff.state,
