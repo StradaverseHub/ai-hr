@@ -1,0 +1,26 @@
+-- Hourly-leave time window (issue: "Hourly Leave Application Missing From/To Time Selection").
+--
+-- Before this, an hourly leave request captured only a raw `hours` number with no indication of WHICH
+-- hours were taken (09:00–11:00 vs 15:00–17:00). The applicant typed "2" and the approver saw a bare "2h".
+-- This change carries the chosen window: for a duration_type='hourly' request the applicant now picks a
+-- From time + To time, the service derives `hours` from the elapsed span, and the window is persisted so the
+-- approvals inbox + leave history can render it.
+--
+--   leave_request.from_time  the start of an hourly leave window (HH:MM:SS). Populated ONLY for hourly
+--                            requests. NULL for full_day / half_day rows, and for every pre-existing row.
+--   leave_request.to_time    the end of an hourly leave window. Same population rule.
+--
+-- `hours` is retained as the derived deduction figure: round(hours/8, 2) is lossy (1h → 0.13), so the
+-- displayed "1h" is recovered from `hours`, not back-computed from `days` — mirroring the ADR-0048 `hours`
+-- comment. from_time/to_time are the SOURCE window; `hours` is what is deducted.
+--
+-- RLS (mirrors 0124 verbatim): these are additive, nullable columns on leave_request. They are reachable by
+-- the existing leave_request tenant + can_see_employment policies (same inheritance as 0106's parent_group_id
+-- and 0124's unpaid_consent_*), so they need no new policy, and the ai_hr_app DML grants cover them by
+-- inheritance.
+--
+-- Rollback:
+--   ALTER TABLE leave_request DROP COLUMN to_time;
+--   ALTER TABLE leave_request DROP COLUMN from_time;
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "from_time" time;--> statement-breakpoint
+ALTER TABLE "leave_request" ADD COLUMN IF NOT EXISTS "to_time" time;

@@ -15,6 +15,7 @@ import {
   LeaveDocumentTypeError,
   LeaveDocumentSizeError,
   UnpaidConsentRequiredError,
+  HourlyLeaveTimeRangeError,
   type LeaveDurationType,
 } from '@/core/leave';
 import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
@@ -49,7 +50,10 @@ export async function myRequestLeave(formData: FormData) {
   const startDate = String(formData.get('startDate'));
   const endDate = String(formData.get('endDate'));
   const durationType = String(formData.get('durationType') || 'full_day') as LeaveDurationType;
-  const hoursRaw = String(formData.get('hours') ?? '').trim();
+  // Hourly-leave time window (0129): the form posts a From/To window for hourly leave; the service derives
+  // hours from the span. Empty ⇒ undefined ⇒ the service throws HourlyLeaveTimeRangeError (mandatory gate).
+  const fromTime = String(formData.get('fromTime') ?? '').trim();
+  const toTime = String(formData.get('toTime') ?? '').trim();
   const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
   const file = formData.get('document');
   const hasFile = file instanceof File && file.size > 0;
@@ -83,7 +87,8 @@ export async function myRequestLeave(formData: FormData) {
       hasDocument: hasFile,
       employeeRemark,
       durationType,
-      hours: durationType === 'hourly' && hoursRaw !== '' ? Number(hoursRaw) : undefined,
+      fromTime: durationType === 'hourly' && fromTime !== '' ? fromTime : undefined,
+      toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
       reasonCategory,
       unpaidConsent,
     });
@@ -121,6 +126,9 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   }
   if (e instanceof LeaveDocumentSizeError) return t('fileTooLarge', { mb: e.maxMb });
   if (e instanceof UnpaidConsentRequiredError) return t('unpaidConsentRequired', { days: e.unpaidDays ?? 0 });
+  // Hourly-leave time window (0129): a missing window or to <= from. Localized so admins (via leave/actions)
+  // and employees (via /me) both see a translated message, not the raw English Error string.
+  if (e instanceof HourlyLeaveTimeRangeError) return t('hourlyTimeRange');
   return (e as Error).message;
 }
 

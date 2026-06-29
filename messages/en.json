@@ -491,6 +491,9 @@
       "hourly": "Hourly"
     },
     "fieldHours": "Hours",
+    "fieldFromTime": "From time",
+    "fieldToTime": "To time",
+    "hourlyTotal": "Total: {hours}h",
     "hoursPlaceholder": "e.g. 2",
     "hoursUnit": "{hours}h",
     "emergency": {
@@ -526,7 +529,8 @@
       "fileTypeNotAllowed": "File type not allowed — accepted: {allowed}.",
       "fileTooLarge": "File exceeds the {mb} MB limit.",
       "unpaidConsentRequired": "This emergency leave would take {days} day(s) as unpaid leave. Please tick the box to acknowledge the unpaid days.",
-      "holidaysIncomplete": "Only {loaded} of the minimum 11 gazetted public holidays are loaded for {state} {year}; leave/rest-day counting may be wrong until the full gazette is loaded."
+      "holidaysIncomplete": "Only {loaded} of the minimum 11 gazetted public holidays are loaded for {state} {year}; leave/rest-day counting may be wrong until the full gazette is loaded.",
+      "hourlyTimeRange": "Hourly leave requires a From time and a To time, and the To time must be after the From time."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",

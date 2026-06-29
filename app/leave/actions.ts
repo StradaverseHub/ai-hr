@@ -19,7 +19,10 @@ export async function requestLeaveAction(formData: FormData) {
   const session = await getSession();
   const leaveTypeId = String(formData.get('leaveTypeId'));
   const durationType = (String(formData.get('durationType') || 'full_day') as LeaveDurationType);
-  const hoursRaw = String(formData.get('hours') ?? '').trim();
+  // Hourly-leave time window (0129): the form now posts a From/To window (not a raw hours number) for hourly
+  // leave; the service derives hours from the span. Empty ⇒ undefined ⇒ the service throws its mandatory gate.
+  const fromTime = String(formData.get('fromTime') ?? '').trim();
+  const toTime = String(formData.get('toTime') ?? '').trim();
   // Emergency Leave (Phase-B #12): category routes the cascade (illness → paid SICK first); the consent
   // checkbox gates an UNPAID child. Both are inert for non-EL types.
   const reasonCategoryRaw = String(formData.get('reasonCategory') ?? '').trim();
@@ -73,7 +76,8 @@ export async function requestLeaveAction(formData: FormData) {
       hasDocument: attach,
       employeeRemark: isEL ? undefined : employeeRemark,
       durationType,
-      hours: durationType === 'hourly' && hoursRaw !== '' ? Number(hoursRaw) : undefined,
+      fromTime: durationType === 'hourly' && fromTime !== '' ? fromTime : undefined,
+      toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
       reasonCategory,
       unpaidConsent,
       survivingChildren: survivingChildrenRaw !== '' ? Number(survivingChildrenRaw) : undefined,

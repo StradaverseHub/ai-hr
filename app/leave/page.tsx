@@ -212,6 +212,13 @@ export default async function LeavePage({
                           {durationLabel(t, r.durationType, r.hours)}
                         </span>
                       )}
+                      {/* Hourly-leave time window (0129): the actual window on hourly rows, slice-guarded for
+                          the Postgres seconds, gated so non-hourly rows never render a stray time. */}
+                      {r.durationType === 'hourly' && r.fromTime && r.toTime && (
+                        <span className="ml-1 text-[10px] font-medium text-muted-foreground">
+                          {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ${REQ_STATUS[r.status] ?? 'bg-muted text-muted-foreground'}`}>

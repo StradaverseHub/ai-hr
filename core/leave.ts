@@ -92,6 +92,38 @@ export function isLeaveDurationType(v: unknown): v is LeaveDurationType {
   return typeof v === 'string' && (LEAVE_DURATION_TYPES as readonly string[]).includes(v);
 }
 
+// ── Hourly-leave time window (0129) ────────────────────────────────────────────────────────────────
+// For a duration_type='hourly' request the applicant picks a From/To time; the deducted `hours` is derived
+// from the elapsed span, not typed by hand. Thrown when the window is malformed (missing, or to <= from).
+export class HourlyLeaveTimeRangeError extends Error {
+  constructor(message = 'Hourly leave requires a From time and a To time, and To must be after From') {
+    super(message);
+    this.name = 'HourlyLeaveTimeRangeError';
+  }
+}
+
+/**
+ * Elapsed hours between two HH:MM (or HH:MM:SS) times, rounded to 2 dp. Pure + DB-free + unit-testable.
+ *
+ * Seconds-format hazard: a Postgres `time` column reads back as 'HH:MM:SS', while an <input type="time">
+ * emits 'HH:MM'. Both inputs are normalized to 'HH:MM' first (slice(0, 5)) so a stored '09:00:00' parses
+ * identically to a form '09:00'. Throws HourlyLeaveTimeRangeError when either input is empty or the span is
+ * <= 0. The window is ELAPSED wall time (09:00–18:00 = 9h including a lunch break), NOT a net-work figure —
+ * so callers must NOT cap it at DEFAULT_STANDARD_HOURS (see the hourly branch of requestLeave).
+ */
+export function hoursBetween(fromTime: string, toTime: string): number {
+  const toMinutes = (s: string): number => {
+    const hhmm = (s ?? '').slice(0, 5);
+    const [h, m] = hhmm.split(':').map((x) => Number(x));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) throw new HourlyLeaveTimeRangeError();
+    return h * 60 + m;
+  };
+  if (!fromTime || !toTime) throw new HourlyLeaveTimeRangeError();
+  const span = toMinutes(toTime) - toMinutes(fromTime);
+  if (span <= 0) throw new HourlyLeaveTimeRangeError();
+  return Math.round((span / 60) * 100) / 100;
+}
+
 export class LeaveDurationNotAllowedError extends Error {
   constructor() {
     super('This leave type does not allow the selected duration (full day / half day / hourly)');
@@ -432,6 +464,10 @@ async function insertLeaveRequest(
     days: number;
     durationType: LeaveDurationType;
     hours: number | null;
+    // Hourly-leave time window (0129): the From/To window for an hourly request (HH:MM). Optional — null for
+    // full_day / half_day rows and for the Emergency-Leave children (which are always full-day).
+    fromTime?: string | null;
+    toTime?: string | null;
     reason: string | null;
     employeeRemark: string | null;
     parentGroupId: string | null;
@@ -458,6 +494,9 @@ async function insertLeaveRequest(
       days: v.days.toFixed(2),
       durationType: v.durationType,
       hours: v.hours != null ? v.hours.toFixed(2) : null,
+      // Hourly-leave time window (0129): persisted only for hourly rows; null otherwise.
+      fromTime: v.fromTime ?? null,
+      toTime: v.toTime ?? null,
       status: 'pending',
       reason: v.reason,
       employeeRemark: v.employeeRemark,
@@ -484,6 +523,11 @@ async function insertLeaveRequest(
       days: v.days,
       durationType: v.durationType,
       hours: v.hours,
+      // Hourly-leave time window (0129): carry the From/To window onto the submitted event for the audit
+      // trail / approver view. Present only for hourly rows. The decision (approve/reject) event deliberately
+      // does NOT re-stamp the window — it is immutable on the row and queryable, so re-stamping is redundant.
+      ...(v.fromTime ? { fromTime: v.fromTime } : {}),
+      ...(v.toTime ? { toTime: v.toTime } : {}),
       mandatoryAfterDays: v.mandatoryAfterDays,
       hasRemark: !!v.employeeRemark,
       ...(v.parentGroupId ? { parentGroupId: v.parentGroupId } : {}),
@@ -525,7 +569,12 @@ export async function requestLeave(
     hasDocument?: boolean; // 2A-2: asserts a supporting document accompanies this request
     employeeRemark?: string; // doc-config: required when the type sets employeeRemarkRequired
     durationType?: LeaveDurationType; // ADR-0048: defaults to 'full_day'
-    hours?: number; // ADR-0048: required (and only used) when durationType === 'hourly'
+    hours?: number; // ADR-0048: legacy/importer hourly figure — used only when fromTime/toTime are absent
+    // Hourly-leave time window (0129): when durationType==='hourly' these are MANDATORY; `hours` is derived
+    // from (toTime - fromTime). The raw `hours` path above is the back-compat fallback for importer/legacy
+    // callers that don't supply a window.
+    fromTime?: string;
+    toTime?: string;
     // Phase-B #12 (ADR-0061) — Emergency-Leave only:
     reasonCategory?: EmergencyReasonCategory; // 'illness' routes through paid SICK first
     unpaidConsent?: boolean; // the employee's acknowledgement of the unpaid days (gates UNPAID children)
@@ -575,7 +624,27 @@ export async function requestLeave(
     }
 
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
-    const hours = durationType === 'hourly' ? (p.hours ?? null) : null;
+    // Hourly-leave time window (0129): for an hourly request prefer the From/To window — the window is
+    // MANDATORY at this service boundary (mirrors LeaveDurationNotAllowedError) and `hours` is derived from
+    // it. The raw `p.hours` path remains a back-compat fallback for importer/legacy callers that don't supply
+    // a window. fromTime/toTime are persisted (hourly only) so the approver + history can render the window.
+    let fromTime: string | null = null;
+    let toTime: string | null = null;
+    let hours: number | null = null;
+    if (durationType === 'hourly') {
+      if (p.fromTime || p.toTime) {
+        // A window was supplied: both halves are required and hours is derived from the elapsed span.
+        hours = hoursBetween(p.fromTime ?? '', p.toTime ?? '');
+        fromTime = (p.fromTime ?? '').slice(0, 5);
+        toTime = (p.toTime ?? '').slice(0, 5);
+      } else if (p.hours != null) {
+        // Back-compat: importer/legacy caller passed a raw hours figure with no window.
+        hours = p.hours;
+      } else {
+        // Neither a window nor a raw figure — the mandatory window is missing.
+        throw new HourlyLeaveTimeRangeError();
+      }
+    }
 
     // ADR-0048: a non-full-day duration must be enabled on the leave type's allow-list, and confined to a
     // single day. (full_day is always allowed and keeps the original range path unchanged.)
@@ -611,8 +680,14 @@ export async function requestLeave(
       }
       if (durationType === 'hourly') {
         const h = hours ?? 0;
-        if (!(h > 0 && h <= DEFAULT_STANDARD_HOURS)) {
-          throw new Error(`Hourly leave must be between 0 and ${DEFAULT_STANDARD_HOURS} hours`);
+        // Semantic shift (0129): the old guard capped at DEFAULT_STANDARD_HOURS (8) because the legacy input
+        // was a NET-work figure. A From/To window is ELAPSED wall time — 09:00–18:00 is 9 elapsed hours (8
+        // work + 1 lunch) and is a legitimate request — so we must NOT cap at 8. Lower bound (> 0) is already
+        // enforced by hoursBetween for the window path; keep it for the back-compat raw-hours path too. Sanity
+        // cap at 24h: hourly leave is single-day (the startDate === endDate guard above), so a single calendar
+        // day cannot exceed 24 elapsed hours.
+        if (!(h > 0 && h <= 24)) {
+          throw new Error('Hourly leave must be more than 0 and at most 24 hours');
         }
         days = Math.round((h / DEFAULT_STANDARD_HOURS) * 100) / 100;
       } else {
@@ -722,6 +797,8 @@ export async function requestLeave(
       days,
       durationType,
       hours,
+      fromTime,
+      toTime,
       reason: p.reason ?? null,
       employeeRemark,
       parentGroupId: null,

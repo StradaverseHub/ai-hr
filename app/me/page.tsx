@@ -408,6 +408,13 @@ export default async function MePage({
                           {durationLabel(tLeave, r.durationType, r.hours)}
                         </span>
                       )}
+                      {/* Hourly-leave time window (0129): the employee's own window on hourly rows; slice-
+                          guarded for the Postgres seconds, gated so non-hourly rows never render a stray time. */}
+                      {r.durationType === 'hourly' && r.fromTime && r.toTime && (
+                        <span className="ml-1 text-xs font-medium text-foreground/60">
+                          {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
+                        </span>
+                      )}
                       {/* Emergency Leave (0106): the two ANNUAL/UNPAID child rows of one EL submission share
                           a parent_group_id — tag each so the applicant sees them as one Emergency Leave. */}
                       {r.parentGroupId && (

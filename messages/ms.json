@@ -491,6 +491,9 @@
       "hourly": "Mengikut jam"
     },
     "fieldHours": "Jam",
+    "fieldFromTime": "Masa mula",
+    "fieldToTime": "Masa tamat",
+    "hourlyTotal": "Jumlah: {hours} jam",
     "hoursPlaceholder": "cth. 2",
     "hoursUnit": "{hours} jam",
     "emergency": {
@@ -526,7 +529,8 @@
       "fileTypeNotAllowed": "Jenis fail tidak dibenarkan — diterima: {allowed}.",
       "fileTooLarge": "Fail melebihi had {mb} MB.",
       "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji.",
-      "holidaysIncomplete": "Hanya {loaded} daripada minimum 11 cuti umum yang diwartakan dimuatkan untuk {state} {year}; pengiraan cuti/hari rehat mungkin salah sehingga warta penuh dimuatkan."
+      "holidaysIncomplete": "Hanya {loaded} daripada minimum 11 cuti umum yang diwartakan dimuatkan untuk {state} {year}; pengiraan cuti/hari rehat mungkin salah sehingga warta penuh dimuatkan.",
+      "hourlyTimeRange": "Cuti berjam memerlukan Masa mula dan Masa tamat, dan Masa tamat mesti selepas Masa mula."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",

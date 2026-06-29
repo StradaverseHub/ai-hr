@@ -198,6 +198,15 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {Number(r.days)}
+                    {/* Hourly-leave time window (0129): show the actual window (09:00–11:00) on hourly rows so
+                        the approver sees WHICH hours, not just a bare days figure. .slice(0, 5) drops the
+                        Postgres ':00' seconds. Gated on durationType==='hourly' && both times so a stray time
+                        on a non-hourly row never renders. */}
+                    {r.durationType === 'hourly' && r.fromTime && r.toTime && (
+                      <div className="text-xs font-normal text-muted-foreground">
+                        {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
+                      </div>
+                    )}
                     <div className="text-xs font-normal text-muted-foreground">
                       {t('applicantBalance', { n: Number(r.applicantBalance) })}
                     </div>

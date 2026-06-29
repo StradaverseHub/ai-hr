@@ -491,6 +491,9 @@
       "hourly": "Theo giờ"
     },
     "fieldHours": "Số giờ",
+    "fieldFromTime": "Từ giờ",
+    "fieldToTime": "Đến giờ",
+    "hourlyTotal": "Tổng: {hours} giờ",
     "hoursPlaceholder": "vd. 2",
     "hoursUnit": "{hours} giờ",
     "emergency": {
@@ -526,7 +529,8 @@
       "fileTypeNotAllowed": "Loại tệp không được phép — chấp nhận: {allowed}.",
       "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB.",
       "unpaidConsentRequired": "Nghỉ khẩn cấp này sẽ tính {days} ngày là nghỉ không lương. Vui lòng tích vào ô để xác nhận những ngày không lương.",
-      "holidaysIncomplete": "Chỉ có {loaded} trên tối thiểu 11 ngày lễ công cộng được công báo đã được tải cho {state} {year}; việc tính ngày nghỉ phép/ngày nghỉ có thể sai cho đến khi tải đầy đủ công báo."
+      "holidaysIncomplete": "Chỉ có {loaded} trên tối thiểu 11 ngày lễ công cộng được công báo đã được tải cho {state} {year}; việc tính ngày nghỉ phép/ngày nghỉ có thể sai cho đến khi tải đầy đủ công báo.",
+      "hourlyTimeRange": "Nghỉ theo giờ cần có giờ bắt đầu và giờ kết thúc, và giờ kết thúc phải sau giờ bắt đầu."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",

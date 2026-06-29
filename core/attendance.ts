@@ -342,6 +342,10 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
         ? tx
             // ADR-0048: only full_day leave suppresses the day's attendance signal. A half-day / hourly
             // leave still expects (and can record) attendance for the worked portion, so it is excluded here.
+            // 0129: hourly rows now also carry from_time/to_time — a future per-hour reconciliation can use
+            // that window, but THIS filter is deliberately unchanged (the deferred reconciliation feature).
+            // Hourly leave is single-day (the startDate === endDate guard in requestLeave), so a cross-midnight
+            // window is definitionally out of scope and the to <= from rejection is correct.
             .select({ employmentId: leaveRequest.employmentId })
             .from(leaveRequest)
             .where(
@@ -461,6 +465,8 @@ export function attendanceMonthSummary(
       tx
         // ADR-0048: only full_day leave counts as a full leave day in the monthly summary. A half-day /
         // hourly leave is a worked (partial) day — it must not increment leaveDays — so it is excluded here.
+        // 0129: hourly rows now persist from_time/to_time, which makes a future per-hour reconciliation
+        // possible — but this leaveDays count is deliberately unchanged (the deferred reconciliation feature).
         .select({
           employmentId: leaveRequest.employmentId,
           startDate: leaveRequest.startDate,

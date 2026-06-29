@@ -42,6 +42,11 @@ export function LeaveDurationFields({
   const [typeId, setTypeId] = useState(types[0]?.id ?? '');
   const [duration, setDuration] = useState<Duration>('full_day');
   const [start, setStart] = useState(startDefault ?? '');
+  // Hourly-leave time window (0129): the two time pickers are controlled so we can show a live "Total: Nh"
+  // as the user picks. This client total is DISPLAY-ONLY — the server recomputes hours authoritatively from
+  // the same window on submit (the `required` attributes + the service-boundary throw are the real gates).
+  const [fromTime, setFromTime] = useState('');
+  const [toTime, setToTime] = useState('');
 
   const selected = types.find((x) => x.id === typeId);
   const allowed = new Set<Duration>(['full_day', ...((selected?.durations ?? []) as Duration[])]);
@@ -57,6 +62,19 @@ export function LeaveDurationFields({
   // whether the paid ALLOWANCE is withheld (qualifying-service / 5th-child) and, if so, grants the leave
   // UNPAID. Missing inputs default to paid + a "paid-allowance unconfirmed" warning, so they are optional.
   const isMaternity = selected?.code === 'MATERNITY';
+
+  // Hourly-leave time window (0129): mirror the server's hoursBetween for the live total. Normalize via
+  // slice(0, 5) (the seconds hazard) and only show a positive elapsed span. null hides the badge.
+  const hourlyTotal = (() => {
+    if (effectiveDuration !== 'hourly' || !fromTime || !toTime) return null;
+    const mins = (s: string) => {
+      const [h, m] = s.slice(0, 5).split(':').map(Number);
+      return h * 60 + m;
+    };
+    const span = mins(toTime) - mins(fromTime);
+    if (!(span > 0)) return null;
+    return Math.round((span / 60) * 100) / 100;
+  })();
 
   return (
     <>
@@ -95,18 +113,41 @@ export function LeaveDurationFields({
       </Field>
 
       {effectiveDuration === 'hourly' && (
-        <Field label={t('fieldHours')}>
-          <input
-            name="hours"
-            type="number"
-            min="0.5"
-            max="8"
-            step="0.5"
-            required
-            placeholder={t('hoursPlaceholder')}
-            className={inputCls}
-          />
-        </Field>
+        // Hourly-leave time window (0129): pick a From + To time (both required); the server derives the
+        // deducted hours from the elapsed span. step="900" constrains the picker to 15-minute granularity so
+        // deductions stay sane (the derived `days` is still re-rounded to 2 dp after hours/8). The live total
+        // below is display-only — the server recomputes authoritatively on submit.
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label={t('fieldFromTime')}>
+              <input
+                name="fromTime"
+                type="time"
+                step="900"
+                required
+                value={fromTime}
+                onChange={(e) => setFromTime(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+            <Field label={t('fieldToTime')}>
+              <input
+                name="toTime"
+                type="time"
+                step="900"
+                required
+                value={toTime}
+                onChange={(e) => setToTime(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+          </div>
+          {hourlyTotal != null && (
+            <p className="text-xs font-medium text-muted-foreground">
+              {t('hourlyTotal', { hours: hourlyTotal })}
+            </p>
+          )}
+        </>
       )}
 
       <div className="grid grid-cols-2 gap-2">

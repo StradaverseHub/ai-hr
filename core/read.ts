@@ -328,6 +328,11 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         days: leaveRequest.days,
         durationType: leaveRequest.durationType,
         hours: leaveRequest.hours,
+        // Hourly-leave time window (0129): surfaced on the admin/leave history table AND the approvals inbox
+        // (app/approvals/page.tsx) so the approver sees the actual window (09:00–11:00), not a bare days
+        // figure. NULL for full_day / half_day rows.
+        fromTime: leaveRequest.fromTime,
+        toTime: leaveRequest.toTime,
         status: leaveRequest.status,
         // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
         // surface can group them as one logical absence. NULL for ordinary requests.
@@ -902,6 +907,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         days: leaveRequest.days,
         durationType: leaveRequest.durationType,
         hours: leaveRequest.hours,
+        // Hourly-leave time window (0129): the employee sees their own window on the /me history row.
+        fromTime: leaveRequest.fromTime,
+        toTime: leaveRequest.toTime,
         status: leaveRequest.status,
         typeCode: leaveType.code,
         // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so the

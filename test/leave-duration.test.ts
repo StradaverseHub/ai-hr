@@ -182,12 +182,18 @@ describe('ADR-0048 — half-day & hourly leave', () => {
     ).rejects.toThrow(/single day/i);
   });
 
-  it('enforces hourly bounds: hours <= 0 or > 8 throws', async () => {
+  it('enforces hourly bounds: hours <= 0 or > 24 throws (0129: elapsed-window cap, not net-8)', async () => {
+    // 0129 semantic shift: hourly leave now carries a From/To window (elapsed wall time, e.g. 09:00–18:00 = 9h
+    // including lunch), so the old net-<=8 cap was dropped. The back-compat raw-hours path shares the same
+    // elapsed-window cap of 24h (single calendar day). Lower bound (<= 0) still throws; a legitimate 9h no
+    // longer does; only > 24 now throws.
     const lt = await leaveType({ durations: ALL });
     await grant(lt);
     const base = { employmentId, leaveTypeId: lt, startDate: '2026-07-06', endDate: '2026-07-06', durationType: 'hourly' as const };
     await expect(requestLeave(adminCtx(b), { ...base, hours: 0 })).rejects.toThrow(/hours/i);
-    await expect(requestLeave(adminCtx(b), { ...base, hours: 9 })).rejects.toThrow(/hours/i);
+    await expect(requestLeave(adminCtx(b), { ...base, hours: 25 })).rejects.toThrow(/hours/i);
+    // 9 elapsed hours is now a legitimate window (it used to be rejected by the net-<=8 bound).
+    await expect(requestLeave(adminCtx(b), { ...base, hours: 9 })).resolves.toMatchObject({ days: 1.13 });
   });
 
   it('working-day guard: half_day_am on a weekend / gazetted holiday is rejected, not deducted at 0.5', async () => {

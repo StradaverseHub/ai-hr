@@ -579,6 +579,12 @@ export const leaveRequest = pgTable(
     // ADR-0048: original hours for an 'hourly' request (null otherwise). Kept because round(hours/8,2)
     // can be lossy (1h → 0.13), so the displayed "1h" is recovered from here, not back-computed from days.
     hours: numeric('hours', { precision: 4, scale: 2 }),
+    // Hourly-leave time window (0129): the From/To window the applicant picked for a duration_type='hourly'
+    // request — `hours` is derived from (to_time - from_time). These are the SOURCE window; `hours` remains
+    // the derived deduction figure. Populated only for hourly rows; NULL for full_day / half_day and all
+    // pre-existing rows. Carried through approval + history so the approver sees the actual window.
+    fromTime: time('from_time'),
+    toTime: time('to_time'),
     status: leaveRequestStatusEnum('status').notNull().default('pending'),
     reason: text('reason'),
     // Supporting-document config: the applicant's mandatory remark when the leave type sets
