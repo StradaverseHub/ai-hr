@@ -1195,7 +1195,10 @@
       "scopeEmployeesSelectAll": "Select all",
       "scopeEmployeesClear": "Clear",
       "scopeHint": "Selected departments and named employees are combined. Leave everything unchecked to run payroll for the whole company.",
-      "importHistory": "Import payroll history"
+      "importHistory": "Import payroll history",
+      "periodContext": "Pay period",
+      "allPeriods": "All periods",
+      "filteredEmpty": "No batches for this pay period."
     },
     "batch": {
       "back": "Payroll",

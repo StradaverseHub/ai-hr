@@ -1195,7 +1195,10 @@
       "scopeEmployeesSelectAll": "เลือกทั้งหมด",
       "scopeEmployeesClear": "ล้าง",
       "scopeHint": "แผนกที่เลือกและพนักงานที่ระบุจะถูกรวมเข้าด้วยกัน ปล่อยว่างทั้งหมดเพื่อรันเงินเดือนสำหรับทั้งบริษัท",
-      "importHistory": "นำเข้าประวัติเงินเดือน"
+      "importHistory": "นำเข้าประวัติเงินเดือน",
+      "periodContext": "งวดจ่าย",
+      "allPeriods": "ทุกงวด",
+      "filteredEmpty": "ไม่มีชุดสำหรับงวดจ่ายนี้"
     },
     "reports": {
       "pageTitle": "เงินเดือน",

@@ -1195,7 +1195,10 @@
       "scopeEmployeesSelectAll": "全选",
       "scopeEmployeesClear": "清除",
       "scopeHint": "所选部门与指定员工将合并计入。全部不勾选则为整个公司运行薪资。",
-      "importHistory": "导入薪资历史"
+      "importHistory": "导入薪资历史",
+      "periodContext": "发薪周期",
+      "allPeriods": "所有周期",
+      "filteredEmpty": "此发薪周期暂无批次。"
     },
     "reports": {
       "pageTitle": "薪资",

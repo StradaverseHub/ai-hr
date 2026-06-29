@@ -1969,7 +1969,11 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   });
 }
 
-export function listBatches(ctx: SessionContext, companyIds?: string[]) {
+// Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
+// additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
+// companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
+// reproduces the prior behaviour byte-identically — the three existing callers pass ≤2 args.
+export function listBatches(ctx: SessionContext, companyIds?: string[], payPeriod?: string) {
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -1984,7 +1988,12 @@ export function listBatches(ctx: SessionContext, companyIds?: string[]) {
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .where(companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined)
+      .where(
+        and(
+          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
+          payPeriod ? eq(payrollBatch.payPeriod, payPeriod) : undefined,
+        ),
+      )
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
   );
 }

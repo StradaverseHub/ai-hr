@@ -5,6 +5,7 @@ import { listBatches } from '@/core/payroll';
 import { listCompanies, listDepartments, listEmployees } from '@/core/read';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
+import { PeriodSwitcher } from '@/components/period-switcher';
 import { BatchCreateForm } from './batch-create-form';
 import { addRunAction } from './actions';
 
@@ -17,25 +18,35 @@ const STATUS_STYLE: Record<string, string> = {
 export default async function PayrollPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; period?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.list');
   const thisMonth = new Date().toISOString().slice(0, 7); // current YYYY-MM
   // Wave 2C (ADR-0024): the "add run" control is gated — only shown when multi-cycle is enabled.
   const multiCycle = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
-  const { error } = await searchParams;
+  const sp = await searchParams;
+  const { error } = sp;
+  const period = sp.period || '';
   // Note (scope asymmetry, pre-existing): companies come from the UNSCOPED listCompanies, while
   // departments + employees are scope-filtered by scopeIds. A subtree-restricted admin can pick a
   // parent/sibling company in the dropdown whose departments + employees then come back empty → a
   // whole-company run with no ability to subset. This is inherited, not introduced here; scoping the
   // company dropdown too is out of scope for this feature.
-  const [batches, companies, departments, employees] = await Promise.all([
+  const [allBatches, companies, departments, employees] = await Promise.all([
     listBatches(s, scopeIds),
     listCompanies(s),
     listDepartments(s, { companyIds: scopeIds }),
     listEmployees(s, scopeIds),
   ]);
+  // Build #10: derive the distinct pay-period options inline from the already-fetched scoped
+  // batches (already desc-sorted by listBatches' orderBy). A single round-trip; the in-JS filter
+  // is cheap at per-tenant batch counts. `activePeriod` reconciles the URL param against the
+  // available periods — a valid-but-absent ?period (e.g. after a company switch, or a hand-typed
+  // value) quietly falls back to "All periods" so the list is never blank with a ghost selection.
+  const periodOptions = [...new Set(allBatches.map((b) => b.payPeriod))];
+  const activePeriod = period && periodOptions.includes(period) ? period : '';
+  const batches = activePeriod ? allBatches.filter((b) => b.payPeriod === activePeriod) : allBatches;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -53,6 +64,9 @@ export default async function PayrollPage({
         />
       </div>
       <PayrollTabs active="batches" />
+      <div className="flex justify-end">
+        <PeriodSwitcher options={periodOptions} active={activePeriod} />
+      </div>
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden" data-tour="payroll-batches">
@@ -98,7 +112,7 @@ export default async function PayrollPage({
             {batches.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                  {t('empty')}
+                  {activePeriod ? t('filteredEmpty') : t('empty')}
                 </td>
               </tr>
             )}

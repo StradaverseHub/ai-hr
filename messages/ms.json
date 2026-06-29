@@ -1195,7 +1195,10 @@
       "scopeEmployeesSelectAll": "Pilih semua",
       "scopeEmployeesClear": "Kosongkan",
       "scopeHint": "Jabatan yang dipilih dan pekerja yang dinamakan digabungkan. Biarkan semua tidak bertanda untuk menjalankan gaji bagi seluruh syarikat.",
-      "importHistory": "Import sejarah gaji"
+      "importHistory": "Import sejarah gaji",
+      "periodContext": "Tempoh gaji",
+      "allPeriods": "Semua tempoh",
+      "filteredEmpty": "Tiada kelompok untuk tempoh gaji ini."
     },
     "reports": {
       "pageTitle": "Gaji",

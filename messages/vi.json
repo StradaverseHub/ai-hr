@@ -1195,7 +1195,10 @@
       "scopeEmployeesSelectAll": "Chọn tất cả",
       "scopeEmployeesClear": "Xóa",
       "scopeHint": "Phòng ban đã chọn và nhân viên được chỉ định sẽ được gộp lại. Bỏ trống tất cả để chạy lương cho toàn công ty.",
-      "importHistory": "Nhập lịch sử bảng lương"
+      "importHistory": "Nhập lịch sử bảng lương",
+      "periodContext": "Kỳ lương",
+      "allPeriods": "Tất cả kỳ lương",
+      "filteredEmpty": "Không có đợt nào cho kỳ lương này."
     },
     "reports": {
       "pageTitle": "Bảng lương",
