@@ -536,7 +536,34 @@
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
     "employeeRemarkLabel": "员工备注",
     "employeeRemarkRequiredHint": "某些请假类型需要填写备注。",
-    "documentRequiredBadge": "需要文件"
+    "documentRequiredBadge": "需要文件",
+    "breakdown": {
+      "title": "额度明细",
+      "viewBreakdown": "明细",
+      "hide": "隐藏明细",
+      "asAtDate": "截至日期",
+      "apply": "应用",
+      "currentYearEntitlement": "本年度额度",
+      "monthlyAccrued": "本年度至今累计",
+      "carriedForward": "结转",
+      "carryForwardRemaining": "结转剩余",
+      "carryForwardExpiry": "结转到期日",
+      "noExpiry": "不过期",
+      "forfeited": "已作废",
+      "totalAvailable": "可用总额",
+      "transactionsHeading": "交易记录",
+      "noTransactions": "此期间无交易记录。",
+      "colDate": "日期",
+      "colEntry": "条目",
+      "colDays": "天数",
+      "colSource": "来源",
+      "entryType": {
+        "accrual": "累计",
+        "debit": "已休假",
+        "adjustment": "调整",
+        "inLieuAccrual": "补休累计"
+      }
+    }
   },
   "attendance": {
     "title": "考勤",

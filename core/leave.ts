@@ -1771,6 +1771,34 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
   });
 }
 
+// ── Carry reconstruction (shared by expireCarriedLeave + the read-only breakdown view) ─────────────
+/**
+ * Pure reconstruction of the carried-forward ANNUAL quantity for one leave year, derived ENTIRELY from
+ * the flat signed ledger — no tags, no new schema (ADR-0038). Inputs:
+ *  - priorYearEndBalance — the signed ledger balance immediately before the year's Jan-1 open.
+ *  - carryMax            — the policy's carryForwardMax cap.
+ *  - debitsInWindow      — total ANNUAL days TAKEN inside [yearStart, expiryDate] (a positive number).
+ *  - currentBalance      — the signed ledger balance as at the point being evaluated.
+ * Returns:
+ *  - carried          = min(max(priorYearEndBalance, 0), carryMax)  — what openLeaveYear posted at open.
+ *  - unconsumedCarry  = max(0, round2(carried − debitsInWindow))     — carry still un-eaten in the window.
+ *  - forfeitable      = round2(min(unconsumedCarry, max(0, currentBalance))) — never taxes fresh
+ *    entitlement, never double-forfeits already-taken days (the WEAKER, balance-based forfeit rule).
+ * This is the single source of truth for both the cron sweep and the read; keeping the arithmetic here
+ * guarantees the breakdown can never diverge from what expireCarriedLeave actually forfeits.
+ */
+export function reconstructCarry(p: {
+  priorYearEndBalance: number;
+  carryMax: number;
+  debitsInWindow: number;
+  currentBalance: number;
+}): { carried: number; unconsumedCarry: number; forfeitable: number } {
+  const carried = Math.min(Math.max(p.priorYearEndBalance, 0), p.carryMax);
+  const unconsumedCarry = Math.max(0, round2(carried - p.debitsInWindow));
+  const forfeitable = round2(Math.min(unconsumedCarry, Math.max(0, p.currentBalance)));
+  return { carried, unconsumedCarry, forfeitable };
+}
+
 // ── Carry-forward expiry / auto-forfeit (ADR-0038 carry-forward enhancement) ───────────────────────
 /**
  * Forfeit the still-unused carried-forward ANNUAL days whose configured expiry date has arrived.
@@ -1885,8 +1913,8 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
             .select({ bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
             .from(leaveLedger)
             .where(and(eq(leaveLedger.employmentId, e.employmentId), eq(leaveLedger.leaveTypeId, t.id), lt(leaveLedger.effectiveOn, yearStart)));
-          const carriedAmount = Math.min(Math.max(Number(priorRow?.bal ?? 0), 0), carryMax);
-          if (carriedAmount <= 0) continue;
+          const priorYearEndBalance = Number(priorRow?.bal ?? 0);
+          if (Math.min(Math.max(priorYearEndBalance, 0), carryMax) <= 0) continue;
           // Annual debits inside [yearStart, expiryDate] reduce the still-unconsumed carry. (Weaker rule:
           // no ordering claim — just "how much of the window's leave could have eaten the carry".)
           const [debitRow] = await tx
@@ -1902,11 +1930,15 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
               ),
             );
           const debitsInWindow = Number(debitRow?.taken ?? 0);
-          const unconsumedCarry = Math.max(0, Math.round((carriedAmount - debitsInWindow) * 100) / 100);
-          if (unconsumedCarry <= 0) continue;
           // Cap at what is actually still in the balance now — never tax fresh entitlement / re-forfeit.
           const currentBalance = await leaveBalance(tx, e.employmentId, t.id);
-          const forfeit = Math.round(Math.min(unconsumedCarry, Math.max(0, currentBalance)) * 100) / 100;
+          const { unconsumedCarry, forfeitable: forfeit } = reconstructCarry({
+            priorYearEndBalance,
+            carryMax,
+            debitsInWindow,
+            currentBalance,
+          });
+          if (unconsumedCarry <= 0) continue;
           if (forfeit <= 0) continue;
           // Idempotency (year-qualified): if a forfeit adjustment of this magnitude already sits at exactly
           // this expiry date, this year was already swept — skip. A manual unrelated adjustment of a

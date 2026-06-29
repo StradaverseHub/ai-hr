@@ -536,7 +536,34 @@
     "documentHint": "จำเป็นสำหรับการลาบางประเภท (เช่น ใบรับรองแพทย์) ประเภทไฟล์และขนาดที่อนุญาตขึ้นอยู่กับประเภทการลาที่เลือก",
     "employeeRemarkLabel": "หมายเหตุของพนักงาน",
     "employeeRemarkRequiredHint": "การลาบางประเภทจำเป็นต้องมีหมายเหตุ",
-    "documentRequiredBadge": "ต้องมีเอกสาร"
+    "documentRequiredBadge": "ต้องมีเอกสาร",
+    "breakdown": {
+      "title": "รายละเอียดสิทธิ์การลา",
+      "viewBreakdown": "รายละเอียด",
+      "hide": "ซ่อนรายละเอียด",
+      "asAtDate": "ณ วันที่",
+      "apply": "ใช้",
+      "currentYearEntitlement": "สิทธิ์ปีนี้",
+      "monthlyAccrued": "สะสมจนถึงตอนนี้ในปีนี้",
+      "carriedForward": "ยกยอดมา",
+      "carryForwardRemaining": "ยอดยกมาคงเหลือ",
+      "carryForwardExpiry": "วันหมดอายุยอดยกมา",
+      "noExpiry": "ไม่หมดอายุ",
+      "forfeited": "ถูกริบ",
+      "totalAvailable": "ยอดใช้ได้ทั้งหมด",
+      "transactionsHeading": "รายการเคลื่อนไหว",
+      "noTransactions": "ไม่มีรายการในช่วงนี้",
+      "colDate": "วันที่",
+      "colEntry": "รายการ",
+      "colDays": "วัน",
+      "colSource": "แหล่งที่มา",
+      "entryType": {
+        "accrual": "การสะสม",
+        "debit": "ลาที่ใช้ไป",
+        "adjustment": "การปรับปรุง",
+        "inLieuAccrual": "สะสมชดเชย"
+      }
+    }
   },
   "attendance": {
     "title": "การเข้างาน",

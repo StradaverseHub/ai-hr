@@ -536,7 +536,34 @@
     "documentHint": "சில விடுப்பு வகைகளுக்குத் தேவை (எ.கா. மருத்துவச் சான்றிதழ்). அனுமதிக்கப்படும் வகைகளும் அளவு வரம்புகளும் தேர்ந்தெடுத்த விடுப்பு வகையைப் பொறுத்தது.",
     "employeeRemarkLabel": "பணியாளர் குறிப்பு",
     "employeeRemarkRequiredHint": "சில விடுப்பு வகைகளுக்கு ஒரு குறிப்பு தேவை.",
-    "documentRequiredBadge": "ஆவணம் தேவை"
+    "documentRequiredBadge": "ஆவணம் தேவை",
+    "breakdown": {
+      "title": "உரிமை விவரப் பகுப்பு",
+      "viewBreakdown": "விவரப் பகுப்பு",
+      "hide": "விவரப் பகுப்பை மறை",
+      "asAtDate": "தேதி வரை",
+      "apply": "பயன்படுத்து",
+      "currentYearEntitlement": "இந்த ஆண்டின் உரிமை",
+      "monthlyAccrued": "இந்த ஆண்டில் இதுவரை சேர்ந்தது",
+      "carriedForward": "முன்னெடுத்துச் செல்லப்பட்டது",
+      "carryForwardRemaining": "எஞ்சிய முன்னெடுப்பு",
+      "carryForwardExpiry": "முன்னெடுப்பு காலாவதி தேதி",
+      "noExpiry": "காலாவதியாகாது",
+      "forfeited": "பறிமுதல் செய்யப்பட்டது",
+      "totalAvailable": "மொத்தம் கிடைக்கக்கூடியது",
+      "transactionsHeading": "பரிவர்த்தனைகள்",
+      "noTransactions": "இந்தக் காலகட்டத்தில் பரிவர்த்தனைகள் இல்லை.",
+      "colDate": "தேதி",
+      "colEntry": "பதிவு",
+      "colDays": "நாட்கள்",
+      "colSource": "மூலம்",
+      "entryType": {
+        "accrual": "சேர்க்கை",
+        "debit": "எடுத்த விடுப்பு",
+        "adjustment": "சரிசெய்தல்",
+        "inLieuAccrual": "ஈடாக சேர்க்கை"
+      }
+    }
   },
   "attendance": {
     "title": "கலந்துகொள்வு",

@@ -1,7 +1,15 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { isLeaveEligible, type LeaveEligibility } from './leave';
+import {
+  earnedCycleStart,
+  isEarnedMethod,
+  isLeaveEligible,
+  reconstructCarry,
+  resolveGradePolicy,
+  type GradePolicyRow,
+  type LeaveEligibility,
+} from './leave';
 import {
   appUser,
   assignment,
@@ -17,6 +25,7 @@ import {
   holidayGroup,
   jobGrade,
   leaveLedger,
+  leavePolicy,
   leaveRequest,
   leaveType,
   location,
@@ -683,6 +692,205 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     const localName = new Map(types.map((t) => [t.id, pickName(t.name, t.i18n, locale)]));
     for (const r of out) r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
     return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+  });
+}
+
+// ── Leave entitlement breakdown (read-only ledger reconstruction) ──────────────────────────────────
+/**
+ * A read-only "how is this balance built up?" view over the existing flat leave_ledger for ONE
+ * (employment, leave-type) as at a chosen date. It RECONSTRUCTS — never tags or mutates — the carry/
+ * forfeit components the year-boundary crons already compute (ADR-0038 model: no new schema, no enum
+ * value), so the figures here can never diverge from what openLeaveYear / expireCarriedLeave produce.
+ *
+ * Date semantics: every ledger read filters `effective_on <= asOf` (a CLOSED interval). A row dated
+ * exactly ON `asOf` — including a forfeit adjustment posted on the carry-expiry date — is therefore
+ * INCLUDED. Picking `asOf` on the expiry date shows the carry already swept (remaining 0, forfeit
+ * realised). The view looks backwards accurately; it does NOT project a future, not-yet-opened year —
+ * such a year simply shows zero fresh entitlement (its open run hasn't happened).
+ *
+ * RLS: runs under withTenant, so leave_ledger / leave_policy / leave_request / company are all scoped
+ * by can_see_employment — a peer who cannot see the employment gets an empty/zero breakdown, never a leak.
+ */
+export type LeaveEntitlementBreakdown = {
+  leaveTypeId: string;
+  leaveType: string;
+  asOf: string;
+  /** Cycle/leave-year start used for the in-scope reconstruction (calendar or hire-anniversary). */
+  cycleStart: string;
+  /** Sum of accrual + in_lieu_accrual days effective within [cycleStart, asOf]. */
+  currentYearEntitlement: number;
+  /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open. */
+  monthlyAccruedToDate: number | null;
+  /** Balance carried into the current cycle, capped at the policy's carryForwardMax. */
+  carriedForward: number;
+  /** How much of `carriedForward` is still un-consumed in the window (the weaker, balance-based rule). */
+  carryForwardRemaining: number;
+  /** {cycleYear}-{expiry.month}-{expiry.day}, or null when carryMax = 0 / no expiry configured. */
+  carryForwardExpiryDate: string | null;
+  /** Days forfeited for the in-scope cycle (cap-excess at open + any realised expiry lapse) as at asOf. */
+  forfeited: number;
+  /** Ledger balance as at asOf minus pending requests (mirrors leaveBalances' `available`). */
+  totalAvailable: number;
+  /** Raw in-scope ledger rows so the UI can show the source of each component. */
+  transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null }[];
+};
+
+export function leaveEntitlementBreakdown(
+  ctx: SessionContext,
+  employmentId: string,
+  leaveTypeId: string,
+  asOf: string,
+  locale?: string,
+): Promise<LeaveEntitlementBreakdown | null> {
+  return withTenant(ctx, async (tx) => {
+    // The type + the employment basics. RLS gates the employment row; a peer who can't see it gets null
+    // here (employment join returns nothing) → a defined empty state, never an error or a leak.
+    const [[type], [emp]] = await Promise.all([
+      tx
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n })
+        .from(leaveType)
+        .where(eq(leaveType.id, leaveTypeId))
+        .limit(1),
+      tx
+        .select({ hiredOn: employment.hiredOn, gradeId: employment.gradeId, leaveCycle: company.leaveCycle })
+        .from(employment)
+        .innerJoin(company, eq(company.id, employment.companyId))
+        .where(eq(employment.id, employmentId))
+        .limit(1),
+    ]);
+    if (!type || !emp) return null;
+
+    const cycleStart = earnedCycleStart(emp.hiredOn, asOf, emp.leaveCycle);
+
+    // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
+    const policies = await tx
+      .select({ gradeId: leavePolicy.gradeId, accrual: leavePolicy.accrual })
+      .from(leavePolicy)
+      .where(
+        and(
+          eq(leavePolicy.leaveTypeId, leaveTypeId),
+          lte(leavePolicy.validFrom, asOf),
+          // validTo is exclusive (an active version spans [validFrom, validTo)).
+          sql`(${leavePolicy.validTo} is null or ${leavePolicy.validTo} > ${asOf})`,
+        ),
+      );
+    const policy = resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId);
+    const earned = isEarnedMethod(policy?.method);
+    const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
+    const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;
+    const cycleYear = cycleStart.slice(0, 4);
+    const carryForwardExpiryDate =
+      carryMax > 0 && expiry
+        ? `${cycleYear}-${String(expiry.month).padStart(2, '0')}-${String(expiry.day).padStart(2, '0')}`
+        : null;
+
+    // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.
+    const num = (x: unknown) => Number(x ?? 0);
+    const [[agg], [debitAgg], [pendRow], rows] = await Promise.all([
+      tx
+        .select({
+          // Fresh entitlement granted within the current cycle (accruals + in-lieu top-ups).
+          cycleAccrual: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual','in_lieu_accrual') and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // Signed balance as at asOf (the headline number this view explains).
+          balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+          // Signed balance strictly before the cycle start = what carried into the cycle.
+          priorBalance: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.effectiveOn} < ${cycleStart}), 0)`,
+        })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.employmentId, employmentId),
+            eq(leaveLedger.leaveTypeId, leaveTypeId),
+            lte(leaveLedger.effectiveOn, asOf),
+          ),
+        ),
+      // ANNUAL debits inside the carry window [cycleStart, min(expiry, asOf)] — they reduce un-consumed
+      // carry (weaker rule: no ordering claim). When no expiry, the window runs to asOf.
+      tx
+        .select({ taken: sql<string>`coalesce(-sum(${leaveLedger.days}), 0)` })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.employmentId, employmentId),
+            eq(leaveLedger.leaveTypeId, leaveTypeId),
+            eq(leaveLedger.entryType, 'debit'),
+            gte(leaveLedger.effectiveOn, cycleStart),
+            lte(
+              leaveLedger.effectiveOn,
+              carryForwardExpiryDate && carryForwardExpiryDate < asOf ? carryForwardExpiryDate : asOf,
+            ),
+          ),
+        ),
+      tx
+        .select({ pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)` })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.leaveTypeId, leaveTypeId),
+            eq(leaveRequest.status, 'pending'),
+          ),
+        ),
+      tx
+        .select({
+          effectiveOn: leaveLedger.effectiveOn,
+          entryType: leaveLedger.entryType,
+          days: leaveLedger.days,
+          sourceRequestId: leaveLedger.sourceRequestId,
+        })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.employmentId, employmentId),
+            eq(leaveLedger.leaveTypeId, leaveTypeId),
+            gte(leaveLedger.effectiveOn, cycleStart),
+            lte(leaveLedger.effectiveOn, asOf),
+          ),
+        )
+        .orderBy(asc(leaveLedger.effectiveOn)),
+    ]);
+
+    const balance = num(agg?.balance);
+    const priorBalance = num(agg?.priorBalance);
+    const cycleAccrual = num(agg?.cycleAccrual);
+    const debitsInWindow = num(debitAgg?.taken);
+    const { carried, unconsumedCarry, forfeitable } = reconstructCarry({
+      priorYearEndBalance: priorBalance,
+      carryMax,
+      debitsInWindow,
+      currentBalance: balance,
+    });
+
+    // Forfeited as at asOf: the cap-excess at open (prior balance over carryMax) PLUS the realised expiry
+    // lapse if the expiry date has arrived (≤ asOf). Before the expiry date passes, only the cap-excess is
+    // final; the expirable remainder is still available, not yet forfeited.
+    const capExcess = Math.max(0, Math.round((Math.max(priorBalance, 0) - carried) * 100) / 100);
+    const expiryPassed = carryForwardExpiryDate != null && carryForwardExpiryDate <= asOf;
+    const expiryForfeit = expiryPassed ? forfeitable : 0;
+    const forfeited = Math.round((capExcess + expiryForfeit) * 100) / 100;
+    // Once the expiry has passed, no carry remains available.
+    const carryForwardRemaining = expiryPassed ? 0 : unconsumedCarry;
+
+    const i18n = type.i18n as Record<string, { name: string }> | null;
+    return {
+      leaveTypeId: type.id,
+      leaveType: pickName(type.name, i18n, locale),
+      asOf,
+      cycleStart,
+      currentYearEntitlement: cycleAccrual,
+      monthlyAccruedToDate: earned ? cycleAccrual : null,
+      carriedForward: carried,
+      carryForwardRemaining,
+      carryForwardExpiryDate,
+      forfeited,
+      totalAvailable: Math.round((balance - num(pendRow?.pending)) * 100) / 100,
+      transactions: rows.map((r) => ({
+        effectiveOn: r.effectiveOn,
+        entryType: r.entryType,
+        days: Number(r.days),
+        sourceRequestId: r.sourceRequestId,
+      })),
+    };
   });
 }
 

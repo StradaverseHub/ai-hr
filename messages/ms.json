@@ -536,7 +536,34 @@
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
     "employeeRemarkLabel": "Catatan pekerja",
     "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti.",
-    "documentRequiredBadge": "dokumen diperlukan"
+    "documentRequiredBadge": "dokumen diperlukan",
+    "breakdown": {
+      "title": "Pecahan kelayakan",
+      "viewBreakdown": "Pecahan",
+      "hide": "Sembunyikan pecahan",
+      "asAtDate": "Pada tarikh",
+      "apply": "Guna",
+      "currentYearEntitlement": "Kelayakan tahun ini",
+      "monthlyAccrued": "Terkumpul setakat ini tahun ini",
+      "carriedForward": "Dibawa ke hadapan",
+      "carryForwardRemaining": "Baki bawa ke hadapan",
+      "carryForwardExpiry": "Tarikh luput bawa ke hadapan",
+      "noExpiry": "Tidak luput",
+      "forfeited": "Dilucutkan",
+      "totalAvailable": "Jumlah tersedia",
+      "transactionsHeading": "Transaksi",
+      "noTransactions": "Tiada transaksi dalam tempoh ini.",
+      "colDate": "Tarikh",
+      "colEntry": "Catatan",
+      "colDays": "Hari",
+      "colSource": "Sumber",
+      "entryType": {
+        "accrual": "Terkumpul",
+        "debit": "Cuti diambil",
+        "adjustment": "Pelarasan",
+        "inLieuAccrual": "Terkumpul ganti"
+      }
+    }
   },
   "attendance": {
     "title": "Kehadiran",

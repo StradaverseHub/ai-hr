@@ -3,6 +3,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   leaveBalances,
+  leaveEntitlementBreakdown,
   leaveRequestsFor,
   listEligibleLeaveTypesFor,
   myAttendance,
@@ -22,6 +23,7 @@ import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/perfo
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { SectionJumpNav } from '@/components/section-jump-nav';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
+import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { durationLabel } from '@/lib/leave-duration';
 import {
   myCheckIn,
@@ -88,13 +90,13 @@ function Pill({ status, map, label }: { status: string; map: Record<string, stri
 export default async function MePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; month?: string; cycle?: string }>;
+  searchParams: Promise<{ error?: string; month?: string; cycle?: string; asOf?: string }>;
 }) {
   const t = await getTranslations('me');
   const tLeave = await getTranslations('leave'); // ADR-0048 — duration labels in history
   const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
-  const { error, month: spMonth, cycle: spCycle } = await searchParams;
+  const { error, month: spMonth, cycle: spCycle, asOf: spAsOf } = await searchParams;
   const me = await myEmployment(s);
 
   if (!me) {
@@ -143,6 +145,15 @@ export default async function MePage({
 
   const today = new Date().toISOString().slice(0, 10);
   const todayRow = attendance.find((a) => a.date === today);
+
+  // Leave entitlement breakdown (read-only ledger reconstruction). One ?asOf= drives the whole leave
+  // section; an invalid/empty param falls back to today (the breakdown looks backwards accurately, never
+  // projects a future year). We fetch a breakdown per tracked balance type so each row can expand.
+  const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
+  const breakdowns = await Promise.all(
+    balances.map((b) => leaveEntitlementBreakdown(s, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
+  );
+  const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
 
   // EA (annual tax statement) rows — derived from the principal's REAL payslips across ALL their
   // employments incl. terminated ones (leavers must reach their prior employer's EA). `myEmploymentIdsAll`
@@ -353,6 +364,13 @@ export default async function MePage({
                     {b.pending > 0 ? ` · ${t('leavePending', { count: b.pending })}` : ''}
                     {tracked ? ` · ${t('leaveAvailable', { count: b.available })}` : ''}
                   </div>
+                  {breakdownByType.get(b.leaveTypeId) && (
+                    <EntitlementBreakdown
+                      data={breakdownByType.get(b.leaveTypeId)!}
+                      asOf={breakdownAsOf}
+                      action="/me"
+                    />
+                  )}
                 </div>
               );
             })}

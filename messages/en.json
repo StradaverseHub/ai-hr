@@ -536,7 +536,34 @@
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
     "employeeRemarkLabel": "Employee remark",
     "employeeRemarkRequiredHint": "A remark is required for some leave types.",
-    "documentRequiredBadge": "document required"
+    "documentRequiredBadge": "document required",
+    "breakdown": {
+      "title": "Entitlement breakdown",
+      "viewBreakdown": "Breakdown",
+      "hide": "Hide breakdown",
+      "asAtDate": "As at date",
+      "apply": "Apply",
+      "currentYearEntitlement": "This year's entitlement",
+      "monthlyAccrued": "Accrued so far this year",
+      "carriedForward": "Carried forward",
+      "carryForwardRemaining": "Carry-forward remaining",
+      "carryForwardExpiry": "Carry-forward expiry",
+      "noExpiry": "Does not expire",
+      "forfeited": "Forfeited",
+      "totalAvailable": "Total available",
+      "transactionsHeading": "Transactions",
+      "noTransactions": "No transactions in this period.",
+      "colDate": "Date",
+      "colEntry": "Entry",
+      "colDays": "Days",
+      "colSource": "Source",
+      "entryType": {
+        "accrual": "Accrual",
+        "debit": "Leave taken",
+        "adjustment": "Adjustment",
+        "inLieuAccrual": "In-lieu accrual"
+      }
+    }
   },
   "attendance": {
     "title": "Attendance",

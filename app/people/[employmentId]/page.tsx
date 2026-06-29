@@ -9,6 +9,7 @@ import {
   employeeAudit,
   employeeDetail,
   leaveBalances,
+  leaveEntitlementBreakdown,
   leaveRequestsFor,
   listDepartments,
   listEmployees,
@@ -16,6 +17,7 @@ import {
   reportingLinesFor,
 } from '@/core/read';
 import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EpfElection } from '@/components/epf-election';
@@ -72,14 +74,14 @@ export default async function EmployeePage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string; asOf?: string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('people.detail');
   const tp = await getTranslations('payrollPolicy');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from, cp38Error } = await searchParams;
+  const { error, from, cp38Error, asOf: spAsOf } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -101,6 +103,14 @@ export default async function EmployeePage({
     listJobGrades(s),
     delegationsFor(s, employmentId),
   ]);
+  // Leave entitlement breakdown (read-only). HR reuses the same component as /me; one ?asOf= drives the
+  // whole leave card. RLS scopes every read, so a viewer who can't see this employment's ledger/policy
+  // gets a null breakdown (rendered as nothing) rather than a leak. Invalid/empty asOf falls back to today.
+  const breakdownAsOf = spAsOf && /^\d{4}-\d{2}-\d{2}$/.test(spAsOf) ? spAsOf : today;
+  const breakdowns = await Promise.all(
+    balances.map((b) => leaveEntitlementBreakdown(s, employmentId, b.leaveTypeId, breakdownAsOf)),
+  );
+  const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
@@ -425,6 +435,14 @@ export default async function EmployeePage({
                   ? t('usedWithPending', { taken: b.taken, pending: b.pending })
                   : t('used', { taken: b.taken })}
               </div>
+              {breakdownByType.get(b.leaveTypeId) && (
+                <EntitlementBreakdown
+                  data={breakdownByType.get(b.leaveTypeId)!}
+                  asOf={breakdownAsOf}
+                  action={`/people/${employmentId}`}
+                  hiddenParams={from ? { from } : {}}
+                />
+              )}
             </div>
           ))}
           {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">{t('noLeaveRecords')}</div>}

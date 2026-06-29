@@ -536,7 +536,34 @@
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
     "employeeRemarkLabel": "Ghi chú của nhân viên",
     "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú.",
-    "documentRequiredBadge": "cần tài liệu"
+    "documentRequiredBadge": "cần tài liệu",
+    "breakdown": {
+      "title": "Phân tích quyền lợi",
+      "viewBreakdown": "Phân tích",
+      "hide": "Ẩn phân tích",
+      "asAtDate": "Tính đến ngày",
+      "apply": "Áp dụng",
+      "currentYearEntitlement": "Quyền lợi năm nay",
+      "monthlyAccrued": "Tích lũy đến nay trong năm",
+      "carriedForward": "Chuyển sang",
+      "carryForwardRemaining": "Số dư chuyển sang còn lại",
+      "carryForwardExpiry": "Ngày hết hạn số dư chuyển sang",
+      "noExpiry": "Không hết hạn",
+      "forfeited": "Bị mất",
+      "totalAvailable": "Tổng khả dụng",
+      "transactionsHeading": "Giao dịch",
+      "noTransactions": "Không có giao dịch trong kỳ này.",
+      "colDate": "Ngày",
+      "colEntry": "Mục",
+      "colDays": "Ngày",
+      "colSource": "Nguồn",
+      "entryType": {
+        "accrual": "Tích lũy",
+        "debit": "Nghỉ đã dùng",
+        "adjustment": "Điều chỉnh",
+        "inLieuAccrual": "Tích lũy bù"
+      }
+    }
   },
   "attendance": {
     "title": "Chấm công",
