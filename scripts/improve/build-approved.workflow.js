@@ -21,7 +21,7 @@ const BUILD_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    testsPass: { type: 'boolean', description: 'true ONLY if tsc is clean AND the whole vitest suite is green.' },
+    testsPass: { type: 'boolean', description: 'true ONLY if tsc is clean AND the whole vitest suite is green AND `pnpm build` (next build) compiles.' },
     summary: { type: 'string', description: '2–3 sentences on what was built.' },
     patch: { type: 'string', description: 'Full `git diff --cached` text of the change (empty if testsPass is false).' },
     diffstat: { type: 'string', description: '`git diff --cached --stat` output.' },
@@ -74,13 +74,18 @@ for (let i = 0; i < items.length; i++) {
       `db/migrations/meta/_journal.json append), the DomainEvent substrate on every state-changing service ` +
       `method (appendEvent/actorOf), i18n in all 6 locales (messages/{en,ms,ta,th,vi,zh}.json), and RLS for ` +
       `any new table. Add the tests the plan specifies.\n\n` +
-      `GATE — you MUST reach BOTH before returning testsPass=true:\n` +
+      `GATE — you MUST reach ALL THREE before returning testsPass=true:\n` +
       `  • \`npx tsc --noEmit\` is clean.\n` +
       `  • \`pnpm vitest run\` is fully green against YOUR isolated DB (set up above). The harness migrates it ` +
       `from zero, so there is no shared-DB collision and no reset to run.\n` +
+      `  • \`pnpm build\` (next build) compiles successfully. This catches React Server Component boundary ` +
+      `errors — a \`'use client'\` component importing a server-only module (e.g. anything that imports the DB ` +
+      `client) — which tsc + vitest do NOT catch and which BREAK the production deploy. One-shot, ~1 min; it ` +
+      `does NOT start a server. If it fails with a client/server "module not found", split the pure helpers/` +
+      `constants/types into a db-free module and import THAT from the client component (e.g. core/loans-compute.ts).\n` +
       `⛔ HANG GUARDS (the previous run stalled on these): do NOT start the dev server (\`pnpm dev\` / \`next ` +
       `dev\`), do NOT run browser/preview verification, and do NOT run any long-lived or watch-mode process. ` +
-      `Use ONLY \`tsc --noEmit\` and \`vitest run\` (one-shot). If a command hangs > 2 min, kill it and treat ` +
+      `Use ONLY \`tsc --noEmit\`, \`vitest run\`, and \`pnpm build\` (all one-shot). If a command hangs > 2 min, kill it and treat ` +
       `it as a blocker rather than waiting.\n` +
       `When green: \`git add -A\`, then PERSIST your work before returning so a later build's failure cannot ` +
       `lose it — write the full \`git diff --cached\` to \`${REPO}/.improve/patches/${fb.id}.patch\` (use the ` +
