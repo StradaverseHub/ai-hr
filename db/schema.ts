@@ -693,6 +693,55 @@ export const leaveApprovalPolicy = pgTable(
   ],
 );
 
+// 2.1.1 Payroll Policy — Monthly General Settings config (ADR-0064). Stored as `config jsonb` on the row;
+// NULL = today's exact behaviour. The shape + cleanX validation live in core/payroll-policy-config.ts (which
+// imports this type); the field bag is defined here so the Drizzle column can be typed without a cycle. Every
+// sub-field is OPTIONAL — an absent field falls back to the legacy default (the all-default config is
+// byte-identical, proven by the golden matrix). See the config module for the canonical default + validator.
+export type RoundingMode = 'none' | 'up' | 'down' | 'nearest';
+export type ProrationDivisor = 'calendar_month' | 'custom_days';
+export type OtDayType = 'workday' | 'rest_day' | 'holiday';
+export type NegativeNetMode = 'retain' | 'set_zero'; // carry_forward is a gated follow-up (ADR-0064 §1d)
+export type LeaveDivisor =
+  | 'calendar_month'
+  | 'custom_days'
+  | 'cutoff_days'
+  | 'working_days'
+  | 'custom_hours'
+  | 'custom_minutes';
+export type PayrollPolicyConfig = {
+  // 1a — earnings / deductions / net-pay rounding (default 'none' on each = byte-identical).
+  rounding?: { earnings?: RoundingMode; deductions?: RoundingMode; netPay?: RoundingMode };
+  // 1b — basic-salary proration divisor + working-day basis (default calendar_month = EA s.18A daysInMonth).
+  proration?: {
+    divisor?: ProrationDivisor;
+    customDays?: number; //                     used when divisor='custom_days'
+    includeSaturday?: boolean; //               working-day basis (only when a working-day divisor is chosen)
+    includeSunday?: boolean;
+    includeHoliday?: boolean;
+  };
+  // 1c — split a mid-period salary increment across the two straddling comp rows (default false = single row).
+  salaryIncrementProration?: boolean;
+  // 1d — negative-net handling after the net-pay computation (default 'retain' = today's s.24 clamp behaviour).
+  negativeNet?: NegativeNetMode;
+  // 1e — OT caps wrapped around the statutory engine. Multipliers floored at the EA s.60A minimum.
+  overtime?: {
+    maxHoursPerMonth?: number; //               total OT hours cap (0/absent = no cap)
+    maxAmount?: number; //                       total OT RM cap (0/absent = no cap)
+    eligibleDayTypes?: OtDayType[]; //          which classified days qualify (absent = all three)
+    multiplier?: number; //                      workday OT multiplier, floored at the s.60A 1.5× minimum
+  };
+  // 1f — divisor selector for unpaid-leave / unpaid-time-off / leave-encashment (default calendar_month).
+  leave?: {
+    unpaidLeaveDivisor?: LeaveDivisor;
+    unpaidTimeOffDivisor?: LeaveDivisor;
+    encashmentDivisor?: LeaveDivisor;
+    customDays?: number; //                     used when a *_Divisor is 'custom_days'
+    customHours?: number; //                    used when a *_Divisor is 'custom_hours'
+    customMinutes?: number; //                  used when a *_Divisor is 'custom_minutes'
+  };
+};
+
 // 2.1 Payroll Policy — a named, reusable, company-scoped template for HOW an employee gets paid. Assigned
 // to an employment via employment.payroll_policy_id (null = monthly default). For `monthly` the pay_rule is
 // null/{kind:'fixed'} (byte-identical to today); daily/hourly (deferred) carry a PayRule the existing kernel
@@ -712,6 +761,12 @@ export const payrollPolicy = pgTable(
     // Reuses core/pay-rule.ts's PayRule (no new config shape). Null for monthly. For daily/hourly (deferred)
     // this holds { kind:'per_day'|'per_hour', rate } — the rule the kernel's resolvePayRule already evaluates.
     payRule: jsonb('pay_rule').$type<PayRule | null>(),
+    // 2.1.1 (ADR-0064) Monthly General Settings config. NULL = today's exact behaviour (proven byte-identical
+    // by the default-equals-legacy golden matrix); the kernel reads it at run time via resolveAssignedPolicy.
+    config: jsonb('config').$type<PayrollPolicyConfig | null>(),
+    // 2.1.1 (ADR-0064) — Phase-2 bulk-assign tie-break ONLY. Added now (no later migration); the run-time
+    // kernel never reads it.
+    priority: integer('priority').notNull().default(0),
     status: text('status').notNull().default('active'), // 'active' | 'inactive'
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

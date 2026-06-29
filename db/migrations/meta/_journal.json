@@ -911,6 +911,13 @@
       "when": 1781861930000,
       "tag": "0129_hourly_leave_period",
       "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1781861940000,
+      "tag": "0130_payroll_policy_config",
+      "breakpoints": true
     }
   ]
 }

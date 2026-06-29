@@ -13,8 +13,16 @@
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, payrollPolicy, type PayRule } from '../db/schema';
+import { employment, payrollPolicy, type PayRule, type PayrollPolicyConfig } from '../db/schema';
 import { validatePayRule, type PayRuleKind } from './pay-rule';
+import { cleanPayrollPolicyConfig } from './payroll-policy-config';
+
+/** Clamp a priority to a non-negative integer (the Phase-2 bulk-assign tie-break). Default 0. */
+function cleanPriority(v: number | undefined): number {
+  if (v === undefined || v === null) return 0;
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
 
 export const POLICY_TYPES = ['monthly', 'daily', 'hourly', 'custom_period'] as const;
 export type PolicyType = (typeof POLICY_TYPES)[number];
@@ -87,18 +95,30 @@ function resolveRule(policyType: PolicyType, rule: PayRule | null | undefined): 
 
 export async function createPolicy(
   ctx: SessionContext,
-  p: { companyId: string; name: string; description?: string | null; policyType: string; payRule?: PayRule | null },
+  p: {
+    companyId: string;
+    name: string;
+    description?: string | null;
+    policyType: string;
+    payRule?: PayRule | null;
+    // 2.1.1 (ADR-0064) — Monthly General-Settings config (null = today's behaviour) + Phase-2 priority.
+    config?: PayrollPolicyConfig | null;
+    priority?: number;
+  },
 ): Promise<{ id: string }> {
   const name = cleanName(p.name);
   const policyType = normalizeType(p.policyType);
   const payRule = resolveRule(policyType, p.payRule);
   const description = (p.description ?? '').trim() || null;
+  // cleanPayrollPolicyConfig coerces + clamps; a null/empty/all-default config persists as NULL (byte-identical).
+  const config = cleanPayrollPolicyConfig(p.config);
+  const priority = cleanPriority(p.priority);
   return withTenant(ctx, async (tx) => {
     let id: string;
     try {
       const [row] = await tx
         .insert(payrollPolicy)
-        .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, description, policyType, payRule, status: 'active' })
+        .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, description, policyType, payRule, config, priority, status: 'active' })
         .returning({ id: payrollPolicy.id });
       id = row.id;
     } catch (e) {
@@ -111,7 +131,7 @@ export async function createPolicy(
       aggregateId: id,
       eventType: 'payroll-policy.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name, policyType, payRule },
+      payload: { companyId: p.companyId, name, policyType, payRule, config, priority },
     });
     return { id };
   });
@@ -119,7 +139,17 @@ export async function createPolicy(
 
 export async function updatePolicy(
   ctx: SessionContext,
-  p: { id: string; name?: string; description?: string | null; policyType?: string; payRule?: PayRule | null },
+  p: {
+    id: string;
+    name?: string;
+    description?: string | null;
+    policyType?: string;
+    payRule?: PayRule | null;
+    // 2.1.1 (ADR-0064) — patch the Monthly General-Settings config / Phase-2 priority. Omit to keep the
+    // existing value; pass `null` (config) to clear it back to today's behaviour.
+    config?: PayrollPolicyConfig | null;
+    priority?: number;
+  },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx.select().from(payrollPolicy).where(eq(payrollPolicy.id, p.id)).limit(1);
@@ -133,23 +163,30 @@ export async function updatePolicy(
       p.policyType !== undefined || p.payRule !== undefined
         ? resolveRule(policyType, p.payRule !== undefined ? p.payRule : (before.payRule as PayRule | null))
         : (before.payRule as PayRule | null);
+    // config/priority: an explicit patch is cleaned + persisted; omitting it keeps the stored value.
+    const config =
+      p.config !== undefined ? cleanPayrollPolicyConfig(p.config) : (before.config as PayrollPolicyConfig | null);
+    const priority = p.priority !== undefined ? cleanPriority(p.priority) : before.priority;
     try {
       await tx
         .update(payrollPolicy)
-        .set({ name, description, policyType, payRule, updatedAt: sql`now()` })
+        .set({ name, description, policyType, payRule, config, priority, updatedAt: sql`now()` })
         .where(eq(payrollPolicy.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicatePolicyNameError();
       throw e;
     }
-    const after = { name, description, policyType, payRule };
+    const after = { name, description, policyType, payRule, config, priority };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-policy',
       aggregateId: p.id,
       eventType: 'payroll-policy.updated',
       actor: actorOf(ctx),
-      payload: { before: { name: before.name, description: before.description, policyType: before.policyType, payRule: before.payRule }, after },
+      payload: {
+        before: { name: before.name, description: before.description, policyType: before.policyType, payRule: before.payRule, config: before.config, priority: before.priority },
+        after,
+      },
     });
     return { id: p.id };
   });
@@ -243,6 +280,9 @@ export type PolicyRow = {
   description: string | null;
   policyType: PolicyType;
   payRule: PayRule | null;
+  // 2.1.1 (ADR-0064) — Monthly General-Settings config (null = today's behaviour) + Phase-2 priority.
+  config: PayrollPolicyConfig | null;
+  priority: number;
   status: PolicyStatus;
   updatedAt: Date;
   assignedCount: number;
@@ -262,6 +302,8 @@ export async function listPolicies(ctx: SessionContext, companyIds?: string[]): 
         description: payrollPolicy.description,
         policyType: payrollPolicy.policyType,
         payRule: payrollPolicy.payRule,
+        config: payrollPolicy.config,
+        priority: payrollPolicy.priority,
         status: payrollPolicy.status,
         updatedAt: payrollPolicy.updatedAt,
         assignedCount,
@@ -275,6 +317,8 @@ export async function listPolicies(ctx: SessionContext, companyIds?: string[]): 
       ...r,
       policyType: r.policyType as PolicyType,
       payRule: r.payRule as PayRule | null,
+      config: r.config as PayrollPolicyConfig | null,
+      priority: Number(r.priority),
       status: r.status as PolicyStatus,
       assignedCount: Number(r.assignedCount),
     }));
@@ -300,6 +344,8 @@ async function listPoliciesById(ctx: SessionContext, ids: string[]): Promise<Pol
         description: payrollPolicy.description,
         policyType: payrollPolicy.policyType,
         payRule: payrollPolicy.payRule,
+        config: payrollPolicy.config,
+        priority: payrollPolicy.priority,
         status: payrollPolicy.status,
         updatedAt: payrollPolicy.updatedAt,
         assignedCount,
@@ -310,6 +356,8 @@ async function listPoliciesById(ctx: SessionContext, ids: string[]): Promise<Pol
       ...r,
       policyType: r.policyType as PolicyType,
       payRule: r.payRule as PayRule | null,
+      config: r.config as PayrollPolicyConfig | null,
+      priority: Number(r.priority),
       status: r.status as PolicyStatus,
       assignedCount: Number(r.assignedCount),
     }));
@@ -358,6 +406,8 @@ export async function resolveAssignedPolicy(
       description: payrollPolicy.description,
       policyType: payrollPolicy.policyType,
       payRule: payrollPolicy.payRule,
+      config: payrollPolicy.config,
+      priority: payrollPolicy.priority,
       status: payrollPolicy.status,
       updatedAt: payrollPolicy.updatedAt,
     })
@@ -372,6 +422,10 @@ export async function resolveAssignedPolicy(
     ...pol,
     policyType: pol.policyType as PolicyType,
     payRule: pol.payRule as PayRule | null,
+    // 2.1.1 (ADR-0064) — the General-Settings config the kernel threads into each primitive. null config ⇒
+    // legacy numbers. This is a DERIVED READ on every compute and appends NO DomainEvent (substrate rule).
+    config: pol.config as PayrollPolicyConfig | null,
+    priority: Number(pol.priority),
     status: pol.status as PolicyStatus,
     assignedCount: 0,
   };

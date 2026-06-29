@@ -34,9 +34,18 @@ import {
 import { setPayrollBatchComponent } from './pay-components';
 import { cp38ForPeriod } from './cp38';
 import { applyLoansForBatch } from './loans';
-import { warnIfHolidaysIncomplete, type HolidayCompletenessWarning } from './holidays';
-import type { ShiftDifferential, PayRule } from '../db/schema';
+import { warnIfHolidaysIncomplete, holidayDatesFor, type HolidayCompletenessWarning } from './holidays';
+import type { ShiftDifferential, PayRule, PayrollPolicyConfig } from '../db/schema';
 import { resolvePayRule } from './pay-rule';
+import { resolveAssignedPolicy } from './payroll-policy';
+import {
+  applyOvertimeCaps,
+  applyRounding,
+  leaveDivisorDays,
+  prorationDivisorDays,
+  usesWorkingDayProration,
+  workingDayRoster,
+} from './payroll-policy-config';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -99,8 +108,21 @@ export function daysInMonth(year: number, month1: number): number {
  * the calendar days they were employed within the month, over the number of days in that month
  * (Employment Act 1955 s.18A ordinary-rate basis). Returns 1 for a full month, 0 if not employed
  * during the period. Date strings are ISO ('YYYY-MM-DD'), so lexical comparison is chronological.
+ *
+ * 2.1.1 (ADR-0064): the DENOMINATOR and the eligible-day COUNT are now policy-configurable:
+ *  - `divisorDays` overrides the calendar `daysInMonth` denominator (CustomDays divisor). null ⇒ calendar.
+ *  - `workingDayBasis` (when supplied) counts only the employee's working days (Sat/Sun/PH include/exclude),
+ *    matching the working-day calendar the leave module uses; absent ⇒ plain calendar days (legacy).
+ * With NEITHER supplied this reduces EXACTLY to the legacy formula (proven byte-identical by the golden
+ * matrix). The min(1,…) clamp is preserved so a CustomDays divisor < calendar days employed can never pay
+ * more than a full month.
  */
-function prorationFactor(payPeriod: string, hiredOn: string, terminatedOn: string | null): number {
+function prorationFactor(
+  payPeriod: string,
+  hiredOn: string,
+  terminatedOn: string | null,
+  opts?: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } },
+): number {
   const [year, month1] = payPeriod.split('-').map(Number);
   const dim = daysInMonth(year, month1);
   const periodStart = `${payPeriod}-01`;
@@ -108,8 +130,31 @@ function prorationFactor(payPeriod: string, hiredOn: string, terminatedOn: strin
   const start = hiredOn > periodStart ? hiredOn : periodStart;
   const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
   if (start > periodEnd || end < periodStart) return 0;
+  const denom = opts?.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : dim;
+  if (opts?.workingDayBasis) {
+    // Count the employee's WORKING days within [start, end] vs the working days across the whole period.
+    const { roster, holidays } = opts.workingDayBasis;
+    const isWork = (d: string): boolean => {
+      const dt = new Date(`${d}T00:00:00Z`);
+      const iso = ((dt.getUTCDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
+      return roster.includes(iso) && !holidays.has(d);
+    };
+    let eligibleWork = 0;
+    for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
+      if (isWork(new Date(t).toISOString().slice(0, 10))) eligibleWork++;
+    }
+    // Working-day denominator: the configured CustomDays divisor when set, else the period's own working days.
+    let denomWork = opts.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : 0;
+    if (denomWork === 0) {
+      for (let t = Date.parse(`${periodStart}T00:00:00Z`); t <= Date.parse(`${periodEnd}T00:00:00Z`); t += 86_400_000) {
+        if (isWork(new Date(t).toISOString().slice(0, 10))) denomWork++;
+      }
+    }
+    if (denomWork === 0) return 0;
+    return Math.min(1, eligibleWork / denomWork);
+  }
   const eligibleDays = Math.max(0, Number(end.slice(8, 10)) - Number(start.slice(8, 10)) + 1);
-  return Math.min(1, eligibleDays / dim);
+  return Math.min(1, eligibleDays / denom);
 }
 
 /**
@@ -1122,11 +1167,16 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         // Fix-5 (M#17): OT provenance, snapshotted onto each payslip below so an auditor can see whether the
         // overtime figure was attendance-derived (statutory engine) or hand-keyed by the admin.
         otSource: payrollInput.otSource,
+        // 2.1.1 (ADR-0064 1e): the OT rate-bucket decomposition — read here so the policy OT-cap wrapper can
+        // filter by eligible day type / re-rate the workday leg. NULL ⇒ a flat figure (caps degrade to the
+        // total-only ceilings: maxAmount). Nothing else downstream reads it.
+        otBreakdown: payrollInput.otBreakdown,
       })
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
     const overtimeByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.overtime)]));
     const otSourceByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otSource ?? null]));
+    const otBreakdownByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otBreakdown ?? null]));
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
     const zakatByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.zakat)]));
@@ -1146,6 +1196,102 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       { manualRequested: number; manualApplied: number; cp38Requested: number; cp38Applied: number; loanRequested: number; loanApplied: number }
     >();
     const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
+
+    // ── 2.1.1 (ADR-0064) — Monthly payroll-policy General Settings, resolved at RUN TIME ──
+    // The load-bearing new plumbing: for each employment, resolve its assigned policy's config (raw
+    // tenant-scoped SQL inside this Tx, under the caller's session). A null/inactive/unassigned policy ⇒
+    // null config ⇒ the legacy code path is unchanged (the default-equals-legacy golden matrix proves it).
+    // This is a DERIVED READ on every compute — it appends NO DomainEvent (substrate "no event for derived
+    // recomputation" rule). Resolved ONCE here, before the loop, so each primitive reads a map not a re-query.
+    const policyConfigByEmp = new Map<string, PayrollPolicyConfig | null>();
+    // Working-day proration needs the holiday set per employment; resolve it lazily only when a config asks
+    // for a working-day basis, so the default (calendar) path issues NO extra query.
+    const prorationOptsByEmp = new Map<string, { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } }>();
+    for (const e of emps) {
+      const policy = await resolveAssignedPolicy(tx, e.employmentId);
+      const cfg = policy?.config ?? null;
+      policyConfigByEmp.set(e.employmentId, cfg);
+      // 1b — proration divisor + working-day basis, resolved once per employee.
+      const divisorDays = prorationDivisorDays(cfg, dim);
+      const opts: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } } = {};
+      if (divisorDays !== dim) opts.divisorDays = divisorDays;
+      if (usesWorkingDayProration(cfg)) {
+        const holidays = (cfg?.proration?.includeHoliday ?? false)
+          ? new Set<string>() //              holidays count as worked days ⇒ empty exclusion set
+          : await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
+        opts.workingDayBasis = { roster: workingDayRoster(cfg), holidays };
+      }
+      if (opts.divisorDays !== undefined || opts.workingDayBasis) prorationOptsByEmp.set(e.employmentId, opts);
+    }
+
+    // 1f — working-days-in-period per employment, computed ONLY for employments whose leave config selects a
+    // `working_days` divisor (so the default calendar path issues no extra query). Counts the employee's
+    // working-day roster minus holidays across the whole period.
+    const workingDaysByEmp = new Map<string, number>();
+    const wdEmpIds = emps
+      .filter((e) => {
+        const l = policyConfigByEmp.get(e.employmentId)?.leave;
+        return l?.unpaidLeaveDivisor === 'working_days' || l?.unpaidTimeOffDivisor === 'working_days' || l?.encashmentDivisor === 'working_days';
+      })
+      .map((e) => e.employmentId);
+    for (const employmentId of wdEmpIds) {
+      const holidays = await holidayDatesFor(tx, { employmentId, startDate: periodStart, endDate: periodEnd });
+      const roster = [1, 2, 3, 4, 5]; // Mon–Fri working-day basis for the leave divisor (no Sat/Sun override here)
+      let n = 0;
+      for (let t = Date.parse(`${periodStart}T00:00:00Z`); t <= Date.parse(`${periodEnd}T00:00:00Z`); t += 86_400_000) {
+        const d = new Date(t).toISOString().slice(0, 10);
+        const iso = ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) + 1;
+        if (roster.includes(iso) && !holidays.has(d)) n++;
+      }
+      workingDaysByEmp.set(employmentId, n);
+    }
+    const workingDaysInPeriodFor = (employmentId: string): number => workingDaysByEmp.get(employmentId) ?? 0;
+
+    // 1c — salary-increment proration: the two straddling compensation rows (superseded old + open new) for
+    // any employment whose policy enables it AND that has a mid-period increment. Resolved once; the loop
+    // reads a per-employee blended basic. Default (off / single row) ⇒ the kernel's single open-row read is
+    // untouched. Only fires when the new comp row exists at generate time (snapshot immutability, ADR-0036).
+    const incrementBasicByEmp = new Map<string, number>();
+    const incrementEmpIds = emps
+      .filter((e) => policyConfigByEmp.get(e.employmentId)?.salaryIncrementProration)
+      .map((e) => e.employmentId);
+    if (incrementEmpIds.length) {
+      const straddleRows = await tx
+        .select({
+          employmentId: compensation.employmentId,
+          basic: compensation.basicSalary,
+          validFrom: compensation.validFrom,
+          validTo: compensation.validTo,
+        })
+        .from(compensation)
+        .where(
+          and(
+            inArray(compensation.employmentId, incrementEmpIds),
+            isNull(compensation.supersededAt),
+            lte(compensation.validFrom, periodEnd),
+            or(isNull(compensation.validTo), gte(compensation.validTo, periodStart)),
+          ),
+        );
+      const byEmp = new Map<string, { basic: number; validFrom: string; validTo: string | null }[]>();
+      for (const r of straddleRows) {
+        const list = byEmp.get(r.employmentId) ?? [];
+        list.push({ basic: Number(r.basic), validFrom: r.validFrom, validTo: r.validTo });
+        byEmp.set(r.employmentId, list);
+      }
+      for (const [employmentId, rows] of byEmp) {
+        if (rows.length < 2) continue; // no straddle ⇒ leave the kernel's single-row read alone
+        rows.sort((a, b) => a.validFrom.localeCompare(b.validFrom));
+        const oldRow = rows[0];
+        const newRow = rows[rows.length - 1];
+        // The increment takes effect at the new row's validFrom. Blend: old × days-before + new × days-from.
+        const incrementDate = newRow.validFrom;
+        if (incrementDate <= periodStart || incrementDate > periodEnd) continue; // not a mid-period increment
+        const daysBefore = Math.max(0, Number(incrementDate.slice(8, 10)) - 1); // days on the OLD rate
+        const daysFrom = dim - daysBefore; //                                      days on the NEW rate
+        const blended = round2((oldRow.basic * daysBefore + newRow.basic * daysFrom) / dim);
+        incrementBasicByEmp.set(employmentId, blended);
+      }
+    }
 
     // ── PCB accumulators (ADR-0014) ──
     // The accumulators (∑(Y−K), K claimed, X) are DERIVED by replaying this tax year's prior
@@ -1423,22 +1569,53 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       deductions: 0, employerCost: 0,
     };
 
+    // 1e — apply the policy OT caps to a prefilled OT total. Uses the stored rate-bucket decomposition
+    // (otBreakdown) when present so eligible-day-type filtering + multiplier re-rating are exact; when only a
+    // flat figure exists, the breakdown is the whole total as a workday leg (so maxAmount still bites and a
+    // workday-only restriction is a no-op). Default (no OT config) ⇒ returns `total` unchanged.
+    const applyOvertimeCapsForEmp = (cfg: PayrollPolicyConfig | null, employmentId: string, total: number): number => {
+      if (!cfg?.overtime || total <= 0) return total;
+      const bd = otBreakdownByEmp.get(employmentId) as { flat: number; normal: number; rest: number; holiday: number } | null;
+      // Map the stored buckets onto the three OT day types. `flat` (a hand-keyed lump with no day type) rides
+      // the workday leg so it is still capped by maxAmount but not zeroed by a rest/holiday-only restriction.
+      const parts = bd
+        ? { workday: round2(bd.normal + bd.flat), restDay: round2(bd.rest), holiday: round2(bd.holiday), workedOtHours: 0 }
+        : { workday: total, restDay: 0, holiday: 0, workedOtHours: 0 };
+      return applyOvertimeCaps(cfg, parts);
+    };
+
     for (const e of emps) {
+      // 2.1.1 (ADR-0064) — the resolved policy config for this employment (null ⇒ legacy path unchanged).
+      const cfg = policyConfigByEmp.get(e.employmentId) ?? null;
       // Prorate contractual pay for mid-period joiners/leavers (full month → factor 1).
       // Allowance prorates with basic — EA-1955 incomplete-month treats fixed monthly wages as a whole.
-      const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn);
+      // 1b — the divisor + working-day basis come from the policy (default ⇒ EA s.18A calendar daysInMonth).
+      const factor = prorationFactor(payPeriod, e.hiredOn, e.terminatedOn, prorationOptsByEmp.get(e.employmentId));
       const daysWorked = Math.round(factor * dim); // proration basis surfaced on the payslip
       // Earnings come from the typed components (flag on) or compensation + payroll_input (flag off).
       // Either way these reproduce the same variables, so the agency-base math below is unchanged.
       const en = earningsOf(e, factor);
-      const basic = en.basicGross;
+      // 1c — salary-increment proration: when the policy enables it AND a mid-period increment straddles the
+      // period, the basic is the two-row blend (already day-weighted across the increment date), NOT
+      // basic×factor. Default (off / no straddle) ⇒ undefined ⇒ the kernel's normal basicGross is used.
+      const incrementBasic = incrementBasicByEmp.get(e.employmentId);
+      const basicRaw = incrementBasic ?? en.basicRaw;
+      const basic = incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross;
       // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
       // "reimbursement" earning (paid but untaxed). Claim/reimbursement do not prorate (ADR-0021/0025).
       const allowance = round2(en.allowanceApplied + en.reimburse);
-      const overtime = en.overtime;
+      // 1e — OT caps: wrap the prefilled/keyed OT figure with the policy's caps (eligible day types, max
+      // hours, max amount, floored multiplier). Default (no overtime config) ⇒ the figure is unchanged.
+      const overtime = applyOvertimeCapsForEmp(cfg, e.employmentId, en.overtime);
       const bonus = en.bonus;
-      // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / days in month).
-      const unpaidDeduction = round2((en.basicRaw / dim) * (unpaidByEmp.get(e.employmentId) ?? 0));
+      // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / divisor days). 1f — the
+      // divisor is policy-configurable (default calendar_month ⇒ `dim`, byte-identical).
+      const unpaidDivisor = leaveDivisorDays(cfg?.leave?.unpaidLeaveDivisor, cfg, {
+        calendarDaysInMonth: dim,
+        cutoffDays: dim, //                       cut-off-day-driven divisor is a deferred spec; calendar fallback
+        workingDays: workingDaysInPeriodFor(e.employmentId),
+      });
+      const unpaidDeduction = round2((basicRaw / unpaidDivisor) * (unpaidByEmp.get(e.employmentId) ?? 0));
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false
@@ -1582,8 +1759,18 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // Record the ACTUAL loan recovered (cents) so applyLoansForBatch advances the ledger by the clamped
       // amount — the reserved due may exceed it; the shortfall re-schedules (C2/H1/H3 fix).
       appliedLoanCentsByEmp.set(e.employmentId, Math.round(slipLoan * 100));
-      const totalDeductions = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
-      const net = round2(grossPay - totalDeductions);
+      // 1a — policy rounding (earnings → gross, deductions → total, net → net). Default 'none'/null config ⇒
+      // applyRounding === round2 ⇒ byte-identical. Applied as a thin shell so the gross/deductions/net the
+      // payslip stores already reflect the policy; net is then re-derived from the rounded components so it
+      // reconciles, then net-rounding (if any) applies last.
+      const roundedGross = applyRounding(grossPay, cfg?.rounding?.earnings);
+      const totalDeductionsRaw = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
+      const totalDeductions = applyRounding(totalDeductionsRaw, cfg?.rounding?.deductions);
+      let net = applyRounding(round2(roundedGross - totalDeductions), cfg?.rounding?.netPay);
+      // 1d — negative-net handling. 'set_zero' floors a negative net at 0; 'retain'/null leaves it (the s.24
+      // clamp above already keeps net ≥ 0 on the standard path, so 'retain' is a no-op there — byte-identical).
+      // 'carry_forward' is a gated follow-up (cleanPayrollPolicyConfig coerces it to 'retain').
+      if (cfg?.negativeNet === 'set_zero' && net < 0) net = 0;
       const employerCost = isAdditionalRun
         ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
         : round2(wagesExOt + overtime + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
@@ -1597,7 +1784,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         overtimePay: slipOvertime.toFixed(2),
         bonus: bonus.toFixed(2),
         daysWorked: isAdditionalRun ? null : String(daysWorked),
-        grossPay: grossPay.toFixed(2),
+        grossPay: roundedGross.toFixed(2),
         // Fix-5 (M#17): carry the OT provenance onto the immutable statutory snapshot so an auditor reading a
         // closed payslip can tell whether the overtime was attendance-derived or manually keyed. Only stamped
         // when this slip actually pays OT and the input row carries a provenance (no misleading flag on a
@@ -1615,7 +1802,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         employerCost: employerCost.toFixed(2),
       });
 
-      totals.gross += grossPay;
+      totals.gross += roundedGross;
       totals.net += net;
       totals.epfEmployee += st.epfEmployee;
       totals.epfEmployer += st.epfEmployer;
