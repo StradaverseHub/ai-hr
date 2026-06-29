@@ -238,7 +238,11 @@ export default async function LeavePage({
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
             {t('requestLeaveToggle')}
           </summary>
-          <form action={requestLeaveAction} className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
+          <form
+            action={requestLeaveAction}
+            encType="multipart/form-data"
+            className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2"
+          >
             <Field label={t('fieldEmployee')}>
               <select name="employmentId" required className={inputCls}>
                 {active.map((e) => (
@@ -249,8 +253,17 @@ export default async function LeavePage({
               </select>
             </Field>
             <LeaveDurationFields
-              types={leaveTypes.map((lt) => ({ id: lt.id, label: lt.name, durations: lt.durations ?? null, code: lt.code }))}
+              types={leaveTypes.map((lt) => ({
+                id: lt.id,
+                // Supporting-document config: suffix a "· document required" badge so the applicant knows
+                // a file is expected before submitting (mirrors /me). NOT leave.documentRequired — that key
+                // is a full error sentence; this badge has its own leave.documentRequiredBadge key.
+                label: lt.requiresDocument ? `${lt.name} · ${t('documentRequiredBadge')}` : lt.name,
+                durations: lt.durations ?? null,
+                code: lt.code,
+              }))}
               startDefault={today}
+              showDocumentFields
             />
             <Field label={t('fieldReason')}>
               <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />

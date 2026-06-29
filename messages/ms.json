@@ -526,7 +526,12 @@
       "fileTooLarge": "Fail melebihi had {mb} MB.",
       "unpaidConsentRequired": "Cuti kecemasan ini akan mengambil {days} hari sebagai cuti tanpa gaji. Sila tanda kotak untuk mengakui hari tanpa gaji.",
       "holidaysIncomplete": "Hanya {loaded} daripada minimum 11 cuti umum yang diwartakan dimuatkan untuk {state} {year}; pengiraan cuti/hari rehat mungkin salah sehingga warta penuh dimuatkan."
-    }
+    },
+    "documentLabel": "Dokumen sokongan",
+    "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
+    "employeeRemarkLabel": "Catatan pekerja",
+    "employeeRemarkRequiredHint": "Catatan diperlukan untuk sesetengah jenis cuti.",
+    "documentRequiredBadge": "dokumen diperlukan"
   },
   "attendance": {
     "title": "Kehadiran",

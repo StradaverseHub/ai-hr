@@ -526,7 +526,12 @@
       "fileTooLarge": "Tệp vượt quá giới hạn {mb} MB.",
       "unpaidConsentRequired": "Nghỉ khẩn cấp này sẽ tính {days} ngày là nghỉ không lương. Vui lòng tích vào ô để xác nhận những ngày không lương.",
       "holidaysIncomplete": "Chỉ có {loaded} trên tối thiểu 11 ngày lễ công cộng được công báo đã được tải cho {state} {year}; việc tính ngày nghỉ phép/ngày nghỉ có thể sai cho đến khi tải đầy đủ công báo."
-    }
+    },
+    "documentLabel": "Tài liệu hỗ trợ",
+    "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
+    "employeeRemarkLabel": "Ghi chú của nhân viên",
+    "employeeRemarkRequiredHint": "Một số loại nghỉ phép yêu cầu phải có ghi chú.",
+    "documentRequiredBadge": "cần tài liệu"
   },
   "attendance": {
     "title": "Chấm công",

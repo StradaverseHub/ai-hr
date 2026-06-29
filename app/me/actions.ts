@@ -103,8 +103,10 @@ export async function myRequestLeave(formData: FormData) {
 }
 
 /** Supporting-document config: re-localize the structured service/validation errors into the viewer's
- *  language (they reach ms/ta/th/vi/zh via ?error=). Unknown errors fall back to their English message. */
-async function localizeLeaveError(e: unknown, typeName?: string): Promise<string> {
+ *  language (they reach ms/ta/th/vi/zh via ?error=). Unknown errors fall back to their English message.
+ *  Exported so the Leave-Tab action (app/leave/actions.ts) reuses the same localizer rather than copying
+ *  it — both forms now share the document/remark error wording. */
+export async function localizeLeaveError(e: unknown, typeName?: string): Promise<string> {
   const t = await getTranslations('leave.errors');
   const name = typeName ?? '';
   if (e instanceof LeaveDocumentRequiredError) {

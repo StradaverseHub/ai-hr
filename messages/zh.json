@@ -526,7 +526,12 @@
       "fileTooLarge": "文件超过 {mb} MB 上限。",
       "unpaidConsentRequired": "此紧急假将有 {days} 天按无薪假处理。请勾选以确认无薪天数。",
       "holidaysIncomplete": "{state} {year} 年仅加载了最低 11 个法定公共假日中的 {loaded} 个；在加载完整公报之前，请假/休息日计算可能有误。"
-    }
+    },
+    "documentLabel": "证明文件",
+    "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
+    "employeeRemarkLabel": "员工备注",
+    "employeeRemarkRequiredHint": "某些请假类型需要填写备注。",
+    "documentRequiredBadge": "需要文件"
   },
   "attendance": {
     "title": "考勤",

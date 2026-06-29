@@ -17,16 +17,26 @@ export type LeaveTypeOption = { id: string; label: string; durations: string[] |
  * half/hourly value the End date is hidden and end is forced equal to start (single-day). The service-layer
  * LeaveDurationNotAllowedError remains the real guard. Field names are passed in so this fits both the
  * /leave and /me forms; extra controls (employee select, reason, document) stay in the parent <form>.
+ *
+ * Supporting-document config (Leave-Tab standardization): when `showDocumentFields` is set (the /leave
+ * form), this component additionally renders the Supporting-document <input type=file> + Employee-remark
+ * <textarea> INSIDE itself, so it can hide both when the selected type is EMERGENCY — EL decomposes into
+ * child rows that never carry a document/remark, so attaching one would dangle a file on a hidden child.
+ * The /me form leaves `showDocumentFields` off and renders its own doc/remark fields (EL is not selectable
+ * there), so /me is untouched.
  */
 export function LeaveDurationFields({
   types,
   startDefault,
   layout = 'grid',
+  showDocumentFields = false,
 }: {
   types: LeaveTypeOption[];
   startDefault?: string;
   /** 'grid' = two-up for the /leave page; 'stack' = single-column for the /me sidebar. */
   layout?: 'grid' | 'stack';
+  /** Supporting-document config: render the doc/remark fields here (and hide them for EMERGENCY). */
+  showDocumentFields?: boolean;
 }) {
   const t = useTranslations('leave');
   const [typeId, setTypeId] = useState(types[0]?.id ?? '');
@@ -160,6 +170,28 @@ export function LeaveDurationFields({
           </div>
           <p className="text-xs text-muted-foreground">{t('maternity.allowanceHint')}</p>
         </div>
+      )}
+
+      {/* Supporting-document config (Leave-Tab standardization): the same attach + remark fields the /me form
+          offers. Hidden for EMERGENCY — EL auto-decomposes into ANNUAL+UNPAID child rows that never carry a
+          document or remark, so attaching one would dangle a file on a hidden child. The /leave action
+          backstops this server-side (it ignores any posted file/remark when the type is EMERGENCY). */}
+      {showDocumentFields && !isEmergency && (
+        <>
+          <Field label={t('documentLabel')}>
+            <input
+              type="file"
+              name="document"
+              accept="image/jpeg,image/png,application/pdf"
+              className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">{t('documentHint')}</p>
+          </Field>
+          <Field label={t('employeeRemarkLabel')}>
+            <textarea name="employeeRemark" rows={2} className={inputCls} />
+            <p className="mt-1 text-xs text-muted-foreground">{t('employeeRemarkRequiredHint')}</p>
+          </Field>
+        </>
       )}
     </>
   );

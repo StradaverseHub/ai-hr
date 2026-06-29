@@ -526,7 +526,12 @@
       "fileTooLarge": "File exceeds the {mb} MB limit.",
       "unpaidConsentRequired": "This emergency leave would take {days} day(s) as unpaid leave. Please tick the box to acknowledge the unpaid days.",
       "holidaysIncomplete": "Only {loaded} of the minimum 11 gazetted public holidays are loaded for {state} {year}; leave/rest-day counting may be wrong until the full gazette is loaded."
-    }
+    },
+    "documentLabel": "Supporting document",
+    "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
+    "employeeRemarkLabel": "Employee remark",
+    "employeeRemarkRequiredHint": "A remark is required for some leave types.",
+    "documentRequiredBadge": "document required"
   },
   "attendance": {
     "title": "Attendance",
