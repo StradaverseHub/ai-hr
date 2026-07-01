@@ -413,6 +413,39 @@
         "effectiveFrom": "Effective from",
         "effectiveTo": "Effective to",
         "nonResidentHint": "Percentage of PCB produces RM0 for non-residents and below-threshold earners — use Fixed if a deduction is required."
+      },
+      "family": {
+        "title": "Family & Dependents",
+        "note": "For benefits and insurance records only. These do not affect payroll or the tax number of children, and are separate from the emergency contact.",
+        "name": "Name",
+        "namePlaceholder": "Full name",
+        "relationship": "Relationship",
+        "dateOfBirth": "Date of birth",
+        "genderLabel": "Gender",
+        "genderUnset": "Not specified",
+        "beneficiary": "Insurance beneficiary",
+        "remarks": "Remarks",
+        "remarksPlaceholder": "Optional note",
+        "actions": "Actions",
+        "yes": "Yes",
+        "no": "No",
+        "add": "Add family member",
+        "save": "Save",
+        "delete": "Remove",
+        "none": "No family or dependent records.",
+        "hint": "HR maintains these records. Employees cannot edit their own family details in this version.",
+        "rel": {
+          "spouse": "Spouse",
+          "child": "Child",
+          "parent": "Parent",
+          "sibling": "Sibling",
+          "other": "Other"
+        },
+        "gender": {
+          "male": "Male",
+          "female": "Female",
+          "undisclosed": "Undisclosed"
+        }
       }
     },
     "import": {

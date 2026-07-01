@@ -413,6 +413,39 @@
         "effectiveFrom": "生效日期",
         "effectiveTo": "失效日期",
         "nonResidentHint": "对非居民及低于门槛的收入者，PCB 百分比计算结果为 RM0 — 如需扣除请使用固定金额。"
+      },
+      "family": {
+        "title": "家庭与受扶养人",
+        "note": "仅用于福利和保险记录。这些不会影响薪资或税务子女人数，且与紧急联系人分开。",
+        "name": "姓名",
+        "namePlaceholder": "全名",
+        "relationship": "关系",
+        "dateOfBirth": "出生日期",
+        "genderLabel": "性别",
+        "genderUnset": "未指定",
+        "beneficiary": "保险受益人",
+        "remarks": "备注",
+        "remarksPlaceholder": "可选备注",
+        "actions": "操作",
+        "yes": "是",
+        "no": "否",
+        "add": "添加家庭成员",
+        "save": "保存",
+        "delete": "移除",
+        "none": "没有家庭或受扶养人记录。",
+        "hint": "由 HR 维护这些记录。在此版本中，员工无法自行编辑其家庭详情。",
+        "rel": {
+          "spouse": "配偶",
+          "child": "子女",
+          "parent": "父母",
+          "sibling": "兄弟姐妹",
+          "other": "其他"
+        },
+        "gender": {
+          "male": "男",
+          "female": "女",
+          "undisclosed": "未透露"
+        }
       }
     },
     "import": {

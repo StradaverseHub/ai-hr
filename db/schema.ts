@@ -1662,6 +1662,35 @@ export const tp1Relief = pgTable(
   ],
 );
 
+// ─────────────── Personnel — Family / Dependents (phase 1, migration 0137) ───────────────
+// A per-PERSON register of family members / dependents for BENEFITS / INSURANCE only. Person-keyed
+// (concurrent-employment-safe, like tp1_relief / employee_statutory_my) and gated with app.can_see_person
+// (self+admin read) / app.is_admin() (admin write) in the migration. Deliberately SEPARATE from the
+// approval-gated employee_statutory_my.num_children tax figure — is_beneficiary is a plain insurance flag,
+// NOT a fractional allocation and NOT a tax-dependent flag (both out of scope). Admin-maintained only.
+export const employeeDependent = pgTable(
+  'employee_dependent',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .references(() => person.id),
+    fullName: text('full_name').notNull(),
+    relationship: text('relationship').notNull(), // validated in-service: spouse|child|parent|sibling|other
+    dateOfBirth: date('date_of_birth'),
+    gender: text('gender'), // 'male' | 'female' | 'undisclosed' (validated in-service)
+    icOrPassport: text('ic_or_passport'), // optional PII — kept OUT of DomainEvent payloads (ADR-0030)
+    isBeneficiary: boolean('is_beneficiary').notNull().default(false), // insurance beneficiary flag; NOT tax
+    phone: text('phone'),
+    remarks: text('remarks'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('employee_dependent_person_idx').on(t.tenantId, t.personId)],
+);
+
 // ──────────────────────── Payroll (generic kernel) ────────────────────────
 export const payrollStatusEnum = pgEnum('payroll_status', ['draft', 'processed', 'closed']);
 

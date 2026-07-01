@@ -413,6 +413,39 @@
         "effectiveFrom": "Berkuat kuasa dari",
         "effectiveTo": "Berkuat kuasa hingga",
         "nonResidentHint": "Peratus PCB menghasilkan RM0 bagi bukan pemastautin dan pendapatan di bawah ambang — guna Jumlah Tetap jika potongan diperlukan."
+      },
+      "family": {
+        "title": "Keluarga & Tanggungan",
+        "note": "Untuk rekod faedah dan insurans sahaja. Ini tidak menjejaskan gaji atau bilangan anak untuk cukai, dan berasingan daripada hubungan kecemasan.",
+        "name": "Nama",
+        "namePlaceholder": "Nama penuh",
+        "relationship": "Hubungan",
+        "dateOfBirth": "Tarikh lahir",
+        "genderLabel": "Jantina",
+        "genderUnset": "Tidak dinyatakan",
+        "beneficiary": "Benefisiari insurans",
+        "remarks": "Catatan",
+        "remarksPlaceholder": "Nota pilihan",
+        "actions": "Tindakan",
+        "yes": "Ya",
+        "no": "Tidak",
+        "add": "Tambah ahli keluarga",
+        "save": "Simpan",
+        "delete": "Buang",
+        "none": "Tiada rekod keluarga atau tanggungan.",
+        "hint": "HR menyelenggara rekod ini. Pekerja tidak boleh menyunting butiran keluarga mereka sendiri dalam versi ini.",
+        "rel": {
+          "spouse": "Pasangan",
+          "child": "Anak",
+          "parent": "Ibu bapa",
+          "sibling": "Adik-beradik",
+          "other": "Lain-lain"
+        },
+        "gender": {
+          "male": "Lelaki",
+          "female": "Perempuan",
+          "undisclosed": "Tidak didedahkan"
+        }
       }
     },
     "import": {

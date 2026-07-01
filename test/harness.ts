@@ -23,6 +23,7 @@ const ALL_TABLES = [
   'shift', 'roster_assignment', 'toil_policy', 'toil_accrual', 'location',
   'notification', 'notification_pref', 'notification_delivery', 'notification_cursor',
   'tp1_relief',
+  'employee_dependent',
   // 0110 — leaking review rows across tests would make the partial-unique index throw spuriously
   // (order-dependent false-green/false-red). Must be truncated between tests.
   'employment_review',

@@ -413,6 +413,39 @@
         "effectiveFrom": "Hiệu lực từ",
         "effectiveTo": "Hiệu lực đến",
         "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ."
+      },
+      "family": {
+        "title": "Gia đình & Người phụ thuộc",
+        "note": "Chỉ dùng cho hồ sơ phúc lợi và bảo hiểm. Thông tin này không ảnh hưởng đến lương hay số con để tính thuế, và tách biệt với người liên hệ khẩn cấp.",
+        "name": "Tên",
+        "namePlaceholder": "Họ và tên",
+        "relationship": "Quan hệ",
+        "dateOfBirth": "Ngày sinh",
+        "genderLabel": "Giới tính",
+        "genderUnset": "Không xác định",
+        "beneficiary": "Người thụ hưởng bảo hiểm",
+        "remarks": "Ghi chú",
+        "remarksPlaceholder": "Ghi chú tùy chọn",
+        "actions": "Thao tác",
+        "yes": "Có",
+        "no": "Không",
+        "add": "Thêm thành viên gia đình",
+        "save": "Lưu",
+        "delete": "Xóa",
+        "none": "Không có hồ sơ gia đình hoặc người phụ thuộc.",
+        "hint": "Bộ phận HR duy trì các hồ sơ này. Nhân viên không thể tự chỉnh sửa thông tin gia đình của mình trong phiên bản này.",
+        "rel": {
+          "spouse": "Vợ/chồng",
+          "child": "Con",
+          "parent": "Cha/mẹ",
+          "sibling": "Anh chị em",
+          "other": "Khác"
+        },
+        "gender": {
+          "male": "Nam",
+          "female": "Nữ",
+          "undisclosed": "Không tiết lộ"
+        }
       }
     },
     "import": {

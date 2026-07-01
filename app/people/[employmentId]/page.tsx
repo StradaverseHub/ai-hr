@@ -38,6 +38,8 @@ import {
 import { currentCompensation } from '@/core/comp';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
+import { listDependents, DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS } from '@/core/dependents';
+import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listHolidayGroups } from '@/core/admin';
@@ -132,12 +134,37 @@ export default async function EmployeePage({
   const componentCatalog = admin ? await listPayComponents(s) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data).
   const cp38Records = admin ? await listCp38(s, { employmentId }) : [];
+  // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
+  // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
+  const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
+
+  // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
+  // dynamic template) so test/i18n-coverage.test.ts (check C) catches a missing Tamil/Thai label instead of
+  // silently shipping a raw key. An unknown stored value falls back to the raw string.
+  const relationshipLabel = (r: string) => {
+    switch (r) {
+      case 'spouse': return t('family.rel.spouse');
+      case 'child': return t('family.rel.child');
+      case 'parent': return t('family.rel.parent');
+      case 'sibling': return t('family.rel.sibling');
+      case 'other': return t('family.rel.other');
+      default: return r;
+    }
+  };
+  const genderLabel = (g: string | null) => {
+    switch (g) {
+      case 'male': return t('family.gender.male');
+      case 'female': return t('family.gender.female');
+      case 'undisclosed': return t('family.gender.undisclosed');
+      default: return '—';
+    }
+  };
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -418,6 +445,130 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('cp38Add')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('cp38Hint')}</p>
+        </Card>
+      )}
+
+      {/* Personnel — Family & Dependents (phase 1). Per-PERSON benefits/insurance register: name +
+          relationship + DOB + optional beneficiary flag. Admin-maintained (RLS is_admin write); does NOT
+          feed the tax num_children figure and is distinct from the emergency contact. */}
+      {admin && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('family.title')} count={dependents.length} />
+          <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+            {t('family.note')}
+          </p>
+          {dependents.length > 0 ? (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                  <th className="px-4 py-2 font-medium">{t('family.name')}</th>
+                  <th className="px-4 py-2 font-medium">{t('family.relationship')}</th>
+                  <th className="px-4 py-2 font-medium">{t('family.dateOfBirth')}</th>
+                  <th className="px-4 py-2 font-medium">{t('family.genderLabel')}</th>
+                  <th className="px-4 py-2 font-medium">{t('family.beneficiary')}</th>
+                  <th className="px-4 py-2 font-medium">{t('family.actions')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {dependents.map((d) => (
+                  <tr key={d.id}>
+                    <td className="px-4 py-2.5 font-medium">{d.fullName}</td>
+                    <td className="px-4 py-2.5">{relationshipLabel(d.relationship)}</td>
+                    <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{d.dateOfBirth ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">{genderLabel(d.gender)}</td>
+                    <td className="px-4 py-2.5">
+                      {d.isBeneficiary ? (
+                        <Badge variant="success">{t('family.yes')}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">{t('family.no')}</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-wrap items-end gap-3">
+                        <form action={editDependentAction} className="flex flex-wrap items-end gap-1.5">
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={d.id} />
+                          <select
+                            name="relationship"
+                            defaultValue={d.relationship}
+                            className={`${inputCls} w-28`}
+                            aria-label={t('family.relationship')}
+                          >
+                            {DEPENDENT_RELATIONSHIPS.map((r) => (
+                              <option key={r} value={r}>
+                                {relationshipLabel(r)}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            name="dateOfBirth"
+                            type="date"
+                            defaultValue={d.dateOfBirth ?? ''}
+                            className={`${inputCls} w-40`}
+                            aria-label={t('family.dateOfBirth')}
+                          />
+                          <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <input type="checkbox" name="isBeneficiary" defaultChecked={d.isBeneficiary} />
+                            {t('family.beneficiary')}
+                          </label>
+                          <button className="text-xs font-medium text-primary hover:underline">
+                            {t('family.save')}
+                          </button>
+                        </form>
+                        <form action={archiveDependentAction}>
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={d.id} />
+                          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+                            {t('family.delete')}
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="px-4 py-3 text-sm text-muted-foreground">{t('family.none')}</p>
+          )}
+          <form action={addDependentAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <input type="hidden" name="personId" value={emp.personId} />
+            <Field label={t('family.name')}>
+              <input name="fullName" required placeholder={t('family.namePlaceholder')} className={inputCls} />
+            </Field>
+            <Field label={t('family.relationship')}>
+              <select name="relationship" required defaultValue="child" className={inputCls}>
+                {DEPENDENT_RELATIONSHIPS.map((r) => (
+                  <option key={r} value={r}>
+                    {relationshipLabel(r)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('family.dateOfBirth')}>
+              <input name="dateOfBirth" type="date" className={inputCls} />
+            </Field>
+            <Field label={t('family.genderLabel')}>
+              <select name="gender" defaultValue="" className={inputCls}>
+                <option value="">{t('family.genderUnset')}</option>
+                {DEPENDENT_GENDERS.map((g) => (
+                  <option key={g} value={g}>
+                    {genderLabel(g)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={t('family.remarks')}>
+              <input name="remarks" type="text" placeholder={t('family.remarksPlaceholder')} className={inputCls} />
+            </Field>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm text-muted-foreground">
+              <input type="checkbox" name="isBeneficiary" />
+              {t('family.beneficiary')}
+            </label>
+            <button className={btnPrimary}>{t('family.add')}</button>
+          </form>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('family.hint')}</p>
         </Card>
       )}
 
