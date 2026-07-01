@@ -1003,7 +1003,14 @@
     "hrReviews": "评估决定",
     "noManagerReviews": "没有等待您评估的项目。",
     "noHrReviews": "没有等待决定的评估。",
-    "rejectReasonPlaceholder": "拒绝原因（必填）"
+    "rejectReasonPlaceholder": "拒绝原因（必填）",
+    "viewDateBreakdown": "逐日审批",
+    "dateBreakdown": "申请的日期",
+    "dateStatus": {
+      "pending": "待处理",
+      "approved": "已批准",
+      "rejected": "已驳回"
+    }
   },
   "performance": {
     "list": {

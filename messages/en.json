@@ -1003,7 +1003,14 @@
     "hrReviews": "Review decisions",
     "noManagerReviews": "No reviews awaiting your evaluation.",
     "noHrReviews": "No reviews awaiting a decision.",
-    "rejectReasonPlaceholder": "Reason for rejecting (required)"
+    "rejectReasonPlaceholder": "Reason for rejecting (required)",
+    "viewDateBreakdown": "Decide each date",
+    "dateBreakdown": "Requested dates",
+    "dateStatus": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
   },
   "performance": {
     "list": {

@@ -1003,7 +1003,14 @@
     "hrReviews": "Quyết định đánh giá",
     "noManagerReviews": "Không có đánh giá nào chờ bạn đánh giá.",
     "noHrReviews": "Không có đánh giá nào chờ quyết định.",
-    "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)"
+    "rejectReasonPlaceholder": "Lý do từ chối (bắt buộc)",
+    "viewDateBreakdown": "Quyết định từng ngày",
+    "dateBreakdown": "Các ngày đã yêu cầu",
+    "dateStatus": {
+      "pending": "Đang chờ",
+      "approved": "Đã duyệt",
+      "rejected": "Đã từ chối"
+    }
   },
   "performance": {
     "list": {

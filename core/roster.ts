@@ -7,6 +7,7 @@ import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type ShiftDifferential } from '../db/schema';
+import { approvedLeaveDates } from './leave';
 
 const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
 
@@ -298,7 +299,7 @@ export function rosterVariance(
     if (ras.length === 0) return [];
     const empIds = [...new Set(ras.map((r) => r.employmentId))];
 
-    const [atts, leaves] = await Promise.all([
+    const [atts, fullDayLeaveDates, partialLeaves] = await Promise.all([
       tx
         .select({
           employmentId: attendance.employmentId,
@@ -310,12 +311,19 @@ export function rosterVariance(
         })
         .from(attendance)
         .where(and(inArray(attendance.employmentId, empIds), gte(attendance.attendanceDate, p.from), lte(attendance.attendanceDate, p.to))),
+      // ADR-0068 §4A: full-day approved leave, per-date-aware — a per-date request's interior REJECTED date no
+      // longer suppresses the no-show for that day. (approvedLeaveDates filters full_day and honours per-date
+      // decisions.)
+      approvedLeaveDates(tx, empIds, p.from, p.to),
+      // Non-full-day approved leave (half/hourly) keeps its whole-span suppression, unchanged — these have no
+      // per-date decomposition and are single-day by nature.
       tx
         .select({ employmentId: leaveRequest.employmentId, startDate: leaveRequest.startDate, endDate: leaveRequest.endDate })
         .from(leaveRequest)
         .where(
           and(
             eq(leaveRequest.status, 'approved'),
+            sql`${leaveRequest.durationType} <> 'full_day'`,
             inArray(leaveRequest.employmentId, empIds),
             lte(leaveRequest.startDate, p.to),
             gte(leaveRequest.endDate, p.from),
@@ -323,7 +331,9 @@ export function rosterVariance(
         ),
     ]);
     const attBy = new Map(atts.map((a) => [`${a.employmentId}|${a.date}`, a]));
-    const onLeave = (emp: string, d: string) => leaves.some((l) => l.employmentId === emp && l.startDate <= d && d <= l.endDate);
+    const onLeave = (emp: string, d: string) =>
+      (fullDayLeaveDates.get(emp)?.has(d) ?? false) ||
+      partialLeaves.some((l) => l.employmentId === emp && l.startDate <= d && d <= l.endDate);
 
     const out: RosterVarianceRow[] = [];
     for (const r of ras) {

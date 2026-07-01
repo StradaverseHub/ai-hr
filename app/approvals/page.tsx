@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listLeaveRequests, listPendingLeaveCancellations } from '@/core/read';
+import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
 import { listAttendanceCorrections } from '@/core/attendance';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
@@ -21,6 +21,7 @@ import {
   submitManagerEvaluationAction,
 } from './actions';
 import { ReviewDecideForm } from './review-decide-form';
+import { LeaveDateBreakdown } from './leave-date-breakdown';
 
 function DecideButtons({
   action,
@@ -56,10 +57,10 @@ function DecideButtons({
   );
 }
 
-/** Partial Leave Approval (0131): leave-specific decide controls. Reject now requires a reason — the reject
- *  form carries a `required` textarea (client-side guard), and decideLeave enforces MissingRejectReasonError
- *  server-side. Approve is unchanged. Used per leave row; since multi-day per-date requests are independent
- *  pending children, the manager approves/rejects each date row on its own. */
+/** Leave-specific whole-request decide controls. Reject requires a reason — the reject form carries a
+ *  `required` textarea (client-side guard), and decideLeave enforces MissingRejectReasonError server-side.
+ *  Approve is unchanged. Used for ORDINARY leave rows (no per-date breakdown); per-date-approval requests use
+ *  LeaveDateBreakdown instead (ADR-0068 — one inbox row, per-date decisions in the detail expander). */
 function LeaveDecideButtons({
   action,
   id,
@@ -141,6 +142,25 @@ export default async function ApprovalsPage({
   ]);
 
   const pendingLeave = leave.filter((r) => r.status === 'pending');
+  // ADR-0068 §6: eagerly fetch the per-date breakdown for each visible PENDING leave row. A non-empty result
+  // means this is a per-date-approval request → render the inline date expander instead of the whole-request
+  // approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown to the viewer.
+  const breakdowns = new Map(
+    await Promise.all(
+      pendingLeave.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
+    ),
+  );
+  // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
+  const dateBreakdownLabels = {
+    viewDateBreakdown: t('viewDateBreakdown'),
+    dateBreakdown: t('dateBreakdown'),
+    approve: t('approve'),
+    reject: t('reject'),
+    rejectReason: t('rejectReasonPlaceholder'),
+    statusPending: t('dateStatus.pending'),
+    statusApproved: t('dateStatus.approved'),
+    statusRejected: t('dateStatus.rejected'),
+  };
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
   // Partial Leave Cancellation (ADR-0065): exclude the viewer's OWN cancellation requests (self-approval ban).
   const pendingCancellations = leaveCancellations.filter((c) => !mine(c.personId));
@@ -271,9 +291,14 @@ export default async function ApprovalsPage({
                       <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>
                     ) : r.currentStepKind === 'hr_admin' && !admin ? (
                       <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
+                    ) : (breakdowns.get(r.id)?.length ?? 0) > 0 ? (
+                      // Partial Leave Approval — single-request model (ADR-0068): this request has per-date
+                      // sub-rows → decide each requested date in the inline detail expander (one inbox row).
+                      <div className="flex justify-end">
+                        <LeaveDateBreakdown requestId={r.id} dates={breakdowns.get(r.id)!} labels={dateBreakdownLabels} />
+                      </div>
                     ) : (
-                      // Partial Leave Approval (0131): leave reject requires a reason — use the leave-specific
-                      // decide controls (each pending date-row decided independently).
+                      // Ordinary request (no per-date rows): one approve/reject control (reject requires a reason).
                       <LeaveDecideButtons action={approveLeaveAction} id={r.id} labels={leaveDecideLabels} />
                     )}
                   </td>

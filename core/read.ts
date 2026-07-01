@@ -29,6 +29,7 @@ import {
   leaveLedger,
   leavePolicy,
   leaveRequest,
+  leaveRequestDate,
   leaveType,
   location,
   payrollBatch,
@@ -389,6 +390,31 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
   );
 }
 
+/** ADR-0068 §5 — the per-date breakdown of ONE per-date-approval request, for the approvals detail view.
+ *  Returns ordered leave_request_date rows (date, days, status, reject_reason, decider name/at). RLS scopes
+ *  via subject_employment_id (the leave_request_date policy), so a manager who can see the parent sees its
+ *  dates and a non-manager sees nothing. An empty result means "no per-date breakdown" (the UI then shows the
+ *  ordinary whole-request approve/reject) — no separate boolean on the inbox list is needed. */
+export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: leaveRequestDate.id,
+        leaveDate: leaveRequestDate.leaveDate,
+        days: leaveRequestDate.days,
+        status: leaveRequestDate.status,
+        rejectReason: leaveRequestDate.rejectReason,
+        decidedAt: leaveRequestDate.decidedAt,
+        decidedBy: person.fullName,
+      })
+      .from(leaveRequestDate)
+      .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
+      .leftJoin(person, eq(person.id, employment.personId))
+      .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
+      .orderBy(leaveRequestDate.leaveDate),
+  );
+}
+
 /** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card
  *  shows the original leave dates, the date(s) being given back, the remaining dates, days, and reason. RLS
  *  already scopes visibility (subject + manager + admin via can_see_employment); we additionally narrow to
@@ -514,8 +540,60 @@ export function plannedAbsences(
       .orderBy(leaveRequest.startDate);
 
     type Leave = (typeof leaves)[number];
-    const byEmp = new Map<string, Leave[]>();
+
+    // ADR-0068 §4A: a per-date-approval request is now a single row whose interior dates may be rejected.
+    // For APPROVED such requests, render ONLY the approved dates (as contiguous segments), not the raw span —
+    // otherwise a mid-span rejected date would still show on the calendar as an absence. Pending requests keep
+    // the whole span (no per-date decision has been made yet). Fetch the per-date rows for the visible leaves.
+    const leaveIds = leaves.map((l) => l.id);
+    const dateRows = leaveIds.length
+      ? await tx
+          .select({
+            leaveRequestId: leaveRequestDate.leaveRequestId,
+            leaveDate: leaveRequestDate.leaveDate,
+            status: leaveRequestDate.status,
+          })
+          .from(leaveRequestDate)
+          .where(inArray(leaveRequestDate.leaveRequestId, leaveIds))
+      : [];
+    const approvedDatesByReq = new Map<string, string[]>();
+    const hasDateRows = new Set<string>();
+    for (const dr of dateRows) {
+      hasDateRows.add(dr.leaveRequestId);
+      if (dr.status === 'approved') {
+        const arr = approvedDatesByReq.get(dr.leaveRequestId);
+        if (arr) arr.push(dr.leaveDate);
+        else approvedDatesByReq.set(dr.leaveRequestId, [dr.leaveDate]);
+      }
+    }
+    // Split an ordered list of ISO dates into maximal contiguous (calendar-adjacent) runs.
+    const contiguousRuns = (dates: string[]): { from: string; to: string }[] => {
+      const sorted = [...dates].sort();
+      const runs: { from: string; to: string }[] = [];
+      const nextDay = (iso: string) => new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      for (const d of sorted) {
+        const last = runs[runs.length - 1];
+        if (last && nextDay(last.to) === d) last.to = d;
+        else runs.push({ from: d, to: d });
+      }
+      return runs;
+    };
+    const expandedLeaves: Leave[] = [];
     for (const l of leaves) {
+      // A per-date request that is APPROVED with per-date rows → emit one leave per contiguous approved run.
+      if (hasDateRows.has(l.id) && l.status === 'approved') {
+        const runs = contiguousRuns(approvedDatesByReq.get(l.id) ?? []);
+        for (const r of runs) {
+          expandedLeaves.push({ ...l, startDate: r.from, endDate: r.to });
+        }
+        continue;
+      }
+      // Otherwise (pending, or no per-date rows) render the whole span unchanged.
+      expandedLeaves.push(l);
+    }
+
+    const byEmp = new Map<string, Leave[]>();
+    for (const l of expandedLeaves) {
       const arr = byEmp.get(l.employmentId);
       if (arr) arr.push(l);
       else byEmp.set(l.employmentId, [l]);

@@ -12,6 +12,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
 import { holidayDatesFor } from './holidays';
+import { approvedLeaveDates } from './leave';
 import { maybeAutoAccrueOnApprovalTx } from './toil';
 import {
   attendance,
@@ -428,32 +429,18 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       .orderBy(person.fullName);
 
     const empIds = rows.map((r) => r.employmentId);
-    const [onLeave, policies] = await Promise.all([
-      empIds.length
-        ? tx
-            // ADR-0048: only full_day leave suppresses the day's attendance signal. A half-day / hourly
-            // leave still expects (and can record) attendance for the worked portion, so it is excluded here.
-            // 0129: hourly rows now also carry from_time/to_time — a future per-hour reconciliation can use
-            // that window, but THIS filter is deliberately unchanged (the deferred reconciliation feature).
-            // Hourly leave is single-day (the startDate === endDate guard in requestLeave), so a cross-midnight
-            // window is definitionally out of scope and the to <= from rejection is correct.
-            .select({ employmentId: leaveRequest.employmentId })
-            .from(leaveRequest)
-            .where(
-              and(
-                eq(leaveRequest.status, 'approved'),
-                eq(leaveRequest.durationType, 'full_day'),
-                lte(leaveRequest.startDate, date),
-                gte(leaveRequest.endDate, date),
-                inArray(leaveRequest.employmentId, empIds),
-              ),
-            )
-        : Promise.resolve([]),
+    const [approvedDates, policies] = await Promise.all([
+      // ADR-0068 §4A: read EFFECTIVELY-approved dates (per-date decisions respected). Only full_day leave
+      // suppresses the day's attendance signal — a half-day / hourly leave still expects attendance for the
+      // worked portion — and approvedLeaveDates already filters full_day. A per-date request's interior
+      // REJECTED date is NOT in the set, so it is no longer counted as on-leave (the central fix).
+      approvedLeaveDates(tx, empIds, date, date),
       tx
         .select({ companyId: attendancePolicy.companyId, workingDays: attendancePolicy.workingDays })
         .from(attendancePolicy),
     ]);
-    const leaveSet = new Set(onLeave.map((l) => l.employmentId));
+    const leaveSet = new Set<string>();
+    for (const [emp, dates] of approvedDates) if (dates.has(date)) leaveSet.add(emp);
     const daysByCompany = new Map(policies.map((p) => [p.companyId, p.workingDays]));
     const dow = isoWeekday(date);
 
@@ -535,7 +522,7 @@ export function attendanceMonthSummary(
     if (emps.length === 0) return [];
     const empIds = emps.map((e) => e.employmentId);
 
-    const [rows, leaves, policies] = await Promise.all([
+    const [rows, approvedDates, policies] = await Promise.all([
       tx
         .select({
           employmentId: attendance.employmentId,
@@ -553,26 +540,10 @@ export function attendanceMonthSummary(
             lte(attendance.attendanceDate, monthEnd),
           ),
         ),
-      tx
-        // ADR-0048: only full_day leave counts as a full leave day in the monthly summary. A half-day /
-        // hourly leave is a worked (partial) day — it must not increment leaveDays — so it is excluded here.
-        // 0129: hourly rows now persist from_time/to_time, which makes a future per-hour reconciliation
-        // possible — but this leaveDays count is deliberately unchanged (the deferred reconciliation feature).
-        .select({
-          employmentId: leaveRequest.employmentId,
-          startDate: leaveRequest.startDate,
-          endDate: leaveRequest.endDate,
-        })
-        .from(leaveRequest)
-        .where(
-          and(
-            eq(leaveRequest.status, 'approved'),
-            eq(leaveRequest.durationType, 'full_day'),
-            lte(leaveRequest.startDate, monthEnd),
-            gte(leaveRequest.endDate, monthStart),
-            inArray(leaveRequest.employmentId, empIds),
-          ),
-        ),
+      // ADR-0068 §4A: EFFECTIVELY-approved dates for the month (per-date decisions respected). Only full_day
+      // leave counts as a full leave day in the monthly summary (approvedLeaveDates already filters full_day);
+      // a per-date request's interior REJECTED date is excluded, so it is not miscounted as a leave day.
+      approvedLeaveDates(tx, empIds, monthStart, monthEnd),
       tx
         .select({ companyId: attendancePolicy.companyId, workingDays: attendancePolicy.workingDays })
         .from(attendancePolicy),
@@ -597,12 +568,6 @@ export function attendanceMonthSummary(
       if (arr) arr.push(r);
       else rowsByEmp.set(r.employmentId, [r]);
     }
-    const leaveByEmp = new Map<string, { startDate: string; endDate: string }[]>();
-    for (const l of leaves) {
-      const arr = leaveByEmp.get(l.employmentId);
-      if (arr) arr.push(l);
-      else leaveByEmp.set(l.employmentId, [l]);
-    }
 
     const MS_DAY = 86_400_000;
     const mondayOf = (iso: string) => {
@@ -614,8 +579,10 @@ export function attendanceMonthSummary(
     return emps.map((e) => {
       const myRows = rowsByEmp.get(e.employmentId) ?? [];
       const recorded = new Set(myRows.map((r) => r.date));
-      const myLeaves = leaveByEmp.get(e.employmentId) ?? [];
-      const onLeave = (d: string) => myLeaves.some((l) => l.startDate <= d && d <= l.endDate);
+      // ADR-0068 §4A: the employee's set of effectively-approved leave dates for the month (per-date decisions
+      // respected). A date is on-leave iff it is in this set — no per-request span math here anymore.
+      const myLeaveDates = approvedDates.get(e.employmentId) ?? new Set<string>();
+      const onLeave = (d: string) => myLeaveDates.has(d);
       const workingDays = daysByCompany.get(e.companyId) ?? DEFAULTS.workingDays;
       // ADR-0055: a date is a holiday for this employee iff it is in their resolved calendar (business-group
       // → state → national) — agreeing with the dayType checkIn freezes through the same resolver.

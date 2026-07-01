@@ -30,6 +30,7 @@ import {
   leavePolicy,
   leaveRequest,
   leaveRequestAttachment,
+  leaveRequestDate,
   leaveType,
   payrollBatch,
   payslip,
@@ -922,64 +923,29 @@ export async function requestLeave(
       }
     }
 
-    // Partial Leave Approval (0131): when the type opts into per-date approval, a multi-day FULL-DAY
-    // WORKING-DAYS request is split at submission into one full-day child per working date (sharing a
-    // synthetic parent_group_id, exactly as Emergency Leave decomposes — same insertLeaveRequest funnel, so
-    // each child gets its own leave-request.submitted event + approval steps + per-date notifications). The
-    // manager then decides each child independently via decideLeave, so only the approved dates debit the
-    // balance / land on the calendar. Restricted to working_days full-day types to dodge the calendar-vs-
-    // working-days counting bug (calendar types keep dayCount over the calendar span); half/hourly are
-    // single-day by definition (the durationType !== 'full_day' guard above forced start === end); and EL was
-    // already routed to its own cascade above. All per-request gates (eligibility/document/remark) ran above
-    // against the full span before we reach here, so we don't re-run them per child.
-    if (
+    // Partial Leave Approval — single-request model (ADR-0068, supersedes 0131's child-row split). When the
+    // type opts into per-date approval AND the company is single-step, a multi-day FULL-DAY WORKING-DAYS
+    // request stays ONE leave_request row and gets one leave_request_date sub-row per working date (below,
+    // after the single insert). The approver then decides each date via decideLeaveDate in the request detail
+    // view — one inbox row, not one-per-day. The gate (§4C) excludes: calendar-counted types (kept as a whole
+    // span), half/hourly (single-day, forced start===end above), REPLACEMENT (TOIL consume-on-approve
+    // interaction), and — critically — MULTI-STEP companies (per-date × the manager→HR chain is deferred;
+    // such a request falls through to today's whole-request decideLeave chain with NO per-date rows, so
+    // deployed multi-step data is never stranded). "route by whether leave_request_date rows exist" is safe
+    // precisely because rows are only ever created for single-step companies. EL was already routed above.
+    const [coCfg] = await tx
+      .select({ multi: company.leaveMultiApproval })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    const perDateEligible =
       durationType === 'full_day' &&
       lt?.counting === 'working_days' &&
-      lt?.perDateApproval &&
-      p.startDate !== p.endDate
-    ) {
-      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
-      const splitDates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
-      if (splitDates.length > 1) {
-        const parentGroupId = randomUUID();
-        const children: { id: string; code: string; days: number }[] = [];
-        for (const d of splitDates) {
-          // Each child is one working day on its own date. workingDays(d, d, ...) is 1 (d is a working day by
-          // construction), so sum(child.days) === the parent span's working-day count (guards fractional drift).
-          const childDays = workingDays(d, d, hols, workingDaysIso);
-          const { id: childId } = await insertLeaveRequest(tx, ctx, {
-            employmentId: p.employmentId,
-            leaveTypeId: p.leaveTypeId,
-            startDate: d,
-            endDate: d,
-            days: childDays,
-            durationType: 'full_day',
-            hours: null,
-            reason: p.reason ?? null,
-            employeeRemark,
-            parentGroupId,
-            mandatoryAfterDays: lt?.mandatoryAfterDays ?? null,
-          });
-          children.push({ id: childId, code: lt?.code ?? '', days: childDays });
-        }
-        const holidayWarnings = await warnLeaveHolidayCompleteness(
-          tx,
-          ctx,
-          p.employmentId,
-          p.startDate,
-          p.endDate,
-          children[0].id,
-        );
-        return {
-          leaveRequestId: children[0].id,
-          days,
-          parentGroupId,
-          children,
-          ...(holidayWarnings.length ? { holidayWarnings } : {}),
-        };
-      }
-    }
+      !!lt?.perDateApproval &&
+      lt?.code !== 'REPLACEMENT' &&
+      p.startDate !== p.endDate &&
+      coCfg?.multi === false;
 
     const { id } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId,
@@ -1005,6 +971,47 @@ export async function requestLeave(
         ? { daysBackdated: daysBetween(p.startDate, today), backdatingLimitDays: limit }
         : null,
     });
+
+    // Partial Leave Approval — single-request model (ADR-0068 §4B). When the type is opted-in (§4C gate above)
+    // and the span has >1 working date, insert one leave_request_date sub-row per working date (status
+    // 'pending') IN THE SAME TRANSACTION as the single request. These are the per-date decision handles the
+    // approver flips in the detail view via decideLeaveDate; the span consumers (§4A) read them so only the
+    // approved dates count as leave. The submitted event's payload carries perDate so the whole submission is
+    // captured on ONE aggregate event. Substrate: the per-date INSERTs are sub-rows of a single aggregate whose
+    // lifecycle is captured by the aggregate's submitted (with perDate) + per-date-decided events — no separate
+    // event per sub-row insert.
+    let perDate: { date: string; days: number }[] = [];
+    if (perDateEligible) {
+      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
+      const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
+      const dates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+      if (dates.length > 1) {
+        // Each date is one whole working day by construction, so sum(perDate.days) === the request's
+        // working-day count (guards fractional drift, mirroring the old split's per-child math).
+        perDate = dates.map((d) => ({ date: d, days: workingDays(d, d, hols, workingDaysIso) }));
+        await tx.insert(leaveRequestDate).values(
+          perDate.map((pd) => ({
+            tenantId: ctx.tenantId,
+            leaveRequestId: id,
+            subjectEmploymentId: p.employmentId,
+            leaveDate: pd.date,
+            days: pd.days.toFixed(2),
+            status: 'pending' as const,
+          })),
+        );
+        // Extend the already-appended submitted event with the per-date breakdown (append a companion command
+        // event on the same aggregate so the submitted fact + its date breakdown are both queryable).
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'leave-request',
+          aggregateId: id,
+          eventType: 'leave-request.per-date.initialized',
+          actor: actorOf(ctx),
+          subjectEmploymentId: p.employmentId,
+          payload: { perDate },
+        });
+      }
+    }
 
     // Phase-B #15 — holiday-completeness guard. A working_days request's day count depends on the gazetted
     // holidays loaded for the employee's (state, year). If fewer than the s.60D minimum of 11 are loaded,
@@ -1373,10 +1380,20 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
 // runtime decideLeave passes the full leave_request row, so endDate is always present; the type just exposes it.
 type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string; endDate: string };
 
-/** Final approval: balance gate + ledger debit + status flip + event. */
-async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: DecidableLeave, deciderEmploymentId?: string) {
+/** Final approval: balance gate + ledger debit + status flip + event. daysOverride (ADR-0068 §4E) lets the
+ *  per-date finalization debit only the sum of APPROVED dates instead of the whole request span; it defaults
+ *  to req.days for every non-per-date caller (byte-identical behaviour). Guard: since §4C excludes REPLACEMENT
+ *  from per-date approval, the daysOverride path never reaches the consumeReplacementLeaveTx branch with a
+ *  partial `need`; we assert that invariant so the TOIL consume-on-approve register is never under-consumed. */
+async function finalizeLeaveApproval(
+  tx: Tx,
+  ctx: SessionContext,
+  req: DecidableLeave,
+  deciderEmploymentId?: string,
+  daysOverride?: number,
+) {
   const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
-  const need = Number(req.days);
+  const need = daysOverride ?? Number(req.days);
   if (balance - need < 0) throw new InsufficientLeaveBalanceError();
   await tx.insert(leaveLedger).values({
     tenantId: ctx.tenantId,
@@ -1407,6 +1424,12 @@ async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: Decidable
   // gates accrual/UI, not this consume-on-approve invariant — consumeReplacementLeaveTx is a safe no-op
   // when there is no active accrual to decrement.
   if (lt?.code === 'REPLACEMENT') {
+    // ADR-0068 §4E guard: a partial (per-date) debit must never reach REPLACEMENT — §4C excludes REPLACEMENT
+    // from per-date approval, so daysOverride is always undefined here. Assert it so a future regression that
+    // wires per-date approval to a REPLACEMENT type fails loudly instead of under-consuming the TOIL register.
+    if (daysOverride !== undefined) {
+      throw new Error('per-date (partial) approval is not supported for REPLACEMENT leave');
+    }
     await consumeReplacementLeaveTx(tx, ctx, {
       employmentId: req.employmentId,
       requestId: req.id,
@@ -1434,7 +1457,9 @@ async function finalizeLeaveApproval(tx: Tx, ctx: SessionContext, req: Decidable
               employmentId: req.employmentId,
               leaveTypeId: req.leaveTypeId,
               leaveTypeCode: lt.code,
-              days: req.days,
+              // ADR-0068 §4E: for a per-date request the payroll-impact advisory reflects the APPROVED days,
+              // not the raw request span (need === sum of approved dates when daysOverride is passed).
+              days: daysOverride !== undefined ? need : req.days,
               startDate: req.startDate,
               endDate: req.endDate,
               approvalStatus: 'approved' as const,
@@ -1534,6 +1559,156 @@ export async function decideLeave(
     // Partial Leave Approval (0131): stamp the mandatory reject reason onto the rejected event payload.
     else await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, { rejectReason });
     return { status: p.decision };
+  });
+}
+
+// ═════════════ Partial Leave Approval — single-request per-date decision (ADR-0068) ═════════════
+
+/** ADR-0068 §4A — the set of EFFECTIVELY-APPROVED leave dates per employment in [from, to]. This is the ONE
+ *  authority every span consumer (attendance daily+monthly, roster onLeave, plannedAbsences, unpaid payroll)
+ *  reads so a per-date request's interior REJECTED dates never count as leave anywhere. Semantics:
+ *   - a request WITHOUT leave_request_date rows → expand [start,end] where the REQUEST status='approved'
+ *     (the unchanged, cheap whole-span behaviour — full_day only, mirroring the consumers' existing filter);
+ *   - a request WITH leave_request_date rows → the individual leave_dates whose ROW status='approved'.
+ *  One SQL: LEFT JOIN leave_request_date and COALESCE(row status, request status). generate_series expands
+ *  the whole-span (no-child) case to individual dates so the caller always gets a flat Set<date> per emp.
+ *  full_day filter matches the consumers (half/hourly are worked partial days, never "on leave"). */
+async function approvedLeaveDates(
+  tx: Tx,
+  empIds: string[],
+  from: string,
+  to: string,
+): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  if (empIds.length === 0) return out;
+  const add = (emp: string, d: string) => {
+    let s = out.get(emp);
+    if (!s) out.set(emp, (s = new Set()));
+    s.add(d);
+  };
+
+  // (a) per-date requests: every APPROVED sub-row in the window is one on-leave date.
+  const dateRows = await tx
+    .select({ employmentId: leaveRequest.employmentId, d: leaveRequestDate.leaveDate })
+    .from(leaveRequestDate)
+    .innerJoin(leaveRequest, eq(leaveRequest.id, leaveRequestDate.leaveRequestId))
+    .where(
+      and(
+        inArray(leaveRequest.employmentId, empIds),
+        eq(leaveRequest.durationType, 'full_day'),
+        eq(leaveRequestDate.status, 'approved'),
+        gte(leaveRequestDate.leaveDate, from),
+        lte(leaveRequestDate.leaveDate, to),
+      ),
+    );
+  for (const r of dateRows) add(r.employmentId, r.d);
+
+  // (b) whole-span requests (no per-date rows): expand [start,end] ∩ [from,to] where the REQUEST is approved.
+  const spanRows = await tx
+    .select({
+      employmentId: leaveRequest.employmentId,
+      startDate: leaveRequest.startDate,
+      endDate: leaveRequest.endDate,
+    })
+    .from(leaveRequest)
+    .where(
+      and(
+        inArray(leaveRequest.employmentId, empIds),
+        eq(leaveRequest.durationType, 'full_day'),
+        eq(leaveRequest.status, 'approved'),
+        lte(leaveRequest.startDate, to),
+        gte(leaveRequest.endDate, from),
+        sql`NOT EXISTS (SELECT 1 FROM leave_request_date x WHERE x.leave_request_id = ${leaveRequest.id})`,
+      ),
+    );
+  for (const r of spanRows) {
+    const lo = r.startDate < from ? from : r.startDate;
+    const hi = r.endDate > to ? to : r.endDate;
+    for (const d of eachDate(lo, hi)) add(r.employmentId, d);
+  }
+  return out;
+}
+
+/** ADR-0068 §4A (exported for the span consumers in attendance/roster/read). See approvedLeaveDates. */
+export { approvedLeaveDates };
+
+/** ADR-0068 §4D — decide ONE requested date of a per-date-approval request in the request detail view. The
+ *  request itself stays a single inbox row; each date is approved/rejected here. Reject requires a reason
+ *  (MissingRejectReasonError, enforced before the transaction). No ledger effect per date — the balance gate +
+ *  single ledger debit run once at finalization (§4E) when no pending dates remain. Single-step only (reuses
+ *  assertCanDecide), which §4C guarantees because per-date rows are only created for single-step companies. */
+export async function decideLeaveDate(
+  ctx: SessionContext,
+  p: {
+    leaveRequestId: string;
+    leaveDate: string;
+    decision: 'approved' | 'rejected';
+    deciderEmploymentId?: string;
+    rejectReason?: string;
+  },
+) {
+  const rejectReason = p.rejectReason?.trim() || null;
+  if (p.decision === 'rejected' && !rejectReason) throw new MissingRejectReasonError();
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+    if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
+    // Single-step authority (§4C): per-date rows only exist for single-step companies, so the whole-request
+    // assertCanDecide (manager/admin, no self-approval) is the correct gate — no chain-step logic here.
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+
+    const [row] = await tx
+      .select()
+      .from(leaveRequestDate)
+      .where(and(eq(leaveRequestDate.leaveRequestId, req.id), eq(leaveRequestDate.leaveDate, p.leaveDate)))
+      .limit(1);
+    if (!row) throw new Error('leave date not found on this request');
+    if (row.status !== 'pending') throw new Error(`leave date is already ${row.status}`);
+
+    await tx
+      .update(leaveRequestDate)
+      .set({
+        status: p.decision,
+        rejectReason: p.decision === 'rejected' ? rejectReason : null,
+        decidedByEmploymentId: p.deciderEmploymentId ?? null,
+        decidedAt: sql`now()`,
+      })
+      .where(eq(leaveRequestDate.id, row.id));
+    // Substrate: the per-date write is audited by this event on the leave-request aggregate.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-request',
+      aggregateId: req.id,
+      eventType: 'leave-request.date.decided',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { leaveDate: p.leaveDate, decision: p.decision, ...(rejectReason ? { rejectReason } : {}) },
+    });
+
+    // §4E finalization: only when NO pending dates remain.
+    const remaining = await tx
+      .select()
+      .from(leaveRequestDate)
+      .where(eq(leaveRequestDate.leaveRequestId, req.id));
+    const stillPending = remaining.filter((d) => d.status === 'pending');
+    if (stillPending.length > 0) return { status: 'pending' as const };
+
+    const approved = remaining.filter((d) => d.status === 'approved');
+    const rejected = remaining.filter((d) => d.status === 'rejected');
+    if (approved.length === 0) {
+      // All rejected → terminal rejection, no debit. Collect the per-date reasons for the audit trail.
+      await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, {
+        rejectReason: rejected.map((d) => `${d.leaveDate}: ${d.rejectReason ?? ''}`).join('; '),
+        perDate: rejected.map((d) => ({ date: d.leaveDate, rejectReason: d.rejectReason })),
+      });
+      return { status: 'rejected' as const };
+    }
+    // All-approved OR mixed (≥1 approved) → single ledger debit for sum(approved days) + status='approved'.
+    // §4A makes balance/calendar/attendance/payroll count ONLY the approved dates regardless of top-level
+    // status, so a mixed outcome uses 'approved' + per-date truth (no new "partially_approved" enum this round).
+    const approvedDays = approved.reduce((s, d) => s + Number(d.days), 0);
+    await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, approvedDays);
+    return { status: 'approved' as const };
   });
 }
 
@@ -1659,7 +1834,18 @@ export async function requestLeaveCancellation(
     // The request's working dates (the only cancellable dates), in the tenant calendar frame.
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
     const workingDaysIso = await resolveWorkingDaysIso(tx, req.employmentId);
-    const workingDates = eachDate(req.startDate, req.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+    let workingDates = eachDate(req.startDate, req.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+    // ADR-0068 §6: a per-date-approval request is now a single parentGroupId=NULL row, so it reaches here.
+    // Its interior REJECTED dates are NOT approved leave — exclude them from the cancellable set so an employee
+    // can only give back a date that was actually approved (mirrors §4A's effectively-approved-dates rule).
+    const dateRows = await tx
+      .select({ leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
+      .from(leaveRequestDate)
+      .where(eq(leaveRequestDate.leaveRequestId, req.id));
+    if (dateRows.length > 0) {
+      const approvedSet = new Set(dateRows.filter((d) => d.status === 'approved').map((d) => d.leaveDate));
+      workingDates = workingDates.filter((d) => approvedSet.has(d));
+    }
     const workingSet = new Set(workingDates);
     // "Today" in the same working-day frame the rest of leave.ts uses (UTC ISO date — eachDate/isWorkingDay
     // operate on yyyy-mm-dd strings). Per-date future check: each cancelDate must be strictly after today.

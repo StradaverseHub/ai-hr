@@ -21,6 +21,7 @@ import {
   payrollBatchComponent,
   leaveLedger,
   leaveRequest,
+  leaveRequestDate,
   leaveType,
   payPeriod,
   payrollBatch,
@@ -204,10 +205,19 @@ async function unpaidDaysByEmployment(
   periodStart: string,
   periodEnd: string,
 ): Promise<Map<string, number>> {
+  // ADR-0068 §4A: for a per-date-approval request, deduct only the APPROVED dates, not the raw request span —
+  // reading leave_request.days would count a mid-span rejected date as unpaid leave. We keep the current
+  // "deduct in the month it STARTS" policy (filter on start_date ∈ period) and, per request, use the sum of
+  // APPROVED leave_request_date.days when such rows exist, else the request's own `days` (unchanged path).
+  const perDateDays = sql<string>`coalesce(
+    (select sum(lrd.days) from leave_request_date lrd
+      where lrd.leave_request_id = ${leaveRequest.id} and lrd.status = 'approved'),
+    ${leaveRequest.days}
+  )`;
   const rows = await tx
     .select({
       employmentId: leaveRequest.employmentId,
-      days: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+      days: sql<string>`coalesce(sum(${perDateDays}), 0)`,
     })
     .from(leaveRequest)
     .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -228,6 +238,17 @@ async function unpaidDaysByEmployment(
     )
     .groupBy(leaveRequest.employmentId);
   return new Map(rows.map((r) => [r.employmentId, Number(r.days)]));
+}
+
+/** ADR-0068 §4A / §8 test #6 — the unpaid-leave days payroll would deduct for a period, by employment. A thin
+ *  session wrapper around unpaidDaysByEmployment so the span-consumer correctness test can assert a per-date
+ *  request's APPROVED-only days are deducted (2, not the raw 3), without standing up a full payroll batch. */
+export function unpaidLeaveDaysForPeriod(
+  ctx: SessionContext,
+  periodStart: string,
+  periodEnd: string,
+): Promise<Map<string, number>> {
+  return withTenant(ctx, (tx) => unpaidDaysByEmployment(tx, periodStart, periodEnd));
 }
 
 /** Optional batch subset (ADR-0035 1E, #23). Empty/absent ⇒ the whole company. */

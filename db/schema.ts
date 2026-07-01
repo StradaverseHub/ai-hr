@@ -690,6 +690,42 @@ export const leaveRequestAttachment = pgTable(
   (t) => [index('leave_request_attachment_request_idx').on(t.leaveRequestId)],
 );
 
+// Partial Leave Approval — single-request model (ADR-0068, supersedes ADR-0131's child-row split). A
+// multi-day per-date-approval request now stays ONE leave_request row; each requested WORKING date gets a
+// per-date sub-row here so the approver can approve/reject each date independently in the request detail
+// view (one inbox row, not one-per-day). subject_employment_id is denormalized from the parent request so
+// RLS reuses the leave_approval_step policy verbatim (can_see_employment OR can_decide_via_delegation) —
+// this is load-bearing: the span consumers (attendance/roster/plannedAbsences/unpaid-payroll) read these
+// rows per-date under a correlated sub-select, and a tenant-only policy would let a manager see rows they
+// cannot decide (or hide rows they can). The (subject_employment_id, leave_date) index serves that read
+// path. status reuses the pending/approved/rejected space; decided_by/at/reject_reason mirror the parent's
+// decision columns so the detail view can show who decided each date and why a date was rejected.
+export const leaveRequestDate = pgTable(
+  'leave_request_date',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    leaveRequestId: uuid('leave_request_id')
+      .notNull()
+      .references(() => leaveRequest.id, { onDelete: 'cascade' }),
+    subjectEmploymentId: uuid('subject_employment_id')
+      .notNull()
+      .references(() => employment.id),
+    leaveDate: date('leave_date').notNull(),
+    days: numeric('days', { precision: 6, scale: 2 }).notNull(),
+    status: leaveRequestStatusEnum('status').notNull().default('pending'),
+    rejectReason: text('reject_reason'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('leave_request_date_request_date_uq').on(t.leaveRequestId, t.leaveDate),
+    index('leave_request_date_request_idx').on(t.leaveRequestId),
+    index('leave_request_date_subject_date_idx').on(t.subjectEmploymentId, t.leaveDate),
+  ],
+);
+
 // Wave 2 (ADR-0038 2B): instance approval steps generated for a leave request when its company runs a
 // multi-step chain. decideLeave advances the lowest-index pending step; the request is approved only
 // when the final step clears, and rejected if any step is rejected. subject_employment_id is

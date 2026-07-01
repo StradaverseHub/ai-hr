@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { decideLeave, decideLeaveCancellation } from '@/core/leave';
+import { decideLeave, decideLeaveDate, decideLeaveCancellation } from '@/core/leave';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideProfileChange } from '@/core/profile';
@@ -43,6 +43,27 @@ export async function approveLeaveAction(formData: FormData) {
     fail(new Error(await localizeLeaveError(e)));
   }
   done(`Leave ${decision}`);
+}
+
+// Partial Leave Approval — single-request model (ADR-0068 §4D): decide ONE requested date of a per-date
+// request from the detail-view expander. Reject requires a reason (MissingRejectReasonError, re-localized).
+export async function decideLeaveDateAction(formData: FormData) {
+  const s = await getSession();
+  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  const rejectReason = String(formData.get('rejectReason') || '') || undefined;
+  try {
+    const me = await myEmployment(s);
+    await decideLeaveDate(s, {
+      leaveRequestId: String(formData.get('id')),
+      leaveDate: String(formData.get('leaveDate')),
+      decision,
+      deciderEmploymentId: me?.employmentId,
+      rejectReason,
+    });
+  } catch (e) {
+    fail(new Error(await localizeLeaveError(e)));
+  }
+  done(`Date ${decision}`);
 }
 
 // Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a

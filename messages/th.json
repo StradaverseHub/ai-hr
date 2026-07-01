@@ -1003,7 +1003,14 @@
     "hrReviews": "การตัดสินใจประเมิน",
     "noManagerReviews": "ไม่มีการประเมินที่รอการประเมินของคุณ",
     "noHrReviews": "ไม่มีการประเมินที่รอการตัดสินใจ",
-    "rejectReasonPlaceholder": "เหตุผลในการปฏิเสธ (จำเป็น)"
+    "rejectReasonPlaceholder": "เหตุผลในการปฏิเสธ (จำเป็น)",
+    "viewDateBreakdown": "ตัดสินแต่ละวันที่",
+    "dateBreakdown": "วันที่ที่ขอ",
+    "dateStatus": {
+      "pending": "รอดำเนินการ",
+      "approved": "อนุมัติแล้ว",
+      "rejected": "ปฏิเสธแล้ว"
+    }
   },
   "performance": {
     "list": {

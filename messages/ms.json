@@ -1003,7 +1003,14 @@
     "hrReviews": "Keputusan penilaian",
     "noManagerReviews": "Tiada penilaian menunggu penilaian anda.",
     "noHrReviews": "Tiada penilaian menunggu keputusan.",
-    "rejectReasonPlaceholder": "Sebab penolakan (wajib)"
+    "rejectReasonPlaceholder": "Sebab penolakan (wajib)",
+    "viewDateBreakdown": "Putuskan setiap tarikh",
+    "dateBreakdown": "Tarikh dipohon",
+    "dateStatus": {
+      "pending": "Menunggu",
+      "approved": "Diluluskan",
+      "rejected": "Ditolak"
+    }
   },
   "performance": {
     "list": {

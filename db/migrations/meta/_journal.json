@@ -967,6 +967,13 @@
       "when": 1781862010000,
       "tag": "0137_employee_dependent",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1781862020000,
+      "tag": "0138_leave_partial_approval_single_aggregate",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import {
   decideLeave,
   decideLeaveCancellation,
+  decideLeaveDate,
   requestLeave,
   requestLeaveCancellation,
   splitSpanForCancellation,
@@ -362,9 +363,10 @@ describe('Partial Leave Cancellation — gates', () => {
     ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
   });
 
-  it('cannot cancel a per-date-approval / EL child (parentGroupId != null)', async () => {
-    // A per-date-approval WORKING-DAYS request decomposes into child rows that each carry parentGroupId (the
-    // same shape as Emergency-Leave children). Such children are excluded from cancellation by code.
+  it('a per-date-approval request (ADR-0068 single row) IS cancellable, but an interior-REJECTED date is not cancel-eligible', async () => {
+    // ADR-0068: a per-date-approval WORKING-DAYS request is now a SINGLE parentGroupId=NULL row with per-date
+    // sub-rows. It is therefore cancellable (unlike the old split child), BUT only its APPROVED dates are
+    // cancel-eligible — an interior REJECTED date is not approved leave and must be rejected as invalid.
     await owner.db
       .update(schema.leaveType)
       .set({ counting: 'working_days', perDateApproval: true })
@@ -375,12 +377,18 @@ describe('Partial Leave Cancellation — gates', () => {
       startDate: '2026-08-10',
       endDate: '2026-08-12',
     });
-    // res.leaveRequestId is the first child (parentGroupId != null). Approve it, then try to cancel it.
-    expect(res.parentGroupId).not.toBeNull();
-    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    expect(res.parentGroupId).toBeNull();
+    // Approve 10 & 12, reject 11 (interior).
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-10', decision: 'approved' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-11', decision: 'rejected', rejectReason: 'no' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-12', decision: 'approved' });
+    // Cancelling the REJECTED interior date is invalid (not in the approved/cancel-eligible set).
     await expect(
-      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] }),
-    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-11'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationDateInvalidError);
+    // Cancelling an APPROVED date succeeds.
+    const ok = await requestLeaveCancellation(subjectCtx, { leaveRequestId: res.leaveRequestId, cancelDates: ['2026-08-10'] });
+    expect(ok.requestedDays).toBe(1);
   });
 
   it('cannot cancel a date on/before today, but a later future date in the same request is allowed', async () => {
