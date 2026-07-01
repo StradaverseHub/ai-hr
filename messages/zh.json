@@ -592,7 +592,8 @@
       "cancellationNotAllowed": "此休假日期无法取消。",
       "cancellationTooLate": "{date} 的休假已无法取消（已开始或已过期）。",
       "cancelDateInvalid": "{date} 不是此休假中可取消的工作日。",
-      "cancellationPeriodClosed": "{date} 属于已关闭的薪资期间，无法再取消。"
+      "cancellationPeriodClosed": "{date} 属于已关闭的薪资期间，无法再取消。",
+      "noLeaveDaysInRange": "此申请没有请假日 — 日期为空或全部落在周末/公共假期。请选择至少包含一个工作日的日期范围。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",

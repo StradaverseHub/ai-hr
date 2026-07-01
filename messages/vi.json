@@ -592,7 +592,8 @@
       "cancellationNotAllowed": "Không thể hủy ngày nghỉ này.",
       "cancellationTooLate": "Không thể hủy nghỉ phép cho ngày {date} nữa (đã bắt đầu hoặc đã qua).",
       "cancelDateInvalid": "{date} không phải là ngày làm việc có thể hủy trong kỳ nghỉ này.",
-      "cancellationPeriodClosed": "{date} thuộc kỳ lương đã đóng và không thể hủy nữa."
+      "cancellationPeriodClosed": "{date} thuộc kỳ lương đã đóng và không thể hủy nữa.",
+      "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",

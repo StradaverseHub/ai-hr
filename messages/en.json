@@ -592,7 +592,8 @@
       "cancellationNotAllowed": "This leave date can't be cancelled.",
       "cancellationTooLate": "Leave for {date} can no longer be cancelled (it has started or passed).",
       "cancelDateInvalid": "{date} is not a cancellable working day in this leave.",
-      "cancellationPeriodClosed": "{date} falls in a closed payroll period and can no longer be cancelled."
+      "cancellationPeriodClosed": "{date} falls in a closed payroll period and can no longer be cancelled.",
+      "noLeaveDaysInRange": "This request has no leave days — the dates are empty or fall entirely on weekends/public holidays. Pick a range that includes at least one working day."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",

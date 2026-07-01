@@ -592,7 +592,8 @@
       "cancellationNotAllowed": "Tarikh cuti ini tidak boleh dibatalkan.",
       "cancellationTooLate": "Cuti untuk {date} tidak boleh dibatalkan lagi (ia telah bermula atau berlalu).",
       "cancelDateInvalid": "{date} bukan hari bekerja yang boleh dibatalkan dalam cuti ini.",
-      "cancellationPeriodClosed": "{date} berada dalam tempoh gaji yang telah ditutup dan tidak boleh dibatalkan lagi."
+      "cancellationPeriodClosed": "{date} berada dalam tempoh gaji yang telah ditutup dan tidak boleh dibatalkan lagi.",
+      "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",

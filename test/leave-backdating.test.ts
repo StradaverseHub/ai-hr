@@ -24,6 +24,7 @@ import {
   requestLeave,
   exceedsBackdatingLimit,
   LeaveBackdatingNotAllowedError,
+  LeaveNoDaysInRangeError,
 } from '../core/leave';
 import { updateLeaveType } from '../core/admin';
 import { listLeaveTypes } from '../core/read';
@@ -72,6 +73,23 @@ async function leaveType(code: string, backdatingLimitDays: number | null): Prom
       name: code,
       paid: true,
       counting: 'calendar_days',
+      backdatingLimitDays,
+    })
+    .returning({ id: schema.leaveType.id });
+  return row.id;
+}
+
+/** Insert a WORKING-DAYS-counted leave type with a (nullable) backdating limit. Used to exercise the
+ *  empty-range guard: a backdated single-day request that lands on a weekend resolves to 0 working days. */
+async function workingDaysLeaveType(code: string, backdatingLimitDays: number | null): Promise<string> {
+  const [row] = await owner.db
+    .insert(schema.leaveType)
+    .values({
+      tenantId: b.tenantId,
+      code,
+      name: code,
+      paid: true,
+      counting: 'working_days',
       backdatingLimitDays,
     })
     .returning({ id: schema.leaveType.id });
@@ -215,6 +233,28 @@ describe('requestLeave — backdating restriction', () => {
     expect(payload?.daysBackdated).toBeUndefined();
   });
 
+  // R5 Build #3 (backdating diagnose-first): an HR admin filing a BACKDATED on-behalf leave whose dates fall
+  // entirely on non-working days (weekend/holiday) for a working_days type must get the TYPED, localizable
+  // LeaveNoDaysInRangeError — a clear everyday reason — NOT a raw untranslated Error, and NOT the backdating
+  // gate (the admin override bypasses that first). Uses adminCtx(b) (roles:['hr_admin'] ⇒ isAdmin TRUE) for
+  // another employee's employmentId — exactly the on-behalf path the reporter hit.
+  it('surfaces a typed LeaveNoDaysInRangeError when an admin backdates onto a weekend-only working-days type', async () => {
+    const { employmentId } = await hireEmployeeCtx();
+    const ltId = await workingDaysLeaveType(uniqCode(), 3); // limit 3 ⇒ the date below is also over-limit
+    const sat = '2026-05-30'; // Saturday, 16 days before TODAY (2026-06-15): over-limit AND non-working
+    await expect(
+      requestLeave(adminCtx(b), {
+        employmentId,
+        leaveTypeId: ltId,
+        startDate: sat,
+        endDate: sat,
+        today: TODAY,
+      }),
+    ).rejects.toBeInstanceOf(LeaveNoDaysInRangeError);
+    // Not the backdating gate (the admin override applied first) and nothing persisted.
+    expect(await requestCount(employmentId)).toBe(0);
+  });
+
   it('back-compat: a null-limit type never blocks a backdated request', async () => {
     const { ctx, employmentId } = await hireEmployeeCtx();
     const ltId = await leaveType(uniqCode(), null);
@@ -296,5 +336,15 @@ describe('i18n — backdatingNotAllowed renders in all 6 locales with both token
     expect(out).toContain('Annual Leave');
     expect(out).toContain('3');
     // next-intl throws on a missing/malformed placeholder; reaching here means both tokens were valid.
+  });
+});
+
+// R5 Build #3: the new typed empty-range error is localized in all 6 locales (no tokens — a static string).
+describe('i18n — noLeaveDaysInRange renders (non-empty) in all 6 locales', () => {
+  it.each(LOCALES)('locale %s has a non-empty message', async (locale) => {
+    const messages = (await import(`../messages/${locale}.json`)).default;
+    const t = createTranslator({ locale, messages, namespace: 'leave.errors' });
+    const out = t('noLeaveDaysInRange');
+    expect(out.length).toBeGreaterThan(0);
   });
 });

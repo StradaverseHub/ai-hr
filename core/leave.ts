@@ -239,6 +239,19 @@ export class LeaveBackdatingNotAllowedError extends Error {
   }
 }
 
+// R5 Build #3 (backdating diagnose-first): a request that resolves to zero leave days — the range is empty
+// (end before start) or every day in it is a non-working day (weekend/holiday) for a working_days type. This
+// fires for admins AND ordinary employees, and is a common outcome of a BACKDATED single-day request that
+// happens to land on a weekend/holiday. Previously thrown as a raw English `Error`, so a non-English-locale
+// user (or an HR admin filing a backdated leave for someone) saw untranslated technical text via the
+// localizeLeaveError fallback. Typed here so the action layer re-localizes it into the viewer's language.
+export class LeaveNoDaysInRangeError extends Error {
+  constructor() {
+    super('No leave days in range (end before start, or all non-working)');
+    this.name = 'LeaveNoDaysInRangeError';
+  }
+}
+
 // ADR-0066 festive / one-off grant: invalid input (bad days/date/leave-type) or an authority violation
 // (a company-scoped admin attempting a group-wide grant, or a grant for a company they don't administer).
 export class AdHocLeaveGrantError extends Error {
@@ -810,7 +823,7 @@ export async function requestLeave(
       // Single day already enforced. Working-day guard: reject a half/hourly request that falls on a
       // weekend/holiday for working_days types (workingDayCount === 0) — same error as an empty range.
       if (lt?.counting === 'working_days' && workingDayCount === 0) {
-        throw new Error('No leave days in range (end before start, or all non-working)');
+        throw new LeaveNoDaysInRangeError();
       }
       if (durationType === 'hourly') {
         const h = hours ?? 0;
@@ -851,7 +864,7 @@ export async function requestLeave(
         if (conflicts) throw new Error('This date already has a conflicting leave request');
       }
     }
-    if (days <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
+    if (days <= 0) throw new LeaveNoDaysInRangeError();
 
     // Doc-config: now that `days` is known, enforce the conditional document gate. `days` is fractional
     // (half-day / hourly), so use strict `>` against the integer config: mandatoryAfterDays:N means "more
@@ -1117,7 +1130,7 @@ async function requestEmergencyLeave(
   const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
   const spanWorkingDays = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
   const uplSpanDays = dayCount(p.startDate, p.endDate);
-  if (uplSpanDays <= 0) throw new Error('No leave days in range (end before start, or all non-working)');
+  if (uplSpanDays <= 0) throw new LeaveNoDaysInRangeError();
 
   // The span's working-day dates in order — paid segments cut at boundary working-days off the front. Rest
   // days come from the SAME configured roster as the count above (audit H#3), not a hardcoded Sat/Sun.
