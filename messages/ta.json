@@ -3039,6 +3039,17 @@
     "managerComments": "மேலாளர் கருத்துகள்",
     "hrComments": "மனிதவள கருத்துகள்",
     "extendToDate": "நீட்டிக்க",
+    "extensionReason": "நீட்டிப்பு காரணம்",
+    "terminationReason": {
+      "label": "பணிநீக்கக் காரணம்",
+      "placeholder": "ஒரு காரணத்தைத் தேர்ந்தெடுக்கவும்",
+      "contract_end": "ஒப்பந்தம் முடிந்தது",
+      "involuntary": "விருப்பமில்லாத (பணிநீக்கம்)",
+      "voluntary": "தன்னிச்சையான (பதவி விலகல்)",
+      "retired": "ஓய்வு",
+      "death": "மரணம்",
+      "other": "மற்றவை"
+    },
     "submitEvaluation": "மதிப்பீட்டைச் சமர்ப்பி",
     "submitEvaluationDone": "மதிப்பீடு சமர்ப்பிக்கப்பட்டது",
     "recordDecision": "முடிவைப் பதிவு செய்",

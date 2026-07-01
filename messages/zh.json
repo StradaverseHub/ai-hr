@@ -3039,6 +3039,17 @@
     "managerComments": "经理评语",
     "hrComments": "人力资源评语",
     "extendToDate": "延长至",
+    "extensionReason": "延长原因",
+    "terminationReason": {
+      "label": "终止原因",
+      "placeholder": "选择原因",
+      "contract_end": "合同到期",
+      "involuntary": "非自愿（解雇）",
+      "voluntary": "自愿（辞职）",
+      "retired": "退休",
+      "death": "死亡",
+      "other": "其他"
+    },
     "submitEvaluation": "提交评估",
     "submitEvaluationDone": "评估已提交",
     "recordDecision": "记录决定",

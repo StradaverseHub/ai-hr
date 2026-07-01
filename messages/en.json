@@ -3039,6 +3039,17 @@
     "managerComments": "Manager comments",
     "hrComments": "HR comments",
     "extendToDate": "Extend to",
+    "extensionReason": "Extension reason",
+    "terminationReason": {
+      "label": "Termination reason",
+      "placeholder": "Select a reason",
+      "contract_end": "Contract ended",
+      "involuntary": "Involuntary (dismissal)",
+      "voluntary": "Voluntary (resignation)",
+      "retired": "Retirement",
+      "death": "Death",
+      "other": "Other"
+    },
     "submitEvaluation": "Submit evaluation",
     "submitEvaluationDone": "Evaluation submitted",
     "recordDecision": "Record decision",

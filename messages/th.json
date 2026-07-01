@@ -3039,6 +3039,17 @@
     "managerComments": "ความเห็นผู้จัดการ",
     "hrComments": "ความเห็น HR",
     "extendToDate": "ขยายถึง",
+    "extensionReason": "เหตุผลในการขยาย",
+    "terminationReason": {
+      "label": "เหตุผลในการเลิกจ้าง",
+      "placeholder": "เลือกเหตุผล",
+      "contract_end": "สิ้นสุดสัญญา",
+      "involuntary": "ไม่สมัครใจ (เลิกจ้าง)",
+      "voluntary": "สมัครใจ (ลาออก)",
+      "retired": "เกษียณอายุ",
+      "death": "เสียชีวิต",
+      "other": "อื่น ๆ"
+    },
     "submitEvaluation": "ส่งการประเมิน",
     "submitEvaluationDone": "ส่งการประเมินแล้ว",
     "recordDecision": "บันทึกการตัดสินใจ",

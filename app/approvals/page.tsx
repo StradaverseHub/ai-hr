@@ -18,9 +18,9 @@ import {
   approveProfileChangeAction,
   decideLeaveCancellationAction,
   decideResignationAction,
-  decideReviewAction,
   submitManagerEvaluationAction,
 } from './actions';
+import { ReviewDecideForm } from './review-decide-form';
 
 function DecideButtons({
   action,
@@ -556,25 +556,9 @@ export default async function ApprovalsPage({
                       {r.managerComments ? ` · ${r.managerComments}` : ''}
                     </div>
                   )}
-                  <form action={decideReviewAction} className="flex flex-wrap items-end gap-2">
-                    <input type="hidden" name="id" value={r.id} />
-                    <label className="text-xs text-muted-foreground">
-                      {tReview('decision.label')}
-                      <select name="decision" required className={`${inputCls} mt-1`}>
-                        <option value="confirm">{tReview('decision.confirm')}</option>
-                        <option value="extend">{tReview('decision.extend')}</option>
-                        <option value="terminate">{tReview('decision.terminate')}</option>
-                      </select>
-                    </label>
-                    <label className="text-xs text-muted-foreground">
-                      {tReview('extendToDate')}
-                      <input name="extendToDate" type="date" className={`${inputCls} mt-1`} />
-                    </label>
-                    <input name="hrComments" placeholder={tReview('hrComments')} className={`${inputCls} flex-1`} />
-                    <Button type="submit" size="sm">
-                      {tReview('recordDecision')}
-                    </Button>
-                  </form>
+                  {/* R4 Build #4: progressive-disclosure HR-decision form — selecting Confirm / Extend /
+                      Terminate reveals only that decision's fields. Advisory (records decision + letter). */}
+                  <ReviewDecideForm reviewId={r.id} />
                 </li>
               ))}
             </ul>

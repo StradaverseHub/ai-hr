@@ -3039,6 +3039,17 @@
     "managerComments": "Nhận xét của quản lý",
     "hrComments": "Nhận xét của HR",
     "extendToDate": "Gia hạn đến",
+    "extensionReason": "Lý do gia hạn",
+    "terminationReason": {
+      "label": "Lý do chấm dứt",
+      "placeholder": "Chọn lý do",
+      "contract_end": "Hết hạn hợp đồng",
+      "involuntary": "Không tự nguyện (sa thải)",
+      "voluntary": "Tự nguyện (từ chức)",
+      "retired": "Nghỉ hưu",
+      "death": "Qua đời",
+      "other": "Khác"
+    },
     "submitEvaluation": "Gửi đánh giá",
     "submitEvaluationDone": "Đã gửi đánh giá",
     "recordDecision": "Ghi quyết định",

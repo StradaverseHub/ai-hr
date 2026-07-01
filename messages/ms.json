@@ -3039,6 +3039,17 @@
     "managerComments": "Komen pengurus",
     "hrComments": "Komen HR",
     "extendToDate": "Lanjutkan hingga",
+    "extensionReason": "Sebab lanjutan",
+    "terminationReason": {
+      "label": "Sebab penamatan",
+      "placeholder": "Pilih sebab",
+      "contract_end": "Kontrak tamat",
+      "involuntary": "Tidak sukarela (pemecatan)",
+      "voluntary": "Sukarela (peletakan jawatan)",
+      "retired": "Persaraan",
+      "death": "Kematian",
+      "other": "Lain-lain"
+    },
     "submitEvaluation": "Hantar penilaian",
     "submitEvaluationDone": "Penilaian dihantar",
     "recordDecision": "Rekod keputusan",
