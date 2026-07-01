@@ -5,7 +5,14 @@ import { useTranslations } from 'next-intl';
 import { Button, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
-type FieldDef = { name: string; label: string; value: string };
+/** A field renders as a plain text input by default; supply `options` to render a `<select>` instead
+ *  (used for the Department↔Business-Unit dropdown). `value` is the pre-selected option value. */
+type FieldDef = {
+  name: string;
+  label: string;
+  value: string;
+  options?: { value: string; label: string }[];
+};
 
 /**
  * A list row with inline edit + state-aware remove (ADR-0006): delete when unreferenced
@@ -31,7 +38,8 @@ export function EditableRow({
   archived: boolean;
   updateAction: (fd: FormData) => void;
   archiveAction: (fd: FormData) => void;
-  deleteAction: (fd: FormData) => void;
+  // Optional: catalogs without a hard-delete path (e.g. Business Unit) archive instead of delete.
+  deleteAction?: (fd: FormData) => void;
 }) {
   const t = useTranslations('components.editableRow');
   const [editing, setEditing] = useState(false);
@@ -41,16 +49,32 @@ export function EditableRow({
       <li className="px-4 py-2.5">
         <form action={updateAction} className="flex flex-wrap items-center gap-2">
           <input type="hidden" name="id" value={id} />
-          {fields.map((f) => (
-            <input
-              key={f.name}
-              name={f.name}
-              defaultValue={f.value}
-              placeholder={f.label}
-              aria-label={f.label}
-              className={`${inputCls} w-44`}
-            />
-          ))}
+          {fields.map((f) =>
+            f.options ? (
+              <select
+                key={f.name}
+                name={f.name}
+                defaultValue={f.value}
+                aria-label={f.label}
+                className={`${inputCls} w-44`}
+              >
+                {f.options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                key={f.name}
+                name={f.name}
+                defaultValue={f.value}
+                placeholder={f.label}
+                aria-label={f.label}
+                className={`${inputCls} w-44`}
+              />
+            ),
+          )}
           <Button type="submit" size="sm">
             {t('save')}
           </Button>
@@ -85,7 +109,7 @@ export function EditableRow({
               {t('unarchive')}
             </Button>
           </form>
-        ) : inUse ? (
+        ) : inUse || !deleteAction ? (
           <form action={archiveAction}>
             <input type="hidden" name="id" value={id} />
             <input type="hidden" name="archived" value="true" />

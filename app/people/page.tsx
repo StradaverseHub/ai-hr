@@ -8,8 +8,9 @@ import {
   listJobGrades,
   listManagerCandidates,
 } from '@/core/read';
-import { listPositions, listCostCenters } from '@/core/admin';
-import { computeProvisionalEndOn } from '@/core/org';
+import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin';
+import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
+import { getPayrollConfig } from '@/core/payroll-config';
 import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { decideProfileChangeAction, hireAction } from './actions';
@@ -64,6 +65,7 @@ export default async function PeoplePage({
     profileChanges,
     positions,
     costCenters,
+    businessUnits,
     grades,
     managerCandidates,
   ] = await Promise.all([
@@ -85,11 +87,20 @@ export default async function PeoplePage({
     // Hire-form pickers — admin-gated like the hire form itself.
     isAdmin ? listPositions(session, { companyIds: scopeIds }) : Promise.resolve([]),
     isAdmin ? listCostCenters(session, { companyIds: scopeIds }) : Promise.resolve([]),
+    isAdmin ? listBusinessUnits(session, { companyIds: scopeIds }) : Promise.resolve([]),
     isAdmin ? listJobGrades(session) : Promise.resolve([]),
     isAdmin ? listManagerCandidates(session, { companyIds: scopeIds }) : Promise.resolve([]),
   ]);
-  // full_time default provisional end (+3mo) for the server-rendered date field default.
-  const fullTimeProvisionalDefault = computeProvisionalEndOn(today, 'full_time') ?? today;
+  // full_time default provisional end for the server-rendered date field default. Uses the company shown
+  // first in the hire form's company dropdown (companies[0]) so the default reflects that company's
+  // configured probation months (null config → EA default 3).
+  const defaultCompanyId = companies[0]?.id;
+  const defaultProbationMonths =
+    isAdmin && defaultCompanyId
+      ? resolveProbationMonths((await getPayrollConfig(session, defaultCompanyId))?.probationMonths)
+      : 3;
+  const fullTimeProvisionalDefault =
+    computeProvisionalEndOn(today, 'full_time', defaultProbationMonths) ?? today;
   const hasNext = (page + 1) * PAGE < total;
   const qs = (over: Record<string, string | number | undefined>) => {
     const merged: Record<string, string | number | undefined> = { q, company, dept, status, type, page: pageParam, ...over };
@@ -325,10 +336,29 @@ export default async function PeoplePage({
                     ))}
                   </select>
                 </Field>
+                <Field label={t('businessUnit')}>
+                  <select
+                    name="businessUnitId"
+                    id="hire-business-unit"
+                    defaultValue=""
+                    data-hire-bu-select
+                    className={inputCls}
+                  >
+                    <option value="">{t('businessUnitNone')}</option>
+                    {businessUnits.map((bu) => (
+                      <option key={bu.id} value={bu.id}>
+                        {bu.code} — {bu.name}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label={t('department')}>
-                  <select name="departmentId" required className={inputCls}>
+                  {/* Each department option carries its BU id (empty = unassigned). A tiny inline script
+                      narrows this list to the chosen BU's departments; unassigned (NULL-BU) departments
+                      stay visible under every BU choice (the day-one common case). */}
+                  <select name="departmentId" id="hire-department" required className={inputCls}>
                     {departments.map((d) => (
-                      <option key={d.id} value={d.id}>
+                      <option key={d.id} value={d.id} data-business-unit={d.businessUnitId ?? ''}>
                         {d.name}
                       </option>
                     ))}
@@ -408,6 +438,30 @@ export default async function PeoplePage({
 
             <Button type="submit">{t('hire')}</Button>
           </form>
+          {/* Department-by-BU cascading filter (no React client island): show departments whose BU matches
+              the chosen Business Unit, always keeping unassigned (empty-BU) departments visible. Reset the
+              department selection when its option becomes hidden. Pure DOM, ~server-rendered-safe. */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){
+  var bu=document.getElementById('hire-business-unit');
+  var dept=document.getElementById('hire-department');
+  if(!bu||!dept)return;
+  function apply(){
+    var v=bu.value;var firstVisible=null;
+    for(var i=0;i<dept.options.length;i++){
+      var o=dept.options[i];var b=o.getAttribute('data-business-unit')||'';
+      var show=!v||b===''||b===v;
+      o.hidden=!show;o.disabled=!show;
+      if(show&&firstVisible===null)firstVisible=o;
+    }
+    var cur=dept.options[dept.selectedIndex];
+    if(!cur||cur.hidden){dept.value=firstVisible?firstVisible.value:'';}
+  }
+  bu.addEventListener('change',apply);apply();
+})();`,
+            }}
+          />
         </details>
       </Card>
     </div>

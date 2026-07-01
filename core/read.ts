@@ -224,6 +224,9 @@ export function listDepartments(
         id: department.id,
         name: department.name,
         companyId: department.companyId,
+        // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
+        // BU dropdown. Null = unassigned (visible under every BU on the hire form).
+        businessUnitId: department.businessUnitId,
         archivedAt: department.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })

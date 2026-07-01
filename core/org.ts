@@ -29,7 +29,7 @@ import {
  *  server-side guard (positions & cost-centers carry company_id; departments carry it via hierarchy).
  *  job_grade is tenant-wide (no company_id) so it is intentionally NOT checked. */
 export class CrossCompanyError extends Error {
-  constructor(entity: 'position' | 'cost-center' | 'department' | 'location') {
+  constructor(entity: 'position' | 'cost-center' | 'department' | 'location' | 'business-unit') {
     super(`The selected ${entity} does not belong to the hiring company`);
     this.name = 'CrossCompanyError';
   }
@@ -76,27 +76,35 @@ function daysInMonth(year: number, month: number): number {
 
 /**
  * Hiring enhancement — the server-side single source of truth for a hire's default provisional end date.
- * full_time → hire + 3 calendar months with clamp-to-last-day-of-month (pure UTC string math, no Date TZ
- * drift): parse Y/M/D, add 3 months, then clamp the day to the target month's last day so 2026-11-30 + 3mo
- * → 2027-02-28 (not an overflow into March). contract / intern / part_time → null: their fixed-term length
- * varies, so the user supplies the date explicitly. Exported for unit tests and the page's default render.
+ * full_time → hire + `probationMonths` calendar months (default 3) with clamp-to-last-day-of-month (pure
+ * UTC string math, no Date TZ drift): parse Y/M/D, add the months, then clamp the day to the target month's
+ * last day so 2026-11-30 + 3mo → 2027-02-28 (not an overflow into March). The probationMonths arg applies
+ * ONLY to full_time — contract / intern / part_time → null (their fixed-term length is user-supplied, so
+ * the configurable default does NOT touch them). Exported for unit tests and the page's default render.
  */
 export function computeProvisionalEndOn(
   hiredOn: string,
   employmentType: EmploymentType,
+  probationMonths = 3,
 ): string | null {
   if (employmentType !== 'full_time') return null;
   const y = Number(hiredOn.slice(0, 4));
   const m = Number(hiredOn.slice(5, 7));
   const d = Number(hiredOn.slice(8, 10));
-  // Add 3 months in 1-based month arithmetic.
-  const total = m - 1 + 3; // 0-based month index after adding 3
+  // Add probationMonths in 1-based month arithmetic.
+  const total = m - 1 + probationMonths; // 0-based month index after adding the months
   const targetYear = y + Math.floor(total / 12);
   const targetMonth = (total % 12) + 1; // back to 1-based
   const clampedDay = Math.min(d, daysInMonth(targetYear, targetMonth));
   const mm = String(targetMonth).padStart(2, '0');
   const dd = String(clampedDay).padStart(2, '0');
   return `${targetYear}-${mm}-${dd}`;
+}
+
+/** Resolve a company's configured default probation length in months. Null/legacy config → 3 (the EA
+ *  practice default). Any positive integer honoured; a non-positive stored value falls back to 3. */
+export function resolveProbationMonths(probationMonths: number | null | undefined): number {
+  return probationMonths != null && probationMonths > 0 ? probationMonths : 3;
 }
 
 export async function hireEmployee(ctx: SessionContext, p: HireParams) {

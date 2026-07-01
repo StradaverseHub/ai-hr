@@ -4,7 +4,7 @@
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
 import { isValidMonthDay, LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
@@ -12,6 +12,7 @@ import { MY_STATES } from '../localization/my/holidays';
 import {
   appUser,
   assignment,
+  businessUnit,
   company,
   costCenter,
   department,
@@ -179,9 +180,27 @@ export async function setCompanyParent(
   });
 }
 
+/** A department's Business Unit (ADR-0068) must belong to the SAME company as the department. Validates a
+ *  non-empty id inside the caller's tx; returns the normalised id-or-null. Empty/blank → null (unassigned). */
+async function resolveDepartmentBusinessUnitId(
+  tx: Tx,
+  businessUnitId: string | null | undefined,
+  companyId: string,
+): Promise<string | null> {
+  const id = (businessUnitId ?? '').trim();
+  if (!id) return null;
+  const [bu] = await tx
+    .select({ companyId: businessUnit.companyId })
+    .from(businessUnit)
+    .where(eq(businessUnit.id, id))
+    .limit(1);
+  if (!bu || bu.companyId !== companyId) throw new CrossCompanyError('business-unit');
+  return id;
+}
+
 export async function createDepartment(
   ctx: SessionContext,
-  p: { companyId: string; name: string; parentDepartmentId?: string },
+  p: { companyId: string; name: string; parentDepartmentId?: string; businessUnitId?: string | null },
 ) {
   const name = cleanName(p.name, 'Department name');
   return withTenant(ctx, async (tx) => {
@@ -196,6 +215,7 @@ export async function createDepartment(
         .limit(1);
       if (!parent || parent.companyId !== p.companyId) throw new CrossCompanyError('department');
     }
+    const businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, p.companyId);
     const [row] = await tx
       .insert(department)
       .values({
@@ -203,6 +223,7 @@ export async function createDepartment(
         companyId: p.companyId,
         name,
         parentDepartmentId: p.parentDepartmentId || null,
+        businessUnitId,
       })
       .returning({ id: department.id })
       .catch((e) => {
@@ -215,7 +236,7 @@ export async function createDepartment(
       aggregateId: row.id,
       eventType: 'department.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name: p.name },
+      payload: { companyId: p.companyId, name: p.name, businessUnitId },
     });
     return row;
   });
@@ -267,6 +288,36 @@ export async function createCostCenter(
       aggregateType: 'cost-center',
       aggregateId: row.id,
       eventType: 'cost-center.created',
+      actor: actorOf(ctx),
+      payload: { companyId: p.companyId, code: p.code },
+    });
+    return row;
+  });
+}
+
+/** Business Unit master (ADR-0068) — a FLAT, company-scoped catalog cloning the cost_center pattern
+ *  end-to-end: company-scoped, DB partial-unique index (from migration 0136), DuplicateError on clash,
+ *  and a DomainEvent on every write. No parent/child hierarchy (reporter decision). */
+export async function createBusinessUnit(
+  ctx: SessionContext,
+  p: { companyId: string; code: string; name: string },
+) {
+  const code = cleanName(p.code, 'Business-unit code');
+  const name = cleanName(p.name, 'Business-unit name');
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(businessUnit)
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name })
+      .returning({ id: businessUnit.id })
+      .catch((e) => {
+        if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
+        throw e;
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'business-unit',
+      aggregateId: row.id,
+      eventType: 'business-unit.created',
       actor: actorOf(ctx),
       payload: { companyId: p.companyId, code: p.code },
     });
@@ -686,6 +737,33 @@ export function listCostCenters(
         ),
       )
       .orderBy(costCenter.code),
+  );
+}
+
+/** Business Unit master list (ADR-0068), cost_center-shaped. `inUse` = at least one department links to it
+ *  (the correct guard column for a future delete path). */
+export function listBusinessUnits(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; companyIds?: string[] } = {},
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: businessUnit.id,
+        companyId: businessUnit.companyId,
+        code: businessUnit.code,
+        name: businessUnit.name,
+        archivedAt: businessUnit.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
+      })
+      .from(businessUnit)
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(businessUnit.archivedAt),
+          opts.companyIds && opts.companyIds.length ? inArray(businessUnit.companyId, opts.companyIds) : undefined,
+        ),
+      )
+      .orderBy(businessUnit.code),
   );
 }
 
@@ -1136,14 +1214,30 @@ export function listUsers(ctx: SessionContext) {
 
 // ───────────────── Edit + state-aware remove (delete if unused, else archive) ─────────────────
 
-export async function updateDepartment(ctx: SessionContext, p: { id: string; name: string }) {
+export async function updateDepartment(
+  ctx: SessionContext,
+  p: { id: string; name: string; businessUnitId?: string | null },
+) {
   const name = cleanName(p.name, 'Department name');
   return withTenant(ctx, async (tx) => {
-    await tx.update(department).set({ name }).where(eq(department.id, p.id)).catch((e) => {
+    // businessUnitId is tri-state: undefined → leave the column untouched (a name-only rename must NOT wipe
+    // the BU); null/'' → clear it; an id → set it (validated to the department's own company). Fetch the
+    // department's company for the cross-company guard when a non-empty id is supplied.
+    const setValues: { name: string; businessUnitId?: string | null } = { name };
+    if (p.businessUnitId !== undefined) {
+      const [dep] = await tx
+        .select({ companyId: department.companyId })
+        .from(department)
+        .where(eq(department.id, p.id))
+        .limit(1);
+      if (!dep) throw new Error('Department not found');
+      setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+    }
+    await tx.update(department).set(setValues).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A department named “${name}” already exists in this company.`);
       throw e;
     });
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: 'department.updated', actor: actorOf(ctx), payload: { name } });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'department', aggregateId: p.id, eventType: 'department.updated', actor: actorOf(ctx), payload: setValues });
   });
 }
 export function archiveDepartment(ctx: SessionContext, p: { id: string; archived: boolean }) {
@@ -1218,6 +1312,27 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
     if ((u?.n ?? 0) > 0) throw new InUseError('cost center');
     await tx.delete(costCenter).where(eq(costCenter.id, p.id));
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.deleted', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+export async function updateBusinessUnit(ctx: SessionContext, p: { id: string; code: string; name: string }) {
+  const code = cleanName(p.code, 'Business-unit code');
+  const name = cleanName(p.name, 'Business-unit name');
+  return withTenant(ctx, async (tx) => {
+    await tx.update(businessUnit).set({ code, name }).where(eq(businessUnit.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
+      throw e;
+    });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'business-unit', aggregateId: p.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code } });
+  });
+}
+export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(businessUnit).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(businessUnit.id, p.id)).catch((e) => {
+      if (isUniqueViolation(e)) throw new DuplicateError('An active business unit with this code already exists — change it before unarchiving.');
+      throw e;
+    });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'business-unit', aggregateId: p.id, eventType: p.archived ? 'business-unit.archived' : 'business-unit.unarchived', actor: actorOf(ctx), payload: {} });
   });
 }
 

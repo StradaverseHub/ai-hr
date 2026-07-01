@@ -44,7 +44,7 @@ export type ChildRow = {
   id: string;
   display: string;
   sub?: string | null;
-  fields: { name: string; label: string; value: string }[];
+  fields: { name: string; label: string; value: string; options?: { value: string; label: string }[] }[];
   inUse: boolean;
   archived: boolean;
 };
@@ -74,6 +74,7 @@ export function CompanyPanel({
   departments,
   positions,
   costCenters,
+  businessUnits,
   actions,
 }: {
   company: PanelCompany;
@@ -83,6 +84,7 @@ export function CompanyPanel({
   departments: ChildRow[];
   positions: ChildRow[];
   costCenters: ChildRow[];
+  businessUnits: ChildRow[];
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -103,6 +105,9 @@ export function CompanyPanel({
     updateCostCenter: Action;
     archiveCostCenter: Action;
     deleteCostCenter: Action;
+    createBusinessUnit: Action;
+    updateBusinessUnit: Action;
+    archiveBusinessUnit: Action;
   };
 }) {
   const t = useTranslations('admin.organization');
@@ -389,10 +394,22 @@ export function CompanyPanel({
                   <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
                 )}
               </ul>
-              <form action={actions.createDepartment} className="mt-2 flex items-end gap-2">
+              <form action={actions.createDepartment} className="mt-2 flex flex-wrap items-end gap-2">
                 <input type="hidden" name="companyId" value={c.id} />
                 <Field label={t('newDepartment')}>
                   <input name="name" required placeholder={t('departmentPlaceholder')} className={inputCls} />
+                </Field>
+                <Field label={t('fieldBusinessUnit')}>
+                  <select name="businessUnitId" defaultValue="" className={inputCls}>
+                    <option value="">{t('businessUnitNone')}</option>
+                    {businessUnits
+                      .filter((bu) => !bu.archived)
+                      .map((bu) => (
+                        <option key={bu.id} value={bu.id}>
+                          {bu.display}
+                        </option>
+                      ))}
+                  </select>
                 </Field>
                 <Button type="submit" size="sm" variant="outline">
                   {t('add')}
@@ -466,6 +483,41 @@ export function CompanyPanel({
                 </div>
               </form>
             </div>
+          </div>
+
+          {/* Business Units — a flat, company-scoped catalog (ADR-0068); departments link to a BU. */}
+          <div className="rounded-lg bg-background p-3">
+            <SubHeader>{t('businessUnitsCount', { count: businessUnits.length })}</SubHeader>
+            <ul className="mt-1 divide-y divide-border/60">
+              {businessUnits.map((bu) => (
+                <EditableRow
+                  key={bu.id}
+                  id={bu.id}
+                  display={bu.display}
+                  sub={bu.sub}
+                  fields={bu.fields}
+                  inUse={bu.inUse}
+                  archived={bu.archived}
+                  updateAction={actions.updateBusinessUnit}
+                  archiveAction={actions.archiveBusinessUnit}
+                />
+              ))}
+              {businessUnits.length === 0 && (
+                <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
+              )}
+            </ul>
+            <form action={actions.createBusinessUnit} className="mt-2 flex items-end gap-2">
+              <input type="hidden" name="companyId" value={c.id} />
+              <Field label={t('fieldCode')}>
+                <input name="code" required placeholder={t('businessUnitCodePlaceholder')} className={`${inputCls} w-20`} />
+              </Field>
+              <Field label={t('fieldName')}>
+                <input name="name" required placeholder={t('businessUnitNamePlaceholder')} className={inputCls} />
+              </Field>
+              <Button type="submit" size="sm" variant="outline">
+                {t('add')}
+              </Button>
+            </form>
           </div>
         </div>
       )}

@@ -209,7 +209,9 @@
       "probationEndDate": "Ngày kết thúc thử việc",
       "contractEndDate": "Ngày kết thúc hợp đồng",
       "internshipEndDate": "Ngày kết thúc thực tập",
-      "provisionalEndHint": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có."
+      "provisionalEndHint": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
+      "businessUnit": "Đơn vị kinh doanh",
+      "businessUnitNone": "— Không có —"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1755,7 +1757,12 @@
       "hrdfNotRegistered": "Chưa đăng ký",
       "hrdfMandatory": "Bắt buộc — 10+ nhân viên (1%)",
       "hrdfOptional": "Tùy chọn — 5–9 nhân viên (0.5%)",
-      "hrdfHint": "Khoản thu chỉ do người sử dụng lao động trả trên lương cơ bản + phụ cấp cố định (không gồm thưởng, hoa hồng, làm thêm giờ). Bắt buộc khi có 10+ nhân viên Malaysia, tùy chọn khi 5–9."
+      "hrdfHint": "Khoản thu chỉ do người sử dụng lao động trả trên lương cơ bản + phụ cấp cố định (không gồm thưởng, hoa hồng, làm thêm giờ). Bắt buộc khi có 10+ nhân viên Malaysia, tùy chọn khi 5–9.",
+      "businessUnitsCount": "Đơn vị kinh doanh ({count})",
+      "fieldBusinessUnit": "Đơn vị kinh doanh",
+      "businessUnitNone": "— Không có —",
+      "businessUnitCodePlaceholder": "BU1",
+      "businessUnitNamePlaceholder": "vd. Bán lẻ"
     },
     "leave": {
       "pageTitle": "Cấu hình nghỉ phép",
@@ -2766,7 +2773,10 @@
     "unpaidLeaveCutOff": "Ngày chốt nghỉ không lương",
     "attendanceCutOff": "Ngày chốt chấm công",
     "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Chỉ dùng để tham chiếu lập lịch — các giá trị này không thay đổi cách tính kỳ lương, và không bắt buộc thứ tự giữa các trường (ví dụ chấm công trước ngày trả lương).",
-    "save": "Lưu"
+    "save": "Lưu",
+    "hiringTitle": "Mặc định tuyển dụng",
+    "probationMonths": "Thời gian thử việc mặc định (tháng)",
+    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",

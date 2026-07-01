@@ -4,12 +4,14 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
+  archiveBusinessUnit,
   archiveCompany,
   archiveCostCenter,
   archiveDepartment,
   archiveLeaveType,
   archivePosition,
   assignRole,
+  createBusinessUnit,
   createCompany,
   createCostCenter,
   createDepartment,
@@ -33,6 +35,7 @@ import {
   setCompanyLeaveCycle,
   createJobGrade,
   archiveJobGrade,
+  updateBusinessUnit,
   updateCompany,
   updateCostCenter,
   updateDepartment,
@@ -155,6 +158,8 @@ export async function createDepartmentAction(formData: FormData) {
     await createDepartment(s, {
       companyId: String(formData.get('companyId')),
       name: String(formData.get('name') ?? '').trim(),
+      // Empty string = "— None —" → unassigned (the service treats blank as null).
+      businessUnitId: String(formData.get('businessUnitId') ?? '').trim() || null,
     });
   } catch (e) {
     fail(ORG, e);
@@ -164,8 +169,15 @@ export async function createDepartmentAction(formData: FormData) {
 
 export async function updateDepartmentAction(formData: FormData) {
   const s = await getSession();
+  // businessUnitId is present on the edit row (a select). Empty string clears the link; a value sets it.
+  // If the field is absent entirely (undefined), leave the BU untouched (tri-state in the service).
+  const buRaw = formData.get('businessUnitId');
   try {
-    await updateDepartment(s, { id: String(formData.get('id')), name: String(formData.get('name') ?? '').trim() });
+    await updateDepartment(s, {
+      id: String(formData.get('id')),
+      name: String(formData.get('name') ?? '').trim(),
+      businessUnitId: buRaw === null ? undefined : String(buRaw).trim() || null,
+    });
   } catch (e) {
     fail(ORG, e);
   }
@@ -577,6 +589,30 @@ export async function archiveCostCenterAction(fd: FormData) {
 export async function deleteCostCenterAction(fd: FormData) {
   const s = await getSession();
   try { await deleteCostCenter(s, { id: String(fd.get('id')) }); } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+
+export async function createBusinessUnitAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await createBusinessUnit(s, {
+      companyId: String(fd.get('companyId')),
+      code: String(fd.get('code') ?? '').trim(),
+      name: String(fd.get('name') ?? '').trim(),
+    });
+  } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function updateBusinessUnitAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await updateBusinessUnit(s, { id: String(fd.get('id')), code: String(fd.get('code') ?? '').trim(), name: String(fd.get('name') ?? '').trim() });
+  } catch (e) { fail(ORG, e); }
+  ok(ORG);
+}
+export async function archiveBusinessUnitAction(fd: FormData) {
+  const s = await getSession();
+  try { await archiveBusinessUnit(s, { id: String(fd.get('id')), archived: archived(fd) }); } catch (e) { fail(ORG, e); }
   ok(ORG);
 }
 

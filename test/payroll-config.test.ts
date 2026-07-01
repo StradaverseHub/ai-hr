@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { getPayrollConfig, setPayrollConfig } from '../core/payroll-config';
+import { resolveProbationMonths } from '../core/org';
 
 let b: Base;
 
@@ -115,5 +116,56 @@ describe('ADR-0035 1B — company payroll config', () => {
     await setPayrollConfig(a, { companyId: b.companyId, cutOffDay: 20 });
     expect((await getPayrollConfig(a, b.companyId))?.cutOffDay).toBe(20);
     expect(await getPayrollConfig(a, c2.id)).toBeNull();
+  });
+
+  // ── Configurable default probation months (ADR-0068) ─────────────────────────
+  it('round-trips probationMonths, rejects <= 0 → null, and a NULL config reads back as default 3 (via resolveProbationMonths)', async () => {
+    const a = adminCtx(b);
+    // A positive integer persists (no arbitrary upper clamp).
+    await setPayrollConfig(a, { companyId: b.companyId, probationMonths: 6 });
+    expect((await getPayrollConfig(a, b.companyId))?.probationMonths).toBe(6);
+    await setPayrollConfig(a, { companyId: b.companyId, probationMonths: 24 });
+    expect((await getPayrollConfig(a, b.companyId))?.probationMonths).toBe(24);
+
+    // <= 0 and blank ⇒ null (= default 3, resolved at compute time). No upper clamp is applied.
+    await setPayrollConfig(a, { companyId: b.companyId, probationMonths: 0 });
+    expect((await getPayrollConfig(a, b.companyId))?.probationMonths).toBeNull();
+    await setPayrollConfig(a, { companyId: b.companyId, probationMonths: '' });
+    expect((await getPayrollConfig(a, b.companyId))?.probationMonths).toBeNull();
+
+    // resolveProbationMonths maps null/legacy → 3, and honours any positive value.
+    expect(resolveProbationMonths(null)).toBe(3);
+    expect(resolveProbationMonths(undefined)).toBe(3);
+    expect(resolveProbationMonths(0)).toBe(3);
+    expect(resolveProbationMonths(6)).toBe(6);
+  });
+
+  it('saving probationMonths leaves the cut-off days UNTOUCHED (clobber-upsert regression guard)', async () => {
+    const a = adminCtx(b);
+    // First set the schedule + cut-offs.
+    await setPayrollConfig(a, {
+      companyId: b.companyId,
+      cutOffDay: 25,
+      payDay: 28,
+      overtimeCutOffDay: 20,
+      claimCutOffDay: 15,
+    });
+    // A subsequent save must thread the SAME cut-off values through (the single-form writer), so cut-off
+    // days stay intact when probationMonths is set alongside them (the plan's clobber hazard).
+    await setPayrollConfig(a, {
+      companyId: b.companyId,
+      cutOffDay: 25,
+      payDay: 28,
+      overtimeCutOffDay: 20,
+      claimCutOffDay: 15,
+      probationMonths: 6,
+    });
+    expect(await getPayrollConfig(a, b.companyId)).toMatchObject({
+      cutOffDay: 25,
+      payDay: 28,
+      overtimeCutOffDay: 20,
+      claimCutOffDay: 15,
+      probationMonths: 6,
+    });
   });
 });

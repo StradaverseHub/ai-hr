@@ -290,6 +290,25 @@ export const position = pgTable(
   (t) => [index('position_company_idx').on(t.companyId)],
 );
 
+// Business Unit master (migration 0136) — a FLAT, company-scoped catalog (no parent/child hierarchy),
+// cost_center-shaped. Departments optionally link to a BU via department.business_unit_id; the DB unique
+// index (per-company, lower(code), non-archived) lives in the migration, mirroring cost_center's 0030 shape.
+export const businessUnit = pgTable(
+  'business_unit',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('business_unit_company_idx').on(t.companyId)],
+);
+
 export const department = pgTable(
   'department',
   {
@@ -299,6 +318,9 @@ export const department = pgTable(
       .notNull()
       .references(() => company.id),
     parentDepartmentId: uuid('parent_department_id').references((): AnyPgColumn => department.id),
+    // Business Unit link (migration 0136) — nullable; existing rows stay unassigned (usable under every
+    // BU on the hire form). Validated to the same company as the department at write time in the service.
+    businessUnitId: uuid('business_unit_id').references(() => businessUnit.id),
     name: text('name').notNull(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -1040,6 +1062,9 @@ export const companyPayrollConfig = pgTable(
     claimCutOffDay: integer('claim_cut_off_day'), // day of month claim inputs close (1–31); null = month-end
     unpaidLeaveCutOffDay: integer('unpaid_leave_cut_off_day'), // day of month unpaid-leave inputs close (1–31); null = month-end
     attendanceCutOffDay: integer('attendance_cut_off_day'), // day of month attendance inputs close (1–31); null = month-end
+    // Configurable default probation length in months (migration 0136). Null = legacy/default 3. Applied to
+    // a full_time hire's default probation end date; still editable per hire. Any positive integer.
+    probationMonths: integer('probation_months'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

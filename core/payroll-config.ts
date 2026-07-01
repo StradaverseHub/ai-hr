@@ -19,6 +19,14 @@ const cleanDay = (v: unknown): number | null => {
 };
 const cleanBasis = (v: unknown): PaymentBasis => (PAYMENT_BASES.includes(v as PaymentBasis) ? (v as PaymentBasis) : 'monthly');
 
+// Default probation length in months. Blank/invalid → null (= default 3, resolved at compute time). Reject
+// <= 0 by falling back to null; NO arbitrary upper clamp (any positive integer is allowed per the plan).
+const cleanProbation = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 export type PayrollConfigInput = {
   companyId: string;
   cutOffDay?: number | string | null;
@@ -29,6 +37,8 @@ export type PayrollConfigInput = {
   claimCutOffDay?: number | string | null;
   unpaidLeaveCutOffDay?: number | string | null;
   attendanceCutOffDay?: number | string | null;
+  // Configurable default probation length (months). Null = default 3.
+  probationMonths?: number | string | null;
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
@@ -40,6 +50,7 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     claimCutOffDay: cleanDay(p.claimCutOffDay),
     unpaidLeaveCutOffDay: cleanDay(p.unpaidLeaveCutOffDay),
     attendanceCutOffDay: cleanDay(p.attendanceCutOffDay),
+    probationMonths: cleanProbation(p.probationMonths),
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx

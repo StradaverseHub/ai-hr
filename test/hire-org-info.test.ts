@@ -24,8 +24,14 @@ import {
   CrossCompanyError,
   hireEmployee,
 } from '../core/org';
-import { createDepartment } from '../core/admin';
-import { listManagerCandidates } from '../core/read';
+import {
+  createBusinessUnit,
+  createCompany,
+  createDepartment,
+  listBusinessUnits,
+  updateDepartment,
+} from '../core/admin';
+import { listDepartments, listManagerCandidates } from '../core/read';
 import * as schema from '../db/schema';
 
 let b: Base;
@@ -85,6 +91,21 @@ describe('computeProvisionalEndOn', () => {
     expect(computeProvisionalEndOn('2026-01-15', 'contract')).toBeNull();
     expect(computeProvisionalEndOn('2026-01-15', 'intern')).toBeNull();
     expect(computeProvisionalEndOn('2026-01-15', 'part_time')).toBeNull();
+  });
+
+  it('configurable probationMonths applies to full_time only (default 3 is byte-identical)', () => {
+    // Explicit default arg === omitting it (byte-identical to pre-change).
+    expect(computeProvisionalEndOn('2026-01-15', 'full_time', 3)).toBe(
+      computeProvisionalEndOn('2026-01-15', 'full_time'),
+    );
+    // A different configured length (e.g. 6-month probation) → hire + 6 months, with month-end clamp.
+    expect(computeProvisionalEndOn('2026-01-15', 'full_time', 6)).toBe('2026-07-15');
+    expect(computeProvisionalEndOn('2026-11-30', 'full_time', 3)).toBe('2027-02-28');
+    expect(computeProvisionalEndOn('2026-08-31', 'full_time', 6)).toBe('2027-02-28'); // Aug 31 + 6mo → Feb 28
+    // The months arg is IGNORED for non-full_time — contract/intern end dates are user-supplied.
+    expect(computeProvisionalEndOn('2026-01-15', 'contract', 6)).toBeNull();
+    expect(computeProvisionalEndOn('2026-01-15', 'intern', 6)).toBeNull();
+    expect(computeProvisionalEndOn('2026-01-15', 'part_time', 6)).toBeNull();
   });
 });
 
@@ -286,5 +307,68 @@ describe('hireEmployee — organization + employment info', () => {
     // a bogus company scope returns none of our company's people
     const none = await listManagerCandidates(adminCtx(b), { companyIds: [randomUUID()] });
     expect(none.length).toBe(0);
+  });
+});
+
+describe('department ↔ business unit link (ADR-0068)', () => {
+  it('createDepartment links a same-company BU; a NULL-BU department is allowed; cross-company BU is rejected', async () => {
+    const a = adminCtx(b);
+    const { id: bu } = await createBusinessUnit(a, { companyId: b.companyId, code: 'RET', name: 'Retail' });
+
+    // Same-company link succeeds and is recoverable via the department read.
+    const linked = await createDepartment(a, { companyId: b.companyId, name: 'BU-Linked Dept', businessUnitId: bu });
+    const depsAfter = await listDepartments(a, { companyIds: [b.companyId] });
+    expect(depsAfter.find((d) => d.id === linked.id)?.businessUnitId).toBe(bu);
+
+    // A department with no BU is allowed and reads back as null (back-compat for existing rows).
+    const unassigned = await createDepartment(a, { companyId: b.companyId, name: 'No-BU Dept' });
+    expect(depsAfter.find((d) => d.id === b.deptA)?.businessUnitId ?? null).toBeNull();
+    const depsAgain = await listDepartments(a, { companyIds: [b.companyId] });
+    expect(depsAgain.find((d) => d.id === unassigned.id)?.businessUnitId ?? null).toBeNull();
+
+    // A BU from ANOTHER company must be rejected on the department write.
+    const { id: coB } = await createCompany(a, { legalName: 'BU Co B Sdn Bhd' });
+    const { id: buB } = await createBusinessUnit(a, { companyId: coB, code: 'RET', name: 'Retail B' });
+    await expect(
+      createDepartment(a, { companyId: b.companyId, name: 'Bad BU Dept', businessUnitId: buB }),
+    ).rejects.toBeInstanceOf(CrossCompanyError);
+  });
+
+  it('updateDepartment sets, clears, and (undefined) preserves the BU without wiping it on a rename', async () => {
+    const a = adminCtx(b);
+    const { id: bu } = await createBusinessUnit(a, { companyId: b.companyId, code: 'OPS', name: 'Ops' });
+    const dep = await createDepartment(a, { companyId: b.companyId, name: 'Editable Dept', businessUnitId: bu });
+
+    // A name-only rename (businessUnitId undefined) must NOT wipe the existing BU.
+    await updateDepartment(a, { id: dep.id, name: 'Editable Dept Renamed' });
+    let deps = await listDepartments(a, { companyIds: [b.companyId] });
+    expect(deps.find((d) => d.id === dep.id)?.businessUnitId).toBe(bu);
+
+    // Explicitly clearing (null) unassigns it.
+    await updateDepartment(a, { id: dep.id, name: 'Editable Dept Renamed', businessUnitId: null });
+    deps = await listDepartments(a, { companyIds: [b.companyId] });
+    expect(deps.find((d) => d.id === dep.id)?.businessUnitId ?? null).toBeNull();
+  });
+
+  it('hiring under a BU-linked department succeeds; the dept BU is recoverable (BU is not stored on the assignment)', async () => {
+    const a = adminCtx(b);
+    const { id: bu } = await createBusinessUnit(a, { companyId: b.companyId, code: 'SLS', name: 'Sales' });
+    const dep = await createDepartment(a, { companyId: b.companyId, name: 'Sales Dept', businessUnitId: bu });
+    const hire = await hireEmployee(a, {
+      person: { fullName: 'BU Hire', primaryEmail: email() },
+      companyId: b.companyId,
+      departmentId: dep.id,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    expect(hire.employmentId).toBeTruthy();
+    // BU lives ONLY on the department, not the assignment.
+    const [asg] = await owner.db
+      .select()
+      .from(schema.assignment)
+      .where(eq(schema.assignment.employmentId, hire.employmentId));
+    expect('businessUnitId' in asg).toBe(false);
+    const deps = await listBusinessUnits(a, { companyIds: [b.companyId] });
+    expect(deps.find((x) => x.id === bu)?.inUse).toBe(true); // the department now references it
   });
 });

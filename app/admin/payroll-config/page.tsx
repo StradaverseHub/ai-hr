@@ -112,6 +112,16 @@ export default async function PayrollConfigPage({
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('cutOffsHint')}</p>
               </div>
 
+              <div>
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('hiringTitle')}</h4>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('probationMonths')}>
+                    <input type="number" name="probationMonths" min={1} defaultValue={cfg?.probationMonths ?? ''} placeholder="3" className={inputCls} />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('probationMonthsHint')}</p>
+              </div>
+
               <button className={btnPrimary}>{t('save')}</button>
             </form>
           </Card>

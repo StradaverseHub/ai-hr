@@ -209,7 +209,9 @@
       "probationEndDate": "试用期结束日期",
       "contractEndDate": "合同结束日期",
       "internshipEndDate": "实习结束日期",
-      "provisionalEndHint": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。"
+      "provisionalEndHint": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
+      "businessUnit": "业务单位",
+      "businessUnitNone": "— 无 —"
     },
     "detail": {
       "backToPeople": "员工",
@@ -1755,7 +1757,12 @@
       "hrdfNotRegistered": "未注册",
       "hrdfMandatory": "强制 — 10名以上员工（1%）",
       "hrdfOptional": "可选 — 5–9名员工（0.5%）",
-      "hrdfHint": "仅由雇主缴纳，按基本工资 + 固定津贴计算（不含奖金、佣金、加班费）。10名以上马来西亚员工为强制，5–9名为可选。"
+      "hrdfHint": "仅由雇主缴纳，按基本工资 + 固定津贴计算（不含奖金、佣金、加班费）。10名以上马来西亚员工为强制，5–9名为可选。",
+      "businessUnitsCount": "业务单位（{count}）",
+      "fieldBusinessUnit": "业务单位",
+      "businessUnitNone": "— 无 —",
+      "businessUnitCodePlaceholder": "BU1",
+      "businessUnitNamePlaceholder": "例如：零售"
     },
     "leave": {
       "pageTitle": "休假配置",
@@ -2766,7 +2773,10 @@
     "unpaidLeaveCutOff": "无薪假截止日",
     "attendanceCutOff": "考勤截止日",
     "cutOffsHint": "每月日期（1–31）。留空 = 月末。薪资/输入截止日在上方设为截止日。仅作排程参考——这些不会改变薪资周期的计算方式，也不强制字段之间的顺序（例如考勤早于发薪日）。",
-    "save": "保存"
+    "save": "保存",
+    "hiringTitle": "入职默认设置",
+    "probationMonths": "默认试用期（月）",
+    "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。"
   },
   "payrollPolicy": {
     "title": "薪资政策",

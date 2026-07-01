@@ -209,7 +209,9 @@
       "probationEndDate": "Tarikh tamat percubaan",
       "contractEndDate": "Tarikh tamat kontrak",
       "internshipEndDate": "Tarikh tamat latihan",
-      "provisionalEndHint": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada."
+      "provisionalEndHint": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
+      "businessUnit": "Unit perniagaan",
+      "businessUnitNone": "— Tiada —"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1755,7 +1757,12 @@
       "hrdfNotRegistered": "Tidak berdaftar",
       "hrdfMandatory": "Wajib — 10+ pekerja (1%)",
       "hrdfOptional": "Pilihan — 5–9 pekerja (0.5%)",
-      "hrdfHint": "Levi pihak majikan sahaja atas gaji asas + elaun tetap (tidak termasuk bonus, komisen, kerja lebih masa). Wajib pada 10+ pekerja Malaysia, pilihan pada 5–9."
+      "hrdfHint": "Levi pihak majikan sahaja atas gaji asas + elaun tetap (tidak termasuk bonus, komisen, kerja lebih masa). Wajib pada 10+ pekerja Malaysia, pilihan pada 5–9.",
+      "businessUnitsCount": "Unit perniagaan ({count})",
+      "fieldBusinessUnit": "Unit perniagaan",
+      "businessUnitNone": "— Tiada —",
+      "businessUnitCodePlaceholder": "UP1",
+      "businessUnitNamePlaceholder": "cth. Runcit"
     },
     "leave": {
       "pageTitle": "Konfigurasi cuti",
@@ -2766,7 +2773,10 @@
     "unpaidLeaveCutOff": "Tarikh tutup cuti tanpa gaji",
     "attendanceCutOff": "Tarikh tutup kehadiran",
     "cutOffsHint": "Hari dalam bulan (1–31). Kosong = akhir bulan. Tarikh tutup gaji/input ditetapkan di atas sebagai Tarikh tutup. Rujukan penjadualan sahaja — ini tidak mengubah cara tempoh gaji dikira, dan tiada susunan antara medan (cth. kehadiran sebelum hari gaji) dikuatkuasakan.",
-    "save": "Simpan"
+    "save": "Simpan",
+    "hiringTitle": "Tetapan lalai pengambilan",
+    "probationMonths": "Tempoh percubaan lalai (bulan)",
+    "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan."
   },
   "payrollPolicy": {
     "title": "Dasar gaji",

@@ -209,7 +209,9 @@
       "probationEndDate": "Probation end date",
       "contractEndDate": "Contract end date",
       "internshipEndDate": "Internship end date",
-      "provisionalEndHint": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none."
+      "provisionalEndHint": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
+      "businessUnit": "Business unit",
+      "businessUnitNone": "— None —"
     },
     "detail": {
       "backToPeople": "People",
@@ -1755,7 +1757,12 @@
       "hrdfNotRegistered": "Not registered",
       "hrdfMandatory": "Mandatory — 10+ employees (1%)",
       "hrdfOptional": "Optional — 5–9 employees (0.5%)",
-      "hrdfHint": "Employer-only levy on basic + fixed allowances (excludes bonus, commission, overtime). Mandatory at 10+ Malaysian employees, optional at 5–9."
+      "hrdfHint": "Employer-only levy on basic + fixed allowances (excludes bonus, commission, overtime). Mandatory at 10+ Malaysian employees, optional at 5–9.",
+      "businessUnitsCount": "Business units ({count})",
+      "fieldBusinessUnit": "Business unit",
+      "businessUnitNone": "— None —",
+      "businessUnitCodePlaceholder": "BU1",
+      "businessUnitNamePlaceholder": "e.g. Retail"
     },
     "leave": {
       "pageTitle": "Leave configuration",
@@ -2766,7 +2773,10 @@
     "unpaidLeaveCutOff": "Unpaid-leave cut-off day",
     "attendanceCutOff": "Attendance cut-off day",
     "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. Scheduling reference only — these do not change how the pay period is calculated, and no cross-field ordering (e.g. attendance before pay day) is enforced.",
-    "save": "Save"
+    "save": "Save",
+    "hiringTitle": "Hiring defaults",
+    "probationMonths": "Default probation period (months)",
+    "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire."
   },
   "payrollPolicy": {
     "title": "Payroll policies",

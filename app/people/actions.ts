@@ -3,8 +3,9 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { computeProvisionalEndOn, hireEmployee } from '@/core/org';
+import { computeProvisionalEndOn, hireEmployee, resolveProbationMonths } from '@/core/org';
 import { listLeaveTypes } from '@/core/read';
+import { getPayrollConfig } from '@/core/payroll-config';
 import { decideProfileChange } from '@/core/profile';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
@@ -21,17 +22,21 @@ export async function hireAction(formData: FormData) {
   };
   try {
     const types = await listLeaveTypes(session);
+    const companyId = String(formData.get('companyId'));
     const employmentType = String(formData.get('employmentType')) as EmploymentType;
     const hiredOn = String(formData.get('hiredOn'));
     const rawEnd = str('provisionalEndOn');
     // Server is the source of truth for the provisional end date (never trust the client to have
-    // hidden/derived the right field): part_time → null; full_time → user date or the computed +3mo
-    // default when blank; contract / intern → the user-entered fixed-term date (or null).
+    // hidden/derived the right field): part_time → null; full_time → user date or the computed default
+    // (company-configured probation months) when blank; contract / intern → the user-entered fixed-term
+    // date (or null). getPayrollConfig runs in this admin-gated hire path so RLS reads it fine.
     let provisionalEndOn: string | null;
     if (employmentType === 'part_time') {
       provisionalEndOn = null;
     } else if (employmentType === 'full_time') {
-      provisionalEndOn = rawEnd ?? computeProvisionalEndOn(hiredOn, 'full_time');
+      const cfg = await getPayrollConfig(session, companyId);
+      const probationMonths = resolveProbationMonths(cfg?.probationMonths);
+      provisionalEndOn = rawEnd ?? computeProvisionalEndOn(hiredOn, 'full_time', probationMonths);
     } else {
       provisionalEndOn = rawEnd ?? null;
     }
@@ -40,7 +45,7 @@ export async function hireAction(formData: FormData) {
         fullName: String(formData.get('fullName') ?? '').trim(),
         primaryEmail: String(formData.get('primaryEmail') ?? '').trim(),
       },
-      companyId: String(formData.get('companyId')),
+      companyId,
       departmentId: String(formData.get('departmentId')),
       positionId: str('positionId'),
       costCenterId: str('costCenterId'),
