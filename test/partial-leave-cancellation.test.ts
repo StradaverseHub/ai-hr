@@ -16,9 +16,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import {
+  addLeaveAttachment,
   decideLeave,
   decideLeaveCancellation,
   decideLeaveDate,
+  getLeaveAttachment,
   requestLeave,
   requestLeaveCancellation,
   splitSpanForCancellation,
@@ -27,7 +29,7 @@ import {
   LeaveCancellationDateInvalidError,
   LeaveCancellationPeriodClosedError,
 } from '../core/leave';
-import { leaveBalances, leaveEntitlementBreakdown, plannedAbsences } from '../core/read';
+import { leaveBalances, leaveEntitlementBreakdown, listLeaveRequests, plannedAbsences } from '../core/read';
 import type { SessionContext } from '../db/client';
 import {
   adminCtx,
@@ -127,6 +129,24 @@ async function approvedThreeDay() {
   });
   await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
   return res.leaveRequestId;
+}
+
+/** Submit + single-step approve a 10–14 Aug (Mon–Fri, 5 working-day) ANNUAL leave; returns the row id. */
+async function approvedFiveDay() {
+  const res = await requestLeave(subjectCtx, {
+    employmentId: subject.employmentId,
+    leaveTypeId: b.annualLeaveTypeId,
+    startDate: '2026-08-10',
+    endDate: '2026-08-14',
+  });
+  await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+  return res.leaveRequestId;
+}
+
+/** The APPROVED sibling row covering `date` (the survivor the employee would give back next), by parent group. */
+async function approvedRowCovering(parentGroupId: string, date: string) {
+  const rows = await siblingRows(parentGroupId);
+  return rows.find((r) => r.status === 'approved' && r.startDate <= date && date <= r.endDate)!;
 }
 
 beforeAll(async () => {
@@ -562,5 +582,270 @@ describe('Partial Leave Cancellation — carry-forward window consistency', () =
     const after = await leaveEntitlementBreakdown(subjectCtx, subject.employmentId, b.annualLeaveTypeId, asOf);
     const carryAfter = after?.carryForwardRemaining ?? 0;
     expect(carryAfter).toBeCloseTo(carryBefore, 2);
+  });
+});
+
+// ═══════════════ R5 Build #2 — iterative cancellation + the three bug fixes ═══════════════
+
+describe('R5 Build #2 — iterative (second+) cancellation', () => {
+  it('after giving back Wednesday, the Thu–Fri survivor can still give back Thursday (repeat cancellation)', async () => {
+    // Mon–Fri (10–14 Aug 2026). First give-back: Wednesday 12 Aug.
+    const reqId = await approvedFiveDay();
+    const balStart = await leaveBalances(subjectCtx, subject.employmentId);
+    const annStart = Number(balStart.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.balance);
+
+    const c1 = await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-12'] });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c1.cancellationRequestId, decision: 'approved' });
+
+    // The original row now belongs to a cancellation-split group: 10–11 approved, 12 cancelled, 13–14 approved.
+    const [orig1] = await owner.db
+      .select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, reqId));
+    const rows1 = await siblingRows(orig1.parentGroupId!);
+    expect(rows1.map((r) => [r.startDate, r.endDate, r.status])).toEqual([
+      ['2026-08-10', '2026-08-11', 'approved'],
+      ['2026-08-12', '2026-08-12', 'cancelled'],
+      ['2026-08-13', '2026-08-14', 'approved'],
+    ]);
+
+    // SECOND give-back on the SURVIVOR (Thu–Fri 13–14) — this is the previously-BLOCKED path.
+    const survivor = await approvedRowCovering(orig1.parentGroupId!, '2026-08-13');
+    const c2 = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: survivor.id,
+      cancelDates: ['2026-08-13'],
+    });
+    const dec2 = await decideLeaveCancellation(mgrCtx, {
+      cancellationRequestId: c2.cancellationRequestId,
+      decision: 'approved',
+    });
+    expect(dec2.status).toBe('approved');
+    expect(dec2.restoredDays).toBe(1);
+
+    // Thursday 13 restored, Friday 14 still approved.
+    const [survAfter] = await owner.db
+      .select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, survivor.id));
+    const rows2 = await siblingRows(survAfter.parentGroupId!);
+    expect(rows2.map((r) => [r.startDate, r.status])).toEqual([
+      ['2026-08-13', 'cancelled'],
+      ['2026-08-14', 'approved'],
+    ]);
+
+    // Net balance: 2 of the 5 days (12 + 13) restored vs the fully-approved start.
+    const balEnd = await leaveBalances(subjectCtx, subject.employmentId);
+    const annEnd = Number(balEnd.find((x) => x.leaveTypeId === b.annualLeaveTypeId)!.balance);
+    expect(annEnd - annStart).toBeCloseTo(2, 2);
+  });
+
+  it('a genuine Emergency-Leave child row is still NOT cancellable (Fix A does not open that door)', async () => {
+    // Emergency Leave decomposes into ANNUAL + UNPAID child rows sharing a parent_group_id, NONE 'cancelled'.
+    // Build that EL-child shape directly (approved ANNUAL child under a group with NO cancelled sibling) — the
+    // exact structure Fix A must keep blocked while it now ADMITS cancellation-split survivors.
+    const groupId = randomUUID();
+    const [child] = await owner.db
+      .insert(schema.leaveRequest)
+      .values({
+        tenantId: b.tenantId,
+        employmentId: subject.employmentId,
+        leaveTypeId: b.annualLeaveTypeId,
+        startDate: '2026-08-17',
+        endDate: '2026-08-19',
+        days: '3.00',
+        durationType: 'full_day',
+        status: 'approved',
+        parentGroupId: groupId,
+      })
+      .returning({ id: schema.leaveRequest.id });
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'debit',
+      days: '-3.00',
+      sourceRequestId: child.id,
+      effectiveOn: '2026-08-17',
+    });
+    // The group has NO 'cancelled' sibling → NOT a cancellation split → still rejected.
+    await expect(
+      requestLeaveCancellation(subjectCtx, { leaveRequestId: child.id, cancelDates: ['2026-08-18'] }),
+    ).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+  });
+});
+
+describe('R5 Build #2 — MYT date boundary (Fix B)', () => {
+  it('the future gate uses the injected MYT today, not the UTC clock', async () => {
+    // Approved leave far in the future so real-clock never interferes. Inject a `today` boundary and prove a
+    // date one day AFTER it is allowed while a date equal to it is TooLate — deterministically, no wall-clock.
+    const reqId = await approvedThreeDay(); // 10–12 Aug 2026
+    // With today = 2026-08-10 (MYT), 10 Aug is not-after-today (too late) but 11 Aug is allowed.
+    await expect(
+      requestLeaveCancellation(subjectCtx, {
+        leaveRequestId: reqId,
+        cancelDates: ['2026-08-10'],
+        today: '2026-08-10',
+      }),
+    ).rejects.toBeInstanceOf(LeaveCancellationTooLateError);
+    const ok = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: reqId,
+      cancelDates: ['2026-08-11'],
+      today: '2026-08-10',
+    });
+    expect(ok.cancellationRequestId).toBeTruthy();
+  });
+
+  it('near KL midnight: a date that is "tomorrow" in MYT but "today" in UTC is still cancellable', async () => {
+    // 2026-08-11T16:30Z is 2026-08-12 00:30 in Kuala Lumpur (UTC+8). So MYT-today = 12 Aug, UTC-today = 11 Aug.
+    // Cancelling 13 Aug must be allowed (future in BOTH frames); cancelling 12 Aug must be TooLate in MYT even
+    // though a UTC clock would call it "tomorrow" and wrongly allow it — proving the MYT frame is authoritative.
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-12',
+      endDate: '2026-08-13',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    const mytToday = '2026-08-12'; // what todayInKualaLumpur() returns at 2026-08-11T16:30Z
+    // 12 Aug == MYT today → TooLate (a UTC clock would have said 11 Aug and wrongly allowed it).
+    await expect(
+      requestLeaveCancellation(subjectCtx, {
+        leaveRequestId: res.leaveRequestId,
+        cancelDates: ['2026-08-12'],
+        today: mytToday,
+      }),
+    ).rejects.toBeInstanceOf(LeaveCancellationTooLateError);
+    // 13 Aug > MYT today → allowed.
+    const ok = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-13'],
+      today: mytToday,
+    });
+    expect(ok.cancellationRequestId).toBeTruthy();
+  });
+});
+
+describe('R5 Build #2 — holiday / non-Mon-Fri cancellable-days list (Fix C)', () => {
+  it('a public holiday inside the span is not offered and is rejected if forced', async () => {
+    // National holiday on Tue 11 Aug 2026 (state:null resolves for any employment).
+    await owner.db
+      .insert(schema.holiday)
+      .values({ tenantId: b.tenantId, country: 'MY', state: null, holidayDate: '2026-08-11', name: 'Test National Day' });
+    // Approve a 10–12 Aug leave: with 11 Aug a holiday, only 10 + 12 are working days (2 days).
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+
+    // Read-layer candidate list (what the pop-up shows) must NOT include the holiday.
+    const list = await listLeaveRequests(subjectCtx, [b.companyId]);
+    const row = list.find((r) => r.id === res.leaveRequestId)!;
+    expect(row.workingDates).toEqual(['2026-08-10', '2026-08-12']);
+    expect(row.workingDates).not.toContain('2026-08-11');
+
+    // And the service rejects a forced holiday date (would-be off-roster), with a future today so it's not TooLate.
+    await expect(
+      requestLeaveCancellation(subjectCtx, {
+        leaveRequestId: res.leaveRequestId,
+        cancelDates: ['2026-08-11'],
+        today: '2026-08-01',
+      }),
+    ).rejects.toBeInstanceOf(LeaveCancellationDateInvalidError);
+    // A real working day (12 Aug) IS accepted.
+    const ok = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-12'],
+      today: '2026-08-01',
+    });
+    expect(ok.requestedDays).toBe(1);
+  });
+
+  it('a 6-day work-week Saturday IS offered and accepted (not hidden by a Mon–Fri assumption)', async () => {
+    // Company roster includes Saturday (ISO 6). Span 14–15 Aug (Fri + Sat) → both are working days now.
+    await owner.db
+      .insert(schema.attendancePolicy)
+      .values({ tenantId: b.tenantId, companyId: b.companyId, workingDays: [1, 2, 3, 4, 5, 6] });
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-14',
+      endDate: '2026-08-15',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+
+    // The candidate list offers the Saturday (15 Aug).
+    const list = await listLeaveRequests(subjectCtx, [b.companyId]);
+    const row = list.find((r) => r.id === res.leaveRequestId)!;
+    expect(row.workingDates).toContain('2026-08-15');
+
+    // And the service accepts cancelling the Saturday.
+    const ok = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-15'],
+      today: '2026-08-01',
+    });
+    expect(ok.requestedDays).toBe(1);
+  });
+});
+
+describe('R5 Build #2 — discoverable entry point (read-layer projection)', () => {
+  it('exposes cancellable working dates + isCancellationSplit so the page can render the button', async () => {
+    const reqId = await approvedThreeDay(); // 10–12 Aug
+    const before = (await listLeaveRequests(subjectCtx, [b.companyId])).find((r) => r.id === reqId)!;
+    // A plain approved full-day row: real working dates surfaced, not a cancellation split (yet).
+    expect(before.workingDates).toEqual(['2026-08-10', '2026-08-11', '2026-08-12']);
+    expect(before.isCancellationSplit).toBe(false);
+    expect(before.parentGroupId).toBeNull();
+
+    // Give back the middle day, then the survivor rows must read as cancellation-split survivors so the page
+    // keeps showing the "Cancel dates" button on them (iterative-cancellation discoverability).
+    const c = await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'] });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c.cancellationRequestId, decision: 'approved' });
+    const after = await listLeaveRequests(subjectCtx, [b.companyId]);
+    const survivors = after.filter((r) => r.status === 'approved' && r.employmentId === subject.employmentId);
+    expect(survivors.length).toBeGreaterThanOrEqual(2);
+    for (const s of survivors) {
+      expect(s.isCancellationSplit).toBe(true);
+      expect(s.workingDates.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('R5 Build #2 — attachment visibility on a non-first surviving segment', () => {
+  it('the MC stays visible on the survivor the user sees after cancelling the FIRST date', async () => {
+    // Attach an MC to a pending request, approve it, then cancel the FIRST date (10 Aug). Segment[0] (10 Aug)
+    // reuses the original row id and is CANCELLED; the survivor (11–12) is a new sibling row. Assert the
+    // attachment is still visible on that surviving row the employee actually holds.
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+      hasDocument: true,
+    });
+    await addLeaveAttachment(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      fileName: 'mc.pdf',
+      mimeType: 'application/pdf',
+      content: Buffer.from('%PDF-1.4 test'),
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+
+    const c = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-10'],
+    });
+    await decideLeaveCancellation(mgrCtx, { cancellationRequestId: c.cancellationRequestId, decision: 'approved' });
+
+    const [orig] = await owner.db
+      .select({ parentGroupId: schema.leaveRequest.parentGroupId })
+      .from(schema.leaveRequest)
+      .where(eq(schema.leaveRequest.id, res.leaveRequestId));
+    const survivor = await approvedRowCovering(orig.parentGroupId!, '2026-08-11');
+    const att = await getLeaveAttachment(subjectCtx, survivor.id);
+    expect(att?.fileName).toBe('mc.pdf');
   });
 });

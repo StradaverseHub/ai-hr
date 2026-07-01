@@ -2,8 +2,10 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { leaveBalancesAll, listEmployees, listLeaveTypes, listLeaveRequests } from '@/core/read';
+import { todayInKualaLumpur } from '@/core/leave';
 import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
 import { styleFor } from '@/components/planned-absences';
+import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
 import { requestLeaveAction, requestLeaveCancellationAction } from './actions';
@@ -35,22 +37,17 @@ export default async function LeavePage({
   const { s: session, scopeIds } = await scopedSession();
   const t = await getTranslations('leave');
   const admin = isAdmin(session);
-  const today = new Date().toISOString().slice(0, 10);
+  // R5 Build #2 (Fix B): MYT "today" so the "hasn't started yet" cut-off matches the service (Malaysia time),
+  // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
+  const today = todayInKualaLumpur();
   const sp = await searchParams;
 
-  // Partial Leave Cancellation (ADR-0065): the FUTURE working-day candidates for a row's cancel disclosure.
-  // Best-effort hint (strictly-after-today weekdays in the span) — the service re-validates each posted date
-  // against the real roster/holidays/closed-periods, so a weekend the heuristic might miss is rejected there.
-  const futureCancelDates = (start: string, end: string): string[] => {
-    const out: string[] = [];
-    for (let tms = Date.parse(`${start}T00:00:00Z`); tms <= Date.parse(`${end}T00:00:00Z`); tms += 86_400_000) {
-      const d = new Date(tms);
-      const iso = d.toISOString().slice(0, 10);
-      const dow = d.getUTCDay(); // 0=Sun … 6=Sat
-      if (iso > today && dow !== 0 && dow !== 6) out.push(iso);
-    }
-    return out;
-  };
+  // Partial Leave Cancellation (ADR-0065 / R5 Build #2): the candidate dates for a row's Cancel-dates pop-up are
+  // the row's REAL working dates (roster + holiday aware, resolved server-side in core/read.ts) that are
+  // strictly after today (MYT). This replaces the old Mon–Fri heuristic that could offer a holiday the service
+  // rejects or hide a working Saturday. The service still re-validates every posted date authoritatively.
+  const cancellableCandidates = (workingDates: string[] | undefined): string[] =>
+    (workingDates ?? []).filter((d) => d > today);
 
   const [employees, leaveTypes, requests, balances] = await Promise.all([
     listEmployees(session, scopeIds),
@@ -256,42 +253,27 @@ export default async function LeavePage({
                     </td>
                     <td className="px-4 py-2.5">
                       {(() => {
-                        // Affordance shown only on the viewer's OWN approved, full-day, non-EL, multi-day row
-                        // with ≥1 future working day and no pending cancellation. parentGroupId != null hides
-                        // EL / per-date children (§2 — they'd throw). Admins viewing others' rows never see it
-                        // (subject-only), matching the service's subject assertion.
+                        // Discoverable Cancel-dates affordance (R5 Build #2). Shown as a labelled BUTTON on the
+                        // viewer's OWN approved, full-day, NON-EL row with no pending cancellation. Ordinary
+                        // requests (parentGroupId null) AND survivors of a prior cancellation split
+                        // (isCancellationSplit — so the employee can give back MORE days later) qualify; genuine
+                        // EL / per-date children never do. Admins viewing others' rows never see it (subject-only,
+                        // matching the service's subject assertion). The pop-up lists the real cancellable
+                        // working dates (holiday-aware, strictly after MYT today); when none remain the button
+                        // renders disabled with a reason rather than a silent dash.
                         const isOwn = session.personId != null && r.personId === session.personId;
-                        const cands = futureCancelDates(r.startDate, r.endDate);
-                        const eligible =
-                          isOwn &&
+                        const cancellableShape =
                           r.status === 'approved' &&
                           r.durationType === 'full_day' &&
-                          r.parentGroupId == null &&
-                          !r.pendingCancellationId &&
-                          cands.length > 0;
+                          (r.parentGroupId == null || r.isCancellationSplit);
+                        const eligible = isOwn && cancellableShape && !r.pendingCancellationId;
                         if (!eligible) return <span className="text-muted-foreground">—</span>;
                         return (
-                          <details>
-                            <summary className="cursor-pointer select-none text-xs font-medium text-indigo-600 dark:text-indigo-400">
-                              {t('cancelDatesToggle')}
-                            </summary>
-                            <form action={requestLeaveCancellationAction} className="mt-2 space-y-2">
-                              <input type="hidden" name="leaveRequestId" value={r.id} />
-                              <p className="text-[11px] text-muted-foreground">{t('cancelDatesHint')}</p>
-                              <div className="space-y-1">
-                                {cands.map((d) => (
-                                  <label key={d} className="flex items-center gap-2 text-xs">
-                                    <input type="checkbox" name="cancelDate" value={d} />
-                                    <span className="tabular-nums">{d}</span>
-                                  </label>
-                                ))}
-                              </div>
-                              <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
-                              <Button type="submit" size="sm" variant="outline">
-                                {t('cancelSubmit')}
-                              </Button>
-                            </form>
-                          </details>
+                          <CancelDatesDialog
+                            leaveRequestId={r.id}
+                            candidateDates={cancellableCandidates(r.workingDates)}
+                            submitAction={requestLeaveCancellationAction}
+                          />
                         );
                       })()}
                     </td>

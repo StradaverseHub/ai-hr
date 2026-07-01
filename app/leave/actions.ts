@@ -121,7 +121,9 @@ export async function requestLeaveCancellationAction(formData: FormData) {
   const cancelDates = formData.getAll('cancelDate').map((d) => String(d)).filter(Boolean);
   const reason = String(formData.get('reason') ?? '').trim() || undefined;
   try {
-    await requestLeaveCancellation(session, { leaveRequestId, cancelDates, reason });
+    // R5 Build #2 (Fix B): pass MYT "today" so the per-date "hasn't started yet" gate uses Malaysia time
+    // (mirrors requestLeaveAction). Import already present at the top of this file.
+    await requestLeaveCancellation(session, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
   } catch (e) {
     redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }

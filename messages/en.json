@@ -535,6 +535,10 @@
     "cancelPendingBadge": "Cancellation pending",
     "cancelSubmit": "Request cancellation",
     "cancelRequestedToast": "Cancellation request submitted — awaiting your manager's decision.",
+    "cancelDatesButton": "Cancel dates",
+    "cancelDialogTitle": "Cancel leave dates",
+    "cancelDialogDismiss": "Close",
+    "cancelReasonNothingLeft": "No dates left to cancel on this leave.",
     "fieldDurationType": "Duration",
     "duration": {
       "full_day": "Full day",

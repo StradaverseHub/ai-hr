@@ -535,6 +535,10 @@
     "cancelPendingBadge": "ரத்து நிலுவையில்",
     "cancelSubmit": "ரத்து கோரிக்கை",
     "cancelRequestedToast": "ரத்து கோரிக்கை சமர்ப்பிக்கப்பட்டது — உங்கள் மேலாளரின் முடிவுக்காகக் காத்திருக்கிறது.",
+    "cancelDatesButton": "தேதிகளை ரத்துசெய்",
+    "cancelDialogTitle": "விடுப்பு தேதிகளை ரத்துசெய்",
+    "cancelDialogDismiss": "மூடு",
+    "cancelReasonNothingLeft": "இந்த விடுப்பில் ரத்துசெய்ய தேதிகள் எதுவும் இல்லை.",
     "fieldDurationType": "கால அளவு",
     "duration": {
       "full_day": "முழு நாள்",

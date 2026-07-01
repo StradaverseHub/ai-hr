@@ -1757,6 +1757,36 @@ export function splitSpanForCancellation(
   return { segments, cancelledSegmentIndexes };
 }
 
+/** ADR-0065 §4 — the request's real WORKING dates in [start, end] (roster + holiday aware, the SAME frame the
+ *  service splits/validates against). Exported so the read layer can surface the exact cancellable candidates
+ *  to the UI instead of a Mon–Fri heuristic that disagrees with the service (offering a holiday it rejects or
+ *  hiding a working Saturday). This is a read of already-tx-bound calendar data — no mutation surface. */
+export async function workingDatesForSpan(
+  tx: Tx,
+  employmentId: string,
+  start: string,
+  end: string,
+): Promise<string[]> {
+  const hols = await resolveHolidaySet(tx, employmentId, start, end);
+  const workingDaysIso = await resolveWorkingDaysIso(tx, employmentId);
+  return eachDate(start, end).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+}
+
+/** ADR-0065 (R5 Build #2 — iterative cancellation). True when the parent_group_id names a CANCELLATION-SPLIT
+ *  group (produced by decideLeaveCancellation), as opposed to an Emergency-Leave / per-date-approval group.
+ *  A cancellation split ALWAYS leaves ≥1 sibling row with status='cancelled' sharing the group; an EL /
+ *  per-date group never has a 'cancelled' sibling. So a surviving cancellation-split row (which now carries a
+ *  parentGroupId) can still be cancelled again — the reporter's "give back Wednesday now, Thursday later"
+ *  scenario — while genuine EL children stay blocked by the same gate. No discriminator column, no migration. */
+async function isCancellationSplitGroup(tx: Tx, parentGroupId: string): Promise<boolean> {
+  const [sib] = await tx
+    .select({ id: leaveRequest.id })
+    .from(leaveRequest)
+    .where(and(eq(leaveRequest.parentGroupId, parentGroupId), eq(leaveRequest.status, 'cancelled')))
+    .limit(1);
+  return !!sib;
+}
+
 /** Resolve the person behind an employment (for the subject-only assertion). */
 async function personIdForEmployment(tx: Tx, employmentId: string): Promise<string | null> {
   const [row] = await tx
@@ -1797,8 +1827,11 @@ async function cancelDatePeriodClosed(tx: Tx, employmentId: string, cancelDate: 
  */
 export async function requestLeaveCancellation(
   ctx: SessionContext,
-  p: { leaveRequestId: string; cancelDates: string[]; reason?: string },
+  // R5 Build #2 (Fix B — MYT boundary): `today` is injectable (default MYT, mirroring requestLeave) so the
+  // "hasn't started yet" per-date gate uses Malaysia time, not a UTC-skewed global clock near midnight.
+  p: { leaveRequestId: string; cancelDates: string[]; reason?: string; today?: string },
 ) {
+  const today = p.today ?? todayInKualaLumpur();
   return withTenant(ctx, async (tx) => {
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found (or not visible)');
@@ -1816,8 +1849,11 @@ export async function requestLeaveCancellation(
     if (req.durationType !== 'full_day') {
       throw new LeaveCancellationNotAllowedError('only full-day leave can be partially cancelled');
     }
-    if (req.parentGroupId != null) {
-      // Blocks Emergency-Leave / per-date-approval child rows (each already a single date under a group).
+    if (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId))) {
+      // Blocks Emergency-Leave / per-date-approval child rows (each already a single date under a group), but
+      // ADMITS a surviving row of a prior CANCELLATION split so the employee can give back more days later
+      // (R5 Build #2 — iterative cancellation; ADR-0065). A cancellation-split group is detected by a
+      // 'cancelled' sibling; an EL / per-date group never has one.
       throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled');
     }
     const [lt] = await tx
@@ -1831,10 +1867,9 @@ export async function requestLeaveCancellation(
       throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
     }
 
-    // The request's working dates (the only cancellable dates), in the tenant calendar frame.
-    const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
-    const workingDaysIso = await resolveWorkingDaysIso(tx, req.employmentId);
-    let workingDates = eachDate(req.startDate, req.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+    // The request's working dates (the only cancellable dates), in the tenant calendar frame. Shared helper so
+    // the read layer (UI candidate list) and this gate agree exactly (R5 Build #2 — Fix C, no Mon–Fri drift).
+    let workingDates = await workingDatesForSpan(tx, req.employmentId, req.startDate, req.endDate);
     // ADR-0068 §6: a per-date-approval request is now a single parentGroupId=NULL row, so it reaches here.
     // Its interior REJECTED dates are NOT approved leave — exclude them from the cancellable set so an employee
     // can only give back a date that was actually approved (mirrors §4A's effectively-approved-dates rule).
@@ -1847,10 +1882,8 @@ export async function requestLeaveCancellation(
       workingDates = workingDates.filter((d) => approvedSet.has(d));
     }
     const workingSet = new Set(workingDates);
-    // "Today" in the same working-day frame the rest of leave.ts uses (UTC ISO date — eachDate/isWorkingDay
-    // operate on yyyy-mm-dd strings). Per-date future check: each cancelDate must be strictly after today.
-    const today = new Date().toISOString().slice(0, 10);
-
+    // Per-date future check: each cancelDate must be strictly after `today` (MYT — resolved at the top of this
+    // function, injectable for tests). R5 Build #2 Fix B: was a UTC clock, wrong near KL midnight.
     const cancelDates = [...new Set(p.cancelDates.map((d) => d.trim()))].sort();
     if (cancelDates.length === 0) throw new LeaveCancellationDateInvalidError();
     for (const d of cancelDates) {
@@ -1943,9 +1976,13 @@ export async function decideLeaveCancellation(
     // ── Approved ──────────────────────────────────────────────────────────────────────────────────────
     const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, cr.leaveRequestId)).limit(1);
     if (!req) throw new Error('leave request not found');
-    // Re-assert the request is still a cancellable approved single row (a prior approval may have split it,
-    // but the row-status backstop in §3 means the targeted dates are still in this approved row).
-    if (req.status !== 'approved' || req.parentGroupId != null) {
+    // Re-assert the request is still a cancellable approved row. A prior cancellation may have split it (giving
+    // it a parentGroupId) — that survivor is STILL cancellable (R5 Build #2 — iterative cancellation), so admit
+    // a cancellation-split group here as well; only genuine EL / per-date children stay blocked.
+    if (
+      req.status !== 'approved' ||
+      (req.parentGroupId != null && !(await isCancellationSplitGroup(tx, req.parentGroupId)))
+    ) {
       throw new LeaveCancellationNotAllowedError('the leave is no longer in a cancellable state');
     }
 
@@ -1973,6 +2010,10 @@ export async function decideLeaveCancellation(
 
     const cancelledRowIds: string[] = [];
     const remainingDates: string[] = [];
+    // R5 Build #2: surviving NEW sibling rows (i>0, approved). The attachment(s) live on the reused segment[0]
+    // row only; when segment[0] is itself cancelled (the employee gave back the FIRST date), a survivor that is
+    // NOT segment[0] would show no MC. So we copy the original attachment(s) onto these survivors after the loop.
+    const survivingNewRowIds: string[] = [];
     let restoredDays = 0;
     let remainingDays = 0;
 
@@ -2039,6 +2080,7 @@ export async function decideLeaveCancellation(
         });
         remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isWorkingDay(d, workingDaysIso, hols)));
         remainingDays += segDays;
+        if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
       } else {
         cancelledRowIds.push(rowId);
         restoredDays += segDays;
@@ -2051,6 +2093,40 @@ export async function decideLeaveCancellation(
           subjectEmploymentId: req.employmentId,
           payload: { cancelDate: seg.from, restoredDays: segDays, parentGroupId },
         });
+      }
+    }
+
+    // R5 Build #2: copy the original request's attachment(s) onto surviving NEW sibling rows so the MC stays
+    // visible on whichever survivor the employee holds — including when they gave back the FIRST date (segment[0]
+    // is reused for that cancelled date, so its survivors are all new rows). The attachment rows live on req.id;
+    // duplicating the (small) MC bytes onto each survivor keeps getLeaveAttachment(survivorId) truthful without a
+    // schema change. Only runs when there IS at least one attachment AND at least one new-row survivor.
+    if (survivingNewRowIds.length > 0) {
+      const atts = await tx
+        .select({
+          content: leaveRequestAttachment.content,
+          fileName: leaveRequestAttachment.fileName,
+          mimeType: leaveRequestAttachment.mimeType,
+          sizeBytes: leaveRequestAttachment.sizeBytes,
+          uploadedByUserId: leaveRequestAttachment.uploadedByUserId,
+        })
+        .from(leaveRequestAttachment)
+        .where(eq(leaveRequestAttachment.leaveRequestId, req.id));
+      if (atts.length > 0) {
+        await tx.insert(leaveRequestAttachment).values(
+          survivingNewRowIds.flatMap((survivorId) =>
+            atts.map((a) => ({
+              tenantId: ctx.tenantId,
+              leaveRequestId: survivorId,
+              employmentId: req.employmentId,
+              content: a.content as Buffer,
+              fileName: a.fileName,
+              mimeType: a.mimeType,
+              sizeBytes: a.sizeBytes,
+              uploadedByUserId: a.uploadedByUserId,
+            })),
+          ),
+        );
       }
     }
 

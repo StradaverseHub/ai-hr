@@ -535,6 +535,10 @@
     "cancelPendingBadge": "Pembatalan menunggu",
     "cancelSubmit": "Mohon pembatalan",
     "cancelRequestedToast": "Permohonan pembatalan dihantar — menunggu keputusan pengurus anda.",
+    "cancelDatesButton": "Batal tarikh",
+    "cancelDialogTitle": "Batal tarikh cuti",
+    "cancelDialogDismiss": "Tutup",
+    "cancelReasonNothingLeft": "Tiada tarikh yang boleh dibatalkan pada cuti ini.",
     "fieldDurationType": "Tempoh",
     "duration": {
       "full_day": "Sehari penuh",

@@ -535,6 +535,10 @@
     "cancelPendingBadge": "รอยกเลิก",
     "cancelSubmit": "ขอยกเลิก",
     "cancelRequestedToast": "ส่งคำขอยกเลิกแล้ว — รอการตัดสินใจจากผู้จัดการของคุณ",
+    "cancelDatesButton": "ยกเลิกวันที่",
+    "cancelDialogTitle": "ยกเลิกวันลา",
+    "cancelDialogDismiss": "ปิด",
+    "cancelReasonNothingLeft": "ไม่มีวันที่ให้ยกเลิกในการลานี้",
     "fieldDurationType": "ระยะเวลา",
     "duration": {
       "full_day": "เต็มวัน",

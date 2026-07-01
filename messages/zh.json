@@ -535,6 +535,10 @@
     "cancelPendingBadge": "取消待审",
     "cancelSubmit": "申请取消",
     "cancelRequestedToast": "取消申请已提交——等待您的经理决定。",
+    "cancelDatesButton": "取消日期",
+    "cancelDialogTitle": "取消请假日期",
+    "cancelDialogDismiss": "关闭",
+    "cancelReasonNothingLeft": "此假期没有可取消的日期。",
     "fieldDurationType": "时长",
     "duration": {
       "full_day": "全天",

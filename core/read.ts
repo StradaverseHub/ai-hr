@@ -8,6 +8,7 @@ import {
   lastRealDayOfMonth,
   reconstructCarry,
   resolveGradePolicy,
+  workingDatesForSpan,
   type GradePolicyRow,
   type LeaveEligibility,
 } from './leave';
@@ -334,8 +335,8 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
 /** Every leave request in scope (RLS additionally trims to what the viewer may see:
  *  admins everything, managers their reports, employees themselves). Recent first. */
 export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], limit = 200) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: leaveRequest.id,
         employmentId: leaveRequest.employmentId,
@@ -377,6 +378,11 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         // UI can show a "cancellation pending" pill and suppress a second cancel affordance. NULL when none.
         pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
         pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+        // R5 Build #2 (iterative cancellation): TRUE when this row is a SURVIVOR of a prior cancellation split —
+        // it carries a parent_group_id AND a sibling in the same group is 'cancelled'. Such a survivor is still
+        // cancellable (the employee can give back more days), so the Leave page shows the "Cancel dates" button
+        // for it too; a genuine EL / per-date child (parent group with NO 'cancelled' sibling) never matches.
+        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
       })
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
@@ -386,8 +392,27 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
       )
       .orderBy(desc(leaveRequest.createdAt))
-      .limit(limit),
-  );
+      .limit(limit);
+
+    // R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
+    // working dates (roster + public-holiday aware, the SAME frame requestLeaveCancellation validates against)
+    // so the Leave page offers exactly the cancellable candidates — not a Mon–Fri heuristic that would offer a
+    // holiday the service rejects or hide a working Saturday. Only resolved for approved full-day rows that are
+    // either a plain request (parentGroupId null) or a cancellation-split survivor; others get [].
+    const withDates = await Promise.all(
+      rows.map(async (r) => {
+        const eligibleShape =
+          r.status === 'approved' &&
+          r.durationType === 'full_day' &&
+          (r.parentGroupId == null || r.isCancellationSplit);
+        const workingDates = eligibleShape
+          ? await workingDatesForSpan(tx, r.employmentId, r.startDate, r.endDate)
+          : [];
+        return { ...r, workingDates };
+      }),
+    );
+    return withDates;
+  });
 }
 
 /** ADR-0068 §5 — the per-date breakdown of ONE per-date-approval request, for the approvals detail view.

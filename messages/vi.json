@@ -535,6 +535,10 @@
     "cancelPendingBadge": "Chờ hủy",
     "cancelSubmit": "Yêu cầu hủy",
     "cancelRequestedToast": "Đã gửi yêu cầu hủy — đang chờ quyết định của quản lý.",
+    "cancelDatesButton": "Hủy ngày",
+    "cancelDialogTitle": "Hủy ngày nghỉ phép",
+    "cancelDialogDismiss": "Đóng",
+    "cancelReasonNothingLeft": "Không còn ngày nào để hủy trong đơn nghỉ phép này.",
     "fieldDurationType": "Thời lượng",
     "duration": {
       "full_day": "Cả ngày",
