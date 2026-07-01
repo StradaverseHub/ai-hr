@@ -20,7 +20,7 @@ const PLAN_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    plan: { type: 'string', description: 'A numbered, ordered implementation plan in Markdown.' },
+    plan: { type: 'string', description: 'A numbered, ordered implementation plan in PLAIN TEXT (no Markdown — the /feedback UI shows it raw).' },
     files: { type: 'array', items: { type: 'string' }, description: 'Key files/dirs the change touches.' },
     risks: { type: 'array', items: { type: 'string' } },
   },
@@ -95,16 +95,20 @@ phase('Refine');
 const refined = await agent(
   `Refine the implementation plan below to address EVERY valid critique from the panel. Where a critique is ` +
     `wrong, briefly note why you are not changing that part. Cut anything flagged as scope-creep.\n\n` +
-    `STRUCTURE (REQUIRED) — the person who reviews and approves this on /feedback is a CONSULTANT / business ` +
-    `stakeholder, NOT an engineer. Write for THEM first:\n` +
-    `  • Lead with a "## Summary (for review)" section in PLAIN BUSINESS LANGUAGE: the problem in everyday ` +
+    `FORMAT (CRITICAL) — the /feedback review screen shows this text RAW; it does NOT render Markdown, and the ` +
+    `reviewer is a business stakeholder, NOT an engineer. So write the WHOLE plan as clean PLAIN TEXT: NO ` +
+    `Markdown syntax at all — no ** bold, no # headers, no backticks, no tables, no > quotes. Use only ` +
+    `plain-text structure: an UPPERCASE label on its own line for each section, "- " for bullets, and blank ` +
+    `lines to separate. Structure it for THEM first:\n` +
+    `  • Lead with a "SUMMARY (FOR REVIEW)" section in plain business language: the problem in everyday ` +
     `terms, what will change for the user, the visible outcome/benefit, a rough effort (small / medium / large) ` +
     `+ risk read, and explicitly call out anything that ALREADY exists today. NO file paths, line numbers, ` +
     `table/column names, migration numbers, or framework jargon (RSC, RLS, etc.) in this section — a ` +
     `non-technical reader must be able to approve or push back on it.\n` +
-    `  • THEN a "## For the build team" section carrying ALL the technical detail (files, schema/migrations, ` +
-    `ordered steps, tests, edge cases) the build agent needs. Reviewer reads the top; build agent reads the ` +
-    `bottom — keep both, concrete + verifiable, in Markdown.\n\n` +
+    `  • THEN a "TECHNICAL DETAIL (FOR THE BUILD TEAM)" section (separate it with a plain line of dashes) ` +
+    `carrying ALL the specifics (files, schema/migrations, ordered steps, tests, edge cases) the build agent ` +
+    `needs — still as plain text, writing file/function names plainly without backticks. Reviewer reads the ` +
+    `top; build agent reads the bottom — keep both, concrete + verifiable.\n\n` +
     `ORIGINAL PLAN:\n${draft.plan}\n\nPANEL CRITIQUES:\n${critiqueText}`,
   { schema: PLAN_SCHEMA, phase: 'Refine', label: 'refine-plan', effort: 'xhigh' },
 );
