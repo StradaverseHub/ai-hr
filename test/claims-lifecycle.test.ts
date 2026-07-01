@@ -7,6 +7,7 @@ import type { SessionContext } from '../db/client';
 import {
   addClaimAttachment,
   cancelClaim,
+  computeClaimAmount,
   createClaimType,
   decideClaim,
   getClaimAttachment,
@@ -14,6 +15,7 @@ import {
   listPendingClaims,
   setClaimPolicy,
   submitClaim,
+  submitClaimWithAttachment,
 } from '../core/claims';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, createAppUser, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
@@ -126,5 +128,74 @@ describe('ADR-0021 — claim lifecycle', () => {
     expect(dl?.content.toString()).toBe('receipt-bytes');
     expect((await listClaimsForEmployment(a, E.employmentId))[0].attachments.length).toBe(1);
     expect((await listPendingClaims(a)).map((c) => c.id)).toContain(id);
+  });
+
+  // ── Fix A: the real employee submit path (coverage gap — every test above submits as adminCtx) ──
+
+  it('an employee submits a claim under their OWN SessionContext (not admin)', async () => {
+    const { a, E, typeId } = await setup();
+    const uE = await createAppUser(base.tenantId, E.personId, 'employee');
+    // A REAL employee session for E's own employment (personId set → RLS can_see_employment passes for self).
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const { id } = await submitClaim(empCtx, { employmentId: E.employmentId, claimTypeId: typeId, amount: 130, incurredOn: '2026-06-01' });
+    // The claim is CREATED and visible in the employee's own My Claims list.
+    const mine = await listClaimsForEmployment(empCtx, E.employmentId);
+    expect(mine.find((c) => c.id === id)?.status).toBe('pending');
+    expect(mine.find((c) => c.id === id)?.amount).toBe(130);
+    expect(await eventTypesFor(base.tenantId, id)).toContain('claim-request.submitted');
+  });
+
+  it('submitClaimWithAttachment: employee submit + receipt is atomic (claim + attachment in one tx)', async () => {
+    const { a, E, typeId } = await setup();
+    const uE = await createAppUser(base.tenantId, E.personId, 'employee');
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    const { id } = await submitClaimWithAttachment(
+      empCtx,
+      { employmentId: E.employmentId, claimTypeId: typeId, amount: 60, incurredOn: '2026-06-01', hasReceipt: true },
+      { fileName: 'r.pdf', mimeType: 'application/pdf', content: Buffer.from('pdf-bytes') },
+    );
+    const mine = await listClaimsForEmployment(empCtx, E.employmentId);
+    expect(mine.find((c) => c.id === id)?.attachments.length).toBe(1);
+    expect(await eventTypesFor(base.tenantId, id)).toEqual(
+      expect.arrayContaining(['claim-request.submitted', 'claim-request.receipt-added']),
+    );
+  });
+
+  it('submitClaimWithAttachment: a bad receipt ROLLS BACK the claim (no committed-claim-behind-an-error)', async () => {
+    const { a, E, typeId } = await setup();
+    const uE = await createAppUser(base.tenantId, E.personId, 'employee');
+    const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, personId: E.personId, roles: ['employee'] };
+    // A disallowed MIME must throw AND leave nothing behind — the whole submit rolls back.
+    await expect(
+      submitClaimWithAttachment(
+        empCtx,
+        { employmentId: E.employmentId, claimTypeId: typeId, amount: 60, incurredOn: '2026-06-01', hasReceipt: true },
+        { fileName: 'r.txt', mimeType: 'text/plain', content: Buffer.from('not-a-receipt') },
+      ),
+    ).rejects.toThrow();
+    // The claim was NOT created — the DB and the error the user sees agree.
+    expect((await listClaimsForEmployment(a, E.employmentId)).length).toBe(0);
+  });
+
+  // ── Fix B: mileage safety — preview == stored == distance × the selected item's configured rate ──
+
+  it('mileage_flat: 520 km at RM0.60 stores RM312.00 and preview == stored == km × rate', async () => {
+    const a = adminCtx(base);
+    const E = await hire(a, base, 'Driver');
+    const { id: typeId } = await createClaimType(a, { code: 'MILEAGE', name: 'Mileage', defaultTaxable: false, requiresReceipt: false });
+    await setClaimPolicy(a, {
+      claimTypeId: typeId,
+      annualBudget: null,
+      perClaimCap: null,
+      effectiveFrom: '2026-01-01',
+      rateConfig: { kind: 'mileage_flat', ratePerKm: 0.6 },
+    });
+    // The form preview (components/claim-form.tsx) computes km × ratePerKm off the SAME active-policy rate.
+    const preview = computeClaimAmount({ kind: 'mileage_flat', ratePerKm: 0.6 }, { quantityKm: 520 });
+    expect(preview).toBeCloseTo(312);
+    const { id } = await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 0, quantityKm: 520, incurredOn: '2026-06-01' });
+    const stored = (await listClaimsForEmployment(a, E.employmentId)).find((c) => c.id === id)?.amount;
+    expect(stored).toBe(312);
+    expect(stored).toBeCloseTo(preview);
   });
 });

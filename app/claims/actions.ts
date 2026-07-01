@@ -4,10 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
-import { addClaimAttachment, cancelClaim, submitClaim } from '@/core/claims';
+import { cancelClaim, submitClaimWithAttachment } from '@/core/claims';
 
 const BASE = '/claims';
-const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+const errorUrl = (e: unknown) => `${BASE}?error=${encodeURIComponent((e as Error).message)}`;
 
 /**
  * Derive a TRUSTWORTHY mime type from the file's leading bytes (fail-closed: unknown signature → null).
@@ -28,41 +28,56 @@ const numOrNull = (v: FormDataEntryValue | null): number | null => {
 
 export async function submitClaimAction(formData: FormData) {
   const s = await getSession();
+  // Capture the redirect URL, then redirect OUTSIDE the try — Next's redirect() throws NEXT_REDIRECT by design,
+  // so redirecting inside the catch (the old `fail(e)`) risked the success/error redirect being swallowed. All
+  // DB work happens in ONE service tx (submitClaimWithAttachment) so a receipt failure rolls the claim back too:
+  // the user's error and the DB now agree — no committed-claim-behind-an-error (ADR-0021 §2 submit fix).
+  let redirectTo: string;
   try {
     const me = await myEmployment(s);
+    // myEmployment is null when the account has no active employment; give a clear, actionable message
+    // (the page also renders its own no-employment card, but the action guards the POST path too).
     if (!me) throw new Error('No active employment is linked to your account.');
     const file = formData.get('receipt');
     const hasFile = file instanceof File && file.size > 0;
-    const { id } = await submitClaim(s, {
-      employmentId: me.employmentId,
-      claimTypeId: String(formData.get('claimTypeId')),
-      claimItemId: String(formData.get('claimItemId') ?? '').trim() || null,
-      amount: Number(formData.get('amount')),
-      quantityKm: numOrNull(formData.get('quantityKm')),
-      incurredOn: String(formData.get('incurredOn')),
-      description: String(formData.get('description') ?? '').trim() || null,
-      hasReceipt: hasFile,
-    });
+    let attachment: { fileName: string; mimeType: string; content: Buffer } | null = null;
     if (hasFile) {
       const content = Buffer.from(await file.arrayBuffer());
       const mimeType = sniffMime(content);
       if (!mimeType) throw new Error('Only PDF, JPG, or PNG files are allowed');
-      await addClaimAttachment(s, { claimRequestId: id, fileName: file.name, mimeType, content });
+      attachment = { fileName: file.name, mimeType, content };
     }
+    await submitClaimWithAttachment(
+      s,
+      {
+        employmentId: me.employmentId,
+        claimTypeId: String(formData.get('claimTypeId')),
+        claimItemId: String(formData.get('claimItemId') ?? '').trim() || null,
+        amount: Number(formData.get('amount')),
+        quantityKm: numOrNull(formData.get('quantityKm')),
+        incurredOn: String(formData.get('incurredOn')),
+        description: String(formData.get('description') ?? '').trim() || null,
+        hasReceipt: hasFile,
+      },
+      attachment,
+    );
+    revalidatePath(BASE);
+    redirectTo = `${BASE}?toast=${encodeURIComponent('Claim submitted')}`;
   } catch (e) {
-    fail(e);
+    redirectTo = errorUrl(e);
   }
-  revalidatePath(BASE);
-  redirect(`${BASE}?toast=${encodeURIComponent('Claim submitted')}`);
+  redirect(redirectTo);
 }
 
 export async function cancelClaimAction(formData: FormData) {
   const s = await getSession();
+  let redirectTo: string;
   try {
     await cancelClaim(s, String(formData.get('id')));
+    revalidatePath(BASE);
+    redirectTo = `${BASE}?toast=${encodeURIComponent('Claim cancelled')}`;
   } catch (e) {
-    fail(e);
+    redirectTo = errorUrl(e);
   }
-  revalidatePath(BASE);
-  redirect(`${BASE}?toast=${encodeURIComponent('Claim cancelled')}`);
+  redirect(redirectTo);
 }

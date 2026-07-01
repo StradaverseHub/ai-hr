@@ -366,89 +366,124 @@ async function claimedInYear(
 /** Submit a claim (employee, for their own employment — RLS enforces). Resolves the per-type rate config,
  *  validates the dependent item + receipt-date window, DERIVES the authoritative amount, then enforces the
  *  per-claim cap + annual budget against that amount. `taxable` defaults from the claim type. */
-export async function submitClaim(
-  ctx: SessionContext,
-  p: {
-    employmentId: string;
-    claimTypeId: string;
-    claimItemId?: string | null;
-    amount: number;
-    quantityKm?: number | null;
-    incurredOn: string;
-    description?: string | null;
-    hasReceipt?: boolean;
-  },
-): Promise<{ id: string }> {
+type SubmitClaimInput = {
+  employmentId: string;
+  claimTypeId: string;
+  claimItemId?: string | null;
+  amount: number;
+  quantityKm?: number | null;
+  incurredOn: string;
+  description?: string | null;
+  hasReceipt?: boolean;
+};
+
+/** The submit body, running INSIDE a caller-provided tx so it can be composed atomically with a receipt
+ *  write (see submitClaimWithAttachment). The date-format guard runs before the tx opens in the public
+ *  wrappers; everything that touches the DB lives here so a downstream failure rolls the claim back too. */
+async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
+  // 2. Load the type + active policy (now also carries rateConfig).
+  const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
+  if (!ct) throw new ClaimError('Unknown or archived claim type');
+  const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn);
+
+  // 3. Item validation (D5): if the type has ≥1 live item, an item is required and must belong to the type.
+  const items = await activeItemsFor(tx, p.claimTypeId);
+  let claimItemId: string | null = null;
+  if (items.length > 0) {
+    if (!p.claimItemId) throw new ClaimError('A claim item is required for this claim type');
+    if (!items.some((i) => i.id === p.claimItemId)) throw new ClaimError('That claim item does not belong to this claim type');
+    claimItemId = p.claimItemId;
+  }
+
+  // 4. Receipt-date window: not in the future, and not more than 45 days (≈1.5 months per ticket) back.
+  //    Compared as UTC date strings off the same helper the client picker uses (no UTC+8 off-by-one).
+  const todayUtc = today();
+  if (p.incurredOn > todayUtc) throw new ClaimError('Receipt date cannot be in the future');
+  if (p.incurredOn < dateMinusDays(todayUtc, RECEIPT_BACKDATE_DAYS)) {
+    throw new ClaimError(`Receipt date cannot be more than ${RECEIPT_BACKDATE_DAYS} days ago`);
+  }
+
+  // 5. Derive the authoritative amount from the rate config BEFORE the value guards.
+  const quantityKm = policy?.rateConfig?.kind === 'mileage_flat' ? (p.quantityKm ?? null) : null;
+  const amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
+  if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
+  if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
+    throw new ClaimError(`Amount exceeds the per-claim cap (RM ${policy.perClaimCap.toLocaleString('en-MY')})`);
+  }
+  if (policy?.annualBudget != null) {
+    const committed = await claimedInYear(tx, p.employmentId, p.claimTypeId, yearOf(p.incurredOn), ['pending', 'approved', 'paid']);
+    if (committed + amount > policy.annualBudget) {
+      throw new ClaimError(`This would exceed the annual budget (RM ${policy.annualBudget.toLocaleString('en-MY')})`);
+    }
+  }
+
+  // 6. Receipt-required check (type-level, unchanged).
+  if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
+
+  // 7. Insert with the dependent item, mileage km, and computed amount.
+  const [row] = await tx
+    .insert(claimRequest)
+    .values({
+      tenantId: ctx.tenantId,
+      employmentId: p.employmentId,
+      claimTypeId: p.claimTypeId,
+      claimItemId,
+      amount: amount.toFixed(2),
+      quantityKm: quantityKm == null ? null : quantityKm.toFixed(2),
+      incurredOn: p.incurredOn,
+      description: p.description ?? null,
+      taxable: ct.defaultTaxable,
+    })
+    .returning({ id: claimRequest.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'claim-request',
+    aggregateId: row.id,
+    eventType: 'claim-request.submitted',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    // ADR-0030 Layer 0: amount + quantityKm live on claim_request[aggregateId]; reference, not cleartext in
+    // the log (km × a readable per-km rate would reconstruct the redacted amount). claimItemId is safe (a
+    // non-sensitive sub-category reference), so it is logged.
+    payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
+  });
+  return { id: row.id };
+}
+
+export async function submitClaim(ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
   // 1. Format guard for the date (value guards run AFTER the amount is derived, below).
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
+  return withTenant(ctx, (tx) => insertClaimTx(tx, ctx, p));
+}
+
+/**
+ * Submit a claim AND attach its receipt in ONE transaction so the two writes are atomic (ADR-0021 §2 fix).
+ * The employee-facing action used to call submitClaim (its own committed tx) and THEN addClaimAttachment in a
+ * SEPARATE tx: if the attachment step threw (bad bytes, size, a DB error), the claim was already committed but
+ * the user still saw the error redirect — a "committed claim they think failed." Here a receipt failure rolls
+ * the whole claim back, so the user's error and the DB agree: nothing was created. The optional-receipt path
+ * (no attachment) collapses to a plain insertClaimTx. */
+export async function submitClaimWithAttachment(
+  ctx: SessionContext,
+  p: SubmitClaimInput,
+  attachment: { fileName: string; mimeType: string; content: Buffer } | null,
+): Promise<{ id: string }> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.incurredOn)) throw new ClaimError('Incurred date must be YYYY-MM-DD');
+  // Validate the attachment BEFORE opening the tx so a bad file never even starts a claim insert.
+  if (attachment) assertValidAttachment(attachment.mimeType, attachment.content);
   return withTenant(ctx, async (tx) => {
-    // 2. Load the type + active policy (now also carries rateConfig).
-    const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
-    if (!ct) throw new ClaimError('Unknown or archived claim type');
-    const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn);
-
-    // 3. Item validation (D5): if the type has ≥1 live item, an item is required and must belong to the type.
-    const items = await activeItemsFor(tx, p.claimTypeId);
-    let claimItemId: string | null = null;
-    if (items.length > 0) {
-      if (!p.claimItemId) throw new ClaimError('A claim item is required for this claim type');
-      if (!items.some((i) => i.id === p.claimItemId)) throw new ClaimError('That claim item does not belong to this claim type');
-      claimItemId = p.claimItemId;
-    }
-
-    // 4. Receipt-date window: not in the future, and not more than 45 days (≈1.5 months per ticket) back.
-    //    Compared as UTC date strings off the same helper the client picker uses (no UTC+8 off-by-one).
-    const todayUtc = today();
-    if (p.incurredOn > todayUtc) throw new ClaimError('Receipt date cannot be in the future');
-    if (p.incurredOn < dateMinusDays(todayUtc, RECEIPT_BACKDATE_DAYS)) {
-      throw new ClaimError(`Receipt date cannot be more than ${RECEIPT_BACKDATE_DAYS} days ago`);
-    }
-
-    // 5. Derive the authoritative amount from the rate config BEFORE the value guards.
-    const quantityKm = policy?.rateConfig?.kind === 'mileage_flat' ? (p.quantityKm ?? null) : null;
-    const amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
-    if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
-    if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
-      throw new ClaimError(`Amount exceeds the per-claim cap (RM ${policy.perClaimCap.toLocaleString('en-MY')})`);
-    }
-    if (policy?.annualBudget != null) {
-      const committed = await claimedInYear(tx, p.employmentId, p.claimTypeId, yearOf(p.incurredOn), ['pending', 'approved', 'paid']);
-      if (committed + amount > policy.annualBudget) {
-        throw new ClaimError(`This would exceed the annual budget (RM ${policy.annualBudget.toLocaleString('en-MY')})`);
-      }
-    }
-
-    // 6. Receipt-required check (type-level, unchanged).
-    if (ct.requiresReceipt && !p.hasReceipt) throw new ClaimError('A receipt is required for this claim type');
-
-    // 7. Insert with the dependent item, mileage km, and computed amount.
-    const [row] = await tx
-      .insert(claimRequest)
-      .values({
-        tenantId: ctx.tenantId,
+    const { id } = await insertClaimTx(tx, ctx, { ...p, hasReceipt: p.hasReceipt || attachment != null });
+    if (attachment) {
+      await insertClaimAttachmentTx(tx, ctx, {
+        claimRequestId: id,
         employmentId: p.employmentId,
-        claimTypeId: p.claimTypeId,
-        claimItemId,
-        amount: amount.toFixed(2),
-        quantityKm: quantityKm == null ? null : quantityKm.toFixed(2),
-        incurredOn: p.incurredOn,
-        description: p.description ?? null,
-        taxable: ct.defaultTaxable,
-      })
-      .returning({ id: claimRequest.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'claim-request',
-      aggregateId: row.id,
-      eventType: 'claim-request.submitted',
-      actor: actorOf(ctx),
-      subjectEmploymentId: p.employmentId,
-      // ADR-0030 Layer 0: amount + quantityKm live on claim_request[aggregateId]; reference, not cleartext in
-      // the log (km × a readable per-km rate would reconstruct the redacted amount). claimItemId is safe (a
-      // non-sensitive sub-category reference), so it is logged.
-      payload: { claimTypeId: p.claimTypeId, claimItemId, incurredOn: p.incurredOn, taxable: ct.defaultTaxable },
-    });
-    return { id: row.id };
+        status: 'pending',
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        content: attachment.content,
+      });
+    }
+    return { id };
   });
 }
 
@@ -534,16 +569,55 @@ export async function cancelClaim(ctx: SessionContext, claimRequestId: string): 
  *  spoofable client `file.type`. */
 export const ALLOWED_RECEIPT_MIME = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 
+/** Fail-closed receipt validation (empty / oversized / disallowed MIME). Shared by addClaimAttachment and the
+ *  atomic submitClaimWithAttachment so both paths reject the same files with the same messages. */
+function assertValidAttachment(mimeType: string, content: Buffer): void {
+  if (content.byteLength === 0) throw new ClaimError('Empty file');
+  if (content.byteLength > 10 * 1024 * 1024) throw new ClaimError('File exceeds 10 MB');
+  if (!(ALLOWED_RECEIPT_MIME as readonly string[]).includes(mimeType)) {
+    throw new ClaimError('Only PDF, JPG, or PNG files are allowed');
+  }
+}
+
+/** Insert a receipt row + its event INSIDE a caller-provided tx. `status` is the claim's already-known status
+ *  (skips a re-read when the caller just inserted the claim in the same tx). */
+async function insertClaimAttachmentTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { claimRequestId: string; employmentId: string; status: string; fileName: string; mimeType: string; content: Buffer },
+): Promise<{ id: string }> {
+  if (p.status !== 'pending') throw new ClaimError('Receipts can only be added while the claim is pending');
+  const [row] = await tx
+    .insert(claimAttachment)
+    .values({
+      tenantId: ctx.tenantId,
+      claimRequestId: p.claimRequestId,
+      employmentId: p.employmentId,
+      content: p.content,
+      fileName: p.fileName,
+      mimeType: p.mimeType,
+      sizeBytes: p.content.byteLength,
+      uploadedByUserId: ctx.userId ?? null,
+    })
+    .returning({ id: claimAttachment.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'claim-request',
+    aggregateId: p.claimRequestId,
+    eventType: 'claim-request.receipt-added',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: { fileName: p.fileName, sizeBytes: p.content.byteLength },
+  });
+  return { id: row.id };
+}
+
 /** Attach a receipt to a claim (denormalizes employment_id from the claim for RLS). */
 export async function addClaimAttachment(
   ctx: SessionContext,
   p: { claimRequestId: string; fileName: string; mimeType: string; content: Buffer },
 ): Promise<{ id: string }> {
-  if (p.content.byteLength === 0) throw new ClaimError('Empty file');
-  if (p.content.byteLength > 10 * 1024 * 1024) throw new ClaimError('File exceeds 10 MB');
-  if (!(ALLOWED_RECEIPT_MIME as readonly string[]).includes(p.mimeType)) {
-    throw new ClaimError('Only PDF, JPG, or PNG files are allowed');
-  }
+  assertValidAttachment(p.mimeType, p.content);
   return withTenant(ctx, async (tx) => {
     const [claim] = await tx
       .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, status: claimRequest.status })
@@ -551,30 +625,14 @@ export async function addClaimAttachment(
       .where(eq(claimRequest.id, p.claimRequestId))
       .limit(1);
     if (!claim) throw new ClaimError('Claim not found');
-    if (claim.status !== 'pending') throw new ClaimError('Receipts can only be added while the claim is pending');
-    const [row] = await tx
-      .insert(claimAttachment)
-      .values({
-        tenantId: ctx.tenantId,
-        claimRequestId: claim.id,
-        employmentId: claim.employmentId,
-        content: p.content,
-        fileName: p.fileName,
-        mimeType: p.mimeType,
-        sizeBytes: p.content.byteLength,
-        uploadedByUserId: ctx.userId ?? null,
-      })
-      .returning({ id: claimAttachment.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'claim-request',
-      aggregateId: claim.id,
-      eventType: 'claim-request.receipt-added',
-      actor: actorOf(ctx),
-      subjectEmploymentId: claim.employmentId,
-      payload: { fileName: p.fileName, sizeBytes: p.content.byteLength },
+    return insertClaimAttachmentTx(tx, ctx, {
+      claimRequestId: claim.id,
+      employmentId: claim.employmentId,
+      status: claim.status,
+      fileName: p.fileName,
+      mimeType: p.mimeType,
+      content: p.content,
     });
-    return { id: row.id };
   });
 }
 
