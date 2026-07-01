@@ -252,6 +252,72 @@ export async function decideProfileChange(
   });
 }
 
+/**
+ * HR/Admin-originated set of the two compliance-sensitive identity fields on `person`
+ * (gender, marital status) for ANOTHER employee. These drive leave eligibility (gender gates
+ * maternity, married-male gates paternity — Wave 2A-1). ADR-0012 refinement #24 deliberately
+ * moved these fields onto the approval-gated path, so we do NOT widen the instant-write
+ * `updatePerson`; instead we originate a *pre-approved* profile-change and apply it through the
+ * same `person.updated` write, reusing `sanitizeProposed`'s validation. This keeps ONE writer and
+ * ONE trust semantic for these columns.
+ *
+ * NOTE (marital ⊥ PCB): setting marital status here updates leave eligibility only. The PCB/tax
+ * bracket (`employee_statutory_my.taxCategory`) is a separate statutory field and is NOT changed —
+ * the UI surfaces this decoupling as an on-screen note.
+ */
+export async function setPersonComplianceFields(
+  ctx: SessionContext,
+  p: { employmentId: string; gender?: string | null; maritalStatus?: string | null },
+) {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new Error('Only an admin can set gender / marital status.');
+  }
+  // Reuse the module-private sanitiser (whitelist → null on unrecognised). Only include a field in
+  // the write set when the caller provided it (undefined = leave as-is; explicit null = clear).
+  const proposed = sanitizeProposed({
+    ...(p.gender !== undefined ? { gender: p.gender } : {}),
+    ...(p.maritalStatus !== undefined ? { maritalStatus: p.maritalStatus } : {}),
+  });
+  const personSet: Record<string, string | null> = {};
+  if (proposed.gender !== undefined) personSet.gender = proposed.gender;
+  if (proposed.maritalStatus !== undefined) personSet.maritalStatus = proposed.maritalStatus;
+  if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
+
+  return withTenant(ctx, async (tx) => {
+    // Resolve the person from the employment (RLS confines this select to admin scope).
+    const [emp] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new Error('Employment not found (or not visible).');
+    const personId = emp.personId;
+
+    const [before] = await tx
+      .select({ gender: person.gender, maritalStatus: person.maritalStatus })
+      .from(person)
+      .where(eq(person.id, personId))
+      .limit(1);
+    if (!before) throw new Error('Person not found.');
+
+    await tx.update(person).set(personSet).where(eq(person.id, personId));
+    const after = { ...before, ...personSet };
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'person',
+      aggregateId: personId,
+      eventType: 'person.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      // Provenance: `via:'admin-set'` distinguishes this HR-direct write from the self path's
+      // `via:'profile-change'` and from a plain name/email edit (updatePerson).
+      payload: { via: 'admin-set', fields: Object.keys(personSet), before, after },
+    });
+    return { id: personId };
+  });
+}
+
 /** Admin inbox — RLS trims to scope. Recent first. */
 export function listProfileChangeRequests(
   ctx: SessionContext,

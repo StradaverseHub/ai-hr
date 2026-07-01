@@ -27,6 +27,7 @@ import {
   endDelegationAction,
   endReportingLineAction,
   setCompensationAction,
+  setComplianceFieldsAction,
   setEmploymentComponentAction,
   setLocationAction,
   setPersonAction,
@@ -205,6 +206,36 @@ export default async function EmployeePage({
             </Field>
             <div className="sm:col-span-4 flex justify-end">
               <button className={btnPrimary}>{t('saveDetails')}</button>
+            </div>
+          </form>
+
+          {/* Wave 2A-1 / #24: gender + marital status drive leave eligibility. Kept on their OWN
+              submit → setPersonComplianceFields (the approval-gated apply path), separate from the
+              instant-write core fields above. */}
+          <form
+            action={setComplianceFieldsAction}
+            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+          >
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={t('gender')}>
+              <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
+                <option value="">{t('genderNotSet')}</option>
+                <option value="male">{t('genderMale')}</option>
+                <option value="female">{t('genderFemale')}</option>
+                <option value="undisclosed">{t('genderUndisclosed')}</option>
+              </select>
+            </Field>
+            <Field label={t('maritalStatus')}>
+              <select name="maritalStatus" defaultValue={emp.marital ?? ''} className={inputCls}>
+                <option value="">{t('maritalNotSet')}</option>
+                <option value="single">{t('maritalSingle')}</option>
+                <option value="married">{t('maritalMarried')}</option>
+                <option value="other">{t('maritalOther')}</option>
+              </select>
+            </Field>
+            <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
+            <div className="sm:col-span-4 flex justify-end">
+              <button className={btnPrimary}>{t('saveComplianceFields')}</button>
             </div>
           </form>
         </Card>

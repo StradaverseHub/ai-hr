@@ -604,6 +604,10 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         holidayGroupName: holidayGroup.name,
         gradeId: employment.gradeId,
         gradeName: jobGrade.name,
+        // #24 / Wave 2A-1: compliance-sensitive identity fields that drive leave eligibility
+        // (gender gates maternity, marital gates paternity). HR-set via the approval-gated path.
+        gender: person.gender,
+        marital: person.maritalStatus,
         // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,

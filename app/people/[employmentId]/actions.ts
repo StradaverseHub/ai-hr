@@ -8,6 +8,7 @@ import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, set
 import { setCompensation } from '@/core/comp';
 import { FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, type ReviewType } from '@/core/employment-review';
+import { setPersonComplianceFields } from '@/core/profile';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
 
@@ -248,6 +249,29 @@ export async function setPersonAction(formData: FormData) {
     });
     // 2E (ADR-0041): seniority grade — same form, drives grade-scoped leave entitlements.
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
+/**
+ * HR/Admin sets the two compliance-sensitive identity fields (gender, marital status) that drive
+ * leave eligibility (Wave 2A-1). Routed through the approval-gated apply path (setPersonComplianceFields),
+ * NOT the instant-write updatePerson — ADR-0012 refinement #24 deliberately keeps these fields on the
+ * audited path. A blank select value ("") is an explicit clear-to-null. Marital status here does NOT
+ * change the PCB/tax bracket (a separate statutory field) — surfaced on-screen.
+ */
+export async function setComplianceFieldsAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await setPersonComplianceFields(s, {
+      employmentId,
+      gender: (formData.get('gender') as string) || null,
+      maritalStatus: (formData.get('maritalStatus') as string) || null,
+    });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
