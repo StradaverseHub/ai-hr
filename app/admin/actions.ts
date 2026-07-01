@@ -243,6 +243,11 @@ const carryExpiryField = (raw: FormDataEntryValue | null): number | null => {
   return raw != null && String(raw) !== '' && Number.isFinite(n) ? n : null;
 };
 
+/** R4 Build #1: read the carry-expiry mode from the form, constrained to the two valid values (default
+ *  'date' for back-compat when the field is absent). The 1..12 months range is validated in core/admin.ts. */
+const carryExpiryMode = (fd: FormData): 'date' | 'months' =>
+  fd.get('carryForwardExpiryMode') === 'months' ? 'months' : 'date';
+
 /**
  * Carry-forward enhancement — only send a carry boolean when the carry block was actually rendered for
  * this policy (the ANNUAL-only block emits a hidden `carryBlockRendered=1` marker). With the marker we
@@ -261,6 +266,8 @@ export async function createLeavePolicyAction(formData: FormData) {
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
       carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+      carryForwardExpiryMode: carryExpiryMode(formData),
+      carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
       carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
       carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
       method: String(formData.get('method') || '') || undefined,
@@ -283,6 +290,8 @@ export async function updateLeavePolicyAction(formData: FormData) {
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
       carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
       carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+      carryForwardExpiryMode: carryExpiryMode(formData),
+      carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
       carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
       carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
       method: String(formData.get('method') || '') || undefined,

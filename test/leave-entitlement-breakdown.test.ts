@@ -229,6 +229,36 @@ describe('leaveEntitlementBreakdown — single reconstruction path', () => {
   });
 });
 
+describe('leaveEntitlementBreakdown — R4 Build #1 months-mode + clamp', () => {
+  const monthsPolicy = (months: number) =>
+    createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 5,
+      carryForwardExpiryMode: 'months',
+      carryForwardExpiryMonths: months,
+      validFrom: '2025-01-01',
+    });
+
+  it('(6b) months:3 → carryForwardExpiryDate ends -03-31 for the cycle year', async () => {
+    await monthsPolicy(3);
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2027 }); // carry 5 into 2027
+    const r = await bd(emp.employmentId, '2027-02-15'); // before expiry
+    expect(r).not.toBeNull();
+    expect(r!.carryForwardExpiryDate).toBe('2027-03-31');
+  });
+
+  it('(6c) months:2 in a common cycle year → clamped -02-28 (never phantom -02-29)', async () => {
+    await monthsPolicy(2);
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2027 }); // 2027 is a common year
+    const r = await bd(emp.employmentId, '2027-01-15');
+    expect(r).not.toBeNull();
+    expect(r!.carryForwardExpiryDate).toBe('2027-02-28');
+  });
+});
+
 describe('leaveEntitlementBreakdown — empty / future states', () => {
   it('(7) as-at before hire / before any ledger row → defined empty/zero breakdown (not an error)', async () => {
     await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 3, day: 31 } });

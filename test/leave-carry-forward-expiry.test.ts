@@ -16,8 +16,15 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { createJobGrade, createLeavePolicy } from '../core/admin';
-import { carryEnabled, expireCarriedLeave, openLeaveYear, resolveGradePolicy } from '../core/leave';
+import { createJobGrade, createLeavePolicy, updateLeavePolicy } from '../core/admin';
+import {
+  carryEnabled,
+  expireCarriedLeave,
+  isValidMonthDay,
+  lastRealDayOfMonth,
+  openLeaveYear,
+  resolveGradePolicy,
+} from '../core/leave';
 import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -410,5 +417,232 @@ describe('Carry-forward enhancement — carryForwardIncludeEarned round-trips (c
     const emp = await hire('2025-01-01');
     await openLeaveYear(adminCtx(b), { year: 2026 }); // carry min(12,5)=5 + 12 = 17, identical to the no-flag case
     expect(await balance(emp.employmentId)).toBe(17);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+// R4 Build #1 — carry-forward expiry-date validity + "X months after year-end" mode.
+// ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('R4 Build #1 — isValidMonthDay + lastRealDayOfMonth (pure)', () => {
+  it('(r) rejects impossible day/month combinations', () => {
+    for (const [m, d] of [
+      [2, 31],
+      [4, 31],
+      [6, 31],
+      [9, 31],
+      [11, 31],
+      [2, 30],
+      [0, 15],
+      [13, 1],
+      [3, 0],
+    ] as const) {
+      expect(isValidMonthDay(m, d), `${m}/${d} should be invalid`).toBe(false);
+    }
+  });
+
+  it('(s) accepts real calendar days including 29 Feb (leap-tolerant at config time)', () => {
+    for (const [m, d] of [
+      [2, 28],
+      [2, 29],
+      [4, 30],
+      [3, 31],
+      [1, 1],
+      [12, 31],
+    ] as const) {
+      expect(isValidMonthDay(m, d), `${m}/${d} should be valid`).toBe(true);
+    }
+  });
+
+  it('(t) lastRealDayOfMonth is leap-correct', () => {
+    expect(lastRealDayOfMonth(2027, 2)).toBe(28); // common year
+    expect(lastRealDayOfMonth(2028, 2)).toBe(29); // leap year
+    expect(lastRealDayOfMonth(2027, 6)).toBe(30);
+    expect(lastRealDayOfMonth(2027, 12)).toBe(31);
+  });
+});
+
+describe('R4 Build #1 — write-path validation (createLeavePolicy / updateLeavePolicy)', () => {
+  const create = (p: {
+    month?: number | null;
+    day?: number | null;
+    mode?: 'date' | 'months';
+    months?: number | null;
+  }) =>
+    createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 5,
+      carryForwardExpiryMonth: p.month ?? null,
+      carryForwardExpiryDay: p.day ?? null,
+      carryForwardExpiryMode: p.mode,
+      carryForwardExpiryMonths: p.months ?? null,
+      validFrom: '2025-01-01',
+    });
+
+  it('(u) impossible dates are rejected with a clear message', async () => {
+    for (const [m, d] of [
+      [2, 31],
+      [4, 31],
+      [6, 31],
+    ] as const) {
+      await expect(create({ month: m, day: d })).rejects.toThrow(/real calendar date/i);
+    }
+  });
+
+  it('(v) valid dates save and round-trip through the accrual reader', async () => {
+    for (const [m, d] of [
+      [2, 29],
+      [4, 30],
+      [3, 31],
+    ] as const) {
+      await owner.db.delete(schema.leavePolicy).where(eq(schema.leavePolicy.leaveTypeId, b.annualLeaveTypeId));
+      await create({ month: m, day: d });
+      const acc = await readAccrual(b.annualLeaveTypeId);
+      expect(acc.carryForwardExpiryMonth).toBe(m);
+      expect(acc.carryForwardExpiryDay).toBe(d);
+      expect('carryForwardExpiryMode' in acc).toBe(false); // date mode omits the mode key
+    }
+  });
+
+  it('(w) months out of 1..12 is rejected', async () => {
+    await expect(create({ mode: 'months', months: 0 })).rejects.toThrow(/between 1 and 12/i);
+    await expect(create({ mode: 'months', months: 13 })).rejects.toThrow(/between 1 and 12/i);
+  });
+
+  it('(x) updateLeavePolicy also rejects an impossible date', async () => {
+    const { id } = await create({ month: 3, day: 31 });
+    await expect(
+      updateLeavePolicy(adminCtx(b), {
+        id,
+        annualDays: 12,
+        carryForwardMax: 5,
+        carryForwardExpiryMonth: 4,
+        carryForwardExpiryDay: 31,
+        validFrom: '2025-01-01',
+      }),
+    ).rejects.toThrow(/real calendar date/i);
+  });
+});
+
+describe('R4 Build #1 — crash prevention: 29 Feb in a common year never crashes the sweep', () => {
+  it('(y) date-mode 29 Feb, carry into a common (non-leap) year → forfeits on the clamped 28 Feb', async () => {
+    // 2027 is NOT a leap year. The expiry {2,29} must clamp to 2027-02-28 so the ledger insert (a `date`
+    // column) never rejects the value and aborts the whole tenant sweep. This is the regression test for the
+    // real bug: NOT a no-op, NOT a crash — a real forfeit on 28 Feb.
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 2, day: 29 } });
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2027 }); // carry min(12,5)=5, +12 → 17
+    expect(await balance(emp.employmentId)).toBe(17);
+
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2027-02-28' });
+    expect(r.swept).toBe(1);
+    expect(r.forfeited).toBe(5);
+    expect(await balance(emp.employmentId)).toBe(12);
+    // The forfeit landed on the CLAMPED 28 Feb (a real date). It could never be 2027-02-29 — Postgres
+    // rejects that literal outright — which is exactly the crash the clamp prevents.
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2027-02-28')).toBe(1);
+  });
+});
+
+describe('R4 Build #1 — "X months after year-end" mode resolution', () => {
+  const monthsPolicy = (months: number, from = '2025-01-01') =>
+    createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 18,
+      carryForwardMax: 5,
+      carryForwardExpiryMode: 'months',
+      carryForwardExpiryMonths: months,
+      validFrom: from,
+    });
+
+  it('(z) months:3 resolves to 31 Mar of the carry year — reporter headline scenario end-to-end', async () => {
+    await monthsPolicy(3);
+    const acc = await readAccrual(b.annualLeaveTypeId);
+    expect(acc.carryForwardExpiryMode).toBe('months');
+    expect(acc.carryForwardExpiryMonths).toBe(3);
+    expect('carryForwardExpiryMonth' in acc).toBe(false); // months mode omits date keys
+
+    // hire 2025-01-01 (18 granted), reduce to 8 at 2026 year-end, cap 5 ⇒ open 2027 carries 5, forfeit 3.
+    const emp = await hire('2025-01-01');
+    await post(emp.employmentId, b.annualLeaveTypeId, 'adjustment', -10, '2026-06-01'); // 18 → 8 by year-end
+    await openLeaveYear(adminCtx(b), { year: 2027 }); // carry min(8,5)=5, +18 → 23
+    expect(await balance(emp.employmentId)).toBe(23);
+
+    const early = await expireCarriedLeave(adminCtx(b), { today: '2027-03-30' });
+    expect(early.swept).toBe(0); // not yet due
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2027-03-31' });
+    expect(r.swept).toBe(1);
+    expect(r.forfeited).toBe(5);
+    expect(await balance(emp.employmentId)).toBe(18);
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2027-03-31')).toBe(1);
+  });
+
+  it('(aa) months:2 into a common year resolves to 28 Feb (auto-derived crash guard)', async () => {
+    await monthsPolicy(2);
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2027 }); // 2027 common; carry 5, +18 → 23
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2027-02-28' });
+    expect(r.swept).toBe(1);
+    expect(r.forfeited).toBe(5);
+    // Clamped to the real 28 Feb (2027 is common) — never the phantom 2027-02-29 that would crash the insert.
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2027-02-28')).toBe(1);
+  });
+
+  it('(bb) months:12 resolves to 31 Dec of the carry year (explicit edge)', async () => {
+    await monthsPolicy(12);
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2027 });
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2027-12-31' });
+    expect(r.swept).toBe(1);
+    expect(r.forfeited).toBe(5);
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2027-12-31')).toBe(1);
+  });
+
+  it('(cc) empty months ⇒ never expires (no forfeit row, no throw)', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 18,
+      carryForwardMax: 5,
+      carryForwardExpiryMode: 'months',
+      carryForwardExpiryMonths: null,
+      validFrom: '2025-01-01',
+    });
+    const acc = await readAccrual(b.annualLeaveTypeId);
+    expect('carryForwardExpiryMode' in acc).toBe(false); // omitted ⇒ mode-only never persisted
+    expect('carryForwardExpiryMonths' in acc).toBe(false);
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2027 });
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2030-12-31' });
+    expect(r.swept).toBe(0);
+  });
+});
+
+describe('R4 Build #1 — mode switch clears stale cross-mode keys', () => {
+  it('(dd) date {4,30} → update to months:3 ⇒ accrual has months keys and NO date keys', async () => {
+    const { id } = await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 5,
+      carryForwardExpiryMonth: 4,
+      carryForwardExpiryDay: 30,
+      validFrom: '2025-01-01',
+    });
+    let acc = await readAccrual(b.annualLeaveTypeId);
+    expect(acc.carryForwardExpiryMonth).toBe(4);
+
+    await updateLeavePolicy(adminCtx(b), {
+      id,
+      annualDays: 12,
+      carryForwardMax: 5,
+      carryForwardExpiryMode: 'months',
+      carryForwardExpiryMonths: 3,
+      validFrom: '2025-01-01',
+    });
+    acc = await readAccrual(b.annualLeaveTypeId);
+    expect(acc.carryForwardExpiryMode).toBe('months');
+    expect(acc.carryForwardExpiryMonths).toBe(3);
+    expect('carryForwardExpiryMonth' in acc).toBe(false);
+    expect('carryForwardExpiryDay' in acc).toBe(false);
   });
 });

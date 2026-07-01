@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
@@ -12,6 +12,10 @@ export type EntitlementPolicy = {
   /** ADR-0038 carry-forward expiry: month/day the carried-forward portion auto-forfeits; null = never. */
   carryForwardExpiryMonth?: number | null;
   carryForwardExpiryDay?: number | null;
+  /** R4 Build #1: carry-expiry mode. 'date' (or null) = month/day; 'months' = "X months after year-end". */
+  carryForwardExpiryMode?: 'date' | 'months' | null;
+  /** R4 Build #1: X ∈ 1..12 for 'months' mode. null = unset. */
+  carryForwardExpiryMonths?: number | null;
   /** Carry-forward enhancement: explicit on/off switch. null = unset ⇒ back-compat default (cap > 0). */
   carryForwardEnabled?: boolean | null;
   /** Carry-forward enhancement (config-only): include monthly-earned balance — persisted, engine deferred. */
@@ -70,6 +74,115 @@ const fmt = (d: number) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
  *  the back-compat default (carry is on iff the cap is positive). Mirrors `carryEnabled` in core/leave. */
 const carryRuleEnabled = (p: { carryForwardEnabled?: boolean | null; carryForwardMax: number }) =>
   typeof p.carryForwardEnabled === 'boolean' ? p.carryForwardEnabled : p.carryForwardMax > 0;
+
+/** R4 Build #1: leap-tolerant last-day-of-month, evaluated against a LEAP year (2024) so 29 Feb is allowed
+ *  at config time (the server year-clamps it at resolve time). Mirrors core `lastRealDayOfMonth`, but kept
+ *  local so this client component pulls in no server module. month is 1-based. */
+const lastDayOfMonthLeapTolerant = (month: number) => new Date(Date.UTC(2024, month, 0)).getUTCDate();
+
+/**
+ * R4 Build #1: the carry-forward expiry sub-form — a mode toggle (concrete date vs "X months after
+ * year-end") with the matching sub-fields, plus client-side inline validation of the month/day pair
+ * (pre-submit UX; the authoritative validation is in core/admin.ts). Rendered inside both the add and the
+ * edit policy forms so the two stay in sync. Both mode's inputs remain in the DOM; the server writer is
+ * mode-authoritative and omits the inactive pair, so a switch clears the stale keys on save.
+ */
+function CarryExpiryFields({
+  t,
+  mode: initialMode,
+  month,
+  day,
+  months,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  mode: 'date' | 'months' | null | undefined;
+  month?: number | null;
+  day?: number | null;
+  months?: number | null;
+}) {
+  const [mode, setMode] = useState<'date' | 'months'>(initialMode === 'months' ? 'months' : 'date');
+  const monthRef = useRef<HTMLInputElement>(null);
+  const dayRef = useRef<HTMLInputElement>(null);
+
+  // Cross-field validity: day must be ≤ the (leap-tolerant) last day of the chosen month. Sets a custom
+  // validity message (the i18n string) on the day input so the browser blocks submit + shows it inline;
+  // cleared when valid or when either field is blank.
+  const revalidate = () => {
+    const dEl = dayRef.current;
+    if (!dEl) return;
+    const m = Number(monthRef.current?.value ?? '');
+    const d = Number(dEl.value ?? '');
+    const bothPresent = monthRef.current?.value !== '' && dEl.value !== '';
+    if (bothPresent && m >= 1 && m <= 12 && d >= 1 && d > lastDayOfMonthLeapTolerant(m)) {
+      dEl.setCustomValidity(t('carryExpiryInvalidDate'));
+    } else {
+      dEl.setCustomValidity('');
+    }
+  };
+
+  return (
+    <>
+      <Field label={t('carryExpiryModeLabel')}>
+        <select
+          name="carryForwardExpiryMode"
+          value={mode}
+          onChange={(e) => setMode(e.target.value === 'months' ? 'months' : 'date')}
+          className={`${inputCls} w-44`}
+        >
+          <option value="date">{t('carryExpiryModeDate')}</option>
+          <option value="months">{t('carryExpiryModeMonths')}</option>
+        </select>
+      </Field>
+      {mode === 'date' ? (
+        <Field label={t('carryExpiryLabel')}>
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={monthRef}
+              name="carryForwardExpiryMonth"
+              type="number"
+              min="1"
+              max="12"
+              step="1"
+              aria-label={t('carryExpiryMonthLabel')}
+              placeholder={t('carryExpiryMonthLabel')}
+              defaultValue={month ?? ''}
+              onInput={revalidate}
+              className={`${inputCls} w-16`}
+            />
+            <span className="text-xs text-muted-foreground">/</span>
+            <input
+              ref={dayRef}
+              name="carryForwardExpiryDay"
+              type="number"
+              min="1"
+              max="31"
+              step="1"
+              aria-label={t('carryExpiryDayLabel')}
+              placeholder={t('carryExpiryDayLabel')}
+              defaultValue={day ?? ''}
+              onInput={revalidate}
+              className={`${inputCls} w-16`}
+            />
+          </div>
+        </Field>
+      ) : (
+        <Field label={t('carryExpiryMonthsLabel')}>
+          <input
+            name="carryForwardExpiryMonths"
+            type="number"
+            min="1"
+            max="12"
+            step="1"
+            aria-label={t('carryExpiryMonthsLabel')}
+            placeholder={t('carryExpiryMonthsLabel')}
+            defaultValue={months ?? ''}
+            className={`${inputCls} w-24`}
+          />
+        </Field>
+      )}
+    </>
+  );
+}
 
 /**
  * One leave type as an expandable row. The body manages that type's own effective-dated
@@ -574,33 +687,13 @@ export function LeaveTypePanel({
                           className={`${inputCls} w-24`}
                         />
                       </Field>
-                      <Field label={t('carryExpiryLabel')}>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            name="carryForwardExpiryMonth"
-                            type="number"
-                            min="1"
-                            max="12"
-                            step="1"
-                            aria-label={t('carryExpiryMonthLabel')}
-                            placeholder={t('carryExpiryMonthLabel')}
-                            defaultValue={p.carryForwardExpiryMonth ?? ''}
-                            className={`${inputCls} w-16`}
-                          />
-                          <span className="text-xs text-muted-foreground">/</span>
-                          <input
-                            name="carryForwardExpiryDay"
-                            type="number"
-                            min="1"
-                            max="31"
-                            step="1"
-                            aria-label={t('carryExpiryDayLabel')}
-                            placeholder={t('carryExpiryDayLabel')}
-                            defaultValue={p.carryForwardExpiryDay ?? ''}
-                            className={`${inputCls} w-16`}
-                          />
-                        </div>
-                      </Field>
+                      <CarryExpiryFields
+                        t={t}
+                        mode={p.carryForwardExpiryMode}
+                        month={p.carryForwardExpiryMonth}
+                        day={p.carryForwardExpiryDay}
+                        months={p.carryForwardExpiryMonths}
+                      />
                       <Field label={t('carryIncludeEarnedLabel')}>
                         <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryIncludeEarnedHelp')}>
                           <input
@@ -676,8 +769,18 @@ export function LeaveTypePanel({
                     {isAnnual && !carryRuleEnabled(p) && (
                       <span className={badge.muted}>{t('carryOffText')}</span>
                     )}
+                    {/* R4 Build #1: months-mode expiry summary ("expires 3 mo after year-end"). */}
                     {isAnnual &&
                       p.carryForwardMax > 0 &&
+                      p.carryForwardExpiryMode === 'months' &&
+                      p.carryForwardExpiryMonths != null && (
+                        <span className="text-muted-foreground">
+                          {t('carryExpiryMonthsText', { months: p.carryForwardExpiryMonths })}
+                        </span>
+                      )}
+                    {isAnnual &&
+                      p.carryForwardMax > 0 &&
+                      p.carryForwardExpiryMode !== 'months' &&
                       p.carryForwardExpiryMonth != null &&
                       p.carryForwardExpiryDay != null && (
                         <span className="text-muted-foreground">
@@ -768,31 +871,7 @@ export function LeaveTypePanel({
                       className={`${inputCls} w-24`}
                     />
                   </Field>
-                  <Field label={t('carryExpiryLabel')}>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        name="carryForwardExpiryMonth"
-                        type="number"
-                        min="1"
-                        max="12"
-                        step="1"
-                        aria-label={t('carryExpiryMonthLabel')}
-                        placeholder={t('carryExpiryMonthLabel')}
-                        className={`${inputCls} w-16`}
-                      />
-                      <span className="text-xs text-muted-foreground">/</span>
-                      <input
-                        name="carryForwardExpiryDay"
-                        type="number"
-                        min="1"
-                        max="31"
-                        step="1"
-                        aria-label={t('carryExpiryDayLabel')}
-                        placeholder={t('carryExpiryDayLabel')}
-                        className={`${inputCls} w-16`}
-                      />
-                    </div>
-                  </Field>
+                  <CarryExpiryFields t={t} mode="date" />
                   <Field label={t('carryIncludeEarnedLabel')}>
                     <label className="flex items-center gap-1.5 text-xs text-muted-foreground" title={t('carryIncludeEarnedHelp')}>
                       <input

@@ -5,6 +5,7 @@ import {
   earnedCycleStart,
   isEarnedMethod,
   isLeaveEligible,
+  lastRealDayOfMonth,
   reconstructCarry,
   resolveGradePolicy,
   type GradePolicyRow,
@@ -853,9 +854,14 @@ export function leaveEntitlementBreakdown(
     const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
     const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;
     const cycleYear = cycleStart.slice(0, 4);
+    // R4 Build #1: clamp the expiry `day` to the real last day of `expiry.month` in this cycle year, mirroring
+    // the sweep (core/leave.ts). Guarantees a real calendar date for months-mode (day=31 sentinel) and any
+    // 29-Feb-in-a-common-year, so this reader never emits a phantom string like '2027-02-29' to the UI.
     const carryForwardExpiryDate =
       carryMax > 0 && expiry
-        ? `${cycleYear}-${String(expiry.month).padStart(2, '0')}-${String(expiry.day).padStart(2, '0')}`
+        ? `${cycleYear}-${String(expiry.month).padStart(2, '0')}-${String(
+            Math.min(expiry.day, lastRealDayOfMonth(Number(cycleYear), expiry.month)),
+          ).padStart(2, '0')}`
         : null;
 
     // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.

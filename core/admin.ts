@@ -7,7 +7,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
-import { LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
+import { isValidMonthDay, LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
 import { MY_STATES } from '../localization/my/holidays';
 import {
   appUser,
@@ -374,16 +374,49 @@ export async function archiveJobGrade(ctx: SessionContext, p: { id: string; arch
   });
 }
 
-/** ADR-0038 carry-forward expiry: clamp the optional month/day offset (1-12 / 1-31) into the JSONB, or
- *  leave both unset (carry never expires). Returned as a partial so it can be spread into `accrual`. */
-function carryExpiryAccrual(month?: number | null, day?: number | null): {
+/**
+ * ADR-0038 carry-forward expiry (R4 Build #1 — mode-authoritative + validated).
+ *
+ * Returns the carry-expiry keys to spread into `accrual`, emitting EXACTLY one mode's pair so a switch
+ * (date→months or vice-versa) never leaves a stale cross-mode key behind in the rebuilt JSONB:
+ *   - 'months' mode: `{ carryForwardExpiryMode: 'months', carryForwardExpiryMonths: X }` (X ∈ 1..12). An
+ *     empty/missing X ⇒ `{}` (never expires — mirrors the date "both unset" branch). Month/day keys omitted.
+ *   - 'date' mode (or mode absent — back-compat): validate month/day with `isValidMonthDay` and emit
+ *     `{ carryForwardExpiryMonth, carryForwardExpiryDay }`; both unset ⇒ `{}` (never expires). Months keys
+ *     omitted so the writer never persists mode without months.
+ *
+ * Throws a plain-English error (matching the sibling `throw new Error(string)` convention in this file —
+ * there is no code→i18n machinery) on an impossible calendar date or an out-of-range months value; the
+ * server action's try/catch surfaces the message to the error banner.
+ */
+function carryExpiryAccrual(p: {
+  mode?: 'date' | 'months';
+  month?: number | null;
+  day?: number | null;
+  months?: number | null;
+}): {
+  carryForwardExpiryMode?: 'months';
+  carryForwardExpiryMonths?: number;
   carryForwardExpiryMonth?: number;
   carryForwardExpiryDay?: number;
 } {
-  const m = Number(month ?? 0);
-  const d = Number(day ?? 0);
-  if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { carryForwardExpiryMonth: m, carryForwardExpiryDay: d };
-  return {};
+  if (p.mode === 'months') {
+    // Empty months ⇒ never expires (blank = never, matching the date branch). Do NOT persist mode-only.
+    if (p.months == null || String(p.months) === '') return {};
+    const x = Number(p.months);
+    if (!Number.isInteger(x) || x < 1 || x > 12) {
+      throw new Error('Carry-forward expiry months must be between 1 and 12.');
+    }
+    return { carryForwardExpiryMode: 'months', carryForwardExpiryMonths: x };
+  }
+  // date mode (or absent)
+  const m = Number(p.month ?? 0);
+  const d = Number(p.day ?? 0);
+  if (m === 0 && d === 0) return {}; // both unset ⇒ never expires
+  if (!isValidMonthDay(m, d)) {
+    throw new Error('Carry-forward expiry must be a real calendar date (e.g. 30 April, not 31 April).');
+  }
+  return { carryForwardExpiryMonth: m, carryForwardExpiryDay: d };
 }
 
 /**
@@ -415,6 +448,10 @@ export async function createLeavePolicy(
     /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
     carryForwardExpiryMonth?: number | null;
     carryForwardExpiryDay?: number | null;
+    /** R4 Build #1: expiry mode. 'date' (or absent) reads month/day; 'months' reads carryForwardExpiryMonths. */
+    carryForwardExpiryMode?: 'date' | 'months';
+    /** R4 Build #1: X ∈ 1..12 — "expire X months after year-end". Only read in 'months' mode. */
+    carryForwardExpiryMonths?: number | null;
     /** Carry-forward enhancement: explicit on/off switch. undefined = omit (back-compat `cap > 0` default). */
     carryForwardEnabled?: boolean;
     /** Carry-forward enhancement (config-only): include monthly-earned balance. Persisted; engine wiring deferred. */
@@ -430,7 +467,12 @@ export async function createLeavePolicy(
 ) {
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
-    const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
+    const expiry = carryExpiryAccrual({
+      mode: p.carryForwardExpiryMode,
+      month: p.carryForwardExpiryMonth,
+      day: p.carryForwardExpiryDay,
+      months: p.carryForwardExpiryMonths,
+    });
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
     const companyId = p.companyId ?? null;
     const [row] = await tx
@@ -474,6 +516,10 @@ export async function updateLeavePolicy(
     /** ADR-0038: month/day on which the carried-forward portion expires (auto-forfeit). Both unset = never. */
     carryForwardExpiryMonth?: number | null;
     carryForwardExpiryDay?: number | null;
+    /** R4 Build #1: expiry mode. 'date' (or absent) reads month/day; 'months' reads carryForwardExpiryMonths. */
+    carryForwardExpiryMode?: 'date' | 'months';
+    /** R4 Build #1: X ∈ 1..12 — "expire X months after year-end". Only read in 'months' mode. */
+    carryForwardExpiryMonths?: number | null;
     /** Carry-forward enhancement: explicit on/off switch. undefined = omit (back-compat `cap > 0` default). */
     carryForwardEnabled?: boolean;
     /** Carry-forward enhancement (config-only): include monthly-earned balance. Persisted; engine wiring deferred. */
@@ -487,7 +533,12 @@ export async function updateLeavePolicy(
 ) {
   return withTenant(ctx, async (tx) => {
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
-    const expiry = carryExpiryAccrual(p.carryForwardExpiryMonth, p.carryForwardExpiryDay);
+    const expiry = carryExpiryAccrual({
+      mode: p.carryForwardExpiryMode,
+      month: p.carryForwardExpiryMonth,
+      day: p.carryForwardExpiryDay,
+      months: p.carryForwardExpiryMonths,
+    });
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
     const companyId = p.companyId ?? null;
     await tx

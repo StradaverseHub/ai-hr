@@ -2085,6 +2085,24 @@ export type GradePolicyRow = { gradeId: string | null; accrual: unknown; company
  *  (e.g. {month:3, day:31} = 31 March of the leave year following the one it was carried into). Stored
  *  as an OFFSET, not a hardcoded date, so it works for any leave-year start. null = never expires. */
 export type CarryExpiry = { month: number; day: number };
+
+/** True iff (month, day) is a real calendar day in *some* year — i.e. month∈1..12 and day is within the
+ *  month's length, treating Feb's max as 29 (a leap year) for the "is this EVER valid" question. Config-time
+ *  validation uses this so 29 Feb is savable as a legitimate intent; the resolvers then year-clamp it via
+ *  `lastRealDayOfMonth` so a common year never produces a phantom 29-Feb. Round-trips through a UTC `Date`
+ *  against a known leap year (2024) — no static max-day table, so it can never drift leap-blind. */
+export function isValidMonthDay(month: number, day: number): boolean {
+  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1) return false;
+  const dt = new Date(Date.UTC(2024, month - 1, day)); // 2024 is a leap year ⇒ 29 Feb accepted
+  return dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
+}
+
+/** Last real day of (year, month), leap-correct. Reuses the day-0-of-next-month round-trip (see
+ *  `subtractMonths`): Date.UTC(year, month, 0) rolls back to the final day of `month` (1-based). This is the
+ *  year-aware clamp the resolvers apply so every emitted expiry date is a real calendar day. */
+export function lastRealDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
 export type ResolvedPolicy = {
   days: number;
   carryMax: number;
@@ -2101,6 +2119,12 @@ type AccrualConfig = {
   method?: string;
   carryForwardExpiryMonth?: number;
   carryForwardExpiryDay?: number;
+  /** Carry-forward expiry mode (R4 Build #1). Absent ⇒ 'date' (back-compat: read month/day). 'months' ⇒
+   *  "expire X months after year-end", where X = carryForwardExpiryMonths (see `parseCarryExpiry`). */
+  carryForwardExpiryMode?: 'date' | 'months';
+  /** X ∈ 1..12 — only meaningful in 'months' mode: the carried portion expires at the end of month X of the
+   *  carry's leave-year (year-open is 1 Jan, so month X = X months after year-end). */
+  carryForwardExpiryMonths?: number;
   /** Carry-forward enhancement: explicit on/off switch. Absent ⇒ back-compat default (`carryForwardMax > 0`). */
   carryForwardEnabled?: boolean;
   // config-only (carry-forward follow-up): persisted but NOT yet read by the year-end engine. The
@@ -2118,11 +2142,27 @@ export function carryEnabled(pol: ResolvedPolicy | null | undefined): boolean {
   if (pol == null) return false;
   return pol.carryForwardEnabled ?? (pol.carryMax ?? 0) > 0;
 }
-/** Parse the two optional offset fields into a {month, day} (or null when either is absent/out of range). */
+/** Parse the carry-forward expiry config into a `{month, day}` OFFSET, or null (never expires).
+ *
+ *  Mode is authoritative (R4 Build #1):
+ *   - 'months' mode: "expire X months after year-end" ⇒ `{ month: X, day: 31 }`. The `31` is an over-max
+ *     sentinel that the two build sites clamp with `lastRealDayOfMonth(year, month)` to the real last day of
+ *     that month in the carry's own leave-year (so month 2 becomes 28/29, month 6 becomes 30, etc.). An
+ *     empty/invalid X ⇒ null (never expires), mirroring the date "both unset" branch. Month/day keys are
+ *     IGNORED in this mode so a stale cross-mode pair can never leak.
+ *   - 'date' mode (or mode absent — back-compat): read month/day. Reject legacy garbage (e.g. a stored
+ *     31-Feb) via `isValidMonthDay` so a phantom pre-existing value resolves to null (no expiry, no crash)
+ *     rather than an impossible date. A savable 29-Feb passes here and is year-clamped at the build site.
+ */
 function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null {
+  if (acc?.carryForwardExpiryMode === 'months') {
+    const x = Number(acc?.carryForwardExpiryMonths ?? 0);
+    if (Number.isInteger(x) && x >= 1 && x <= 12) return { month: x, day: 31 };
+    return null; // empty/invalid X ⇒ never expires
+  }
   const m = Number(acc?.carryForwardExpiryMonth ?? 0);
   const d = Number(acc?.carryForwardExpiryDay ?? 0);
-  if (m >= 1 && m <= 12 && d >= 1 && d <= 31) return { month: m, day: d };
+  if (isValidMonthDay(m, d)) return { month: m, day: d };
   return null;
 }
 /** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
@@ -2517,7 +2557,13 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
           if (!carryEnabled(pol)) continue;
           const expiry = pol?.carryExpiry ?? null;
           if (!expiry) continue;
-          const expiryDate = `${y}-${String(expiry.month).padStart(2, '0')}-${String(expiry.day).padStart(2, '0')}`;
+          // R4 Build #1 crash fix: clamp the offset `day` to the real last day of `expiry.month` in THIS
+          // leave-year so the emitted date is always a real calendar day. This covers months-mode (day=31
+          // sentinel ⇒ the month's true last day), a date-mode 29-Feb in a common year (⇒ 28 Feb), and any
+          // legacy garbage that survives `parseCarryExpiry`. Without it, an impossible date (e.g. 2027-02-29)
+          // would insert into a `date` column and abort the whole tenant sweep.
+          const dd = Math.min(expiry.day, lastRealDayOfMonth(y, expiry.month));
+          const expiryDate = `${y}-${String(expiry.month).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
           if (expiryDate > p.today) continue; // not yet due
           // Only sweep a year whose leave-year was actually OPENED: openLeaveYear posts the carry as a
           // Jan-1 accrual (its own open-marker). Without that marker no carry was ever posted for this year,

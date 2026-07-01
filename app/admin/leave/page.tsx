@@ -71,6 +71,8 @@ export default async function LeaveConfigPage({
       method?: string;
       carryForwardExpiryMonth?: number;
       carryForwardExpiryDay?: number;
+      carryForwardExpiryMode?: 'date' | 'months';
+      carryForwardExpiryMonths?: number;
       carryForwardEnabled?: boolean;
       carryForwardIncludeEarned?: boolean;
     } | null;
@@ -80,6 +82,9 @@ export default async function LeaveConfigPage({
       carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
       carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
       carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
+      // R4 Build #1: mode absent ⇒ 'date' so existing policies hydrate as date-mode (back-compat).
+      carryForwardExpiryMode: acc?.carryForwardExpiryMode === 'months' ? 'months' : 'date',
+      carryForwardExpiryMonths: acc?.carryForwardExpiryMonths ?? null,
       // Carry-forward enhancement: absent ⇒ undefined so the panel's back-compat default (cap > 0) drives
       // the checkbox; an explicit boolean round-trips.
       carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
