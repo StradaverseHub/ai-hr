@@ -48,6 +48,7 @@ const brief = [
   `Description: ${fb.description ?? ''}`,
   fb.expected_behavior ? `Expected behaviour: ${fb.expected_behavior}` : '',
   fb.expected_function ? `Expected function: ${fb.expected_function}` : '',
+  fb.contest_reason ? `Contest reason (this item was previously planned and the reporter pushed back): ${fb.contest_reason}` : '',
 ]
   .filter(Boolean)
   .join('\n');
