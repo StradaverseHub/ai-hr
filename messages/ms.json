@@ -54,7 +54,16 @@
     "autoCalculated": "dikira automatik",
     "manualOverride": "Tetapan manual (minit)",
     "duplicate": "Buat salinan",
-    "multiBreakStorageHint": "Beberapa tempoh rehat disimpan dan dipaparkan, tetapi jam yang ditolak masih menggunakan jumlah gabungannya — ketepatan mengikut setiap rehat ialah penambahbaikan akan datang."
+    "multiBreakStorageHint": "Beberapa tempoh rehat disimpan dan dipaparkan, tetapi jam yang ditolak masih menggunakan jumlah gabungannya — ketepatan mengikut setiap rehat ialah penambahbaikan akan datang.",
+    "weeklyPattern": "Hari bekerja (Isn–Ahd)",
+    "working": "Bekerja",
+    "generate": "Jana jadual syif",
+    "scope": "Skop",
+    "scopeEmployees": "Pekerja terpilih",
+    "scopeDepartment": "Jabatan",
+    "dateRange": "Julat tarikh",
+    "generated": "Jadual dijana untuk {employees} pekerja — {working} catatan hari bekerja dan {rest} catatan hari rehat.",
+    "generateHint": "Mengisi setiap tarikh dalam julat mengikut corak mingguan syif: catatan syif pada hari bekerja dan hari rehat yang jelas pada hari selebihnya, supaya polisi syarikat tidak menimpa corak itu secara senyap. Jana semula akan menulis ganti tarikh yang sama."
   },
   "common": {
     "appName": "AI HR",

@@ -7,8 +7,9 @@ import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type BreakPeriod, type ShiftDifferential } from '../db/schema';
-import { shiftSpan } from './attendance';
+import { isoWeekday, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
+import { listEmployeesPage } from './read';
 
 const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
 
@@ -47,6 +48,9 @@ export type ShiftInput = {
   breakPeriods?: BreakPeriod[] | null;
   /** Manual normal-working-minutes figure; when set it is the workday OT threshold (deriveAttendance). */
   normalMinutesOverride?: number | null;
+  /** R7 Phase 2 — ISO weekdays (1=Mon…7=Sun) that are WORKING days (rest = complement), mirroring
+   *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation. */
+  weeklyPattern?: number[] | null;
   differential?: ShiftDifferential | null;
 };
 
@@ -59,6 +63,7 @@ type NormalizedShift = {
   breakMinutes: number;
   breakPeriods: BreakPeriod[] | null;
   normalMinutesOverride: number | null;
+  weeklyPattern: number[] | null;
   differential: ShiftDifferential | null;
 };
 
@@ -102,9 +107,20 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     if (!Number.isFinite(o) || o < 0 || o > span) throw new Error('Normal-hours override must be between 0 and the shift span');
     normalMinutesOverride = o;
   }
+
+  // R7 Phase 2 — weekly pattern: validated ISO weekdays, deduped + sorted. Empty ⇒ null (a shift with zero
+  // working days is "no pattern", not a 7-day rest week).
+  let weeklyPattern: number[] | null = null;
+  if (p.weeklyPattern && p.weeklyPattern.length > 0) {
+    const days = [...new Set(p.weeklyPattern.map((d) => Math.trunc(d)))].sort((a, b) => a - b);
+    if (days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
+      throw new Error('Weekly pattern days must be ISO weekday numbers 1 (Mon) … 7 (Sun)');
+    }
+    weeklyPattern = days;
+  }
   // The auto figure (used when no override): netScheduledMinutes(startTime, endTime, crossesMidnight,
   // breakMinutes) — derived on the fly by scheduleFor / the UI readout, deliberately not stored.
-  return { name, code, startTime, endTime, crossesMidnight, breakMinutes, breakPeriods, normalMinutesOverride, differential };
+  return { name, code, startTime, endTime, crossesMidnight, breakMinutes, breakPeriods, normalMinutesOverride, weeklyPattern, differential };
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -149,6 +165,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           breakMinutes: n.breakMinutes,
           breakPeriods: n.breakPeriods,
           normalMinutesOverride: n.normalMinutesOverride,
+          weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
           differential: n.differential,
         })
@@ -171,6 +188,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         breakMinutes: n.breakMinutes,
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
+        weeklyPattern: n.weeklyPattern,
         hasDifferential: !!n.differential,
       },
     });
@@ -192,6 +210,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           breakMinutes: n.breakMinutes,
           breakPeriods: n.breakPeriods,
           normalMinutesOverride: n.normalMinutesOverride,
+          weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
           differential: n.differential,
           updatedAt: new Date(),
@@ -214,6 +233,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         breakMinutes: n.breakMinutes,
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
+        weeklyPattern: n.weeklyPattern,
         hasDifferential: !!n.differential,
       },
     });
@@ -262,6 +282,7 @@ export async function duplicateShift(ctx: SessionContext, p: { shiftId: string }
           breakMinutes: src.breakMinutes,
           breakPeriods: src.breakPeriods,
           normalMinutesOverride: src.normalMinutesOverride,
+          weeklyPattern: src.weeklyPattern,
           crossesMidnight: src.crossesMidnight,
           differential: src.differential,
           archivedAt: null,
@@ -285,6 +306,7 @@ export async function duplicateShift(ctx: SessionContext, p: { shiftId: string }
         breakMinutes: src.breakMinutes,
         breakPeriods: src.breakPeriods,
         normalMinutesOverride: src.normalMinutesOverride,
+        weeklyPattern: src.weeklyPattern,
         hasDifferential: !!src.differential,
         duplicatedFrom: p.shiftId,
       },
@@ -418,6 +440,116 @@ export async function assignShiftBulk(
     });
     return { assigned: values.length };
   });
+}
+
+/** Bulk-mark rest days for many employees across many dates — the rest-day half of roster generation,
+ *  mirroring assignShiftBulk's idempotent upsert. ONE thin summary event (per-row roster.rest-day.set
+ *  events would spam the log at scale — documented skip, same rationale as assignShiftBulk), anchored on
+ *  the driving shift template exactly like roster.bulk.assigned. */
+async function setRestDayBulk(ctx: SessionContext, p: { employmentIds: string[]; shiftDates: string[]; forShiftId: string }) {
+  if (p.employmentIds.length === 0 || p.shiftDates.length === 0) return { rested: 0 };
+  const values = p.employmentIds.flatMap((employmentId) =>
+    p.shiftDates.map((shiftDate) => ({ tenantId: ctx.tenantId, employmentId, shiftDate, shiftId: null, isRestDay: true })),
+  );
+  return withTenant(ctx, async (tx) => {
+    await tx
+      .insert(rosterAssignment)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
+        set: { shiftId: null, isRestDay: true, updatedAt: new Date() },
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'roster-assignment',
+      aggregateId: p.forShiftId,
+      eventType: 'roster.bulk.rest-day.set',
+      actor: actorOf(ctx),
+      payload: { shiftId: p.forShiftId, employmentCount: p.employmentIds.length, dateCount: p.shiftDates.length, rows: values.length },
+    });
+    return { rested: values.length };
+  });
+}
+
+const DAY_MS = 86_400_000;
+const isIsoDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/**
+ * R7 Multi-Shift Phase 2 — generate a roster window from a shift's weekly pattern. A THIN date-splitter
+ * over the EXISTING bulk primitives (assignShiftBulk / setRestDayBulk, both idempotent upserts on
+ * (employee, date)) — deliberately NOT a new subsystem.
+ *
+ * TWO-SOURCES RECONCILIATION (the load-bearing rule): the shift's weekly_pattern and the company
+ * attendance_policy.working_days can disagree, and scheduleFor prefers a roster row over the policy
+ * branch. So the generator writes a row for EVERY date in the window — a WORKING row on pattern working
+ * days AND an explicit isRestDay row on pattern rest days — so an uncovered date never silently falls
+ * back to the company policy. The shift's Saturday-working / Saturday-rest choice always wins on
+ * generated dates; dates outside the window keep the policy fallback.
+ *
+ * Scope: explicit employmentIds, or a departmentId resolved via listEmployeesPage's current-assignment
+ * department filter (listEmployees has NO dept filter). Terminated employees are excluded — generating
+ * schedule rows for leavers is never wanted.
+ *
+ * Events: assignShiftBulk fires its existing roster.bulk.assigned; the rest half fires one thin
+ * roster.bulk.rest-day.set summary. NO separate roster.generated event (nothing would branch on it).
+ */
+export async function generateRosterFromTemplate(
+  ctx: SessionContext,
+  p: { shiftId: string; employmentIds?: string[]; departmentId?: string; from: string; to: string },
+) {
+  if (!isIsoDate(p.from) || !isIsoDate(p.to)) throw new Error('Dates must be YYYY-MM-DD');
+  const fromMs = Date.parse(`${p.from}T00:00:00Z`);
+  const toMs = Date.parse(`${p.to}T00:00:00Z`);
+  if (toMs < fromMs) throw new Error('The end date must not be before the start date');
+  if (toMs - fromMs > 366 * DAY_MS) throw new Error('Generate at most one year at a time');
+
+  const [tpl] = await withTenant(ctx, (tx) =>
+    tx
+      .select({ companyId: shift.companyId, weeklyPattern: shift.weeklyPattern, archivedAt: shift.archivedAt })
+      .from(shift)
+      .where(eq(shift.id, p.shiftId))
+      .limit(1),
+  );
+  if (!tpl) throw new Error('Shift not found (or not visible)');
+  if (tpl.archivedAt) throw new Error('Cannot generate a roster from an archived shift');
+  if (!tpl.weeklyPattern || tpl.weeklyPattern.length === 0) {
+    throw new Error('This shift has no weekly working-day pattern — set one on the shift first');
+  }
+
+  let employmentIds: string[];
+  if (p.departmentId) {
+    // Department scope — the reuse path that actually exists: listEmployeesPage's current-assignment
+    // (validTo IS NULL AND supersededAt IS NULL) department filter, mapped to employmentIds.
+    const page = await listEmployeesPage(ctx, {
+      departmentId: p.departmentId,
+      companyIds: [tpl.companyId],
+      status: 'active',
+      limit: 100_000,
+      offset: 0,
+    });
+    employmentIds = page.rows.map((r) => r.employmentId);
+  } else {
+    employmentIds = [...new Set(p.employmentIds ?? [])];
+  }
+  if (employmentIds.length === 0) throw new Error('No employees in scope — pick employees or a department with members');
+
+  const pattern = tpl.weeklyPattern;
+  const workingDates: string[] = [];
+  const restDates: string[] = [];
+  for (let ms = fromMs; ms <= toMs; ms += DAY_MS) {
+    const iso = new Date(ms).toISOString().slice(0, 10);
+    (pattern.includes(isoWeekday(iso)) ? workingDates : restDates).push(iso);
+  }
+
+  const assigned = await assignShiftBulk(ctx, { employmentIds, shiftDates: workingDates, shiftId: p.shiftId });
+  const rested = await setRestDayBulk(ctx, { employmentIds, shiftDates: restDates, forShiftId: p.shiftId });
+  return {
+    employments: employmentIds.length,
+    workingDates: workingDates.length,
+    restDates: restDates.length,
+    workingRows: assigned.assigned,
+    restRows: rested.rested,
+  };
 }
 
 /** The roster grid for a date window (admin/manager view; RLS scopes which employees are visible). */

@@ -1,14 +1,19 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies, listDepartments, listEmployees } from '@/core/read';
 import { listShifts, rosterForRange, rosterVariance } from '@/core/roster';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
 import { ShiftTimeFields } from '@/components/shift-time-fields';
 import { ToilElectButton } from '@/components/toil-elect-button';
-import { archiveShiftAction, createShiftAction, duplicateShiftAction } from './actions';
+import { archiveShiftAction, createShiftAction, duplicateShiftAction, generateRosterAction } from './actions';
+
+// ISO weekdays for the shift form's Mon–Sun Working/Rest toggle (same row pattern as the attendance-policy
+// working-days editor — app/admin/attendance/page.tsx — whose dayMon…daySun keys are reused here).
+const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
 
 const DAY = 86_400_000;
 const mondayOf = (iso: string): string => {
@@ -24,10 +29,11 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00
 export default async function RosterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; week?: string; error?: string }>;
+  searchParams: Promise<{ companyId?: string; week?: string; error?: string; generated?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('roster');
+  const tDay = await getTranslations('admin.attendancePolicy'); // reuse the existing dayMon…daySun keys
   const locale = await getLocale();
   const sp = await searchParams;
 
@@ -45,13 +51,16 @@ export default async function RosterPage({
   const weekStart = mondayOf(sp.week && /^\d{4}-\d{2}-\d{2}$/.test(sp.week) ? sp.week : todayIso);
   const weekEnd = addDays(weekStart, 6);
 
-  const [employees, shifts, roster, variance, toilPolicies] = await Promise.all([
+  const [employees, shifts, roster, variance, toilPolicies, departments] = await Promise.all([
     listEmployees(s, [companyId]),
     listShifts(s, companyId),
     rosterForRange(s, { from: weekStart, to: weekEnd }),
     rosterVariance(s, { from: weekStart, to: weekEnd, companyIds: [companyId], today: todayIso }),
     listToilPolicies(s, [companyId]),
+    listDepartments(s, { companyIds: [companyId] }),
   ]);
+  // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
+  const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
   const exceptions = variance.filter((v) => v.kind !== 'on_track');
   // "Bank in lieu" appears on rest-worked rows only when TOIL is on (env kill-switch AND company policy).
   const toilOn = process.env.TOIL_ENABLED === 'true' && (toilPolicies[0]?.enabled ?? false);
@@ -94,6 +103,11 @@ export default async function RosterPage({
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
       <ErrorBanner message={sp.error} />
+      {gen && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {t('generated', { employees: gen[0], working: gen[1], rest: gen[2] })}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         {companies.length > 1 ? (
@@ -169,10 +183,93 @@ export default async function RosterPage({
               <option value="flat_per_shift">{t('diffPerShift')}</option>
             </select>
             <input name="differentialValue" type="number" min={0} step="0.01" placeholder={t('diffValue')} className={`${inputCls} w-24`} aria-label={t('diffValue')} />
+            {/* R7 Phase 2 — Mon–Sun Working/Rest toggle (same has-[:checked] row as the attendance-policy
+                working-days editor). Checked = working day; unchecked = rest. Default Mon–Fri. */}
+            <fieldset className="w-full">
+              <legend className="mb-1.5 text-sm font-medium text-foreground">
+                {t('weeklyPattern')}{' '}
+                <span className="font-normal text-muted-foreground">
+                  ({t('working')} / {t('rest')})
+                </span>
+              </legend>
+              <div className="flex flex-wrap gap-1.5">
+                {ISO_DAYS.map((d) => (
+                  <label
+                    key={d}
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary"
+                  >
+                    <input
+                      type="checkbox"
+                      name="weeklyPattern"
+                      value={d}
+                      defaultChecked={d <= 5}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    {tDay(DAY_KEY[d])}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <button className={btnPrimary}>{t('addShift')}</button>
           </form>
           <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
           <p className="text-xs text-muted-foreground">{t('multiBreakStorageHint')}</p>
+        </div>
+      </Card>
+
+      <Card>
+        <SectionHeader title={t('generate')} />
+        <div className="space-y-3 px-4 py-3">
+          {shifts.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('createShiftFirst')}</p>
+          ) : (
+            <form action={generateRosterAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="companyId" value={companyId} />
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('shifts')}
+                <select name="shiftId" required className={inputCls}>
+                  {shifts.map((sh) => (
+                    <option key={sh.id} value={sh.id}>
+                      {sh.code ? `${sh.code} · ` : ''}
+                      {sh.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('scope')}
+                {/* A chosen department wins over the employee multi-select (the action prefers it). */}
+                <select name="departmentId" defaultValue="" className={inputCls}>
+                  <option value="">{t('scopeEmployees')}</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {t('scopeDepartment')}: {d.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('employee')}
+                <select name="employmentIds" multiple size={4} className={`${inputCls} min-w-44`} aria-label={t('scopeEmployees')}>
+                  {activeEmployees.map((e) => (
+                    <option key={e.employmentId} value={e.employmentId}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('dateRange')}
+                <span className="flex items-center gap-1.5">
+                  <input type="date" name="from" required defaultValue={weekStart} className={inputCls} />
+                  <span className="text-xs text-muted-foreground">–</span>
+                  <input type="date" name="to" required defaultValue={addDays(weekStart, 27)} className={inputCls} />
+                </span>
+              </label>
+              <button className={btnPrimary}>{t('generate')}</button>
+            </form>
+          )}
+          <p className="text-xs text-muted-foreground">{t('generateHint')}</p>
         </div>
       </Card>
 

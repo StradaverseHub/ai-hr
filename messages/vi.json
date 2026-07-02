@@ -54,7 +54,16 @@
     "autoCalculated": "tự động tính",
     "manualOverride": "Ghi đè thủ công (phút)",
     "duplicate": "Nhân bản",
-    "multiBreakStorageHint": "Nhiều khoảng nghỉ được lưu và hiển thị, nhưng số giờ khấu trừ vẫn dùng tổng cộng của chúng — độ chính xác theo từng khoảng nghỉ là cải tiến trong tương lai."
+    "multiBreakStorageHint": "Nhiều khoảng nghỉ được lưu và hiển thị, nhưng số giờ khấu trừ vẫn dùng tổng cộng của chúng — độ chính xác theo từng khoảng nghỉ là cải tiến trong tương lai.",
+    "weeklyPattern": "Ngày làm việc (T2–CN)",
+    "working": "Làm việc",
+    "generate": "Tạo lịch phân ca",
+    "scope": "Phạm vi",
+    "scopeEmployees": "Nhân viên đã chọn",
+    "scopeDepartment": "Phòng ban",
+    "dateRange": "Khoảng ngày",
+    "generated": "Đã tạo lịch cho {employees} nhân viên — {working} mục ngày làm việc và {rest} mục ngày nghỉ.",
+    "generateHint": "Điền mọi ngày trong khoảng theo mẫu tuần của ca: mục ca vào ngày làm việc và ngày nghỉ rõ ràng cho các ngày còn lại, để chính sách công ty không âm thầm ghi đè mẫu. Chạy lại sẽ ghi đè các ngày đó."
   },
   "common": {
     "appName": "AI HR",

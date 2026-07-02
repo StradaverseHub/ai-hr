@@ -1388,6 +1388,10 @@ export const shift = pgTable(
     // R7 Multi-Shift Phase 1: manual normal-working-minutes figure; when set it is what workday OT is
     // measured against (core/attendance.ts deriveAttendance). NULL ⇒ auto (span − break).
     normalMinutesOverride: integer('normal_minutes_override'),
+    // R7 Multi-Shift Phase 2: ISO weekday numbers (1=Mon … 7=Sun) that are WORKING days for this shift —
+    // rest = complement — mirroring attendance_policy.working_days. NULL ⇒ no pattern; the shift cannot
+    // drive generateRosterFromTemplate and behaves exactly as before.
+    weeklyPattern: integer('weekly_pattern').array(),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

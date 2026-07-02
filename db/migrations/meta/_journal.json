@@ -981,6 +981,13 @@
       "when": 1781862030000,
       "tag": "0139_shift_template",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1781862040000,
+      "tag": "0140_shift_weekly_pattern",
+      "breakpoints": true
     }
   ]
 }

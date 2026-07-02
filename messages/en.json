@@ -54,7 +54,16 @@
     "autoCalculated": "auto-calculated",
     "manualOverride": "Override (minutes)",
     "duplicate": "Duplicate",
-    "multiBreakStorageHint": "Multiple break windows are saved and shown, but the hours deducted still use their combined total — per-break precision is a future enhancement."
+    "multiBreakStorageHint": "Multiple break windows are saved and shown, but the hours deducted still use their combined total — per-break precision is a future enhancement.",
+    "weeklyPattern": "Working days (Mon–Sun)",
+    "working": "Working",
+    "generate": "Generate roster",
+    "scope": "Scope",
+    "scopeEmployees": "Selected employees",
+    "scopeDepartment": "Department",
+    "dateRange": "Date range",
+    "generated": "Roster generated for {employees} employees — {working} working-day and {rest} rest-day entries.",
+    "generateHint": "Fills every date in the range from the shift's weekly pattern: shift entries on working days and explicit rest days on the rest, so the company policy never silently overrides the pattern. Re-running overwrites the same dates."
   },
   "common": {
     "appName": "AI HR",

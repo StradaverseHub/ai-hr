@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, assignShift, assignShiftBulk, clearRoster, createShift, duplicateShift, setRestDay, updateShift } from '@/core/roster';
+import { archiveShift, assignShift, assignShiftBulk, clearRoster, createShift, duplicateShift, generateRosterFromTemplate, setRestDay, updateShift } from '@/core/roster';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -106,6 +106,12 @@ function shiftFields(formData: FormData) {
   const differential =
     DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
   const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
+  // R7 Phase 2 — the Mon–Sun Working/Rest checkbox row posts one `weeklyPattern` entry per checked day.
+  // None checked ⇒ null (no pattern; the shift cannot drive roster generation).
+  const weeklyPattern = formData
+    .getAll('weeklyPattern')
+    .map((v) => Number(v))
+    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
   return {
     name: String(formData.get('name') ?? '').trim(),
     code: String(formData.get('code') ?? '').trim(),
@@ -114,6 +120,7 @@ function shiftFields(formData: FormData) {
     breakMinutes: Number(formData.get('breakMinutes') ?? 0),
     breakPeriods: parseBreakPeriods(String(formData.get('breakPeriods') ?? '')),
     normalMinutesOverride: overrideRaw === '' ? null : Number(overrideRaw),
+    weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
     differential,
   };
 }
@@ -152,6 +159,32 @@ export async function duplicateShiftAction(formData: FormData) {
   }
   revalidatePath('/roster');
   redirect(`/roster?companyId=${companyId}`);
+}
+
+/** R7 Phase 2 — generate a roster window from a shift's weekly pattern: shift + scope (explicit employees
+ *  or a whole department; department wins when both are posted) + date range → the thin generator over the
+ *  existing bulk primitives. Success redirects to the window's first week with a summary banner. */
+export async function generateRosterAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
+  const from = String(formData.get('from') ?? '');
+  const departmentId = String(formData.get('departmentId') ?? '').trim();
+  const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+  let summary: { employments: number; workingRows: number; restRows: number };
+  try {
+    summary = await generateRosterFromTemplate(s, {
+      shiftId: String(formData.get('shiftId') ?? ''),
+      ...(departmentId ? { departmentId } : { employmentIds }),
+      from,
+      to: String(formData.get('to') ?? ''),
+    });
+  } catch (e) {
+    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/roster');
+  redirect(
+    `/roster?companyId=${companyId}&week=${from}&generated=${summary.employments}.${summary.workingRows}.${summary.restRows}`,
+  );
 }
 
 export async function archiveShiftAction(formData: FormData) {
