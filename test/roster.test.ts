@@ -58,8 +58,8 @@ describe('shift rosters (ADR-0032 C1, Phase C)', () => {
 
   it('creates shifts, derives crossesMidnight, lists, archives', async () => {
     const ctx = adminCtx(b);
-    const day = await createShift(ctx, { companyId: b.companyId, name: 'Morning', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
-    await createShift(ctx, { companyId: b.companyId, name: 'Night', startTime: '22:00:00', endTime: '06:00:00' });
+    const day = await createShift(ctx, { companyId: b.companyId, name: 'Morning', code: 'MORNING', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+    await createShift(ctx, { companyId: b.companyId, name: 'Night', code: 'NIGHT', startTime: '22:00:00', endTime: '06:00:00' });
     const rows = await listShifts(ctx, b.companyId);
     expect(rows.map((r) => r.name).sort()).toEqual(['Morning', 'Night']);
     expect(rows.find((r) => r.name === 'Night')!.crossesMidnight).toBe(true);
@@ -74,20 +74,20 @@ describe('shift rosters (ADR-0032 C1, Phase C)', () => {
   it('validates the (non-statutory) differential', async () => {
     const ctx = adminCtx(b);
     await expect(
-      createShift(ctx, { companyId: b.companyId, name: 'Bad', startTime: '22:00:00', endTime: '06:00:00', differential: { kind: 'nope' as never, value: 1 } }),
+      createShift(ctx, { companyId: b.companyId, name: 'Bad', code: 'BAD', startTime: '22:00:00', endTime: '06:00:00', differential: { kind: 'nope' as never, value: 1 } }),
     ).rejects.toThrow(/differential kind/i);
     await expect(
-      createShift(ctx, { companyId: b.companyId, name: 'Bad2', startTime: '22:00:00', endTime: '06:00:00', differential: { kind: 'percent', value: -5 } }),
+      createShift(ctx, { companyId: b.companyId, name: 'Bad2', code: 'BAD2', startTime: '22:00:00', endTime: '06:00:00', differential: { kind: 'percent', value: -5 } }),
     ).rejects.toThrow(/non-negative/i);
-    const ok = await createShift(ctx, { companyId: b.companyId, name: 'NightPrem', startTime: '22:00:00', endTime: '06:00:00', differential: { kind: 'percent', value: 15 } });
+    const ok = await createShift(ctx, { companyId: b.companyId, name: 'NightPrem', code: 'NIGHTPREM', startTime: '22:00:00', endTime: '06:00:00', differential: { kind: 'percent', value: 15 } });
     const [s] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, ok.id));
     expect(s.differential).toEqual({ kind: 'percent', value: 15 });
   });
 
   it('assigns a shift (upsert) + event; re-assign updates the same (employee,date) row', async () => {
     const ctx = adminCtx(b);
-    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', startTime: '08:00:00', endTime: '17:00:00' });
-    const n = await createShift(ctx, { companyId: b.companyId, name: 'N', startTime: '22:00:00', endTime: '06:00:00' });
+    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', code: 'M', startTime: '08:00:00', endTime: '17:00:00' });
+    const n = await createShift(ctx, { companyId: b.companyId, name: 'N', code: 'N', startTime: '22:00:00', endTime: '06:00:00' });
     const a1 = await assignShift(ctx, { employmentId, shiftDate: '2026-07-01', shiftId: m.id });
     const a2 = await assignShift(ctx, { employmentId, shiftDate: '2026-07-01', shiftId: n.id });
     expect(a2.id).toBe(a1.id);
@@ -99,7 +99,7 @@ describe('shift rosters (ADR-0032 C1, Phase C)', () => {
 
   it('rest day flips a shift assignment; clear removes it', async () => {
     const ctx = adminCtx(b);
-    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', startTime: '08:00:00', endTime: '17:00:00' });
+    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', code: 'M', startTime: '08:00:00', endTime: '17:00:00' });
     await assignShift(ctx, { employmentId, shiftDate: '2026-07-02', shiftId: m.id });
     await setRestDay(ctx, { employmentId, shiftDate: '2026-07-02' });
     const [row] = await owner.db
@@ -114,7 +114,7 @@ describe('shift rosters (ADR-0032 C1, Phase C)', () => {
 
   it('bulk-assigns one shift to many employees across dates (one summary event)', async () => {
     const ctx = adminCtx(b);
-    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', startTime: '08:00:00', endTime: '17:00:00' });
+    const m = await createShift(ctx, { companyId: b.companyId, name: 'M', code: 'M', startTime: '08:00:00', endTime: '17:00:00' });
     const r = await assignShiftBulk(ctx, { employmentIds: [employmentId, employmentId2], shiftDates: ['2026-07-01', '2026-07-02', '2026-07-03'], shiftId: m.id });
     expect(r.assigned).toBe(6);
     expect(await rosterForRange(ctx, { from: '2026-07-01', to: '2026-07-31' })).toHaveLength(6);

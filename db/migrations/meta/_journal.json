@@ -974,6 +974,13 @@
       "when": 1781862020000,
       "tag": "0138_leave_partial_approval_single_aggregate",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1781862030000,
+      "tag": "0139_shift_template",
+      "breakpoints": true
     }
   ]
 }

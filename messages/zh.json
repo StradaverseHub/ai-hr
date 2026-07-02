@@ -43,7 +43,18 @@
     "bankInLieu": "存为调休",
     "bankInLieuPending": "存入中…",
     "bankInLieuDone": "已存 {days, plural, other {# 天}}",
-    "bankInLieuConsentPrompt": "该员工属于第一附表（适用法定加班费）。以补休代替法定现金加班费需要员工事先明确同意。确认同意后继续？"
+    "bankInLieuConsentPrompt": "该员工属于第一附表（适用法定加班费）。以补休代替法定现金加班费需要员工事先明确同意。确认同意后继续？",
+    "code": "代码",
+    "addBreak": "添加休息时段",
+    "removeBreak": "移除休息时段",
+    "breakPeriods": "休息时段",
+    "breakStart": "休息开始",
+    "breakEnd": "休息结束",
+    "normalHours": "正常工时",
+    "autoCalculated": "自动计算",
+    "manualOverride": "手动覆盖（分钟）",
+    "duplicate": "复制",
+    "multiBreakStorageHint": "系统会保存并显示多个休息时段，但扣除的工时仍按其合计总额计算——按时段精确扣除为后续增强项。"
   },
   "common": {
     "appName": "AI HR",

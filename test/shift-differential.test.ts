@@ -52,7 +52,7 @@ async function setup(differential: ShiftDifferential, basic: number) {
   });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: basic, monthlyAllowance: 0, effectiveFrom: '2024-01-01' });
   await seedPayComponentCatalog(a);
-  const shiftId = (await createShift(a, { companyId: b.companyId, name: 'Night', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, differential })).id;
+  const shiftId = (await createShift(a, { companyId: b.companyId, name: 'Night', code: 'NIGHT', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60, differential })).id;
   for (const d of ['2026-07-01', '2026-07-02']) {
     await assignShift(a, { employmentId: e.employmentId, shiftDate: d, shiftId });
     await checkIn(a, { employmentId: e.employmentId, date: d, time: '08:00:00' });

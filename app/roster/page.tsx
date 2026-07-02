@@ -6,8 +6,9 @@ import { listShifts, rosterForRange, rosterVariance } from '@/core/roster';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
+import { ShiftTimeFields } from '@/components/shift-time-fields';
 import { ToilElectButton } from '@/components/toil-elect-button';
-import { archiveShiftAction, createShiftAction } from './actions';
+import { archiveShiftAction, createShiftAction, duplicateShiftAction } from './actions';
 
 const DAY = 86_400_000;
 const mondayOf = (iso: string): string => {
@@ -134,9 +135,17 @@ export default async function RosterPage({
               {shifts.map((sh) => (
                 <li key={sh.id} className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs">
                   <span>
+                    {sh.code && <span className="font-medium">{sh.code} · </span>}
                     {sh.name} · {sh.startTime.slice(0, 5)}–{sh.endTime.slice(0, 5)}
                     {sh.crossesMidnight ? ' ⊕' : ''}
                   </span>
+                  <form action={duplicateShiftAction}>
+                    <input type="hidden" name="shiftId" value={sh.id} />
+                    <input type="hidden" name="companyId" value={companyId} />
+                    <button className="text-muted-foreground hover:text-foreground" aria-label={t('duplicate')} title={t('duplicate')}>
+                      ⧉
+                    </button>
+                  </form>
                   <form action={archiveShiftAction}>
                     <input type="hidden" name="shiftId" value={sh.id} />
                     <input type="hidden" name="companyId" value={companyId} />
@@ -151,9 +160,8 @@ export default async function RosterPage({
           <form action={createShiftAction} className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="companyId" value={companyId} />
             <input name="name" required placeholder={t('shiftName')} className={`${inputCls} w-40`} />
-            <input name="startTime" type="time" required defaultValue="09:00" className={inputCls} aria-label={t('start')} />
-            <input name="endTime" type="time" required defaultValue="18:00" className={inputCls} aria-label={t('end')} />
-            <input name="breakMinutes" type="number" min={0} defaultValue={60} className={`${inputCls} w-20`} aria-label={t('breakMins')} />
+            <input name="code" required placeholder={t('code')} className={`${inputCls} w-24`} aria-label={t('code')} />
+            <ShiftTimeFields />
             <select name="differentialKind" defaultValue="" className={inputCls} aria-label={t('diffLabel')}>
               <option value="">{t('diffNone')}</option>
               <option value="percent">{t('diffPercent')}</option>
@@ -164,6 +172,7 @@ export default async function RosterPage({
             <button className={btnPrimary}>{t('addShift')}</button>
           </form>
           <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('multiBreakStorageHint')}</p>
         </div>
       </Card>
 

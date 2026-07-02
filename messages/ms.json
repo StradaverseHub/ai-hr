@@ -43,7 +43,18 @@
     "bankInLieu": "Simpan cuti ganti",
     "bankInLieuPending": "Menyimpan…",
     "bankInLieuDone": "Disimpan {days, plural, other {# hari}}",
-    "bankInLieuConsentPrompt": "Pekerja ini termasuk dalam Jadual Pertama (gaji kerja lebih masa berkanun terpakai). Menyimpan cuti ganti dan bukannya premium tunai berkanun memerlukan persetujuan awal yang jelas daripada pekerja. Sahkan persetujuan untuk meneruskan?"
+    "bankInLieuConsentPrompt": "Pekerja ini termasuk dalam Jadual Pertama (gaji kerja lebih masa berkanun terpakai). Menyimpan cuti ganti dan bukannya premium tunai berkanun memerlukan persetujuan awal yang jelas daripada pekerja. Sahkan persetujuan untuk meneruskan?",
+    "code": "Kod",
+    "addBreak": "Tambah rehat",
+    "removeBreak": "Buang rehat",
+    "breakPeriods": "Tempoh rehat",
+    "breakStart": "Mula rehat",
+    "breakEnd": "Tamat rehat",
+    "normalHours": "Jam biasa",
+    "autoCalculated": "dikira automatik",
+    "manualOverride": "Tetapan manual (minit)",
+    "duplicate": "Buat salinan",
+    "multiBreakStorageHint": "Beberapa tempoh rehat disimpan dan dipaparkan, tetapi jam yang ditolak masih menggunakan jumlah gabungannya — ketepatan mengikut setiap rehat ialah penambahbaikan akan datang."
   },
   "common": {
     "appName": "AI HR",

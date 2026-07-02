@@ -90,7 +90,7 @@ describe('punch reconcile (ADR-0032 C6)', () => {
     const emp = await makeEmp('N200', '880202022345');
     // Night shift 22:00 → 06:00 (crosses midnight), break 60 ⇒ 480 scheduled.
     const shiftId = (
-      await createShift(ctx, { companyId: b.companyId, name: 'Night', startTime: '22:00:00', endTime: '06:00:00', breakMinutes: 60 })
+      await createShift(ctx, { companyId: b.companyId, name: 'Night', code: 'NIGHT', startTime: '22:00:00', endTime: '06:00:00', breakMinutes: 60 })
     ).id;
     expect((await owner.db.select().from(schema.shift).where(eq(schema.shift.id, shiftId)))[0].crossesMidnight).toBe(true);
     await assignShift(ctx, { employmentId: emp, shiftDate: '2026-07-01', shiftId });

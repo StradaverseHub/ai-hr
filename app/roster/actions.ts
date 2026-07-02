@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, assignShift, assignShiftBulk, clearRoster, createShift, setRestDay } from '@/core/roster';
+import { archiveShift, assignShift, assignShiftBulk, clearRoster, createShift, duplicateShift, setRestDay, updateShift } from '@/core/roster';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -83,22 +83,70 @@ export async function bulkAssignAction(input: {
 
 const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
 
-export async function createShiftAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
+/** The break-period rows post as one JSON array of { start, end } 'HH:MM' pairs (the client island's hidden
+ *  field). Empty/absent/invalid JSON ⇒ null ⇒ the legacy single breakMinutes scalar is the fallback. */
+const parseBreakPeriods = (raw: string): { start: string; end: string }[] | null => {
+  if (!raw) return null;
+  try {
+    const arr: unknown = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    const out = arr
+      .filter((x): x is { start: string; end: string } => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
+      .map((x) => ({ start: normTime(String(x.start)), end: normTime(String(x.end)) }));
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The fields createShift/updateShift share, read off the posted form. */
+function shiftFields(formData: FormData) {
   const dk = String(formData.get('differentialKind') ?? '');
   const dv = Number(formData.get('differentialValue') ?? 0);
   const differential =
     DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
+  const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
+  return {
+    name: String(formData.get('name') ?? '').trim(),
+    code: String(formData.get('code') ?? '').trim(),
+    startTime: normTime(String(formData.get('startTime') ?? '')),
+    endTime: normTime(String(formData.get('endTime') ?? '')),
+    breakMinutes: Number(formData.get('breakMinutes') ?? 0),
+    breakPeriods: parseBreakPeriods(String(formData.get('breakPeriods') ?? '')),
+    normalMinutesOverride: overrideRaw === '' ? null : Number(overrideRaw),
+    differential,
+  };
+}
+
+export async function createShiftAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
   try {
-    await createShift(s, {
-      companyId,
-      name: String(formData.get('name') ?? '').trim(),
-      startTime: normTime(String(formData.get('startTime') ?? '')),
-      endTime: normTime(String(formData.get('endTime') ?? '')),
-      breakMinutes: Number(formData.get('breakMinutes') ?? 0),
-      differential,
-    });
+    await createShift(s, { companyId, ...shiftFields(formData) });
+  } catch (e) {
+    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/roster');
+  redirect(`/roster?companyId=${companyId}`);
+}
+
+export async function updateShiftAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
+  try {
+    await updateShift(s, { shiftId: String(formData.get('shiftId') ?? ''), ...shiftFields(formData) });
+  } catch (e) {
+    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/roster');
+  redirect(`/roster?companyId=${companyId}`);
+}
+
+export async function duplicateShiftAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
+  try {
+    await duplicateShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
   } catch (e) {
     redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
   }

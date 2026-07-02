@@ -308,7 +308,7 @@ describe('Partial Leave Approval — span-consumer correctness (the central fix)
     const res = await requestSpan(D10, D12);
     await approveWithMiddleRejected(res.leaveRequestId);
     const ctx = adminCtx(b);
-    const shiftId = (await createShift(ctx, { companyId: b.companyId, name: 'Day', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 })).id;
+    const shiftId = (await createShift(ctx, { companyId: b.companyId, name: 'Day', code: 'DAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 })).id;
     for (const d of [D10, D11, D12]) await assignShift(ctx, { employmentId: subject.employmentId, shiftDate: d, shiftId });
     const rows = await rosterVariance(ctx, { from: '2026-08-01', to: '2026-08-31', today: '2026-08-20' });
     const kind = (d: string) => rows.find((r) => r.employmentId === subject.employmentId && r.shiftDate === d)?.kind;

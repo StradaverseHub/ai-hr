@@ -60,7 +60,7 @@ describe('attendance × roster (ADR-0032 C2)', () => {
 
   it("a rostered shift's scheduled hours drive OT (not the company policy)", async () => {
     const ctx = adminCtx(b);
-    const s = await createShift(ctx, { companyId: b.companyId, name: 'Long', startTime: '06:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    const s = await createShift(ctx, { companyId: b.companyId, name: 'Long', code: 'LONG', startTime: '06:00:00', endTime: '18:00:00', breakMinutes: 60 });
     await assignShift(ctx, { employmentId: empId, shiftDate: '2026-07-01', shiftId: s.id });
     await checkIn(ctx, { employmentId: empId, date: '2026-07-01', time: '06:00:00' });
     const out = await checkOut(ctx, { employmentId: empId, date: '2026-07-01', time: '19:00:00' });
@@ -70,7 +70,7 @@ describe('attendance × roster (ADR-0032 C2)', () => {
 
   it('cross-midnight night shift: worked spans midnight, no error', async () => {
     const ctx = adminCtx(b);
-    const s = await createShift(ctx, { companyId: b.companyId, name: 'Night', startTime: '22:00:00', endTime: '06:00:00', breakMinutes: 60 });
+    const s = await createShift(ctx, { companyId: b.companyId, name: 'Night', code: 'NIGHT', startTime: '22:00:00', endTime: '06:00:00', breakMinutes: 60 });
     await assignShift(ctx, { employmentId: empId, shiftDate: '2026-07-01', shiftId: s.id });
     await checkIn(ctx, { employmentId: empId, date: '2026-07-01', time: '22:00:00' });
     const out = await checkOut(ctx, { employmentId: empId, date: '2026-07-01', time: '06:00:00' }); // next day
@@ -80,7 +80,7 @@ describe('attendance × roster (ADR-0032 C2)', () => {
 
   it('cross-midnight night shift: OT past the shift end', async () => {
     const ctx = adminCtx(b);
-    const s = await createShift(ctx, { companyId: b.companyId, name: 'Night', startTime: '22:00:00', endTime: '06:00:00', breakMinutes: 60 });
+    const s = await createShift(ctx, { companyId: b.companyId, name: 'Night', code: 'NIGHT', startTime: '22:00:00', endTime: '06:00:00', breakMinutes: 60 });
     await assignShift(ctx, { employmentId: empId, shiftDate: '2026-07-02', shiftId: s.id });
     await checkIn(ctx, { employmentId: empId, date: '2026-07-02', time: '22:00:00' });
     const out = await checkOut(ctx, { employmentId: empId, date: '2026-07-02', time: '07:00:00' });
@@ -99,7 +99,7 @@ describe('attendance × roster (ADR-0032 C2)', () => {
 
   it('a rostered shift on a company rest day (Sunday) is a workday', async () => {
     const ctx = adminCtx(b);
-    const s = await createShift(ctx, { companyId: b.companyId, name: 'Day', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
+    const s = await createShift(ctx, { companyId: b.companyId, name: 'Day', code: 'DAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 });
     await assignShift(ctx, { employmentId: empId, shiftDate: '2026-07-05', shiftId: s.id }); // Sunday
     await checkIn(ctx, { employmentId: empId, date: '2026-07-05', time: '08:00:00' });
     const out = await checkOut(ctx, { employmentId: empId, date: '2026-07-05', time: '17:00:00' });

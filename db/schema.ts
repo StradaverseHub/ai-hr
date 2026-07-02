@@ -1336,6 +1336,11 @@ export const attendanceCorrection = pgTable(
 // is employer policy; the value feeds a typed pay-component (C5), never a sourced statutory rate.
 export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_shift'; value: number };
 
+// R7 Multi-Shift Phase 1: one break window inside a shift. 'HH:MM:SS', start < end (lexicographic order is
+// chronological), so a single break can never cross midnight — Phase 1 excludes overnight breaks. STORAGE-
+// ONLY this phase: the engine keeps reading the canonical break_minutes scalar (= Σ durations).
+export type BreakPeriod = { start: string; end: string };
+
 // A configurable pay-rule on a pay_component (Payroll Setup — configurable pay-rule engine). A small
 // typed-JSONB discriminated union resolved by a switch (mirrors ShiftDifferential), NOT a custom expression
 // language: the AI's job collapses to "classify a sentence into one of these kinds + extract a number".
@@ -1369,9 +1374,20 @@ export const shift = pgTable(
       .notNull()
       .references(() => company.id),
     name: text('name').notNull(),
+    // R7 Multi-Shift Phase 1: short per-company identifier. Nullable in DB (legacy rows were backfilled by
+    // 0139), REQUIRED by the service/form. Uniqueness = shift_company_code_uq, a partial lower(code) index
+    // per (tenant, company) among non-archived rows — lives in the 0139 migration (expression index,
+    // mirroring business_unit's 0136 shape).
+    code: text('code'),
     startTime: time('start_time').notNull(),
     endTime: time('end_time').notNull(),
     breakMinutes: integer('break_minutes').notNull().default(0),
+    // R7 Multi-Shift Phase 1: multiple break windows. STORAGE-ONLY this phase — the engine / punch import /
+    // hourly clamp keep reading the canonical breakMinutes scalar (= Σ durations, persisted by the service).
+    breakPeriods: jsonb('break_periods').$type<BreakPeriod[] | null>(),
+    // R7 Multi-Shift Phase 1: manual normal-working-minutes figure; when set it is what workday OT is
+    // measured against (core/attendance.ts deriveAttendance). NULL ⇒ auto (span − break).
+    normalMinutesOverride: integer('normal_minutes_override'),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

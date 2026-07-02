@@ -43,7 +43,18 @@
     "bankInLieu": "Lưu nghỉ bù",
     "bankInLieuPending": "Đang lưu…",
     "bankInLieuDone": "Đã lưu {days, plural, other {# ngày}}",
-    "bankInLieuConsentPrompt": "Nhân viên này thuộc Biểu thứ Nhất (được hưởng tiền làm thêm giờ theo luật). Việc tích lũy nghỉ bù thay cho khoản phụ cấp tiền mặt theo luật cần có sự đồng ý trước rõ ràng của nhân viên. Xác nhận đồng ý để tiếp tục?"
+    "bankInLieuConsentPrompt": "Nhân viên này thuộc Biểu thứ Nhất (được hưởng tiền làm thêm giờ theo luật). Việc tích lũy nghỉ bù thay cho khoản phụ cấp tiền mặt theo luật cần có sự đồng ý trước rõ ràng của nhân viên. Xác nhận đồng ý để tiếp tục?",
+    "code": "Mã",
+    "addBreak": "Thêm giờ nghỉ",
+    "removeBreak": "Xóa giờ nghỉ",
+    "breakPeriods": "Các khoảng nghỉ",
+    "breakStart": "Bắt đầu nghỉ",
+    "breakEnd": "Kết thúc nghỉ",
+    "normalHours": "Giờ làm chuẩn",
+    "autoCalculated": "tự động tính",
+    "manualOverride": "Ghi đè thủ công (phút)",
+    "duplicate": "Nhân bản",
+    "multiBreakStorageHint": "Nhiều khoảng nghỉ được lưu và hiển thị, nhưng số giờ khấu trừ vẫn dùng tổng cộng của chúng — độ chính xác theo từng khoảng nghỉ là cải tiến trong tương lai."
   },
   "common": {
     "appName": "AI HR",

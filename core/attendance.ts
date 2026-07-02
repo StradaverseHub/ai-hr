@@ -113,8 +113,15 @@ const spanMinutes = (checkInAt: string, checkOutAt: string): number => {
   return co >= ci ? co - ci : co + MINS_PER_DAY - ci;
 };
 
-const shiftSpan = (start: string, end: string, crosses: boolean): number =>
+/** Gross span of a shift in minutes, cross-midnight aware. SHARED shift-time math (R7 Phase 1): exported so
+ *  core/roster.ts validates against the same span the engine derives with — do NOT fork this into roster. */
+export const shiftSpan = (start: string, end: string, crosses: boolean): number =>
   crosses ? toMinutes(end) + MINS_PER_DAY - toMinutes(start) : toMinutes(end) - toMinutes(start);
+
+/** Net scheduled minutes of a shift: span − break. The SHARED auto normal-hours figure (R7 Phase 1) — the
+ *  shift form's auto readout and the engine's scheduledMinutes are this one expression, never persisted. */
+export const netScheduledMinutes = (start: string, end: string, crosses: boolean, breakMinutes: number): number =>
+  Math.max(0, shiftSpan(start, end, crosses) - breakMinutes);
 
 // ADR-0032 Phase C: the schedule the engine derives against for one (employee, date) — resolved from the
 // employee's roster when present, else the company policy (today's behaviour, byte-identical).
@@ -122,8 +129,12 @@ type ResolvedSchedule = {
   dayType: DayType;
   lateAfter: string; // time-of-day after which check-in is "late" (shift start + policy grace, or policy)
   halfDayBefore: string; // checkout before this on a workday ⇒ half-day (policy / shift midpoint)
-  scheduledMinutes: number; // net scheduled work minutes (workday OT = worked − this)
+  scheduledMinutes: number; // net scheduled work minutes (workday OT = worked − this, unless overridden)
   breakMinutes: number;
+  // R7 Multi-Shift Phase 1: the shift's manual normal-hours override. When set it is the shift's normal
+  // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
+  // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
+  normalMinutesOverride: number | null;
   crossesMidnight: boolean;
   source: 'policy' | 'roster-shift' | 'roster-rest';
 };
@@ -145,6 +156,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       end: shift.endTime,
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
+      override: shift.normalMinutesOverride,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -157,6 +169,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     halfDayBefore: pol.halfDayBefore,
     scheduledMinutes: scheduledMinutes(pol),
     breakMinutes: pol.breakMinutes,
+    normalMinutesOverride: null,
     crossesMidnight: false,
     source: 'policy',
   });
@@ -164,13 +177,14 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   // A rostered shift defines the schedule even on a calendar holiday or weekend; the day TYPE still comes
   // from the calendar (holiday) so OT is classified at the right premium.
   if (ra && !ra.isRestDay && ra.start && ra.end) {
-    const sched = Math.max(0, shiftSpan(ra.start, ra.end, ra.crosses!) - ra.brk!);
+    const sched = netScheduledMinutes(ra.start, ra.end, ra.crosses!, ra.brk!);
     return {
       dayType: isHoliday ? 'holiday' : 'workday',
       lateAfter: addGrace(ra.start, grace),
       halfDayBefore: fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
+      normalMinutesOverride: ra.override ?? null,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
     };
@@ -201,7 +215,13 @@ function deriveAttendance(
     status = 'half_day';
   }
   const workedMinutes = workedFromSpan(spanMinutes(checkInAt, checkOutAt), s.breakMinutes);
-  const otMinutes = s.dayType === 'workday' ? Math.max(0, workedMinutes - s.scheduledMinutes) : workedMinutes;
+  // R7 Multi-Shift Phase 1 — the ONE deliberate OT-derivation change: when the rostered shift carries a
+  // manual normal-hours override, workday OT is measured against IT (the override is the shift's normal
+  // working minutes everywhere, not a display figure). Null ⇒ span − break, byte-identical to before.
+  const otMinutes =
+    s.dayType === 'workday'
+      ? Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes))
+      : workedMinutes;
   return { status, workedMinutes, otMinutes };
 }
 

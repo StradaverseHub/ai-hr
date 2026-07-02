@@ -42,7 +42,7 @@ beforeEach(async () => {
   emp2 = await makeEmp();
   // shift 08:00–17:00 break 60 ⇒ 480 scheduled minutes
   const ctx = adminCtx(b);
-  shiftId = (await createShift(ctx, { companyId: b.companyId, name: 'Day', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 })).id;
+  shiftId = (await createShift(ctx, { companyId: b.companyId, name: 'Day', code: 'DAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 })).id;
 });
 
 const kindFor = (rows: { employmentId: string; shiftDate: string; kind: string }[], emp: string, date: string) =>
