@@ -24,6 +24,7 @@ import {
 export type { ClaimRateConfig };
 import { toCsv } from '../lib/csv';
 import { assertCanDecide } from './approvals';
+import { resolveBatchScopeFilter, type BatchScope } from './payroll';
 
 const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reimbursements';
@@ -803,14 +804,20 @@ export async function prefillClaimsForBatch(
 ): Promise<{ applied: number; claims: number; total: number }> {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, status: payrollBatch.status })
+      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, status: payrollBatch.status, scope: payrollBatch.scope })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new ClaimError('Payroll batch not found');
     if (batch.status !== 'draft') throw new ClaimError('Claims can only be prefilled onto a draft batch');
 
-    // Approved + taxable + unscheduled claims for employees of this batch's company.
+    // Money-safety fix (Payroll Process wizard plan): narrow to the batch's scope (departments' current
+    // assignees ∪ explicit individuals) EXACTLY the way generatePayslips resolves it, so this button never
+    // reserves — and later marks paid — a claim belonging to someone who isn't actually in the run. No
+    // scope ⇒ whole company (unchanged today's behaviour).
+    const { filter: scopeFilter } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
+
+    // Approved + taxable + unscheduled claims for employees of this batch's company (and scope, if any).
     const due = await tx
       .select({ id: claimRequest.id, employmentId: claimRequest.employmentId, amount: claimRequest.amount })
       .from(claimRequest)
@@ -821,6 +828,7 @@ export async function prefillClaimsForBatch(
           eq(claimRequest.status, 'approved'),
           eq(claimRequest.taxable, true),
           isNull(claimRequest.payrollBatchId),
+          scopeFilter,
         ),
       );
     if (due.length === 0) return { applied: 0, claims: 0, total: 0 };

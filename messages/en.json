@@ -1248,11 +1248,6 @@
       "colNetPay": "Net pay",
       "colStatus": "Status",
       "empty": "No payroll processes yet — create one below.",
-      "company": "Company",
-      "payPeriod": "Pay period",
-      "createBatch": "Create payroll process",
-      "runTypeLabel": "Run type",
-      "addRun": "Add run",
       "runType": {
         "regular": "Regular",
         "off_cycle": "Off-cycle",
@@ -1264,17 +1259,13 @@
         "processed": "Processed",
         "closed": "Closed"
       },
-      "scopeLabel": "Departments (optional)",
-      "scopeEmployeesLabel": "Employees (optional)",
-      "scopeEmployeesEmpty": "No active employees in this company.",
-      "scopeEmployeesSelected": "{n} selected",
-      "scopeEmployeesSelectAll": "Select all",
-      "scopeEmployeesClear": "Clear",
-      "scopeHint": "Selected departments and named employees are combined. Leave everything unchecked to run payroll for the whole company.",
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
       "allPeriods": "All periods",
-      "filteredEmpty": "No payroll processes for this pay period."
+      "filteredEmpty": "No payroll processes for this pay period.",
+      "newRun": "New payroll run",
+      "colPaymentDate": "Payment date",
+      "paymentDateLegacyNote": "Runs created before this release show the system default date (the 28th)."
     },
     "batch": {
       "back": "Payroll",
@@ -1362,7 +1353,15 @@
       },
       "prefillFixedZakat": "Prefill fixed zakat",
       "prefillLoans": "Prefill loan deductions",
-      "loanSummary": "{count} loan instalment(s) · RM {amount}"
+      "loanSummary": "{count} loan instalment(s) · RM {amount}",
+      "step3Title": "Step 3 of 3 — Review & process",
+      "summaryPeriod": "Period",
+      "summaryCycle": "Cycle",
+      "summaryPaymentDate": "Payment date",
+      "summaryHeadcount": "Headcount",
+      "consolidateTitle": "Consolidate data",
+      "scopedCaption": "This run is scoped to selected employees. Overtime, shift differential, loan and zakat prefills below still apply company-wide; out-of-scope rows are ignored at processing. Claims prefill is scoped correctly.",
+      "holidayWarning": "{country}/{state} {year}: only {loaded} of {required} public holidays are loaded — rest-day/OT calculations may be affected."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -1719,6 +1718,59 @@
       "eaSplitWarningBody": "{count, plural, one {Row {rows}} other {Rows {rows}}}: gross exceeds basic with no allowance/overtime/bonus split — the EA Part B itemisation will land entirely in “basic”. Supply the split, or correct it after import via EA-overwrite of gross salary / allowances / bonus.",
       "eaSplitHint": "For any month where gross ≠ basic, supply the allowance / overtime / bonus split so the EA Part B itemisation is correct. You can also correct it after import via EA-overwrite of gross salary / allowances / bonus on the employee’s EA form.",
       "cp38Hint": "Include the cp38 column (and cp38_ref) for any month with a CP38 court / LHDN instalment, so the migrated month stays complete for the CP39 e-Data file."
+    },
+    "process": {
+      "title": "Payroll Process",
+      "subtitle": "Run payroll in three guided steps: period, employees, then review and process.",
+      "stepPeriod": "Payroll Period",
+      "stepSelection": "Employee Selection",
+      "stepOf": "Step {n} of {total}",
+      "back": "Back",
+      "continue": "Continue",
+      "creating": "Creating…",
+      "createRun": "Continue to review",
+      "company": "Company",
+      "selectCompany": "Select a company",
+      "payPeriod": "Payroll month",
+      "cycleLabel": "Payroll cycle",
+      "cycleDisabled": "unavailable",
+      "paymentDate": "Payment date",
+      "multiCycleOffNote": "Only Monthly runs are available. Additional cycles (Bonus, Off-cycle, Advance Salary, Mid-Month) are switched off for this tenant.",
+      "existingRunsTitle": "Existing runs for this period",
+      "resumeDraft": "Resume draft",
+      "regularExistsNote": "A Monthly run already exists for {period}. Resume the existing draft, or pick a different cycle.",
+      "consolidationNote": "Attendance, leave, claims and loan data are consolidated on the review step, after the run is created.",
+      "cycle": {
+        "regular": "Monthly",
+        "bonus": "Bonus",
+        "off_cycle": "Off-cycle",
+        "advance": "Advance Salary",
+        "midmonth": "Mid-Month",
+        "adjustment": "Adjustment"
+      },
+      "runType": {
+        "regular": "Monthly",
+        "bonus": "Bonus",
+        "off_cycle": "Off-cycle",
+        "adjustment": "Adjustment"
+      },
+      "filterBusinessUnit": "Business Unit",
+      "filterDepartment": "Department",
+      "filterPosition": "Position",
+      "filterJobGrade": "Job Grade",
+      "filterEmploymentType": "Employment Type",
+      "filterCostCentre": "Cost Centre",
+      "filterStatus": "Employee Status",
+      "filterAll": "All",
+      "employeesLabel": "Employees",
+      "headcount": "{n} selected",
+      "selectAll": "Select all",
+      "clearAll": "Clear",
+      "loadingEmployees": "Loading employees…",
+      "noEmployees": "No employees found for this company and period.",
+      "leaverTag": "left mid-month",
+      "leaverFilterWarning": "This status filter would exclude {n} employee(s) who left partway through the month — their final pay would be silently skipped.",
+      "compLessWarning": "{n} employee(s) have no active compensation record and will not receive a payslip."
     }
   },
   "admin": {
@@ -2480,8 +2532,8 @@
           "body": "Every pay run lives here. Click a period to open a payroll process and review payslips, net pay, and statutory totals."
         },
         "create": {
-          "title": "Create a new payroll process",
-          "body": "Pick a company and pay period, then click **Create payroll process** to start a fresh payroll run."
+          "title": "New payroll run",
+          "body": "Click **New payroll run** to open the guided wizard: pick the period and cycle, choose employees, then review and process."
         },
         "reports": {
           "title": "Statutory reports",

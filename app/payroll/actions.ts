@@ -5,8 +5,6 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
   closeBatch,
-  createAdditionalRun,
-  createBatch,
   generatePayslips,
   prefillFixedZakat,
   prefillOvertimeFromAttendance,
@@ -16,52 +14,11 @@ import {
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
 import { prefillLoansForBatch } from '@/core/loans';
-import { listEmployees } from '@/core/read';
 
-export async function createBatchAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId'));
-  const payPeriod = String(formData.get('payPeriod'));
-  const departmentIds = formData.getAll('departmentIds').map(String).filter(Boolean);
-  const submittedEmploymentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
-
-  // Guard against a silent under-set: generatePayslips drops any employmentId whose company !=
-  // batch.companyId without erroring (a double-submit racing the company-change reset, or any
-  // cross-company id, would otherwise yield a smaller run with no signal). Intersect the submitted
-  // ids with the chosen company's employees so only valid ids reach createBatch.
-  let employmentIds = submittedEmploymentIds;
-  if (submittedEmploymentIds.length) {
-    const companyEmps = await listEmployees(s, [companyId]);
-    const valid = new Set(companyEmps.map((e) => e.employmentId));
-    employmentIds = submittedEmploymentIds.filter((id) => valid.has(id));
-  }
-
-  let batchId = '';
-  try {
-    ({ batchId } = await createBatch(s, { companyId, payPeriod, scope: { departmentIds, employmentIds } }));
-  } catch (e) {
-    redirect(`/payroll?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/payroll');
-  redirect(`/payroll/${batchId}`);
-}
-
-/** Wave 2C (ADR-0024) — add an additional same-month run. Gated: createAdditionalRun throws unless
- *  MULTI_CYCLE_PAYROLL_ENABLED, and the gated form that posts here is only rendered under the same flag. */
-export async function addRunAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId'));
-  const payPeriod = String(formData.get('payPeriod'));
-  const runType = String(formData.get('runType')) as 'off_cycle' | 'bonus' | 'adjustment';
-  let batchId = '';
-  try {
-    ({ batchId } = await createAdditionalRun(s, { companyId, payPeriod, runType }));
-  } catch (e) {
-    redirect(`/payroll?error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/payroll');
-  redirect(`/payroll/${batchId}`);
-}
+// Note: run creation (regular + additional) moved to app/payroll/process/actions.ts (createRunAction) as
+// part of the Payroll Process wizard — creation is now the wizard's TERMINAL action. createBatch /
+// createAdditionalRun remain in core/payroll.ts unchanged; this file keeps only the draft-batch actions
+// (prefill/generate/close) that operate on an existing batch id.
 
 export async function generateAction(formData: FormData) {
   const s = await getSession();

@@ -1248,11 +1248,6 @@
       "colNetPay": "Lương thực lãnh",
       "colStatus": "Trạng thái",
       "empty": "Chưa có quy trình tính lương nào — hãy tạo một quy trình bên dưới.",
-      "company": "Công ty",
-      "payPeriod": "Kỳ lương",
-      "createBatch": "Tạo quy trình tính lương",
-      "runTypeLabel": "Loại đợt chạy",
-      "addRun": "Thêm đợt chạy",
       "runType": {
         "regular": "Thường kỳ",
         "off_cycle": "Ngoài chu kỳ",
@@ -1264,17 +1259,13 @@
         "processed": "Đã xử lý",
         "closed": "Đã đóng"
       },
-      "scopeLabel": "Phòng ban (tùy chọn)",
-      "scopeEmployeesLabel": "Nhân viên (tùy chọn)",
-      "scopeEmployeesEmpty": "Không có nhân viên đang làm việc trong công ty này.",
-      "scopeEmployeesSelected": "Đã chọn {n}",
-      "scopeEmployeesSelectAll": "Chọn tất cả",
-      "scopeEmployeesClear": "Xóa",
-      "scopeHint": "Phòng ban đã chọn và nhân viên được chỉ định sẽ được gộp lại. Bỏ trống tất cả để chạy lương cho toàn công ty.",
       "importHistory": "Nhập lịch sử bảng lương",
       "periodContext": "Kỳ lương",
       "allPeriods": "Tất cả kỳ lương",
-      "filteredEmpty": "Không có quy trình tính lương nào cho kỳ lương này."
+      "filteredEmpty": "Không có quy trình tính lương nào cho kỳ lương này.",
+      "newRun": "Tạo đợt lương mới",
+      "colPaymentDate": "Ngày thanh toán",
+      "paymentDateLegacyNote": "Các đợt được tạo trước bản phát hành này hiển thị ngày mặc định của hệ thống (ngày 28)."
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -1553,7 +1544,15 @@
       },
       "prefillFixedZakat": "Điền sẵn zakat cố định",
       "prefillLoans": "Điền sẵn khấu trừ khoản vay",
-      "loanSummary": "{count} kỳ trả góp · RM {amount}"
+      "loanSummary": "{count} kỳ trả góp · RM {amount}",
+      "step3Title": "Bước 3/3 — Xem lại & xử lý",
+      "summaryPeriod": "Kỳ",
+      "summaryCycle": "Chu kỳ",
+      "summaryPaymentDate": "Ngày thanh toán",
+      "summaryHeadcount": "Số lượng nhân viên",
+      "consolidateTitle": "Tổng hợp dữ liệu",
+      "scopedCaption": "Đợt này chỉ áp dụng cho các nhân viên đã chọn. Các mục điền sẵn cho làm thêm giờ, phụ cấp ca, khoản vay và zakat bên dưới vẫn áp dụng cho toàn công ty; các dòng ngoài phạm vi sẽ bị bỏ qua khi xử lý. Điền sẵn yêu cầu bồi hoàn đã được giới hạn phạm vi đúng.",
+      "holidayWarning": "{country}/{state} {year}: chỉ tải được {loaded}/{required} ngày lễ công cộng — các tính toán ngày nghỉ/làm thêm giờ có thể bị ảnh hưởng."
     },
     "transactions": {
       "title": "Giao dịch",
@@ -1719,6 +1718,59 @@
       "eaSplitWarningBody": "{count, plural, one {Hàng {rows}} other {Các hàng {rows}}}: thu nhập gộp vượt lương cơ bản mà không có phân tách phụ cấp/làm thêm giờ/thưởng — chi tiết EA Phần B sẽ dồn hết vào “cơ bản”. Hãy cung cấp phân tách, hoặc sửa sau khi nhập thông qua ghi đè EA cho lương gộp / phụ cấp / thưởng.",
       "eaSplitHint": "Đối với bất kỳ tháng nào có thu nhập gộp ≠ lương cơ bản, hãy cung cấp phân tách phụ cấp / làm thêm giờ / thưởng để chi tiết EA Phần B chính xác. Bạn cũng có thể sửa sau khi nhập thông qua ghi đè EA cho lương gộp / phụ cấp / thưởng trên mẫu EA của nhân viên.",
       "cp38Hint": "Bao gồm cột cp38 (và cp38_ref) cho bất kỳ tháng nào có khoản trả góp CP38 của tòa án / LHDN, để tháng đã di chuyển vẫn đầy đủ cho tệp e-Data CP39."
+    },
+    "process": {
+      "title": "Xử Lý Lương",
+      "subtitle": "Xử lý lương qua ba bước có hướng dẫn: kỳ lương, nhân viên, sau đó xem lại và xử lý.",
+      "stepPeriod": "Kỳ Lương",
+      "stepSelection": "Chọn Nhân Viên",
+      "stepOf": "Bước {n}/{total}",
+      "back": "Quay lại",
+      "continue": "Tiếp tục",
+      "creating": "Đang tạo…",
+      "createRun": "Tiếp tục đến bước xem lại",
+      "company": "Công ty",
+      "selectCompany": "Chọn công ty",
+      "payPeriod": "Tháng lương",
+      "cycleLabel": "Chu kỳ lương",
+      "cycleDisabled": "không khả dụng",
+      "paymentDate": "Ngày thanh toán",
+      "multiCycleOffNote": "Chỉ có sẵn đợt Hàng tháng. Các chu kỳ bổ sung (Thưởng, Ngoài chu kỳ, Tạm ứng lương, Giữa tháng) đã bị tắt cho租户 này.",
+      "existingRunsTitle": "Các đợt hiện có cho kỳ này",
+      "resumeDraft": "Tiếp tục bản nháp",
+      "regularExistsNote": "Đợt Hàng tháng cho {period} đã tồn tại. Tiếp tục bản nháp hiện có, hoặc chọn chu kỳ khác.",
+      "consolidationNote": "Dữ liệu chấm công, nghỉ phép, yêu cầu bồi hoàn và khoản vay được tổng hợp ở bước xem lại, sau khi đợt được tạo.",
+      "cycle": {
+        "regular": "Hàng tháng",
+        "bonus": "Thưởng",
+        "off_cycle": "Ngoài chu kỳ",
+        "advance": "Tạm ứng lương",
+        "midmonth": "Giữa tháng",
+        "adjustment": "Điều chỉnh"
+      },
+      "runType": {
+        "regular": "Hàng tháng",
+        "bonus": "Thưởng",
+        "off_cycle": "Ngoài chu kỳ",
+        "adjustment": "Điều chỉnh"
+      },
+      "filterBusinessUnit": "Đơn vị kinh doanh",
+      "filterDepartment": "Phòng ban",
+      "filterPosition": "Vị trí",
+      "filterJobGrade": "Cấp bậc",
+      "filterEmploymentType": "Loại hình việc làm",
+      "filterCostCentre": "Trung tâm chi phí",
+      "filterStatus": "Trạng thái nhân viên",
+      "filterAll": "Tất cả",
+      "employeesLabel": "Nhân viên",
+      "headcount": "Đã chọn {n}",
+      "selectAll": "Chọn tất cả",
+      "clearAll": "Xóa",
+      "loadingEmployees": "Đang tải nhân viên…",
+      "noEmployees": "Không tìm thấy nhân viên cho công ty và kỳ này.",
+      "leaverTag": "nghỉ việc giữa tháng",
+      "leaverFilterWarning": "Bộ lọc trạng thái này sẽ loại trừ {n} nhân viên đã nghỉ việc giữa tháng — lương cuối cùng của họ sẽ bị bỏ sót mà không có cảnh báo.",
+      "compLessWarning": "{n} nhân viên không có hồ sơ lương đang hoạt động và sẽ không nhận được phiếu lương."
     }
   },
   "admin": {
@@ -2480,8 +2532,8 @@
           "body": "Mọi lần chạy lương đều nằm ở đây. Nhấp vào một kỳ để mở quy trình tính lương và xem lại phiếu lương, lương thực nhận và tổng các khoản pháp định."
         },
         "create": {
-          "title": "Tạo quy trình tính lương mới",
-          "body": "Chọn một công ty và kỳ lương, rồi nhấp **Tạo quy trình tính lương** để bắt đầu một lần chạy lương mới."
+          "title": "Tạo đợt lương mới",
+          "body": "Nhấp **Tạo đợt lương mới** để mở trình hướng dẫn: chọn kỳ và chu kỳ, chọn nhân viên, sau đó xem lại và xử lý."
         },
         "reports": {
           "title": "Báo cáo pháp định",

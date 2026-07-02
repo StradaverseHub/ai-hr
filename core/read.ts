@@ -1,5 +1,5 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, sql, type AnyColumn } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   earnedCycleStart,
@@ -41,6 +41,7 @@ import {
   reportingLine,
   toilAccrual,
 } from '../db/schema';
+import { daysInMonth } from './payroll';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -241,6 +242,86 @@ export function listDepartments(
       )
       .orderBy(department.name),
   );
+}
+
+export type PayrollRunEmployeeRow = {
+  employmentId: string;
+  name: string;
+  employeeCode: string | null;
+  companyId: string;
+  departmentId: string | null;
+  businessUnitId: string | null;
+  positionId: string | null;
+  gradeId: string | null;
+  costCenterId: string | null;
+  employmentType: string | null;
+  status: string | null;
+  hiredOn: string;
+  terminatedOn: string | null;
+  /** True when the employment has a current (validTo/supersededAt null) compensation row — a comp-less
+   *  hire is silently dropped by generatePayslips' inner join, so the wizard warns before that happens. */
+  hasCurrentCompensation: boolean;
+};
+
+/**
+ * Payroll Process wizard (Step 2 population, plan §2) — the employee set for a company + 'YYYY-MM' pay
+ * period, using generatePayslips' OWN period predicate (hired on/before period end AND not terminated
+ * before period start) — NOT current-roster semantics — so this preview always equals what generation
+ * would pick up. A mid-period leaver appears by default; assignment.status is NOT part of generation's
+ * predicate, so a status filter narrowing this list is a visible user choice, not a silent drop. Read-only
+ * — no DomainEvent (derived recomputation, substrate's documented skip).
+ */
+export function listEmployeesForPayrollRun(
+  ctx: SessionContext,
+  companyId: string,
+  payPeriod: string,
+): Promise<PayrollRunEmployeeRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const [year, month1] = payPeriod.split('-').map(Number);
+    const periodStart = `${payPeriod}-01`;
+    const periodEnd = `${payPeriod}-${String(daysInMonth(year, month1)).padStart(2, '0')}`;
+    const currentAssignment = and(
+      eq(assignment.employmentId, employment.id),
+      isNull(assignment.validTo),
+      isNull(assignment.supersededAt),
+    );
+    const currentComp = and(
+      eq(compensation.employmentId, employment.id),
+      isNull(compensation.validTo),
+      isNull(compensation.supersededAt),
+    );
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: employment.companyId,
+        departmentId: assignment.departmentId,
+        businessUnitId: department.businessUnitId,
+        positionId: assignment.positionId,
+        gradeId: employment.gradeId,
+        costCenterId: assignment.costCenterId,
+        employmentType: assignment.employmentType,
+        status: assignment.status,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+        hasCurrentCompensation: sql<boolean>`${compensation.id} is not null`,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(compensation, currentComp)
+      .where(
+        and(
+          eq(employment.companyId, companyId),
+          lte(employment.hiredOn, periodEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        ),
+      )
+      .orderBy(person.fullName);
+    return rows as PayrollRunEmployeeRow[];
+  });
 }
 
 export function listLeaveTypes(

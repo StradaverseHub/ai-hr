@@ -1248,11 +1248,6 @@
       "colNetPay": "实发工资",
       "colStatus": "状态",
       "empty": "暂无薪资流程 — 在下方创建一个。",
-      "company": "公司",
-      "payPeriod": "发薪周期",
-      "createBatch": "创建薪资流程",
-      "runTypeLabel": "运行类型",
-      "addRun": "添加运行",
       "runType": {
         "regular": "常规",
         "off_cycle": "周期外",
@@ -1264,17 +1259,13 @@
         "processed": "已处理",
         "closed": "已关闭"
       },
-      "scopeLabel": "部门（可选）",
-      "scopeEmployeesLabel": "员工（可选）",
-      "scopeEmployeesEmpty": "该公司没有在职员工。",
-      "scopeEmployeesSelected": "已选 {n} 人",
-      "scopeEmployeesSelectAll": "全选",
-      "scopeEmployeesClear": "清除",
-      "scopeHint": "所选部门与指定员工将合并计入。全部不勾选则为整个公司运行薪资。",
       "importHistory": "导入薪资历史",
       "periodContext": "发薪周期",
       "allPeriods": "所有周期",
-      "filteredEmpty": "此发薪周期暂无薪资流程。"
+      "filteredEmpty": "此发薪周期暂无薪资流程。",
+      "newRun": "新建薪资运行",
+      "colPaymentDate": "付款日期",
+      "paymentDateLegacyNote": "在此版本之前创建的运行显示系统默认日期（28日）。"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -1553,7 +1544,15 @@
       },
       "prefillFixedZakat": "预填固定天课",
       "prefillLoans": "预填贷款扣款",
-      "loanSummary": "{count} 笔贷款分期 · RM {amount}"
+      "loanSummary": "{count} 笔贷款分期 · RM {amount}",
+      "step3Title": "第 3 步，共 3 步 — 审核并处理",
+      "summaryPeriod": "周期",
+      "summaryCycle": "类型",
+      "summaryPaymentDate": "付款日期",
+      "summaryHeadcount": "人数",
+      "consolidateTitle": "汇总数据",
+      "scopedCaption": "此运行仅针对所选员工。以下加班、轮班津贴、贷款和天课预填仍适用于全公司；处理时会忽略范围外的行。报销预填已正确限定范围。",
+      "holidayWarning": "{country}/{state} {year}：仅加载了 {required} 个公共假期中的 {loaded} 个 —— 休息日/加班计算可能受到影响。"
     },
     "transactions": {
       "title": "交易",
@@ -1719,6 +1718,59 @@
       "eaSplitWarningBody": "{count, plural, one {第 {rows} 行} other {第 {rows} 行}}：总收入高于基本工资但无津贴/加班/奖金拆分——EA B 部分的明细将全部归入“基本”。请提供拆分，或在导入后通过对总工资 / 津贴 / 奖金的 EA 覆写进行更正。",
       "eaSplitHint": "对于总收入 ≠ 基本工资的任何月份，请提供津贴 / 加班 / 奖金拆分，以使 EA B 部分明细正确。你也可以在导入后通过员工 EA 表单上对总工资 / 津贴 / 奖金的 EA 覆写进行更正。",
       "cp38Hint": "对于任何含 CP38 法院 / LHDN 分期的月份，请加入 cp38 列（及 cp38_ref），以使迁移的月份对 CP39 e-Data 文件保持完整。"
+    },
+    "process": {
+      "title": "薪资处理",
+      "subtitle": "通过三个引导步骤处理薪资：周期、员工，然后审核并处理。",
+      "stepPeriod": "薪资周期",
+      "stepSelection": "员工选择",
+      "stepOf": "第 {n} 步，共 {total} 步",
+      "back": "返回",
+      "continue": "继续",
+      "creating": "创建中…",
+      "createRun": "继续审核",
+      "company": "公司",
+      "selectCompany": "选择公司",
+      "payPeriod": "薪资月份",
+      "cycleLabel": "薪资周期类型",
+      "cycleDisabled": "不可用",
+      "paymentDate": "付款日期",
+      "multiCycleOffNote": "仅提供月度运行。此租户已关闭其他周期（奖金、非周期性、预支薪金、月中）。",
+      "existingRunsTitle": "该周期的现有运行",
+      "resumeDraft": "继续草稿",
+      "regularExistsNote": "{period} 的月度运行已存在。请继续现有草稿，或选择其他周期。",
+      "consolidationNote": "考勤、休假、报销和贷款数据将在创建运行后的审核步骤中汇总。",
+      "cycle": {
+        "regular": "月度",
+        "bonus": "奖金",
+        "off_cycle": "非周期性",
+        "advance": "预支薪金",
+        "midmonth": "月中",
+        "adjustment": "调整"
+      },
+      "runType": {
+        "regular": "月度",
+        "bonus": "奖金",
+        "off_cycle": "非周期性",
+        "adjustment": "调整"
+      },
+      "filterBusinessUnit": "业务单元",
+      "filterDepartment": "部门",
+      "filterPosition": "职位",
+      "filterJobGrade": "职级",
+      "filterEmploymentType": "雇佣类型",
+      "filterCostCentre": "成本中心",
+      "filterStatus": "员工状态",
+      "filterAll": "全部",
+      "employeesLabel": "员工",
+      "headcount": "已选 {n} 人",
+      "selectAll": "全选",
+      "clearAll": "清除",
+      "loadingEmployees": "正在加载员工…",
+      "noEmployees": "未找到该公司和周期的员工。",
+      "leaverTag": "月中离职",
+      "leaverFilterWarning": "此状态筛选将排除 {n} 名月中离职的员工——他们的最终薪资将被悄悄跳过。",
+      "compLessWarning": "{n} 名员工没有有效的薪酬记录，将不会收到工资单。"
     }
   },
   "admin": {
@@ -2480,8 +2532,8 @@
           "body": "每次发薪都在这里。点击某个周期可打开薪资流程，查看工资单、实发工资和法定汇总。"
         },
         "create": {
-          "title": "创建新的薪资流程",
-          "body": "选择公司和发薪周期，然后点击 **创建薪资流程** 开始一次新的发薪。"
+          "title": "新建薪资运行",
+          "body": "点击 **新建薪资运行** 打开引导向导：选择周期和类型，选择员工，然后审核并处理。"
         },
         "reports": {
           "title": "法定报表",

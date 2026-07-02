@@ -17,12 +17,12 @@ export default async function BatchPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; hw?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
-  const { error } = await searchParams;
+  const { error, from, hw } = await searchParams;
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
@@ -36,6 +36,19 @@ export default async function BatchPage({
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
   // Bulk component import (1D) is only meaningful when the kernel reads typed components.
   const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  // Payroll Process wizard: this draft is presented as "Step 3 of 3" when it arrived straight from the
+  // wizard's terminal create action. A compact one-shot holiday-warning code list rides the query string
+  // ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch is the
+  // durable record; this is only shown for this one render right after creation.
+  const fromWizard = from === 'process' && batch.status === 'draft';
+  const holidayWarnings = hw
+    ? hw.split(';').map((code) => {
+        const [country, state, year, loaded, required] = code.split('|');
+        return { country, state: state || null, year, loaded, required };
+      })
+    : [];
+  const scope = (batch.scope ?? null) as { departmentIds?: string[]; employmentIds?: string[] } | null;
+  const isScoped = !!(scope?.departmentIds?.length || scope?.employmentIds?.length);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -44,6 +57,7 @@ export default async function BatchPage({
         title={batch.payPeriod}
         description={
           <>
+            {fromWizard ? `${t('step3Title')} · ` : ''}
             {t('subtitle')} · <span className="capitalize">{batch.status}</span>
           </>
         }
@@ -77,6 +91,37 @@ export default async function BatchPage({
       />
 
       <ErrorBanner message={error} />
+
+      {batch.status === 'draft' && (
+        <Card className="overflow-hidden">
+          <div className="grid grid-cols-2 divide-x divide-border sm:grid-cols-4">
+            <div className="p-3">
+              <div className="text-xs text-muted-foreground">{t('summaryPeriod')}</div>
+              <div className="text-sm font-medium">{batch.payPeriod}</div>
+            </div>
+            <div className="p-3">
+              <div className="text-xs text-muted-foreground">{t('summaryCycle')}</div>
+              <div className="text-sm font-medium">{t(`runType.${batch.runType}`)}{batch.remarks ? ` — ${batch.remarks}` : ''}</div>
+            </div>
+            <div className="p-3">
+              <div className="text-xs text-muted-foreground">{t('summaryPaymentDate')}</div>
+              <div className="text-sm font-medium">{batch.batchDate}</div>
+            </div>
+            <div className="p-3">
+              <div className="text-xs text-muted-foreground">{t('summaryHeadcount')}</div>
+              <div className="text-sm font-medium">{inputs.length}</div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {holidayWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+          {holidayWarnings.map((w, i) => (
+            <div key={i}>{t('holidayWarning', { country: w.country, state: w.state || '—', year: w.year, loaded: w.loaded, required: w.required })}</div>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
         ⚠️{' '}
@@ -125,13 +170,15 @@ export default async function BatchPage({
           <p className="px-4 pt-3 text-xs text-muted-foreground">
             {t('inputsHint')}
           </p>
-          <div className="mx-4 mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+          <div className="mx-4 mt-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
+            <div className="mb-1.5 text-xs font-semibold text-foreground">{t('consolidateTitle')}</div>
             <p className="text-xs text-muted-foreground">
               {t.rich('prefillHint', {
                 strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
               })}
             </p>
-            <div className="flex items-center gap-2">
+            {isScoped && <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{t('scopedCaption')}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               <form action={prefillOvertimeAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
                 <Button type="submit" size="sm" variant="secondary">

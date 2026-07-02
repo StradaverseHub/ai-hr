@@ -104,6 +104,17 @@ export function daysInMonth(year: number, month1: number): number {
   return DAYS_IN_MONTH[month1 - 1];
 }
 
+/** Payroll Process wizard (1d) — default payment date for a 'YYYY-MM' period from the company's
+ *  configured pay day (company_payroll_config.payDay), clamped into the period so e.g. payDay=31 in a
+ *  30-day month lands on the 30th. Null payDay ⇒ month-end (same default the pre-wizard '<period>-28'
+ *  fallback approximated). Pure/unit-testable — no DB access. */
+export function defaultPaymentDate(payPeriod: string, payDay: number | null | undefined): string {
+  const [year, month1] = payPeriod.split('-').map(Number);
+  const dim = daysInMonth(year, month1);
+  const day = payDay == null ? dim : Math.min(Math.max(1, payDay), dim);
+  return `${payPeriod}-${String(day).padStart(2, '0')}`;
+}
+
 /**
  * EA-1955 incomplete-month proration factor for a 'YYYY-MM' wage period: the employee is paid for
  * the calendar days they were employed within the month, over the number of days in that month
@@ -262,7 +273,45 @@ function normalizeScope(scope?: BatchScope): BatchScope | null {
   return { ...(departmentIds.length ? { departmentIds } : {}), ...(employmentIds.length ? { employmentIds } : {}) };
 }
 
-export async function createBatch(ctx: SessionContext, p: { companyId: string; payPeriod: string; scope?: BatchScope }) {
+/**
+ * Resolve a batch's scope to a concrete employment-id filter, shared by generatePayslips and every
+ * prefill (OT/shift-diff/zakat/claims). Selected departments resolve to their CURRENT assignees, unioned
+ * with any explicitly-named individuals. Returns `undefined` (no filter ⇒ whole company) when the scope
+ * is empty/absent — identical to today's dynamic whole-company behaviour.
+ */
+export async function resolveBatchScopeFilter(
+  tx: Tx,
+  scope: BatchScope | null,
+): Promise<{ filter: ReturnType<typeof inArray> | undefined; employmentIds: string[] | null }> {
+  const scopeDeptIds = scope?.departmentIds ?? [];
+  const scopeExplicitIds = scope?.employmentIds ?? [];
+  if (!scopeDeptIds.length && !scopeExplicitIds.length) return { filter: undefined, employmentIds: null };
+  const deptAssignees = scopeDeptIds.length
+    ? await tx
+        .select({ id: assignment.employmentId })
+        .from(assignment)
+        .where(and(inArray(assignment.departmentId, scopeDeptIds), isNull(assignment.supersededAt)))
+    : [];
+  const scopeEmploymentIds = [...new Set([...deptAssignees.map((r) => r.id), ...scopeExplicitIds])];
+  return {
+    filter: inArray(employment.id, scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000']),
+    employmentIds: scopeEmploymentIds,
+  };
+}
+
+/** Payroll Process wizard (Step 1) — validate a user-supplied payment date (ISO 'YYYY-MM-DD'). Returns
+ *  the date unchanged when valid, else null (caller falls back to the period default). */
+function validPaymentDate(paymentDate?: string | null): string | null {
+  if (!paymentDate) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) return null;
+  const d = new Date(`${paymentDate}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? null : paymentDate;
+}
+
+export async function createBatch(
+  ctx: SessionContext,
+  p: { companyId: string; payPeriod: string; scope?: BatchScope; paymentDate?: string },
+) {
   return withTenant(ctx, async (tx) => {
     // Wave 2C (ADR-0024): this is the REGULAR run for a (company, month). Reject a second one exactly
     // as before — with MULTI_CYCLE_PAYROLL_ENABLED off there is still one run per month. Additional
@@ -300,6 +349,10 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       });
     }
 
+    // Payroll Process wizard (1a/1d): batch_date now carries the USER-SET payment date (previously
+    // write-only — no report/export read it). A validated ISO date wins; else fall back to the
+    // existing '<period>-28' default (unchanged behaviour for every pre-wizard caller/test).
+    const batchDate = validPaymentDate(p.paymentDate) ?? `${p.payPeriod}-28`;
     const [row] = await tx
       .insert(payrollBatch)
       .values({
@@ -309,7 +362,7 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
         runSeq: 1,
         runType: 'regular',
         payPeriod: p.payPeriod,
-        batchDate: `${p.payPeriod}-28`,
+        batchDate,
         status: 'draft',
         scope: normalizeScope(p.scope),
       })
@@ -320,7 +373,15 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       aggregateId: row.id,
       eventType: 'payroll-batch.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: periodId, runSeq: 1, runType: 'regular', scope: normalizeScope(p.scope) },
+      payload: {
+        companyId: p.companyId,
+        payPeriod: p.payPeriod,
+        payPeriodId: periodId,
+        runSeq: 1,
+        runType: 'regular',
+        scope: normalizeScope(p.scope),
+        paymentDate: batchDate,
+      },
     });
 
     // Phase-B #15 — holiday-completeness guard. The payroll period spans a (company-state, year); if fewer
@@ -366,7 +427,18 @@ async function warnBatchHolidayCompleteness(
  */
 export async function createAdditionalRun(
   ctx: SessionContext,
-  p: { companyId: string; payPeriod: string; runType: 'off_cycle' | 'bonus' | 'adjustment' },
+  p: {
+    companyId: string;
+    payPeriod: string;
+    runType: 'off_cycle' | 'bonus' | 'adjustment';
+    /** Payroll Process wizard (1b): optional payment date (validated, else '<period>-28' default). */
+    paymentDate?: string;
+    /** Payroll Process wizard (1b): a cycle label for off-cycle presets, e.g. 'Advance Salary' / 'Mid-Month'. */
+    remarks?: string;
+    /** Payroll Process wizard (1b): optional subset — generatePayslips already resolves batch.scope for
+     *  every runType, so an additional run can legitimately be scoped the same way the regular run is. */
+    scope?: BatchScope;
+  },
 ) {
   if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
     throw new Error('Multiple payroll runs per month are not enabled.');
@@ -387,6 +459,8 @@ export async function createAdditionalRun(
       throw new Error('Create the regular run for this month before adding a run.');
     }
     const nextSeq = Math.max(...runs.map((r) => r.runSeq)) + 1;
+    const batchDate = validPaymentDate(p.paymentDate) ?? `${p.payPeriod}-28`;
+    const scope = normalizeScope(p.scope);
     const [row] = await tx
       .insert(payrollBatch)
       .values({
@@ -396,8 +470,10 @@ export async function createAdditionalRun(
         runSeq: nextSeq,
         runType: p.runType,
         payPeriod: p.payPeriod,
-        batchDate: `${p.payPeriod}-28`,
+        batchDate,
         status: 'draft',
+        scope,
+        remarks: p.remarks || null,
       })
       .returning({ id: payrollBatch.id });
     await appendEvent(tx, {
@@ -406,7 +482,16 @@ export async function createAdditionalRun(
       aggregateId: row.id,
       eventType: 'payroll-batch.run-added',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, payPeriod: p.payPeriod, payPeriodId: period.id, runSeq: nextSeq, runType: p.runType },
+      payload: {
+        companyId: p.companyId,
+        payPeriod: p.payPeriod,
+        payPeriodId: period.id,
+        runSeq: nextSeq,
+        runType: p.runType,
+        paymentDate: batchDate,
+        remarks: p.remarks || null,
+        scope,
+      },
     });
     return { batchId: row.id };
   });
@@ -1902,12 +1987,31 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     // Placed beside the claim-paid block so every irreversible loan mutation ties to a written payslip.
     await applyLoansForBatch(tx, ctx, p.batchId, appliedLoanCentsByEmp);
 
-    // Taxable claims prefilled into this batch are now on a payslip → mark them paid (ADR-0021).
-    const paidClaims = await tx
-      .update(claimRequest)
-      .set({ status: 'paid', paidAt: new Date(), payoutRef: `payroll:${batch.payPeriod}` })
-      .where(and(eq(claimRequest.payrollBatchId, p.batchId), eq(claimRequest.status, 'approved')))
-      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+    // Money-safety fix (Payroll Process wizard plan): taxable claims prefilled into this batch are marked
+    // paid ONLY for employments that actually received a payslip in THIS run — not every claim reserved on
+    // the batch. Before the filters, an unfiltered run always covered the whole company so `emps` and "every
+    // reserved claim" were the same set; a scoped run made that assumption false — a claim reserved for
+    // someone outside the run (or comp-less, so no payslip was written) would otherwise be marked paid with
+    // nothing actually disbursed. Claims whose employment got no payslip here are UNLINKED (payrollBatchId
+    // reset to null, status stays 'approved') so `prefillClaimsForBatch`'s isNull(payrollBatchId) filter
+    // re-queues them on the next batch instead of stranding them forever.
+    const paidEmploymentIds = new Set(emps.map((e) => e.employmentId));
+    const reservedClaims = await tx
+      .select({ id: claimRequest.id, employmentId: claimRequest.employmentId })
+      .from(claimRequest)
+      .where(and(eq(claimRequest.payrollBatchId, p.batchId), eq(claimRequest.status, 'approved')));
+    const toMarkPaid = reservedClaims.filter((c) => paidEmploymentIds.has(c.employmentId)).map((c) => c.id);
+    const toRequeue = reservedClaims.filter((c) => !paidEmploymentIds.has(c.employmentId)).map((c) => c.id);
+    const paidClaims = toMarkPaid.length
+      ? await tx
+          .update(claimRequest)
+          .set({ status: 'paid', paidAt: new Date(), payoutRef: `payroll:${batch.payPeriod}` })
+          .where(inArray(claimRequest.id, toMarkPaid))
+          .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId })
+      : [];
+    if (toRequeue.length) {
+      await tx.update(claimRequest).set({ payrollBatchId: null }).where(inArray(claimRequest.id, toRequeue));
+    }
     for (const c of paidClaims) {
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
@@ -1999,6 +2103,7 @@ export function listBatches(ctx: SessionContext, companyIds?: string[], payPerio
     tx
       .select({
         id: payrollBatch.id,
+        companyId: payrollBatch.companyId,
         company: company.legalName,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
@@ -2006,6 +2111,7 @@ export function listBatches(ctx: SessionContext, companyIds?: string[], payPerio
         status: payrollBatch.status,
         employeeCount: payrollBatch.employeeCount,
         totals: payrollBatch.totals,
+        batchDate: payrollBatch.batchDate,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))

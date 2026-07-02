@@ -1248,11 +1248,6 @@
       "colNetPay": "Gaji bersih",
       "colStatus": "Status",
       "empty": "Belum ada proses gaji — cipta satu di bawah.",
-      "company": "Syarikat",
-      "payPeriod": "Tempoh gaji",
-      "createBatch": "Cipta proses gaji",
-      "runTypeLabel": "Jenis larian",
-      "addRun": "Tambah larian",
       "runType": {
         "regular": "Biasa",
         "off_cycle": "Luar kitaran",
@@ -1264,17 +1259,13 @@
         "processed": "Diproses",
         "closed": "Ditutup"
       },
-      "scopeLabel": "Jabatan (pilihan)",
-      "scopeEmployeesLabel": "Pekerja (pilihan)",
-      "scopeEmployeesEmpty": "Tiada pekerja aktif dalam syarikat ini.",
-      "scopeEmployeesSelected": "{n} dipilih",
-      "scopeEmployeesSelectAll": "Pilih semua",
-      "scopeEmployeesClear": "Kosongkan",
-      "scopeHint": "Jabatan yang dipilih dan pekerja yang dinamakan digabungkan. Biarkan semua tidak bertanda untuk menjalankan gaji bagi seluruh syarikat.",
       "importHistory": "Import sejarah gaji",
       "periodContext": "Tempoh gaji",
       "allPeriods": "Semua tempoh",
-      "filteredEmpty": "Tiada proses gaji untuk tempoh gaji ini."
+      "filteredEmpty": "Tiada proses gaji untuk tempoh gaji ini.",
+      "newRun": "Larian gaji baharu",
+      "colPaymentDate": "Tarikh bayaran",
+      "paymentDateLegacyNote": "Larian yang dicipta sebelum keluaran ini memaparkan tarikh lalai sistem (28hb)."
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -1553,7 +1544,15 @@
       },
       "prefillFixedZakat": "Isi awal zakat tetap",
       "prefillLoans": "Praisi potongan pinjaman",
-      "loanSummary": "{count} ansuran pinjaman · RM {amount}"
+      "loanSummary": "{count} ansuran pinjaman · RM {amount}",
+      "step3Title": "Langkah 3 daripada 3 — Semak & proses",
+      "summaryPeriod": "Tempoh",
+      "summaryCycle": "Kitaran",
+      "summaryPaymentDate": "Tarikh bayaran",
+      "summaryHeadcount": "Bilangan pekerja",
+      "consolidateTitle": "Satukan data",
+      "scopedCaption": "Larian ini disasarkan kepada pekerja terpilih. Pra-isi kerja lebih masa, kadar syif, pinjaman dan zakat di bawah masih berlaku seluruh syarikat; baris di luar skop diabaikan semasa pemprosesan. Pra-isi tuntutan disasarkan dengan betul.",
+      "holidayWarning": "{country}/{state} {year}: hanya {loaded} daripada {required} cuti umum dimuatkan — pengiraan hari rehat/OT mungkin terjejas."
     },
     "transactions": {
       "title": "Transaksi",
@@ -1719,6 +1718,59 @@
       "eaSplitWarningBody": "{count, plural, one {Baris {rows}} other {Baris {rows}}}: gaji kasar melebihi gaji asas tanpa pecahan elaun/kerja lebih masa/bonus — perincian EA Bahagian B akan jatuh sepenuhnya di bawah “asas”. Sediakan pecahan, atau betulkan selepas import melalui tulis-ganti EA bagi gaji kasar / elaun / bonus.",
       "eaSplitHint": "Bagi mana-mana bulan yang gaji kasar ≠ gaji asas, sediakan pecahan elaun / kerja lebih masa / bonus supaya perincian EA Bahagian B tepat. Anda juga boleh membetulkannya selepas import melalui tulis-ganti EA bagi gaji kasar / elaun / bonus pada borang EA pekerja.",
       "cp38Hint": "Sertakan lajur cp38 (dan cp38_ref) bagi mana-mana bulan dengan ansuran CP38 mahkamah / LHDN, supaya bulan yang dimigrasikan kekal lengkap untuk fail e-Data CP39."
+    },
+    "process": {
+      "title": "Proses Gaji",
+      "subtitle": "Proses gaji dalam tiga langkah berpandu: tempoh, pekerja, kemudian semak dan proses.",
+      "stepPeriod": "Tempoh Gaji",
+      "stepSelection": "Pemilihan Pekerja",
+      "stepOf": "Langkah {n} daripada {total}",
+      "back": "Kembali",
+      "continue": "Teruskan",
+      "creating": "Mencipta…",
+      "createRun": "Teruskan ke semakan",
+      "company": "Syarikat",
+      "selectCompany": "Pilih syarikat",
+      "payPeriod": "Bulan gaji",
+      "cycleLabel": "Kitaran gaji",
+      "cycleDisabled": "tidak tersedia",
+      "paymentDate": "Tarikh bayaran",
+      "multiCycleOffNote": "Hanya larian Bulanan tersedia. Kitaran tambahan (Bonus, Luar kitaran, Gaji Pendahuluan, Pertengahan Bulan) dimatikan untuk penyewa ini.",
+      "existingRunsTitle": "Larian sedia ada untuk tempoh ini",
+      "resumeDraft": "Sambung draf",
+      "regularExistsNote": "Larian Bulanan untuk {period} sudah wujud. Sambung draf sedia ada, atau pilih kitaran lain.",
+      "consolidationNote": "Data kehadiran, cuti, tuntutan dan pinjaman disatukan pada langkah semakan, selepas larian dicipta.",
+      "cycle": {
+        "regular": "Bulanan",
+        "bonus": "Bonus",
+        "off_cycle": "Luar kitaran",
+        "advance": "Gaji Pendahuluan",
+        "midmonth": "Pertengahan Bulan",
+        "adjustment": "Pelarasan"
+      },
+      "runType": {
+        "regular": "Bulanan",
+        "bonus": "Bonus",
+        "off_cycle": "Luar kitaran",
+        "adjustment": "Pelarasan"
+      },
+      "filterBusinessUnit": "Unit Perniagaan",
+      "filterDepartment": "Jabatan",
+      "filterPosition": "Jawatan",
+      "filterJobGrade": "Gred Jawatan",
+      "filterEmploymentType": "Jenis Pekerjaan",
+      "filterCostCentre": "Pusat Kos",
+      "filterStatus": "Status Pekerja",
+      "filterAll": "Semua",
+      "employeesLabel": "Pekerja",
+      "headcount": "{n} dipilih",
+      "selectAll": "Pilih semua",
+      "clearAll": "Kosongkan",
+      "loadingEmployees": "Memuatkan pekerja…",
+      "noEmployees": "Tiada pekerja ditemui untuk syarikat dan tempoh ini.",
+      "leaverTag": "berhenti pertengahan bulan",
+      "leaverFilterWarning": "Penapis status ini akan mengecualikan {n} pekerja yang berhenti pertengahan bulan — gaji akhir mereka akan terlepas tanpa amaran.",
+      "compLessWarning": "{n} pekerja tiada rekod pampasan aktif dan tidak akan menerima slip gaji."
     }
   },
   "admin": {
@@ -2480,8 +2532,8 @@
           "body": "Setiap pemprosesan gaji berada di sini. Klik satu tempoh untuk membuka proses gaji dan menyemak slip gaji, gaji bersih dan jumlah berkanun."
         },
         "create": {
-          "title": "Cipta proses gaji baharu",
-          "body": "Pilih syarikat dan tempoh gaji, kemudian klik **Cipta proses gaji** untuk memulakan pemprosesan gaji baharu."
+          "title": "Larian gaji baharu",
+          "body": "Klik **Larian gaji baharu** untuk membuka wizard berpandu: pilih tempoh dan kitaran, pilih pekerja, kemudian semak dan proses."
         },
         "reports": {
           "title": "Laporan berkanun",

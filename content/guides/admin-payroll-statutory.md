@@ -35,15 +35,16 @@ The **Previous employment this year (TP3 / opening balances)** section seeds the
 
 **Tip:** Salary itself lives on the **Compensation** card next door. Use **Update pay** there to set **Basic salary (MYR)** and **Allowance** before running payroll — proration and all statutory bases read the current compensation record.
 
-## Creating a payroll batch
+## Creating a payroll batch — the 3-step Payroll Process wizard
 
-1. In the left sidebar, click **Payroll**. You land on the **Payroll Process** tab, which lists every payroll process with its **Period**, **Company**, **Employees**, **Net pay** and **Status**.
-2. At the bottom of the payroll process table, use the create form:
-   - **Company** — select the company to run.
-   - **Pay period** — type `YYYY-MM` (e.g. `2026-05`). It defaults to the current month.
-3. Click **Create payroll process**.
+1. In the left sidebar, click **Payroll**. You land on the **Payroll Process** tab, which lists every payroll process with its **Period**, **Company**, **Employees**, **Net pay**, **Payment date** and **Status**.
+2. Click **New payroll run** to open the guided wizard:
+   - **Step 1 — Payroll Period:** pick the **Company**, the **Payroll month**, the **Cycle** (Monthly always; Bonus, Off-cycle, Advance Salary and Mid-Month presets when multi-run payroll is enabled), and the **Payment date** (pre-filled from the company's configured pay day). If a run already exists for the chosen company and month, it's shown with a **Resume draft** link so you can continue an unfinished process instead of hitting an error.
+   - **Step 2 — Employee Selection:** narrow the workforce with Business Unit, Department, Position, Job Grade, Employment Type, Cost Centre and Employee Status filters (they combine), plus a searchable individual picker with **Select all** / **Clear** and a live headcount. Leaving every filter untouched and nobody deselected runs the whole company, exactly as before. A status filter that would exclude someone who left partway through the month shows a warning so their final pay is never silently skipped.
+   - Click **Continue to review** to create the run and land on **Step 3**.
+3. **Step 3 — Review & process** is the run's normal detail page: a summary strip (period, cycle, payment date, headcount), the **Consolidate data** actions (attendance overtime, shift differential, claims, loans, zakat — the same admin-controlled buttons as before, now grouped and explained), any leaver or holiday-completeness warnings, and the **Process payroll** button.
 
-The new batch opens in `Draft` status. **Note:** only one batch can exist per company per pay period — a second attempt for the same period is rejected.
+The new batch opens in `Draft` status. **Note:** only one Monthly batch can exist per company per pay period — the wizard shows the existing draft and disables Monthly rather than letting you hit an error.
 
 ## The draft batch: inputs, overtime, bonuses
 
