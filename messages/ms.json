@@ -101,11 +101,8 @@
     "aiConfig": "AI",
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
-    "payComponents": "Komponen gaji",
     "attendancePolicy": "Dasar kehadiran",
     "toilPolicy": "Cuti ganti",
-    "payrollConfig": "Konfigurasi gaji",
-    "payrollPolicy": "Dasar gaji",
     "leaveApproval": "Rantaian kelulusan",
     "feedback": "Maklum Balas",
     "reviews": "Penilaian",
@@ -1646,17 +1643,22 @@
       }
     },
     "setup": {
-      "title": "Konfigurasi gaji",
-      "subtitle": "Tempat utama untuk mengurus persediaan gaji. Buka sub-modul untuk mengkonfigurasinya; hanya modul yang anda boleh akses ditunjukkan.",
+      "title": "Tetapan Gaji",
+      "subtitle": "Tempat utama untuk mengurus tetapan gaji. Buka sub-modul untuk mengkonfigurasinya; hanya modul yang anda boleh akses ditunjukkan.",
       "policies": {
-        "title": "Dasar Gaji",
+        "title": "Jadual Gaji",
         "desc": "Jadual gaji setiap syarikat — hari potongan, hari bayaran, asas bayaran, mod HRDF dan EPF.",
-        "cta": "Buka dasar"
+        "cta": "Buka jadual gaji"
       },
       "items": {
         "title": "Item Gaji",
         "desc": "Tentukan komponen gaji dan layanan berkanunnya (EPF / SOCSO / PCB / HRDF).",
         "cta": "Buka komponen gaji"
+      },
+      "payrollPolicies": {
+        "title": "Dasar Gaji",
+        "desc": "Set dasar gaji bernama — cipta, salin dan urus dasar yang ditetapkan kepada pekerja.",
+        "cta": "Buka dasar gaji"
       },
       "period": {
         "title": "Templat Tempoh Gaji",
@@ -2285,7 +2287,7 @@
       "reports": "Laporan",
       "configuration": "Konfigurasi",
       "transactions": "Transaksi",
-      "setup": "Persediaan"
+      "setup": "Tetapan"
     },
     "printButton": {
       "print": "Cetak / Simpan PDF"

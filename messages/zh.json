@@ -101,11 +101,8 @@
     "aiConfig": "AI",
     "notifications": "通知",
     "analytics": "分析",
-    "payComponents": "薪资组件",
     "attendancePolicy": "考勤政策",
     "toilPolicy": "调休",
-    "payrollConfig": "薪资配置",
-    "payrollPolicy": "薪资政策",
     "leaveApproval": "审批链",
     "feedback": "反馈",
     "reviews": "评估",
@@ -1646,17 +1643,22 @@
       }
     },
     "setup": {
-      "title": "薪资配置",
+      "title": "薪资设置",
       "subtitle": "管理薪资设置的中心。打开子模块进行配置；仅显示您有权访问的模块。",
       "policies": {
-        "title": "薪资政策",
+        "title": "薪资计划",
         "desc": "各公司的薪资计划——截止日、发薪日、计薪基准、HRDF 和 EPF 模式。",
-        "cta": "打开政策"
+        "cta": "打开薪资计划"
       },
       "items": {
         "title": "薪资项目",
         "desc": "定义薪资组件及其法定处理方式（EPF / SOCSO / PCB / HRDF）。",
         "cta": "打开薪资组件"
+      },
+      "payrollPolicies": {
+        "title": "薪资政策",
+        "desc": "命名的薪资政策集——创建、复制和管理分配给员工的政策。",
+        "cta": "打开薪资政策"
       },
       "period": {
         "title": "薪资周期模板",

@@ -27,6 +27,7 @@ export default async function PayrollSetupPage() {
   const cards = [
     { key: 'policies', href: '/admin/payroll-config' },
     { key: 'items', href: '/admin/pay-components' },
+    { key: 'payrollPolicies', href: '/admin/payroll-policy' },
     { key: 'period', href: '/admin/payroll-config' },
     { key: 'submission', href: '/admin/payroll-config' },
     { key: 'ea', href: '/admin/pay-components' },

@@ -101,11 +101,8 @@
     "aiConfig": "AI",
     "notifications": "Notifications",
     "analytics": "Analytics",
-    "payComponents": "Pay components",
     "attendancePolicy": "Attendance policy",
     "toilPolicy": "Time off in lieu",
-    "payrollConfig": "Payroll config",
-    "payrollPolicy": "Payroll policies",
     "leaveApproval": "Approval chain",
     "feedback": "Feedback",
     "reviews": "Reviews",
@@ -1646,17 +1643,22 @@
       }
     },
     "setup": {
-      "title": "Payroll configuration",
-      "subtitle": "The central place to manage payroll setup. Open a sub-module to configure it; only the modules you can access are shown.",
+      "title": "Payroll Settings",
+      "subtitle": "The central place to manage payroll settings. Open a sub-module to configure it; only the modules you can access are shown.",
       "policies": {
-        "title": "Payroll Policies",
+        "title": "Payroll Schedule",
         "desc": "Per-company payroll schedule — cut-off day, pay day, payment basis, HRDF and EPF modes.",
-        "cta": "Open policies"
+        "cta": "Open payroll schedule"
       },
       "items": {
         "title": "Payroll Items",
         "desc": "Define pay components and their statutory treatment (EPF / SOCSO / PCB / HRDF).",
         "cta": "Open pay components"
+      },
+      "payrollPolicies": {
+        "title": "Payroll Policies",
+        "desc": "Named payroll policy sets — create, copy and manage the policies assigned to employees.",
+        "cta": "Open payroll policies"
       },
       "period": {
         "title": "Payroll Period Template",
@@ -2285,7 +2287,7 @@
       "reports": "Reports",
       "configuration": "Configuration",
       "transactions": "Transactions",
-      "setup": "Setup"
+      "setup": "Settings"
     },
     "printButton": {
       "print": "Print / Save PDF"

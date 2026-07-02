@@ -101,11 +101,8 @@
     "aiConfig": "AI",
     "notifications": "Thông báo",
     "analytics": "Phân tích",
-    "payComponents": "Thành phần lương",
     "attendancePolicy": "Chính sách chấm công",
     "toilPolicy": "Nghỉ bù",
-    "payrollConfig": "Cấu hình lương",
-    "payrollPolicy": "Chính sách lương",
     "leaveApproval": "Chuỗi phê duyệt",
     "feedback": "Phản hồi",
     "reviews": "Đánh giá",
@@ -1646,17 +1643,22 @@
       }
     },
     "setup": {
-      "title": "Cấu hình lương",
-      "subtitle": "Nơi trung tâm để quản lý thiết lập lương. Mở một mô-đun con để cấu hình; chỉ hiển thị các mô-đun bạn có quyền truy cập.",
+      "title": "Cài đặt lương",
+      "subtitle": "Nơi trung tâm để quản lý cài đặt lương. Mở một mô-đun con để cấu hình; chỉ hiển thị các mô-đun bạn có quyền truy cập.",
       "policies": {
-        "title": "Chính sách lương",
+        "title": "Lịch trả lương",
         "desc": "Lịch trả lương theo từng công ty — ngày chốt, ngày trả, cơ sở thanh toán, chế độ HRDF và EPF.",
-        "cta": "Mở chính sách"
+        "cta": "Mở lịch trả lương"
       },
       "items": {
         "title": "Khoản mục lương",
         "desc": "Xác định các thành phần lương và cách xử lý pháp định của chúng (EPF / SOCSO / PCB / HRDF).",
         "cta": "Mở thành phần lương"
+      },
+      "payrollPolicies": {
+        "title": "Chính sách lương",
+        "desc": "Các bộ chính sách lương được đặt tên — tạo, sao chép và quản lý các chính sách được gán cho nhân viên.",
+        "cta": "Mở chính sách lương"
       },
       "period": {
         "title": "Mẫu kỳ lương",
@@ -2285,7 +2287,7 @@
       "reports": "Báo cáo",
       "configuration": "Cấu hình",
       "transactions": "Giao dịch",
-      "setup": "Thiết lập"
+      "setup": "Cài đặt"
     },
     "printButton": {
       "print": "In / Lưu PDF"
