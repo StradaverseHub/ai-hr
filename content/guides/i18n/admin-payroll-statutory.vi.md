@@ -37,11 +37,11 @@ Phần **Previous employment this year (TP3 / opening balances)** khởi tạo c
 
 ## Tạo một đợt bảng lương
 
-1. Trong thanh bên trái, nhấp **Payroll**. Bạn sẽ đến tab **Batches**, liệt kê mọi đợt với **Period**, **Company**, **Employees**, **Net pay** và **Status** của nó.
-2. Ở cuối bảng các đợt, sử dụng biểu mẫu tạo:
+1. Trong thanh bên trái, nhấp **Payroll**. Bạn sẽ đến tab **Payroll Process**, liệt kê mọi quy trình tính lương với **Period**, **Company**, **Employees**, **Net pay** và **Status** của nó.
+2. Ở cuối bảng các quy trình tính lương, sử dụng biểu mẫu tạo:
    - **Company** — chọn công ty để chạy.
    - **Pay period** — gõ `YYYY-MM` (ví dụ `2026-05`). Mặc định là tháng hiện tại.
-3. Nhấp **Create batch**.
+3. Nhấp **Create payroll process**.
 
 Đợt mới mở ở trạng thái `Draft`. **Lưu ý:** chỉ có thể tồn tại một đợt cho mỗi công ty cho mỗi kỳ trả lương — lần thử thứ hai cho cùng một kỳ sẽ bị từ chối.
 

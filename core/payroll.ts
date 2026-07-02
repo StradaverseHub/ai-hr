@@ -272,7 +272,7 @@ export async function createBatch(ctx: SessionContext, p: { companyId: string; p
       .from(payrollBatch)
       .where(and(eq(payrollBatch.companyId, p.companyId), eq(payrollBatch.payPeriod, p.payPeriod)))
       .limit(1);
-    if (existing) throw new Error('A payroll batch already exists for this period');
+    if (existing) throw new Error('A payroll process already exists for this period');
 
     // Every batch belongs to a pay_period parent (the statutory month). Find-or-create it; a period
     // row may already exist (e.g. an earlier draft run was deleted) — reuse it. The month-level

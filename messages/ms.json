@@ -1244,16 +1244,16 @@
   "payroll": {
     "list": {
       "title": "Gaji",
-      "batches": "Kelompok",
+      "batches": "Proses Gaji",
       "colPeriod": "Tempoh",
       "colCompany": "Syarikat",
       "colEmployees": "Pekerja",
       "colNetPay": "Gaji bersih",
       "colStatus": "Status",
-      "empty": "Belum ada kelompok — cipta satu di bawah.",
+      "empty": "Belum ada proses gaji — cipta satu di bawah.",
       "company": "Syarikat",
       "payPeriod": "Tempoh gaji",
-      "createBatch": "Cipta kelompok",
+      "createBatch": "Cipta proses gaji",
       "runTypeLabel": "Jenis larian",
       "addRun": "Tambah larian",
       "runType": {
@@ -1277,7 +1277,7 @@
       "importHistory": "Import sejarah gaji",
       "periodContext": "Tempoh gaji",
       "allPeriods": "Semua tempoh",
-      "filteredEmpty": "Tiada kelompok untuk tempoh gaji ini."
+      "filteredEmpty": "Tiada proses gaji untuk tempoh gaji ini."
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -1586,7 +1586,7 @@
         "title": "Transaksi Individu",
         "subtitle": "Komponen kelompok sekali sahaja, pelepasan TP1 dan zakat.",
         "pickBatch": "Kelompok draf",
-        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Kelompok dahulu.",
+        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
         "addTitle": "Tambah komponen sekali sahaja",
         "addIntro": "Tambah satu komponen gaji sekali sahaja untuk seorang pekerja pada kelompok draf ini.",
         "employee": "Pekerja",
@@ -2281,7 +2281,7 @@
       "sequence": "jujukan #{seq}"
     },
     "payrollTabs": {
-      "batches": "Kelompok",
+      "batches": "Proses Gaji",
       "reports": "Laporan",
       "configuration": "Konfigurasi",
       "transactions": "Transaksi",
@@ -2471,15 +2471,15 @@
       "payroll": {
         "intro": {
           "title": "Jalankan kitaran gaji",
-          "body": "Lawatan ini meliputi pemprosesan gaji: mencipta kelompok, menyemak kelompok, dan mencari laporan berkanun seperti EA dan CP39."
+          "body": "Lawatan ini meliputi pemprosesan gaji: mencipta proses gaji, menyemak proses gaji, dan mencari laporan berkanun seperti EA dan CP39."
         },
         "batches": {
-          "title": "Kelompok gaji anda",
-          "body": "Setiap pemprosesan gaji berada di sini. Klik satu tempoh untuk membuka kelompok dan menyemak slip gaji, gaji bersih dan jumlah berkanun."
+          "title": "Proses gaji anda",
+          "body": "Setiap pemprosesan gaji berada di sini. Klik satu tempoh untuk membuka proses gaji dan menyemak slip gaji, gaji bersih dan jumlah berkanun."
         },
         "create": {
-          "title": "Cipta kelompok baharu",
-          "body": "Pilih syarikat dan tempoh gaji, kemudian klik **Cipta kelompok** untuk memulakan pemprosesan gaji baharu."
+          "title": "Cipta proses gaji baharu",
+          "body": "Pilih syarikat dan tempoh gaji, kemudian klik **Cipta proses gaji** untuk memulakan pemprosesan gaji baharu."
         },
         "reports": {
           "title": "Laporan berkanun",

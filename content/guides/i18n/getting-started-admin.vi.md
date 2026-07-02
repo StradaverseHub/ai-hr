@@ -109,9 +109,9 @@ Mở **Admin → Users & roles**. Bạn sẽ thấy mọi người dùng hiện 
 
 ## 8. Chạy lô bảng lương đầu tiên của bạn
 
-Mở **Payroll** trong thanh bên (tab **Batches**).
+Mở **Payroll** trong thanh bên (tab **Payroll Process**).
 
-1. Trong biểu mẫu **Create batch**, chọn **Company** và một **Pay period** ở định dạng `YYYY-MM` (mặc định là tháng hiện tại). Nhấp **Create batch**.
+1. Trong biểu mẫu **Create payroll process**, chọn **Company** và một **Pay period** ở định dạng `YYYY-MM` (mặc định là tháng hiện tại). Nhấp **Create payroll process**.
 2. Mở lô mới từ danh sách. Trong khi nó ở trạng thái `draft`, bạn sẽ thấy **Inputs** cho từng nhân viên — nhập **OT**, **Bonus**, **TP1**, **Zakat** khi cần và **Save** (hoặc nhấp **Prefill OT** để kéo dữ liệu làm thêm giờ từ chấm công đã được phê duyệt). Một **leaver advisory** xuất hiện cho bất kỳ ai bị chấm dứt hợp đồng trong kỳ.
 3. Nhấp **Generate payslips**. Lô chuyển sang `processed` và bảng **Payslips** hiển thị **Gross**, **Bonus**, **EPF**, **SOCSO**, **EIS**, **PCB**, và **Net** của mỗi người, cùng với các tổng chính (gross, các khoản khấu trừ, net, chi phí của người sử dụng lao động).
 4. Xem lại các khoản khấu trừ pháp định. Khi bạn hài lòng, nhấp **Close batch** (trạng thái `closed`) để khóa nó. Một lô đã đóng là bất biến.

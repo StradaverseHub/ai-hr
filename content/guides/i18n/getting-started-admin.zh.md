@@ -109,9 +109,9 @@ CSV 导入已经捕获了法定基本信息。要查看或为手动招聘的员�
 
 ## 8. 运行你的第一批薪资
 
-在边栏中打开 **Payroll**（**Batches（批次）** 标签页）。
+在边栏中打开 **Payroll**（**Payroll Process（薪资流程）** 标签页）。
 
-1. 在 **Create batch（创建批次）** 表单中，选择 **Company** 和一个以 `YYYY-MM` 表示的 **Pay period（薪资周期）**（默认为当月）。点击 **Create batch**。
+1. 在 **Create payroll process（创建薪资流程）** 表单中，选择 **Company** 和一个以 `YYYY-MM` 表示的 **Pay period（薪资周期）**（默认为当月）。点击 **Create payroll process**。
 2. 从列表中打开这个新批次。当它处于 `draft` 草稿状态时，你会看到每位员工的 **Inputs（输入项）** —— 根据需要输入 **OT（加班）**、**Bonus（奖金）**、**TP1**、**Zakat（天课）**，然后点击 **Save**（或点击 **Prefill OT（预填加班）** 从已批准的考勤中拉取加班数据）。对于在该周期内被终止雇用的任何人，会出现一条 **leaver advisory（离职提示）**。
 3. 点击 **Generate payslips（生成工资单）**。批次会进入 `processed` 已处理状态，**Payslips（工资单）** 表会显示每个人的 **Gross（毛额）**、**Bonus**、**EPF**、**SOCSO**、**EIS**、**PCB** 和 **Net（净额）**，以及汇总总计（毛额、扣除额、净额、雇主成本）。
 4. 复核法定扣除项。当你满意时，点击 **Close batch（关闭批次）**（状态变为 `closed`）以锁定它。已关闭的批次不可更改。

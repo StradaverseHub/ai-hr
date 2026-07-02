@@ -1244,16 +1244,16 @@
   "payroll": {
     "list": {
       "title": "薪资",
-      "batches": "批次",
+      "batches": "薪资流程",
       "colPeriod": "周期",
       "colCompany": "公司",
       "colEmployees": "员工",
       "colNetPay": "实发工资",
       "colStatus": "状态",
-      "empty": "暂无批次 — 在下方创建一个。",
+      "empty": "暂无薪资流程 — 在下方创建一个。",
       "company": "公司",
       "payPeriod": "发薪周期",
-      "createBatch": "创建批次",
+      "createBatch": "创建薪资流程",
       "runTypeLabel": "运行类型",
       "addRun": "添加运行",
       "runType": {
@@ -1277,7 +1277,7 @@
       "importHistory": "导入薪资历史",
       "periodContext": "发薪周期",
       "allPeriods": "所有周期",
-      "filteredEmpty": "此发薪周期暂无批次。"
+      "filteredEmpty": "此发薪周期暂无薪资流程。"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -1586,7 +1586,7 @@
         "title": "个别交易",
         "subtitle": "一次性批次组件、TP1 减免和天课。",
         "pickBatch": "草稿批次",
-        "noBatches": "没有可用的草稿批次。请先在批次选项卡中创建一个。",
+        "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
         "addTitle": "添加一次性组件",
         "addIntro": "在此草稿批次上为一名员工添加单个一次性薪资组件。",
         "employee": "员工",
@@ -2281,7 +2281,7 @@
       "sequence": "序号 #{seq}"
     },
     "payrollTabs": {
-      "batches": "批次",
+      "batches": "薪资流程",
       "reports": "报表",
       "configuration": "配置",
       "transactions": "交易",
@@ -2471,15 +2471,15 @@
       "payroll": {
         "intro": {
           "title": "运行一个发薪周期",
-          "body": "本导览涵盖运行工资：创建批次、查看批次，以及查找 EA 和 CP39 等法定报表。"
+          "body": "本导览涵盖运行工资：创建薪资流程、查看薪资流程，以及查找 EA 和 CP39 等法定报表。"
         },
         "batches": {
-          "title": "你的工资批次",
-          "body": "每次发薪都在这里。点击某个周期可打开批次，查看工资单、实发工资和法定汇总。"
+          "title": "你的薪资流程",
+          "body": "每次发薪都在这里。点击某个周期可打开薪资流程，查看工资单、实发工资和法定汇总。"
         },
         "create": {
-          "title": "创建新批次",
-          "body": "选择公司和发薪周期，然后点击 **创建批次** 开始一次新的发薪。"
+          "title": "创建新的薪资流程",
+          "body": "选择公司和发薪周期，然后点击 **创建薪资流程** 开始一次新的发薪。"
         },
         "reports": {
           "title": "法定报表",

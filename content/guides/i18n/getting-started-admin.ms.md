@@ -109,9 +109,9 @@ Buka **Admin → Users & roles**. Anda akan melihat setiap pengguna sedia ada de
 
 ## 8. Jalankan kelompok gaji pertama anda
 
-Buka **Payroll** dalam bar sisi (tab **Batches**).
+Buka **Payroll** dalam bar sisi (tab **Payroll Process**).
 
-1. Dalam borang **Create batch**, pilih **Company** dan **Pay period** dalam `YYYY-MM` (lalai kepada bulan semasa). Klik **Create batch**.
+1. Dalam borang **Create payroll process**, pilih **Company** dan **Pay period** dalam `YYYY-MM` (lalai kepada bulan semasa). Klik **Create payroll process**.
 2. Buka kelompok baharu daripada senarai. Semasa ia `draft`, anda akan melihat **Inputs** bagi setiap pekerja — masukkan **OT**, **Bonus**, **TP1**, **Zakat** mengikut keperluan dan **Save** (atau klik **Prefill OT** untuk menarik kerja lebih masa daripada kehadiran yang diluluskan). **Leaver advisory** muncul untuk sesiapa yang ditamatkan dalam tempoh itu.
 3. Klik **Generate payslips**. Kelompok beralih ke `processed` dan jadual **Payslips** menunjukkan **Gross**, **Bonus**, **EPF**, **SOCSO**, **EIS**, **PCB**, dan **Net** setiap orang, serta jumlah utama (gross, potongan, net, kos majikan).
 4. Semak potongan berkanun. Apabila anda berpuas hati, klik **Close batch** (status `closed`) untuk menguncinya. Kelompok yang ditutup tidak boleh diubah.

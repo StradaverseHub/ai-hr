@@ -37,11 +37,11 @@ Bahagian **Previous employment this year (TP3 / opening balances)** menyemai aku
 
 ## Mencipta kelompok gaji
 
-1. Pada bar sisi kiri, klik **Payroll**. Anda mendarat pada tab **Batches**, yang menyenaraikan setiap kelompok dengan **Period**, **Company**, **Employees**, **Net pay** dan **Status**.
-2. Di bahagian bawah jadual kelompok, guna borang cipta:
+1. Pada bar sisi kiri, klik **Payroll**. Anda mendarat pada tab **Payroll Process**, yang menyenaraikan setiap proses gaji dengan **Period**, **Company**, **Employees**, **Net pay** dan **Status**.
+2. Di bahagian bawah jadual proses gaji, guna borang cipta:
    - **Company** — pilih syarikat untuk dijalankan.
    - **Pay period** — taip `YYYY-MM` (cth. `2026-05`). Ia lalai kepada bulan semasa.
-3. Klik **Create batch**.
+3. Klik **Create payroll process**.
 
 Kelompok baharu dibuka dalam status `Draft`. **Nota:** hanya satu kelompok boleh wujud bagi setiap syarikat bagi setiap tempoh gaji — percubaan kedua bagi tempoh yang sama akan ditolak.
 

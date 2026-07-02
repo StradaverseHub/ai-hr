@@ -109,9 +109,9 @@ Open **Admin → Users & roles**. You'll see every existing user with their curr
 
 ## 8. Run your first payroll batch
 
-Open **Payroll** in the sidebar (the **Batches** tab).
+Open **Payroll** in the sidebar (the **Payroll Process** tab).
 
-1. In the **Create batch** form, choose the **Company** and a **Pay period** in `YYYY-MM` (defaults to the current month). Click **Create batch**.
+1. In the **Create payroll process** form, choose the **Company** and a **Pay period** in `YYYY-MM` (defaults to the current month). Click **Create payroll process**.
 2. Open the new batch from the list. While it's `draft`, you'll see **Inputs** per employee — enter **OT**, **Bonus**, **TP1**, **Zakat** as needed and **Save** (or click **Prefill OT** to pull overtime from approved attendance). A **leaver advisory** appears for anyone terminated in the period.
 3. Click **Generate payslips**. The batch moves to `processed` and the **Payslips** table shows each person's **Gross**, **Bonus**, **EPF**, **SOCSO**, **EIS**, **PCB**, and **Net**, plus headline totals (gross, deductions, net, employer cost).
 4. Review the statutory deductions. When you're satisfied, click **Close batch** (status `closed`) to lock it. A closed batch is immutable.

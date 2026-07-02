@@ -1244,16 +1244,16 @@
   "payroll": {
     "list": {
       "title": "Bảng lương",
-      "batches": "Đợt",
+      "batches": "Quy trình tính lương",
       "colPeriod": "Kỳ",
       "colCompany": "Công ty",
       "colEmployees": "Nhân viên",
       "colNetPay": "Lương thực lãnh",
       "colStatus": "Trạng thái",
-      "empty": "Chưa có đợt nào — hãy tạo một đợt bên dưới.",
+      "empty": "Chưa có quy trình tính lương nào — hãy tạo một quy trình bên dưới.",
       "company": "Công ty",
       "payPeriod": "Kỳ lương",
-      "createBatch": "Tạo đợt",
+      "createBatch": "Tạo quy trình tính lương",
       "runTypeLabel": "Loại đợt chạy",
       "addRun": "Thêm đợt chạy",
       "runType": {
@@ -1277,7 +1277,7 @@
       "importHistory": "Nhập lịch sử bảng lương",
       "periodContext": "Kỳ lương",
       "allPeriods": "Tất cả kỳ lương",
-      "filteredEmpty": "Không có đợt nào cho kỳ lương này."
+      "filteredEmpty": "Không có quy trình tính lương nào cho kỳ lương này."
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -1586,7 +1586,7 @@
         "title": "Giao dịch Riêng lẻ",
         "subtitle": "Thành phần đợt một lần, miễn giảm TP1 và zakat.",
         "pickBatch": "Đợt nháp",
-        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Đợt trước.",
+        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
         "addTitle": "Thêm thành phần một lần",
         "addIntro": "Thêm một thành phần lương một lần cho một nhân viên trên đợt nháp này.",
         "employee": "Nhân viên",
@@ -2281,7 +2281,7 @@
       "sequence": "seq #{seq}"
     },
     "payrollTabs": {
-      "batches": "Đợt",
+      "batches": "Quy trình tính lương",
       "reports": "Báo cáo",
       "configuration": "Cấu hình",
       "transactions": "Giao dịch",
@@ -2471,15 +2471,15 @@
       "payroll": {
         "intro": {
           "title": "Chạy một chu kỳ bảng lương",
-          "body": "Hướng dẫn này bao gồm việc chạy bảng lương: tạo một lô, xem lại các lô và tìm các báo cáo pháp định như EA và CP39."
+          "body": "Hướng dẫn này bao gồm việc chạy bảng lương: tạo quy trình tính lương, xem lại các quy trình tính lương và tìm các báo cáo pháp định như EA và CP39."
         },
         "batches": {
-          "title": "Các lô bảng lương của bạn",
-          "body": "Mọi lần chạy lương đều nằm ở đây. Nhấp vào một kỳ để mở một lô và xem lại phiếu lương, lương thực nhận và tổng các khoản pháp định."
+          "title": "Các quy trình tính lương của bạn",
+          "body": "Mọi lần chạy lương đều nằm ở đây. Nhấp vào một kỳ để mở quy trình tính lương và xem lại phiếu lương, lương thực nhận và tổng các khoản pháp định."
         },
         "create": {
-          "title": "Tạo một lô mới",
-          "body": "Chọn một công ty và kỳ lương, rồi nhấp **Tạo lô** để bắt đầu một lần chạy lương mới."
+          "title": "Tạo quy trình tính lương mới",
+          "body": "Chọn một công ty và kỳ lương, rồi nhấp **Tạo quy trình tính lương** để bắt đầu một lần chạy lương mới."
         },
         "reports": {
           "title": "Báo cáo pháp định",

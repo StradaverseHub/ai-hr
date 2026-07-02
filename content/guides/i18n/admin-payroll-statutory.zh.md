@@ -37,11 +37,11 @@
 
 ## 创建薪资批次
 
-1. 在左侧边栏中，点击 **Payroll**。你会进入 **Batches** 选项卡，其中列出每个批次及其 **Period**、**Company**、**Employees**、**Net pay** 和 **Status**。
-2. 在批次表底部，使用创建表单：
+1. 在左侧边栏中，点击 **Payroll**。你会进入 **Payroll Process** 选项卡，其中列出每个薪资流程及其 **Period**、**Company**、**Employees**、**Net pay** 和 **Status**。
+2. 在薪资流程表底部，使用创建表单：
    - **Company** —— 选择要运行的公司。
    - **Pay period** —— 输入 `YYYY-MM`（例如 `2026-05`）。默认为当前月份。
-3. 点击 **Create batch**。
+3. 点击 **Create payroll process**。
 
 新批次以 `Draft` 状态打开。**注意：** 每家公司每个薪资周期只能存在一个批次——对同一周期的第二次尝试会被拒绝。
 

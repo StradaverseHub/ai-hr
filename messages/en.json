@@ -1244,16 +1244,16 @@
   "payroll": {
     "list": {
       "title": "Payroll",
-      "batches": "Batches",
+      "batches": "Payroll Process",
       "colPeriod": "Period",
       "colCompany": "Company",
       "colEmployees": "Employees",
       "colNetPay": "Net pay",
       "colStatus": "Status",
-      "empty": "No batches yet — create one below.",
+      "empty": "No payroll processes yet — create one below.",
       "company": "Company",
       "payPeriod": "Pay period",
-      "createBatch": "Create batch",
+      "createBatch": "Create payroll process",
       "runTypeLabel": "Run type",
       "addRun": "Add run",
       "runType": {
@@ -1277,7 +1277,7 @@
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
       "allPeriods": "All periods",
-      "filteredEmpty": "No batches for this pay period."
+      "filteredEmpty": "No payroll processes for this pay period."
     },
     "batch": {
       "back": "Payroll",
@@ -1586,7 +1586,7 @@
         "title": "Individual Transaction",
         "subtitle": "One-off batch components, TP1 relief and zakat.",
         "pickBatch": "Draft batch",
-        "noBatches": "No draft batch available. Create one from the Batches tab first.",
+        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
         "addTitle": "Add a one-off component",
         "addIntro": "Add a single one-off pay component for one employee on this draft batch.",
         "employee": "Employee",
@@ -2281,7 +2281,7 @@
       "sequence": "seq #{seq}"
     },
     "payrollTabs": {
-      "batches": "Batches",
+      "batches": "Payroll Process",
       "reports": "Reports",
       "configuration": "Configuration",
       "transactions": "Transactions",
@@ -2471,15 +2471,15 @@
       "payroll": {
         "intro": {
           "title": "Run a payroll cycle",
-          "body": "This walkthrough covers running payroll: creating a batch, reviewing batches, and finding statutory reports like EA and CP39."
+          "body": "This walkthrough covers running payroll: creating a payroll process, reviewing payroll processes, and finding statutory reports like EA and CP39."
         },
         "batches": {
-          "title": "Your payroll batches",
-          "body": "Every pay run lives here. Click a period to open a batch and review payslips, net pay, and statutory totals."
+          "title": "Your payroll processes",
+          "body": "Every pay run lives here. Click a period to open a payroll process and review payslips, net pay, and statutory totals."
         },
         "create": {
-          "title": "Create a new batch",
-          "body": "Pick a company and pay period, then click **Create batch** to start a fresh payroll run."
+          "title": "Create a new payroll process",
+          "body": "Pick a company and pay period, then click **Create payroll process** to start a fresh payroll run."
         },
         "reports": {
           "title": "Statutory reports",

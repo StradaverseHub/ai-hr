@@ -37,11 +37,11 @@ The **Previous employment this year (TP3 / opening balances)** section seeds the
 
 ## Creating a payroll batch
 
-1. In the left sidebar, click **Payroll**. You land on the **Batches** tab, which lists every batch with its **Period**, **Company**, **Employees**, **Net pay** and **Status**.
-2. At the bottom of the batches table, use the create form:
+1. In the left sidebar, click **Payroll**. You land on the **Payroll Process** tab, which lists every payroll process with its **Period**, **Company**, **Employees**, **Net pay** and **Status**.
+2. At the bottom of the payroll process table, use the create form:
    - **Company** — select the company to run.
    - **Pay period** — type `YYYY-MM` (e.g. `2026-05`). It defaults to the current month.
-3. Click **Create batch**.
+3. Click **Create payroll process**.
 
 The new batch opens in `Draft` status. **Note:** only one batch can exist per company per pay period — a second attempt for the same period is rejected.
 
