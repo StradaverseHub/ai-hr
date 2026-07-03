@@ -8,6 +8,7 @@ import { myEmployment, listEligibleLeaveTypesFor } from '@/core/read';
 import {
   addLeaveAttachment,
   requestLeave,
+  previewLeaveDeduction,
   validateLeaveDocument,
   isEmergencyReasonCategory,
   todayInKualaLumpur,
@@ -50,6 +51,33 @@ async function resolveMe() {
 function nowParts() {
   const d = new Date();
   return { date: d.toISOString().slice(0, 10), time: d.toTimeString().slice(0, 5) };
+}
+
+/** Feedback 31474452 (Step 5): read-only pre-submission preview for the /me leave form — "this will deduct X
+ *  day(s)" + balance before/after — called from the client via useTransition (see
+ *  components/leave-duration-fields.tsx). Always resolves the CALLER'S OWN employment (never a form field —
+ *  `employmentId` on `p` is accepted only so this matches the shared previewAction prop shape with the
+ *  /leave form and is IGNORED here), same trust boundary as myRequestLeave. Day-based durations only. */
+export async function myPreviewLeaveDeduction(p: {
+  employmentId?: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  durationType: LeaveDurationType;
+}) {
+  const { s, employmentId } = await resolveMe();
+  if (!p.leaveTypeId || !p.startDate || !p.endDate) return null;
+  try {
+    return await previewLeaveDeduction(s, {
+      employmentId,
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      durationType: p.durationType,
+    });
+  } catch {
+    return null; // preview is best-effort — the submit action remains the authoritative gate
+  }
 }
 
 export async function myRequestLeave(formData: FormData) {

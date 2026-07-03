@@ -643,6 +643,14 @@
         "adjustment": "Adjustment",
         "inLieuAccrual": "In-lieu accrual"
       }
+    },
+    "preview": {
+      "willDeduct": "This will deduct {days} day(s)",
+      "willDeductEmergency": "This will cover approximately {days} day(s) (Emergency Leave)",
+      "balanceLine": "Balance: {before} → {after} day(s) after this request",
+      "halfScheduleDayNote": "This date falls on a Half-day work schedule.",
+      "emergencySplitNote": "The final sick/annual/unpaid split is confirmed when you submit.",
+      "loading": "Calculating…"
     }
   },
   "attendance": {
@@ -2080,7 +2088,13 @@
       "payrollImpactHelp": "The leave module only flags the impact on approval; the payroll module computes the actual deduction.",
       "backdatingSectionTitle": "Backdated leave",
       "backdatingLimitDaysLabel": "Backdating limit (days)",
-      "backdatingSectionHelp": "How many days back from today an employee may apply for this leave type. Leave blank for no limit. HR admins are never blocked by this limit."
+      "backdatingSectionHelp": "How many days back from today an employee may apply for this leave type. Leave blank for no limit. HR admins are never blocked by this limit.",
+      "halfDayDeductionTitle": "Half-day deduction",
+      "halfDayDeductionHelp": "Controls how much leave is deducted when an employee applies leave on a “Half Day” work-schedule day (set on the Attendance policy page). Off: deduct 0.5 day. On: deduct 1.0 full day. Full working days are never affected.",
+      "halfDayDeductionFrozenNote": "Applies to new applications only — leave already submitted or approved keeps the deduction amount shown at the time it was submitted.",
+      "halfDayDeductionOn": "Currently ON — deducts 1.0 day",
+      "halfDayDeductionOff": "Currently OFF — deducts 0.5 day",
+      "halfDayDeductionToggleLabel": "Count Half-Day as 1 full day"
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -2279,7 +2293,11 @@
       "daySun": "Sun",
       "save": "Save policy",
       "lateHint": "Check-in after “late after” is flagged late; check-out before “half-day before” is a half-day.",
-      "rosterNote": "Employees with a roster assignment use their rostered shift instead of this schedule. Public holidays always override the day type."
+      "rosterNote": "Employees with a roster assignment use their rostered shift instead of this schedule. Public holidays always override the day type.",
+      "dayTypeHint": "Full = a normal working day. Half = a shorter working day (e.g. Saturday 9:00–12:00) — leave taken on it deducts 0.5 day by default, or 1.0 day if the half-day deduction setting is switched on. Rest = not a working day.",
+      "dayTypeFull": "Full",
+      "dayTypeHalf": "Half",
+      "dayTypeRest": "Rest"
     },
     "toilPolicy": {
       "pageTitle": "Time off in lieu",

@@ -1,8 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Field, inputCls } from './ui';
+
+/** Feedback 31474452 (Step 5): the shape previewLeaveDeduction / the server-action wrappers return. */
+export type LeavePreview = {
+  days: number;
+  balanceAvailable: number;
+  balanceAfter: number;
+  hasHalfScheduleDate: boolean;
+  isEmergencySplit: boolean;
+};
 
 /** The four duration types. full_day is always available; the other three are per-type opt-in. */
 const ALL_DURATIONS = ['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as const;
@@ -30,6 +39,8 @@ export function LeaveDurationFields({
   startDefault,
   layout = 'grid',
   showDocumentFields = false,
+  employeeOptions,
+  previewAction,
 }: {
   types: LeaveTypeOption[];
   startDefault?: string;
@@ -37,16 +48,34 @@ export function LeaveDurationFields({
   layout?: 'grid' | 'stack';
   /** Supporting-document config: render the doc/remark fields here (and hide them for EMERGENCY). */
   showDocumentFields?: boolean;
+  /** /leave only: renders the "Employee" <select> INSIDE this component (instead of the parent form) so the
+   *  preview below can read the currently-selected employmentId reactively. /me omits this — the preview
+   *  action there resolves the caller's own employment server-side. */
+  employeeOptions?: { id: string; name: string }[];
+  /** Feedback 31474452 (Step 5): server action returning a LeavePreview | null for the current
+   *  {employmentId, leaveTypeId, startDate, endDate, durationType}. Omit to render no preview line (e.g. an
+   *  admin on-behalf form that doesn't want it). Day-based durations only — hourly keeps hourlyTotal below. */
+  previewAction?: (p: {
+    employmentId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    durationType: Duration;
+  }) => Promise<LeavePreview | null>;
 }) {
   const t = useTranslations('leave');
   const [typeId, setTypeId] = useState(types[0]?.id ?? '');
   const [duration, setDuration] = useState<Duration>('full_day');
   const [start, setStart] = useState(startDefault ?? '');
+  const [end, setEnd] = useState(startDefault ?? '');
+  const [employmentId, setEmploymentId] = useState(employeeOptions?.[0]?.id ?? '');
   // Hourly-leave time window (0129): the two time pickers are controlled so we can show a live "Total: Nh"
   // as the user picks. This client total is DISPLAY-ONLY — the server recomputes hours authoritatively from
   // the same window on submit (the `required` attributes + the service-boundary throw are the real gates).
   const [fromTime, setFromTime] = useState('');
   const [toTime, setToTime] = useState('');
+  const [preview, setPreview] = useState<LeavePreview | null>(null);
+  const [isPreviewing, startPreviewTransition] = useTransition();
 
   const selected = types.find((x) => x.id === typeId);
   const allowed = new Set<Duration>(['full_day', ...((selected?.durations ?? []) as Duration[])]);
@@ -76,8 +105,61 @@ export function LeaveDurationFields({
     return Math.round((span / 60) * 100) / 100;
   })();
 
+  // Feedback 31474452 (Step 5): debounced pre-submission preview — "this will deduct X day(s)" + balance
+  // before/after. Day-based durations only (hourly keeps the hourlyTotal display above, no server preview).
+  // The server action remains the authoritative gate at submit; this is read-only and best-effort.
+  useEffect(() => {
+    // employmentId is required only when the caller renders the employee select here (/leave, on-behalf-of);
+    // /me has no employeeOptions and resolves the caller's own employment server-side (see
+    // app/me/actions.ts myPreviewLeaveDeduction), so an empty employmentId is fine there.
+    const employmentReady = !employeeOptions || !!employmentId;
+    if (!previewAction || effectiveDuration === 'hourly' || !employmentReady || !typeId || !start) {
+      setPreview(null);
+      return;
+    }
+    const endDate = effectiveDuration === 'full_day' ? end || start : start;
+    if (effectiveDuration === 'full_day' && endDate < start) {
+      setPreview(null);
+      return;
+    }
+    const handle = setTimeout(() => {
+      startPreviewTransition(async () => {
+        const r = await previewAction({
+          employmentId,
+          leaveTypeId: typeId,
+          startDate: start,
+          endDate,
+          durationType: effectiveDuration,
+        });
+        setPreview(r);
+      });
+    }, 300);
+    return () => clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewAction, employeeOptions, employmentId, typeId, effectiveDuration, start, end]);
+
   return (
     <>
+      {employeeOptions && (
+        // /leave only: rendered here (not the parent form) so the preview effect above can read the current
+        // selection reactively. Field name matches the parent form's original <select name="employmentId">.
+        <Field label={t('fieldEmployee')}>
+          <select
+            name="employmentId"
+            required
+            value={employmentId}
+            onChange={(e) => setEmploymentId(e.target.value)}
+            className={inputCls}
+          >
+            {employeeOptions.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
+
       <Field label={t('fieldLeaveType')}>
         <select
           name="leaveTypeId"
@@ -163,13 +245,48 @@ export function LeaveDurationFields({
         </Field>
         {effectiveDuration === 'full_day' ? (
           <Field label={t('fieldEndDate')}>
-            <input name="endDate" type="date" required defaultValue={startDefault} className={inputCls} />
+            <input
+              name="endDate"
+              type="date"
+              required
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              className={inputCls}
+            />
           </Field>
         ) : (
           // Half/hourly is single-day: force end = start, no visible End-date field.
           <input type="hidden" name="endDate" value={start} readOnly />
         )}
       </div>
+
+      {/* Feedback 31474452 (Step 5): pre-submission preview line. Shown for day-based durations only when a
+          previewAction was supplied and a result has resolved. Best-effort — a null result (RLS-gated, still
+          loading, or an invalid range) simply shows nothing, never blocking the form. */}
+      {previewAction && effectiveDuration !== 'hourly' && (preview || isPreviewing) && (
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+          {preview ? (
+            <>
+              <p className="font-medium text-foreground">
+                {preview.isEmergencySplit
+                  ? t('preview.willDeductEmergency', { days: preview.days })
+                  : t('preview.willDeduct', { days: preview.days })}
+              </p>
+              <p className="mt-0.5 text-muted-foreground">
+                {t('preview.balanceLine', { before: preview.balanceAvailable, after: preview.balanceAfter })}
+              </p>
+              {preview.hasHalfScheduleDate && (
+                <p className="mt-0.5 text-muted-foreground">{t('preview.halfScheduleDayNote')}</p>
+              )}
+              {preview.isEmergencySplit && (
+                <p className="mt-0.5 text-muted-foreground">{t('preview.emergencySplitNote')}</p>
+              )}
+            </>
+          ) : (
+            <p className="text-muted-foreground">{t('preview.loading')}</p>
+          )}
+        </div>
+      )}
 
       {isEmergency && (
         <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-3">

@@ -75,22 +75,35 @@ export default async function AttendancePolicyPage({
 
                 <fieldset>
                   <legend className="mb-1.5 text-sm font-medium text-foreground">{t('workingDays')}</legend>
+                  <p className="mb-2 text-xs text-muted-foreground">{t('dayTypeHint')}</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {ISO_DAYS.map((d) => (
-                      <label
-                        key={d}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary"
-                      >
-                        <input
-                          type="checkbox"
-                          name="workingDays"
-                          value={d}
-                          defaultChecked={p.workingDays.includes(d)}
-                          className="h-3.5 w-3.5 accent-primary"
-                        />
-                        {t(DAY_KEY[d])}
-                      </label>
-                    ))}
+                    {ISO_DAYS.map((d) => {
+                      const dayType: 'full' | 'half' | 'rest' = p.workingDays.includes(d)
+                        ? 'full'
+                        : p.halfWorkingDays.includes(d)
+                          ? 'half'
+                          : 'rest';
+                      return (
+                        <div
+                          key={d}
+                          className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5"
+                        >
+                          <span className="text-xs font-medium text-foreground">{t(DAY_KEY[d])}</span>
+                          {/* One <select> per weekday posts "full" | "half" | "rest" — decoded server-side in
+                              setAttendancePolicyAction into the two ISO-weekday arrays the service expects.
+                              Mutual exclusion is structural (one value per day), no extra client JS needed. */}
+                          <select
+                            name={`dayType_${d}`}
+                            defaultValue={dayType}
+                            className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                          >
+                            <option value="full">{t('dayTypeFull')}</option>
+                            <option value="half">{t('dayTypeHalf')}</option>
+                            <option value="rest">{t('dayTypeRest')}</option>
+                          </select>
+                        </div>
+                      );
+                    })}
                   </div>
                 </fieldset>
 

@@ -1721,6 +1721,28 @@ export async function setCompanyLeaveCycle(ctx: SessionContext, p: { companyId: 
     });
   });
 }
+/** Feedback request 31474452: set a company's half-day leave-deduction toggle. OFF (default): leave on a
+ *  "Half Day" work-schedule day (attendance_policy.half_working_days) deducts 0.5 day. ON: it deducts 1.0
+ *  day. RLS (the company update policy) already requires admin-for-company, same as updateCompany. Frozen at
+ *  submission (D6) — flipping this does not recompute already-submitted/approved leave. */
+export async function setLeaveHalfDayFullDeduction(ctx: SessionContext, p: { companyId: string; enabled: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ enabled: company.leaveHalfDayFullDeduction })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
+    await tx.update(company).set({ leaveHalfDayFullDeduction: p.enabled }).where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.leave-half-day-deduction.changed',
+      actor: actorOf(ctx),
+      payload: { before: before?.enabled ?? false, after: p.enabled },
+    });
+  });
+}
 export function archiveCompany(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
     await tx.update(company).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(company.id, p.id));

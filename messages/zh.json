@@ -643,6 +643,14 @@
         "adjustment": "调整",
         "inLieuAccrual": "补休累计"
       }
+    },
+    "preview": {
+      "willDeduct": "将扣除 {days} 天",
+      "willDeductEmergency": "将大约覆盖 {days} 天（紧急休假）",
+      "balanceLine": "余额：{before} → {after} 天（本次申请后）",
+      "halfScheduleDayNote": "该日期属于半天工作日程。",
+      "emergencySplitNote": "最终的病假/年假/无薪假分配将在提交时确认。",
+      "loading": "计算中…"
     }
   },
   "attendance": {
@@ -2080,7 +2088,13 @@
       "payrollImpactHelp": "假期模块仅在批准时标记影响；实际扣减由薪资模块计算。",
       "backdatingSectionTitle": "回溯休假",
       "backdatingLimitDaysLabel": "回溯天数上限（天）",
-      "backdatingSectionHelp": "员工可从今天起最多回溯多少天申请此假期类型。留空表示不限制。HR 管理员不受此上限限制。"
+      "backdatingSectionHelp": "员工可从今天起最多回溯多少天申请此假期类型。留空表示不限制。HR 管理员不受此上限限制。",
+      "halfDayDeductionTitle": "半天扣除",
+      "halfDayDeductionHelp": "控制员工在“半天”工作日程日（在考勤政策页面设置）请假时扣除多少天。关闭：扣除 0.5 天。开启：扣除 1.0 天。全天工作日不受影响。",
+      "halfDayDeductionFrozenNote": "仅适用于新申请 — 已提交或已批准的请假将保留提交时显示的扣除金额。",
+      "halfDayDeductionOn": "当前已开启 — 扣除 1.0 天",
+      "halfDayDeductionOff": "当前已关闭 — 扣除 0.5 天",
+      "halfDayDeductionToggleLabel": "将半天计为 1 全天"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -2279,7 +2293,11 @@
       "daySun": "日",
       "save": "保存政策",
       "lateHint": "在“迟到时间”之后打卡标记为迟到；在“半天界限”之前下班记为半天。",
-      "rosterNote": "已分配排班的员工使用其排定班次而非此时间表。公共假期始终覆盖日期类型。"
+      "rosterNote": "已分配排班的员工使用其排定班次而非此时间表。公共假期始终覆盖日期类型。",
+      "dayTypeHint": "全天 = 正常工作日。半天 = 较短的工作日（例如周六 9:00–12:00）— 在该日请假默认扣除 0.5 天，若开启半天扣除设置则扣除 1.0 天。休息 = 非工作日。",
+      "dayTypeFull": "全天",
+      "dayTypeHalf": "半天",
+      "dayTypeRest": "休息"
     },
     "toilPolicy": {
       "pageTitle": "调休",

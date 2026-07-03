@@ -10,12 +10,33 @@ import {
   decideLeave,
   requestLeave,
   requestLeaveCancellation,
+  previewLeaveDeduction,
   validateLeaveDocument,
   isEmergencyReasonCategory,
   todayInKualaLumpur,
   type LeaveDurationType,
 } from '@/core/leave';
 import { localizeLeaveError } from '@/app/me/actions';
+
+/** Feedback 31474452 (Step 5): read-only pre-submission preview for the Leave-tab form (which can apply
+ *  on-behalf-of any employment the caller can see, via the Field label={t('fieldEmployee')} select). Runs
+ *  under the caller's own session — RLS on leave_ledger/leave_type gates disclosure exactly as requestLeave
+ *  does; an out-of-scope employmentId simply yields an RLS-empty balance rather than a throw. */
+export async function previewLeaveDeductionAction(p: {
+  employmentId: string;
+  leaveTypeId: string;
+  startDate: string;
+  endDate: string;
+  durationType: LeaveDurationType;
+}) {
+  const session = await getSession();
+  if (!p.employmentId || !p.leaveTypeId || !p.startDate || !p.endDate) return null;
+  try {
+    return await previewLeaveDeduction(session, p);
+  } catch {
+    return null; // preview is best-effort — the submit action remains the authoritative gate
+  }
+}
 
 export async function requestLeaveAction(formData: FormData) {
   const session = await getSession();

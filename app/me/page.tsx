@@ -32,6 +32,7 @@ import {
   myDeclinePeerFeedback,
   myRequestCorrection,
   myRequestLeave,
+  myPreviewLeaveDeduction,
   myRequestProfileChange,
   mySubmitPeerFeedback,
   mySubmitResignation,
@@ -386,6 +387,7 @@ export default async function MePage({
                 durations: lt.durations ?? null,
                 code: lt.code,
               }))}
+              previewAction={myPreviewLeaveDeduction}
             />
             <Field label={t('documentLabel')}>
               <input

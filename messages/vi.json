@@ -643,6 +643,14 @@
         "adjustment": "Điều chỉnh",
         "inLieuAccrual": "Tích lũy bù"
       }
+    },
+    "preview": {
+      "willDeduct": "Việc này sẽ trừ {days} ngày",
+      "willDeductEmergency": "Việc này sẽ bao phủ khoảng {days} ngày (Nghỉ khẩn cấp)",
+      "balanceLine": "Số dư: {before} → {after} ngày sau yêu cầu này",
+      "halfScheduleDayNote": "Ngày này rơi vào lịch làm việc Nửa ngày.",
+      "emergencySplitNote": "Việc phân chia ốm/phép năm/không lương cuối cùng sẽ được xác nhận khi bạn gửi.",
+      "loading": "Đang tính toán…"
     }
   },
   "attendance": {
@@ -2080,7 +2088,13 @@
       "payrollImpactHelp": "Mô-đun nghỉ phép chỉ đánh dấu ảnh hưởng khi phê duyệt; mô-đun bảng lương tính khoản khấu trừ thực tế.",
       "backdatingSectionTitle": "Nghỉ phép đặt ngày lùi",
       "backdatingLimitDaysLabel": "Giới hạn đặt ngày lùi (ngày)",
-      "backdatingSectionHelp": "Nhân viên có thể nộp đơn xin loại nghỉ phép này lùi về trước bao nhiêu ngày kể từ hôm nay. Để trống nếu không giới hạn. Quản trị viên HR không bao giờ bị chặn bởi giới hạn này."
+      "backdatingSectionHelp": "Nhân viên có thể nộp đơn xin loại nghỉ phép này lùi về trước bao nhiêu ngày kể từ hôm nay. Để trống nếu không giới hạn. Quản trị viên HR không bao giờ bị chặn bởi giới hạn này.",
+      "halfDayDeductionTitle": "Trừ lương nửa ngày",
+      "halfDayDeductionHelp": "Kiểm soát số ngày nghỉ bị trừ khi nhân viên xin nghỉ vào ngày làm việc “Nửa ngày” (thiết lập ở trang Chính sách chấm công). Tắt: trừ 0.5 ngày. Bật: trừ 1.0 ngày đầy đủ. Các ngày làm việc đầy đủ không bị ảnh hưởng.",
+      "halfDayDeductionFrozenNote": "Chỉ áp dụng cho đơn xin nghỉ mới — đơn đã gửi hoặc đã duyệt vẫn giữ nguyên số ngày trừ được hiển thị lúc gửi.",
+      "halfDayDeductionOn": "Hiện đang BẬT — trừ 1.0 ngày",
+      "halfDayDeductionOff": "Hiện đang TẮT — trừ 0.5 ngày",
+      "halfDayDeductionToggleLabel": "Tính Nửa ngày là 1 ngày đầy đủ"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -2279,7 +2293,11 @@
       "daySun": "CN",
       "save": "Lưu chính sách",
       "lateHint": "Chấm vào sau “trễ sau” bị đánh dấu trễ; chấm ra trước “nửa ngày trước” tính là nửa ngày.",
-      "rosterNote": "Nhân viên có phân ca sẽ dùng ca đã xếp thay cho lịch này. Ngày lễ luôn ghi đè loại ngày."
+      "rosterNote": "Nhân viên có phân ca sẽ dùng ca đã xếp thay cho lịch này. Ngày lễ luôn ghi đè loại ngày.",
+      "dayTypeHint": "Cả ngày = ngày làm việc bình thường. Nửa ngày = ngày làm việc ngắn hơn (ví dụ Thứ Bảy 9:00–12:00) — nghỉ phép vào ngày này sẽ trừ 0.5 ngày theo mặc định, hoặc 1.0 ngày nếu bật cài đặt trừ lương nửa ngày. Nghỉ = không phải ngày làm việc.",
+      "dayTypeFull": "Cả ngày",
+      "dayTypeHalf": "Nửa ngày",
+      "dayTypeRest": "Nghỉ"
     },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",
