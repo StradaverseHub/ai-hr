@@ -2852,6 +2852,9 @@ export const feedbackRequest = pgTable(
     // How many times a DEPLOYED result was refuted by the reporter + sent back round the loop (ADR-0051).
     // A quality signal: a feature reopened repeatedly is one the spec/build keeps missing.
     reopenedCount: integer('reopened_count').notNull().default(0),
+    // Snapshot of `status` at the moment cancelFeedback ran, so restoreFeedback can put the item back
+    // exactly where it was (rather than guessing/always resetting to `open`). Null except while cancelled.
+    statusBeforeCancel: feedbackStatusEnum('status_before_cancel'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),

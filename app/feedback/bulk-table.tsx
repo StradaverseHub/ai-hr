@@ -72,6 +72,14 @@ export function BulkTable({ rows }: { rows: FeedbackRow[] }) {
               {t('bulkCancel')}
             </button>
             <button
+              type="submit"
+              name="action"
+              value="restore"
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+            >
+              {t('bulkRestore')}
+            </button>
+            <button
               type="button"
               onClick={() => setSelected(new Set())}
               className="rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"

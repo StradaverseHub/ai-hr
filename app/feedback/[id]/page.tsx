@@ -10,6 +10,7 @@ import {
   contestFeedbackPlanAction,
   generateFeedbackPlanNowAction,
   refuteDeploymentAction,
+  restoreFeedbackAction,
 } from '../actions';
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -41,6 +42,7 @@ export default async function FeedbackDetailPage({
   // Approve/contest: the reporter OR an admin (HR triage). Withdraw stays reporter-only.
   const canReview = (isReporter || isAdmin) && fb.status === 'planned';
   const canWithdraw = isReporter && !['done', 'deployed', 'cancelled', 'building'].includes(fb.status);
+  const canRestore = isReporter && fb.status === 'cancelled';
   // Close the loop: a deployed result the reporter (or admin) judges below standard can be sent back (ADR-0051).
   const canRefute = (isReporter || isAdmin) && fb.status === 'deployed';
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
@@ -183,6 +185,15 @@ export default async function FeedbackDetailPage({
           <input type="hidden" name="id" value={fb.id} />
           <Button type="submit" size="sm" variant="ghost">
             {t('withdraw')}
+          </Button>
+        </form>
+      )}
+
+      {canRestore && (
+        <form action={restoreFeedbackAction}>
+          <input type="hidden" name="id" value={fb.id} />
+          <Button type="submit" size="sm" variant="outline">
+            {t('restore')}
           </Button>
         </form>
       )}

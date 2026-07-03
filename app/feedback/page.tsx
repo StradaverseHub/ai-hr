@@ -59,6 +59,7 @@ export default async function FeedbackPage({
     approve: 'bulkVerb_approve',
     cancel: 'bulkVerb_cancel',
     contest: 'bulkVerb_contest',
+    restore: 'bulkVerb_restore',
   };
   const toastMessage =
     toastKey === 'bulkResult' && action && action in VERB_KEYS

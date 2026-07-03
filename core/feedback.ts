@@ -282,7 +282,8 @@ export async function contestFeedbackPlan(ctx: SessionContext, p: { feedbackId: 
   });
 }
 
-/** The reporter withdraws their feedback (any non-terminal state → cancelled). */
+/** The reporter withdraws their feedback (any non-terminal state → cancelled). The pre-cancel status is
+ *  snapshotted onto status_before_cancel so restoreFeedback can put it back exactly where it was. */
 export async function cancelFeedback(ctx: SessionContext, p: { feedbackId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const fb = await loadDecidable(tx, p.feedbackId);
@@ -290,7 +291,10 @@ export async function cancelFeedback(ctx: SessionContext, p: { feedbackId: strin
     if (fb.status === 'done' || fb.status === 'cancelled' || fb.status === 'building') {
       throw new FeedbackError(`This feedback can no longer be withdrawn (it is ${fb.status}).`);
     }
-    await tx.update(feedbackRequest).set({ status: 'cancelled', updatedAt: sql`now()` }).where(eq(feedbackRequest.id, fb.id));
+    await tx
+      .update(feedbackRequest)
+      .set({ status: 'cancelled', statusBeforeCancel: fb.status, updatedAt: sql`now()` })
+      .where(eq(feedbackRequest.id, fb.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'feedback',
@@ -298,7 +302,34 @@ export async function cancelFeedback(ctx: SessionContext, p: { feedbackId: strin
       eventType: 'feedback.cancelled',
       actor: actorOf(ctx),
       subjectEmploymentId: fb.reporterEmploymentId,
-      payload: {},
+      payload: { statusBeforeCancel: fb.status },
+    });
+  });
+}
+
+/** The reporter un-withdraws a cancelled item, putting it back exactly where it was before cancelFeedback
+ *  ran (open/planned/contested/approved), via the status_before_cancel snapshot. Reporter-only, mirroring
+ *  cancelFeedback's own authority (withdrawing and un-withdrawing are the same person's call). */
+export async function restoreFeedback(ctx: SessionContext, p: { feedbackId: string }): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const fb = await loadDecidable(tx, p.feedbackId);
+    assertReporter(ctx, fb);
+    if (fb.status !== 'cancelled') {
+      throw new FeedbackError(`Only a withdrawn item can be restored (it is ${fb.status}).`);
+    }
+    const restoredStatus: FeedbackStatus = fb.statusBeforeCancel ?? 'open';
+    await tx
+      .update(feedbackRequest)
+      .set({ status: restoredStatus, statusBeforeCancel: null, updatedAt: sql`now()` })
+      .where(eq(feedbackRequest.id, fb.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'feedback',
+      aggregateId: fb.id,
+      eventType: 'feedback.restored',
+      actor: actorOf(ctx),
+      subjectEmploymentId: fb.reporterEmploymentId,
+      payload: { restoredStatus },
     });
   });
 }
@@ -411,7 +442,7 @@ export async function refuteDeployment(ctx: SessionContext, p: { feedbackId: str
 
 // ── Bulk review (list-view batch bar) ──
 
-export type BulkAction = 'approve' | 'contest' | 'cancel';
+export type BulkAction = 'approve' | 'contest' | 'cancel' | 'restore';
 
 /** Apply one review action to many items at once. Reuses the per-item services so each keeps its own authz,
  *  status guard and event; a single-item failure (wrong status, not the reporter) is reported in `failed`,
@@ -430,6 +461,7 @@ export async function bulkReview(
     try {
       if (p.action === 'approve') await approveFeedbackPlan(ctx, { feedbackId: id });
       else if (p.action === 'contest') await contestFeedbackPlan(ctx, { feedbackId: id, reason: p.reason! });
+      else if (p.action === 'restore') await restoreFeedback(ctx, { feedbackId: id });
       else await cancelFeedback(ctx, { feedbackId: id });
       succeeded.push(id);
     } catch (e) {
@@ -516,6 +548,7 @@ type DecidableFeedback = {
   reporterEmploymentId: string;
   reporterUserId: string | null;
   planRevision: number;
+  statusBeforeCancel: FeedbackStatus | null;
 };
 
 async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedback> {
@@ -526,6 +559,7 @@ async function loadDecidable(tx: Tx, feedbackId: string): Promise<DecidableFeedb
       reporterEmploymentId: feedbackRequest.reporterEmploymentId,
       reporterUserId: feedbackRequest.reporterUserId,
       planRevision: feedbackRequest.planRevision,
+      statusBeforeCancel: feedbackRequest.statusBeforeCancel,
     })
     .from(feedbackRequest)
     .where(eq(feedbackRequest.id, feedbackId))

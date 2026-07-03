@@ -10,11 +10,14 @@ import { hireEmployee } from '../core/org';
 import {
   approveFeedbackPlan,
   bulkReview,
+  cancelFeedback,
+  contestFeedbackPlan,
   feedbackStatusCounts,
   FeedbackError,
   getFeedback,
   markFeedbackDeployed,
   refuteDeployment,
+  restoreFeedback,
   setFeedbackPlan,
   submitFeedback,
 } from '../core/feedback';
@@ -109,5 +112,63 @@ describe('Feedback v2 — close the loop / bulk / dashboard (ADR-0051)', () => {
       expect(c.count).toBeGreaterThan(0);
       expect(typeof c.status).toBe('string');
     }
+  });
+
+  it('restoreFeedback puts a withdrawn item back exactly where it was (open, and again from contested)', async () => {
+    const R = await hire('V2 Restore');
+    const rctx = await reporterCtx(R.personId);
+
+    // Withdrawn straight from `open` → restores to `open`.
+    const { id: openId } = await submitFeedback(rctx, { reporterEmploymentId: R.employmentId, category: 'issue', title: 'a', description: 'd' });
+    await cancelFeedback(rctx, { feedbackId: openId });
+    expect((await getFeedback(rctx, openId))!.status).toBe('cancelled');
+    await restoreFeedback(rctx, { feedbackId: openId });
+    const restoredOpen = (await getFeedback(rctx, openId))!;
+    expect(restoredOpen.status).toBe('open');
+    expect(restoredOpen.statusBeforeCancel).toBeNull();
+    expect(await eventTypesFor(base.tenantId, openId)).toContain('feedback.restored');
+    expect((await latestEventPayload(base.tenantId, openId, 'feedback.restored'))?.restoredStatus).toBe('open');
+
+    // Withdrawn from `contested` (after a plan + a push-back) → restores to `contested`, not `open`.
+    const { id: cId } = await submitFeedback(rctx, { reporterEmploymentId: R.employmentId, category: 'issue', title: 'b', description: 'd' });
+    await setFeedbackPlan(adminCtx(base), { feedbackId: cId, plan: 'p1', model: 'm' });
+    await contestFeedbackPlan(rctx, { feedbackId: cId, reason: 'missing a bit' });
+    await cancelFeedback(rctx, { feedbackId: cId });
+    await restoreFeedback(rctx, { feedbackId: cId });
+    const restoredContested = (await getFeedback(rctx, cId))!;
+    expect(restoredContested.status).toBe('contested');
+    expect(restoredContested.contestReason).toContain('missing a bit');
+  });
+
+  it('restoreFeedback rejects a non-cancelled item and a non-reporter', async () => {
+    const R = await hire('V2 RestoreGuard');
+    const rctx = await reporterCtx(R.personId);
+    const { id } = await submitFeedback(rctx, { reporterEmploymentId: R.employmentId, category: 'issue', title: 'c', description: 'd' });
+    // Never withdrawn — nothing to restore.
+    await expect(restoreFeedback(rctx, { feedbackId: id })).rejects.toBeInstanceOf(FeedbackError);
+
+    await cancelFeedback(rctx, { feedbackId: id });
+    const stranger = await hire('V2 RestoreStranger');
+    const sctx = await reporterCtx(stranger.personId);
+    await expect(restoreFeedback(sctx, { feedbackId: id })).rejects.toBeInstanceOf(FeedbackError);
+    // Still cancelled — the rejected attempt didn't mutate it.
+    expect((await getFeedback(rctx, id))!.status).toBe('cancelled');
+  });
+
+  it('bulkReview restore action un-withdraws many at once, skipping non-cancelled items', async () => {
+    const R = await hire('V2 BulkRestore');
+    const rctx = await reporterCtx(R.personId);
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const { id } = await submitFeedback(rctx, { reporterEmploymentId: R.employmentId, category: 'issue', title: `wd ${i}`, description: 'd' });
+      await cancelFeedback(rctx, { feedbackId: id });
+      ids.push(id);
+    }
+    const { id: stillOpenId } = await submitFeedback(rctx, { reporterEmploymentId: R.employmentId, category: 'issue', title: 'still open', description: 'd' });
+
+    const res = await bulkReview(rctx, { ids: [...ids, stillOpenId], action: 'restore' });
+    expect(res.succeeded.sort()).toEqual([...ids].sort());
+    expect(res.failed.map((f) => f.id)).toEqual([stillOpenId]);
+    for (const id of ids) expect((await getFeedback(rctx, id))!.status).toBe('open');
   });
 });

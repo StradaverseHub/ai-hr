@@ -12,6 +12,7 @@ import {
   contestFeedbackPlan,
   generateFeedbackPlan,
   refuteDeployment,
+  restoreFeedback,
   submitFeedback,
   type BulkAction,
 } from '@/core/feedback';
@@ -98,6 +99,19 @@ export async function cancelFeedbackAction(formData: FormData) {
   }
   revalidatePath(BASE);
   redirect(`${BASE}?toast=${encodeURIComponent('Feedback withdrawn')}`);
+}
+
+export async function restoreFeedbackAction(formData: FormData) {
+  const s = await getSession();
+  const id = String(formData.get('id'));
+  try {
+    await restoreFeedback(s, { feedbackId: id });
+  } catch (e) {
+    fail(e, `${BASE}/${id}`);
+  }
+  revalidatePath(`${BASE}/${id}`);
+  revalidatePath(BASE);
+  redirect(`${BASE}/${id}?toast=${encodeURIComponent('Feedback restored')}`);
 }
 
 /** Close the loop: the reporter refutes a DEPLOYED result that still needs changes (→ contested, re-planned). */
