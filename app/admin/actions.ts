@@ -43,7 +43,7 @@ import {
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
-import { openLeaveYear, accrueEarnedLeave, grantAdHocLeave, type LeaveDurationType } from '@/core/leave';
+import { openLeaveYear, accrueEarnedLeave, grantAdHocLeave, grantAdHocLeaveMulti, type LeaveDurationType } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import { requireAdmin } from '@/lib/authz';
@@ -317,23 +317,44 @@ export async function updateLeavePolicyAction(formData: FormData) {
   ok(LEAVE);
 }
 
-/** ADR-0066: festive / one-off leave grant. Returns the affected-employee count for the confirm step
- *  (no redirect — a client card shows the count + toast, then refreshes). */
+/** ADR-0066 (re-plan round 5): festive / one-off leave grant. Returns the affected-employee count for the
+ *  confirm step (no redirect — a client card shows the count + toast, then refreshes). Branches on the
+ *  `groupWide` checkbox: when set, reuses the shipped single-company-shaped `grantAdHocLeave` with
+ *  companyId=null (byte-identical path, group admins only); otherwise reads `companyIds` (multi-select
+ *  checkboxes, formData.getAll) and calls the new `grantAdHocLeaveMulti`. */
 export async function grantAdHocLeaveAction(
   formData: FormData,
-): Promise<{ granted?: number; targeted?: number; error?: string }> {
+): Promise<{ granted?: number; targeted?: number; companies?: number; skipped?: number; error?: string }> {
   const s = await getSession();
+  const leaveTypeId = String(formData.get('leaveTypeId') || '');
+  const days = Number(formData.get('days'));
+  const reason = String(formData.get('reason') || '');
+  const effectiveOn = String(formData.get('effectiveOn') || '');
+  const expiresOn = String(formData.get('expiresOn') || '') || null;
   try {
-    const res = await grantAdHocLeave(s, {
-      companyId: String(formData.get('companyId') || '') || null,
-      leaveTypeId: String(formData.get('leaveTypeId') || ''),
-      days: Number(formData.get('days')),
-      reason: String(formData.get('reason') || ''),
-      effectiveOn: String(formData.get('effectiveOn') || ''),
-      expiresOn: String(formData.get('expiresOn') || '') || null,
+    if (formData.get('groupWide')) {
+      const res = await grantAdHocLeave(s, {
+        companyId: null,
+        leaveTypeId,
+        days,
+        reason,
+        effectiveOn,
+        expiresOn,
+      });
+      revalidatePath(LEAVE);
+      return { granted: res.granted, targeted: res.targeted };
+    }
+    const companyIds = formData.getAll('companyIds').map(String);
+    const res = await grantAdHocLeaveMulti(s, {
+      companyIds,
+      leaveTypeId,
+      days,
+      reason,
+      effectiveOn,
+      expiresOn,
     });
     revalidatePath(LEAVE);
-    return { granted: res.granted, targeted: res.targeted };
+    return { granted: res.granted, targeted: res.targeted, companies: res.companies, skipped: res.skipped };
   } catch (e) {
     return { error: (e as Error).message };
   }

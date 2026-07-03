@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
 import { assertCanDecide } from './approvals';
-import { isAdmin, isGroupAdmin, hasGrantFor } from '../lib/authz';
+import { isAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '../lib/authz';
 import { resolveApprovalChain } from './leave-approval-policy';
 import { consumeReplacementLeaveTx } from './toil';
 import {
@@ -2957,8 +2957,17 @@ export async function grantAdHocLeave(
   },
 ) {
   // ── Validation (before opening the transaction; a bad grant persists nothing) ──
-  const days = Math.round(Number(p.days) * 100) / 100;
-  if (!Number.isFinite(days) || days <= 0) throw new AdHocLeaveGrantError('Days must be a positive number.');
+  // Order matters (re-plan round 5): the finite/positive check runs on the RAW value first (so NaN still
+  // yields "Days must be a positive number."), THEN the 0.5-increment check ALSO runs on the raw value —
+  // BEFORE the 2-dp rounding below. Halves are exact in binary floats, so raw*2 is an integer iff the value
+  // is a genuine half-day step; checking after rounding would silently accept e.g. 0.501 (rounds to 0.5).
+  const raw = Number(p.days);
+  if (!Number.isFinite(raw) || raw <= 0) throw new AdHocLeaveGrantError('Days must be a positive number.');
+  if (!Number.isInteger(raw * 2)) {
+    throw new AdHocLeaveGrantError('Days must be in 0.5 increments (e.g. 0.5, 1.0, 1.5, 2.0).');
+  }
+  if (raw > 366) throw new AdHocLeaveGrantError('Days cannot exceed 366.');
+  const days = Math.round(raw * 100) / 100;
   const reason = p.reason?.trim();
   if (!reason) throw new AdHocLeaveGrantError('A reason is required (e.g. "CNY 2026").');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveOn)) throw new AdHocLeaveGrantError('A valid effective date is required.');
@@ -2966,12 +2975,10 @@ export async function grantAdHocLeave(
   // ── Authority (resolves the silent-partial-write critique): a group-wide grant needs a GROUP admin; a
   // company-scoped grant needs admin authority over that company. A company-scoped admin attempting a
   // group-wide grant is rejected outright — never silently scoped down. ──
-  // Back-compat: a roles-only session (no `grants`) is group-wide, exactly as withTenant treats it. Build the
-  // effective grants the same way so isGroupAdmin / hasGrantFor see a group-wide admin (e.g. test adminCtx).
-  const effective: SessionContext =
-    ctx.grants != null
-      ? ctx
-      : { ...ctx, grants: (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null })) };
+  // Back-compat: a roles-only session (no `grants`) is group-wide, exactly as withTenant treats it.
+  // withEffectiveGrants (lib/authz.ts) builds the effective grants the same way so isGroupAdmin / hasGrantFor
+  // see a group-wide admin (e.g. test adminCtx).
+  const effective: SessionContext = withEffectiveGrants(ctx);
   if (p.companyId == null) {
     if (!isGroupAdmin(effective)) {
       throw new AdHocLeaveGrantError('A group-wide festive grant requires a group administrator.');
@@ -3060,4 +3067,103 @@ export async function grantAdHocLeave(
     });
     return { granted, targeted, days, reason, effectiveOn: p.effectiveOn };
   });
+}
+
+// ═════════════════════ Multi-company festive grant (re-plan, round 5) ═════════════════════
+// One submission targets several companies at once. NOT atomic across companies — this is N sequential
+// per-company calls to the existing `grantAdHocLeave`, each its own `withTenant` transaction, its own
+// authority gate, and its own `leave.ad-hoc.granted` DomainEvent (companyId in the payload). The per-company
+// events ARE the per-company audit trail (core/admin.ts listAdHocLeaveGrants renders one row per event) — no
+// extra summary event is appended here (deliberate skip, same pattern as the shipped single-company grant).
+// A mid-loop failure leaves earlier companies granted and later ones not; the thrown error names the
+// companies completed so far and instructs HR to re-submit the identical form. The idempotency dedupe key
+// inside grantAdHocLeave (employmentId, leaveTypeId, entryType, effectiveOn, reason — DAYS EXCLUDED) means an
+// unchanged resubmit safely skips already-granted companies and only completes the rest. A resubmit with
+// CHANGED days or reason is treated as a brand-new grant — this is pre-existing single-company behavior,
+// deliberately left unaltered.
+
+/** Credit `days` to every active employee across MULTIPLE companies in one call. Loops the existing
+ *  `grantAdHocLeave` per company (all-or-nothing pre-flight authority check; NOT an atomic transaction
+ *  across companies — see the block comment above). */
+export async function grantAdHocLeaveMulti(
+  ctx: SessionContext,
+  p: {
+    companyIds: string[];
+    leaveTypeId: string;
+    days: number;
+    reason: string;
+    effectiveOn: string;
+    expiresOn?: string | null;
+  },
+) {
+  const dedupedIds = [...new Set(p.companyIds)];
+  if (dedupedIds.length === 0) throw new AdHocLeaveGrantError('Select at least one company.');
+
+  // ── Pre-flight authority (all-or-nothing): every selected company must be grantable BEFORE any write, so a
+  // forged request naming one company the admin cannot administer fails cleanly with none granted. The UI
+  // (app/admin/leave/page.tsx) already narrows the offered options to administered companies — this is a
+  // backstop against a tampered/forged submission, not the primary gate. grantAdHocLeave still re-checks
+  // authority per call below; nothing is bypassed. ──
+  const effective = withEffectiveGrants(ctx);
+  if (!isGroupAdmin(effective)) {
+    const denied = dedupedIds.filter((id) => !hasGrantFor(effective, 'hr_admin', id));
+    if (denied.length > 0) {
+      throw new AdHocLeaveGrantError(`You are not permitted to grant leave for: ${denied.join(', ')}.`);
+    }
+  }
+
+  // ── Resolve companies (id, legalName, archivedAt) via withTenant so RLS still applies. Unknown id → hard
+  // error (nothing granted). Archived companies are skipped as a defense-in-depth safety net ONLY — the
+  // form's options come from listCompanies (core/read.ts), which already excludes archived companies, so in
+  // normal use there is nothing to skip; this only matters against a stale or tampered submission. ──
+  const rows = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: company.id, legalName: company.legalName, archivedAt: company.archivedAt })
+      .from(company)
+      .where(inArray(company.id, dedupedIds)),
+  );
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  for (const id of dedupedIds) {
+    if (!byId.has(id)) throw new AdHocLeaveGrantError('Unknown company selected.');
+  }
+  const skipped: string[] = [];
+  const active = dedupedIds.filter((id) => {
+    const c = byId.get(id)!;
+    if (c.archivedAt != null) {
+      skipped.push(id);
+      return false;
+    }
+    return true;
+  });
+  if (active.length === 0) throw new AdHocLeaveGrantError('No active companies selected.');
+
+  // ── Sequential per-company grants (NOT atomic — see block comment above). ──
+  let granted = 0;
+  let targeted = 0;
+  const grantedNames: string[] = [];
+  for (const id of active) {
+    const legalName = byId.get(id)!.legalName;
+    try {
+      const res = await grantAdHocLeave(ctx, {
+        companyId: id,
+        leaveTypeId: p.leaveTypeId,
+        days: p.days,
+        reason: p.reason,
+        effectiveOn: p.effectiveOn,
+        expiresOn: p.expiresOn,
+      });
+      granted += res.granted;
+      targeted += res.targeted;
+      grantedNames.push(legalName);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      const doneList = grantedNames.length > 0 ? grantedNames.join(', ') : '(none)';
+      throw new AdHocLeaveGrantError(
+        `Granted for ${doneList}. Failed at ${legalName}: ${message} ` +
+          `Re-submit the same form unchanged to grant the remaining companies; already-granted companies will not be double-credited.`,
+      );
+    }
+  }
+
+  return { granted, targeted, companies: grantedNames.length, skipped: skipped.length };
 }
