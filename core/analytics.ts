@@ -31,6 +31,7 @@ import {
   earnedCycleStart,
   resolveCarryBreakdown,
   resolveGradePolicy,
+  serviceYearsAt,
   type GradePolicyRow,
 } from './leave';
 import {
@@ -948,7 +949,7 @@ export async function carryForwardReport(
       const activeAtOpen: GradePolicyRow[] = policies
         .filter((pol) => pol.validFrom <= yearStart && (pol.validTo == null || pol.validTo > yearStart))
         .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
-      const policy = resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId);
+      const policy = resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart));
       const carryMax = policy?.carryMax ?? 0;
       const anniversaryEarned = isAnniversaryEarned(e.leaveCycle, policy?.method);
       const priorBalance = priorBalByEmp.get(e.employmentId) ?? 0;
