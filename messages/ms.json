@@ -643,6 +643,14 @@
         "adjustment": "Pelarasan",
         "inLieuAccrual": "Terkumpul ganti"
       }
+    },
+    "preview": {
+      "willDeduct": "Ini akan menolak {days} hari",
+      "willDeductEmergency": "Ini akan meliputi kira-kira {days} hari (Cuti Kecemasan)",
+      "balanceLine": "Baki: {before} → {after} hari selepas permohonan ini",
+      "halfScheduleDayNote": "Tarikh ini jatuh pada jadual kerja Separuh Hari.",
+      "emergencySplitNote": "Pembahagian akhir sakit/tahunan/tanpa gaji disahkan semasa anda menghantar.",
+      "loading": "Mengira…"
     }
   },
   "attendance": {
@@ -2035,7 +2043,13 @@
       "payrollImpactHelp": "Modul cuti hanya menanda kesan semasa kelulusan; modul gaji mengira potongan sebenar.",
       "backdatingSectionTitle": "Cuti diundurkan tarikh",
       "backdatingLimitDaysLabel": "Had pengunduran tarikh (hari)",
-      "backdatingSectionHelp": "Berapa hari ke belakang dari hari ini pekerja boleh memohon jenis cuti ini. Biarkan kosong untuk tiada had. Pentadbir HR tidak sekali-kali disekat oleh had ini."
+      "backdatingSectionHelp": "Berapa hari ke belakang dari hari ini pekerja boleh memohon jenis cuti ini. Biarkan kosong untuk tiada had. Pentadbir HR tidak sekali-kali disekat oleh had ini.",
+      "halfDayDeductionTitle": "Potongan separuh hari",
+      "halfDayDeductionHelp": "Mengawal jumlah cuti yang ditolak apabila pekerja memohon cuti pada hari jadual kerja “Separuh Hari” (ditetapkan pada halaman Polisi Kehadiran). Mati: tolak 0.5 hari. Hidup: tolak 1.0 hari penuh. Hari bekerja penuh tidak akan terjejas.",
+      "halfDayDeductionFrozenNote": "Hanya terpakai untuk permohonan baharu — cuti yang telah dihantar atau diluluskan mengekalkan jumlah potongan yang ditunjukkan semasa ia dihantar.",
+      "halfDayDeductionOn": "Kini HIDUP — menolak 1.0 hari",
+      "halfDayDeductionOff": "Kini MATI — menolak 0.5 hari",
+      "halfDayDeductionToggleLabel": "Kira Separuh Hari sebagai 1 hari penuh"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -2234,7 +2248,11 @@
       "daySun": "Ahd",
       "save": "Simpan dasar",
       "lateHint": "Daftar masuk selepas “lewat selepas” ditanda lewat; daftar keluar sebelum “setengah hari sebelum” ialah setengah hari.",
-      "rosterNote": "Pekerja yang mempunyai jadual syif menggunakan syif berjadual mereka, bukan jadual ini. Cuti umum sentiasa mengatasi jenis hari."
+      "rosterNote": "Pekerja yang mempunyai jadual syif menggunakan syif berjadual mereka, bukan jadual ini. Cuti umum sentiasa mengatasi jenis hari.",
+      "dayTypeHint": "Penuh = hari bekerja biasa. Separuh = hari bekerja yang lebih pendek (cth. Sabtu 9:00–12:00) — cuti yang diambil pada hari ini menolak 0.5 hari secara lalai, atau 1.0 hari jika tetapan potongan separuh hari dihidupkan. Rehat = bukan hari bekerja.",
+      "dayTypeFull": "Penuh",
+      "dayTypeHalf": "Separuh",
+      "dayTypeRest": "Rehat"
     },
     "toilPolicy": {
       "pageTitle": "Cuti ganti",

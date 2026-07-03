@@ -16,6 +16,7 @@ import {
   openLeaveYearAction,
   runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
+  setLeaveHalfDayFullDeductionAction,
   createJobGradeAction,
   archiveJobGradeAction,
   updateLeavePolicyAction,
@@ -231,6 +232,43 @@ export default async function LeaveConfigPage({
                     {t('save')}
                   </Button>
                 </div>
+              </form>
+            </li>
+          ))}
+        </ul>
+      </Card>
+
+      {/* Feedback request 31474452: per-company half-day leave-deduction toggle. */}
+      <Card>
+        <SectionHeader title={t('halfDayDeductionTitle')} count={companies.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
+        <p className="px-4 pb-1 text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
+        <ul className="divide-y divide-border">
+          {companies.map((c) => (
+            <li key={c.id} className="px-4 py-3">
+              <form
+                action={setLeaveHalfDayFullDeductionAction}
+                className="flex flex-wrap items-center justify-between gap-3"
+              >
+                <input type="hidden" name="companyId" value={c.id} />
+                <div className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {c.leaveHalfDayFullDeduction ? t('halfDayDeductionOn') : t('halfDayDeductionOff')}
+                  </span>
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    name="enabled"
+                    defaultChecked={!!c.leaveHalfDayFullDeduction}
+                    className="size-4 rounded"
+                  />
+                  {t('halfDayDeductionToggleLabel')}
+                </label>
+                <Button type="submit" variant="outline" size="sm">
+                  {t('save')}
+                </Button>
               </form>
             </li>
           ))}

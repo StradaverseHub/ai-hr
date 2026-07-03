@@ -162,6 +162,11 @@ export const company = pgTable(
     // Wave 2 (ADR-0038 2C): the default state for employees with no explicit work_state — the holiday
     // fallback for this company.
     defaultWorkState: text('default_work_state'),
+    // Feedback request 31474452: when true, leave taken on a "Half Day" work-schedule day (attendance_policy.
+    // half_working_days) deducts a FULL 1.0 day instead of the default 0.5. Default false = byte-identical to
+    // today for every existing customer until an admin both marks a day Half AND turns this on. Full working
+    // days are never affected either way.
+    leaveHalfDayFullDeduction: boolean('leave_half_day_full_deduction').notNull().default(false),
     // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
     parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -1303,6 +1308,16 @@ export const attendancePolicy = pgTable(
       .array()
       .notNull()
       .default(sql`'{1,2,3,4,5}'::integer[]`),
+    // Feedback request 31474452: ISO weekday numbers marked as a HALF working day (e.g. Saturday 9am-12pm).
+    // Disjoint from workingDays by a DB CHECK (migration 0142) — a weekday is Full (workingDays), Half
+    // (halfWorkingDays), or Rest (neither). Default '{}' = no half days, byte-identical to today. For
+    // ATTENDANCE purposes a half day still counts as a WORKING day (D2) — see the union reads in
+    // core/attendance.ts; only the LEAVE deduction amount differs (core/leave.ts dayWeight + company.
+    // leaveHalfDayFullDeduction).
+    halfWorkingDays: integer('half_working_days')
+      .array()
+      .notNull()
+      .default(sql`'{}'::integer[]`),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],

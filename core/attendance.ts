@@ -43,7 +43,17 @@ const DEFAULTS = {
   workEnd: '18:00:00',
   breakMinutes: 60,
   workingDays: [1, 2, 3, 4, 5], // ISO: Mon–Fri
+  halfWorkingDays: [] as number[], // Feedback 31474452: no half-day schedule markers by default
 };
+
+/** Feedback 31474452 (D2): for ATTENDANCE purposes a "Half Day" schedule marker is still a WORKING day — the
+ *  engine has no notion yet of a half day's shorter hours (flagged follow-up), so classification, roster
+ *  generation and absence derivation all read the UNION of workingDays ∪ halfWorkingDays. Only the LEAVE
+ *  deduction amount (core/leave.ts) distinguishes Full vs Half. This prevents a re-marked rest day silently
+ *  losing its rest-day OT premium, and re-marking an existing FULL day as Half changes nothing here. */
+const unionWorkingDays = (workingDays: number[], halfWorkingDays: number[]): number[] => [
+  ...new Set([...workingDays, ...halfWorkingDays]),
+];
 
 const toMinutes = (t: string): number => {
   const [h, m] = t.split(':').map(Number);
@@ -73,6 +83,7 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
       workEnd: attendancePolicy.workEnd,
       breakMinutes: attendancePolicy.breakMinutes,
       workingDays: attendancePolicy.workingDays,
+      halfWorkingDays: attendancePolicy.halfWorkingDays,
     })
     .from(employment)
     .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
@@ -85,6 +96,7 @@ async function policyFor(tx: Tx, employmentId: string): Promise<Policy> {
     workEnd: row?.workEnd ?? DEFAULTS.workEnd,
     breakMinutes: row?.breakMinutes ?? DEFAULTS.breakMinutes,
     workingDays: row?.workingDays ?? DEFAULTS.workingDays,
+    halfWorkingDays: row?.halfWorkingDays ?? DEFAULTS.halfWorkingDays,
   };
 }
 
@@ -191,8 +203,11 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   }
   if (isHoliday) return policyBranch('holiday');
   if (ra?.isRestDay) return { ...policyBranch('rest_day'), source: 'roster-rest' };
-  // No roster for this employee+date ⇒ company policy (working-days → workday/rest_day).
-  return policyBranch(pol.workingDays.includes(isoWeekday(date)) ? 'workday' : 'rest_day');
+  // No roster for this employee+date ⇒ company policy (working-days → workday/rest_day). A Half-day marker
+  // (D2) counts as a WORKING day here — only leave.ts's deduction math distinguishes Full vs Half.
+  return policyBranch(
+    unionWorkingDays(pol.workingDays, pol.halfWorkingDays).includes(isoWeekday(date)) ? 'workday' : 'rest_day',
+  );
 }
 
 /** Derive status + worked/OT minutes against a resolved schedule — the shared rule that check-in/out apply
@@ -456,12 +471,19 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       // REJECTED date is NOT in the set, so it is no longer counted as on-leave (the central fix).
       approvedLeaveDates(tx, empIds, date, date),
       tx
-        .select({ companyId: attendancePolicy.companyId, workingDays: attendancePolicy.workingDays })
+        .select({
+          companyId: attendancePolicy.companyId,
+          workingDays: attendancePolicy.workingDays,
+          halfWorkingDays: attendancePolicy.halfWorkingDays,
+        })
         .from(attendancePolicy),
     ]);
     const leaveSet = new Set<string>();
     for (const [emp, dates] of approvedDates) if (dates.has(date)) leaveSet.add(emp);
-    const daysByCompany = new Map(policies.map((p) => [p.companyId, p.workingDays]));
+    // D2: a Half-day marker still counts as a working day for attendance — union with halfWorkingDays.
+    const daysByCompany = new Map(
+      policies.map((p) => [p.companyId, unionWorkingDays(p.workingDays, p.halfWorkingDays)]),
+    );
     const dow = isoWeekday(date);
 
     // ADR-0055: resolve each absent employee's holiday calendar through the unified resolver (business-group
@@ -565,11 +587,18 @@ export function attendanceMonthSummary(
       // a per-date request's interior REJECTED date is excluded, so it is not miscounted as a leave day.
       approvedLeaveDates(tx, empIds, monthStart, monthEnd),
       tx
-        .select({ companyId: attendancePolicy.companyId, workingDays: attendancePolicy.workingDays })
+        .select({
+          companyId: attendancePolicy.companyId,
+          workingDays: attendancePolicy.workingDays,
+          halfWorkingDays: attendancePolicy.halfWorkingDays,
+        })
         .from(attendancePolicy),
     ]);
 
-    const daysByCompany = new Map(policies.map((pp) => [pp.companyId, pp.workingDays]));
+    // D2: a Half-day marker still counts as a working day for absence derivation — union with halfWorkingDays.
+    const daysByCompany = new Map(
+      policies.map((pp) => [pp.companyId, unionWorkingDays(pp.workingDays, pp.halfWorkingDays)]),
+    );
     // ADR-0055: each employee's holiday calendar for the month via the unified resolver (business-group →
     // state → national), the SAME calendar leave + checkIn use. One call per employee (the resolver is
     // single-employment, as leave.ts consumes it); sequential because the calls share one transaction
@@ -869,6 +898,9 @@ export type AttendancePolicyView = {
   lateAfter: string;
   halfDayBefore: string;
   workingDays: number[];
+  // Feedback 31474452: weekdays marked as a Half working day (e.g. Saturday 9am-12pm). Disjoint from
+  // workingDays. Always ints 1..7; empty = no half-day schedule (today's behaviour).
+  halfWorkingDays: number[];
   isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
 };
 
@@ -889,6 +921,7 @@ export function listAttendancePolicies(
         lateAfter: attendancePolicy.lateAfter,
         halfDayBefore: attendancePolicy.halfDayBefore,
         workingDays: attendancePolicy.workingDays,
+        halfWorkingDays: attendancePolicy.halfWorkingDays,
       })
       .from(attendancePolicy)
       .where(inArray(attendancePolicy.companyId, companyIds));
@@ -905,6 +938,7 @@ export function listAttendancePolicies(
             lateAfter: DEFAULTS.lateAfter,
             halfDayBefore: DEFAULTS.halfDayBefore,
             workingDays: DEFAULTS.workingDays,
+            halfWorkingDays: DEFAULTS.halfWorkingDays,
             isDefault: true,
           };
     });
@@ -929,6 +963,8 @@ export async function setAttendancePolicy(
     lateAfter: string;
     halfDayBefore: string;
     workingDays: number[];
+    // Feedback 31474452: weekdays marked Half (disjoint from workingDays). Optional — absent/undefined ⇒ [].
+    halfWorkingDays?: number[];
   },
 ) {
   const workStart = asTime(p.workStart, 'Work start');
@@ -943,7 +979,18 @@ export async function setAttendancePolicy(
   if (toMinutes(workEnd) - toMinutes(workStart) <= breakMinutes)
     throw new Error('The working span must exceed the break.');
   const workingDays = [...new Set(p.workingDays)].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7).sort();
-  if (workingDays.length === 0) throw new Error('Select at least one working day.');
+  const halfWorkingDays = [...new Set(p.halfWorkingDays ?? [])]
+    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7)
+    .sort();
+  // Union non-empty guard (0142): a schedule that is ALL half days is valid (Half implies working for
+  // attendance — D2) — only a schedule with NO working days at all (Full ∪ Half both empty) is rejected.
+  if (workingDays.length === 0 && halfWorkingDays.length === 0) {
+    throw new Error('Select at least one working day.');
+  }
+  const overlap = workingDays.filter((d) => halfWorkingDays.includes(d));
+  if (overlap.length > 0) {
+    throw new Error('A day cannot be both a Full working day and a Half working day.');
+  }
 
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -957,10 +1004,11 @@ export async function setAttendancePolicy(
         lateAfter,
         halfDayBefore,
         workingDays,
+        halfWorkingDays,
       })
       .onConflictDoUpdate({
         target: attendancePolicy.companyId,
-        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays },
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays },
       })
       .returning({ id: attendancePolicy.id });
     await appendEvent(tx, {
@@ -969,7 +1017,16 @@ export async function setAttendancePolicy(
       aggregateId: row.id,
       eventType: 'attendance-policy.updated',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays },
+      payload: {
+        companyId: p.companyId,
+        workStart,
+        workEnd,
+        breakMinutes,
+        lateAfter,
+        halfDayBefore,
+        workingDays,
+        halfWorkingDays,
+      },
     });
     return row;
   });

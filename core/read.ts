@@ -208,6 +208,7 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
         currency: company.currency,
         registrationNo: company.registrationNo,
         leaveCycle: company.leaveCycle,
+        leaveHalfDayFullDeduction: company.leaveHalfDayFullDeduction,
         archivedAt: company.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.company_id = company.id) or exists (select 1 from employment e where e.company_id = company.id) or exists (select 1 from company c where c.parent_company_id = company.id)`,
       })

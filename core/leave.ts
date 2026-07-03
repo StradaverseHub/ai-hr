@@ -518,15 +518,16 @@ function eachDate(start: string, end: string): string[] {
   return out;
 }
 
-/** True when `date` is a working day for the given ISO working-day roster (1=Mon … 7=Sun) and is not a
- *  holiday. Resolves rest days from the SAME source the attendance engine uses (audit H#3), never a
- *  hardcoded Sat/Sun. */
+/** True when `date` is a working day (Full OR Half) for the given ISO working-day roster (1=Mon … 7=Sun) and
+ *  is not a holiday. Resolves rest days from the SAME source the attendance engine uses (audit H#3), never a
+ *  hardcoded Sat/Sun. List/membership semantics only — for the DEDUCTED AMOUNT on a date use dayWeight. */
 function isWorkingDay(date: string, workingDaysIso: number[], holidays: Set<string>): boolean {
   return workingDaysIso.includes(isoWeekday(date)) && !holidays.has(date);
 }
 
 /** Working days in [start, end]: counts only days on the employee's configured working-day roster (ISO
- *  weekdays, default Mon–Fri) that are not holidays. */
+ *  weekdays, default Mon–Fri, Full ∪ Half) that are not holidays. List/membership semantics — for the
+ *  WEIGHTED (fractional half-day) total use workingDaysWeighted. */
 function workingDays(start: string, end: string, holidays: Set<string>, workingDaysIso: number[]): number {
   let n = 0;
   for (const d of eachDate(start, end)) {
@@ -537,15 +538,68 @@ function workingDays(start: string, end: string, holidays: Set<string>, workingD
 
 /** The company's configured working-day roster for an employment (ISO weekday array, 1=Mon … 7=Sun),
  *  resolved from attendance_policy.workingDays — the SAME source core/attendance.ts uses. Falls back to the
- *  Mon–Fri default when no policy row exists, so existing single-company behaviour is unchanged (audit H#3). */
+ *  Mon–Fri default when no policy row exists, so existing single-company behaviour is unchanged (audit H#3).
+ *  Kept as a thin wrapper over resolveSchedule for callers that only need list/membership semantics
+ *  (Full ∪ Half, no weighting). */
 async function resolveWorkingDaysIso(tx: Tx, employmentId: string): Promise<number[]> {
+  const sched = await resolveSchedule(tx, employmentId);
+  return [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
+}
+
+/** Feedback 31474452 (4a): one query resolving an employment's full schedule — the company's configured
+ *  Full working days, Half working days, and the company's half-day-deduction toggle. Falls back to
+ *  Mon-Fri / no-half-days / toggle-off so existing single-company behaviour is byte-identical when no policy
+ *  row or half-day marker exists (D2/back-compat). */
+async function resolveSchedule(
+  tx: Tx,
+  employmentId: string,
+): Promise<{ workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean }> {
   const [row] = await tx
-    .select({ workingDays: attendancePolicy.workingDays })
+    .select({
+      workingDays: attendancePolicy.workingDays,
+      halfWorkingDays: attendancePolicy.halfWorkingDays,
+      halfCountsFull: company.leaveHalfDayFullDeduction,
+    })
     .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
     .where(eq(employment.id, employmentId))
     .limit(1);
-  return row?.workingDays ?? DEFAULT_WORKING_DAYS_ISO;
+  return {
+    workingDaysIso: row?.workingDays ?? DEFAULT_WORKING_DAYS_ISO,
+    halfDaysIso: row?.halfWorkingDays ?? [],
+    halfCountsFull: row?.halfCountsFull ?? false,
+  };
+}
+
+/** Feedback 31474452 (4b): the leave-deduction WEIGHT of a single date — 0 for a holiday or a date on
+ *  neither roster (rest day), 1 for a Full working day, and either 1.0 (toggle ON) or 0.5 (toggle OFF, the
+ *  default) for a Half working day. No rounding — weights are exactly 0 / 0.5 / 1 so sums stay exact
+ *  (rounding is only ever applied on the pre-existing hourly path). */
+function dayWeight(
+  date: string,
+  sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+  holidays: Set<string>,
+): number {
+  if (holidays.has(date)) return 0;
+  const dow = isoWeekday(date);
+  if (sched.workingDaysIso.includes(dow)) return 1;
+  if (sched.halfDaysIso.includes(dow)) return sched.halfCountsFull ? 1 : 0.5;
+  return 0;
+}
+
+/** Feedback 31474452 (4c): the WEIGHTED sum of dayWeight over [start, end] — the real deducted-days total for
+ *  a working_days-counted span, honouring Half-day markers + the company toggle. Degrades to workingDays()
+ *  exactly when there are no half-day markers (empty halfDaysIso ⇒ every date weighs 0 or 1). */
+function workingDaysWeighted(
+  start: string,
+  end: string,
+  holidays: Set<string>,
+  sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+): number {
+  let total = 0;
+  for (const d of eachDate(start, end)) total += dayWeight(d, sched, holidays);
+  return round2(total);
 }
 
 /** The set of holiday dates in [start, end] for an employment, resolved business-group → state →
@@ -806,19 +860,26 @@ export async function requestLeave(
     // For working_days types the leave must land on an actual working day — for full_day ranges this is the
     // existing count; for half/hourly it is the panel-fix guard so a half-day on a weekend/holiday is
     // rejected rather than silently deducted at 0.5. Run the holiday query once and reuse it for both.
+    // workingDayCount is the LIST count (Full ∪ Half, unweighted) — used only for the "any working day in
+    // range?" rejection guard below. workingDayWeight (4b/4c) is the actual DEDUCTED amount, which is what
+    // `days` is set from for full_day — it differs from workingDayCount only when a Half marker + the
+    // company's leaveHalfDayFullDeduction toggle apply (D2/Feedback 31474452).
     let workingDayCount: number | null = null;
+    let workingDayWeight: number | null = null;
     if (lt?.counting === 'working_days') {
       // 2C (ADR-0038) + holiday grouping: holidays apply per the employee's effective set of states —
       // national (state null) ∪ those states, resolved holiday_group → work_state →
       // company.default_work_state → national-only (see resolveHolidaySet).
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
+      const sched = await resolveSchedule(tx, p.employmentId);
+      const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
       workingDayCount = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
+      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched);
     }
 
     let days: number;
     if (durationType === 'full_day') {
-      days = lt?.counting === 'working_days' ? workingDayCount! : dayCount(p.startDate, p.endDate);
+      days = lt?.counting === 'working_days' ? workingDayWeight! : dayCount(p.startDate, p.endDate);
     } else {
       // Single day already enforced. Working-day guard: reject a half/hourly request that falls on a
       // weekend/holiday for working_days types (workingDayCount === 0) — same error as an empty range.
@@ -996,12 +1057,14 @@ export async function requestLeave(
     let perDate: { date: string; days: number }[] = [];
     if (perDateEligible) {
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-      const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
+      const sched = await resolveSchedule(tx, p.employmentId);
+      const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
       const dates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
       if (dates.length > 1) {
-        // Each date is one whole working day by construction, so sum(perDate.days) === the request's
-        // working-day count (guards fractional drift, mirroring the old split's per-child math).
-        perDate = dates.map((d) => ({ date: d, days: workingDays(d, d, hols, workingDaysIso) }));
+        // Feedback 31474452: each date carries ITS OWN weight (1 for Full, 0.5/1.0 for Half per the company
+        // toggle) rather than always-1 "one whole working day by construction" — so sum(perDate.days) equals
+        // the request's WEIGHTED total (days, set above from workingDayWeight), not merely its date count.
+        perDate = dates.map((d) => ({ date: d, days: dayWeight(d, sched, hols) }));
         await tx.insert(leaveRequestDate).values(
           perDate.map((pd) => ({
             tenantId: ctx.tenantId,
@@ -1041,6 +1104,70 @@ export async function requestLeave(
       children: [{ id, code: lt?.code ?? '', days }],
       ...(maternityAllowanceWarning ? { maternityAllowanceWarning: true } : {}),
       ...(holidayWarnings.length ? { holidayWarnings } : {}),
+    };
+  });
+}
+
+/** Feedback 31474452 (Step 5): pre-submission preview — "this will deduct X day(s), balance before/after" —
+ *  for the day-based durations only (full_day, half_day_am, half_day_pm; hourly keeps its existing
+ *  client-side display, see components/leave-duration-fields.tsx hourlyTotal). Read-only: no domain event, no
+ *  write. Mirrors (but does not duplicate) requestLeave's day-counting math so the preview and the actual
+ *  submission can never drift on the FULL-DAY figure — both read the same resolveSchedule/dayWeight/
+ *  workingDaysWeighted helpers. Runs under the caller's own session (RLS on leave_ledger/leave_type already
+ *  scopes what is readable) and validates employmentId is real/visible exactly like requestLeave does (a
+ *  bogus or out-of-scope id simply yields no leave-type match / RLS-empty balance, never a throw here — the
+ *  UI's own employment <select> is the real gate, same trust boundary as requestLeave itself).
+ *  Emergency Leave: returns the weighted span total as `days` with `isEmergencySplit: true` — the actual
+ *  sick/annual/unpaid split (and the unpaid-consent gate) is only resolved authoritatively at submission. */
+export async function previewLeaveDeduction(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    durationType?: LeaveDurationType;
+  },
+): Promise<{
+  days: number;
+  balanceAvailable: number;
+  balanceAfter: number;
+  hasHalfScheduleDate: boolean;
+  isEmergencySplit: boolean;
+}> {
+  return withTenant(ctx, async (tx) => {
+    const durationType: LeaveDurationType = p.durationType ?? 'full_day';
+    const [lt] = await tx
+      .select({ code: leaveType.code, counting: leaveType.counting })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.leaveTypeId))
+      .limit(1);
+    const isEmergencySplit = lt?.code === EMERGENCY_LEAVE_CODE;
+    const balanceAvailable = await leaveBalance(tx, p.employmentId, p.leaveTypeId);
+
+    let days = 0;
+    let hasHalfScheduleDate = false;
+    if (lt?.counting === 'working_days') {
+      const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
+      const sched = await resolveSchedule(tx, p.employmentId);
+      hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => sched.halfDaysIso.includes(isoWeekday(d)));
+      if (durationType === 'full_day' || isEmergencySplit) {
+        days = workingDaysWeighted(p.startDate, p.endDate, hols, sched);
+      } else {
+        days = 0.5; // half_day_am / half_day_pm — D4: unaffected by the half-schedule toggle
+      }
+    } else if (durationType === 'full_day' || isEmergencySplit) {
+      days = dayCount(p.startDate, p.endDate);
+    } else {
+      days = 0.5;
+    }
+
+    return {
+      days,
+      balanceAvailable,
+      balanceAfter: round2(balanceAvailable - days),
+      hasHalfScheduleDate,
+      isEmergencySplit,
     };
   });
 }
@@ -1125,10 +1252,13 @@ async function requestEmergencyLeave(
   }
 
   // Count the span as the working-days (paid) children would (honouring the employee's holidays/state +
-  // configured rest-day roster) and as the UNPAID child would (calendar-days).
+  // configured rest-day roster + Half-day markers) and as the UNPAID child would (calendar-days).
   const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
-  const workingDaysIso = await resolveWorkingDaysIso(tx, p.employmentId);
-  const spanWorkingDays = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
+  const sched = await resolveSchedule(tx, p.employmentId);
+  const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
+  // spanWorkingDays is the WEIGHTED total (Feedback 31474452 4d) — the balance-cover math below must consume
+  // the same weighted figure a half-day-aware span would deduct, not a plain date count.
+  const spanWorkingDays = workingDaysWeighted(p.startDate, p.endDate, hols, sched);
   const uplSpanDays = dayCount(p.startDate, p.endDate);
   if (uplSpanDays <= 0) throw new LeaveNoDaysInRangeError();
 
@@ -1138,8 +1268,9 @@ async function requestEmergencyLeave(
 
   // Build the ordered list of PAID segments and the unpaid remainder. SICK is prepended only for an illness
   // emergency with a real SICK type + positive balance; ANNUAL always follows. Each segment's `cover` is its
-  // balance-limited working-day count from resolveEmergencyIllnessCascade (sickCovered then alCovered) — which
-  // degrades to exactly the AL→UPL split when there is no sick component, so the non-illness path is unchanged.
+  // balance-limited WEIGHTED working-day count from resolveEmergencyIllnessCascade (sickCovered then
+  // alCovered) — which degrades to exactly the AL→UPL split when there is no sick component, so the
+  // non-illness path is unchanged.
   const sickBalance = isIllness && sickId ? await leaveBalance(tx, p.employmentId, sickId) : 0;
   const alBalance = await leaveBalance(tx, p.employmentId, annualId);
   const { sickCovered, alCovered, alShortfall } = resolveEmergencyIllnessCascade(
@@ -1148,32 +1279,47 @@ async function requestEmergencyLeave(
     spanWorkingDays,
   );
 
-  // Each paid segment carves whole working-days (FLOORed to ≤ its real balance — H4) off the front in order.
+  // Each paid segment carves working-dates off the front, in order, up to its balance-limited WEIGHT.
   const paidSegments: { typeId: string; code: string; cover: number }[] = [];
   if (isIllness && sickId && sickCovered > 0) paidSegments.push({ typeId: sickId, code: 'SICK', cover: sickCovered });
   if (alCovered > 0) paidSegments.push({ typeId: annualId, code: 'ANNUAL', cover: alCovered });
 
-  // How many whole working-days each paid segment will actually consume, walking the span front-to-back. A
-  // fractional remainder of any segment's balance (prorated accrual / half-day debit) cannot be carved as a
-  // whole-day child, so it falls through to the next segment / the unpaid remainder.
-  let wholeConsumed = 0;
-  const plannedPaid: { typeId: string; code: string; wholeDays: number }[] = [];
+  // Feedback 31474452 (4d): date-boundary WEIGHT WALK, not a naive floor/index whole-day carve — a Half-day
+  // date with the toggle ON weighs 1.0 (so it consumes like a Full day) but with the toggle OFF weighs only
+  // 0.5, and a Half date can only ever be consumed WHOLE (never split across two paid segments or split
+  // paid/unpaid mid-date). datesConsumed (an index into workingDates) and weightConsumed are tracked
+  // SEPARATELY: hasUnpaid must compare datesConsumed to workingDates.length (a date count), never a weight
+  // sum to a date count — that mismatch is exactly what would spuriously manufacture an unpaid child on a
+  // span with a half date and ample balance (the panel's Fri-Mon / Sat=half scenario).
+  let datesConsumed = 0;
+  const plannedPaid: { typeId: string; code: string; dateCount: number; segDays: number }[] = [];
   for (const seg of paidSegments) {
-    const whole = Math.min(Math.floor(seg.cover), workingDates.length - wholeConsumed);
-    if (whole > 0) {
-      plannedPaid.push({ typeId: seg.typeId, code: seg.code, wholeDays: whole });
-      wholeConsumed += whole;
+    let segDates = 0;
+    let segWeight = 0;
+    // Consume leading unconsumed working dates while the segment's remaining cover can absorb the NEXT
+    // date's weight whole (a date is never partially consumed across segments).
+    while (datesConsumed + segDates < workingDates.length) {
+      const nextDate = workingDates[datesConsumed + segDates];
+      const nextWeight = dayWeight(nextDate, sched, hols);
+      if (segWeight + nextWeight > seg.cover + 1e-9) break; // would exceed this segment's balance-limited cover
+      segWeight += nextWeight;
+      segDates += 1;
+    }
+    if (segDates > 0) {
+      plannedPaid.push({ typeId: seg.typeId, code: seg.code, dateCount: segDates, segDays: round2(segWeight) });
+      datesConsumed += segDates;
     }
   }
-  // The unpaid remainder is every calendar day after the last paid working-day (or the whole span if no paid
-  // days were carved). uplDays is in calendar-days, the UNPAID type's own counting mode.
-  const hasUnpaid = wholeConsumed < spanWorkingDays;
+  // The unpaid remainder is every calendar day after the last paid working-DATE (or the whole span if no
+  // paid dates were carved) — a DATE-COUNT compare (datesConsumed < workingDates.length), never a weight
+  // compare, so a half-weighted-but-fully-consumed span never manufactures a spurious unpaid child.
+  const hasUnpaid = datesConsumed < workingDates.length;
 
   // Consent gate (Phase-B #12A): an UNPAID child requires explicit consent — throw BEFORE any insert so a
   // missing acknowledgement leaves nothing persisted.
   if (hasUnpaid && !p.unpaidConsent) {
     // The unpaid remainder in calendar-days, for the error message (the form shows the full split itself).
-    const lastPaidWorkingDay = wholeConsumed > 0 ? workingDates[wholeConsumed - 1] : null;
+    const lastPaidWorkingDay = datesConsumed > 0 ? workingDates[datesConsumed - 1] : null;
     const uplStart = lastPaidWorkingDay ? eachDate(lastPaidWorkingDay, p.endDate)[1] : p.startDate;
     const uplDays = dayCount(uplStart, p.endDate);
     throw new UnpaidConsentRequiredError(uplDays);
@@ -1183,19 +1329,19 @@ async function requestEmergencyLeave(
   const consentAt = hasUnpaid ? new Date() : null;
   const children: { id: string; code: string; days: number }[] = [];
 
-  // Insert each paid segment as a contiguous full-day child [segStart, boundaryWorkingDay].
-  let cursor = 0; // index into workingDates of the next un-assigned working-day
+  // Insert each paid segment as a contiguous full-day child [segStart, boundaryWorkingDay]. segDays is the
+  // segment's WEIGHTED total (asserted in tests to equal workingDaysWeighted(segStart, boundary)).
+  let cursor = 0; // index into workingDates of the next un-assigned working-date
   for (const seg of plannedPaid) {
     const segStart = cursor === 0 ? p.startDate : eachDate(workingDates[cursor - 1], p.endDate)[1];
-    const boundaryWorkingDay = workingDates[cursor + seg.wholeDays - 1];
-    const segDays = workingDays(segStart, boundaryWorkingDay, hols, workingDaysIso);
+    const boundaryWorkingDay = workingDates[cursor + seg.dateCount - 1];
     const { id } = await insertLeaveRequest(tx, ctx, {
       employmentId: p.employmentId, leaveTypeId: seg.typeId, startDate: segStart, endDate: boundaryWorkingDay,
-      days: segDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
+      days: seg.segDays, durationType: 'full_day', hours: null, reason: p.reason ?? null,
       employeeRemark: null, parentGroupId, mandatoryAfterDays: null,
     });
-    children.push({ id, code: seg.code, days: segDays });
-    cursor += seg.wholeDays;
+    children.push({ id, code: seg.code, days: seg.segDays });
+    cursor += seg.dateCount;
   }
 
   // Insert the UNPAID remainder child (consent-stamped), if any.
@@ -1733,36 +1879,49 @@ export async function decideLeaveDate(
 // plannedAbsences) filters status='approved', a cancelled segment disappears from balance/calendar/payroll
 // for free — no read-layer span math. See ADR-0065.
 
-/** Pure date math (no DB) so the service and tests share one implementation. Given the request's full
- *  ordered list of WORKING dates and the set of dates to cancel, partition the working dates into maximal
- *  contiguous runs such that every cancelled date sits in its own single-date segment. Returns the segments
- *  (each `{ from, to, days }`, days = the run's working-day count) in date order, plus the indexes of the
- *  segments that are fully cancelled. Cancelling ALL working dates yields every segment cancelled — the
- *  "cancel-all == cancel request" case falls out with no special path. */
+/** A working date paired with its leave-deduction weight (Feedback 31474452 4e) — 1 for a Full working day,
+ *  0.5/1.0 for a Half day per the company toggle. */
+export type WeightedDate = { date: string; weight: number };
+
+/** Pure date math (no DB) so the service and tests share one implementation. Given the request's full ordered
+ *  list of WORKING dates (each optionally carrying its deduction WEIGHT — Feedback 31474452 4e) and the set of
+ *  dates to cancel, partition the working dates into maximal contiguous runs such that every cancelled date
+ *  sits in its own single-date segment. Returns the segments (each `{ from, to, days }`, days = the SUM of the
+ *  run's weights — 1 per date when no weights are supplied, so callers passing a plain `string[]` see exactly
+ *  today's behaviour) in date order, plus the indexes of the segments that are fully cancelled. Cancelling ALL
+ *  working dates yields every segment cancelled — the "cancel-all == cancel request" case falls out with no
+ *  special path.
+ *
+ *  Accepts either a plain `string[]` (back-compat — every date weighs 1) or `WeightedDate[]` (the caller
+ *  supplies each date's real weight, e.g. from dayWeight/resolveSchedule). */
 export function splitSpanForCancellation(
-  allWorkingDates: string[],
+  allWorkingDates: string[] | WeightedDate[],
   cancelDates: string[],
 ): { segments: { from: string; to: string; days: number }[]; cancelledSegmentIndexes: number[] } {
+  const weighted: WeightedDate[] = allWorkingDates.map((d) =>
+    typeof d === 'string' ? { date: d, weight: 1 } : d,
+  );
   const cancelSet = new Set(cancelDates);
-  const ordered = [...allWorkingDates].sort();
+  const ordered = [...weighted].sort((a, b) => a.date.localeCompare(b.date));
   const segments: { from: string; to: string; days: number }[] = [];
   const cancelledSegmentIndexes: number[] = [];
-  let run: string[] = [];
+  let run: WeightedDate[] = [];
   let runCancelled: boolean | null = null;
   const flush = () => {
     if (run.length === 0) return;
     const idx = segments.length;
-    segments.push({ from: run[0], to: run[run.length - 1], days: run.length });
+    const days = round2(run.reduce((s, r) => s + r.weight, 0));
+    segments.push({ from: run[0].date, to: run[run.length - 1].date, days });
     if (runCancelled) cancelledSegmentIndexes.push(idx);
     run = [];
     runCancelled = null;
   };
-  for (const d of ordered) {
-    const isCancelled = cancelSet.has(d);
+  for (const wd of ordered) {
+    const isCancelled = cancelSet.has(wd.date);
     // A cancelled date is always its own single-date segment; a surviving date extends the current surviving
     // run. So flush whenever the cancelled-ness flips OR the current date is cancelled (force a new segment).
     if (run.length > 0 && (isCancelled || runCancelled !== isCancelled)) flush();
-    run.push(d);
+    run.push(wd);
     runCancelled = isCancelled;
     if (isCancelled) flush(); // a cancelled date never merges with a following date
   }
@@ -1921,8 +2080,12 @@ export async function requestLeaveCancellation(
       throw new LeaveCancellationNotAllowedError('a pending cancellation already covers one of these dates');
     }
 
-    // requestedDays = working-day count of the cancel dates (each is a working day by the check above).
-    const requestedDays = cancelDates.length;
+    // requestedDays = the WEIGHTED total of the cancel dates (Feedback 31474452 4e) — each is a working date
+    // by the check above; a Half date contributes 0.5 (toggle OFF) or 1.0 (toggle ON) rather than always 1,
+    // so the manager's approval screen previews the real give-back amount decideLeaveCancellation will apply.
+    const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
+    const sched = await resolveSchedule(tx, req.employmentId);
+    const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols), 0));
     const [row] = await tx
       .insert(leaveCancellationRequest)
       .values({
@@ -2001,8 +2164,14 @@ export async function decideLeaveCancellation(
 
     const cancelDates = (cr.cancelDates as string[]) ?? [];
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
-    const workingDaysIso = await resolveWorkingDaysIso(tx, req.employmentId);
-    const workingDates = eachDate(req.startDate, req.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+    // Feedback 31474452 (4e): resolve the CURRENT schedule/toggle config (as today — a pre-existing property,
+    // not a new behaviour) and thread each working date's real WEIGHT through the split, so a cancelled Half
+    // date gives back exactly the configured amount (0.5 OFF / 1.0 ON) instead of always 1.
+    const sched = await resolveSchedule(tx, req.employmentId);
+    const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
+    const workingDates = eachDate(req.startDate, req.endDate)
+      .filter((d) => isWorkingDay(d, workingDaysIso, hols))
+      .map((date) => ({ date, weight: dayWeight(date, sched, hols) }));
     const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
 
     // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and

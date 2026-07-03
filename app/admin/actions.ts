@@ -33,6 +33,7 @@ import {
   revokeRole,
   setCompanyParent,
   setCompanyLeaveCycle,
+  setLeaveHalfDayFullDeduction,
   createJobGrade,
   archiveJobGrade,
   updateBusinessUnit,
@@ -358,6 +359,21 @@ export async function setCompanyLeaveCycleAction(formData: FormData) {
     await setCompanyLeaveCycle(s, {
       companyId: String(formData.get('companyId')),
       cycle: String(formData.get('cycle') || 'calendar'),
+    });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/** Feedback request 31474452: set a company's half-day leave-deduction toggle (checkbox posts "on" or is
+ *  absent — mirrors the existing checkbox-action convention in this file, e.g. autoAccrueOnApproval above). */
+export async function setLeaveHalfDayFullDeductionAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await setLeaveHalfDayFullDeduction(s, {
+      companyId: String(formData.get('companyId')),
+      enabled: formData.get('enabled') === 'on',
     });
   } catch (e) {
     fail(LEAVE, e);
@@ -782,8 +798,17 @@ export async function setToilPolicyAction(fd: FormData) {
 }
 
 // ADR-0032 C7 — upsert one company's attendance policy (the no-roster default schedule).
+// Feedback 31474452: the page posts one dayType_<1..7> select ("full" | "half" | "rest") per ISO weekday
+// instead of a plain workingDays checkbox list — decode those into the two arrays the service expects.
 export async function setAttendancePolicyAction(fd: FormData) {
   const s = await getSession();
+  const workingDays: number[] = [];
+  const halfWorkingDays: number[] = [];
+  for (let d = 1; d <= 7; d++) {
+    const v = fd.get(`dayType_${d}`);
+    if (v === 'full') workingDays.push(d);
+    else if (v === 'half') halfWorkingDays.push(d);
+  }
   try {
     await setAttendancePolicy(s, {
       companyId: String(fd.get('companyId') ?? ''),
@@ -792,7 +817,8 @@ export async function setAttendancePolicyAction(fd: FormData) {
       breakMinutes: Number(fd.get('breakMinutes') ?? 0),
       lateAfter: String(fd.get('lateAfter') ?? ''),
       halfDayBefore: String(fd.get('halfDayBefore') ?? ''),
-      workingDays: fd.getAll('workingDays').map((d) => Number(d)),
+      workingDays,
+      halfWorkingDays,
     });
   } catch (e) {
     fail(ATTENDANCE_POLICY, e);

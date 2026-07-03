@@ -8,7 +8,7 @@ import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
-import { requestLeaveAction, requestLeaveCancellationAction } from './actions';
+import { requestLeaveAction, requestLeaveCancellationAction, previewLeaveDeductionAction } from './actions';
 
 const REQ_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -302,15 +302,6 @@ export default async function LeavePage({
             encType="multipart/form-data"
             className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2"
           >
-            <Field label={t('fieldEmployee')}>
-              <select name="employmentId" required className={inputCls}>
-                {active.map((e) => (
-                  <option key={e.employmentId} value={e.employmentId}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
             <LeaveDurationFields
               types={leaveTypes.map((lt) => ({
                 id: lt.id,
@@ -323,6 +314,8 @@ export default async function LeavePage({
               }))}
               startDefault={today}
               showDocumentFields
+              employeeOptions={active.map((e) => ({ id: e.employmentId, name: e.name }))}
+              previewAction={previewLeaveDeductionAction}
             />
             <Field label={t('fieldReason')}>
               <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />
