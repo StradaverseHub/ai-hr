@@ -1,5 +1,5 @@
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin } from '@/lib/authz';
+import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listLeavePolicies, listAdHocLeaveGrants } from '@/core/admin';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -39,7 +39,18 @@ export default async function LeaveConfigPage({
   ]);
   const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select + the festive-grant card (reuse the page's load).
+  // IMPORTANT: companyOptions (used by the per-policy scope select) stays the FULL list — policy writes are
+  // separately RLS-gated and must not be narrowed here.
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
+  // Re-plan round 5: the festive-grant company picker only offers companies this admin actually administers,
+  // so "Select all" always succeeds for a company-scoped admin (previously the picker offered every company,
+  // which made Select all silently fail the pre-flight for a scoped admin). hasGrantFor is the exact same
+  // predicate grantAdHocLeave's authority gate uses, so anything selectable here is guaranteed to pass it.
+  const effectiveGrants = withEffectiveGrants(s);
+  const canGroupWide = isGroupAdmin(effectiveGrants);
+  const festiveCompanies = canGroupWide
+    ? companyOptions
+    : companyOptions.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id));
   // ADR-0066: festive-grant inputs — active leave types + name lookups for the recent-grants list.
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
   const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
@@ -291,7 +302,8 @@ export default async function LeaveConfigPage({
       <Card>
         <SectionHeader title={t('festiveTitle')} />
         <FestiveGrantCard
-          companies={companyOptions}
+          companies={festiveCompanies}
+          canGroupWide={canGroupWide}
           leaveTypes={activeTypeOptions}
           recent={recentGrants}
           defaultDate={todayIso}

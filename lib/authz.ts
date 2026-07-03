@@ -51,6 +51,20 @@ export function isPayrollPartner(s: SessionContext, companyId?: string | null): 
   return hasGrantFor(s, 'payroll_partner', companyId);
 }
 
+/**
+ * Festive-grant re-plan (ADR-0066 round 5): back-compat shim shared by `grantAdHocLeave` and
+ * `grantAdHocLeaveMulti`. A roles-only session (no `grants`, e.g. `withTenant`'s treatment of a bare
+ * `roles` array, or test `adminCtx`) is treated as group-wide — flatten `roles` into group-wide grants
+ * (companyId null) so `isGroupAdmin` / `hasGrantFor` see it correctly. A session that already carries
+ * `grants` passes through unchanged. Pure extraction of the logic formerly inlined in
+ * `grantAdHocLeave` (core/leave.ts) — zero behavior change.
+ */
+export function withEffectiveGrants(s: SessionContext): SessionContext {
+  return s.grants != null
+    ? s
+    : { ...s, grants: (s.roles ?? []).map((role) => ({ role, companyId: null as string | null })) };
+}
+
 export function isPerfCompPartner(s: SessionContext, companyId?: string | null): boolean {
   return hasGrantFor(s, 'performance_comp_partner', companyId);
 }
