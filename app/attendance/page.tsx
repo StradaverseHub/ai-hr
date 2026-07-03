@@ -106,6 +106,7 @@ export default async function AttendancePage({
                 <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
                 <th className="px-4 py-2 font-medium" data-tour="attendance-status">{t('colStatus')}</th>
+                <th className="px-4 py-2 font-medium">{t('colLocation')}</th>
                 <th className="px-4 py-2 text-right font-medium" data-tour="attendance-action">{t('colAction')}</th>
               </tr>
             </thead>
@@ -146,6 +147,17 @@ export default async function AttendancePage({
                     ) : (
                       <Pill label={t('statusAbsent')} cls={STATUS.absent} />
                     )}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                    {/* ADR-0069: prefer the matched site name, else raw coordinates, else nothing captured. */}
+                    {(() => {
+                      const locName = r.checkOutLocationName ?? r.checkInLocationName;
+                      const lat = r.checkOutLat ?? r.checkInLat;
+                      const lng = r.checkOutLng ?? r.checkInLng;
+                      if (locName) return locName;
+                      if (lat != null && lng != null) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                      return '—';
+                    })()}
                   </td>
                   <td className="px-4 py-2.5">
                     <div className="flex justify-end">

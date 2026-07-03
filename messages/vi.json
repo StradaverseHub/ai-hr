@@ -463,6 +463,15 @@
           "female": "Nữ",
           "undisclosed": "Không tiết lộ"
         }
+      },
+      "clocking": {
+        "cardTitle": "Địa điểm chấm công & ranh giới địa lý",
+        "assignedLocations": "Địa điểm chấm công đã gán",
+        "noSites": "Chưa có địa điểm chấm công nào được xác định cho công ty này.",
+        "save": "Lưu",
+        "geofencingToggle": "Áp dụng ranh giới địa lý",
+        "radiusLabel": "Bán kính cho phép (mét)",
+        "hint": "Khi ranh giới địa lý được áp dụng, việc chấm công vào/ra sẽ bị chặn trừ khi nhân viên nằm trong bán kính của địa điểm được gán. Khi tắt, vị trí vẫn được ghi lại để kiểm toán."
       }
     },
     "import": {
@@ -725,7 +734,8 @@
       "srcRest": "Ngày nghỉ",
       "srcPolicy": "Chính sách công ty"
     },
-    "importPunches": "Nhập chấm công"
+    "importPunches": "Nhập chấm công",
+    "colLocation": "Địa điểm"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -977,7 +987,14 @@
       "suspended": "Tạm dừng",
       "settled": "Đã tất toán",
       "cancelled": "Đã hủy"
-    }
+    },
+    "outsideGeofence": "Bạn hiện đang ở ngoài vị trí chấm công được ủy quyền. Vui lòng di chuyển đến địa điểm làm việc được chỉ định trước khi chấm công vào/ra.",
+    "locationRequired": "Vị trí của bạn là bắt buộc để chấm công vào/ra tại nơi làm việc này. Vui lòng cho phép truy cập vị trí và thử lại.",
+    "capturingLocation": "Đang lấy vị trí của bạn…",
+    "locationNotice": "Vị trí của bạn được ghi lại mỗi khi chấm công vào và ra để xác minh chuyên cần.",
+    "geofencePass": "trong khu vực được phép",
+    "geofenceNotEnforced": "không áp dụng vị trí",
+    "distanceAway": "cách {m}m"
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -2297,7 +2314,19 @@
       "restore": "Khôi phục",
       "stateNote": "Tiểu bang của địa điểm ghi đè tiểu bang làm việc của nhân viên khi xác định ngày lễ công cộng; để trống để dùng mặc định của công ty.",
       "calendar": "Lịch ngày lễ",
-      "calendarNone": "Không (phân giải mặc định)"
+      "calendarNone": "Không (phân giải mặc định)",
+      "clockingHeading": "Địa điểm chấm công",
+      "clockingDescription": "Các địa điểm được ủy quyền cho phép nhân viên chấm công vào/ra. Gán địa điểm và ranh giới địa lý cho từng nhân viên trên hồ sơ của họ.",
+      "lat": "Vĩ độ",
+      "lng": "Kinh độ",
+      "address": "Địa chỉ",
+      "remarks": "Ghi chú",
+      "assignedCount": "{count} đã gán",
+      "delete": "Xóa",
+      "deleteConfirmTitle": "Xóa địa điểm chấm công?",
+      "deleteConfirmDescription": "Xóa vĩnh viễn “{name}”? Hành động này không thể hoàn tác. Chỉ có thể thực hiện khi không có nhân viên nào được gán và không có bản ghi chấm công nào tham chiếu đến địa điểm này.",
+      "clockingInUse": "Không thể xóa: được tham chiếu bởi {count} bản ghi. Hãy lưu trữ thay vào đó.",
+      "clockingNote": "Chỉ có thể xóa khi địa điểm không có nhân viên được gán và không có lịch sử chấm công. Nếu không, hãy lưu trữ địa điểm đó."
     }
   },
   "topbar": {

@@ -6,6 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
+import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
 import { FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, type ReviewType } from '@/core/employment-review';
 import { setPersonComplianceFields } from '@/core/profile';
@@ -327,6 +328,39 @@ export async function setStatutoryAction(formData: FormData) {
       zakatFixed: formData.get('zakatFixed') ? Number(formData.get('zakatFixed')) : null,
       zakatEffectiveFrom: (formData.get('zakatEffectiveFrom') as string) || null,
       zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
+/** ADR-0069 — set-based replace of an employee's assigned clocking sites. */
+export async function setEmployeeClockingLocationsAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await setEmployeeClockingLocations(s, {
+      employmentId,
+      clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
+    });
+  } catch (e) {
+    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/people/${employmentId}`);
+  redirect(`/people/${employmentId}?toast=Saved`);
+}
+
+/** ADR-0069 — enable/disable geofencing for one employee + set its radius (metres). */
+export async function setGeofencingAction(formData: FormData) {
+  const s = await getSession();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await setGeofencing(s, {
+      employmentId,
+      enabled: formData.get('enabled') === 'on',
+      radiusM: formData.get('radiusM') ? Number(formData.get('radiusM')) : null,
     });
   } catch (e) {
     redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);

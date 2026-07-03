@@ -32,5 +32,6 @@ decision, add a new ADR that supersedes the old one.
 | [0055](0055-org-holiday-hierarchy.md) | Organization-based public-holiday hierarchy: National / State / Business-group scope, group→state→country resolution | Accepted |
 | [0056](0056-individual-payroll-transaction.md) | Individual (one-off) payroll transactions: dated, batch-scoped ledger (5 kinds), draft-gated, RLS | Accepted |
 | [0062](0062-maternity-allowance-s37.md) | Maternity: separate the unconditional 98-day leave from the conditional paid allowance (EA s.37 qualifying-service + 5th-child); per-request override drives unpaid | Accepted |
+| [0069](0069-clocking-locations-geofencing.md) | Clocking locations & geofencing: separate `clocking_location` catalog, tenant-catalog RLS, blocked attempts as domain events (not attendance rows) | Accepted |
 
 See also: [Malaysia localization — spec mapping & gap closure](../architecture/my-localization.md).

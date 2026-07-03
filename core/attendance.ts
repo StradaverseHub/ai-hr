@@ -8,6 +8,7 @@
  * domain event (ADR-0006).
  */
 import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
@@ -18,6 +19,8 @@ import {
   attendance,
   attendanceCorrection,
   attendancePolicy,
+  clockingLocation,
+  employeeClockingLocation,
   employeeStatutoryMy,
   employment,
   leaveRequest,
@@ -27,11 +30,155 @@ import {
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
 
+// ADR-0069: two aliases of clocking_location so attendanceForDate can resolve BOTH the check-in and
+// check-out matched-site names in one query (mirrors core/read.ts myAttendance).
+const dayCheckInSite = alias(clockingLocation, 'day_check_in_site');
+const dayCheckOutSite = alias(clockingLocation, 'day_check_out_site');
+
 export class AlreadyCheckedInError extends Error {
   constructor() {
     super('Already checked in today');
     this.name = 'AlreadyCheckedInError';
   }
+}
+
+// ─── Clocking Location & Geofencing (ADR-0069) ─────────────────────────────────────────────────────
+
+/** Haversine great-circle distance in metres between two lat/lng pairs. Pure function — columns are
+ *  `double precision`, so drizzle already returns numbers (no string-math surprise). */
+export function haversineMetres(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6_371_000; // mean Earth radius, metres
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/** Thrown when geofencing is enabled but the browser supplied no coordinates. Client-side precondition —
+ *  nothing happened in the domain, so no event is appended for it (ADR-0069 §5). */
+export class GeolocationRequiredError extends Error {
+  constructor() {
+    super('Your location is required to clock in or out at this workplace. Please allow location access and try again.');
+    this.name = 'GeolocationRequiredError';
+  }
+}
+
+/** Thrown when geofencing is enabled and the employee's current position is outside every assigned
+ *  site's radius (or they have zero active assigned sites — fail-closed). Carries enough context for the
+ *  caller to write the attendance.geofence.blocked event in a SEPARATE transaction after this one rolls
+ *  back (ADR-0069 §3 — the blocked-event mechanism). */
+export class OutsideGeofenceError extends Error {
+  constructor(
+    public readonly info: {
+      employmentId: string;
+      date: string;
+      time: string;
+      lat: number;
+      lng: number;
+      nearestLocationId: string | null;
+      distanceM: number | null;
+      radiusM: number;
+      punch: 'in' | 'out';
+    },
+  ) {
+    super(
+      'You are currently outside your authorized clocking location. Please proceed to your assigned work location before clocking in or out.',
+    );
+    this.name = 'OutsideGeofenceError';
+  }
+}
+
+type GeofenceCheck =
+  | { enforced: false; lat: number | null; lng: number | null }
+  | {
+      enforced: true;
+      lat: number;
+      lng: number;
+      clockingLocationId: string | null;
+      distanceM: number | null;
+      radiusM: number;
+    };
+
+/**
+ * Resolve the geofence outcome for one punch. When geofencing is OFF, never queries the assignment
+ * join or computes a distance (ADR-0069 §8 — keeps the non-enforced hot path lean); stamps raw
+ * coordinates only. When ON: loads the employment's active assigned sites, finds the nearest, and
+ * either returns the passing match or THROWS OutsideGeofenceError (zero sites or outside every radius
+ * — fail-closed). Missing coordinates while enforced THROWS GeolocationRequiredError before any query.
+ */
+async function resolveGeofence(
+  tx: Tx,
+  p: { employmentId: string; date: string; time: string; lat?: number; lng?: number; punch: 'in' | 'out' },
+): Promise<GeofenceCheck> {
+  const [emp] = await tx
+    .select({ geofencingEnabled: employment.geofencingEnabled, geofenceRadiusM: employment.geofenceRadiusM })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  const enabled = emp?.geofencingEnabled ?? false;
+
+  if (!enabled) {
+    return { enforced: false, lat: p.lat ?? null, lng: p.lng ?? null };
+  }
+  if (p.lat == null || p.lng == null || !Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
+    throw new GeolocationRequiredError();
+  }
+  const radiusM = emp!.geofenceRadiusM!; // CHECK constraint guarantees this is set + positive while enabled
+
+  const sites = await tx
+    .select({ id: clockingLocation.id, lat: clockingLocation.lat, lng: clockingLocation.lng })
+    .from(employeeClockingLocation)
+    .innerJoin(clockingLocation, eq(clockingLocation.id, employeeClockingLocation.clockingLocationId))
+    .where(and(eq(employeeClockingLocation.employmentId, p.employmentId), isNull(clockingLocation.archivedAt)));
+
+  let nearest: { id: string; distanceM: number } | null = null;
+  for (const s of sites) {
+    const d = haversineMetres(p.lat, p.lng, s.lat, s.lng);
+    if (!nearest || d < nearest.distanceM) nearest = { id: s.id, distanceM: d };
+  }
+
+  if (!nearest || nearest.distanceM > radiusM) {
+    throw new OutsideGeofenceError({
+      employmentId: p.employmentId,
+      date: p.date,
+      time: p.time,
+      lat: p.lat,
+      lng: p.lng,
+      nearestLocationId: nearest?.id ?? null,
+      distanceM: nearest ? Math.round(nearest.distanceM) : null,
+      radiusM,
+      punch: p.punch,
+    });
+  }
+  return {
+    enforced: true,
+    lat: p.lat,
+    lng: p.lng,
+    clockingLocationId: nearest.id,
+    distanceM: Math.round(nearest.distanceM),
+    radiusM,
+  };
+}
+
+/** Append the attendance.geofence.blocked event in its OWN transaction, called AFTER the write
+ *  transaction rolled back (ADR-0069 §3 — the fix for the fatal "event never commits" flaw: an event can
+ *  never survive inside a transaction that itself rolls back). subjectEmploymentId is always the
+ *  server-resolved employment id, never client input (ADR-0015). */
+async function appendGeofenceBlockedEvent(ctx: SessionContext, err: OutsideGeofenceError): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'attendance-geofence',
+      aggregateId: err.info.employmentId,
+      eventType: 'attendance.geofence.blocked',
+      actor: actorOf(ctx),
+      subjectEmploymentId: err.info.employmentId,
+      payload: { ...err.info },
+    });
+  });
 }
 
 export type DayType = 'workday' | 'rest_day' | 'holiday';
@@ -316,9 +463,11 @@ export async function payableHoursForCycle(
   return payableMinutes / 60;
 }
 
-export async function checkIn(
+export type GeoInput = { lat: number; lng: number };
+
+async function checkInTx(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
 ) {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
@@ -333,6 +482,19 @@ export async function checkIn(
     // "Late" only means something against a schedule — rest-day/holiday work is just present.
     const status =
       dayType === 'workday' && toMinutes(p.time) > toMinutes(sched.lateAfter) ? 'late' : 'present';
+
+    // ADR-0069: resolve the geofence outcome BEFORE writing. Throws (rolling back this transaction, no
+    // row/event written) when enforced and outside every assigned site — the caller catches it outside
+    // this transaction and appends the blocked event separately.
+    const geo = await resolveGeofence(tx, {
+      employmentId: p.employmentId,
+      date: p.date,
+      time: p.time,
+      lat: p.geo?.lat,
+      lng: p.geo?.lng,
+      punch: 'in',
+    });
+
     const [row] = await tx
       .insert(attendance)
       .values({
@@ -342,6 +504,13 @@ export async function checkIn(
         checkInAt: p.time,
         status,
         dayType,
+        checkInLat: geo.lat,
+        checkInLng: geo.lng,
+        checkInClockingLocationId: geo.enforced ? geo.clockingLocationId : null,
+        checkInDistanceM: geo.enforced ? geo.distanceM : null,
+        checkInGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
+        checkInRadiusM: geo.enforced ? geo.radiusM : null,
+        checkInMethod: 'web',
       })
       .returning({ id: attendance.id });
     await appendEvent(tx, {
@@ -357,9 +526,27 @@ export async function checkIn(
   });
 }
 
-export async function checkOut(
+/** Check in. `geo` is optional — omitted/undefined when the browser gave no coordinates (allowed only
+ *  while geofencing is OFF for this employment; see resolveGeofence). Catches OutsideGeofenceError
+ *  OUTSIDE the write transaction and appends the blocked event in its own transaction before rethrowing
+ *  (ADR-0069 §3 — the only way a blocked ATTEMPT can be durably recorded once its write rolled back). */
+export async function checkIn(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; time: string },
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
+) {
+  try {
+    return await checkInTx(ctx, p);
+  } catch (e) {
+    if (e instanceof OutsideGeofenceError) {
+      await appendGeofenceBlockedEvent(ctx, e);
+    }
+    throw e;
+  }
+}
+
+async function checkOutTx(
+  ctx: SessionContext,
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
 ) {
   return withTenant(ctx, async (tx) => {
     const [rec] = await tx
@@ -388,9 +575,33 @@ export async function checkOut(
     const { status, workedMinutes, otMinutes } = deriveAttendance(sched, checkInAt, p.time);
     const dayType = sched.dayType;
 
+    // ADR-0069: resolve the geofence outcome for the CHECK-OUT punch — independent of the check-in punch's
+    // status/radius (a mid-day toggle or radius change is representable; each punch freezes its own).
+    const geo = await resolveGeofence(tx, {
+      employmentId: p.employmentId,
+      date: p.date,
+      time: p.time,
+      lat: p.geo?.lat,
+      lng: p.geo?.lng,
+      punch: 'out',
+    });
+
     await tx
       .update(attendance)
-      .set({ checkOutAt: p.time, status, dayType, workedMinutes, otMinutes })
+      .set({
+        checkOutAt: p.time,
+        status,
+        dayType,
+        workedMinutes,
+        otMinutes,
+        checkOutLat: geo.lat,
+        checkOutLng: geo.lng,
+        checkOutClockingLocationId: geo.enforced ? geo.clockingLocationId : null,
+        checkOutDistanceM: geo.enforced ? geo.distanceM : null,
+        checkOutGeofenceStatus: geo.enforced ? 'pass' : 'not_enforced',
+        checkOutRadiusM: geo.enforced ? geo.radiusM : null,
+        checkOutMethod: 'web',
+      })
       .where(eq(attendance.id, rec.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -413,6 +624,21 @@ export async function checkOut(
   });
 }
 
+/** Check out. Same optional-geo / blocked-event contract as checkIn (ADR-0069 §3). */
+export async function checkOut(
+  ctx: SessionContext,
+  p: { employmentId: string; date: string; time: string; geo?: GeoInput },
+) {
+  try {
+    return await checkOutTx(ctx, p);
+  } catch (e) {
+    if (e instanceof OutsideGeofenceError) {
+      await appendGeofenceBlockedEvent(ctx, e);
+    }
+    throw e;
+  }
+}
+
 export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 
 /**
@@ -433,6 +659,17 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
         dayType: attendance.dayType,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
+        // ADR-0069: per-punch Clocking Location & Geofencing capture for the day table's Location column.
+        checkInLat: attendance.checkInLat,
+        checkInLng: attendance.checkInLng,
+        checkInLocationName: dayCheckInSite.name,
+        checkInDistanceM: attendance.checkInDistanceM,
+        checkInGeofenceStatus: attendance.checkInGeofenceStatus,
+        checkOutLat: attendance.checkOutLat,
+        checkOutLng: attendance.checkOutLng,
+        checkOutLocationName: dayCheckOutSite.name,
+        checkOutDistanceM: attendance.checkOutDistanceM,
+        checkOutGeofenceStatus: attendance.checkOutGeofenceStatus,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -440,6 +677,8 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
         attendance,
         and(eq(attendance.employmentId, employment.id), eq(attendance.attendanceDate, date)),
       )
+      .leftJoin(dayCheckInSite, eq(dayCheckInSite.id, attendance.checkInClockingLocationId))
+      .leftJoin(dayCheckOutSite, eq(dayCheckOutSite.id, attendance.checkOutClockingLocationId))
       .where(
         and(
           isNull(employment.terminatedOn),
@@ -726,6 +965,11 @@ export async function decideAttendanceCorrection(
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
       const dayType = sched.dayType;
       const d = deriveAttendance(sched, cor.proposedCheckIn, cor.proposedCheckOut);
+      // ADR-0069: a correction always replaces both punches' geo-capture fields with null and leaves
+      // method NULL (no 'correction' enum value, per the panel's scope-creep cut) — the disclosed,
+      // approval-gated geofence bypass. Cutting this would leave a stale geofence attestation sitting
+      // next to punch times the correction actually wrote, which is the missing-edges bug the panel
+      // flagged; geofencing itself is NOT re-checked here (a human already approved this correction).
       const [amended] = await tx
         .insert(attendance)
         .values({
@@ -739,6 +983,20 @@ export async function decideAttendanceCorrection(
           workedMinutes: d.workedMinutes,
           otMinutes: d.otMinutes,
           remarks: 'Corrected',
+          checkInMethod: null,
+          checkInLat: null,
+          checkInLng: null,
+          checkInClockingLocationId: null,
+          checkInDistanceM: null,
+          checkInGeofenceStatus: null,
+          checkInRadiusM: null,
+          checkOutMethod: null,
+          checkOutLat: null,
+          checkOutLng: null,
+          checkOutClockingLocationId: null,
+          checkOutDistanceM: null,
+          checkOutGeofenceStatus: null,
+          checkOutRadiusM: null,
         })
         .onConflictDoUpdate({
           target: [attendance.employmentId, attendance.attendanceDate],
@@ -750,6 +1008,20 @@ export async function decideAttendanceCorrection(
             workedMinutes: d.workedMinutes,
             otMinutes: d.otMinutes,
             remarks: 'Corrected',
+            checkInMethod: null,
+            checkInLat: null,
+            checkInLng: null,
+            checkInClockingLocationId: null,
+            checkInDistanceM: null,
+            checkInGeofenceStatus: null,
+            checkInRadiusM: null,
+            checkOutMethod: null,
+            checkOutLat: null,
+            checkOutLng: null,
+            checkOutClockingLocationId: null,
+            checkOutDistanceM: null,
+            checkOutGeofenceStatus: null,
+            checkOutRadiusM: null,
           },
         })
         .returning({ id: attendance.id });
@@ -1136,6 +1408,11 @@ export async function importAttendancePunches(
         source: sched.source,
       });
       if (!p.dryRun) {
+        // ADR-0069: geofencing does not apply to terminal punches (physical presence at the device is its
+        // own proof — a disclosed bypass). Every punch this import writes/overwrites gets method='import'
+        // and its geo-capture columns nulled, so an import can never leave a stale geofence attestation
+        // sitting next to punch times it didn't actually validate (both check-in AND check-out columns are
+        // nulled on every write here, since this importer always determines both punches for the day).
         const [row] = await tx
           .insert(attendance)
           .values({
@@ -1149,6 +1426,20 @@ export async function importAttendancePunches(
             workedMinutes: d.workedMinutes,
             otMinutes: d.otMinutes,
             remarks: 'Imported (terminal)',
+            checkInMethod: 'import',
+            checkInLat: null,
+            checkInLng: null,
+            checkInClockingLocationId: null,
+            checkInDistanceM: null,
+            checkInGeofenceStatus: null,
+            checkInRadiusM: null,
+            checkOutMethod: checkOut ? 'import' : null,
+            checkOutLat: null,
+            checkOutLng: null,
+            checkOutClockingLocationId: null,
+            checkOutDistanceM: null,
+            checkOutGeofenceStatus: null,
+            checkOutRadiusM: null,
           })
           .onConflictDoUpdate({
             target: [attendance.employmentId, attendance.attendanceDate],
@@ -1160,6 +1451,20 @@ export async function importAttendancePunches(
               workedMinutes: d.workedMinutes,
               otMinutes: d.otMinutes,
               remarks: 'Imported (terminal)',
+              checkInMethod: 'import',
+              checkInLat: null,
+              checkInLng: null,
+              checkInClockingLocationId: null,
+              checkInDistanceM: null,
+              checkInGeofenceStatus: null,
+              checkInRadiusM: null,
+              checkOutMethod: checkOut ? 'import' : null,
+              checkOutLat: null,
+              checkOutLng: null,
+              checkOutClockingLocationId: null,
+              checkOutDistanceM: null,
+              checkOutGeofenceStatus: null,
+              checkOutRadiusM: null,
             },
           })
           .returning({ id: attendance.id });

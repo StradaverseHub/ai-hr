@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
   archiveBusinessUnit,
@@ -46,6 +47,14 @@ import {
 import { openLeaveYear, accrueEarnedLeave, grantAdHocLeave, type LeaveDurationType } from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
+import {
+  createClockingLocation,
+  updateClockingLocation,
+  archiveClockingLocation,
+  restoreClockingLocation,
+  deleteClockingLocation,
+  ClockingLocationInUseError,
+} from '@/core/clocking-location';
 import { requireAdmin } from '@/lib/authz';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
@@ -850,6 +859,76 @@ export async function restoreLocationAction(fd: FormData) {
   try {
     await restoreLocation(user, { locationId: String(fd.get('locationId') ?? '') });
   } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+// ADR-0069 — Clocking Location Management CRUD. requireAdmin gates the route; RLS gates the write per
+// company (tenant-catalog read, admin-of-company write — mirrors 0065 pay_component, NOT `location`).
+export async function createClockingLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await createClockingLocation(user, {
+      companyId: String(fd.get('companyId') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      lat: Number(fd.get('lat')),
+      lng: Number(fd.get('lng')),
+      address: (fd.get('address') as string) || null,
+      remarks: (fd.get('remarks') as string) || null,
+    });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function updateClockingLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await updateClockingLocation(user, {
+      clockingLocationId: String(fd.get('clockingLocationId') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      lat: Number(fd.get('lat')),
+      lng: Number(fd.get('lng')),
+      address: (fd.get('address') as string) || null,
+      remarks: (fd.get('remarks') as string) || null,
+    });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function archiveClockingLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await archiveClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function restoreClockingLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  try {
+    await restoreClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
+  } catch (e) {
+    fail(LOCATIONS, e);
+  }
+  ok(LOCATIONS);
+}
+
+export async function deleteClockingLocationAction(fd: FormData) {
+  const user = await requireAdmin();
+  const t = await getTranslations('admin.locations');
+  try {
+    await deleteClockingLocation(user, { clockingLocationId: String(fd.get('clockingLocationId') ?? '') });
+  } catch (e) {
+    if (e instanceof ClockingLocationInUseError) {
+      fail(LOCATIONS, new Error(t('clockingInUse', { count: e.refs })));
+    }
     fail(LOCATIONS, e);
   }
   ok(LOCATIONS);

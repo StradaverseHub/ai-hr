@@ -463,6 +463,15 @@
           "female": "Perempuan",
           "undisclosed": "Tidak didedahkan"
         }
+      },
+      "clocking": {
+        "cardTitle": "Lokasi daftar masuk & geopagar",
+        "assignedLocations": "Lokasi daftar masuk ditetapkan",
+        "noSites": "Belum ada lokasi daftar masuk ditakrifkan untuk syarikat ini.",
+        "save": "Simpan",
+        "geofencingToggle": "Kuatkuasakan geopagar",
+        "radiusLabel": "Jejari dibenarkan (meter)",
+        "hint": "Apabila geopagar dikuatkuasakan, daftar masuk/keluar akan disekat melainkan pekerja berada dalam jejari lokasi yang ditetapkan. Apabila dimatikan, lokasi masih direkodkan untuk audit."
       }
     },
     "import": {
@@ -725,7 +734,8 @@
       "srcRest": "Hari rehat",
       "srcPolicy": "Dasar syarikat"
     },
-    "importPunches": "Import perakam"
+    "importPunches": "Import perakam",
+    "colLocation": "Lokasi"
   },
   "org": {
     "title": "Carta organisasi",
@@ -977,7 +987,14 @@
       "suspended": "Digantung",
       "settled": "Selesai",
       "cancelled": "Dibatalkan"
-    }
+    },
+    "outsideGeofence": "Anda kini berada di luar lokasi daftar masuk yang dibenarkan. Sila pergi ke lokasi kerja yang ditetapkan sebelum daftar masuk atau daftar keluar.",
+    "locationRequired": "Lokasi anda diperlukan untuk daftar masuk atau keluar di tempat kerja ini. Sila benarkan akses lokasi dan cuba lagi.",
+    "capturingLocation": "Mendapatkan lokasi anda…",
+    "locationNotice": "Lokasi anda direkodkan setiap kali anda daftar masuk dan daftar keluar untuk tujuan pengesahan kehadiran.",
+    "geofencePass": "dalam lokasi dibenarkan",
+    "geofenceNotEnforced": "lokasi tidak dikuatkuasakan",
+    "distanceAway": "{m}m jauh"
   },
   "approvals": {
     "title": "Kelulusan",
@@ -2297,7 +2314,19 @@
       "restore": "Pulih",
       "stateNote": "Negeri lokasi mengatasi negeri kerja pekerja untuk penentuan cuti umum; biarkan kosong untuk menggunakan lalai syarikat.",
       "calendar": "Kalendar cuti",
-      "calendarNone": "Tiada (penyelesaian lalai)"
+      "calendarNone": "Tiada (penyelesaian lalai)",
+      "clockingHeading": "Lokasi daftar masuk",
+      "clockingDescription": "Lokasi dibenarkan untuk pekerja daftar masuk dan keluar. Tetapkan lokasi dan geopagar untuk setiap pekerja pada profil mereka.",
+      "lat": "Latitud",
+      "lng": "Longitud",
+      "address": "Alamat",
+      "remarks": "Catatan",
+      "assignedCount": "{count} ditetapkan",
+      "delete": "Padam",
+      "deleteConfirmTitle": "Padam lokasi daftar masuk?",
+      "deleteConfirmDescription": "Padam “{name}” secara kekal? Tindakan ini tidak boleh dibatalkan. Hanya boleh dilakukan apabila tiada pekerja ditetapkan dan tiada rekod kehadiran merujuknya.",
+      "clockingInUse": "Tidak boleh dipadam: dirujuk oleh {count} rekod. Sila arkibkan sahaja.",
+      "clockingNote": "Pemadaman hanya boleh dilakukan apabila lokasi tiada penetapan pekerja dan tiada sejarah kehadiran. Jika tidak, arkibkan sahaja."
     }
   },
   "topbar": {

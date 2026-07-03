@@ -44,6 +44,8 @@ import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listHolidayGroups } from '@/core/admin';
 import { listLocations } from '@/core/location';
+import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
+import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
@@ -82,6 +84,7 @@ export default async function EmployeePage({
   const s = await getSession();
   const t = await getTranslations('people.detail');
   const tp = await getTranslations('payrollPolicy');
+  const tc = await getTranslations('people.detail.clocking');
   const admin = isAdmin(s);
   const { employmentId } = await params;
   const { error, from, cp38Error, asOf: spAsOf } = await searchParams;
@@ -139,6 +142,11 @@ export default async function EmployeePage({
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // ADR-0069 — Clocking Location & Geofencing: THIS employee's company's active clocking sites (the
+  // multi-select options) + their current assignment (admin-only, mirrors the payroll-policy card).
+  const clockingLocations = admin ? await listClockingLocations(s, [emp.companyId]) : [];
+  const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
+  const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
@@ -593,6 +601,52 @@ export default async function EmployeePage({
             <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
           )}
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tp('assignHint')}</p>
+        </Card>
+      )}
+
+      {/* ADR-0069 — Clocking Location & Geofencing. Admin-only, mirrors the payroll-policy card. Multi-select
+          of the company's active clocking sites; geofencing toggle + radius (required when enabling). */}
+      {admin && !emp.terminatedOn && (
+        <Card>
+          <SectionHeader title={tc('cardTitle')} />
+          <form action={setEmployeeClockingLocationsAction} className="space-y-3 p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={tc('assignedLocations')}>
+              <select
+                name="clockingLocationIds"
+                multiple
+                defaultValue={[...assignedClockingLocationIds]}
+                className={`${inputCls} h-28`}
+              >
+                {clockingLocations.map((cl) => (
+                  <option key={cl.id} value={cl.id}>{cl.name}</option>
+                ))}
+              </select>
+            </Field>
+            {clockingLocations.length === 0 && (
+              <p className="text-xs text-muted-foreground">{tc('noSites')}</p>
+            )}
+            <button className={btnPrimary}>{tc('save')}</button>
+          </form>
+          <form action={setGeofencingAction} className="flex flex-wrap items-end gap-3 border-t border-border p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <label className="flex items-center gap-2 pb-2 text-sm text-muted-foreground">
+              <input type="checkbox" name="enabled" defaultChecked={emp.geofencingEnabled} />
+              {tc('geofencingToggle')}
+            </label>
+            <Field label={tc('radiusLabel')}>
+              <input
+                name="radiusM"
+                type="number"
+                min={1}
+                max={100000}
+                defaultValue={emp.geofenceRadiusM ?? 300}
+                className={`${inputCls} w-28`}
+              />
+            </Field>
+            <button className={btnPrimary}>{tc('save')}</button>
+          </form>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{tc('hint')}</p>
         </Card>
       )}
 
