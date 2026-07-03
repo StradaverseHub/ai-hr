@@ -43,7 +43,14 @@ import {
   updateLeaveType,
   updatePosition,
 } from '@/core/admin';
-import { openLeaveYear, accrueEarnedLeave, grantAdHocLeave, grantAdHocLeaveMulti, type LeaveDurationType } from '@/core/leave';
+import {
+  openLeaveYear,
+  accrueEarnedLeave,
+  grantAdHocLeave,
+  grantAdHocLeaveMulti,
+  type LeaveDurationType,
+  type ServiceBand,
+} from '@/core/leave';
 import { setAttendancePolicy } from '@/core/attendance';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import { requireAdmin } from '@/lib/authz';
@@ -269,6 +276,28 @@ const carryExpiryMode = (fd: FormData): 'date' | 'months' =>
 const carryFlagField = (fd: FormData, name: string): boolean | undefined =>
   fd.get('carryBlockRendered') == null ? undefined : fd.get(name) === 'on';
 
+/**
+ * Leave Entitlement Rules Engine — the band editor always renders a hidden `serviceBandsRendered=1` marker
+ * plus a `serviceBands` JSON field (exact carryBlockRendered/carryFlagField precedent above). Marker absent
+ * ⇒ undefined (preserve on update; no-op on create). Marker present + empty array ⇒ null (clear). Marker
+ * present + rows ⇒ the parsed array (service validates the shape). A malformed JSON string is treated as
+ * undefined (preserve) so a client-side bug can't accidentally wipe existing bands — the replace path's own
+ * validation catches a genuinely bad shape that DOES parse.
+ */
+const serviceBandsField = (fd: FormData): ServiceBand[] | null | undefined => {
+  if (fd.get('serviceBandsRendered') == null) return undefined;
+  const raw = fd.get('serviceBands');
+  if (raw == null || String(raw) === '') return null;
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (!Array.isArray(parsed)) return undefined;
+    if (parsed.length === 0) return null;
+    return parsed as ServiceBand[];
+  } catch {
+    return undefined; // malformed JSON ⇒ preserve rather than silently clear
+  }
+};
+
 export async function createLeavePolicyAction(formData: FormData) {
   const s = await getSession();
   try {
@@ -285,6 +314,7 @@ export async function createLeavePolicyAction(formData: FormData) {
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
       companyId: String(formData.get('companyId') || '') || null,
+      serviceBands: serviceBandsField(formData),
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
@@ -309,6 +339,7 @@ export async function updateLeavePolicyAction(formData: FormData) {
       method: String(formData.get('method') || '') || undefined,
       gradeId: String(formData.get('gradeId') || '') || null,
       companyId: String(formData.get('companyId') || '') || null,
+      serviceBands: serviceBandsField(formData),
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {

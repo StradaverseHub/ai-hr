@@ -317,7 +317,7 @@ describe('ADR-0038 carry-forward expiry — resolveGradePolicy carryExpiry', () 
       { gradeId: null, accrual: { annualDays: 10, carryForwardMax: 3, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 } },
       { gradeId: null, accrual: { annualDays: 14, carryForwardMax: 5, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 } },
     ];
-    const resolved = resolveGradePolicy(rows, null);
+    const resolved = resolveGradePolicy(rows, null, undefined, 0);
     expect(resolved).not.toBeNull();
     expect(resolved!.days).toBe(14);
     expect(resolved!.carryMax).toBe(5);
@@ -411,7 +411,7 @@ describe('Carry-forward enhancement — resolveGradePolicy carryForwardEnabled +
       { gradeId: null, accrual: { annualDays: 10, carryForwardMax: 3, carryForwardEnabled: false } },
       { gradeId: null, accrual: { annualDays: 14, carryForwardMax: 5, carryForwardEnabled: true } },
     ];
-    const resolved = resolveGradePolicy(rows, null);
+    const resolved = resolveGradePolicy(rows, null, undefined, 0);
     expect(resolved).not.toBeNull();
     expect(resolved!.days).toBe(14);
     expect(resolved!.carryForwardEnabled).toBe(true); // from the 14-day winner, not the disabled 10-day loser

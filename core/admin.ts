@@ -7,7 +7,14 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
-import { isValidMonthDay, LEAVE_DURATION_TYPES, type LeaveDurationType, type LeaveEligibility } from './leave';
+import {
+  isValidMonthDay,
+  isWellFormedBands,
+  LEAVE_DURATION_TYPES,
+  type LeaveDurationType,
+  type LeaveEligibility,
+  type ServiceBand,
+} from './leave';
 import { MY_STATES } from '../localization/my/holidays';
 import {
   appUser,
@@ -489,6 +496,59 @@ function carryFlagsAccrual(
   return out;
 }
 
+/**
+ * Leave Entitlement Rules Engine — write-time validation of the service-band array (the runtime resolver
+ * `bandDaysFor` is separately DEFENSIVE for rows that bypass this, e.g. seeds/hand-written data). Throws a
+ * plain-English Error (matching this file's convention) naming the specific defect: integers for
+ * fromYears/toYears, days >= 0, first band fromYears = 0, contiguous (each next fromYears = previous
+ * toYears), last band toYears = null (open-ended), max 10 bands.
+ */
+function validateServiceBands(bands: ServiceBand[]): void {
+  if (bands.length === 0) throw new Error('Service bands: provide at least one band, or remove the block entirely.');
+  if (bands.length > 10) throw new Error('Service bands: at most 10 bands are allowed.');
+  for (const b of bands) {
+    if (!Number.isInteger(b.fromYears) || b.fromYears < 0) {
+      throw new Error('Service bands: "from" years must be a whole number ≥ 0.');
+    }
+    if (b.toYears !== null && (!Number.isInteger(b.toYears) || b.toYears <= b.fromYears)) {
+      throw new Error('Service bands: "to" years must be a whole number greater than "from", or left open-ended.');
+    }
+    if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
+      throw new Error('Service bands: days must be zero or a positive number.');
+    }
+  }
+  if (bands[0].fromYears !== 0) {
+    throw new Error('Service bands: the first band must start at 0 years (no gap before it).');
+  }
+  if (bands[bands.length - 1].toYears !== null) {
+    throw new Error('Service bands: the last band must be open-ended (no "to" years) so every service length is covered.');
+  }
+  for (let i = 1; i < bands.length; i++) {
+    if (bands[i].fromYears !== bands[i - 1].toYears) {
+      throw new Error('Service bands: bands must be contiguous — each band\'s "from" must equal the previous band\'s "to" (no gaps or overlaps).');
+    }
+  }
+  if (!isWellFormedBands(bands)) {
+    // Defence-in-depth: should be unreachable given the checks above, but never persist something the
+    // resolver itself would reject as malformed.
+    throw new Error('Service bands: the band list is not well-formed.');
+  }
+}
+
+/** Leave Entitlement Rules Engine — tri-state persistence for `serviceBands` (the carryFlagsAccrual
+ *  precedent, generalised): `undefined` = PRESERVE the current row's bands (only meaningful on update — the
+ *  caller must pass the current value); `null` or `[]` = CLEAR (omit the key, falling back to flat
+ *  annualDays); a non-empty array = REPLACE after validation. */
+function serviceBandsAccrual(
+  bands: ServiceBand[] | null | undefined,
+  preserve: ServiceBand[] | undefined,
+): { serviceBands?: ServiceBand[] } {
+  if (bands === undefined) return preserve ? { serviceBands: preserve } : {};
+  if (bands === null || bands.length === 0) return {};
+  validateServiceBands(bands);
+  return { serviceBands: bands };
+}
+
 export async function createLeavePolicy(
   ctx: SessionContext,
   p: {
@@ -513,6 +573,10 @@ export async function createLeavePolicy(
     /** ADR-0066: company this policy applies to. null/undefined = group default (all companies). A company
      *  override ALWAYS wins for that company in the resolver — even when it grants fewer days. */
     companyId?: string | null;
+    /** Leave Entitlement Rules Engine: optional service-length bands above annualDays. undefined/null/[] =
+     *  no bands (flat annualDays only). A non-empty array is validated (contiguous, first-from-0,
+     *  last-open-ended, max 10). */
+    serviceBands?: ServiceBand[] | null;
     validFrom: string;
   },
 ) {
@@ -525,13 +589,42 @@ export async function createLeavePolicy(
       months: p.carryForwardExpiryMonths,
     });
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
+    // create has no prior row to preserve bands from, so `undefined` here behaves the same as `null`/`[]`
+    // (no bands) — only update() has a preserve value to thread through.
+    const bandsAccrual = serviceBandsAccrual(p.serviceBands, undefined);
     const companyId = p.companyId ?? null;
+    const gradeId = p.gradeId ?? null;
+
+    // Step 4 — ONE ACTIVE DEFAULT PER TYPE, SUPERSEDE NOT REJECT. Find ACTIVE rows with the same EXACT
+    // scope (leaveTypeId, gradeId, companyId). If any has validFrom >= the new validFrom, reject (edit
+    // that version instead — it is not "going forward"). Otherwise close each prior row's window at the
+    // new validFrom and append a superseded event per closed row, so version history stays reconstructable
+    // via validTo (every engine already filters on it — see leave-compute.ts / core/leave.ts callers).
+    const sameScope = await tx
+      .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom })
+      .from(leavePolicy)
+      .where(
+        and(
+          eq(leavePolicy.leaveTypeId, p.leaveTypeId),
+          gradeId == null ? isNull(leavePolicy.gradeId) : eq(leavePolicy.gradeId, gradeId),
+          companyId == null ? isNull(leavePolicy.companyId) : eq(leavePolicy.companyId, companyId),
+          isNull(leavePolicy.validTo),
+        ),
+      );
+    for (const row of sameScope) {
+      if (row.validFrom >= p.validFrom) {
+        throw new Error(
+          'A version starting on or after that date already exists for this scope — edit that version instead.',
+        );
+      }
+    }
+
     const [row] = await tx
       .insert(leavePolicy)
       .values({
         tenantId: ctx.tenantId,
         leaveTypeId: p.leaveTypeId,
-        gradeId: p.gradeId ?? null,
+        gradeId,
         companyId,
         accrual: {
           annualDays: p.annualDays,
@@ -539,18 +632,40 @@ export async function createLeavePolicy(
           method: p.method || 'grant_on_hire_prorated',
           ...expiry,
           ...carryFlags,
+          ...bandsAccrual,
         },
         validFrom: p.validFrom,
         validTo: null,
       })
       .returning({ id: leavePolicy.id });
+    // Close each prior same-scope row's window at the new validFrom and record the supersession, now that
+    // the new row's id exists.
+    for (const prior of sameScope) {
+      await tx.update(leavePolicy).set({ validTo: p.validFrom }).where(eq(leavePolicy.id, prior.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-policy',
+        aggregateId: prior.id,
+        eventType: 'leave-policy.superseded',
+        actor: actorOf(ctx),
+        payload: { supersededBy: row.id, validTo: p.validFrom },
+      });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-policy',
       aggregateId: row.id,
       eventType: 'leave-policy.created',
       actor: actorOf(ctx),
-      payload: { leaveTypeId: p.leaveTypeId, annualDays: p.annualDays, carryForwardMax, companyId, ...expiry, ...carryFlags },
+      payload: {
+        leaveTypeId: p.leaveTypeId,
+        annualDays: p.annualDays,
+        carryForwardMax,
+        companyId,
+        ...expiry,
+        ...carryFlags,
+        ...bandsAccrual,
+      },
     });
     return row;
   });
@@ -579,10 +694,32 @@ export async function updateLeavePolicy(
     gradeId?: string | null;
     /** ADR-0066: company this policy applies to. null/undefined = group default (all companies). */
     companyId?: string | null;
+    /** Leave Entitlement Rules Engine: undefined = PRESERVE the row's current bands (a flat-field-only edit
+     *  through a form without the band editor never touches them); null/[] = clear; array = replace
+     *  (validated). */
+    serviceBands?: ServiceBand[] | null;
     validFrom: string;
   },
 ) {
   return withTenant(ctx, async (tx) => {
+    // Step 4: a prior SELECT of the current row — needed both to preserve the existing accrual bands
+    // (tri-state below) and to know whether gradeId/companyId/validFrom are actually CHANGING, so the
+    // same-scope collision check only runs when the scope truly moves (not on every flat-field edit of a
+    // pre-existing duplicate-default legacy row — see test/grade-based-leave.test.ts's "most-generous
+    // default" fixture, which must remain editable).
+    const [current] = await tx
+      .select({
+        leaveTypeId: leavePolicy.leaveTypeId,
+        gradeId: leavePolicy.gradeId,
+        companyId: leavePolicy.companyId,
+        validFrom: leavePolicy.validFrom,
+        accrual: leavePolicy.accrual,
+      })
+      .from(leavePolicy)
+      .where(eq(leavePolicy.id, p.id))
+      .limit(1);
+    if (!current) throw new Error('Leave policy not found.');
+
     const carryForwardMax = Math.max(0, Number(p.carryForwardMax ?? 0));
     const expiry = carryExpiryAccrual({
       mode: p.carryForwardExpiryMode,
@@ -591,11 +728,35 @@ export async function updateLeavePolicy(
       months: p.carryForwardExpiryMonths,
     });
     const carryFlags = carryFlagsAccrual(p.carryForwardEnabled, p.carryForwardIncludeEarned);
+    const currentBands = (current.accrual as { serviceBands?: ServiceBand[] } | null)?.serviceBands;
+    const bandsAccrual = serviceBandsAccrual(p.serviceBands, currentBands);
     const companyId = p.companyId ?? null;
+    const gradeId = p.gradeId ?? null;
+
+    const scopeChanged = gradeId !== current.gradeId || companyId !== current.companyId;
+    const validFromChanged = p.validFrom !== current.validFrom;
+    if (scopeChanged || validFromChanged) {
+      const sameScope = await tx
+        .select({ id: leavePolicy.id, validFrom: leavePolicy.validFrom })
+        .from(leavePolicy)
+        .where(
+          and(
+            eq(leavePolicy.leaveTypeId, current.leaveTypeId),
+            gradeId == null ? isNull(leavePolicy.gradeId) : eq(leavePolicy.gradeId, gradeId),
+            companyId == null ? isNull(leavePolicy.companyId) : eq(leavePolicy.companyId, companyId),
+            isNull(leavePolicy.validTo),
+          ),
+        );
+      const collision = sameScope.some((row) => row.id !== p.id);
+      if (collision) {
+        throw new Error('Another active version already covers this scope — create a new version instead.');
+      }
+    }
+
     await tx
       .update(leavePolicy)
       .set({
-        gradeId: p.gradeId ?? null,
+        gradeId,
         companyId,
         accrual: {
           annualDays: p.annualDays,
@@ -603,6 +764,7 @@ export async function updateLeavePolicy(
           method: p.method || 'grant_on_hire_prorated',
           ...expiry,
           ...carryFlags,
+          ...bandsAccrual,
         },
         validFrom: p.validFrom,
       })
@@ -613,7 +775,15 @@ export async function updateLeavePolicy(
       aggregateId: p.id,
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
-      payload: { annualDays: p.annualDays, carryForwardMax, companyId, validFrom: p.validFrom, ...expiry, ...carryFlags },
+      payload: {
+        annualDays: p.annualDays,
+        carryForwardMax,
+        companyId,
+        validFrom: p.validFrom,
+        ...expiry,
+        ...carryFlags,
+        ...bandsAccrual,
+      },
     });
   });
 }

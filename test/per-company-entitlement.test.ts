@@ -75,36 +75,36 @@ describe('ADR-0066 resolveGradePolicy — strict scope short-circuit', () => {
 
   it('a company policy WINS over a more-generous group default (even when lower)', () => {
     const rows = [pol(16, null), pol(12, 'co-a')];
-    expect(resolveGradePolicy(rows, null, 'co-a')?.days).toBe(12); // company override wins, lower
+    expect(resolveGradePolicy(rows, null, 'co-a', 0)?.days).toBe(12); // company override wins, lower
   });
 
   it('a company with NO policy keeps the group default', () => {
     const rows = [pol(16, null), pol(12, 'co-a')];
-    expect(resolveGradePolicy(rows, null, 'co-b')?.days).toBe(16); // falls back to group default
+    expect(resolveGradePolicy(rows, null, 'co-b', 0)?.days).toBe(16); // falls back to group default
   });
 
   it('two companies each resolve to their own number', () => {
     const rows = [pol(16, null), pol(12, 'co-a'), pol(14, 'co-b')];
-    expect(resolveGradePolicy(rows, null, 'co-a')?.days).toBe(12);
-    expect(resolveGradePolicy(rows, null, 'co-b')?.days).toBe(14);
+    expect(resolveGradePolicy(rows, null, 'co-a', 0)?.days).toBe(12);
+    expect(resolveGradePolicy(rows, null, 'co-b', 0)?.days).toBe(14);
   });
 
   it('company+grade beats company+null-grade; group is never consulted once the company tier is non-empty', () => {
     const rows = [pol(20, null), pol(10, 'co-a'), pol(18, 'co-a', 'exec')];
-    expect(resolveGradePolicy(rows, 'exec', 'co-a')?.days).toBe(18); // company+grade
-    expect(resolveGradePolicy(rows, 'staff', 'co-a')?.days).toBe(10); // company+null-grade (NOT group 20)
+    expect(resolveGradePolicy(rows, 'exec', 'co-a', 0)?.days).toBe(18); // company+grade
+    expect(resolveGradePolicy(rows, 'staff', 'co-a', 0)?.days).toBe(10); // company+null-grade (NOT group 20)
   });
 
   it('group+grade resolves only when no company policy exists', () => {
     const rows = [pol(12, null), pol(18, null, 'exec')];
-    expect(resolveGradePolicy(rows, 'exec', 'co-a')?.days).toBe(18);
-    expect(resolveGradePolicy(rows, null, 'co-a')?.days).toBe(12);
+    expect(resolveGradePolicy(rows, 'exec', 'co-a', 0)?.days).toBe(18);
+    expect(resolveGradePolicy(rows, null, 'co-a', 0)?.days).toBe(12);
   });
 
   it('back-compat: undefined company OR all-null-company rows are byte-identical to the old max pick', () => {
     const rows = [pol(12, null), pol(16, null)];
-    expect(resolveGradePolicy(rows, null)?.days).toBe(16); // undefined companyId
-    expect(resolveGradePolicy(rows, null, 'co-a')?.days).toBe(16); // company has no override → group max
+    expect(resolveGradePolicy(rows, null, undefined, 0)?.days).toBe(16); // undefined companyId
+    expect(resolveGradePolicy(rows, null, 'co-a', 0)?.days).toBe(16); // company has no override → group max
   });
 });
 
@@ -256,10 +256,27 @@ describe('ADR-0066 per-company entitlement — call sites', () => {
 
 // ── Back-compat: no company anywhere → unchanged ─────────────────────────────────────────────────────────
 describe('ADR-0066 back-compat — group-only policies unchanged', () => {
-  it('with no company on any policy, the most-generous group default still applies at hire', async () => {
+  it('with no company on any policy, the group default (superseded to the latest version) still applies at hire', async () => {
+    // Leave Entitlement Rules Engine (feedback a0228655): a second same-scope default now SUPERSEDES the
+    // first rather than coexisting as a duplicate — so the second create needs a strictly later validFrom.
+    // The pure-resolver's "literal duplicate rows, most-generous tie-break" coverage (for legacy data that
+    // predates this fix) lives in test/leave-service-bands.test.ts.
     await policy(12, null);
-    await policy(16, null); // a second, more generous group default
-    const emp = await hireIn(b.companyId, b.deptA);
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 16,
+      companyId: null,
+      gradeId: null,
+      validFrom: '2027-01-01', // strictly after the first policy's validFrom
+    });
+    const emp = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'PCE', primaryEmail: `pce2_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2027-01-01',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
     expect(await annualBalance(emp.employmentId)).toBe(16);
   });
 });

@@ -71,10 +71,35 @@ describe('ADR-0041 2E — grade-based leave entitlements', () => {
     expect(await annualBalance(internEmp.employmentId)).toBe(8); // max(floor 8, policy 5)
   });
 
-  it('with no grades, resolution is unchanged (most-generous default applies)', async () => {
-    await policy(12, null);
-    await policy(16, null); // a second, more generous default
-    const emp = await hire(null);
+  it('Leave Entitlement Rules Engine — a second same-scope default SUPERSEDES the first (not a duplicate)', async () => {
+    // Under the supersede fix (feedback a0228655), creating a second default with the same exact scope
+    // (leaveTypeId, gradeId, companyId) at a LATER validFrom closes the first (validTo set) rather than
+    // leaving both active — so there is only ever one live default per type. The pure-resolver tie-break
+    // coverage for literal duplicate rows (legacy data / hand-built fixtures) lives in
+    // test/leave-service-bands.test.ts, which needs no service API.
+    const first = await policy(12, null);
+    const second = await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 16,
+      gradeId: null,
+      validFrom: '2027-01-01', // strictly after the first policy's validFrom
+    });
+    const [firstRow] = await owner.db
+      .select({ validTo: schema.leavePolicy.validTo })
+      .from(schema.leavePolicy)
+      .where(eq(schema.leavePolicy.id, first.id));
+    expect(firstRow?.validTo).toBe('2027-01-01'); // closed at the new policy's validFrom
+    // A hire on/after the new policy's validFrom resolves only the second (16-day) version.
+    const emp = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'Grd2', primaryEmail: `grd2_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2027-01-01',
+      gradeId: null,
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
     expect(await annualBalance(emp.employmentId)).toBe(16);
+    void second;
   });
 });

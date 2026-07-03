@@ -21,6 +21,39 @@ import {
 import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
+  bandDaysFor,
+  carryEnabled,
+  isValidMonthDay,
+  isWellFormedBands,
+  lastRealDayOfMonth,
+  parseCarryExpiry,
+  previewEntitlement,
+  resolveGradePolicy,
+  type AccrualConfig,
+  type CarryExpiry,
+  type GradePolicyRow,
+  type PreviewResult,
+  type ResolvedPolicy,
+  type ServiceBand,
+} from './leave-compute';
+// Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
+export {
+  bandDaysFor,
+  carryEnabled,
+  isValidMonthDay,
+  isWellFormedBands,
+  lastRealDayOfMonth,
+  parseCarryExpiry,
+  previewEntitlement,
+  resolveGradePolicy,
+  type AccrualConfig,
+  type CarryExpiry,
+  type GradePolicyRow,
+  type PreviewResult,
+  type ResolvedPolicy,
+  type ServiceBand,
+};
+import {
   attendancePolicy,
   company,
   employment,
@@ -2289,7 +2322,9 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           skipped += 1;
           continue;
         }
-        const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId);
+        // Leave Entitlement Rules Engine: `years` (service at year-open) drives custom band upgrades here,
+        // same as the statutory floor's own 2y/5y band upgrades.
+        const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId, years);
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
         const days = Math.max(pack.leave.entitlement(t.code, years), pol?.days ?? 0);
@@ -2367,150 +2402,11 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
   return `${cycleYear}-${hireMonth}-01`;
 }
 
-// ── Grade-based policy resolution (ADR-0041 / 2E) ─────────────────────────────────────────────────
-export type GradePolicyRow = { gradeId: string | null; accrual: unknown; companyId?: string | null };
-/** ADR-0038 carry-forward expiry: the month+day on which the carried-forward ANNUAL portion expires
- *  (e.g. {month:3, day:31} = 31 March of the leave year following the one it was carried into). Stored
- *  as an OFFSET, not a hardcoded date, so it works for any leave-year start. null = never expires. */
-export type CarryExpiry = { month: number; day: number };
-
-/** True iff (month, day) is a real calendar day in *some* year — i.e. month∈1..12 and day is within the
- *  month's length, treating Feb's max as 29 (a leap year) for the "is this EVER valid" question. Config-time
- *  validation uses this so 29 Feb is savable as a legitimate intent; the resolvers then year-clamp it via
- *  `lastRealDayOfMonth` so a common year never produces a phantom 29-Feb. Round-trips through a UTC `Date`
- *  against a known leap year (2024) — no static max-day table, so it can never drift leap-blind. */
-export function isValidMonthDay(month: number, day: number): boolean {
-  if (!Number.isInteger(month) || !Number.isInteger(day) || month < 1 || month > 12 || day < 1) return false;
-  const dt = new Date(Date.UTC(2024, month - 1, day)); // 2024 is a leap year ⇒ 29 Feb accepted
-  return dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
-}
-
-/** Last real day of (year, month), leap-correct. Reuses the day-0-of-next-month round-trip (see
- *  `subtractMonths`): Date.UTC(year, month, 0) rolls back to the final day of `month` (1-based). This is the
- *  year-aware clamp the resolvers apply so every emitted expiry date is a real calendar day. */
-export function lastRealDayOfMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate();
-}
-export type ResolvedPolicy = {
-  days: number;
-  carryMax: number;
-  method?: string;
-  carryExpiry?: CarryExpiry | null;
-  /** Carry-forward enhancement: explicit on/off switch for the carry rule. When absent, carry is
-   *  enabled iff `carryMax > 0` (the back-compat default — see `carryEnabled`). */
-  carryForwardEnabled?: boolean;
-};
-/** Shape of the `leave_policy.accrual` JSONB (a documented JSONB extension point — no DDL). */
-type AccrualConfig = {
-  annualDays?: number;
-  carryForwardMax?: number;
-  method?: string;
-  carryForwardExpiryMonth?: number;
-  carryForwardExpiryDay?: number;
-  /** Carry-forward expiry mode (R4 Build #1). Absent ⇒ 'date' (back-compat: read month/day). 'months' ⇒
-   *  "expire X months after year-end", where X = carryForwardExpiryMonths (see `parseCarryExpiry`). */
-  carryForwardExpiryMode?: 'date' | 'months';
-  /** X ∈ 1..12 — only meaningful in 'months' mode: the carried portion expires at the end of month X of the
-   *  carry's leave-year (year-open is 1 Jan, so month X = X months after year-end). */
-  carryForwardExpiryMonths?: number;
-  /** Carry-forward enhancement: explicit on/off switch. Absent ⇒ back-compat default (`carryForwardMax > 0`). */
-  carryForwardEnabled?: boolean;
-  // config-only (carry-forward follow-up): persisted but NOT yet read by the year-end engine. The
-  // include-monthly-earned-balance behaviour is deferred (see "Out of scope"); the flag round-trips so
-  // the admin can configure it now.
-  carryForwardIncludeEarned?: boolean;
-};
-/**
- * Whether carry-forward is enabled for a resolved policy. The carry-forward rule has an explicit
- * on/off switch (`carryForwardEnabled`); when it is absent (every pre-existing policy) we fall back
- * to the original implicit rule: carry is on iff the cap is positive. An explicit `false` disables
- * carry even when a positive cap or an expiry offset is still present in the JSONB.
- */
-export function carryEnabled(pol: ResolvedPolicy | null | undefined): boolean {
-  if (pol == null) return false;
-  return pol.carryForwardEnabled ?? (pol.carryMax ?? 0) > 0;
-}
-/** Parse the carry-forward expiry config into a `{month, day}` OFFSET, or null (never expires).
- *
- *  Mode is authoritative (R4 Build #1):
- *   - 'months' mode: "expire X months after year-end" ⇒ `{ month: X, day: 31 }`. The `31` is an over-max
- *     sentinel that the two build sites clamp with `lastRealDayOfMonth(year, month)` to the real last day of
- *     that month in the carry's own leave-year (so month 2 becomes 28/29, month 6 becomes 30, etc.). An
- *     empty/invalid X ⇒ null (never expires), mirroring the date "both unset" branch. Month/day keys are
- *     IGNORED in this mode so a stale cross-mode pair can never leak.
- *   - 'date' mode (or mode absent — back-compat): read month/day. Reject legacy garbage (e.g. a stored
- *     31-Feb) via `isValidMonthDay` so a phantom pre-existing value resolves to null (no expiry, no crash)
- *     rather than an impossible date. A savable 29-Feb passes here and is year-clamped at the build site.
- */
-function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null {
-  if (acc?.carryForwardExpiryMode === 'months') {
-    const x = Number(acc?.carryForwardExpiryMonths ?? 0);
-    if (Number.isInteger(x) && x >= 1 && x <= 12) return { month: x, day: 31 };
-    return null; // empty/invalid X ⇒ never expires
-  }
-  const m = Number(acc?.carryForwardExpiryMonth ?? 0);
-  const d = Number(acc?.carryForwardExpiryDay ?? 0);
-  if (isValidMonthDay(m, d)) return { month: m, day: d };
-  return null;
-}
-/** Resolve the leave policy for an employee's grade among a type's active policies: the most-generous
- *  policy scoped to the employee's grade, else the most-generous null-grade (all-grades) policy, else
- *  null. With no grades assigned (employee + every policy null-grade) this is exactly the pre-2E
- *  "most generous active policy" pick, so existing behavior is unchanged.
- *
- *  ADR-0066 — PER-COMPANY SCOPE (strict short-circuit). When `employeeCompanyId` is provided, resolution
- *  happens entirely within ONE scope tier: if ANY active policy is scoped to the employee's company, the
- *  company-scoped subset RESOLVES the policy (grade-match beats null-grade, max-days within that subset) and
- *  the group (null-company) tier is NEVER consulted — so a company override ALWAYS wins for that company,
- *  even when it grants FEWER days than the group default. Otherwise we fall back to the group (null-company)
- *  subset, resolved exactly as before. Grade tiering (grade > null-grade) and the max-days "most generous"
- *  pick are preserved WITHIN whichever scope wins. When `employeeCompanyId` is undefined OR no row is
- *  company-scoped, behaviour is byte-identical to the pre-0066 resolver (the back-compat guarantee). */
-export function resolveGradePolicy(
-  rows: GradePolicyRow[],
-  employeeGradeId: string | null,
-  employeeCompanyId?: string | null,
-): ResolvedPolicy | null {
-  const pick = (subset: GradePolicyRow[]): ResolvedPolicy | null => {
-    let best: ResolvedPolicy | null = null;
-    for (const r of subset) {
-      const acc = r.accrual as AccrualConfig | null;
-      const days = Number(acc?.annualDays ?? 0);
-      // CRITICAL (panel): carryExpiry must be chosen from the SAME winning policy as days/carryMax/method.
-      // Assign it inside this block — never outside — or a rejected lower-`days` policy's expiry can leak
-      // onto the selected policy.
-      if (!best || days > best.days) {
-        best = {
-          days,
-          carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
-          method: acc?.method,
-          carryExpiry: parseCarryExpiry(acc),
-          // Same discipline as carryExpiry above: take the enable flag from the SAME winning policy —
-          // never let a rejected lower-`days` policy's flag leak onto the selected one. Absent ⇒ undefined
-          // (the `carryEnabled` back-compat default then applies).
-          carryForwardEnabled:
-            typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
-        };
-      }
-    }
-    return best;
-  };
-  // Resolve grade tiering (grade-match beats null-grade) within a single scope subset.
-  const resolveWithinScope = (scope: GradePolicyRow[]): ResolvedPolicy | null => {
-    const graded = employeeGradeId ? pick(scope.filter((r) => r.gradeId === employeeGradeId)) : null;
-    return graded ?? pick(scope.filter((r) => r.gradeId == null));
-  };
-  // ADR-0066 strict scope short-circuit: if the employee's company has ANY policy, resolve entirely
-  // within that company tier and NEVER fall back to group — even if the group default is more generous.
-  if (employeeCompanyId != null) {
-    const companyScope = rows.filter((r) => r.companyId === employeeCompanyId);
-    if (companyScope.length > 0) return resolveWithinScope(companyScope);
-  }
-  // Group tier: only null-company policies. Filtering to companyId == null keeps a company-scoped policy
-  // from leaking into the group fallback for employees of OTHER companies.
-  const groupScope = rows.filter((r) => r.companyId == null);
-  return resolveWithinScope(groupScope);
-}
+// ── Grade-based policy resolution (ADR-0041 / 2E) — extracted to ./leave-compute (RSC-safe pure module,
+// see its header) and re-exported below via the `export {` block near the top of this file's imports so
+// every existing caller/test keeps importing GradePolicyRow / resolveGradePolicy / carryEnabled / etc. from
+// '@/core/leave' unchanged. Leave Entitlement Rules Engine (feedback a0228655) added serviceBands +
+// bandDaysFor + previewEntitlement there and made resolveGradePolicy's serviceYears param required.
 
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
  *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
@@ -2660,7 +2556,8 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         // 2E: this employee's grade may resolve to a lump (or no) policy even when the type is earned for
         // another grade — accrue only when THEIR resolved policy is earned. ADR-0066: scoped to the
         // employee's company so a company override drives their accrued amount.
-        const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId);
+        // Leave Entitlement Rules Engine: service measured at cycleStart (same as the 2D-2 comment above).
+        const pol = resolveGradePolicy(policyByType.get(typeId) ?? [], e.gradeId, e.companyId, years);
         if (!isEarnedMethod(pol?.method)) continue;
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
@@ -2896,7 +2793,10 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
         // arrived. Each year is independently reconstructed + idempotent on its own year-qualified date.
         for (let y = earliestYear; y <= todayYear; y++) {
           const yearStart = `${y}-01-01`;
-          const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId, e.companyId);
+          // Leave Entitlement Rules Engine: service length AS OF THIS SWEPT YEAR's open (not today) — a
+          // band-vs-flat winner flip is only reachable when the employee's service band differed at that
+          // year's open, so this must be computed per-y inside the loop, not hoisted.
+          const pol = resolveGradePolicy(activeAt(yearStart), e.gradeId, e.companyId, serviceYearsAt(e.hiredOn, yearStart));
           // Carry-forward enhancement: a policy whose carry rule is explicitly disabled never carries
           // anything (openLeaveYear forfeits the whole prior balance at open), so there is nothing for
           // the later expiry sweep to forfeit — skip even if a stale expiry offset is still populated.
