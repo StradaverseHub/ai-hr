@@ -8,6 +8,7 @@ import {
   lastRealDayOfMonth,
   reconstructCarry,
   resolveGradePolicy,
+  serviceYearsAt,
   workingDatesForSpan,
   type GradePolicyRow,
   type LeaveEligibility,
@@ -1040,7 +1041,10 @@ export function leaveEntitlementBreakdown(
         ),
       );
     // ADR-0066: resolve under the employee's company so /me + admin show the per-company entitlement.
-    const policy = resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId);
+    // Leave Entitlement Rules Engine: service measured at cycleStart keeps carryMax/expiry/earned-flag and
+    // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
+    // (ledger-derived) — the banded number reaches /me only via the ledger, after a hire grant/year-open.
+    const policy = resolveGradePolicy(policies as GradePolicyRow[], emp.gradeId, emp.companyId, serviceYearsAt(emp.hiredOn, cycleStart));
     const earned = isEarnedMethod(policy?.method);
     const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
     const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;

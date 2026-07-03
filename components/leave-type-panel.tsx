@@ -2,12 +2,16 @@
 
 import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import type { ServiceBand } from '@/core/leave-compute';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
 export type EntitlementPolicy = {
   id: string;
   annualDays: number;
+  /** Leave Entitlement Rules Engine: optional service-length bands above annualDays. null/undefined = none
+   *  (flat annualDays only). */
+  serviceBands?: ServiceBand[] | null;
   carryForwardMax: number;
   /** ADR-0038 carry-forward expiry: month/day the carried-forward portion auto-forfeits; null = never. */
   carryForwardExpiryMonth?: number | null;
@@ -185,6 +189,74 @@ function CarryExpiryFields({
 }
 
 /**
+ * Leave Entitlement Rules Engine — the service-length band sub-editor. Maintains rows client-side (add /
+ * remove) and serializes them into a hidden JSON field + a `serviceBandsRendered=1` marker on submit (the
+ * exact carryBlockRendered/carryFlagField precedent — see app/admin/actions.ts's serviceBandsField), so the
+ * action can tell "block rendered, editor now empty" (⇒ clear) apart from "block not shown at all" (⇒
+ * preserve). Contiguity (first from 0, last open-ended, no gaps) is enforced server-side; this editor keeps
+ * the UI simple (from / to / days rows) and lets the server reject a malformed shape with a clear message.
+ */
+function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslations>; initial: ServiceBand[] | null | undefined }) {
+  const [rows, setRows] = useState<ServiceBand[]>(initial ?? []);
+
+  const update = (i: number, patch: Partial<ServiceBand>) =>
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const remove = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
+  const add = () => {
+    const lastTo = rows.length > 0 ? rows[rows.length - 1].toYears : null;
+    setRows((prev) => [...prev, { fromYears: lastTo ?? 0, toYears: null, days: 0 }]);
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-lg bg-background p-3">
+      <input type="hidden" name="serviceBandsRendered" value="1" />
+      <input type="hidden" name="serviceBands" value={JSON.stringify(rows)} />
+      <span className="text-xs font-medium text-muted-foreground">{t('serviceBandsLabel')}</span>
+      <p className="text-xs text-muted-foreground">{t('serviceBandsHelp')}</p>
+      {rows.length === 0 && <p className="text-xs text-muted-foreground">{t('serviceBandsEmpty')}</p>}
+      {rows.map((r, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">{t('serviceBandFrom')}</span>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={r.fromYears}
+            onChange={(e) => update(i, { fromYears: Number(e.target.value) || 0 })}
+            className={`${inputCls} w-16`}
+          />
+          <span className="text-xs text-muted-foreground">{t('serviceBandTo')}</span>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={r.toYears ?? ''}
+            placeholder={t('serviceBandOpenEnded')}
+            onChange={(e) => update(i, { toYears: e.target.value === '' ? null : Number(e.target.value) || 0 })}
+            className={`${inputCls} w-16`}
+          />
+          <span className="text-xs text-muted-foreground">{t('serviceBandDays')}</span>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={r.days}
+            onChange={(e) => update(i, { days: Number(e.target.value) || 0 })}
+            className={`${inputCls} w-20`}
+          />
+          <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)}>
+            {t('remove')}
+          </Button>
+        </div>
+      ))}
+      <Button type="button" size="sm" variant="outline" onClick={add}>
+        {t('serviceBandAdd')}
+      </Button>
+    </div>
+  );
+}
+
+/**
  * One leave type as an expandable row. The body manages that type's own effective-dated
  * entitlement policies (add / correct / remove) so there's no separate, disconnected policy
  * form — the two tables stay split underneath, but the editing surface is unified.
@@ -286,14 +358,27 @@ export function LeaveTypePanel({
   };
 
   const active = policies.filter((p) => !p.validTo);
-  const bestActive = active.reduce((m, p) => Math.max(m, p.annualDays), 0);
+  // Leave Entitlement Rules Engine (step 8a — correctness fix): the flat annualDays-only headline would be
+  // misleading for a banded policy (it could show a single number that no employee actually gets — e.g. the
+  // "under 2 years" figure even though most staff are past that band). Find the winning active policy by
+  // annualDays (unchanged tie-break — this is a DISPLAY summary, not the resolver) and, if it carries bands,
+  // render the band range instead of the flat number.
+  const winning = active.reduce<EntitlementPolicy | null>(
+    (best, p) => (!best || p.annualDays > best.annualDays ? p : best),
+    null,
+  );
+  const bestActive = winning?.annualDays ?? 0;
+  const winningBands = winning?.serviceBands && winning.serviceBands.length > 0 ? winning.serviceBands : null;
+  const bandDaysRange = winningBands
+    ? [...new Set(winningBands.map((b) => b.days))].sort((a, b) => a - b)
+    : null;
   const effective = Math.max(floor0, bestActive);
-  const belowFloor = active.length > 0 && bestActive < floor0;
+  const belowFloor = active.length > 0 && !winningBands && bestActive < floor0;
   const above = active.length > 0 && bestActive > floor0;
   const thisYear = new Date().getUTCFullYear();
 
   return (
-    <li className={archived ? 'opacity-60' : ''}>
+    <li id={`type-${id}`} className={archived ? 'opacity-60' : ''}>
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <button
           type="button"
@@ -318,14 +403,17 @@ export function LeaveTypePanel({
 
         <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs tabular-nums text-muted-foreground">
-            {effective > 0
-              ? t.rich('daysPerYear', {
-                  days: fmt(effective),
-                  b: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
-                })
-              : '—'}
+            {bandDaysRange && bandDaysRange.length > 0
+              ? t('daysPerYearBandedRange', { min: fmt(bandDaysRange[0]), max: fmt(bandDaysRange[bandDaysRange.length - 1]) })
+              : effective > 0
+                ? t.rich('daysPerYear', {
+                    days: fmt(effective),
+                    b: (chunks) => <span className="font-semibold text-foreground">{chunks}</span>,
+                  })
+                : '—'}
           </span>
           {belowFloor && <span className={badge.amber}>{t('belowMinimumBadge')}</span>}
+          {winningBands && <span className={badge.muted}>{t('bandedNote')}</span>}
           {above && <span className={badge.emerald}>{t('policyBadge')}</span>}
         </div>
       </div>
@@ -743,6 +831,7 @@ export function LeaveTypePanel({
                       ))}
                     </select>
                   </Field>
+                  <ServiceBandEditor t={t} initial={p.serviceBands} />
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>
@@ -919,6 +1008,7 @@ export function LeaveTypePanel({
                   ))}
                 </select>
               </Field>
+              <ServiceBandEditor t={t} initial={null} />
               <Button type="submit" size="sm">
                 {t('add')}
               </Button>

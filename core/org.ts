@@ -244,7 +244,9 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         const month = Number(p.hiredOn.slice(5, 7));
         for (const lt of p.grantLeaveTypes) {
           // ADR-0066: scope to the new hire's company so a per-company UPFRONT entitlement reaches joiners.
-          const polFor = resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null, p.companyId);
+          // Leave Entitlement Rules Engine: a new hire has 0 completed years of service (explicit — the
+          // param is required so a band-configured policy resolves its 0-year band at hire).
+          const polFor = resolveGradePolicy(policyByType.get(lt.id) ?? [], p.gradeId ?? null, p.companyId, 0);
           // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not the hire lump.
           if (isEarnedMethod(polFor?.method)) continue;
           const floor = pack.leave.entitlement(lt.code, 0);

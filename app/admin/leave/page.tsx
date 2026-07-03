@@ -2,11 +2,13 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listLeavePolicies, listAdHocLeaveGrants } from '@/core/admin';
+import type { ServiceBand } from '@/core/leave-compute';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
+import { LeaveRulePreview } from '@/components/leave-rule-preview';
 import {
   archiveLeaveTypeAction,
   createLeavePolicyAction,
@@ -44,6 +46,7 @@ export default async function LeaveConfigPage({
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
   const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
+  const typeCodeById = new Map(types.map((t) => [t.id, t.code]));
   const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
     occurredAt: g.occurredAt.toISOString(),
     companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
@@ -75,10 +78,13 @@ export default async function LeaveConfigPage({
       carryForwardExpiryMonths?: number;
       carryForwardEnabled?: boolean;
       carryForwardIncludeEarned?: boolean;
+      serviceBands?: ServiceBand[];
     } | null;
     const ep: EntitlementPolicy = {
       id: p.id,
       annualDays: Number(acc?.annualDays ?? 0),
+      // Leave Entitlement Rules Engine: absent ⇒ null (no bands, flat annualDays only).
+      serviceBands: Array.isArray(acc?.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
       carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
       carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
       carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
@@ -104,12 +110,104 @@ export default async function LeaveConfigPage({
   }
   for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
 
+  // Leave Entitlement Rules Engine — effective-rules table (all types, all scopes) + the live preview.
+  // Reuses the already-loaded `policies` / `types` / `companies` / `grades` — no extra query.
+  const activeRules = policies
+    .filter((p) => !p.validTo)
+    .map((p) => {
+      const acc = p.accrual as { annualDays?: number; serviceBands?: ServiceBand[] } | null;
+      const bands = Array.isArray(acc?.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null;
+      return {
+        id: p.id,
+        leaveTypeId: p.leaveTypeId,
+        leaveTypeName: typeNameById.get(p.leaveTypeId) ?? p.leaveType,
+        companyName: p.companyId ? (p.companyName ?? null) : null,
+        gradeName: p.gradeName ?? null,
+        entitlementLabel: bands
+          ? bands
+              .map((b) => `${b.fromYears}${b.toYears == null ? '+' : `–${b.toYears}`}y: ${b.days}d`)
+              .join(', ')
+          : `${Number(acc?.annualDays ?? 0)}d`,
+        validFrom: p.validFrom,
+        validTo: p.validTo,
+      };
+    })
+    .sort((a, b) => a.leaveTypeName.localeCompare(b.leaveTypeName));
+  const previewPolicies = policies
+    .filter((p) => !p.validTo)
+    .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
+  const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
+
   const nextYear = new Date().getUTCFullYear() + 1;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
+
+      {/* Leave Entitlement Rules Engine — consolidated view: every effective rule, the resolution order in
+          plain words, and a live preview. Anchor links (#type-<id>) jump to the per-type panel below for
+          CRUD, so this table is read-only and never duplicates editing. */}
+      <Card>
+        <SectionHeader title={t('rulesCardTitle')} count={activeRules.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('rulesCardHelp')}</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium">{t('rulesColLeaveType')}</th>
+                <th className="px-4 py-2 font-medium">{t('rulesColCompany')}</th>
+                <th className="px-4 py-2 font-medium">{t('rulesColGrade')}</th>
+                <th className="px-4 py-2 font-medium">{t('rulesColEntitlement')}</th>
+                <th className="px-4 py-2 font-medium">{t('rulesColValidFrom')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {activeRules.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">
+                    {t('noLeaveTypes')}
+                  </td>
+                </tr>
+              )}
+              {activeRules.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-2">
+                    <a href={`#type-${r.leaveTypeId}`} className="text-foreground underline decoration-border hover:decoration-foreground">
+                      {r.leaveTypeName}
+                    </a>
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground">{r.companyName ?? t('policyCompanyGroupDefault')}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{r.gradeName ?? t('gradeAll')}</td>
+                  <td className="px-4 py-2 tabular-nums text-foreground">{r.entitlementLabel}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{r.validFrom}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">{t('rulesOrderTitle')}</p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+            <li>{t('rulesOrderStep1')}</li>
+            <li>{t('rulesOrderStep2')}</li>
+            <li>{t('rulesOrderStep3')}</li>
+            <li>{t('rulesOrderStep4')}</li>
+          </ol>
+          <p className="mt-1">{t('rulesOrderNoReorder')}</p>
+        </div>
+        {activeTypeOptions.length > 0 && companyOptions.length > 0 && (
+          <div className="border-t border-border p-4">
+            <p className="pb-2 text-xs font-medium text-muted-foreground">{t('previewTitle')}</p>
+            <LeaveRulePreview
+              leaveTypes={activeTypeOptions.map((o) => ({ id: o.id, name: o.name, code: typeCodeById.get(o.id) ?? '' }))}
+              companies={previewCompanies}
+              grades={gradeOptions}
+              policies={previewPolicies}
+            />
+          </div>
+        )}
+      </Card>
 
       <Card data-tour="leave-config">
         <SectionHeader title={t('typesSectionTitle')} count={types.length} />
