@@ -2806,7 +2806,16 @@
     "movementNet": "Perubahan bersih",
     "exportChart": "Eksport carta",
     "sickNotConfigured": "Tiada jenis cuti sakit dikonfigurasi untuk penyewa ini.",
-    "nationalityFootnote": "Kewarganegaraan menggunakan kewarganegaraan KWSP sebagai proksi; lalai kepada Warganegara jika tidak ditetapkan."
+    "nationalityFootnote": "Kewarganegaraan menggunakan kewarganegaraan KWSP sebagai proksi; lalai kepada Warganegara jika tidak ditetapkan.",
+    "carryForwardTitle": "Bawa ke hadapan & lucut hak",
+    "carryForwardDesc": "Jumlah cuti tahunan yang dibawa ke hadapan ke setiap tahun cuti, tarikh luput, dan apa yang dilucutkan haknya — pada pembukaan tahun/kitaran (melebihi had bawa ke hadapan) dan pada tarikh luput (baki bawaan yang tidak digunakan luput).",
+    "carryForwardYear": "Tahun cuti",
+    "carryForwardCarried": "Dibawa ke hadapan",
+    "carryForwardExpiryDate": "Tarikh luput",
+    "carryForwardForfeitedOpen": "Dilucutkan semasa pembukaan",
+    "carryForwardForfeitedExpiry": "Dilucutkan semasa luput",
+    "carryForwardReasonCap": "Melebihi had bawa ke hadapan",
+    "carryForwardReasonExpiry": "Lucut hak automatik kerana luput"
   },
   "payComponents": {
     "title": "Komponen gaji",

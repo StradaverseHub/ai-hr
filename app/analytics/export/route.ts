@@ -13,10 +13,12 @@ import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import {
   analyticsDateRange,
+  carryForwardReport,
   changeJobTransactions,
   masterDataExport,
   newHires,
   parseAnalyticsFilters,
+  parseReportYear,
   terminations,
   type ReportFilter,
 } from '@/core/analytics';
@@ -80,6 +82,28 @@ export async function GET(req: Request) {
           r.terminatedOn,
           r.terminationType,
           r.terminationReason,
+        ]),
+      };
+    } else if (report === 'carry-forward') {
+      const year = parseReportYear(get);
+      const companyId = url.searchParams.get('companyId') ?? undefined;
+      const rows = await carryForwardReport(s, scopeIds, { year, filter, companyId });
+      const reasonLabel = (code: 'cap' | 'expiry') =>
+        code === 'cap' ? 'Exceeded carry-forward limit' : 'Auto forfeit due to expiry';
+      data = {
+        title: 'Carry-forward & forfeiture',
+        filename: `carry-forward_${year}`,
+        columns: ['Employee', 'Company', 'Department', 'Leave year', 'Carried forward', 'Expiry date', 'Forfeited at open', 'Forfeited at expiry', 'Reason'],
+        rows: rows.map((r) => [
+          r.employeeName,
+          r.company,
+          r.department ?? '',
+          r.leaveYear,
+          r.carried,
+          r.carryForwardExpiryDate ?? '',
+          r.forfeitedAtOpen,
+          r.forfeitedAtExpiry,
+          r.reasonCodes.map(reasonLabel).join('; '),
         ]),
       };
     } else if (report === 'change-jobs') {

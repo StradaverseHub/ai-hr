@@ -4,6 +4,7 @@ import { listCompanies, listDepartments, listEmployees } from '@/core/read';
 import { listCostCenters } from '@/core/admin';
 import {
   analyticsDateRange,
+  carryForwardReport,
   changeJobTransactions,
   demographicsByNationality,
   headcountSummary,
@@ -13,6 +14,7 @@ import {
   movementByMonth,
   newHires,
   parseAnalyticsFilters,
+  parseReportYear,
   sickLeaveTrend,
   terminations,
   turnoverRateFiltered,
@@ -40,6 +42,7 @@ export default async function AnalyticsPage({
   // Single filter source of truth — the same parse the export route uses (no screen/export drift).
   const filters = parseAnalyticsFilters(get);
   const filter: ReportFilter = { departmentId: filters.departmentId, q: filters.q };
+  const reportYear = parseReportYear(get);
 
   const [departments, companies, costCentres, employees] = await Promise.all([
     listDepartments(s, { companyIds: scopeIds }),
@@ -48,7 +51,7 @@ export default async function AnalyticsPage({
     listEmployees(s, scopeIds),
   ]);
 
-  const [hc, hires, terms, turnover, changeJobs, demographics, nationality, leaveUtil, leaveBalances, sickTrend, movement] =
+  const [hc, hires, terms, turnover, changeJobs, demographics, nationality, leaveUtil, leaveBalances, sickTrend, movement, carryForward] =
     await Promise.all([
       headcountSummary(s, scopeIds, { asOf: to }),
       newHires(s, scopeIds, { from, to, filter }),
@@ -61,6 +64,7 @@ export default async function AnalyticsPage({
       leaveBalancesSummary(s, scopeIds, filters),
       sickLeaveTrend(s, scopeIds, { from, to, filters }),
       movementByMonth(s, scopeIds, { from, to, filters }),
+      carryForwardReport(s, scopeIds, { year: reportYear, filter, companyId: filters.companyId }),
     ]);
   const masterCount = (await masterDataExport(s, scopeIds, { includeComp: false, filter })).length;
 
@@ -70,6 +74,15 @@ export default async function AnalyticsPage({
     (filters.q ? `&q=${encodeURIComponent(filters.q)}` : '');
   const exportHref = (report: string, format: string, extra = '') =>
     `/analytics/export?report=${report}&from=${from}&to=${to}&format=${format}${extra}${filterQs}`;
+  // Carry-forward report additionally carries `year` + `companyId` (it accepts both, unlike the
+  // department/q-only ReportFilter the other detail-table exports use) so its export can never disagree
+  // with the on-screen table for the same filter set.
+  const carryForwardQs =
+    filterQs +
+    `&year=${reportYear}` +
+    (filters.companyId ? `&companyId=${encodeURIComponent(filters.companyId)}` : '');
+  const carryForwardExportHref = (format: string) =>
+    `/analytics/export?report=carry-forward&format=${format}${carryForwardQs}`;
 
   const ExportLink = ({ href, label }: { href: string; label: string }) => (
     <a
@@ -223,6 +236,69 @@ export default async function AnalyticsPage({
           <LineChart id="chart-sick" labels={sickTrend.series.map((r) => r.month)} series={[{ label: t('chartSickTrend'), values: sickTrend.series.map((r) => r.days) }]} ariaLabel={t('chartSickTrend')} />
         </ChartCard>
       </div>
+
+      {/* Carry-forward & forfeiture (Leave Module — carry-forward + expiry + auto forfeit) */}
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 pr-4">
+          <SectionHeader title={t('carryForwardTitle')} count={carryForward.length} />
+          <div className="flex items-center gap-3">
+            <form method="get" className="flex items-center gap-1.5">
+              {/* Preserve every other query param (department/company/q/from/to) — only `year` changes. */}
+              {filters.departmentId && <input type="hidden" name="departmentId" value={filters.departmentId} />}
+              {filters.companyId && <input type="hidden" name="companyId" value={filters.companyId} />}
+              {filters.q && <input type="hidden" name="q" value={filters.q} />}
+              <input type="hidden" name="from" value={from} />
+              <input type="hidden" name="to" value={to} />
+              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                {t('carryForwardYear')}
+                <select
+                  name="year"
+                  defaultValue={String(reportYear)}
+                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                  className="h-8 rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  {Array.from({ length: 6 }, (_, i) => reportYear - 4 + i).map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </form>
+            <div className="inline-flex items-center gap-1.5">
+              <ExportLink href={carryForwardExportHref('csv')} label={t('exportCsv')} />
+              <ExportLink href={carryForwardExportHref('xlsx')} label={t('exportXlsx')} />
+              <ExportLink href={carryForwardExportHref('pdf')} label={t('exportPdf')} />
+            </div>
+          </div>
+        </div>
+        <p className="px-4 pb-2 text-xs text-muted-foreground">{t('carryForwardDesc')}</p>
+        <Table
+          head={[
+            t('colName'),
+            t('colDepartment'),
+            t('carryForwardCarried'),
+            t('carryForwardExpiryDate'),
+            t('carryForwardForfeitedOpen'),
+            t('carryForwardForfeitedExpiry'),
+            t('colReason'),
+          ]}
+          rows={carryForward.map((r) => [
+            r.employeeName,
+            r.department ?? '—',
+            r.carried,
+            r.carryForwardExpiryDate ?? '—',
+            r.forfeitedAtOpen,
+            r.forfeitedAtExpiry,
+            r.reasonCodes.length > 0
+              ? r.reasonCodes
+                  .map((code) => (code === 'cap' ? t('carryForwardReasonCap') : t('carryForwardReasonExpiry')))
+                  .join('; ')
+              : '—',
+          ])}
+          empty={t('noData')}
+        />
+      </Card>
 
       {/* ── Employee movement ──────────────────────────────────────────────── */}
       <ChartCard title={t('chartMovement')} svgId="chart-movement" filenameBase={`movement_${from}_${to}`} exportLabel={t('exportChart')}>

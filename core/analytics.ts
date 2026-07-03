@@ -17,6 +17,7 @@ import {
   ilike,
   inArray,
   isNull,
+  lt,
   lte,
   or,
   sql,
@@ -24,6 +25,14 @@ import {
 } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { isAdmin } from '../lib/authz';
+import {
+  CARRY_FORFEIT_REASON_CAP,
+  CARRY_FORFEIT_REASON_EXPIRY,
+  earnedCycleStart,
+  resolveCarryBreakdown,
+  resolveGradePolicy,
+  type GradePolicyRow,
+} from './leave';
 import {
   assignment,
   company,
@@ -33,6 +42,7 @@ import {
   employeeStatutoryMy,
   employment,
   leaveLedger,
+  leavePolicy,
   leaveType,
   person,
   position,
@@ -40,6 +50,9 @@ import {
 } from '../db/schema';
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+// Leave-day amounts elsewhere (core/leave.ts) use 2dp precision — match it here so forfeit totals never
+// silently lose a hundredth vs. the ledger rows they're summed from.
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 const scopeWhere = (scopeIds: string[] | undefined) =>
   scopeIds && scopeIds.length ? inArray(employment.companyId, scopeIds) : undefined;
@@ -111,6 +124,21 @@ export function analyticsDateRange(
     from: isDate(fromRaw) ? fromRaw : `${today.slice(0, 4)}-01-01`,
     to: isDate(toRaw) ? toRaw : today,
   };
+}
+
+/** Shared year-selector parse for the carry-forward report: a validated 4-digit integer year, or the
+ *  current year by default. Garbage input (non-numeric, out-of-range) falls back to the default rather
+ *  than ever reaching the report as a bad value (never a 500) — the page and export route call this so
+ *  they can never disagree on which year is showing. */
+export function parseReportYear(
+  get: (k: string) => string | null | undefined,
+  today = new Date().toISOString().slice(0, 10),
+): number {
+  const currentYear = Number(today.slice(0, 4));
+  const raw = get('year');
+  if (raw == null || raw === '') return currentYear;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 2000 && n <= 2100 ? n : currentYear;
 }
 
 /** Parse + validate raw query params into AnalyticsFilters. Shared by page and export route so the two
@@ -728,6 +756,237 @@ export async function leaveUtilisation(
       .groupBy(leaveType.name)
       .orderBy(leaveType.name);
     return rows.map((r) => ({ name: r.name, granted: Number(r.granted), taken: Number(r.taken) }));
+  });
+}
+
+// ─────────────────── Carry-forward & forfeiture report ───────────────────
+// Per (employment, ANNUAL leave type) row for the leave-year cycle STARTING in the selected year: what
+// carried in, its expiry date, and what was forfeited at open (cap-excess) vs at expiry — sourced from
+// the SAME shared helper the /me breakdown uses (core/leave.ts#resolveCarryBreakdown), fed by bulk
+// GROUP BY aggregates (no per-employee loop; Chin Hin scale ~4.5k employments is the sizing target).
+//
+// forfeitedAtOpen / forfeitedAtExpiry are read ONLY from reason-tagged ledger rows (CARRY_FORFEIT_REASON_
+// CAP / _EXPIRY) — never reconstructed. Reconstruction cannot reproduce a PAST forfeit (its currentBalance
+// input moves after the sweep runs), and date-matching untagged rows would misclassify a manual Jan-1
+// adjustment as a system forfeit. The system is undeployed, so real tenants have zero untagged forfeit
+// rows at release; an untagged negative adjustment is simply not counted as a forfeit (see test (e)).
+export type CarryForwardReportRow = {
+  employmentId: string;
+  employeeName: string;
+  company: string;
+  department: string | null;
+  leaveYear: number;
+  /** Cycle start actually used (calendar 1 Jan, or the employee's hire-month anniversary). */
+  cycleStart: string;
+  carried: number;
+  /** null when the policy has no expiry configured, OR the cycle is anniversary-earned and therefore
+   *  outside expireCarriedLeave's sweep coverage (a real engine gap — see ORDERED STEPS / OUT OF SCOPE
+   *  in the approved plan). Printing a date the system never enforces would be dishonest. */
+  carryForwardExpiryDate: string | null;
+  forfeitedAtOpen: number;
+  forfeitedAtExpiry: number;
+  /** Machine reason code(s) present on this row's tagged forfeits — 'cap' (exceeded the carry-forward
+   *  limit at year/cycle open) and/or 'expiry' (auto forfeit due to expiry). Empty when neither forfeit
+   *  occurred. Callers localize/label these (English for export, translated for the on-screen UI). */
+  reasonCodes: ('cap' | 'expiry')[];
+};
+
+/** True iff this (employment, type)'s cycle is an earned-method policy on an anniversary-leaveCycle
+ *  company — accrueEarnedLeave (not openLeaveYear) owns its carry-cap, and expireCarriedLeave's Jan-1
+ *  "open marker" check never finds a marker for it, so the expiry sweep never covers it (engine gap). */
+const isAnniversaryEarned = (leaveCycle: string | null, method: string | undefined): boolean =>
+  leaveCycle === 'anniversary' && (method === 'earned_monthly' || method === 'earned_quarterly');
+
+export async function carryForwardReport(
+  ctx: SessionContext,
+  scopeIds: string[] | undefined,
+  p: { year: number; filter?: ReportFilter; companyId?: string },
+): Promise<CarryForwardReportRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const year = p.year;
+    const yearStart = `${year}-01-01`;
+    const yearEnd = `${year}-12-31`;
+
+    const [annualType] = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(eq(leaveType.code, 'ANNUAL'))
+      .limit(1);
+    if (!annualType) return [];
+    const leaveTypeId = annualType.id;
+
+    // Population: employments hired on/before the year-end (so a cycle could have started this year) and
+    // NOT terminated before Jan 1 of the year — leavers mid-year Y still appear (their final forfeit is a
+    // record). Since-archived ANNUAL types are not filtered (history, not future action).
+    const emps = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        company: company.legalName,
+        department: department.name,
+        hiredOn: employment.hiredOn,
+        gradeId: employment.gradeId,
+        companyId: employment.companyId,
+        leaveCycle: company.leaveCycle,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(
+        and(
+          scopeWhere(scopeIds),
+          p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+          p.filter?.departmentId ? eq(assignment.departmentId, p.filter.departmentId) : undefined,
+          qWhere(p.filter),
+          lte(employment.hiredOn, yearEnd),
+          or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+        ),
+      );
+    if (emps.length === 0) return [];
+    const empIds = emps.map((e) => e.employmentId);
+
+    // Every ANNUAL policy version (dated), so we can resolve the version active at EACH employee's cycle
+    // open — not just the currently-active one (past-year reports must use the historical cap/expiry).
+    const policies = await tx
+      .select({
+        gradeId: leavePolicy.gradeId,
+        companyId: leavePolicy.companyId,
+        accrual: leavePolicy.accrual,
+        validFrom: leavePolicy.validFrom,
+        validTo: leavePolicy.validTo,
+      })
+      .from(leavePolicy)
+      .where(eq(leavePolicy.leaveTypeId, leaveTypeId));
+
+    // Per-employee cycle start (calendar 1 Jan / anniversary hire-month), evaluated as-of the year-end so
+    // a mid-year joiner in year Y still resolves to their own cycle. Only rows whose cycle START falls in
+    // the SELECTED year are kept — a report for year Y is the cycle starting in Y (ORDERED STEPS #3).
+    const cycleStartByEmp = new Map<string, string>();
+    for (const e of emps) {
+      const cs = earnedCycleStart(e.hiredOn, yearEnd, e.leaveCycle);
+      if (cs.slice(0, 4) === String(year)) cycleStartByEmp.set(e.employmentId, cs);
+    }
+    const inScopeEmps = emps.filter((e) => cycleStartByEmp.has(e.employmentId));
+    if (inScopeEmps.length === 0) return [];
+    const inScopeIds = inScopeEmps.map((e) => e.employmentId);
+
+    // Bulk GROUP BY aggregates — one round-trip each, no per-employee loop.
+    const priorBalRows = await tx
+      .select({
+        employmentId: leaveLedger.employmentId,
+        bal: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+      })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, inScopeIds),
+          eq(leaveLedger.leaveTypeId, leaveTypeId),
+          lt(leaveLedger.effectiveOn, yearStart),
+        ),
+      )
+      .groupBy(leaveLedger.employmentId);
+    const priorBalByEmp = new Map(priorBalRows.map((r) => [r.employmentId, Number(r.bal)]));
+
+    // Reason-tagged forfeit rows whose effectiveOn falls in the selected year (catches BOTH the Jan-1
+    // cap-excess forfeit and an anniversary-dated 2D-3 cap forfeit, and the year-qualified expiry date).
+    const forfeitRows = await tx
+      .select({
+        employmentId: leaveLedger.employmentId,
+        reason: leaveLedger.reason,
+        days: sql<string>`sum(${leaveLedger.days})`,
+      })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, inScopeIds),
+          eq(leaveLedger.leaveTypeId, leaveTypeId),
+          eq(leaveLedger.entryType, 'adjustment'),
+          inArray(leaveLedger.reason, [CARRY_FORFEIT_REASON_CAP, CARRY_FORFEIT_REASON_EXPIRY]),
+          gte(leaveLedger.effectiveOn, yearStart),
+          lte(leaveLedger.effectiveOn, yearEnd),
+        ),
+      )
+      .groupBy(leaveLedger.employmentId, leaveLedger.reason);
+    const forfeitByEmp = new Map<string, { atOpen: number; atExpiry: number }>();
+    for (const r of forfeitRows) {
+      const cur = forfeitByEmp.get(r.employmentId) ?? { atOpen: 0, atExpiry: 0 };
+      const amt = Math.abs(Number(r.days));
+      if (r.reason === CARRY_FORFEIT_REASON_CAP) cur.atOpen += amt;
+      else if (r.reason === CARRY_FORFEIT_REASON_EXPIRY) cur.atExpiry += amt;
+      forfeitByEmp.set(r.employmentId, cur);
+    }
+
+    // Debits inside each employee's carry window — needed by the shared helper (it derives
+    // carryForwardExpiryDate + carried; the forfeit figures below come from the tagged rows above, NOT
+    // from this reconstruction, per the plan's dual-path rejection).
+    const debitRows = await tx
+      .select({
+        employmentId: leaveLedger.employmentId,
+        taken: sql<string>`coalesce(-sum(${leaveLedger.days}), 0)`,
+      })
+      .from(leaveLedger)
+      .where(
+        and(
+          inArray(leaveLedger.employmentId, inScopeIds),
+          eq(leaveLedger.leaveTypeId, leaveTypeId),
+          eq(leaveLedger.entryType, 'debit'),
+          gte(leaveLedger.effectiveOn, yearStart),
+          lte(leaveLedger.effectiveOn, yearEnd),
+        ),
+      )
+      .groupBy(leaveLedger.employmentId);
+    const debitByEmp = new Map(debitRows.map((r) => [r.employmentId, Number(r.taken)]));
+
+    const rows: CarryForwardReportRow[] = [];
+    for (const e of inScopeEmps) {
+      const cycleStart = cycleStartByEmp.get(e.employmentId)!;
+      // Policy version active AT this cycle's open (yearStart) — resolveGradePolicy picks the
+      // most-generous match for the employee's grade among versions valid at that date, exactly as
+      // expireCarriedLeave does for a past year.
+      const activeAtOpen: GradePolicyRow[] = policies
+        .filter((pol) => pol.validFrom <= yearStart && (pol.validTo == null || pol.validTo > yearStart))
+        .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
+      const policy = resolveGradePolicy(activeAtOpen, e.gradeId, e.companyId);
+      const carryMax = policy?.carryMax ?? 0;
+      const anniversaryEarned = isAnniversaryEarned(e.leaveCycle, policy?.method);
+      const priorBalance = priorBalByEmp.get(e.employmentId) ?? 0;
+      const debitsInWindow = debitByEmp.get(e.employmentId) ?? 0;
+      const { carried, carryForwardExpiryDate } = resolveCarryBreakdown({
+        cycleStart,
+        carryMax,
+        expiry: policy?.carryExpiry ?? null,
+        priorBalanceAtCycleStart: priorBalance,
+        debitsInWindow,
+        // currentBalance only affects capExcess/expiryForfeit (unused here — tagged rows are the source
+        // of truth for forfeits), so a placeholder is safe.
+        currentBalance: 0,
+        asOf: yearEnd,
+      });
+      const forfeit = forfeitByEmp.get(e.employmentId) ?? { atOpen: 0, atExpiry: 0 };
+      const forfeitedAtExpiry = anniversaryEarned ? 0 : round2(forfeit.atExpiry);
+      const reasonCodes: ('cap' | 'expiry')[] = [];
+      if (forfeit.atOpen > 0) reasonCodes.push('cap');
+      if (forfeitedAtExpiry > 0) reasonCodes.push('expiry');
+      rows.push({
+        employmentId: e.employmentId,
+        employeeName: e.name,
+        company: e.company,
+        department: e.department,
+        leaveYear: year,
+        cycleStart,
+        carried,
+        // Anniversary-earned cycles are outside the expiry sweep's coverage (no Jan-1 open marker) —
+        // print a blank expiry rather than a date the system never enforces (ACCEPTED, unenforced-expiry).
+        carryForwardExpiryDate: anniversaryEarned ? null : carryForwardExpiryDate,
+        forfeitedAtOpen: round2(forfeit.atOpen),
+        forfeitedAtExpiry,
+        reasonCodes,
+      });
+    }
+    rows.sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+    return rows;
   });
 }
 

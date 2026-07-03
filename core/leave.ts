@@ -2165,6 +2165,18 @@ export async function decideLeaveCancellation(
 /** Types granted as standing yearly entitlements; situational types are claimed per event. */
 export const STANDING_LEAVE_CODES = ['ANNUAL', 'SICK', 'HOSPITALIZATION'] as const;
 
+/**
+ * Carry-forward-report feature — reason codes stamped on the AUTOMATIC negative `adjustment` rows the
+ * carry-forward engine posts (openLeaveYear cap-excess, accrueEarnedLeave 2D-3 cap-excess, and
+ * expireCarriedLeave's later expiry forfeit). Prefixed `sys:` — no human would type this, and
+ * grantAdHocLeave only ever writes POSITIVE days (validated `days <= 0` throws), so a machine-forfeit
+ * reason can never collide with a human festive-grant reason under the (leaveTypeId, effectiveOn,
+ * reason) idempotency key (core/leave.ts grantAdHocLeave). Purely additive tagging — no behaviour
+ * change to any forfeit amount, timing, or idempotency check (all of which stay reason-blind).
+ */
+export const CARRY_FORFEIT_REASON_CAP = 'sys:carry_forward_cap';
+export const CARRY_FORFEIT_REASON_EXPIRY = 'sys:carry_forward_expiry';
+
 /** Completed years of service at a date (calendar-accurate, not /365.25). */
 export const serviceYearsAt = (hiredOn: string, asOf: string): number => {
   const h = new Date(`${hiredOn}T00:00:00Z`);
@@ -2297,6 +2309,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
             entryType: 'adjustment',
             days: (-forfeit).toFixed(2),
             effectiveOn: yearStart,
+            reason: CARRY_FORFEIT_REASON_CAP,
           });
           forfeits += 1;
         }
@@ -2667,6 +2680,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
               entryType: 'adjustment',
               days: (-forfeit).toFixed(2),
               effectiveOn: cycleStart,
+              reason: CARRY_FORFEIT_REASON_CAP,
             });
             forfeited.add(carryKey);
             forfeits += 1;
@@ -2734,6 +2748,63 @@ export function reconstructCarry(p: {
   const unconsumedCarry = Math.max(0, round2(carried - p.debitsInWindow));
   const forfeitable = round2(Math.min(unconsumedCarry, Math.max(0, p.currentBalance)));
   return { carried, unconsumedCarry, forfeitable };
+}
+
+/**
+ * Carry-forward-report feature — the per-employment carry/expiry/forfeit computation shared by
+ * `leaveEntitlementBreakdown` (core/read.ts) and the new `carryForwardReport` (core/analytics.ts).
+ * Extracted verbatim from `leaveEntitlementBreakdown` so its output is byte-identical to before the
+ * extraction (existing 363-line breakdown test suite is the regression gate — see ORDERED STEPS #2 in
+ * the approved plan). Pure — no DB access; callers resolve the cycle start, the winning policy, and the
+ * ledger aggregates (prior balance / debits-in-window / current balance) and pass them in here.
+ *
+ * `carryMax`/`expiry` should already be zeroed/nulled by the caller for non-ANNUAL types (only ANNUAL
+ * carries — see openLeaveYear/expireCarriedLeave), so this helper does not re-check the leave-type code.
+ */
+export function resolveCarryBreakdown(p: {
+  cycleStart: string;
+  carryMax: number;
+  /** {month, day} OFFSET, or null (never expires). Already resolved from the winning policy. */
+  expiry: CarryExpiry | null;
+  priorBalanceAtCycleStart: number;
+  debitsInWindow: number;
+  currentBalance: number;
+  /** The date this reconstruction is evaluated as-at (drives whether the expiry has "passed"). */
+  asOf: string;
+}): {
+  /** {cycleYear}-{expiry.month}-{expiry.day} (clamped to a real calendar day), or null. */
+  carryForwardExpiryDate: string | null;
+  /** min(max(priorBalance,0), carryMax) — what openLeaveYear posted at this cycle's open. */
+  carried: number;
+  /** Cap-excess forfeited AT OPEN: max(0, priorBalance − carried). */
+  capExcess: number;
+  /** How much of `carried` is still un-consumed as at `asOf` (0 once the expiry has passed). */
+  unconsumedCarry: number;
+  /** Realised expiry forfeit — 0 until the expiry date has arrived (≤ asOf), else the reconstructed
+   *  forfeitable amount (min(unconsumedCarry, max(0, currentBalance))). */
+  expiryForfeit: number;
+  /** capExcess + expiryForfeit, rounded to 2dp. */
+  forfeited: number;
+} {
+  const cycleYear = p.cycleStart.slice(0, 4);
+  const carryForwardExpiryDate =
+    p.carryMax > 0 && p.expiry
+      ? `${cycleYear}-${String(p.expiry.month).padStart(2, '0')}-${String(
+          Math.min(p.expiry.day, lastRealDayOfMonth(Number(cycleYear), p.expiry.month)),
+        ).padStart(2, '0')}`
+      : null;
+  const { carried, unconsumedCarry: unconsumedRaw, forfeitable } = reconstructCarry({
+    priorYearEndBalance: p.priorBalanceAtCycleStart,
+    carryMax: p.carryMax,
+    debitsInWindow: p.debitsInWindow,
+    currentBalance: p.currentBalance,
+  });
+  const capExcess = Math.max(0, round2(Math.max(p.priorBalanceAtCycleStart, 0) - carried));
+  const expiryPassed = carryForwardExpiryDate != null && carryForwardExpiryDate <= p.asOf;
+  const expiryForfeit = expiryPassed ? forfeitable : 0;
+  const forfeited = round2(capExcess + expiryForfeit);
+  const unconsumedCarry = expiryPassed ? 0 : unconsumedRaw;
+  return { carryForwardExpiryDate, carried, capExcess, unconsumedCarry, expiryForfeit, forfeited };
 }
 
 // ── Carry-forward expiry / auto-forfeit (ADR-0038 carry-forward enhancement) ───────────────────────
@@ -2911,6 +2982,7 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
             entryType: 'adjustment',
             days: (-forfeit).toFixed(2),
             effectiveOn: expiryDate,
+            reason: CARRY_FORFEIT_REASON_EXPIRY,
           });
           swept += 1;
           forfeitedTotal = Math.round((forfeitedTotal + forfeit) * 100) / 100;

@@ -18,7 +18,10 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { createJobGrade, createLeavePolicy, updateLeavePolicy } from '../core/admin';
 import {
+  accrueEarnedLeave,
   carryEnabled,
+  CARRY_FORFEIT_REASON_CAP,
+  CARRY_FORFEIT_REASON_EXPIRY,
   expireCarriedLeave,
   isValidMonthDay,
   lastRealDayOfMonth,
@@ -71,6 +74,23 @@ const adjustmentsAt = async (employmentId: string, leaveTypeId: string, effectiv
       ),
     );
   return Number(r.n);
+};
+
+/** The `reason` column(s) of adjustment rows for an (emp, type) at a given effective date — proves the
+ *  Carry-Forward-Report feature's machine-code tagging (CARRY_FORFEIT_REASON_CAP / _EXPIRY). */
+const reasonsAt = async (employmentId: string, leaveTypeId: string, effectiveOn: string): Promise<(string | null)[]> => {
+  const rows = await owner.db
+    .select({ reason: schema.leaveLedger.reason })
+    .from(schema.leaveLedger)
+    .where(
+      and(
+        eq(schema.leaveLedger.employmentId, employmentId),
+        eq(schema.leaveLedger.leaveTypeId, leaveTypeId),
+        eq(schema.leaveLedger.entryType, 'adjustment'),
+        eq(schema.leaveLedger.effectiveOn, effectiveOn),
+      ),
+    );
+  return rows.map((r) => r.reason);
 };
 
 const hire = (hiredOn: string, gradeId: string | null = null) =>
@@ -644,5 +664,67 @@ describe('R4 Build #1 — mode switch clears stale cross-mode keys', () => {
     expect(acc.carryForwardExpiryMonths).toBe(3);
     expect('carryForwardExpiryMonth' in acc).toBe(false);
     expect('carryForwardExpiryDay' in acc).toBe(false);
+  });
+});
+
+// ── Carry-Forward-Report feature — reason tagging on the three automatic forfeit paths ─────────────
+describe('Carry-forward-report — reason tagging on automatic forfeits (no behaviour change)', () => {
+  it('(ee) openLeaveYear cap-excess forfeit is stamped CARRY_FORFEIT_REASON_CAP', async () => {
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5 }); // no expiry
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // before 12, carry 5, forfeit 7
+    expect(await balance(emp.employmentId)).toBe(17);
+    expect(await reasonsAt(emp.employmentId, b.annualLeaveTypeId, '2026-01-01')).toEqual([CARRY_FORFEIT_REASON_CAP]);
+  });
+
+  it('(ff) expireCarriedLeave expiry forfeit is stamped CARRY_FORFEIT_REASON_EXPIRY', async () => {
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 3, day: 31 } });
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // before 12, carry 5, forfeit 7 (tagged CAP) → 17
+    expect(await reasonsAt(emp.employmentId, b.annualLeaveTypeId, '2026-01-01')).toEqual([CARRY_FORFEIT_REASON_CAP]);
+    const r = await expireCarriedLeave(adminCtx(b), { today: '2026-03-31' });
+    expect(r.forfeited).toBe(5);
+    expect(await reasonsAt(emp.employmentId, b.annualLeaveTypeId, '2026-03-31')).toEqual([CARRY_FORFEIT_REASON_EXPIRY]);
+  });
+
+  it('(gg) accrueEarnedLeave 2D-3 cycle-boundary forfeit is stamped CARRY_FORFEIT_REASON_CAP', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 5,
+      method: 'earned_monthly',
+      validFrom: '2026-01-01',
+    });
+    const emp = await hireEmployee(adminCtx(b), {
+      person: { fullName: 'CF2', primaryEmail: `cf2_${randomUUID().slice(0, 8)}@t.local` },
+      companyId: b.companyId,
+      departmentId: b.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+      grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+    });
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-12-31' }); // full 2026 cycle → 12
+    expect(await balance(emp.employmentId)).toBe(12);
+    const r = await accrueEarnedLeave(adminCtx(b), { asOf: '2027-06-15' }); // new cycle: forfeit (12−5)=7 at 2027-01-01
+    expect(r.forfeits).toBe(1);
+    expect(await reasonsAt(emp.employmentId, b.annualLeaveTypeId, '2027-01-01')).toEqual([CARRY_FORFEIT_REASON_CAP]);
+  });
+
+  it('(hh) idempotent re-runs of all three paths still post nothing extra (reason-blind idempotency unchanged)', async () => {
+    await annualPolicy({ annualDays: 12, carryForwardMax: 5, expiry: { month: 3, day: 31 } });
+    const emp = await hire('2025-01-01');
+    await openLeaveYear(adminCtx(b), { year: 2026 });
+    await expireCarriedLeave(adminCtx(b), { today: '2026-03-31' });
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2026-03-31')).toBe(1);
+
+    // Re-run everything — the reason-blind idempotency checks (entryType+effectiveOn+days magnitude)
+    // must still suppress duplicate inserts even though the rows now carry a reason.
+    const openAgain = await openLeaveYear(adminCtx(b), { year: 2026 });
+    expect(openAgain.granted).toBe(0);
+    expect(openAgain.forfeits).toBe(0);
+    const sweepAgain = await expireCarriedLeave(adminCtx(b), { today: '2026-03-31' });
+    expect(sweepAgain.swept).toBe(0);
+    expect(sweepAgain.forfeited).toBe(0);
+    expect(await adjustmentsAt(emp.employmentId, b.annualLeaveTypeId, '2026-03-31')).toBe(1);
   });
 });

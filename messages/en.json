@@ -2806,7 +2806,16 @@
     "movementNet": "Net change",
     "exportChart": "Export chart",
     "sickNotConfigured": "No sick-leave type is configured for this tenant.",
-    "nationalityFootnote": "Nationality uses EPF citizenship as a proxy; it defaults to Citizen when unset."
+    "nationalityFootnote": "Nationality uses EPF citizenship as a proxy; it defaults to Citizen when unset.",
+    "carryForwardTitle": "Carry-forward & forfeiture",
+    "carryForwardDesc": "Annual-leave amounts carried into each leave year, their expiry date, and what was forfeited — at year/cycle open (exceeded the carry-forward limit) and at expiry (unused carry lapsed).",
+    "carryForwardYear": "Leave year",
+    "carryForwardCarried": "Carried forward",
+    "carryForwardExpiryDate": "Expiry date",
+    "carryForwardForfeitedOpen": "Forfeited at open",
+    "carryForwardForfeitedExpiry": "Forfeited at expiry",
+    "carryForwardReasonCap": "Exceeded carry-forward limit",
+    "carryForwardReasonExpiry": "Auto forfeit due to expiry"
   },
   "payComponents": {
     "title": "Pay components",
