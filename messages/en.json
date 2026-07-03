@@ -2677,6 +2677,7 @@
     "descriptionLabel": "Description (optional)",
     "descriptionPlaceholder": "e.g. taxi to client site",
     "submit": "Submit claim",
+    "submitting": "Submitting…",
     "myClaims": "My claims",
     "empty": "No claims yet.",
     "colType": "Type",

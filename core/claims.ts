@@ -409,12 +409,22 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
   const amount = computeClaimAmount(policy?.rateConfig, { quantityKm: p.quantityKm, enteredAmount: p.amount });
   if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
   if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
-    throw new ClaimError(`Amount exceeds the per-claim cap (RM ${policy.perClaimCap.toLocaleString('en-MY')})`);
+    throw new ClaimError(
+      `This claim's amount (RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}) exceeds the ` +
+        `per-claim cap for this claim type (RM ${policy.perClaimCap.toLocaleString('en-MY')}). Reduce the ` +
+        `amount, split it across multiple claims if appropriate, or ask an admin to review the cap.`,
+    );
   }
   if (policy?.annualBudget != null) {
     const committed = await claimedInYear(tx, p.employmentId, p.claimTypeId, yearOf(p.incurredOn), ['pending', 'approved', 'paid']);
     if (committed + amount > policy.annualBudget) {
-      throw new ClaimError(`This would exceed the annual budget (RM ${policy.annualBudget.toLocaleString('en-MY')})`);
+      const remaining = Math.max(0, policy.annualBudget - committed);
+      throw new ClaimError(
+        `This claim (RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}) would bring your total ` +
+          `for this claim type this year to RM ${(committed + amount).toLocaleString('en-MY', { minimumFractionDigits: 2 })}, ` +
+          `which exceeds the annual budget of RM ${policy.annualBudget.toLocaleString('en-MY')}. You have RM ` +
+          `${remaining.toLocaleString('en-MY', { minimumFractionDigits: 2 })} remaining this year for this claim type.`,
+      );
     }
   }
 

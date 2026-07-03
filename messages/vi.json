@@ -2677,6 +2677,7 @@
     "descriptionLabel": "Mô tả (tùy chọn)",
     "descriptionPlaceholder": "ví dụ: taxi đến địa điểm khách hàng",
     "submit": "Gửi khoản chi",
+    "submitting": "Đang gửi…",
     "myClaims": "Khoản chi của tôi",
     "empty": "Chưa có khoản chi nào.",
     "colType": "Loại",

@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useActionState, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Field, inputCls } from './ui';
+import { Button, ErrorBanner, Field, inputCls } from './ui';
 
-type Action = (fd: FormData) => void | Promise<void>;
+type SubmitState = { error: string | null };
+type Action = (prevState: SubmitState, fd: FormData) => SubmitState | Promise<SubmitState>;
 
 type RateConfig =
   | { kind: 'receipt' }
@@ -40,7 +41,19 @@ export function ClaimForm({
 }) {
   const t = useTranslations('claims');
   const [typeId, setTypeId] = useState(types[0]?.id ?? '');
+  const [claimItemId, setClaimItemId] = useState(types[0]?.items[0]?.id ?? '');
   const [km, setKm] = useState('');
+  const [amount, setAmount] = useState('');
+  const [incurredOn, setIncurredOn] = useState(todayUtc);
+  const [description, setDescription] = useState('');
+  // On error, useActionState returns without navigating, so the form itself is never unmounted —
+  // but React's own form-action machinery still resets any UNCONTROLLED field once the action
+  // resolves (this happens even without a redirect). Every field the user can type into is
+  // therefore controlled state, not a plain uncontrolled <input>, so it survives an error round
+  // trip; only the file input can't be restored (the browser itself won't let JS set a file
+  // input's value, so a selected receipt does need to be re-attached after fixing the error).
+  // The error banner itself has no timer — it stays until the next submit, not on a fade-out.
+  const [state, formAction, isPending] = useActionState<SubmitState, FormData>(submitAction, { error: null });
 
   const selected = useMemo(() => types.find((ct) => ct.id === typeId) ?? types[0], [types, typeId]);
   const kind = selected?.rateConfig?.kind ?? 'receipt';
@@ -51,10 +64,28 @@ export function ClaimForm({
   const computedMileage = ratePerKm > 0 && kmNum > 0 ? ratePerKm * kmNum : 0;
 
   return (
-    <form action={submitAction} className="grid gap-4 sm:grid-cols-2">
+    <form action={formAction} className="grid gap-4 sm:grid-cols-2">
+      {state.error && (
+        <div className="sm:col-span-2">
+          <ErrorBanner message={state.error} />
+        </div>
+      )}
+
       {/* Claim Type (mandatory) → drives the dependent Claim Item dropdown + the amount field. */}
       <Field label={t('typeLabel')}>
-        <select name="claimTypeId" required value={typeId} onChange={(e) => setTypeId(e.target.value)} className={inputCls}>
+        <select
+          name="claimTypeId"
+          required
+          value={typeId}
+          onChange={(e) => {
+            setTypeId(e.target.value);
+            // the previously-selected item almost certainly doesn't belong to the new type —
+            // default to its first item (matching a plain uncontrolled <select>'s behavior)
+            const next = types.find((ct) => ct.id === e.target.value);
+            setClaimItemId(next?.items[0]?.id ?? '');
+          }}
+          className={inputCls}
+        >
           {types.map((ct) => (
             <option key={ct.id} value={ct.id}>
               {ct.name} ({ct.code}){ct.requiresReceipt ? ` · ${t('receiptRequired')}` : ''}
@@ -66,7 +97,7 @@ export function ClaimForm({
       {/* Claim Item (dependent, mandatory only when the selected type has items) — side-by-side, 2-column. */}
       {items.length > 0 ? (
         <Field label={t('itemLabel')}>
-          <select name="claimItemId" required className={inputCls}>
+          <select name="claimItemId" required value={claimItemId} onChange={(e) => setClaimItemId(e.target.value)} className={inputCls}>
             {items.map((it) => (
               <option key={it.id} value={it.id}>
                 {it.name} ({it.code})
@@ -104,12 +135,30 @@ export function ClaimForm({
         </Field>
       ) : (
         <Field label={t('amountLabel')}>
-          <input name="amount" type="number" min="0.01" step="0.01" required className={inputCls} />
+          <input
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className={inputCls}
+          />
         </Field>
       )}
 
       <Field label={t('incurredOnLabel')}>
-        <input name="incurredOn" type="date" required defaultValue={todayUtc} min={minDate} max={todayUtc} className={inputCls} />
+        <input
+          name="incurredOn"
+          type="date"
+          required
+          value={incurredOn}
+          onChange={(e) => setIncurredOn(e.target.value)}
+          min={minDate}
+          max={todayUtc}
+          className={inputCls}
+        />
       </Field>
 
       <Field label={t('receiptLabel')}>
@@ -119,11 +168,20 @@ export function ClaimForm({
 
       <label className="flex flex-col gap-1.5 sm:col-span-2">
         <span className="text-xs font-medium text-muted-foreground">{t('remarksLabel')}</span>
-        <textarea name="description" rows={2} placeholder={t('descriptionPlaceholder')} className={inputCls} />
+        <textarea
+          name="description"
+          rows={2}
+          placeholder={t('descriptionPlaceholder')}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className={inputCls}
+        />
       </label>
 
       <div className="sm:col-span-2">
-        <Button type="submit">{t('submit')}</Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending ? t('submitting') : t('submit')}
+        </Button>
       </div>
     </form>
   );

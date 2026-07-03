@@ -2677,6 +2677,7 @@
     "descriptionLabel": "说明（选填）",
     "descriptionPlaceholder": "例如：前往客户现场的出租车费",
     "submit": "提交报销",
+    "submitting": "正在提交…",
     "myClaims": "我的报销",
     "empty": "暂无报销。",
     "colType": "类型",

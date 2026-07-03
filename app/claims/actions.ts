@@ -26,13 +26,18 @@ const numOrNull = (v: FormDataEntryValue | null): number | null => {
   return str === '' ? null : Number(str);
 };
 
-export async function submitClaimAction(formData: FormData) {
+export type SubmitClaimState = { error: string | null };
+
+/**
+ * useActionState-driven: on FAILURE we return { error } instead of redirecting, so the form is never
+ * unmounted/navigated away from and every field the user typed (including the file input's selection)
+ * survives exactly as-is — the user just fixes the one field the error names and resubmits. On SUCCESS
+ * we still redirect (a fresh claims list + an empty form is the correct outcome there). All DB work
+ * happens in ONE service tx (submitClaimWithAttachment) so a receipt failure rolls the claim back too:
+ * the user's error and the DB now agree — no committed-claim-behind-an-error (ADR-0021 §2 submit fix).
+ */
+export async function submitClaimAction(_prevState: SubmitClaimState, formData: FormData): Promise<SubmitClaimState> {
   const s = await getSession();
-  // Capture the redirect URL, then redirect OUTSIDE the try — Next's redirect() throws NEXT_REDIRECT by design,
-  // so redirecting inside the catch (the old `fail(e)`) risked the success/error redirect being swallowed. All
-  // DB work happens in ONE service tx (submitClaimWithAttachment) so a receipt failure rolls the claim back too:
-  // the user's error and the DB now agree — no committed-claim-behind-an-error (ADR-0021 §2 submit fix).
-  let redirectTo: string;
   try {
     const me = await myEmployment(s);
     // myEmployment is null when the account has no active employment; give a clear, actionable message
@@ -62,11 +67,10 @@ export async function submitClaimAction(formData: FormData) {
       attachment,
     );
     revalidatePath(BASE);
-    redirectTo = `${BASE}?toast=${encodeURIComponent('Claim submitted')}`;
   } catch (e) {
-    redirectTo = errorUrl(e);
+    return { error: (e as Error).message };
   }
-  redirect(redirectTo);
+  redirect(`${BASE}?toast=${encodeURIComponent('Claim submitted')}`);
 }
 
 export async function cancelClaimAction(formData: FormData) {

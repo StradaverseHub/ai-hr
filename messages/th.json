@@ -2677,6 +2677,7 @@
     "descriptionLabel": "รายละเอียด (ไม่บังคับ)",
     "descriptionPlaceholder": "เช่น แท็กซี่ไปไซต์ลูกค้า",
     "submit": "ส่งการเบิก",
+    "submitting": "กำลังส่ง…",
     "myClaims": "การเบิกของฉัน",
     "empty": "ยังไม่มีการเบิก",
     "colType": "ประเภท",
