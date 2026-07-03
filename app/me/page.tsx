@@ -21,6 +21,7 @@ import { myResignation } from '@/core/offboarding';
 import { MeReviewCard } from './review-card';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { AttendanceClockButton, LocationNotice } from './attendance-clock';
 import { SectionJumpNav } from '@/components/section-jump-nav';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
@@ -239,11 +240,7 @@ export default async function MePage({
           <p className="text-xs text-muted-foreground">{today}</p>
           <div className="mt-4">
             {!todayRow ? (
-              <form action={myCheckIn}>
-                <Button type="submit" className="w-full">
-                  {t('checkIn')}
-                </Button>
-              </form>
+              <AttendanceClockButton action={myCheckIn} label={t('checkIn')} />
             ) : !todayRow.checkOutAt ? (
               <div className="space-y-3">
                 <div className="text-sm text-muted-foreground">
@@ -254,17 +251,14 @@ export default async function MePage({
                   })}{' '}
                   <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
                 </div>
-                <form action={myCheckOut}>
-                  <Button type="submit" variant="secondary" className="w-full">
-                    {t('checkOut')}
-                  </Button>
-                </form>
+                <AttendanceClockButton action={myCheckOut} label={t('checkOut')} variant="secondary" />
               </div>
             ) : (
               <div className="text-sm text-muted-foreground">
                 {todayRow.checkInAt} → {todayRow.checkOutAt} <Pill status={todayRow.status} map={ATT_STATUS} label={t(`attStatus.${todayRow.status}`)} />
               </div>
             )}
+            <LocationNotice />
           </div>
 
           <div className="mt-5 border-t border-border pt-4">
@@ -272,20 +266,43 @@ export default async function MePage({
               {t('recent')}
             </div>
             <ul className="space-y-1.5 text-sm">
-              {attendance.slice(0, 6).map((a) => (
-                <li key={a.id} className="flex items-center justify-between gap-2">
-                  <span className="tabular-nums text-muted-foreground">{a.date}</span>
-                  {a.workedMinutes != null && (
-                    <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                      {Math.floor(a.workedMinutes / 60)}h {String(a.workedMinutes % 60).padStart(2, '0')}m
-                      {(a.otMinutes ?? 0) > 0 && (
-                        <span className="text-amber-600 dark:text-amber-400"> {t('overtimeBadge')}</span>
+              {attendance.slice(0, 6).map((a) => {
+                // ADR-0070: prefer the matched site name, else raw coordinates, else nothing captured.
+                // Distance + pass/not-enforced pill shown per punch (check-out row wins when both exist).
+                const locName = a.checkOutLocationName ?? a.checkInLocationName;
+                const lat = a.checkOutLat ?? a.checkInLat;
+                const lng = a.checkOutLng ?? a.checkInLng;
+                const geoStatus = a.checkOutGeofenceStatus ?? a.checkInGeofenceStatus;
+                const distanceM = a.checkOutDistanceM ?? a.checkInDistanceM;
+                return (
+                  <li key={a.id} className="space-y-0.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="tabular-nums text-muted-foreground">{a.date}</span>
+                      {a.workedMinutes != null && (
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                          {Math.floor(a.workedMinutes / 60)}h {String(a.workedMinutes % 60).padStart(2, '0')}m
+                          {(a.otMinutes ?? 0) > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400"> {t('overtimeBadge')}</span>
+                          )}
+                        </span>
                       )}
-                    </span>
-                  )}
-                  <Pill status={a.status} map={ATT_STATUS} label={t(`attStatus.${a.status}`)} />
-                </li>
-              ))}
+                      <Pill status={a.status} map={ATT_STATUS} label={t(`attStatus.${a.status}`)} />
+                    </div>
+                    {(lat != null || locName) && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <span>{locName ?? `${lat!.toFixed(4)}, ${lng!.toFixed(4)}`}</span>
+                        {distanceM != null && <span>· {t('distanceAway', { m: distanceM })}</span>}
+                        {geoStatus && (
+                          <span>
+                            ·{' '}
+                            {geoStatus === 'pass' ? t('geofencePass') : t('geofenceNotEnforced')}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
               {attendance.length === 0 && <li className="text-muted-foreground">{t('noRecords')}</li>}
             </ul>
           </div>

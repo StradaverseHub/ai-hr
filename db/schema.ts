@@ -23,6 +23,7 @@ import {
   timestamp,
   boolean,
   numeric,
+  doublePrecision,
   jsonb,
   bigserial,
   bigint,
@@ -210,6 +211,57 @@ export const location = pgTable(
     index('location_company_idx').on(t.tenantId, t.companyId),
     // Code unique per tenant among non-archived (mirrors shift_company_name_uq).
     uniqueIndex('location_code_uq').on(t.tenantId, t.code).where(sql`archived_at is null`),
+  ],
+);
+
+// clocking_location = company-scoped Clocking Location register (ADR-0070). A DELIBERATE second site
+// registry alongside `location` above — see ADR-0070 §1 for why it is not an extension of `location`
+// (hard-delete lifecycle, no code namespace, wider tenant-catalog RLS). Lat/lng are typed numbers copied
+// from Google Maps (a map picker is Phase 2, deferred). RLS: tenant-catalog read (every tenant member),
+// admin-of-company write — mirrors the 0065 pay_component pattern, NOT location's admin-only-read pattern.
+export const clockingLocation = pgTable(
+  'clocking_location',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    name: text('name').notNull(),
+    lat: doublePrecision('lat').notNull(),
+    lng: doublePrecision('lng').notNull(),
+    address: text('address'),
+    remarks: text('remarks'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('clocking_location_company_idx').on(t.tenantId, t.companyId),
+    uniqueIndex('clocking_location_name_uq').on(t.tenantId, t.companyId, t.name),
+    check('clocking_location_lat_range', sql`${t.lat} BETWEEN -90 AND 90`),
+    check('clocking_location_lng_range', sql`${t.lng} BETWEEN -180 AND 180`),
+  ],
+);
+
+// employee_clocking_location = the assignment join (an employee may be authorized at ≥1 sites). Set-based
+// replace (no effective-dating — a simple "currently assigned" list, per the request). RLS: SELECT via
+// can_see_employment; INSERT/DELETE via can_admin_employment (mirrors employment_pay_component).
+export const employeeClockingLocation = pgTable(
+  'employee_clocking_location',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    clockingLocationId: uuid('clocking_location_id')
+      .notNull()
+      .references(() => clockingLocation.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('employee_clocking_location_employment_idx').on(t.employmentId),
+    uniqueIndex('employee_clocking_location_uq').on(t.employmentId, t.clockingLocationId),
   ],
 );
 
@@ -413,6 +465,11 @@ export const employment = pgTable(
     terminationReason: text('termination_reason'),
     // Inter-company cost split for shared-services staff (ADR-0009): [{ companyId, percent }].
     costAllocation: jsonb('cost_allocation'),
+    // Clocking Location & Geofencing (ADR-0070): per-employee enforcement toggle + radius. Mirrors the
+    // payroll_policy_id precedent of per-employee config living on employment columns. Radius is only
+    // meaningful (and required) while enforcement is on — enforced by the CHECK below.
+    geofencingEnabled: boolean('geofencing_enabled').notNull().default(false),
+    geofenceRadiusM: integer('geofence_radius_m'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -424,6 +481,12 @@ export const employment = pgTable(
     check(
       'employment_holiday_assignment_xor',
       sql`${t.workState} IS NULL OR ${t.holidayGroupId} IS NULL`,
+    ),
+    // Geofencing ON requires a positive radius; OFF leaves it however it was left (null or a stale value —
+    // harmless, since it is never read while disabled).
+    check(
+      'employment_geofence_radius_required',
+      sql`NOT ${t.geofencingEnabled} OR (${t.geofenceRadiusM} IS NOT NULL AND ${t.geofenceRadiusM} > 0)`,
     ),
   ],
 );
@@ -1254,6 +1317,16 @@ export const attendanceCorrectionStatusEnum = pgEnum('attendance_correction_stat
   'rejected',
 ]);
 
+// Clocking Location & Geofencing (ADR-0070). 'pass' = the punch was within a matched assigned site's
+// radius; 'not_enforced' = geofencing was OFF for that punch (coords may still be present). 'fail' does
+// NOT exist here — a blocked attempt never writes an attendance row; it is the
+// attendance.geofence.blocked domain event instead (see core/attendance.ts).
+export const geofenceStatusEnum = pgEnum('geofence_status', ['pass', 'not_enforced']);
+// Only 'web' (self-service /me) can carry geofencing. 'import' = the biometric/terminal CSV importer,
+// which bypasses geofencing entirely (physical presence at the device is its own proof). A punch written
+// by decideAttendanceCorrection stays NULL (deliberate — no 'correction' value, per ADR-0070 §6).
+export const clockMethodEnum = pgEnum('clock_method', ['web', 'import']);
+
 // Absence classification (Wave 4A) — set when a day is explicitly recorded/corrected as absent, so the
 // absenteeism analytics can categorise unplanned absence (planned absence is already typed via leave).
 export const absenceReasonEnum = pgEnum('absence_reason', [
@@ -1285,6 +1358,28 @@ export const attendance = pgTable(
     workedMinutes: integer('worked_minutes'),
     otMinutes: integer('ot_minutes'),
     remarks: text('remarks'),
+    // ── Clocking Location & Geofencing (ADR-0070) — per-punch capture, ALL nullable. Split per punch
+    // (check-in vs check-out) rather than one set of columns per row so an import-in/web-out row, or a
+    // mid-day radius/geofencing-toggle change between the two punches, is representable without one punch's
+    // capture silently overwriting the other's. Legacy rows are unaffected (every column defaults to null).
+    checkInLat: doublePrecision('check_in_lat'),
+    checkInLng: doublePrecision('check_in_lng'),
+    checkInClockingLocationId: uuid('check_in_clocking_location_id').references(
+      (): AnyPgColumn => clockingLocation.id,
+    ),
+    checkInDistanceM: integer('check_in_distance_m'),
+    checkInGeofenceStatus: geofenceStatusEnum('check_in_geofence_status'),
+    checkInRadiusM: integer('check_in_radius_m'),
+    checkInMethod: clockMethodEnum('check_in_method'),
+    checkOutLat: doublePrecision('check_out_lat'),
+    checkOutLng: doublePrecision('check_out_lng'),
+    checkOutClockingLocationId: uuid('check_out_clocking_location_id').references(
+      (): AnyPgColumn => clockingLocation.id,
+    ),
+    checkOutDistanceM: integer('check_out_distance_m'),
+    checkOutGeofenceStatus: geofenceStatusEnum('check_out_geofence_status'),
+    checkOutRadiusM: integer('check_out_radius_m'),
+    checkOutMethod: clockMethodEnum('check_out_method'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_employment_date_uq').on(t.employmentId, t.attendanceDate)],

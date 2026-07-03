@@ -480,6 +480,15 @@
           "female": "Female",
           "undisclosed": "Undisclosed"
         }
+      },
+      "clocking": {
+        "cardTitle": "Clocking locations & geofencing",
+        "assignedLocations": "Assigned clocking locations",
+        "noSites": "No clocking locations defined for this company yet.",
+        "save": "Save",
+        "geofencingToggle": "Enforce geofencing",
+        "radiusLabel": "Allowed radius (metres)",
+        "hint": "When geofencing is enforced, clock-in/out is blocked unless the employee is within the radius of an assigned site. When off, location is still captured for audit."
       }
     },
     "import": {
@@ -751,7 +760,8 @@
       "srcRest": "Rest day",
       "srcPolicy": "Company policy"
     },
-    "importPunches": "Import punches"
+    "importPunches": "Import punches",
+    "colLocation": "Location"
   },
   "org": {
     "title": "Org chart",
@@ -1003,7 +1013,14 @@
       "suspended": "Suspended",
       "settled": "Settled",
       "cancelled": "Cancelled"
-    }
+    },
+    "outsideGeofence": "You are currently outside your authorized clocking location. Please proceed to your assigned work location before clocking in or out.",
+    "locationRequired": "Your location is required to clock in or out at this workplace. Please allow location access and try again.",
+    "capturingLocation": "Getting your location…",
+    "locationNotice": "Your location is recorded with every clock-in and clock-out for attendance verification.",
+    "geofencePass": "within authorized location",
+    "geofenceNotEnforced": "location not enforced",
+    "distanceAway": "{m}m away"
   },
   "approvals": {
     "title": "Approvals",
@@ -2388,7 +2405,19 @@
       "restore": "Restore",
       "stateNote": "A location’s state overrides the employee’s work state for public-holiday resolution; leave blank to use the company default.",
       "calendar": "Holiday calendar",
-      "calendarNone": "None (default resolution)"
+      "calendarNone": "None (default resolution)",
+      "clockingHeading": "Clocking locations",
+      "clockingDescription": "Authorized sites employees may clock in and out from. Assign sites and geofencing per employee on their profile.",
+      "lat": "Latitude",
+      "lng": "Longitude",
+      "address": "Address",
+      "remarks": "Remarks",
+      "assignedCount": "{count} assigned",
+      "delete": "Delete",
+      "deleteConfirmTitle": "Delete clocking location?",
+      "deleteConfirmDescription": "Delete “{name}” permanently? This cannot be undone. Only possible when no employee is assigned and no attendance record references it.",
+      "clockingInUse": "Cannot delete: referenced by {count} record(s). Archive it instead.",
+      "clockingNote": "Deleting is only possible when a site has no employee assignments and no attendance history. Otherwise, archive it."
     }
   },
   "topbar": {

@@ -1009,6 +1009,13 @@
       "when": 1781862070000,
       "tag": "0143_leave_encashment",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1781862080000,
+      "tag": "0144_clocking_locations_geofencing",
+      "breakpoints": true
     }
   ]
 }

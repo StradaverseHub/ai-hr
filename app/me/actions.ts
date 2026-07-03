@@ -27,7 +27,13 @@ import {
   LeaveCancellationPeriodClosedError,
   type LeaveDurationType,
 } from '@/core/leave';
-import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendance';
+import {
+  checkIn,
+  checkOut,
+  requestAttendanceCorrection,
+  GeolocationRequiredError,
+  OutsideGeofenceError,
+} from '@/core/attendance';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { submitResignation, withdrawResignation } from '@/core/offboarding';
@@ -311,25 +317,47 @@ export async function myWithdrawResignation(formData: FormData) {
   redirect('/me?toast=Resignation+withdrawn');
 }
 
-export async function myCheckIn() {
+/** ADR-0070: parse the optional hidden lat/lng fields the client-side geolocation capture writes.
+ *  Missing/blank/non-finite ⇒ undefined — the server decides whether that's fatal (geofencing ON) or
+ *  harmless (geofencing OFF), never the client. */
+function parseGeo(formData: FormData): { lat: number; lng: number } | undefined {
+  const latRaw = formData.get('lat');
+  const lngRaw = formData.get('lng');
+  if (latRaw == null || lngRaw == null || latRaw === '' || lngRaw === '') return undefined;
+  const lat = Number(latRaw);
+  const lng = Number(lngRaw);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return undefined;
+  return { lat, lng };
+}
+
+/** ADR-0070: localize the two geofencing errors into the viewer's own language; everything else falls
+ *  back to its raw message (mirrors localizeLeaveError's shape). */
+async function localizeClockError(e: unknown): Promise<string> {
+  const t = await getTranslations('me');
+  if (e instanceof OutsideGeofenceError) return t('outsideGeofence');
+  if (e instanceof GeolocationRequiredError) return t('locationRequired');
+  return (e as Error).message;
+}
+
+export async function myCheckIn(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const { date, time } = nowParts();
   try {
-    await checkIn(s, { employmentId, date, time });
+    await checkIn(s, { employmentId, date, time, geo: parseGeo(formData) });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me?error=${encodeURIComponent(await localizeClockError(e))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Checked+in');
 }
 
-export async function myCheckOut() {
+export async function myCheckOut(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const { date, time } = nowParts();
   try {
-    await checkOut(s, { employmentId, date, time });
+    await checkOut(s, { employmentId, date, time, geo: parseGeo(formData) });
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me?error=${encodeURIComponent(await localizeClockError(e))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Checked+out');

@@ -1,5 +1,6 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   earnedCycleStart,
@@ -16,6 +17,7 @@ import {
   appUser,
   assignment,
   attendance,
+  clockingLocation,
   company,
   compensation,
   department,
@@ -804,6 +806,9 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         locationId: location.id,
         locationCode: location.code,
         locationName: location.name,
+        // ADR-0070: per-employee Clocking Location & Geofencing enforcement toggle + radius.
+        geofencingEnabled: employment.geofencingEnabled,
+        geofenceRadiusM: employment.geofenceRadiusM,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
@@ -2050,7 +2055,14 @@ export function myTaxReliefEmploymentIds(ctx: SessionContext): Promise<string[]>
   });
 }
 
-/** The current principal's recent attendance. */
+// ADR-0070: two aliases of clocking_location so a single query can resolve BOTH the check-in and
+// check-out matched-site names — tenant-catalog RLS (0065 pattern) makes the name resolve even for a
+// manager viewing a subordinate, or after the employee is later un-assigned from the site.
+const checkInSite = alias(clockingLocation, 'check_in_site');
+const checkOutSite = alias(clockingLocation, 'check_out_site');
+
+/** The current principal's recent attendance, including per-punch Clocking Location & Geofencing
+ *  capture (ADR-0070): matched site name, distance, and pass/not-enforced status per punch. */
 export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10) {
   return withTenant(ctx, (tx) =>
     tx
@@ -2062,8 +2074,20 @@ export function myAttendance(ctx: SessionContext, employmentId: string, limit = 
         status: attendance.status,
         workedMinutes: attendance.workedMinutes,
         otMinutes: attendance.otMinutes,
+        checkInLat: attendance.checkInLat,
+        checkInLng: attendance.checkInLng,
+        checkInLocationName: checkInSite.name,
+        checkInDistanceM: attendance.checkInDistanceM,
+        checkInGeofenceStatus: attendance.checkInGeofenceStatus,
+        checkOutLat: attendance.checkOutLat,
+        checkOutLng: attendance.checkOutLng,
+        checkOutLocationName: checkOutSite.name,
+        checkOutDistanceM: attendance.checkOutDistanceM,
+        checkOutGeofenceStatus: attendance.checkOutGeofenceStatus,
       })
       .from(attendance)
+      .leftJoin(checkInSite, eq(checkInSite.id, attendance.checkInClockingLocationId))
+      .leftJoin(checkOutSite, eq(checkOutSite.id, attendance.checkOutClockingLocationId))
       .where(eq(attendance.employmentId, employmentId))
       .orderBy(desc(attendance.attendanceDate))
       .limit(limit),
