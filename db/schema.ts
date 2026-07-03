@@ -600,7 +600,9 @@ export const leaveLedger = pgTable(
     days: numeric('days', { precision: 6, scale: 2 }).notNull(), // signed
     sourceRequestId: uuid('source_request_id').references((): AnyPgColumn => leaveRequest.id),
     effectiveOn: date('effective_on').notNull(),
-    // ADR-0066: human reason for a festive / one-off `adjustment` grant (e.g. "CNY 2026"). null otherwise.
+    // ADR-0066: human reason for a festive / one-off `adjustment` grant (e.g. "CNY 2026"), OR a system-
+    // stamped machine code for an automatic carry-forward forfeit (sys:carry_forward_cap /
+    // sys:carry_forward_expiry — see CARRY_FORFEIT_REASON_CAP/EXPIRY in core/leave.ts). null otherwise.
     reason: text('reason'),
     createdAt: createdAt(),
   },

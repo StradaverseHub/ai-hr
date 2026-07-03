@@ -2816,7 +2816,16 @@
     "movementNet": "Thay đổi ròng",
     "exportChart": "Xuất biểu đồ",
     "sickNotConfigured": "Chưa cấu hình loại nghỉ ốm cho người thuê này.",
-    "nationalityFootnote": "Quốc tịch dùng tình trạng công dân EPF làm đại diện; mặc định là Công dân khi chưa đặt."
+    "nationalityFootnote": "Quốc tịch dùng tình trạng công dân EPF làm đại diện; mặc định là Công dân khi chưa đặt.",
+    "carryForwardTitle": "Chuyển tiếp & tịch thu",
+    "carryForwardDesc": "Số ngày phép năm được chuyển tiếp sang mỗi năm nghỉ phép, ngày hết hạn và số ngày bị tịch thu — khi mở năm/chu kỳ (vượt quá giới hạn chuyển tiếp) và khi hết hạn (số ngày chuyển tiếp chưa dùng hết hạn).",
+    "carryForwardYear": "Năm nghỉ phép",
+    "carryForwardCarried": "Đã chuyển tiếp",
+    "carryForwardExpiryDate": "Ngày hết hạn",
+    "carryForwardForfeitedOpen": "Bị tịch thu khi mở",
+    "carryForwardForfeitedExpiry": "Bị tịch thu khi hết hạn",
+    "carryForwardReasonCap": "Vượt quá giới hạn chuyển tiếp",
+    "carryForwardReasonExpiry": "Tự động tịch thu do hết hạn"
   },
   "payComponents": {
     "title": "Thành phần lương",

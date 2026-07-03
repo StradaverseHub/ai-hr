@@ -5,8 +5,7 @@ import {
   earnedCycleStart,
   isEarnedMethod,
   isLeaveEligible,
-  lastRealDayOfMonth,
-  reconstructCarry,
+  resolveCarryBreakdown,
   resolveGradePolicy,
   workingDatesForSpan,
   type GradePolicyRow,
@@ -1044,16 +1043,19 @@ export function leaveEntitlementBreakdown(
     const earned = isEarnedMethod(policy?.method);
     const carryMax = type.code === 'ANNUAL' ? (policy?.carryMax ?? 0) : 0;
     const expiry = type.code === 'ANNUAL' ? (policy?.carryExpiry ?? null) : null;
-    const cycleYear = cycleStart.slice(0, 4);
-    // R4 Build #1: clamp the expiry `day` to the real last day of `expiry.month` in this cycle year, mirroring
-    // the sweep (core/leave.ts). Guarantees a real calendar date for months-mode (day=31 sentinel) and any
-    // 29-Feb-in-a-common-year, so this reader never emits a phantom string like '2027-02-29' to the UI.
-    const carryForwardExpiryDate =
-      carryMax > 0 && expiry
-        ? `${cycleYear}-${String(expiry.month).padStart(2, '0')}-${String(
-            Math.min(expiry.day, lastRealDayOfMonth(Number(cycleYear), expiry.month)),
-          ).padStart(2, '0')}`
-        : null;
+    // R4 Build #1: the expiry date is clamped to the real last day of `expiry.month` in this cycle year
+    // (months-mode day=31 sentinel, and any 29-Feb-in-a-common-year) inside the shared helper below —
+    // computed once here (pre-aggregates, for the debit-window bound) via the same helper so the two
+    // computations can never drift.
+    const { carryForwardExpiryDate } = resolveCarryBreakdown({
+      cycleStart,
+      carryMax,
+      expiry,
+      priorBalanceAtCycleStart: 0,
+      debitsInWindow: 0,
+      currentBalance: 0,
+      asOf,
+    });
 
     // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.
     const num = (x: unknown) => Number(x ?? 0);
@@ -1129,22 +1131,18 @@ export function leaveEntitlementBreakdown(
     const priorBalance = num(agg?.priorBalance);
     const cycleAccrual = num(agg?.cycleAccrual);
     const debitsInWindow = num(debitAgg?.taken);
-    const { carried, unconsumedCarry, forfeitable } = reconstructCarry({
-      priorYearEndBalance: priorBalance,
+    // Delegates to the shared helper (core/leave.ts#resolveCarryBreakdown) so this view can never diverge
+    // from carryForwardReport (core/analytics.ts) — byte-identical output to the pre-extraction inline
+    // arithmetic (existing test suite is the regression gate).
+    const { carried, unconsumedCarry: carryForwardRemaining, forfeited } = resolveCarryBreakdown({
+      cycleStart,
       carryMax,
+      expiry,
+      priorBalanceAtCycleStart: priorBalance,
       debitsInWindow,
       currentBalance: balance,
+      asOf,
     });
-
-    // Forfeited as at asOf: the cap-excess at open (prior balance over carryMax) PLUS the realised expiry
-    // lapse if the expiry date has arrived (≤ asOf). Before the expiry date passes, only the cap-excess is
-    // final; the expirable remainder is still available, not yet forfeited.
-    const capExcess = Math.max(0, Math.round((Math.max(priorBalance, 0) - carried) * 100) / 100);
-    const expiryPassed = carryForwardExpiryDate != null && carryForwardExpiryDate <= asOf;
-    const expiryForfeit = expiryPassed ? forfeitable : 0;
-    const forfeited = Math.round((capExcess + expiryForfeit) * 100) / 100;
-    // Once the expiry has passed, no carry remains available.
-    const carryForwardRemaining = expiryPassed ? 0 : unconsumedCarry;
 
     const i18n = type.i18n as Record<string, { name: string }> | null;
     return {

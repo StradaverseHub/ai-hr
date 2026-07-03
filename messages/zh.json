@@ -2816,7 +2816,16 @@
     "movementNet": "净变化",
     "exportChart": "导出图表",
     "sickNotConfigured": "该租户未配置病假类型。",
-    "nationalityFootnote": "国籍以公积金公民身份作为代理；未设置时默认为公民。"
+    "nationalityFootnote": "国籍以公积金公民身份作为代理；未设置时默认为公民。",
+    "carryForwardTitle": "结转与没收",
+    "carryForwardDesc": "结转到每个休假年度的年假天数、到期日期，以及被没收的天数——在年度/周期开启时（超出结转上限）以及到期时（未使用的结转天数过期）。",
+    "carryForwardYear": "休假年度",
+    "carryForwardCarried": "结转天数",
+    "carryForwardExpiryDate": "到期日期",
+    "carryForwardForfeitedOpen": "开启时没收",
+    "carryForwardForfeitedExpiry": "到期时没收",
+    "carryForwardReasonCap": "超出结转上限",
+    "carryForwardReasonExpiry": "因到期自动没收"
   },
   "payComponents": {
     "title": "薪资组件",

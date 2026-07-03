@@ -2816,7 +2816,16 @@
     "movementNet": "การเปลี่ยนแปลงสุทธิ",
     "exportChart": "ส่งออกแผนภูมิ",
     "sickNotConfigured": "ยังไม่ได้กำหนดประเภทการลาป่วยสำหรับผู้เช่ารายนี้",
-    "nationalityFootnote": "สัญชาติใช้สถานะพลเมือง EPF เป็นตัวแทน โดยมีค่าเริ่มต้นเป็นพลเมืองหากไม่ได้กำหนด"
+    "nationalityFootnote": "สัญชาติใช้สถานะพลเมือง EPF เป็นตัวแทน โดยมีค่าเริ่มต้นเป็นพลเมืองหากไม่ได้กำหนด",
+    "carryForwardTitle": "การยกยอด & การริบสิทธิ์",
+    "carryForwardDesc": "จำนวนวันลาพักร้อนที่ยกยอดไปยังแต่ละปีลา วันหมดอายุ และสิ่งที่ถูกริบ — เมื่อเปิดรอบปี/รอบ (เกินขีดจำกัดการยกยอด) และเมื่อหมดอายุ (ยอดยกที่ไม่ได้ใช้หมดอายุ)",
+    "carryForwardYear": "ปีลา",
+    "carryForwardCarried": "ยกยอด",
+    "carryForwardExpiryDate": "วันหมดอายุ",
+    "carryForwardForfeitedOpen": "ริบเมื่อเปิดรอบ",
+    "carryForwardForfeitedExpiry": "ริบเมื่อหมดอายุ",
+    "carryForwardReasonCap": "เกินขีดจำกัดการยกยอด",
+    "carryForwardReasonExpiry": "ริบสิทธิ์อัตโนมัติเนื่องจากหมดอายุ"
   },
   "payComponents": {
     "title": "องค์ประกอบเงินเดือน",
