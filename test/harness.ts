@@ -27,6 +27,9 @@ const ALL_TABLES = [
   // 0110 — leaking review rows across tests would make the partial-unique index throw spuriously
   // (order-dependent false-green/false-red). Must be truncated between tests.
   'employment_review',
+  // ADR-0069 — leave encashment: leaking a frozen snapshot across tests would make the partial unique
+  // index (employment_id, leave_type_id) WHERE status='frozen' throw spuriously.
+  'leave_encashment_policy', 'leave_encashment_snapshot',
 ];
 
 export async function migrateTestDb() {

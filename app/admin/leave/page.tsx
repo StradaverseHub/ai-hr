@@ -7,6 +7,7 @@ import { entitlement } from '@/localization/my/leave';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
+import { getEncashmentPolicies } from '@/core/leave-encashment';
 import {
   archiveLeaveTypeAction,
   createLeavePolicyAction,
@@ -16,6 +17,7 @@ import {
   openLeaveYearAction,
   runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
+  setLeaveEncashmentPolicyAction,
   createJobGradeAction,
   archiveJobGradeAction,
   updateLeavePolicyAction,
@@ -30,13 +32,15 @@ export default async function LeaveConfigPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants] = await Promise.all([
+  const [types, policies, companies, grades, adHocGrants, encashmentPolicies] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listLeavePolicies(s),
     listCompanies(s),
     listJobGrades(s),
     listAdHocLeaveGrants(s),
+    getEncashmentPolicies(s),
   ]);
+  const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
   const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select + the festive-grant card (reuse the page's load).
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
@@ -285,6 +289,43 @@ export default async function LeaveConfigPage({
             {t('addGrade')}
           </Button>
         </form>
+      </Card>
+
+      {/* ADR-0069: Leave Encashment Policy — one row per company. Eligible leave (Annual only) and the
+          rounding rule are fixed text (per the request), not editable controls. */}
+      <Card data-tour="leave-encashment">
+        <SectionHeader title={t('encashmentSectionTitle')} count={companies.length} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('encashmentHelp')}</p>
+        <ul className="divide-y divide-border">
+          {companies.map((c) => {
+            const pol = encashmentByCompany.get(c.id);
+            return (
+              <li key={c.id} className="px-4 py-3">
+                <form action={setLeaveEncashmentPolicyAction} className="flex flex-wrap items-center gap-4">
+                  <input type="hidden" name="companyId" value={c.id} />
+                  <span className="min-w-[10rem] flex-1 truncate text-sm font-medium text-foreground">
+                    {c.name}
+                  </span>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <input type="checkbox" name="enabled" defaultChecked={pol?.enabled ?? false} className="size-3.5" />
+                    {t('encashmentEnabled')}
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <input type="checkbox" name="autoFreeze" defaultChecked={pol?.autoFreeze ?? true} className="size-3.5" />
+                    {t('encashmentAutoFreeze')}
+                  </label>
+                  <Button type="submit" size="sm" variant="secondary">
+                    {t('encashmentSave')}
+                  </Button>
+                </form>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+          <p>{t('encashmentEligibleTypesFixed')}</p>
+          <p>{t('encashmentRoundingFixed')}</p>
+        </div>
       </Card>
 
       {/* ADR-0066: festive / one-off leave grant — hand N extra days to everyone in a company + leave type. */}

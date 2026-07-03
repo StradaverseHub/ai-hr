@@ -8,8 +8,9 @@ import { and, desc, eq } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { person, resignationRequest } from '../db/schema';
+import { employment, person, resignationRequest } from '../db/schema';
 import { assertCanDecide } from './approvals';
+import { freezeOnResignationApprovalTx } from './leave-encashment';
 import { terminateEmploymentTx } from './org';
 
 export class ResignationError extends Error {
@@ -109,6 +110,20 @@ export async function decideResignation(
         terminationType: 'voluntary',
         terminationReason: req.reason ?? 'Resignation',
       });
+
+      // ADR-0069: freeze + calculate Annual Leave encashment in the SAME tx. "As of resignation approval
+      // date" (the request's own wording) — i.e. today, when this decision is being recorded. Silent
+      // no-op when the company's policy is off/absent, autoFreeze is off, or the tenant has no ANNUAL
+      // leave type — a resignation approval must never fail because of this feature (ADR-0069 §7).
+      const [emp] = await tx.select({ companyId: employment.companyId }).from(employment).where(eq(employment.id, req.employmentId)).limit(1);
+      if (emp) {
+        await freezeOnResignationApprovalTx(tx, ctx, {
+          employmentId: req.employmentId,
+          companyId: emp.companyId,
+          resignationRequestId: req.id,
+          asOf: new Date().toISOString().slice(0, 10),
+        });
+      }
     }
 
     await tx

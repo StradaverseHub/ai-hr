@@ -463,7 +463,24 @@
           "female": "Perempuan",
           "undisclosed": "Tidak didedahkan"
         }
-      }
+      },
+      "encashmentTitle": "Pemvantaian cuti",
+      "encashmentBalance": "Baki mentah",
+      "encashmentAuto": "Angka automatik",
+      "encashmentEffective": "Angka berkuat kuasa",
+      "encashmentAsOf": "Dikira setakat",
+      "encashmentStatusFrozen": "Dibekukan",
+      "encashmentStatusUnfrozen": "Tidak dibekukan",
+      "encashmentOverridden": "Diatasi oleh HR",
+      "encashmentReasonLabel": "Sebab",
+      "encashmentReasonPlaceholder": "Mengapa ini diubah?",
+      "encashmentUnfreeze": "Nyahbeku",
+      "encashmentUnfreezeConfirmTitle": "Nyahbeku baki cuti ini?",
+      "encashmentUnfreezeConfirmDescription": "Ini membuka semula lejar cuti supaya pembetulan (cth. membatalkan tempahan) boleh dibuat. Laraskan untuk mengunci semula selepas itu.",
+      "encashmentUnfreezeConfirmLabel": "Nyahbeku",
+      "encashmentOverrideDaysLabel": "Hari yang dilaraskan",
+      "encashmentAdjust": "Laraskan & kunci semula",
+      "encashmentHint": "Angka berkuat kuasa (laras, jika ditetapkan, jika tidak angka automatik) adalah yang digunakan oleh panel pekerja meninggalkan Penggajian. Melaras akan mengunci semula baki; sebab wajib direkodkan pada kedua-dua tindakan."
     },
     "import": {
       "title": "Import pekerja",
@@ -610,7 +627,8 @@
       "cancellationTooLate": "Cuti untuk {date} tidak boleh dibatalkan lagi (ia telah bermula atau berlalu).",
       "cancelDateInvalid": "{date} bukan hari bekerja yang boleh dibatalkan dalam cuti ini.",
       "cancellationPeriodClosed": "{date} berada dalam tempoh gaji yang telah ditutup dan tidak boleh dibatalkan lagi.",
-      "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja."
+      "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja.",
+      "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -1552,7 +1570,10 @@
       "summaryHeadcount": "Bilangan pekerja",
       "consolidateTitle": "Satukan data",
       "scopedCaption": "Larian ini disasarkan kepada pekerja terpilih. Pra-isi kerja lebih masa, kadar syif, pinjaman dan zakat di bawah masih berlaku seluruh syarikat; baris di luar skop diabaikan semasa pemprosesan. Pra-isi tuntutan disasarkan dengan betul.",
-      "holidayWarning": "{country}/{state} {year}: hanya {loaded} daripada {required} cuti umum dimuatkan — pengiraan hari rehat/OT mungkin terjejas."
+      "holidayWarning": "{country}/{state} {year}: hanya {loaded} daripada {required} cuti umum dimuatkan — pengiraan hari rehat/OT mungkin terjejas.",
+      "encashmentFrozenBadge": "Dibekukan semasa kelulusan peletakan jawatan",
+      "encashmentOverriddenBadge": "Dibekukan (diatasi oleh HR)",
+      "encashmentFrozenAsOfTitle": "Dibekukan setakat {date}"
     },
     "transactions": {
       "title": "Transaksi",
@@ -2035,7 +2056,14 @@
       "payrollImpactHelp": "Modul cuti hanya menanda kesan semasa kelulusan; modul gaji mengira potongan sebenar.",
       "backdatingSectionTitle": "Cuti diundurkan tarikh",
       "backdatingLimitDaysLabel": "Had pengunduran tarikh (hari)",
-      "backdatingSectionHelp": "Berapa hari ke belakang dari hari ini pekerja boleh memohon jenis cuti ini. Biarkan kosong untuk tiada had. Pentadbir HR tidak sekali-kali disekat oleh had ini."
+      "backdatingSectionHelp": "Berapa hari ke belakang dari hari ini pekerja boleh memohon jenis cuti ini. Biarkan kosong untuk tiada had. Pentadbir HR tidak sekali-kali disekat oleh had ini.",
+      "encashmentSectionTitle": "Dasar Pemvantaian",
+      "encashmentHelp": "Apabila peletakan jawatan pekerja diluluskan, baki Cuti Tahunan yang tidak digunakan boleh dibekukan dan ditukar menjadi angka hari boleh-vantai untuk Penggajian. Modul ini hanya mengira dan membekukan hari cuti — Penggajian mengendalikan penukaran ringgit secara berasingan.",
+      "encashmentEnabled": "Diaktifkan",
+      "encashmentAutoFreeze": "Beku automatik apabila peletakan jawatan diluluskan",
+      "encashmentSave": "Simpan",
+      "encashmentEligibleTypesFixed": "Cuti yang layak: Cuti Tahunan sahaja.",
+      "encashmentRoundingFixed": "Pembundaran: kurang daripada 0.5 hari dibundarkan turun kepada 0; 0.5 hari atau lebih dibundarkan naik kepada hari penuh seterusnya. Angka ini tidak akan kurang daripada 0."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

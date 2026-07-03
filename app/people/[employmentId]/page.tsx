@@ -48,6 +48,8 @@ import { ReviewSection } from './review-section';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
+import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
+import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
 
 const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -77,14 +79,14 @@ export default async function EmployeePage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string; asOf?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string; asOf?: string; encashmentError?: string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('people.detail');
   const tp = await getTranslations('payrollPolicy');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from, cp38Error, asOf: spAsOf } = await searchParams;
+  const { error, from, cp38Error, asOf: spAsOf, encashmentError } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -134,6 +136,9 @@ export default async function EmployeePage({
   const componentCatalog = admin ? await listPayComponents(s) : [];
   // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data).
   const cp38Records = admin ? await listCp38(s, { employmentId }) : [];
+  // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
+  // (policy off, or the employment was terminated directly bypassing the resignation flow).
+  const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
@@ -445,6 +450,84 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('cp38Add')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('cp38Hint')}</p>
+        </Card>
+      )}
+
+      {/* ADR-0069 — Leave Encashment: admin-only card, shown once a resignation-approval freeze has
+          happened for this employment. Raw balance, auto figure, effective (override) figure, status,
+          calculated-as-of, and the post-LWD hint; Unfreeze/Adjust actions (mandatory reason, re-locks). */}
+      {admin && encashmentSnapshot && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={t('encashmentTitle')} />
+          {encashmentError && (
+            <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              {encashmentError}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-4 p-4 text-sm sm:grid-cols-4">
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentBalance')}</div>
+              <div className="font-medium tabular-nums">{encashmentSnapshot.balanceDays}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentAuto')}</div>
+              <div className="font-medium tabular-nums">{encashmentSnapshot.encashableDays}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentEffective')}</div>
+              <div className="font-medium tabular-nums">{encashmentSnapshot.days}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentAsOf')}</div>
+              <div className="font-medium">{encashmentSnapshot.calculatedAsOf}</div>
+            </div>
+          </div>
+          <div className="px-4 pb-2">
+            <Badge variant={encashmentSnapshot.status === 'frozen' ? 'success' : 'default'}>
+              {encashmentSnapshot.status === 'frozen' ? t('encashmentStatusFrozen') : t('encashmentStatusUnfrozen')}
+            </Badge>
+            {encashmentSnapshot.overrideDays != null && (
+              <span className="ml-2 text-xs text-muted-foreground">{t('encashmentOverridden')}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-4 border-t border-border p-4">
+            <form action={unfreezeEncashmentAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="employmentId" value={employmentId} />
+              <input type="hidden" name="snapshotId" value={encashmentSnapshot.id} />
+              <Field label={t('encashmentReasonLabel')}>
+                <input name="reason" required placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
+              </Field>
+              <ConfirmSubmit
+                size="sm"
+                variant="secondary"
+                title={t('encashmentUnfreezeConfirmTitle')}
+                description={t('encashmentUnfreezeConfirmDescription')}
+                confirmLabel={t('encashmentUnfreezeConfirmLabel')}
+              >
+                {t('encashmentUnfreeze')}
+              </ConfirmSubmit>
+            </form>
+            <form action={adjustEncashmentAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="employmentId" value={employmentId} />
+              <input type="hidden" name="snapshotId" value={encashmentSnapshot.id} />
+              <Field label={t('encashmentOverrideDaysLabel')}>
+                <input
+                  name="overrideDays"
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  required
+                  defaultValue={encashmentSnapshot.days}
+                  className={`${inputCls} w-24`}
+                />
+              </Field>
+              <Field label={t('encashmentReasonLabel')}>
+                <input name="reason" required placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
+              </Field>
+              <button className={btnPrimary}>{t('encashmentAdjust')}</button>
+            </form>
+          </div>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('encashmentHint')}</p>
         </Card>
       )}
 

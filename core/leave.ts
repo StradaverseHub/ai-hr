@@ -26,6 +26,7 @@ import {
   employment,
   leaveApprovalStep,
   leaveCancellationRequest,
+  leaveEncashmentSnapshot,
   leaveLedger,
   leavePolicy,
   leaveRequest,
@@ -37,6 +38,25 @@ import {
   person,
   reportingLine,
 } from '../db/schema';
+
+/** ADR-0069: the set of "employmentId|leaveTypeId" keys with an ACTIVE frozen encashment snapshot, for the
+ *  year-boundary sweeps (openLeaveYear, accrueEarnedLeave, expireCarriedLeave, grantAdHocLeave) to skip —
+ *  the DB trigger would reject the write anyway; skipping here avoids aborting the whole batch on one
+ *  frozen employee. Read-only, no events.append (CLAUDE.md skip rule). */
+async function frozenSnapshotKeySet(tx: Tx, empIds: string[], typeIds: string[]): Promise<Set<string>> {
+  if (empIds.length === 0 || typeIds.length === 0) return new Set();
+  const rows = await tx
+    .select({ employmentId: leaveEncashmentSnapshot.employmentId, leaveTypeId: leaveEncashmentSnapshot.leaveTypeId })
+    .from(leaveEncashmentSnapshot)
+    .where(
+      and(
+        inArray(leaveEncashmentSnapshot.employmentId, empIds),
+        inArray(leaveEncashmentSnapshot.leaveTypeId, typeIds),
+        eq(leaveEncashmentSnapshot.status, 'frozen'),
+      ),
+    );
+  return new Set(rows.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+}
 
 /** The engine default working-day roster (ISO weekday 1=Mon … 7=Sun) — Mon–Fri. Mirrors core/attendance.ts
  *  DEFAULTS.workingDays so leave classifies rest days the same way attendance does (audit H#3). */
@@ -865,6 +885,16 @@ export async function requestLeave(
       }
     }
     if (days <= 0) throw new LeaveNoDaysInRangeError();
+
+    // ADR-0069: a friendly UX pre-check — the DB trigger (guard_frozen_leave_balance) is the real
+    // enforcement at approval time, but failing fast here gives the employee a readable error immediately
+    // instead of only at approval. Import is deferred (function-scope) to avoid a load-time circular
+    // dependency: leave-encashment.ts never imports from leave.ts.
+    {
+      const { frozenSnapshotFor, LeaveBalanceFrozenError } = await import('./leave-encashment');
+      const frozen = await frozenSnapshotFor(tx, p.employmentId, p.leaveTypeId);
+      if (frozen) throw new LeaveBalanceFrozenError();
+    }
 
     // Doc-config: now that `days` is known, enforce the conditional document gate. `days` is fractional
     // (half-day / hourly), so use strict `>` against the integer config: mandatoryAfterDays:N means "more
@@ -2234,6 +2264,11 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       );
     const openedSet = new Set(already.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
 
+    // ADR-0069: skip any (employment, leave type) with an ACTIVE frozen encashment snapshot — the balance
+    // is locked, so this sweep must not touch it. The DB trigger would reject the write anyway; skipping
+    // here avoids aborting the whole batch on one frozen employee.
+    const frozenSet = await frozenSnapshotKeySet(tx, empIds, typeIds);
+
     // 2E (ADR-0041): active policies per type as of Jan 1, grouped so each employee resolves the policy
     // for their grade (resolveGradePolicy) — same resolution the hire grant uses.
     const policies = await tx
@@ -2275,6 +2310,10 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         const key = `${e.employmentId}|${t.id}`;
         if (openedSet.has(key)) {
           skipped += 1;
+          continue;
+        }
+        if (frozenSet.has(key)) {
+          skipped += 1; // ADR-0069: leave balance frozen for encashment
           continue;
         }
         const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId);
@@ -2633,6 +2672,9 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
       for (const r of adj) forfeited.add(`${r.employmentId}|${r.leaveTypeId}`);
     }
 
+    // ADR-0069: skip (employment, leave type) pairs with an ACTIVE frozen encashment snapshot.
+    const frozenSet = await frozenSnapshotKeySet(tx, empIds, earnedTypeIds);
+
     let granted = 0;
     let forfeits = 0;
     for (const e of emps) {
@@ -2651,6 +2693,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         if (!isEarnedMethod(pol?.method)) continue;
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
+        if (frozenSet.has(`${e.employmentId}|${typeId}`)) continue; // ADR-0069: balance frozen for encashment
         // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
         // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
         const carryKey = `${e.employmentId}|${typeId}`;
@@ -2817,10 +2860,14 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
         .filter((pol) => pol.validFrom <= yearOpen && (pol.validTo == null || pol.validTo > yearOpen))
         .map((pol) => ({ gradeId: pol.gradeId, companyId: pol.companyId, accrual: pol.accrual }));
 
+    // ADR-0069: skip (employment, ANNUAL type) pairs with an ACTIVE frozen encashment snapshot.
+    const frozenSet = await frozenSnapshotKeySet(tx, empIds, typeIds);
+
     let swept = 0;
     let forfeitedTotal = 0;
     for (const e of emps) {
       for (const t of annualTypes) {
+        if (frozenSet.has(`${e.employmentId}|${t.id}`)) continue; // ADR-0069: balance frozen for encashment
         // Sweep each candidate leave year Y from the back-compat boundary up to today whose expiry date has
         // arrived. Each year is independently reconstructed + idempotent on its own year-qualified date.
         for (let y = earliestYear; y <= todayYear; y++) {
@@ -3024,9 +3071,16 @@ export async function grantAdHocLeave(
       );
     const already = new Set(existing.map((r) => r.employmentId));
 
+    // ADR-0069: skip any target employment with an ACTIVE frozen encashment snapshot for this leave type —
+    // the DB trigger would reject the write anyway; skipping here avoids aborting the whole grant on one
+    // frozen employee.
+    const frozenSet =
+      targeted > 0 ? await frozenSnapshotKeySet(tx, targets.map((e) => e.employmentId), [p.leaveTypeId]) : new Set<string>();
+
     let granted = 0;
     for (const e of targets) {
       if (already.has(e.employmentId)) continue;
+      if (frozenSet.has(`${e.employmentId}|${p.leaveTypeId}`)) continue; // ADR-0069: balance frozen
       await tx.insert(leaveLedger).values({
         tenantId: ctx.tenantId,
         employmentId: e.employmentId,

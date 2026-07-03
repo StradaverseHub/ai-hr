@@ -5,6 +5,7 @@
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { toCsv } from '../lib/csv';
 import {
@@ -2133,6 +2134,13 @@ export type LeaverAdvisoryRow = {
   annualBalance: number;
   /** Suggested pay-in-lieu for unused annual leave at ORP (basic / 26 per day, EA 1955). */
   suggested: number;
+  /** ADR-0069: where annualBalance came from. 'frozen_snapshot' — a resignation-approval freeze exists,
+   *  so annualBalance/suggested derive from the LOCKED (or HR-overridden) day-count, not the live ledger.
+   *  'live_balance' — no snapshot (policy off, or the employment was terminated directly, bypassing the
+   *  resignation flow) — annualBalance is the live ledger sum, exactly as before this feature. */
+  encashmentSource: 'frozen_snapshot' | 'live_balance';
+  frozenAsOf?: string;
+  overridden?: boolean;
 };
 
 /**
@@ -2188,14 +2196,22 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
           .where(and(eq(leaveLedger.employmentId, l.employmentId), eq(leaveLedger.leaveTypeId, annual.id)));
         balance = Number(row?.bal ?? 0);
       }
+      // ADR-0069: a frozen encashment snapshot (resignation-approval freeze), when present, wins over the
+      // live ledger balance — that is the point of the feature (a locked/HR-adjusted figure instead of a
+      // number that can still drift). No snapshot (policy off, or a direct termination bypassing the
+      // resignation flow) falls back to the live balance exactly as before this feature.
+      const encashment = await encashableDaysForEmployment(tx, l.employmentId);
+      const effectiveBalance = encashment ? encashment.days : balance;
       const basic = Number(l.basic);
       out.push({
         employmentId: l.employmentId,
         name: l.name,
         terminatedOn: l.terminatedOn!,
         basic,
-        annualBalance: balance,
-        suggested: balance > 0 ? round2((basic / 26) * balance) : 0,
+        annualBalance: effectiveBalance,
+        suggested: effectiveBalance > 0 ? round2((basic / 26) * effectiveBalance) : 0,
+        encashmentSource: encashment ? 'frozen_snapshot' : 'live_balance',
+        ...(encashment ? { frozenAsOf: encashment.calculatedAsOf, overridden: encashment.overridden } : {}),
       });
     }
     return out;

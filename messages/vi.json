@@ -463,7 +463,24 @@
           "female": "Nữ",
           "undisclosed": "Không tiết lộ"
         }
-      }
+      },
+      "encashmentTitle": "Quy đổi phép năm",
+      "encashmentBalance": "Số dư gốc",
+      "encashmentAuto": "Số tự động",
+      "encashmentEffective": "Số có hiệu lực",
+      "encashmentAsOf": "Tính đến ngày",
+      "encashmentStatusFrozen": "Đã khóa",
+      "encashmentStatusUnfrozen": "Đã mở khóa",
+      "encashmentOverridden": "Được HR ghi đè",
+      "encashmentReasonLabel": "Lý do",
+      "encashmentReasonPlaceholder": "Tại sao thay đổi điều này?",
+      "encashmentUnfreeze": "Mở khóa",
+      "encashmentUnfreezeConfirmTitle": "Mở khóa số dư phép này?",
+      "encashmentUnfreezeConfirmDescription": "Thao tác này sẽ mở lại sổ cái phép để có thể thực hiện các điều chỉnh (ví dụ: hủy một đơn đã đặt). Điều chỉnh để khóa lại sau đó.",
+      "encashmentUnfreezeConfirmLabel": "Mở khóa",
+      "encashmentOverrideDaysLabel": "Số ngày đã điều chỉnh",
+      "encashmentAdjust": "Điều chỉnh & khóa lại",
+      "encashmentHint": "Con số có hiệu lực (giá trị ghi đè, nếu có, nếu không thì là số tự động) là con số mà bảng nhân viên nghỉ việc của bộ phận Tiền lương sử dụng. Điều chỉnh sẽ khóa lại số dư; lý do bắt buộc được ghi lại cho cả hai thao tác."
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -610,7 +627,8 @@
       "cancellationTooLate": "Không thể hủy nghỉ phép cho ngày {date} nữa (đã bắt đầu hoặc đã qua).",
       "cancelDateInvalid": "{date} không phải là ngày làm việc có thể hủy trong kỳ nghỉ này.",
       "cancellationPeriodClosed": "{date} thuộc kỳ lương đã đóng và không thể hủy nữa.",
-      "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc."
+      "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc.",
+      "balanceFrozenForEncashment": "Số dư phép này đã bị khóa để quy đổi sau khi đơn nghỉ việc được phê duyệt và không thể thay đổi. Vui lòng liên hệ bộ phận Nhân sự nếu bạn cho rằng đây là nhầm lẫn."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -1552,7 +1570,10 @@
       "summaryHeadcount": "Số lượng nhân viên",
       "consolidateTitle": "Tổng hợp dữ liệu",
       "scopedCaption": "Đợt này chỉ áp dụng cho các nhân viên đã chọn. Các mục điền sẵn cho làm thêm giờ, phụ cấp ca, khoản vay và zakat bên dưới vẫn áp dụng cho toàn công ty; các dòng ngoài phạm vi sẽ bị bỏ qua khi xử lý. Điền sẵn yêu cầu bồi hoàn đã được giới hạn phạm vi đúng.",
-      "holidayWarning": "{country}/{state} {year}: chỉ tải được {loaded}/{required} ngày lễ công cộng — các tính toán ngày nghỉ/làm thêm giờ có thể bị ảnh hưởng."
+      "holidayWarning": "{country}/{state} {year}: chỉ tải được {loaded}/{required} ngày lễ công cộng — các tính toán ngày nghỉ/làm thêm giờ có thể bị ảnh hưởng.",
+      "encashmentFrozenBadge": "Đã khóa khi đơn nghỉ việc được phê duyệt",
+      "encashmentOverriddenBadge": "Đã khóa (HR ghi đè)",
+      "encashmentFrozenAsOfTitle": "Đã khóa vào ngày {date}"
     },
     "transactions": {
       "title": "Giao dịch",
@@ -2035,7 +2056,14 @@
       "payrollImpactHelp": "Mô-đun nghỉ phép chỉ đánh dấu ảnh hưởng khi phê duyệt; mô-đun bảng lương tính khoản khấu trừ thực tế.",
       "backdatingSectionTitle": "Nghỉ phép đặt ngày lùi",
       "backdatingLimitDaysLabel": "Giới hạn đặt ngày lùi (ngày)",
-      "backdatingSectionHelp": "Nhân viên có thể nộp đơn xin loại nghỉ phép này lùi về trước bao nhiêu ngày kể từ hôm nay. Để trống nếu không giới hạn. Quản trị viên HR không bao giờ bị chặn bởi giới hạn này."
+      "backdatingSectionHelp": "Nhân viên có thể nộp đơn xin loại nghỉ phép này lùi về trước bao nhiêu ngày kể từ hôm nay. Để trống nếu không giới hạn. Quản trị viên HR không bao giờ bị chặn bởi giới hạn này.",
+      "encashmentSectionTitle": "Chính sách quy đổi phép năm",
+      "encashmentHelp": "Khi đơn xin nghỉ việc của nhân viên được phê duyệt, số ngày phép năm chưa sử dụng có thể được khóa lại và quy đổi thành số ngày có thể quy đổi tiền cho bộ phận Tiền lương. Mô-đun này chỉ tính toán và khóa số ngày phép — bộ phận Tiền lương sẽ xử lý việc quy đổi sang tiền riêng.",
+      "encashmentEnabled": "Đã bật",
+      "encashmentAutoFreeze": "Tự động khóa khi đơn nghỉ việc được phê duyệt",
+      "encashmentSave": "Lưu",
+      "encashmentEligibleTypesFixed": "Loại phép đủ điều kiện: Chỉ Phép năm.",
+      "encashmentRoundingFixed": "Làm tròn: dưới 0,5 ngày làm tròn xuống 0; từ 0,5 ngày trở lên làm tròn lên ngày tiếp theo. Con số này không bao giờ thấp hơn 0."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
