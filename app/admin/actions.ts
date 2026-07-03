@@ -56,6 +56,7 @@ import { setAttendancePolicy } from '@/core/attendance';
 import { createLocation, updateLocation, archiveLocation, restoreLocation } from '@/core/location';
 import { requireAdmin } from '@/lib/authz';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
+import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
 import { upsertCompanyBankProfile, removeCompanyBankProfile, type DisbursementBank } from '@/core/bank-profile';
 import { packFor } from '@/localization/registry';
@@ -847,6 +848,22 @@ export async function setToilPolicyAction(fd: FormData) {
     redirect(`${TOIL_POLICY}?warning=${encodeURIComponent(warning)}`);
   }
   ok(TOIL_POLICY);
+}
+
+// ADR-0069 — upsert one company's leave encashment policy (Company Leave Settings -> Encashment Policy).
+// Checkboxes ⇒ presence test (mirrors setToilPolicyAction).
+export async function setLeaveEncashmentPolicyAction(fd: FormData) {
+  const s = await getSession();
+  try {
+    await setEncashmentPolicy(s, {
+      companyId: String(fd.get('companyId') ?? ''),
+      enabled: fd.get('enabled') === 'on',
+      autoFreeze: fd.get('autoFreeze') === 'on',
+    });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
 }
 
 // ADR-0032 C7 — upsert one company's attendance policy (the no-roster default schedule).

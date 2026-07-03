@@ -152,7 +152,19 @@ export default async function BatchPage({
             <tbody className="divide-y divide-border">
               {leavers.map((l) => (
                 <tr key={l.employmentId}>
-                  <td className="px-4 py-2.5 font-medium">{l.name}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    {l.name}
+                    {/* ADR-0069: badge the source of annualBalance/suggested — a frozen resignation-
+                        approval snapshot wins over the live ledger balance when one exists. */}
+                    {l.encashmentSource === 'frozen_snapshot' && (
+                      <span
+                        className="ml-2 rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+                        title={l.frozenAsOf ? t('encashmentFrozenAsOfTitle', { date: l.frozenAsOf }) : undefined}
+                      >
+                        {l.overridden ? t('encashmentOverriddenBadge') : t('encashmentFrozenBadge')}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{l.terminatedOn}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{t('daysShort', { d: l.annualBalance })}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(l.basic / 26)}</td>

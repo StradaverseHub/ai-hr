@@ -2901,3 +2901,68 @@ export const feedbackAttachment = pgTable(
   },
   (t) => [index('feedback_attachment_feedback_idx').on(t.feedbackRequestId)],
 );
+
+// ── ADR-0069: Leave Encashment (leave-side only). Freeze + calculate + expose to payroll; NO salary math,
+// NO RM conversion, NO payroll logic here — payroll's existing encashmentDivisor (db/schema.ts) handles
+// the money conversion downstream. See core/leave-encashment.ts for the service and docs/adr/0069 for the
+// full design (freeze enforcement, rounding rule, direct-termination bypass). ──────────────────────────
+
+// One row per company (0086/toil_policy pattern). Eligible leave is Annual only (resolved by leaveType.code
+// = 'ANNUAL', same as leaverAdvisory) — no eligible-types column; the rounding rule is a code constant, not
+// configurable, so no rounding column either. Extension path when multi-type arrives: a nullable
+// leave_type_id column, exactly how leave_approval_policy (0086) grew from a single default row.
+export const leaveEncashmentPolicy = pgTable(
+  'leave_encashment_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    enabled: boolean('enabled').notNull().default(false),
+    autoFreeze: boolean('auto_freeze').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('leave_encashment_policy_company_uq').on(t.companyId)],
+);
+
+export const leaveEncashmentStatusEnum = pgEnum('leave_encashment_status', ['frozen', 'unfrozen']);
+
+// One row per (resignation, leave type) — currently always the tenant's ANNUAL type. balanceDays is the raw
+// signed ledger balance at the approval date; encashableDays is the auto-computed whole-day figure (clamped
+// >= 0, half-up rounding — see core/leave-encashment.ts computeEncashableDays). overrideDays/overrideReason
+// are HR's manual adjustment (supports 2dp / half-day increments); when set, override_days is the effective
+// figure everywhere. status flips to 'unfrozen' while HR corrects the ledger, then back to 'frozen' on
+// adjust (adjust re-locks — there is no separate "recalculate" verb). The partial unique index enforces "at
+// most one ACTIVE frozen snapshot per (employment, leave type)" — the freeze trigger (migration) reads it.
+export const leaveEncashmentSnapshot = pgTable(
+  'leave_encashment_snapshot',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    resignationRequestId: uuid('resignation_request_id')
+      .notNull()
+      .references(() => resignationRequest.id),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    balanceDays: numeric('balance_days', { precision: 6, scale: 2 }).notNull(),
+    encashableDays: numeric('encashable_days', { precision: 6, scale: 2 }).notNull(),
+    calculatedAsOf: date('calculated_as_of').notNull(),
+    status: leaveEncashmentStatusEnum('status').notNull().default('frozen'),
+    overrideDays: numeric('override_days', { precision: 6, scale: 2 }),
+    overrideReason: text('override_reason'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex('leave_encashment_snapshot_resignation_type_uq').on(t.resignationRequestId, t.leaveTypeId),
+    uniqueIndex('leave_encashment_snapshot_active_uq')
+      .on(t.employmentId, t.leaveTypeId)
+      .where(sql`status = 'frozen'`),
+  ],
+);

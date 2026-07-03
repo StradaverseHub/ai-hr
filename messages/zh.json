@@ -463,7 +463,24 @@
           "female": "女",
           "undisclosed": "未透露"
         }
-      }
+      },
+      "encashmentTitle": "年假折现",
+      "encashmentBalance": "原始余额",
+      "encashmentAuto": "自动计算数值",
+      "encashmentEffective": "生效数值",
+      "encashmentAsOf": "计算截止日期",
+      "encashmentStatusFrozen": "已冻结",
+      "encashmentStatusUnfrozen": "已解冻",
+      "encashmentOverridden": "已被人力资源部覆盖",
+      "encashmentReasonLabel": "原因",
+      "encashmentReasonPlaceholder": "为什么要更改此项？",
+      "encashmentUnfreeze": "解冻",
+      "encashmentUnfreezeConfirmTitle": "要解冻此假期余额吗？",
+      "encashmentUnfreezeConfirmDescription": "此操作将重新开放假期分类账，以便进行更正（例如取消预订）。之后请通过调整重新锁定。",
+      "encashmentUnfreezeConfirmLabel": "解冻",
+      "encashmentOverrideDaysLabel": "调整后的天数",
+      "encashmentAdjust": "调整并重新锁定",
+      "encashmentHint": "生效数值（如设置了覆盖值则为覆盖值，否则为自动计算数值）是薪资模块离职员工面板所使用的数值。调整操作会重新锁定余额；两项操作均会记录必填原因。"
     },
     "import": {
       "title": "导入员工",
@@ -610,7 +627,8 @@
       "cancellationTooLate": "{date} 的休假已无法取消（已开始或已过期）。",
       "cancelDateInvalid": "{date} 不是此休假中可取消的工作日。",
       "cancellationPeriodClosed": "{date} 属于已关闭的薪资期间，无法再取消。",
-      "noLeaveDaysInRange": "此申请没有请假日 — 日期为空或全部落在周末/公共假期。请选择至少包含一个工作日的日期范围。"
+      "noLeaveDaysInRange": "此申请没有请假日 — 日期为空或全部落在周末/公共假期。请选择至少包含一个工作日的日期范围。",
+      "balanceFrozenForEncashment": "此假期余额因离职申请已获批而被冻结以供折现，无法更改。如您认为这是错误，请联系人力资源部门。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -1560,7 +1578,10 @@
       "summaryHeadcount": "人数",
       "consolidateTitle": "汇总数据",
       "scopedCaption": "此运行仅针对所选员工。以下加班、轮班津贴、贷款和天课预填仍适用于全公司；处理时会忽略范围外的行。报销预填已正确限定范围。",
-      "holidayWarning": "{country}/{state} {year}：仅加载了 {required} 个公共假期中的 {loaded} 个 —— 休息日/加班计算可能受到影响。"
+      "holidayWarning": "{country}/{state} {year}：仅加载了 {required} 个公共假期中的 {loaded} 个 —— 休息日/加班计算可能受到影响。",
+      "encashmentFrozenBadge": "离职申请获批时冻结",
+      "encashmentOverriddenBadge": "已冻结（人力资源部覆盖）",
+      "encashmentFrozenAsOfTitle": "于 {date} 冻结"
     },
     "transactions": {
       "title": "交易",
@@ -2094,7 +2115,14 @@
       "halfDayDeductionFrozenNote": "仅适用于新申请 — 已提交或已批准的请假将保留提交时显示的扣除金额。",
       "halfDayDeductionOn": "当前已开启 — 扣除 1.0 天",
       "halfDayDeductionOff": "当前已关闭 — 扣除 0.5 天",
-      "halfDayDeductionToggleLabel": "将半天计为 1 全天"
+      "halfDayDeductionToggleLabel": "将半天计为 1 全天",
+      "encashmentSectionTitle": "年假折现政策",
+      "encashmentHelp": "当员工的离职申请获批后，未使用的年假余额可以被冻结并转换为可折现天数供薪资模块使用。本模块仅计算并冻结假期天数——薪资模块另行处理令吉金额的换算。",
+      "encashmentEnabled": "已启用",
+      "encashmentAutoFreeze": "离职申请获批后自动冻结",
+      "encashmentSave": "保存",
+      "encashmentEligibleTypesFixed": "合资格假期：仅限年假。",
+      "encashmentRoundingFixed": "四舍五入规则：不足0.5天的部分舍去为0；达到0.5天或以上的部分进位为下一个整天。该数值永远不会低于0。"
     },
     "holidays": {
       "pageTitle": "公共假期",

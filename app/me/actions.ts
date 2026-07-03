@@ -31,6 +31,7 @@ import { checkIn, checkOut, requestAttendanceCorrection } from '@/core/attendanc
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { submitResignation, withdrawResignation } from '@/core/offboarding';
+import { LeaveBalanceFrozenError } from '@/core/leave-encashment';
 import {
   createGoal,
   declinePeerFeedback,
@@ -183,6 +184,10 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   if (e instanceof LeaveCancellationDateInvalidError) return t('cancelDateInvalid', { date: e.date ?? '' });
   if (e instanceof LeaveCancellationPeriodClosedError) return t('cancellationPeriodClosed', { date: e.date ?? '' });
   if (e instanceof LeaveCancellationNotAllowedError) return t('cancellationNotAllowed');
+  // ADR-0069: the requestLeave pre-check throws this when the balance is frozen for encashment (resignation
+  // approved). The DB trigger's own message stays English (defense-in-depth, documented in ADR-0069) — only
+  // this friendly UX pre-check is translated.
+  if (e instanceof LeaveBalanceFrozenError) return t('balanceFrozenForEncashment');
   return (e as Error).message;
 }
 
