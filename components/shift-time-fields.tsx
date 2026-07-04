@@ -21,13 +21,28 @@ const hm = (mins: number) => `${Math.floor(mins / 60)}h ${String(mins % 60).padS
  * (core/attendance.ts shiftSpan/netScheduledMinutes), which the service re-derives on save. Multi-break is
  * STORAGE-ONLY this phase: deducted hours still use the combined total (see the hint under the form).
  */
-export function ShiftTimeFields({ defaultStart = '09:00', defaultEnd = '18:00' }: { defaultStart?: string; defaultEnd?: string }) {
+export function ShiftTimeFields({
+  defaultStart = '09:00',
+  defaultEnd = '18:00',
+  defaultBreaks = [],
+  defaultBreakMinutes = '60',
+  defaultOverride = '',
+}: {
+  defaultStart?: string;
+  defaultEnd?: string;
+  /** Edit form: seed the repeatable break-window rows (times as 'HH:MM'). Empty ⇒ single-scalar mode. */
+  defaultBreaks?: BreakRow[];
+  /** Edit form: seed the single break-minutes scalar shown when there are no break-window rows. */
+  defaultBreakMinutes?: string;
+  /** Edit form: seed the manual normal-minutes override (empty ⇒ auto). */
+  defaultOverride?: string;
+}) {
   const t = useTranslations('roster');
   const [start, setStart] = useState(defaultStart);
   const [end, setEnd] = useState(defaultEnd);
-  const [breaks, setBreaks] = useState<BreakRow[]>([]);
-  const [breakMinutes, setBreakMinutes] = useState('60');
-  const [override, setOverride] = useState('');
+  const [breaks, setBreaks] = useState<BreakRow[]>(defaultBreaks);
+  const [breakMinutes, setBreakMinutes] = useState(defaultBreakMinutes);
+  const [override, setOverride] = useState(defaultOverride);
 
   const validBreaks = breaks.filter((bp) => bp.start && bp.end && bp.end > bp.start);
   // end ≤ start ⇒ crosses midnight (mirrors shiftCrossesMidnight; times are HH:MM, lexicographic = chronological)

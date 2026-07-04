@@ -6,14 +6,8 @@ import { listShifts, rosterForRange, rosterVariance } from '@/core/roster';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
-import { ShiftTimeFields } from '@/components/shift-time-fields';
 import { ToilElectButton } from '@/components/toil-elect-button';
-import { archiveShiftAction, createShiftAction, duplicateShiftAction, generateRosterAction } from './actions';
-
-// ISO weekdays for the shift form's Mon–Sun Working/Rest toggle (same row pattern as the attendance-policy
-// working-days editor — app/admin/attendance/page.tsx — whose dayMon…daySun keys are reused here).
-const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
-const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
+import { generateRosterAction } from './actions';
 
 const DAY = 86_400_000;
 const mondayOf = (iso: string): string => {
@@ -33,7 +27,6 @@ export default async function RosterPage({
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('roster');
-  const tDay = await getTranslations('admin.attendancePolicy'); // reuse the existing dayMon…daySun keys
   const locale = await getLocale();
   const sp = await searchParams;
 
@@ -141,79 +134,18 @@ export default async function RosterPage({
         </div>
       </div>
 
+      {/* Configurable Multi-Shift Attendance Management: shift setup moved to Attendance Policy (admin-only).
+          This screen is now purely for assigning shifts onto the calendar; the hint points anyone who looks
+          for shift setup here to its new home. */}
       <Card>
-        <SectionHeader title={t('shifts')} count={shifts.length} />
-        <div className="space-y-3 px-4 py-3">
-          {shifts.length > 0 && (
-            <ul className="flex flex-wrap gap-2">
-              {shifts.map((sh) => (
-                <li key={sh.id} className="flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-xs">
-                  <span>
-                    {sh.code && <span className="font-medium">{sh.code} · </span>}
-                    {sh.name} · {sh.startTime.slice(0, 5)}–{sh.endTime.slice(0, 5)}
-                    {sh.crossesMidnight ? ' ⊕' : ''}
-                  </span>
-                  <form action={duplicateShiftAction}>
-                    <input type="hidden" name="shiftId" value={sh.id} />
-                    <input type="hidden" name="companyId" value={companyId} />
-                    <button className="text-muted-foreground hover:text-foreground" aria-label={t('duplicate')} title={t('duplicate')}>
-                      ⧉
-                    </button>
-                  </form>
-                  <form action={archiveShiftAction}>
-                    <input type="hidden" name="shiftId" value={sh.id} />
-                    <input type="hidden" name="companyId" value={companyId} />
-                    <button className="text-rose-600 hover:text-rose-700 dark:text-rose-400" aria-label={t('removeShift')}>
-                      ×
-                    </button>
-                  </form>
-                </li>
-              ))}
-            </ul>
-          )}
-          <form action={createShiftAction} className="flex flex-wrap items-end gap-2">
-            <input type="hidden" name="companyId" value={companyId} />
-            <input name="name" required placeholder={t('shiftName')} className={`${inputCls} w-40`} />
-            <input name="code" required placeholder={t('code')} className={`${inputCls} w-24`} aria-label={t('code')} />
-            <ShiftTimeFields />
-            <select name="differentialKind" defaultValue="" className={inputCls} aria-label={t('diffLabel')}>
-              <option value="">{t('diffNone')}</option>
-              <option value="percent">{t('diffPercent')}</option>
-              <option value="flat_hourly">{t('diffFlatHourly')}</option>
-              <option value="flat_per_shift">{t('diffPerShift')}</option>
-            </select>
-            <input name="differentialValue" type="number" min={0} step="0.01" placeholder={t('diffValue')} className={`${inputCls} w-24`} aria-label={t('diffValue')} />
-            {/* R7 Phase 2 — Mon–Sun Working/Rest toggle (same has-[:checked] row as the attendance-policy
-                working-days editor). Checked = working day; unchecked = rest. Default Mon–Fri. */}
-            <fieldset className="w-full">
-              <legend className="mb-1.5 text-sm font-medium text-foreground">
-                {t('weeklyPattern')}{' '}
-                <span className="font-normal text-muted-foreground">
-                  ({t('working')} / {t('rest')})
-                </span>
-              </legend>
-              <div className="flex flex-wrap gap-1.5">
-                {ISO_DAYS.map((d) => (
-                  <label
-                    key={d}
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary"
-                  >
-                    <input
-                      type="checkbox"
-                      name="weeklyPattern"
-                      value={d}
-                      defaultChecked={d <= 5}
-                      className="h-3.5 w-3.5 accent-primary"
-                    />
-                    {tDay(DAY_KEY[d])}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <button className={btnPrimary}>{t('addShift')}</button>
-          </form>
-          <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
-          <p className="text-xs text-muted-foreground">{t('multiBreakStorageHint')}</p>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">{t('manageShiftsHint')}</span>
+          <Link
+            href="/admin/attendance"
+            className="font-medium text-primary hover:underline"
+          >
+            {t('manageShiftsLink')} →
+          </Link>
         </div>
       </Card>
 

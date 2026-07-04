@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, assignShift, assignShiftBulk, clearRoster, createShift, duplicateShift, generateRosterFromTemplate, setRestDay, updateShift } from '@/core/roster';
+import { assignShift, assignShiftBulk, clearRoster, generateRosterFromTemplate, setRestDay } from '@/core/roster';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -38,8 +38,6 @@ export async function accrueToilAction(input: {
     return { ok: false, error: (e as Error).message };
   }
 }
-
-const normTime = (t: string) => (/^\d{2}:\d{2}$/.test(t) ? `${t}:00` : t);
 
 /** Apply a "brush" to one (employee, date) cell of the roster grid: a shift id, 'rest', or 'clear'.
  *  Returns the outcome to the client island (no navigation). */
@@ -81,86 +79,6 @@ export async function bulkAssignAction(input: {
   }
 }
 
-const DIFF_KINDS = ['percent', 'flat_hourly', 'flat_per_shift'] as const;
-
-/** The break-period rows post as one JSON array of { start, end } 'HH:MM' pairs (the client island's hidden
- *  field). Empty/absent/invalid JSON ⇒ null ⇒ the legacy single breakMinutes scalar is the fallback. */
-const parseBreakPeriods = (raw: string): { start: string; end: string }[] | null => {
-  if (!raw) return null;
-  try {
-    const arr: unknown = JSON.parse(raw);
-    if (!Array.isArray(arr)) return null;
-    const out = arr
-      .filter((x): x is { start: string; end: string } => !!x && typeof x === 'object' && 'start' in x && 'end' in x)
-      .map((x) => ({ start: normTime(String(x.start)), end: normTime(String(x.end)) }));
-    return out.length > 0 ? out : null;
-  } catch {
-    return null;
-  }
-};
-
-/** The fields createShift/updateShift share, read off the posted form. */
-function shiftFields(formData: FormData) {
-  const dk = String(formData.get('differentialKind') ?? '');
-  const dv = Number(formData.get('differentialValue') ?? 0);
-  const differential =
-    DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
-  const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
-  // R7 Phase 2 — the Mon–Sun Working/Rest checkbox row posts one `weeklyPattern` entry per checked day.
-  // None checked ⇒ null (no pattern; the shift cannot drive roster generation).
-  const weeklyPattern = formData
-    .getAll('weeklyPattern')
-    .map((v) => Number(v))
-    .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
-  return {
-    name: String(formData.get('name') ?? '').trim(),
-    code: String(formData.get('code') ?? '').trim(),
-    startTime: normTime(String(formData.get('startTime') ?? '')),
-    endTime: normTime(String(formData.get('endTime') ?? '')),
-    breakMinutes: Number(formData.get('breakMinutes') ?? 0),
-    breakPeriods: parseBreakPeriods(String(formData.get('breakPeriods') ?? '')),
-    normalMinutesOverride: overrideRaw === '' ? null : Number(overrideRaw),
-    weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
-    differential,
-  };
-}
-
-export async function createShiftAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  try {
-    await createShift(s, { companyId, ...shiftFields(formData) });
-  } catch (e) {
-    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/roster');
-  redirect(`/roster?companyId=${companyId}`);
-}
-
-export async function updateShiftAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  try {
-    await updateShift(s, { shiftId: String(formData.get('shiftId') ?? ''), ...shiftFields(formData) });
-  } catch (e) {
-    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/roster');
-  redirect(`/roster?companyId=${companyId}`);
-}
-
-export async function duplicateShiftAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  try {
-    await duplicateShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
-  } catch (e) {
-    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/roster');
-  redirect(`/roster?companyId=${companyId}`);
-}
-
 /** R7 Phase 2 — generate a roster window from a shift's weekly pattern: shift + scope (explicit employees
  *  or a whole department; department wins when both are posted) + date range → the thin generator over the
  *  existing bulk primitives. Success redirects to the window's first week with a summary banner. */
@@ -185,16 +103,4 @@ export async function generateRosterAction(formData: FormData) {
   redirect(
     `/roster?companyId=${companyId}&week=${from}&generated=${summary.employments}.${summary.workingRows}.${summary.restRows}`,
   );
-}
-
-export async function archiveShiftAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  try {
-    await archiveShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
-  } catch (e) {
-    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/roster');
-  redirect(`/roster?companyId=${companyId}`);
 }
