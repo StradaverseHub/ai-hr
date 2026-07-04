@@ -31,6 +31,10 @@ const ALL_TABLES = [
   // ADR-0069 — leave encashment: leaking a frozen snapshot across tests would make the partial unique
   // index (employment_id, leave_type_id) WHERE status='frozen' throw spuriously.
   'leave_encashment_policy', 'leave_encashment_snapshot',
+  // ADR-0071 — leave-approval rule matrix: these two were MISSING from ALL_TABLES, so resetDb() never
+  // truncated them between test files (a currently-live isolation bug). A rule/BU row from an earlier test
+  // file would silently survive and match (or throw the wildcard-unique index) in a later one.
+  'leave_approval_policy', 'business_unit',
 ];
 
 export async function migrateTestDb() {

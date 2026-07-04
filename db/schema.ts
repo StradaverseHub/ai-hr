@@ -872,10 +872,14 @@ export const leaveCancellationRequest = pgTable(
   (t) => [index('leave_cancellation_request_request_idx').on(t.leaveRequestId)],
 );
 
-// Wave 2 (ADR-0039 2B-2): the configurable approval chain. `levels` is an ordered array of level kinds
-// ('direct_manager' | 'hr_admin'). A null leave_type_id is the company default; a non-null one overrides
-// for that type. Resolved at request time (type-specific → default → built-in fallback). Catalog RLS:
-// readable tenant-wide (the requester reads it to generate steps), writable by company admins.
+// Wave 2 (ADR-0039 2B-2 + ADR-0071): the configurable approval chain, now a SCOPED RULE MATRIX. `levels` is
+// an ordered array of level kinds ('direct_manager' | 'hr_admin'). A row is a RULE scoped by (optionally)
+// leave_type, business_unit, department, position, grade, employment_type and a min/max leave-day range —
+// all nullable/wildcard. A row with EVERY scoping dimension null is the company default. Resolution is
+// "most-specific matching rule wins" (score = count of matched non-null dims), tie-broken deterministically
+// (narrower day-range → most-recently-created); no match falls through to the built-in [direct_manager,
+// hr_admin] chain. `active=false` soft-archives a rule (never hard delete). Catalog RLS: readable
+// tenant-wide (the requester reads it to generate steps), writable by company admins.
 export const leaveApprovalPolicy = pgTable(
   'leave_approval_policy',
   {
@@ -885,17 +889,28 @@ export const leaveApprovalPolicy = pgTable(
       .notNull()
       .references(() => company.id),
     leaveTypeId: uuid('leave_type_id').references(() => leaveType.id),
+    // ADR-0071 rule-matrix scoping dimensions — all nullable/wildcard (null = "matches any").
+    ruleName: text('rule_name'),
+    businessUnitId: uuid('business_unit_id').references(() => businessUnit.id),
+    departmentId: uuid('department_id').references(() => department.id),
+    positionId: uuid('position_id').references(() => position.id),
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
+    employmentType: employmentTypeEnum('employment_type'),
+    minDays: integer('min_days'),
+    maxDays: integer('max_days'),
+    active: boolean('active').notNull().default(true),
     levels: jsonb('levels').notNull().default(sql`'[]'::jsonb`),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
   },
   (t) => [
-    uniqueIndex('leave_approval_policy_company_default_uq')
-      .on(t.companyId)
-      .where(sql`leave_type_id is null`),
-    uniqueIndex('leave_approval_policy_company_type_uq')
-      .on(t.companyId, t.leaveTypeId)
-      .where(sql`leave_type_id is not null`),
+    // Only two FULLY-wildcard rows for the same company + leave-type are forbidden (the company default is a
+    // singleton). Partially-specific rules may coexist. Mirrors the migration's expression index.
+    uniqueIndex('leave_approval_policy_wildcard_uq')
+      .on(t.companyId, sql`coalesce(${t.leaveTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`)
+      .where(
+        sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`,
+      ),
   ],
 );
 
@@ -1950,6 +1965,38 @@ export const payrollRunTypeEnum = pgEnum('payroll_run_type', [
   'bonus',
   'adjustment',
 ]);
+
+// Configurable Payroll Cycle master (ADR-0069). An admin-maintained, COMPANY-scoped catalog of the
+// friendly cycle names the Payroll Process wizard's "Payroll Cycle" dropdown offers, mirroring the
+// leave_type / claim_type catalog pattern (single archived_at soft-delete, partial-unique on the live
+// name). Each row maps to ONE of the four fixed behavioural run_types (payroll_run_type) — this makes
+// the LABEL/LIST configurable without letting an admin invent new payroll math; the kernel still keys
+// every gating rule off run_type. `remarks` carries the free-text label an off_cycle preset needs
+// (e.g. "Advance Salary" / "Mid-Month"), snapshotted onto the batch at creation exactly as today.
+export const payrollCycle = pgTable(
+  'payroll_cycle',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    name: text('name').notNull(),
+    // The fixed behavioural run type this cycle maps to (NOT the label). The kernel gates on this.
+    runType: payrollRunTypeEnum('run_type').notNull(),
+    // Free-text label an off_cycle preset carries (e.g. 'Advance Salary'). Null for straight-through cycles.
+    remarks: text('remarks'),
+    // Dropdown ordering (ascending). Ties broken by name in the read layer.
+    sortOrder: integer('sort_order').notNull().default(0),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('payroll_cycle_company_idx').on(t.companyId),
+    // One live name per company (case-insensitive). Archived rows may share a name that was re-created.
+    uniqueIndex('payroll_cycle_company_name_uq').on(t.companyId, sql`lower(${t.name})`).where(sql`archived_at IS NULL`),
+  ],
+);
 
 // The statutory month (Act 4 s.6(7)) as a first-class entity owning one or more runs (payroll_batch).
 // The single monthly SOCSO/EIS contribution, the single monthly MTD computation, and the month-level

@@ -54,8 +54,10 @@ export {
   type ServiceBand,
 };
 import {
+  assignment,
   attendancePolicy,
   company,
+  department,
   employment,
   leaveApprovalStep,
   leaveCancellationRequest,
@@ -777,8 +779,9 @@ async function insertLeaveRequest(
         : {}),
     },
   });
-  // 2B-1/2B-2: if the company runs a multi-step chain, generate the instance approval steps.
-  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId);
+  // 2B-1/2B-2/ADR-0071: if the company runs a multi-step chain, generate the instance approval steps,
+  // resolving the scoped rule matrix against this request's day count (fractional for hourly/partial).
+  await generateApprovalSteps(tx, ctx.tenantId, row.id, v.employmentId, v.leaveTypeId, v.days);
   return { id: row.id };
 }
 
@@ -1475,13 +1478,19 @@ async function requestEmergencyLeave(
 }
 
 /** Generate the approval chain for a new request when its company opts into multi-step approval.
- *  2B-1 chain is fixed: direct manager (when one exists) then HR. 2B-2 will make this configurable. */
+ *  2B-1 chain is fixed: direct manager (when one exists) then HR. 2B-2 made it configurable per
+ *  company/leave-type; ADR-0071 makes it a SCOPED RULE MATRIX resolved against the requester's CURRENT
+ *  assignment attributes + day count. `days` is the request's leave-day count — the fractional
+ *  day-equivalent for hourly/partial requests (ADR-0071 1(h)), so an hourly request still participates in
+ *  day-range matching. The generated steps are snapshotted here at submission time and NEVER re-resolved
+ *  (ADR-0071 1(g)) — editing/archiving a rule later cannot change a pending request's routing. */
 async function generateApprovalSteps(
   tx: Tx,
   tenantId: string,
   leaveRequestId: string,
   employmentId: string,
   leaveTypeId: string,
+  days: number,
 ) {
   const [co] = await tx
     .select({ multi: company.leaveMultiApproval, companyId: company.id })
@@ -1507,8 +1516,41 @@ async function generateApprovalSteps(
     .limit(1);
   const hasManager = !!mgr;
 
-  // 2B-2 (ADR-0039): the chain is data — resolve the company's configured levels.
-  const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId);
+  // ADR-0071: gather the requester's OWN current-assignment attributes (validTo/supersededAt null — the
+  // same currentAssignment predicate used across the read layer) plus grade (on the employment row) and
+  // the department's business unit (nullable — a BU-scoped rule simply fails to match when unset, never
+  // errors). Scoped strictly to THIS employmentId — never a concurrent employment at another company
+  // (ADR-0071 1(f)).
+  const [attr] = await tx
+    .select({
+      gradeId: employment.gradeId,
+      departmentId: assignment.departmentId,
+      positionId: assignment.positionId,
+      employmentType: assignment.employmentType,
+      businessUnitId: department.businessUnitId,
+    })
+    .from(employment)
+    .leftJoin(
+      assignment,
+      and(
+        eq(assignment.employmentId, employment.id),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .leftJoin(department, eq(department.id, assignment.departmentId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+
+  // 2B-2 / ADR-0071: the chain is data — resolve the most-specific matching rule for this request.
+  const chain = await resolveApprovalChain(tx, co.companyId, leaveTypeId, {
+    gradeId: attr?.gradeId ?? null,
+    departmentId: attr?.departmentId ?? null,
+    positionId: attr?.positionId ?? null,
+    employmentType: attr?.employmentType ?? null,
+    businessUnitId: attr?.businessUnitId ?? null,
+    days,
+  });
   const kinds = chain.filter((k) => k !== 'direct_manager' || hasManager);
   if (kinds.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
