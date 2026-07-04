@@ -1293,6 +1293,7 @@
       "title": "เงินเดือน",
       "batches": "กระบวนการจ่ายเงินเดือน",
       "colPeriod": "งวด",
+      "colCycle": "รอบเงินเดือน",
       "colCompany": "บริษัท",
       "colEmployees": "พนักงาน",
       "colNetPay": "รายได้สุทธิ",

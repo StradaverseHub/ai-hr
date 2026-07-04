@@ -65,6 +65,7 @@ export default async function PayrollPage({
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
               <th className="px-4 py-2 font-medium">{t('colPeriod')}</th>
+              <th className="px-4 py-2 font-medium">{t('colCycle')}</th>
               <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
               <th className="px-4 py-2 font-medium">{t('colEmployees')}</th>
               <th className="px-4 py-2 font-medium">{t('colNetPay')}</th>
@@ -87,11 +88,13 @@ export default async function PayrollPage({
                     >
                       {b.payPeriod}
                     </Link>
-                    {b.runType !== 'regular' && (
-                      <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
-                        {t(`runType.${b.runType}`)}
-                      </span>
-                    )}
+                  </td>
+                  {/* Payroll Cycle: same pattern as the batch detail page — the runType label, plus the
+                      free-text remarks (e.g. Advance Salary / Mid-Month) when present, so wizard cycles
+                      stored under the generic 'off_cycle' bucket display distinctly. */}
+                  <td className="px-4 py-2.5 text-muted-foreground">
+                    {t(`runType.${b.runType}`)}
+                    {b.remarks ? ` — ${b.remarks}` : ''}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{b.company}</td>
                   <td className="px-4 py-2.5 tabular-nums">{b.employeeCount}</td>
@@ -111,7 +114,7 @@ export default async function PayrollPage({
             })}
             {batches.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   {activePeriod ? t('filteredEmpty') : t('empty')}
                 </td>
               </tr>

@@ -40,6 +40,32 @@ async function addBonusRun(regularBatchId: string) {
   return row.id;
 }
 
+/** Add an off-cycle run carrying a free-text `remarks` under an EXISTING regular run's pay_period.
+ *  Mirrors how the payroll wizard persists 'Advance Salary' / 'Mid-Month' cycles: runType='off_cycle'
+ *  with the real selection stored in remarks. Used to pin that listBatches surfaces remarks so the
+ *  listing's Payroll Cycle column can distinguish them from a generic off-cycle run. */
+async function addOffCycleRun(regularBatchId: string, remarks: string, runSeq: number) {
+  const [reg] = await owner.db
+    .select({ payPeriodId: schema.payrollBatch.payPeriodId, companyId: schema.payrollBatch.companyId, payPeriod: schema.payrollBatch.payPeriod })
+    .from(schema.payrollBatch)
+    .where(eq(schema.payrollBatch.id, regularBatchId));
+  const [row] = await owner.db
+    .insert(schema.payrollBatch)
+    .values({
+      tenantId: b.tenantId,
+      companyId: reg.companyId,
+      payPeriodId: reg.payPeriodId,
+      runSeq,
+      runType: 'off_cycle',
+      payPeriod: reg.payPeriod,
+      batchDate: `${reg.payPeriod}-28`,
+      status: 'draft',
+      remarks,
+    })
+    .returning({ id: schema.payrollBatch.id });
+  return row.id;
+}
+
 beforeAll(async () => {
   await migrateTestDb();
 });
@@ -98,5 +124,40 @@ describe('Build #10 — listBatches optional pay-period filter', () => {
     const justMay = await listBatches(a, [b.companyId], '2026-05');
     expect(justMay.length).toBeLessThan(all.length);
     expect(justMay.every((r) => all.some((x) => x.id === r.id))).toBe(true);
+  });
+});
+
+// "Separate Period and Payroll Cycle columns" — the listing renders payPeriod and the cycle label
+// (runType + remarks) in two distinct columns, matching the batch detail page. This pins that
+// listBatches returns payPeriod, runType, AND remarks as distinct fields, so wizard-created
+// Advance Salary / Mid-Month runs (stored as runType='off_cycle' with the real name in remarks)
+// display distinctly from a generic off-cycle run rather than collapsing to identical "Off-cycle".
+describe('listBatches — Period / Payroll Cycle column data', () => {
+  it('returns payPeriod, runType, and remarks as distinct fields', async () => {
+    const a = adminCtx(b);
+    const may = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-05' });
+    await addOffCycleRun(may.batchId, 'Advance Salary', 2);
+    await addOffCycleRun(may.batchId, 'Mid-Month', 3);
+
+    const rows = await listBatches(a, [b.companyId], '2026-05');
+    // regular (remarks null), off-cycle Advance Salary, off-cycle Mid-Month — ordered by runSeq.
+    expect(rows.map((r) => [r.runType, r.remarks])).toEqual([
+      ['regular', null],
+      ['off_cycle', 'Advance Salary'],
+      ['off_cycle', 'Mid-Month'],
+    ]);
+    // Period is carried separately (unchanged) so it renders in its own column.
+    expect(rows.every((r) => r.payPeriod === '2026-05')).toBe(true);
+    // The two off-cycle runs are distinguishable ONLY via remarks — the fidelity fix.
+    const offCycle = rows.filter((r) => r.runType === 'off_cycle');
+    expect(new Set(offCycle.map((r) => r.remarks)).size).toBe(2);
+  });
+
+  it('leaves remarks null for a plain run so the column falls back to the runType label alone', async () => {
+    const a = adminCtx(b);
+    await createBatch(a, { companyId: b.companyId, payPeriod: '2026-06' });
+    const [row] = await listBatches(a, [b.companyId], '2026-06');
+    expect(row.runType).toBe('regular');
+    expect(row.remarks).toBeNull();
   });
 });

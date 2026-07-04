@@ -1293,6 +1293,7 @@
       "title": "薪资",
       "batches": "薪资流程",
       "colPeriod": "周期",
+      "colCycle": "薪资类型",
       "colCompany": "公司",
       "colEmployees": "员工",
       "colNetPay": "实发工资",

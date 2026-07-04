@@ -1293,6 +1293,7 @@
       "title": "Gaji",
       "batches": "Proses Gaji",
       "colPeriod": "Tempoh",
+      "colCycle": "Kitaran Gaji",
       "colCompany": "Syarikat",
       "colEmployees": "Pekerja",
       "colNetPay": "Gaji bersih",

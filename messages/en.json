@@ -1293,6 +1293,7 @@
       "title": "Payroll",
       "batches": "Payroll Process",
       "colPeriod": "Period",
+      "colCycle": "Payroll Cycle",
       "colCompany": "Company",
       "colEmployees": "Employees",
       "colNetPay": "Net pay",

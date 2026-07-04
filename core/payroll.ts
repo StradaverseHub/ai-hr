@@ -2221,6 +2221,10 @@ export function listBatches(ctx: SessionContext, companyIds?: string[], payPerio
         employeeCount: payrollBatch.employeeCount,
         totals: payrollBatch.totals,
         batchDate: payrollBatch.batchDate,
+        // Build #10 follow-up: `remarks` carries the wizard's real cycle selection for advance/midmonth
+        // runs (both stored as runType='off_cycle'). Surfaced in the listing's "Payroll Cycle" column so
+        // they display distinctly, matching the batch detail page. Read-only; no schema/migration change.
+        remarks: payrollBatch.remarks,
       })
       .from(payrollBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))

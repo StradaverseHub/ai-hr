@@ -1293,6 +1293,7 @@
       "title": "Bảng lương",
       "batches": "Quy trình tính lương",
       "colPeriod": "Kỳ",
+      "colCycle": "Chu kỳ lương",
       "colCompany": "Công ty",
       "colEmployees": "Nhân viên",
       "colNetPay": "Lương thực lãnh",
