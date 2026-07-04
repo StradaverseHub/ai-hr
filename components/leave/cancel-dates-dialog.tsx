@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { XCircle } from 'lucide-react';
@@ -26,17 +26,25 @@ export function CancelDatesDialog({
   leaveRequestId,
   candidateDates,
   submitAction,
+  // Calendar entry point (ADR-0065): the dashboard passes a COMPACT icon trigger (a small XCircle button on the
+  // approved pill) instead of the default labelled "Cancel dates" outline button the Leave page uses. Optional
+  // — when omitted, the Leave-page behaviour is byte-identical (default labelled button, disabled-with-reason
+  // empty state). When a custom trigger is supplied, the caller has already gated eligibility, so we never
+  // render the disabled empty-state button for it (the calendar simply doesn't render the affordance instead).
+  trigger,
 }: {
   leaveRequestId: string;
   candidateDates: string[];
   submitAction: Action;
+  trigger?: ReactNode;
 }) {
   const t = useTranslations('leave');
   const [open, setOpen] = useState(false);
 
   // Empty/edge state (§5.4): approved + own but nothing currently cancellable (all past / closed period /
-  // already given back). Show the button DISABLED with a short reason — never a silent "—".
-  if (candidateDates.length === 0) {
+  // already given back). Show the button DISABLED with a short reason — never a silent "—". A custom trigger
+  // (calendar) is only rendered by an already-eligible caller, so it skips this branch.
+  if (candidateDates.length === 0 && !trigger) {
     return (
       <Button
         type="button"
@@ -55,10 +63,12 @@ export function CancelDatesDialog({
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <Button type="button" size="sm" variant="outline" className="gap-1.5">
-          <XCircle className="size-3.5" />
-          {t('cancelDatesButton')}
-        </Button>
+        {trigger ?? (
+          <Button type="button" size="sm" variant="outline" className="gap-1.5">
+            <XCircle className="size-3.5" />
+            {t('cancelDatesButton')}
+          </Button>
+        )}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />

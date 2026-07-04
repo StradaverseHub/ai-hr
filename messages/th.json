@@ -583,6 +583,7 @@
     "cancelDialogTitle": "ยกเลิกวันลา",
     "cancelDialogDismiss": "ปิด",
     "cancelReasonNothingLeft": "ไม่มีวันที่ให้ยกเลิกในการลานี้",
+    "cancelPillAffordanceLabel": "ยกเลิกวันที่จากการลานี้",
     "fieldDurationType": "ระยะเวลา",
     "duration": {
       "full_day": "เต็มวัน",

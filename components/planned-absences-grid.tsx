@@ -1,9 +1,10 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { CheckCircle2, ChevronDown, Clock } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { styleFor } from '@/components/planned-absences';
+import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 
 const MS_DAY = 86_400_000;
 const ms = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
@@ -37,6 +38,12 @@ export type GridLeave = {
   durationBadge?: string | null;
   /** ADR-0048: true for half/hourly leave — drawn as a partial (half-height, hatched) pill. */
   partial?: boolean;
+  /** ADR-0065 (calendar cancel entry point): true when the viewer can give back dates on THIS pill. Gated
+   *  server-side (own + approved + full_day + plain/split + no-pending + ≥1 candidate). */
+  cancelEligible?: boolean;
+  /** ADR-0065: the exact cancellable working dates (strictly-after-today, holiday-aware) for this pill's
+   *  underlying leave request — seeded into the reused CancelDatesDialog checkboxes. */
+  candidateCancelDates?: string[];
 };
 export type GridRow = { id: string; name: string; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
@@ -59,6 +66,10 @@ export function PlannedAbsencesGrid({
   employeesLabel,
   showAllLabel,
   showLessLabel,
+  // ADR-0065 (calendar cancel entry point): the SAME server action the Leave page posts. Optional — when
+  // absent the grid is read-only and no cancel affordance renders on any pill.
+  cancelAction,
+  cancelPillLabel,
 }: {
   rows: GridRow[];
   dayArr: GridDay[];
@@ -68,6 +79,8 @@ export function PlannedAbsencesGrid({
   employeesLabel: string;
   showAllLabel: string;
   showLessLabel: string;
+  cancelAction?: (fd: FormData) => void | Promise<void>;
+  cancelPillLabel?: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const lastIdx = days - 1;
@@ -149,6 +162,10 @@ export function PlannedAbsencesGrid({
                 // ADR-0048: a half/hourly leave covers only part of the day — draw it as a partial pill
                 // (shorter, hatched overlay, duration badge) so it never reads as a full day on the grid.
                 const partial = !!l.partial;
+                // ADR-0065 (calendar cancel entry point): render the reused CancelDatesDialog on an eligible
+                // pill, triggered by a compact XCircle icon-button appended inside the pill. Gated + candidate
+                // dates resolved server-side; the dialog + action are the SAME ones the Leave page uses.
+                const showCancel = !!cancelAction && !!l.cancelEligible;
                 return (
                   <div
                     key={l.id}
@@ -182,6 +199,23 @@ export function PlannedAbsencesGrid({
                       ) : span >= 3 ? (
                         <StatusIcon className="size-3.5 shrink-0 opacity-80" />
                       ) : null)}
+                    {showCancel && (
+                      <CancelDatesDialog
+                        leaveRequestId={l.id}
+                        candidateDates={l.candidateCancelDates ?? []}
+                        submitAction={cancelAction!}
+                        trigger={
+                          <button
+                            type="button"
+                            aria-label={cancelPillLabel}
+                            title={cancelPillLabel}
+                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                          >
+                            <XCircle className="size-3.5" />
+                          </button>
+                        }
+                      />
+                    )}
                   </div>
                 );
               })}

@@ -16,6 +16,7 @@ import { PlannedAbsencesGrid, type GridRow } from '@/components/planned-absences
 
 type Leave = {
   id: string;
+  employmentId: string; // ADR-0065: per-row employment so eligibility can't collide across concurrent jobs
   typeCode: string;
   typeName: string;
   status: string; // 'approved' | 'pending'
@@ -23,6 +24,12 @@ type Leave = {
   endDate: string;
   durationType?: string | null; // ADR-0048
   hours?: string | number | null; // ADR-0048
+  // Partial Leave Cancellation from the calendar (ADR-0065): the eligibility shape + candidate dates the read
+  // layer resolved, so the client grid can gate the same "Cancel dates" affordance the Leave page shows.
+  parentGroupId?: string | null;
+  isCancellationSplit?: boolean;
+  pendingCancellationId?: string | null;
+  candidateCancelDates?: string[];
 };
 type Row = { id: string; name: string; role: string | null; leaves: Leave[] };
 
@@ -49,14 +56,22 @@ export async function PlannedAbsences({
   days,
   todayIso,
   controls,
+  // Partial Leave Cancellation from the calendar (ADR-0065): the viewer's personId gates the "own leave only"
+  // rule, and cancelAction is the SAME server action the Leave page posts (requestLeaveCancellationAction).
+  // Both optional — when either is absent the calendar simply renders no cancel affordance (read-only mode).
+  viewerPersonId,
+  cancelAction,
 }: {
   rows: Row[];
   from: string;
   days: number;
   todayIso: string;
   controls?: ReactNode;
+  viewerPersonId?: string | null;
+  cancelAction?: (fd: FormData) => void | Promise<void>;
 }) {
   const t = await getTranslations('components.plannedAbsences');
+  const tLeave = await getTranslations('leave');
   const fromMs = ms(from);
   const dayArr = Array.from({ length: days }, (_, i) => {
     const d = new Date(fromMs + i * MS_DAY);
@@ -87,6 +102,22 @@ export async function PlannedAbsences({
     }
   };
 
+  // Partial Leave Cancellation from the calendar (ADR-0065): a pill is cancellable when the viewer is the
+  // subject (own leave — emp.id is the personId), the row is approved + full_day, it is a plain request OR a
+  // cancellation-split survivor (parentGroupId null OR isCancellationSplit), no cancellation is already pending
+  // on it, and the read layer resolved ≥1 candidate date. This mirrors the Leave page gate (app/leave/page.tsx
+  // :264-269) exactly so a date never looks cancellable here but is rejected on submit (or vice-versa).
+  const canOfferCancel = !!cancelAction;
+  const cancelEligible = (personId: string, l: Leave): boolean =>
+    canOfferCancel &&
+    viewerPersonId != null &&
+    personId === viewerPersonId &&
+    l.status === 'approved' &&
+    l.durationType === 'full_day' &&
+    (l.parentGroupId == null || !!l.isCancellationSplit) &&
+    !l.pendingCancellationId &&
+    (l.candidateCancelDates?.length ?? 0) > 0;
+
   // Translate per-pill titles + status labels server-side so the client grid stays i18n-free.
   const gridRows: GridRow[] = rows.map((emp) => ({
     id: emp.id,
@@ -103,6 +134,9 @@ export async function PlannedAbsences({
       durationBadge: durationBadge(l.durationType, l.hours),
       partial: l.durationType != null && l.durationType !== 'full_day',
       title: t('pillTitle', { type: l.typeName, start: l.startDate, end: l.endDate, status: l.status }),
+      // Cancel affordance: only the fields the client grid needs to render CancelDatesDialog for THIS pill.
+      cancelEligible: cancelEligible(emp.id, l),
+      candidateCancelDates: cancelEligible(emp.id, l) ? (l.candidateCancelDates ?? []) : [],
     })),
   }));
 
@@ -141,6 +175,8 @@ export async function PlannedAbsences({
           employeesLabel={t('employees')}
           showAllLabel={t('showAll', { count: rows.length })}
           showLessLabel={t('showLess')}
+          cancelAction={cancelAction}
+          cancelPillLabel={tLeave('cancelPillAffordanceLabel')}
         />
       )}
     </Card>

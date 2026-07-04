@@ -12,9 +12,11 @@ import {
   recentHires,
   upcomingHolidays,
 } from '@/core/read';
+import { todayInKualaLumpur } from '@/core/leave';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { TimelineNav } from '@/components/timeline-nav';
+import { requestLeaveCancellationAction } from '@/app/leave/actions';
 import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
 
 const rm = (n: unknown) =>
@@ -119,7 +121,9 @@ export default async function DashboardPage({
     recentActivity(s, 8),
     listCompanies(s),
     groupBreakdown(s),
-    plannedAbsences(s, scopeIds, { from: absFrom, to: absTo }),
+    // Partial Leave Cancellation from the calendar (ADR-0065): pass MYT "today" so each approved row's
+    // cancellable candidate dates match the Leave page / service cut-off exactly (strictly-after-MYT).
+    plannedAbsences(s, scopeIds, { from: absFrom, to: absTo }, todayInKualaLumpur()),
     recentHires(s, scopeIds, { since: since60, limit: 5 }),
     upcomingHolidays(s, { from: todayIso, limit: 5 }),
   ]);
@@ -161,6 +165,10 @@ export default async function DashboardPage({
         days={ABS_DAYS}
         todayIso={todayIso}
         controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
+        // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
+        // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
+        viewerPersonId={s.personId}
+        cancelAction={requestLeaveCancellationAction}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

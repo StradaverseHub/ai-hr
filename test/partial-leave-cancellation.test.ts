@@ -849,3 +849,201 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
     expect(att?.fileName).toBe('mc.pdf');
   });
 });
+
+// ═══════════ Calendar cancel entry point (ADR-0065) — plannedAbsences projection + grid gate ═══════════
+//
+// The Leave page already carries the "Cancel dates" button; the dashboard Planned Absences calendar did not.
+// This adds the same doorway, reusing the same dialog + requestLeaveCancellationAction. These tests cover the
+// only genuinely-new code paths: (1) plannedAbsences now surfaces the per-row eligibility fields + candidate
+// dates keyed to each leave's OWN employment (no collision across concurrent jobs), and (2) the grid's click
+// gate + the fields it posts (leaveRequestId=l.id, cancelDate[]=candidateCancelDates) agree exactly with what
+// the Leave page (listLeaveRequests) offers — so a date can never look cancellable on the calendar but be
+// rejected on submit, or vice-versa. `today` is passed explicitly (MYT) mirroring app/page.tsx.
+
+/** The client grid's exact per-pill eligibility gate (mirrors components/planned-absences.tsx). A pill is a
+ *  cancel affordance when the viewer is the subject, the row is approved + full_day + plain-or-split, no
+ *  cancellation is already pending, and ≥1 candidate date exists. Returns the fields a click would post. */
+type CalLeave = {
+  id: string;
+  employmentId: string;
+  status: string;
+  durationType?: string | null;
+  parentGroupId?: string | null;
+  isCancellationSplit?: boolean;
+  pendingCancellationId?: string | null;
+  candidateCancelDates?: string[];
+};
+function gridCancelGate(viewerPersonId: string | null, rowPersonId: string, l: CalLeave) {
+  const eligible =
+    viewerPersonId != null &&
+    rowPersonId === viewerPersonId &&
+    l.status === 'approved' &&
+    l.durationType === 'full_day' &&
+    (l.parentGroupId == null || !!l.isCancellationSplit) &&
+    !l.pendingCancellationId &&
+    (l.candidateCancelDates?.length ?? 0) > 0;
+  return { eligible, leaveRequestId: l.id, cancelDates: eligible ? (l.candidateCancelDates ?? []) : [] };
+}
+
+/** Find the (person) row + the (leave) pill for a given underlying leave request id in a plannedAbsences read. */
+async function calRowsForSubject(today: string) {
+  const pa = await plannedAbsences(adminCtx(b), [b.companyId], { from: '2026-08-01', to: '2026-08-31' }, today);
+  const mine = pa.find((p) => p.id === subject.personId)!;
+  return { pa, mine };
+}
+
+describe('Calendar cancel entry point — plannedAbsences eligibility projection', () => {
+  it('surfaces candidate dates + eligibility fields matching listLeaveRequests, and the grid gate agrees', async () => {
+    const reqId = await approvedThreeDay(); // 10–12 Aug, plain approved full-day
+    const today = '2026-08-01';
+
+    // Read-layer parity: the calendar's candidate dates equal the Leave page's (workingDates strictly-after-today).
+    const listRow = (await listLeaveRequests(subjectCtx, [b.companyId])).find((r) => r.id === reqId)!;
+    const listCandidates = (listRow.workingDates ?? []).filter((d) => d > today);
+    expect(listCandidates).toEqual(['2026-08-10', '2026-08-11', '2026-08-12']);
+
+    const { mine } = await calRowsForSubject(today);
+    const pill = (mine.leaves as CalLeave[]).find((l) => l.id === reqId)!;
+    expect(pill.candidateCancelDates).toEqual(listCandidates);
+    expect(pill.isCancellationSplit).toBe(false);
+    expect(pill.parentGroupId).toBeNull();
+    expect(pill.pendingCancellationId).toBeNull();
+    expect(pill.employmentId).toBe(subject.employmentId);
+
+    // The grid gate: the subject sees an eligible affordance; a NON-subject viewer never does; and the fields a
+    // click posts are exactly (leaveRequestId=reqId, cancelDate[]=the same candidate dates the dialog lists).
+    const asSubject = gridCancelGate(subject.personId, mine.id, pill);
+    expect(asSubject.eligible).toBe(true);
+    expect(asSubject.leaveRequestId).toBe(reqId);
+    expect(asSubject.cancelDates).toEqual(listCandidates);
+    expect(gridCancelGate(manager.personId, mine.id, pill).eligible).toBe(false);
+  });
+
+  it('suppresses the affordance once a cancellation is pending on the row (mirrors the Leave page pill)', async () => {
+    const reqId = await approvedThreeDay();
+    const today = '2026-08-01';
+    // Submit (but do not decide) a give-back → the row now has a pending cancellation.
+    await requestLeaveCancellation(subjectCtx, { leaveRequestId: reqId, cancelDates: ['2026-08-11'], today });
+
+    const { mine } = await calRowsForSubject(today);
+    const pill = (mine.leaves as CalLeave[]).find((l) => l.id === reqId)!;
+    expect(pill.pendingCancellationId).not.toBeNull();
+    // Candidate dates suppressed (eligibleShape excludes a pending row) → grid gate is not eligible.
+    expect(pill.candidateCancelDates).toEqual([]);
+    expect(gridCancelGate(subject.personId, mine.id, pill).eligible).toBe(false);
+  });
+
+  it('offers no affordance when `today` is omitted (read-only calendar) even on an eligible row', async () => {
+    const reqId = await approvedThreeDay();
+    // No `today` → candidateCancelDates is [] for every row, so the grid renders no cancel affordance.
+    const pa = await plannedAbsences(adminCtx(b), [b.companyId], { from: '2026-08-01', to: '2026-08-31' });
+    const mine = pa.find((p) => p.id === subject.personId)!;
+    const pill = (mine.leaves as CalLeave[]).find((l) => l.id === reqId)!;
+    expect(pill.candidateCancelDates).toEqual([]);
+    expect(gridCancelGate(subject.personId, mine.id, pill).eligible).toBe(false);
+  });
+});
+
+describe('Calendar cancel entry point — concurrent employments do not collide', () => {
+  it('each concurrent job carries its OWN eligibility + candidate dates on the merged person row', async () => {
+    const today = '2026-08-01';
+    // Employment #1 (the seeded `subject`): a plain approved 10–12 Aug leave (eligible).
+    const req1 = await approvedThreeDay();
+
+    // Employment #2: hire the SAME person into a second concurrent employment, grant + approve a DIFFERENT leave
+    // (17–18 Aug), then submit-but-don't-decide a cancellation so job #2's row is 'pending cancellation'.
+    const emp2 = await hireEmployee(adminCtx(b), {
+      person: { id: subject.personId },
+      companyId: b.companyId,
+      departmentId: b.deptB,
+      employmentType: 'full_time',
+      hiredOn: '2024-06-01',
+    });
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: emp2.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'accrual',
+      days: '20.00',
+      effectiveOn: '2026-01-01',
+    });
+    const res2 = await requestLeave(subjectCtx, {
+      employmentId: emp2.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-17',
+      endDate: '2026-08-18',
+    });
+    await decideLeave(adminCtx(b), { leaveRequestId: res2.leaveRequestId, decision: 'approved' });
+    await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res2.leaveRequestId,
+      cancelDates: ['2026-08-17'],
+      today,
+    });
+
+    // plannedAbsences merges BOTH employments' leaves onto ONE person row.
+    const { mine } = await calRowsForSubject(today);
+    const leaves = mine.leaves as CalLeave[];
+    const pill1 = leaves.find((l) => l.id === req1)!;
+    const pill2 = leaves.find((l) => l.id === res2.leaveRequestId)!;
+
+    // Each pill keeps its OWN employmentId — the merge does not smear one job's employment onto the other.
+    expect(pill1.employmentId).toBe(subject.employmentId);
+    expect(pill2.employmentId).toBe(emp2.employmentId);
+
+    // Job #1 is still cleanly cancellable; job #2's pending cancellation is scoped to ONLY job #2 (no bleed).
+    expect(pill1.pendingCancellationId).toBeNull();
+    expect(pill1.candidateCancelDates).toEqual(['2026-08-10', '2026-08-11', '2026-08-12']);
+    expect(gridCancelGate(subject.personId, mine.id, pill1).eligible).toBe(true);
+
+    expect(pill2.pendingCancellationId).not.toBeNull();
+    expect(pill2.candidateCancelDates).toEqual([]);
+    expect(gridCancelGate(subject.personId, mine.id, pill2).eligible).toBe(false);
+  });
+});
+
+describe('Calendar cancel entry point — per-date-approval split co-occurs with cancellation-eligibility', () => {
+  it('a per-date-approved (all-approved) full_day request stays cancellable from the calendar; every expanded pill posts the SAME leaveRequestId + candidate dates', async () => {
+    // LANDMINE (plan §INTERACTION): a per-date-approval request (ADR-0068) IS a full_day request (approvedLeaveDates
+    // /decideLeaveDate gate on durationType==='full_day'), so it CAN be BOTH split into multiple calendar pills
+    // (one per contiguous approved run) AND cancellation-eligible. plannedAbsences rewrites start/end per run but
+    // seeds every expanded pill with the SAME candidate dates keyed off the underlying leaveRequest.id — so the
+    // click attaches the dialog to the one request id regardless of which pill is clicked. Assert that here.
+    await owner.db
+      .update(schema.leaveType)
+      .set({ counting: 'working_days', perDateApproval: true })
+      .where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    const today = '2026-08-01';
+    const res = await requestLeave(subjectCtx, {
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+    expect(res.parentGroupId).toBeNull(); // single row (ADR-0068), full_day by construction
+    // Reject the MIDDLE date so the approved dates are 10 + 12 → TWO non-contiguous pills from one request.
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-10', decision: 'approved' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-11', decision: 'rejected', rejectReason: 'no' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: '2026-08-12', decision: 'approved' });
+
+    const { mine } = await calRowsForSubject(today);
+    const pills = (mine.leaves as CalLeave[]).filter((l) => l.id === res.leaveRequestId);
+    // Two expanded pills (10 Aug run + 12 Aug run), both from the SAME underlying request id.
+    expect(pills.length).toBe(2);
+    for (const pill of pills) {
+      const gate = gridCancelGate(subject.personId, mine.id, pill);
+      expect(gate.eligible).toBe(true);
+      expect(gate.leaveRequestId).toBe(res.leaveRequestId);
+      // Candidate dates = only the APPROVED working dates strictly-after-today (the interior-rejected 11 Aug is
+      // excluded), identical on both pills — so clicking either offers the same tick-boxes.
+      expect(gate.cancelDates).toEqual(['2026-08-10', '2026-08-12']);
+    }
+
+    // And the service accepts a give-back posted with those exact fields (parity: calendar offer == service accept).
+    const ok = await requestLeaveCancellation(subjectCtx, {
+      leaveRequestId: res.leaveRequestId,
+      cancelDates: ['2026-08-12'],
+      today,
+    });
+    expect(ok.requestedDays).toBe(1);
+  });
+});

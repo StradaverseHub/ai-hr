@@ -583,6 +583,7 @@
     "cancelDialogTitle": "Batal tarikh cuti",
     "cancelDialogDismiss": "Tutup",
     "cancelReasonNothingLeft": "Tiada tarikh yang boleh dibatalkan pada cuti ini.",
+    "cancelPillAffordanceLabel": "Batal tarikh daripada cuti ini",
     "fieldDurationType": "Tempoh",
     "duration": {
       "full_day": "Sehari penuh",

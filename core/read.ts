@@ -589,11 +589,17 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
 }
 
 /** Planned-absences timeline: every active employee in scope, each with their approved +
- *  pending leave overlapping the [from, to] window. Powers the dashboard hero. */
+ *  pending leave overlapping the [from, to] window. Powers the dashboard hero.
+ *
+ *  Partial Leave Cancellation from the calendar (ADR-0065): pass `today` (tenant-local MYT, from the caller —
+ *  keeps this a pure read) to seed each approved row's cancellable candidate dates (real working dates strictly
+ *  after today), so the dashboard can offer the SAME "Cancel dates" affordance the Leave page does. Omitting
+ *  `today` yields no candidate dates (candidateCancelDates=[]) — the affordance simply never renders. */
 export function plannedAbsences(
   ctx: SessionContext,
   companyIds: string[] | undefined,
   range: { from: string; to: string },
+  today?: string,
 ) {
   return withTenant(ctx, async (tx) => {
     const emps = await tx
@@ -639,6 +645,16 @@ export function plannedAbsences(
         hours: leaveRequest.hours,
         // Emergency Leave (0106): the shared id linking an EL submission's children. NULL for ordinary rows.
         parentGroupId: leaveRequest.parentGroupId,
+        // Partial Leave Cancellation from the calendar (ADR-0065): the same eligibility fields listLeaveRequests
+        // surfaces, so the dashboard calendar can gate a "Cancel dates" affordance identically to the Leave page.
+        // These are FRESH, independent lookups modelled on listLeaveRequests (read.ts:460-469) — deliberately NOT
+        // folded into the ADR-0068 per-date-approval leaveRequestDate expansion below (that join is a different
+        // feature). pendingCancellationId: an open give-back request already on this row (suppress a 2nd click).
+        pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+        // isCancellationSplit: TRUE when this row is a SURVIVOR of a prior cancellation split (carries a
+        // parent_group_id AND a sibling in the group is 'cancelled') — still cancellable; a genuine EL / per-date
+        // child (parent group with NO 'cancelled' sibling) never matches.
+        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -654,7 +670,7 @@ export function plannedAbsences(
       )
       .orderBy(leaveRequest.startDate);
 
-    type Leave = (typeof leaves)[number];
+    type Leave = (typeof leaves)[number] & { candidateCancelDates: string[] };
 
     // ADR-0068 §4A: a per-date-approval request is now a single row whose interior dates may be rejected.
     // For APPROVED such requests, render ONLY the approved dates (as contiguous segments), not the raw span —
@@ -681,6 +697,46 @@ export function plannedAbsences(
         else approvedDatesByReq.set(dr.leaveRequestId, [dr.leaveDate]);
       }
     }
+
+    // Partial Leave Cancellation from the calendar (ADR-0065): each approved row carries the exact cancellable
+    // candidate dates — its REAL working dates (roster + holiday aware, resolved via the SAME workingDatesForSpan
+    // the service validates against) strictly after `today` (MYT), AND — for a per-date-approval request — only
+    // the interior dates that were actually APPROVED (mirrors requestLeaveCancellation core/leave.ts:2115-2118,
+    // so an interior-REJECTED date never looks cancellable on the calendar but is rejected on submit). Computed
+    // ONCE per underlying leaveRequest.id off the ORIGINAL [startDate, endDate] (BEFORE the per-date expansion
+    // rewrites start/end per run), so every expanded pill from one request is seeded with the identical list —
+    // the CancelDatesDialog keys off leaveRequest.id, not the run. Eligible shape mirrors listLeaveRequests:
+    // approved + full_day + (plain request OR cancellation-split survivor) + no pending cancellation. Others
+    // (and, when `today` is omitted, all rows) get []. The service still re-validates every posted date.
+    const candidateByReq = new Map<string, string[]>();
+    if (today) {
+      await Promise.all(
+        leaves.map(async (l) => {
+          if (candidateByReq.has(l.id)) return; // one leaveRequest.id ⇒ one lookup
+          const eligibleShape =
+            l.status === 'approved' &&
+            l.durationType === 'full_day' &&
+            (l.parentGroupId == null || l.isCancellationSplit) &&
+            !l.pendingCancellationId;
+          if (!eligibleShape) {
+            candidateByReq.set(l.id, []);
+            return;
+          }
+          let working = await workingDatesForSpan(tx, l.employmentId, l.startDate, l.endDate);
+          // Per-date-approval request (has date rows): restrict to the APPROVED interior dates only.
+          if (hasDateRows.has(l.id)) {
+            const approvedSet = new Set(approvedDatesByReq.get(l.id) ?? []);
+            working = working.filter((d) => approvedSet.has(d));
+          }
+          candidateByReq.set(
+            l.id,
+            working.filter((d) => d > today),
+          );
+        }),
+      );
+    }
+    const candidatesFor = (id: string): string[] => candidateByReq.get(id) ?? [];
+
     // Split an ordered list of ISO dates into maximal contiguous (calendar-adjacent) runs.
     const contiguousRuns = (dates: string[]): { from: string; to: string }[] => {
       const sorted = [...dates].sort();
@@ -695,16 +751,17 @@ export function plannedAbsences(
     };
     const expandedLeaves: Leave[] = [];
     for (const l of leaves) {
+      const candidateCancelDates = candidatesFor(l.id);
       // A per-date request that is APPROVED with per-date rows → emit one leave per contiguous approved run.
       if (hasDateRows.has(l.id) && l.status === 'approved') {
         const runs = contiguousRuns(approvedDatesByReq.get(l.id) ?? []);
         for (const r of runs) {
-          expandedLeaves.push({ ...l, startDate: r.from, endDate: r.to });
+          expandedLeaves.push({ ...l, startDate: r.from, endDate: r.to, candidateCancelDates });
         }
         continue;
       }
       // Otherwise (pending, or no per-date rows) render the whole span unchanged.
-      expandedLeaves.push(l);
+      expandedLeaves.push({ ...l, candidateCancelDates });
     }
 
     const byEmp = new Map<string, Leave[]>();

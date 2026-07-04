@@ -583,6 +583,7 @@
     "cancelDialogTitle": "விடுப்பு தேதிகளை ரத்துசெய்",
     "cancelDialogDismiss": "மூடு",
     "cancelReasonNothingLeft": "இந்த விடுப்பில் ரத்துசெய்ய தேதிகள் எதுவும் இல்லை.",
+    "cancelPillAffordanceLabel": "இந்த விடுப்பிலிருந்து தேதிகளை ரத்துசெய்",
     "fieldDurationType": "கால அளவு",
     "duration": {
       "full_day": "முழு நாள்",

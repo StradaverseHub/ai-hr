@@ -583,6 +583,7 @@
     "cancelDialogTitle": "Hủy ngày nghỉ phép",
     "cancelDialogDismiss": "Đóng",
     "cancelReasonNothingLeft": "Không còn ngày nào để hủy trong đơn nghỉ phép này.",
+    "cancelPillAffordanceLabel": "Hủy ngày từ đơn nghỉ này",
     "fieldDurationType": "Thời lượng",
     "duration": {
       "full_day": "Cả ngày",

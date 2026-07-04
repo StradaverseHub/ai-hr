@@ -583,6 +583,7 @@
     "cancelDialogTitle": "取消请假日期",
     "cancelDialogDismiss": "关闭",
     "cancelReasonNothingLeft": "此假期没有可取消的日期。",
+    "cancelPillAffordanceLabel": "从此假期取消日期",
     "fieldDurationType": "时长",
     "duration": {
       "full_day": "全天",

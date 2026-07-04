@@ -583,6 +583,7 @@
     "cancelDialogTitle": "Cancel leave dates",
     "cancelDialogDismiss": "Close",
     "cancelReasonNothingLeft": "No dates left to cancel on this leave.",
+    "cancelPillAffordanceLabel": "Cancel dates from this leave",
     "fieldDurationType": "Duration",
     "duration": {
       "full_day": "Full day",
