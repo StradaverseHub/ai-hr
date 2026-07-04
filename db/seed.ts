@@ -16,6 +16,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { myPack } from '../localization/my';
 import { MY_STATE_HOLIDAYS_2026 } from '../localization/my/holidays';
 import { seedGuides } from './seed-guides';
+import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -154,6 +155,10 @@ async function main() {
     .values({ tenantId: DEV_TENANT_ID, appUserId: DEV_ADMIN_USER_ID, role: 'hr_admin', companyId: null });
 
   const admin: SessionContext = { tenantId: DEV_TENANT_ID, userId: DEV_ADMIN_USER_ID, roles: ['hr_admin'] };
+  // ADR-0069: seed the default Payroll Cycle catalog per company (the 4 behavioural cycles + 2 off_cycle
+  // presets the wizard offered before this feature) so the "Payroll Cycle" dropdown is populated on demo.
+  await seedPayrollCycleCatalog(admin, company.id);
+  await seedPayrollCycleCatalog(admin, holding.id);
   // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
   // through the year. Entitlement is max(EA floor 8, policy 12) = 12 → 1 day/month; the hire grant skips
   // earned types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.

@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { createAdditionalRun, createBatch, updateBatchScope } from '@/core/payroll';
+import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 
 /** Step 2 population (plan §2) — fetched by the client once company + period are chosen. */
@@ -23,9 +24,17 @@ export async function createRunAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId'));
   const payPeriod = String(formData.get('payPeriod'));
-  const cycle = String(formData.get('cycle') || 'regular');
+  const payrollCycleId = String(formData.get('payrollCycleId') || '');
   const paymentDate = String(formData.get('paymentDate') || '');
   const submittedEmploymentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+
+  // ADR-0069: resolve the selected cycle server-side and derive runType/remarks from the ROW — the client
+  // only submits the id, and a stale/cross-company/archived id can never reach the kernel (defence in
+  // depth; RLS already scopes the read, this rejects with a friendly redirect instead of a raw throw).
+  const cycle = payrollCycleId ? await getActivePayrollCycle(s, payrollCycleId, companyId) : null;
+  if (!cycle) {
+    redirect(`/payroll/process?error=${encodeURIComponent('Select a valid, active payroll cycle for this company.')}`);
+  }
 
   // Same guard as the legacy create form: intersect submitted ids with the chosen company's employees so
   // a stale/cross-company id can never reach createBatch/createAdditionalRun and silently under-set the run.
@@ -43,16 +52,21 @@ export async function createRunAction(formData: FormData) {
   let batchId = '';
   let holidayWarnings: unknown[] = [];
   try {
-    if (cycle === 'regular') {
+    if (cycle.runType === 'regular') {
       const r = await createBatch(s, { companyId, payPeriod, scope, paymentDate: paymentDate || undefined });
       batchId = r.batchId;
       holidayWarnings = r.holidayWarnings ?? [];
     } else {
-      // Advance Salary / Mid-Month ship as labelled off_cycle presets (plan §Deferred); Bonus/Adjustment/
-      // Off-cycle map straight through. Cycle codes 'advance' and 'midmonth' carry a remarks label.
-      const runType = cycle === 'advance' || cycle === 'midmonth' ? 'off_cycle' : (cycle as 'off_cycle' | 'bonus' | 'adjustment');
-      const remarks = cycle === 'advance' ? 'Advance Salary' : cycle === 'midmonth' ? 'Mid-Month' : undefined;
-      const r = await createAdditionalRun(s, { companyId, payPeriod, runType, remarks, scope, paymentDate: paymentDate || undefined });
+      // Non-regular runs (off_cycle / bonus / adjustment) map straight through; the resolved cycle carries
+      // any preset label (e.g. 'Advance Salary' / 'Mid-Month') in its remarks, snapshotted onto the batch.
+      const r = await createAdditionalRun(s, {
+        companyId,
+        payPeriod,
+        runType: cycle.runType,
+        remarks: cycle.remarks ?? undefined,
+        scope,
+        paymentDate: paymentDate || undefined,
+      });
       batchId = r.batchId;
     }
   } catch (e) {

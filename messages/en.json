@@ -110,7 +110,8 @@
     "feedback": "Feedback",
     "reviews": "Reviews",
     "locations": "Locations",
-    "loans": "Loans"
+    "loans": "Loans",
+    "payrollCycleConfig": "Payroll Cycles"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1838,14 +1839,6 @@
       "draftNotFoundOrNoAccess": "This draft could not be found or you don’t have access to it.",
       "regularExistsNote": "A Monthly run already exists for {period}. Resume the existing draft, or pick a different cycle.",
       "consolidationNote": "Attendance, leave, claims and loan data are consolidated on the review step, after the run is created.",
-      "cycle": {
-        "regular": "Monthly",
-        "bonus": "Bonus",
-        "off_cycle": "Off-cycle",
-        "advance": "Advance Salary",
-        "midmonth": "Mid-Month",
-        "adjustment": "Adjustment"
-      },
       "runType": {
         "regular": "Monthly",
         "bonus": "Bonus",
@@ -1868,7 +1861,8 @@
       "noEmployees": "No employees found for this company and period.",
       "leaverTag": "left mid-month",
       "leaverFilterWarning": "This status filter would exclude {n} employee(s) who left partway through the month — their final pay would be silently skipped.",
-      "compLessWarning": "{n} employee(s) have no active compensation record and will not receive a payslip."
+      "compLessWarning": "{n} employee(s) have no active compensation record and will not receive a payslip.",
+      "noCyclesConfigured": "No payroll cycles configured for this company"
     }
   },
   "admin": {
@@ -3589,6 +3583,58 @@
       "reserved": "Reserved",
       "applied": "Applied",
       "skipped": "Skipped"
+    }
+  },
+  "payrollCycleConfig": {
+    "title": "Payroll Cycles",
+    "description": "Configure the cycle names the Payroll Process dropdown offers. Each maps to one fixed processing behaviour; you cannot change the payroll calculation itself.",
+    "company": "Company",
+    "view": "View",
+    "catalogTitle": "Cycles",
+    "seedDefaults": "Add default cycles",
+    "colName": "Name",
+    "colRunType": "Processing behaviour",
+    "colRemarks": "Remarks",
+    "colSort": "Order",
+    "colStatus": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "edit": "Edit",
+    "activate": "Activate",
+    "deactivate": "Deactivate",
+    "delete": "Delete",
+    "deleteTitle": "Delete payroll cycle",
+    "deleteDescription": "Delete \"{name}\"? This cannot be undone. A cycle used in existing payroll runs cannot be deleted — deactivate it instead.",
+    "empty": "No cycles yet. Add the defaults to get started.",
+    "addTitle": "Add cycle",
+    "editTitle": "Edit \"{name}\"",
+    "addCycle": "Add cycle",
+    "saveChanges": "Save changes",
+    "cancelEdit": "Cancel",
+    "namePlaceholder": "e.g. Year-End Bonus",
+    "remarksPlaceholder": "Optional label (e.g. Advance Salary)",
+    "runTypeHelp": "The processing behaviour determines the payroll rules applied (e.g. loan deductions and OT only apply on a Regular run). This is fixed — only the name and list are configurable.",
+    "runType": {
+      "regular": "Regular",
+      "off_cycle": "Off-cycle",
+      "bonus": "Bonus",
+      "adjustment": "Adjustment"
+    },
+    "runTypeHint": {
+      "regular": "The normal monthly run — only one per month; loan deductions and OT prefill here.",
+      "off_cycle": "An extra run within the month (e.g. advance or mid-month payment).",
+      "bonus": "A bonus / additional-remuneration run.",
+      "adjustment": "A correction / adjustment run."
+    },
+    "toast": {
+      "seeded": "Default cycles added",
+      "saved": "Cycle saved",
+      "deleted": "Cycle deleted"
+    },
+    "errors": {
+      "duplicateName": "A cycle with this name already exists for this company.",
+      "regularConflict": "This company already has an active Regular cycle. Only one is allowed.",
+      "inUse": "This cycle is used in {refs} payroll run(s) — deactivate it instead of deleting."
     }
   }
 }

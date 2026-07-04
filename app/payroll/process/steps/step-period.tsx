@@ -16,17 +16,23 @@ export type ExistingRun = {
 
 export type Company = { id: string; name: string };
 
-export type Cycle = 'regular' | 'bonus' | 'off_cycle' | 'advance' | 'midmonth' | 'adjustment';
+/** The four fixed behavioural run types a configured cycle maps to (mirrors payrollRunTypeEnum). */
+export type CycleRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
 
-/** Step 1 (3c) — company, month/year, cycle, payment date; existing-runs panel for resume/disable. */
+/** ADR-0069: a configurable cycle option, sourced from the payroll_cycle catalog. `id` is the selected
+ *  value submitted to the wizard; `runType` drives the same gating the hardcoded list used to. */
+export type CycleOption = { id: string; name: string; runType: CycleRunType; remarks: string | null };
+
+/** Step 1 (3c) — company, month/year, cycle (DB-driven), payment date; existing-runs panel for resume. */
 export function StepPeriod({
   companies,
   companyId,
   onCompanyId,
   payPeriod,
   onPayPeriod,
-  cycle,
-  onCycle,
+  cycleId,
+  onCycleId,
+  cycleOptions,
   paymentDate,
   onPaymentDate,
   defaultPaymentDate,
@@ -38,8 +44,9 @@ export function StepPeriod({
   onCompanyId: (v: string) => void;
   payPeriod: string;
   onPayPeriod: (v: string) => void;
-  cycle: Cycle;
-  onCycle: (v: Cycle) => void;
+  cycleId: string;
+  onCycleId: (v: string) => void;
+  cycleOptions: CycleOption[];
   paymentDate: string;
   onPaymentDate: (v: string) => void;
   defaultPaymentDate: string;
@@ -51,18 +58,19 @@ export function StepPeriod({
   const regularExists = runsForPeriod.some((r) => r.runType === 'regular');
   const regularRun = runsForPeriod.find((r) => r.runType === 'regular');
 
-  const cycleOptions: { value: Cycle; label: string; disabled?: boolean }[] = [
-    { value: 'regular', label: t('cycle.regular'), disabled: regularExists },
-    ...(multiCycle
-      ? ([
-          { value: 'bonus', label: t('cycle.bonus'), disabled: !regularExists },
-          { value: 'off_cycle', label: t('cycle.off_cycle'), disabled: !regularExists },
-          { value: 'advance', label: t('cycle.advance'), disabled: !regularExists },
-          { value: 'midmonth', label: t('cycle.midmonth'), disabled: !regularExists },
-          { value: 'adjustment', label: t('cycle.adjustment'), disabled: !regularExists },
-        ] as const)
-      : []),
-  ];
+  // The selected cycle's mapped run type drives the "only one regular per period" gating exactly as the
+  // old literal 'regular' compare did — but keyed off the resolved runType, not the label.
+  const selectedRunType = cycleOptions.find((c) => c.id === cycleId)?.runType;
+
+  // Each configured cycle becomes an option. A regular-mapped cycle is disabled once a regular run exists;
+  // a non-regular cycle is disabled until one does (unchanged behaviour). The multiCycle flag continues to
+  // gate visibility upstream (page.tsx / wizard filter this list to regular-only when the flag is off).
+  const options = cycleOptions.map((c) => ({
+    id: c.id,
+    label: c.name,
+    runType: c.runType,
+    disabled: c.runType === 'regular' ? regularExists : !regularExists,
+  }));
 
   return (
     <div className="space-y-4">
@@ -87,9 +95,10 @@ export function StepPeriod({
           />
         </Field>
         <Field label={t('cycleLabel')}>
-          <select value={cycle} onChange={(e) => onCycle(e.target.value as Cycle)} className={inputCls}>
-            {cycleOptions.map((o) => (
-              <option key={o.value} value={o.value} disabled={o.disabled}>
+          <select value={cycleId} onChange={(e) => onCycleId(e.target.value)} className={inputCls}>
+            {options.length === 0 && <option value="">{t('noCyclesConfigured')}</option>}
+            {options.map((o) => (
+              <option key={o.id} value={o.id} disabled={o.disabled}>
                 {o.label}
                 {o.disabled ? ` (${t('cycleDisabled')})` : ''}
               </option>
@@ -130,7 +139,7 @@ export function StepPeriod({
               </li>
             ))}
           </ul>
-          {regularExists && cycle === 'regular' && (
+          {regularExists && selectedRunType === 'regular' && (
             <p className="mt-1.5 text-amber-700 dark:text-amber-400">
               {t('regularExistsNote', { period: regularRun?.payPeriod ?? payPeriod })}
             </p>

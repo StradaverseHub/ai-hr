@@ -110,7 +110,8 @@
     "feedback": "Phản hồi",
     "reviews": "Đánh giá",
     "locations": "Địa điểm",
-    "loans": "Khoản vay"
+    "loans": "Khoản vay",
+    "payrollCycleConfig": "Chu kỳ trả lương"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1838,14 +1839,6 @@
       "draftNotFoundOrNoAccess": "Không tìm thấy bản nháp này hoặc bạn không có quyền truy cập.",
       "regularExistsNote": "Đợt Hàng tháng cho {period} đã tồn tại. Tiếp tục bản nháp hiện có, hoặc chọn chu kỳ khác.",
       "consolidationNote": "Dữ liệu chấm công, nghỉ phép, yêu cầu bồi hoàn và khoản vay được tổng hợp ở bước xem lại, sau khi đợt được tạo.",
-      "cycle": {
-        "regular": "Hàng tháng",
-        "bonus": "Thưởng",
-        "off_cycle": "Ngoài chu kỳ",
-        "advance": "Tạm ứng lương",
-        "midmonth": "Giữa tháng",
-        "adjustment": "Điều chỉnh"
-      },
       "runType": {
         "regular": "Hàng tháng",
         "bonus": "Thưởng",
@@ -1868,7 +1861,8 @@
       "noEmployees": "Không tìm thấy nhân viên cho công ty và kỳ này.",
       "leaverTag": "nghỉ việc giữa tháng",
       "leaverFilterWarning": "Bộ lọc trạng thái này sẽ loại trừ {n} nhân viên đã nghỉ việc giữa tháng — lương cuối cùng của họ sẽ bị bỏ sót mà không có cảnh báo.",
-      "compLessWarning": "{n} nhân viên không có hồ sơ lương đang hoạt động và sẽ không nhận được phiếu lương."
+      "compLessWarning": "{n} nhân viên không có hồ sơ lương đang hoạt động và sẽ không nhận được phiếu lương.",
+      "noCyclesConfigured": "Chưa cấu hình chu kỳ trả lương cho công ty này"
     }
   },
   "admin": {
@@ -3589,6 +3583,58 @@
       "reserved": "Đã giữ chỗ",
       "applied": "Đã khấu trừ",
       "skipped": "Đã bỏ qua"
+    }
+  },
+  "payrollCycleConfig": {
+    "title": "Chu kỳ trả lương",
+    "description": "Cấu hình tên chu kỳ hiển thị trong menu Quy trình trả lương. Mỗi chu kỳ ánh xạ tới một hành vi xử lý cố định; bạn không thể thay đổi cách tính lương.",
+    "company": "Công ty",
+    "view": "Xem",
+    "catalogTitle": "Chu kỳ",
+    "seedDefaults": "Thêm chu kỳ mặc định",
+    "colName": "Tên",
+    "colRunType": "Hành vi xử lý",
+    "colRemarks": "Ghi chú",
+    "colSort": "Thứ tự",
+    "colStatus": "Trạng thái",
+    "active": "Hoạt động",
+    "inactive": "Không hoạt động",
+    "edit": "Sửa",
+    "activate": "Kích hoạt",
+    "deactivate": "Vô hiệu hóa",
+    "delete": "Xóa",
+    "deleteTitle": "Xóa chu kỳ trả lương",
+    "deleteDescription": "Xóa \"{name}\"? Không thể hoàn tác. Chu kỳ được dùng trong các đợt trả lương hiện có không thể xóa — hãy vô hiệu hóa thay thế.",
+    "empty": "Chưa có chu kỳ nào. Thêm mặc định để bắt đầu.",
+    "addTitle": "Thêm chu kỳ",
+    "editTitle": "Sửa \"{name}\"",
+    "addCycle": "Thêm chu kỳ",
+    "saveChanges": "Lưu thay đổi",
+    "cancelEdit": "Hủy",
+    "namePlaceholder": "vd. Thưởng cuối năm",
+    "remarksPlaceholder": "Nhãn tùy chọn (vd. Tạm ứng lương)",
+    "runTypeHelp": "Hành vi xử lý quyết định quy tắc lương được áp dụng (vd. khấu trừ khoản vay và OT chỉ áp dụng cho đợt Thường). Đây là cố định — chỉ tên và danh sách có thể cấu hình.",
+    "runType": {
+      "regular": "Thường",
+      "off_cycle": "Ngoài chu kỳ",
+      "bonus": "Thưởng",
+      "adjustment": "Điều chỉnh"
+    },
+    "runTypeHint": {
+      "regular": "Đợt trả lương hàng tháng thông thường — chỉ một lần mỗi tháng; khấu trừ khoản vay và OT điền tại đây.",
+      "off_cycle": "Đợt bổ sung trong tháng (vd. tạm ứng hoặc thanh toán giữa tháng).",
+      "bonus": "Đợt thưởng / thù lao bổ sung.",
+      "adjustment": "Đợt điều chỉnh / sửa đổi."
+    },
+    "toast": {
+      "seeded": "Đã thêm chu kỳ mặc định",
+      "saved": "Đã lưu chu kỳ",
+      "deleted": "Đã xóa chu kỳ"
+    },
+    "errors": {
+      "duplicateName": "Đã có chu kỳ với tên này cho công ty này.",
+      "regularConflict": "Công ty này đã có một chu kỳ Thường đang hoạt động. Chỉ cho phép một chu kỳ.",
+      "inUse": "Chu kỳ này được dùng trong {refs} đợt trả lương — hãy vô hiệu hóa thay vì xóa."
     }
   }
 }

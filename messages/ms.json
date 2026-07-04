@@ -110,7 +110,8 @@
     "feedback": "Maklum Balas",
     "reviews": "Penilaian",
     "locations": "Lokasi",
-    "loans": "Pinjaman"
+    "loans": "Pinjaman",
+    "payrollCycleConfig": "Kitaran Gaji"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1838,14 +1839,6 @@
       "draftNotFoundOrNoAccess": "Draf ini tidak ditemui atau anda tidak mempunyai akses kepadanya.",
       "regularExistsNote": "Larian Bulanan untuk {period} sudah wujud. Sambung draf sedia ada, atau pilih kitaran lain.",
       "consolidationNote": "Data kehadiran, cuti, tuntutan dan pinjaman disatukan pada langkah semakan, selepas larian dicipta.",
-      "cycle": {
-        "regular": "Bulanan",
-        "bonus": "Bonus",
-        "off_cycle": "Luar kitaran",
-        "advance": "Gaji Pendahuluan",
-        "midmonth": "Pertengahan Bulan",
-        "adjustment": "Pelarasan"
-      },
       "runType": {
         "regular": "Bulanan",
         "bonus": "Bonus",
@@ -1868,7 +1861,8 @@
       "noEmployees": "Tiada pekerja ditemui untuk syarikat dan tempoh ini.",
       "leaverTag": "berhenti pertengahan bulan",
       "leaverFilterWarning": "Penapis status ini akan mengecualikan {n} pekerja yang berhenti pertengahan bulan — gaji akhir mereka akan terlepas tanpa amaran.",
-      "compLessWarning": "{n} pekerja tiada rekod pampasan aktif dan tidak akan menerima slip gaji."
+      "compLessWarning": "{n} pekerja tiada rekod pampasan aktif dan tidak akan menerima slip gaji.",
+      "noCyclesConfigured": "Tiada kitaran gaji dikonfigurasi untuk syarikat ini"
     }
   },
   "admin": {
@@ -3589,6 +3583,58 @@
       "reserved": "Ditempah",
       "applied": "Dikenakan",
       "skipped": "Dilangkau"
+    }
+  },
+  "payrollCycleConfig": {
+    "title": "Kitaran Gaji",
+    "description": "Konfigurasi nama kitaran yang ditawarkan oleh menu Proses Gaji. Setiap satu dipetakan kepada satu gelagat pemprosesan tetap; anda tidak boleh mengubah pengiraan gaji itu sendiri.",
+    "company": "Syarikat",
+    "view": "Lihat",
+    "catalogTitle": "Kitaran",
+    "seedDefaults": "Tambah kitaran lalai",
+    "colName": "Nama",
+    "colRunType": "Gelagat pemprosesan",
+    "colRemarks": "Catatan",
+    "colSort": "Susunan",
+    "colStatus": "Status",
+    "active": "Aktif",
+    "inactive": "Tidak Aktif",
+    "edit": "Sunting",
+    "activate": "Aktifkan",
+    "deactivate": "Nyahaktif",
+    "delete": "Padam",
+    "deleteTitle": "Padam kitaran gaji",
+    "deleteDescription": "Padam \"{name}\"? Ini tidak boleh dibatalkan. Kitaran yang digunakan dalam larian gaji sedia ada tidak boleh dipadam — nyahaktifkan sebaliknya.",
+    "empty": "Belum ada kitaran. Tambah kitaran lalai untuk bermula.",
+    "addTitle": "Tambah kitaran",
+    "editTitle": "Sunting \"{name}\"",
+    "addCycle": "Tambah kitaran",
+    "saveChanges": "Simpan perubahan",
+    "cancelEdit": "Batal",
+    "namePlaceholder": "cth. Bonus Akhir Tahun",
+    "remarksPlaceholder": "Label pilihan (cth. Gaji Pendahuluan)",
+    "runTypeHelp": "Gelagat pemprosesan menentukan peraturan gaji yang dikenakan (cth. potongan pinjaman dan OT hanya dikenakan pada larian Biasa). Ini adalah tetap — hanya nama dan senarai boleh dikonfigurasi.",
+    "runType": {
+      "regular": "Biasa",
+      "off_cycle": "Luar Kitaran",
+      "bonus": "Bonus",
+      "adjustment": "Pelarasan"
+    },
+    "runTypeHint": {
+      "regular": "Larian bulanan biasa — hanya satu sebulan; potongan pinjaman dan OT diisi di sini.",
+      "off_cycle": "Larian tambahan dalam bulan (cth. pendahuluan atau bayaran pertengahan bulan).",
+      "bonus": "Larian bonus / saraan tambahan.",
+      "adjustment": "Larian pembetulan / pelarasan."
+    },
+    "toast": {
+      "seeded": "Kitaran lalai ditambah",
+      "saved": "Kitaran disimpan",
+      "deleted": "Kitaran dipadam"
+    },
+    "errors": {
+      "duplicateName": "Kitaran dengan nama ini sudah wujud untuk syarikat ini.",
+      "regularConflict": "Syarikat ini sudah mempunyai kitaran Biasa yang aktif. Hanya satu dibenarkan.",
+      "inUse": "Kitaran ini digunakan dalam {refs} larian gaji — nyahaktifkan sebaliknya daripada memadam."
     }
   }
 }

@@ -1051,6 +1051,13 @@
       "when": 1781862130000,
       "tag": "0149_leave_approval_rule_matrix",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1781862140000,
+      "tag": "0150_payroll_cycle_master",
+      "breakpoints": true
     }
   ]
 }

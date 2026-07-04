@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
 import { createRunAction, fetchPayrollRunEmployees, resumeRunAction } from './actions';
-import { StepPeriod, type Company, type Cycle, type ExistingRun } from './steps/step-period';
+import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 
 /** Payroll Process wizard (3b) — STEPS registry, sequential gating, plain useState. No workflow engine:
@@ -22,7 +22,7 @@ export type ResumeBatch = {
   id: string;
   companyId: string;
   payPeriod: string;
-  cycle: Cycle;
+  cycle: CycleRunType;
   paymentDate: string;
   remarks: string;
   scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
@@ -45,6 +45,7 @@ export function Wizard({
   jobGrades,
   payDayByCompany,
   existingRuns,
+  cyclesByCompany,
   thisMonth,
   multiCycle,
   resumeBatch,
@@ -57,6 +58,7 @@ export function Wizard({
   jobGrades: { id: string; name: string }[];
   payDayByCompany: Record<string, number | null>;
   existingRuns: ExistingRun[];
+  cyclesByCompany: Record<string, CycleOption[]>;
   thisMonth: string;
   multiCycle: boolean;
   /** When set, the wizard opens in RESUME mode: Step 2 (Employee Selection) directly, Step 1 disabled,
@@ -72,7 +74,10 @@ export function Wizard({
   const [step, setStep] = useState(isResume ? 1 : 0);
   const [companyId, setCompanyId] = useState(resumeBatch?.companyId ?? '');
   const [payPeriod, setPayPeriod] = useState(resumeBatch?.payPeriod ?? thisMonth);
-  const [cycle, setCycle] = useState<Cycle>(resumeBatch?.cycle ?? 'regular');
+  // ADR-0069: the cycle is now a per-company payroll_cycle row referenced by id (not a fixed enum). A fresh
+  // run picks one in Step 1; a resumed draft has its cycle fixed on the persisted batch and never re-posts
+  // it, so cycleId is only meaningfully used on the fresh-run path.
+  const [cycleId, setCycleId] = useState('');
   const [paymentDate, setPaymentDate] = useState(resumeBatch?.paymentDate ?? '');
   const [selected, setSelected] = useState<Set<string>>(new Set(seededEmploymentIds));
   const [filtersTouched, setFiltersTouched] = useState(seededEmploymentIds.length > 0);
@@ -81,6 +86,28 @@ export function Wizard({
   const [isPending, startTransition] = useTransition();
 
   const defaultDate = defaultPayDate(payPeriod, payDayByCompany[companyId]);
+
+  // ADR-0069: the cycle options for the selected company. When multiCycle is OFF, filter down to only
+  // regular-mapped cycles — the flag continues to gate non-regular visibility exactly as before, on top
+  // of the admin-configured active list (so a configured-but-flag-off cycle can never reach a user and
+  // fail at createAdditionalRun).
+  const cycleOptions = useMemo(() => {
+    const all = cyclesByCompany[companyId] ?? [];
+    return multiCycle ? all : all.filter((c) => c.runType === 'regular');
+  }, [cyclesByCompany, companyId, multiCycle]);
+
+  // Keep the selected cycle valid for the current company: default to the first regular-mapped option
+  // (falling back to the first available), and clear it when it no longer belongs to this company's list.
+  useEffect(() => {
+    if (cycleOptions.length === 0) {
+      if (cycleId !== '') setCycleId('');
+      return;
+    }
+    if (!cycleOptions.some((c) => c.id === cycleId)) {
+      const preferred = cycleOptions.find((c) => c.runType === 'regular') ?? cycleOptions[0];
+      setCycleId(preferred.id);
+    }
+  }, [cycleOptions, cycleId]);
 
   // Reset per-company/period state so a changed Step-1 selection can never leak a stale Step-2 pick. In
   // resume mode the company/period are FIXED (Step 1 is disabled), so this reset would clobber the seeded
@@ -105,8 +132,11 @@ export function Wizard({
   const companyPositions = useMemo(() => positions.filter((p) => p.companyId === companyId), [positions, companyId]);
   const companyCostCenters = useMemo(() => costCenters.filter((c) => c.companyId === companyId), [costCenters, companyId]);
 
-  const step1Valid = !!companyId && /^\d{4}-\d{2}$/.test(payPeriod);
-  const step2Valid = step1Valid; // Step 2 never blocks on a selection (empty/no-filter ⇒ whole company).
+  const step1Valid = !!companyId && /^\d{4}-\d{2}$/.test(payPeriod) && !!cycleId;
+  // Step 2 never blocks on a selection (empty/no-filter ⇒ whole company). In resume mode the cycle is fixed
+  // on the persisted draft and never re-posted, so the submit gate must NOT require a fresh cycleId — only a
+  // valid (seeded) company + period. A fresh run still requires step1Valid (which includes the cycle).
+  const step2Valid = isResume ? !!companyId && /^\d{4}-\d{2}$/.test(payPeriod) : step1Valid;
 
   const submit = () => {
     const fd = new FormData();
@@ -126,7 +156,9 @@ export function Wizard({
     }
     fd.set('companyId', companyId);
     fd.set('payPeriod', payPeriod);
-    fd.set('cycle', cycle);
+    // ADR-0069: submit the chosen cycle's id — the server resolves runType/remarks from the row (it does
+    // not trust any client-submitted runType/remarks, same defensive pattern as employmentIds).
+    fd.set('payrollCycleId', cycleId);
     fd.set('paymentDate', paymentDate || defaultDate);
     if (filtersTouched) {
       for (const id of selected) fd.append('employmentIds', id);
@@ -163,8 +195,9 @@ export function Wizard({
             onCompanyId={setCompanyId}
             payPeriod={payPeriod}
             onPayPeriod={setPayPeriod}
-            cycle={cycle}
-            onCycle={setCycle}
+            cycleId={cycleId}
+            onCycleId={setCycleId}
+            cycleOptions={cycleOptions}
             paymentDate={paymentDate}
             onPaymentDate={setPaymentDate}
             defaultPaymentDate={defaultDate}

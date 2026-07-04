@@ -110,7 +110,8 @@
     "feedback": "反馈",
     "reviews": "评估",
     "locations": "地点",
-    "loans": "贷款"
+    "loans": "贷款",
+    "payrollCycleConfig": "薪资周期"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1838,14 +1839,6 @@
       "draftNotFoundOrNoAccess": "找不到此草稿，或您没有访问权限。",
       "regularExistsNote": "{period} 的月度运行已存在。请继续现有草稿，或选择其他周期。",
       "consolidationNote": "考勤、休假、报销和贷款数据将在创建运行后的审核步骤中汇总。",
-      "cycle": {
-        "regular": "月度",
-        "bonus": "奖金",
-        "off_cycle": "非周期性",
-        "advance": "预支薪金",
-        "midmonth": "月中",
-        "adjustment": "调整"
-      },
       "runType": {
         "regular": "月度",
         "bonus": "奖金",
@@ -1868,7 +1861,8 @@
       "noEmployees": "未找到该公司和周期的员工。",
       "leaverTag": "月中离职",
       "leaverFilterWarning": "此状态筛选将排除 {n} 名月中离职的员工——他们的最终薪资将被悄悄跳过。",
-      "compLessWarning": "{n} 名员工没有有效的薪酬记录，将不会收到工资单。"
+      "compLessWarning": "{n} 名员工没有有效的薪酬记录，将不会收到工资单。",
+      "noCyclesConfigured": "此公司尚未配置薪资周期"
     }
   },
   "admin": {
@@ -3589,6 +3583,58 @@
       "reserved": "已预留",
       "applied": "已扣除",
       "skipped": "已跳过"
+    }
+  },
+  "payrollCycleConfig": {
+    "title": "薪资周期",
+    "description": "配置薪资处理下拉菜单中显示的周期名称。每个周期映射到一种固定的处理行为；您无法更改薪资计算本身。",
+    "company": "公司",
+    "view": "查看",
+    "catalogTitle": "周期",
+    "seedDefaults": "添加默认周期",
+    "colName": "名称",
+    "colRunType": "处理行为",
+    "colRemarks": "备注",
+    "colSort": "顺序",
+    "colStatus": "状态",
+    "active": "启用",
+    "inactive": "停用",
+    "edit": "编辑",
+    "activate": "启用",
+    "deactivate": "停用",
+    "delete": "删除",
+    "deleteTitle": "删除薪资周期",
+    "deleteDescription": "删除“{name}”？此操作无法撤销。已用于现有薪资批次的周期无法删除——请改为停用。",
+    "empty": "暂无周期。添加默认周期以开始。",
+    "addTitle": "添加周期",
+    "editTitle": "编辑“{name}”",
+    "addCycle": "添加周期",
+    "saveChanges": "保存更改",
+    "cancelEdit": "取消",
+    "namePlaceholder": "例如：年终奖金",
+    "remarksPlaceholder": "可选标签（例如：预支工资）",
+    "runTypeHelp": "处理行为决定所应用的薪资规则（例如贷款扣款和加班仅在常规批次中生效）。此项固定不变——仅名称和列表可配置。",
+    "runType": {
+      "regular": "常规",
+      "off_cycle": "非常规",
+      "bonus": "奖金",
+      "adjustment": "调整"
+    },
+    "runTypeHint": {
+      "regular": "常规月度批次——每月仅一次；贷款扣款和加班在此预填。",
+      "off_cycle": "月内额外批次（例如预支或月中付款）。",
+      "bonus": "奖金/额外报酬批次。",
+      "adjustment": "更正/调整批次。"
+    },
+    "toast": {
+      "seeded": "已添加默认周期",
+      "saved": "周期已保存",
+      "deleted": "周期已删除"
+    },
+    "errors": {
+      "duplicateName": "此公司已存在同名周期。",
+      "regularConflict": "此公司已有一个启用的常规周期。仅允许一个。",
+      "inUse": "此周期已用于 {refs} 个薪资批次——请停用而非删除。"
     }
   }
 }

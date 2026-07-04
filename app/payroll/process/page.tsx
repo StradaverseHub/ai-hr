@@ -6,8 +6,10 @@ import { batchDetail, listBatches } from '@/core/payroll';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
+import { listPayrollCycles } from '@/core/payroll-cycle';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { Wizard, type ResumeBatch } from './wizard';
+import type { CycleOption } from './steps/step-period';
 
 /** Map a run_type back to the wizard's cycle code. Advance/Mid-Month off-cycle presets are persisted as
  *  run_type='off_cycle' with a remarks label, so a resumed off-cycle draft re-enters as 'off_cycle' (the
@@ -77,6 +79,16 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
 
   const payDayByCompany = Object.fromEntries(payrollConfigs.map((c) => [c.companyId, c.payDay]));
 
+  // ADR-0069: the "Payroll Cycle" dropdown now reads its options from the per-company payroll_cycle
+  // catalog (active only) instead of a hardcoded list. Fetch per scoped company and build a map the
+  // client filters by the selected company. The multiCycle flag still gates non-regular visibility in
+  // step-period.tsx (an admin can pre-configure custom cycles on a flag-off company without risk).
+  const cycleLists = await Promise.all(scopeIds.map((id) => listPayrollCycles(s, id, { activeOnly: true })));
+  const cyclesByCompany: Record<string, CycleOption[]> = {};
+  scopeIds.forEach((id, i) => {
+    cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks }));
+  });
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('subtitle')} />
@@ -94,6 +106,7 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
           jobGrades={jobGrades.map((g) => ({ id: g.id, name: g.name }))}
           payDayByCompany={payDayByCompany}
           existingRuns={allBatches.map((b) => ({ id: b.id, companyId: b.companyId, payPeriod: b.payPeriod, runType: b.runType, status: b.status, company: b.company }))}
+          cyclesByCompany={cyclesByCompany}
           thisMonth={thisMonth}
           multiCycle={multiCycle}
           resumeBatch={resumeBatch}
