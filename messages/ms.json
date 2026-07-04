@@ -228,7 +228,8 @@
       "internshipEndDate": "Tarikh tamat latihan",
       "provisionalEndHint": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
       "businessUnit": "Unit perniagaan",
-      "businessUnitNone": "— Tiada —"
+      "businessUnitNone": "— Tiada —",
+      "colCode": "Kod"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -1075,7 +1076,8 @@
       "pending": "Menunggu",
       "approved": "Diluluskan",
       "rejected": "Ditolak"
-    }
+    },
+    "code": "Kod"
   },
   "performance": {
     "list": {
@@ -1179,7 +1181,9 @@
       "calibrationReviewer": "Penilai",
       "calibrationCurrent": "Semasa",
       "calibrationProposed": "Dicadangkan",
-      "calibrationSet": "Tetapkan"
+      "calibrationSet": "Tetapkan",
+      "colCode": "Kod",
+      "calibrationCode": "Kod"
     },
     "review": {
       "backMyWorkspace": "Ruang kerja saya",
@@ -1598,7 +1602,8 @@
       "holidayWarning": "{country}/{state} {year}: hanya {loaded} daripada {required} cuti umum dimuatkan — pengiraan hari rehat/OT mungkin terjejas.",
       "encashmentFrozenBadge": "Dibekukan semasa kelulusan peletakan jawatan",
       "encashmentOverriddenBadge": "Dibekukan (diatasi oleh HR)",
-      "encashmentFrozenAsOfTitle": "Dibekukan setakat {date}"
+      "encashmentFrozenAsOfTitle": "Dibekukan setakat {date}",
+      "colCode": "Kod"
     },
     "transactions": {
       "title": "Transaksi",

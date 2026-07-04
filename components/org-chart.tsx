@@ -4,12 +4,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronUp, Minus, Plus, Search } from 'lucide-react';
-import { Avatar } from '@/components/ui';
+import { Avatar, EmployeeCode } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
 export type OrgEmp = {
   employmentId: string;
   name: string;
+  employeeCode: string | null;
   role: string | null;
   department: string | null;
 };
@@ -178,6 +179,11 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
           <Avatar name={e.name} className="size-9 text-xs" />
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-foreground">{e.name}</div>
+            {e.employeeCode && (
+              <div className="truncate">
+                <EmployeeCode code={e.employeeCode} />
+              </div>
+            )}
             <div className="truncate text-xs text-muted-foreground">{e.role ?? '—'}</div>
           </div>
         </div>

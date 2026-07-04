@@ -228,7 +228,8 @@
       "internshipEndDate": "பயிற்சி முடிவு தேதி",
       "provisionalEndHint": "முழுநேரத்திற்கு பணிக்கால சோதனை முடிவு (இயல்பாக +3 மாதங்கள்); இல்லையெனில் ஒப்பந்தம் அல்லது பயிற்சி முடிவு. எதுவுமில்லை எனில் வெறுமையாக விடவும்.",
       "businessUnit": "வணிகப் பிரிவு",
-      "businessUnitNone": "— எதுவுமில்லை —"
+      "businessUnitNone": "— எதுவுமில்லை —",
+      "colCode": "குறியீடு"
     },
     "detail": {
       "backToPeople": "பணியாளர்கள்",
@@ -1075,7 +1076,8 @@
       "pending": "நிலுவையில்",
       "approved": "அங்கீகரிக்கப்பட்டது",
       "rejected": "நிராகரிக்கப்பட்டது"
-    }
+    },
+    "code": "குறியீடு"
   },
   "performance": {
     "list": {
@@ -1179,7 +1181,9 @@
       "calibrationReviewer": "மதிப்பாய்வாளர்",
       "calibrationCurrent": "தற்போதையது",
       "calibrationProposed": "முன்மொழியப்பட்டது",
-      "calibrationSet": "அமை"
+      "calibrationSet": "அமை",
+      "colCode": "குறியீடு",
+      "calibrationCode": "குறியீடு"
     },
     "review": {
       "backMyWorkspace": "என் பணியிடம்",
@@ -1598,7 +1602,8 @@
       "holidayWarning": "{country}/{state} {year}: {required} பொது விடுமுறைகளில் {loaded} மட்டுமே ஏற்றப்பட்டுள்ளது — ஓய்வு நாள்/OT கணக்கீடுகள் பாதிக்கப்படலாம்.",
       "encashmentFrozenBadge": "ராஜினாமா அங்கீகாரத்தில் உறையவைக்கப்பட்டது",
       "encashmentOverriddenBadge": "உறையவைக்கப்பட்டது (HR மேலெழுதல்)",
-      "encashmentFrozenAsOfTitle": "{date} அன்று உறையவைக்கப்பட்டது"
+      "encashmentFrozenAsOfTitle": "{date} அன்று உறையவைக்கப்பட்டது",
+      "colCode": "குறியீடு"
     },
     "transactions": {
       "title": "பரிவர்த்தனைகள்",

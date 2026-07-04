@@ -1119,6 +1119,7 @@ export function listAttendanceCorrections(
         employmentId: attendanceCorrection.employmentId,
         personId: employment.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         attendanceDate: attendanceCorrection.attendanceDate,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,

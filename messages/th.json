@@ -228,7 +228,8 @@
       "internshipEndDate": "วันที่สิ้นสุดการฝึกงาน",
       "provisionalEndHint": "สิ้นสุดทดลองงานสำหรับงานเต็มเวลา (ค่าเริ่มต้น +3 เดือน); มิฉะนั้นเป็นวันสิ้นสุดสัญญาหรือการฝึกงาน เว้นว่างหากไม่มี",
       "businessUnit": "หน่วยธุรกิจ",
-      "businessUnitNone": "— ไม่มี —"
+      "businessUnitNone": "— ไม่มี —",
+      "colCode": "รหัส"
     },
     "detail": {
       "backToPeople": "พนักงาน",
@@ -1075,7 +1076,8 @@
       "pending": "รอดำเนินการ",
       "approved": "อนุมัติแล้ว",
       "rejected": "ปฏิเสธแล้ว"
-    }
+    },
+    "code": "รหัส"
   },
   "performance": {
     "list": {
@@ -1179,7 +1181,9 @@
       "calibrationReviewer": "ผู้ประเมิน",
       "calibrationCurrent": "ปัจจุบัน",
       "calibrationProposed": "ที่เสนอ",
-      "calibrationSet": "กำหนด"
+      "calibrationSet": "กำหนด",
+      "colCode": "รหัส",
+      "calibrationCode": "รหัส"
     },
     "review": {
       "backMyWorkspace": "พื้นที่ทำงานของฉัน",
@@ -1598,7 +1602,8 @@
       "holidayWarning": "{country}/{state} {year}: โหลดวันหยุดนักขัตฤกษ์เพียง {loaded} จาก {required} วัน — การคำนวณวันหยุด/OT อาจได้รับผลกระทบ",
       "encashmentFrozenBadge": "ถูกล็อกเมื่อการลาออกได้รับการอนุมัติ",
       "encashmentOverriddenBadge": "ถูกล็อก (แก้ไขโดยฝ่ายบุคคล)",
-      "encashmentFrozenAsOfTitle": "ล็อก ณ วันที่ {date}"
+      "encashmentFrozenAsOfTitle": "ล็อก ณ วันที่ {date}",
+      "colCode": "รหัส"
     },
     "transactions": {
       "title": "ธุรกรรม",

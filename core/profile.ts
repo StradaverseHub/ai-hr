@@ -330,6 +330,7 @@ export function listProfileChangeRequests(
         employmentId: profileChangeRequest.employmentId,
         personId: profileChangeRequest.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         proposed: profileChangeRequest.proposed,
         status: profileChangeRequest.status,
         createdAt: profileChangeRequest.createdAt,

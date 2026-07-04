@@ -524,6 +524,7 @@ export type LoanRow = {
   id: string;
   employmentId: string;
   employeeName?: string;
+  employeeCode?: string | null;
   loanType: string;
   principal: number;
   interestRate: number;
@@ -548,10 +549,11 @@ export type RepaymentRow = {
   appliedAt: string | null;
 };
 
-const toLoanRow = (l: typeof employeeLoan.$inferSelect & { employeeName?: string }): LoanRow => ({
+const toLoanRow = (l: typeof employeeLoan.$inferSelect & { employeeName?: string; employeeCode?: string | null }): LoanRow => ({
   id: l.id,
   employmentId: l.employmentId,
   employeeName: l.employeeName,
+  employeeCode: l.employeeCode,
   loanType: l.loanType,
   principal: Number(l.principal),
   interestRate: Number(l.interestRate),
@@ -610,13 +612,13 @@ export async function getLoanWithSchedule(
 export async function listActiveLoans(ctx: SessionContext, companyId: string): Promise<LoanRow[]> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select({ loan: employeeLoan, employeeName: person.fullName })
+      .select({ loan: employeeLoan, employeeName: person.fullName, employeeCode: employment.employeeCode })
       .from(employeeLoan)
       .innerJoin(employment, eq(employment.id, employeeLoan.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(employment.companyId, companyId))
       .orderBy(sql`${employeeLoan.createdAt} desc`);
-    return rows.map((r) => toLoanRow({ ...r.loan, employeeName: r.employeeName }));
+    return rows.map((r) => toLoanRow({ ...r.loan, employeeName: r.employeeName, employeeCode: r.employeeCode }));
   });
 }
 

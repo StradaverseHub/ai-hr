@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Field, inputCls } from '@/components/ui';
+import { EmployeeCode, Field, inputCls } from '@/components/ui';
 
 export type Master = { id: string; name: string; companyId: string };
 
@@ -210,6 +210,7 @@ export function StepSelection({
                   onChange={() => toggle(e.employmentId)}
                   className="size-4 rounded"
                 />
+                <EmployeeCode code={e.employeeCode} />
                 {e.name}
                 {e.terminatedOn && (
                   <span className="text-xs text-amber-600 dark:text-amber-400">({t('leaverTag')})</span>

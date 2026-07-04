@@ -124,3 +124,13 @@ export function RoleTag({ role, label }: { role: string; label?: string }) {
     </span>
   );
 }
+
+/**
+ * Employee ID (employee_code) rendered in the one consistent way used everywhere.
+ * Centralizes the visual contract so a future styling tweak is a one-file change.
+ * Renders nothing when there is no code, so callers can pass a nullable value directly.
+ */
+export function EmployeeCode({ code, className }: { code?: string | null; className?: string }) {
+  if (!code) return null;
+  return <span className={cn('font-mono text-xs text-muted-foreground', className)}>{code}</span>;
+}

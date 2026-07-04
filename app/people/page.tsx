@@ -12,7 +12,7 @@ import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin'
 import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { listProfileChangeRequests } from '@/core/profile';
-import { Avatar, Button, Card, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { decideProfileChangeAction, hireAction } from './actions';
 
 /** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
@@ -236,6 +236,7 @@ export default async function PeoplePage({
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
+              <th className="px-4 py-3 font-medium">{t('colCode')}</th>
               <th className="px-4 py-3 font-medium">{t('colName')}</th>
               <th className="px-4 py-3 font-medium">{t('colDepartment')}</th>
               <th className="px-4 py-3 font-medium">{t('colCompany')}</th>
@@ -247,6 +248,9 @@ export default async function PeoplePage({
             {employees.map((e) => (
               <tr key={e.employmentId} className="hover:bg-muted/40">
                 <td className="px-4 py-3">
+                  <EmployeeCode code={e.employeeCode} />
+                </td>
+                <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <Avatar name={e.name} />
                     <div className="min-w-0">
@@ -256,9 +260,6 @@ export default async function PeoplePage({
                       >
                         {e.name}
                       </Link>
-                      {e.employeeCode && (
-                        <span className="ml-2 font-mono text-xs text-muted-foreground">{e.employeeCode}</span>
-                      )}
                       <div className="truncate text-xs text-muted-foreground">{e.email}</div>
                     </div>
                   </div>
@@ -273,7 +274,7 @@ export default async function PeoplePage({
             ))}
             {employees.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
                   {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployees')}
                 </td>
               </tr>

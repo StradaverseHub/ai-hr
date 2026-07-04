@@ -679,6 +679,7 @@ export type ClaimRow = {
   decidedAt: string | null;
   paidAt: string | null;
   claimantName?: string;
+  employeeCode: string | null;
   personId: string | null;
   attachments: { id: string; fileName: string; sizeBytes: number }[];
 };
@@ -700,6 +701,7 @@ function rowSelect() {
     paidAt: claimRequest.paidAt,
     employmentId: claimRequest.employmentId,
     claimantName: person.fullName,
+    employeeCode: employment.employeeCode,
     personId: employment.personId,
   };
 }
@@ -735,6 +737,7 @@ type RawClaimRow = {
   paidAt: Date | null;
   employmentId: string;
   claimantName: string;
+  employeeCode: string | null;
   personId: string | null;
 };
 
@@ -753,6 +756,7 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
   paidAt: r.paidAt ? r.paidAt.toISOString() : null,
   claimantName: r.claimantName,
+  employeeCode: r.employeeCode,
   personId: r.personId,
   attachments: atts.get(r.id) ?? [],
 });

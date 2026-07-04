@@ -426,6 +426,7 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
         employmentId: leaveRequest.employmentId,
         personId: employment.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         leaveType: leaveType.name,
         typeCode: leaveType.code,
         appliedOn: leaveRequest.createdAt,
@@ -538,6 +539,7 @@ export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: 
         employmentId: leaveCancellationRequest.employmentId,
         personId: employment.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         leaveType: leaveType.name,
         i18n: leaveType.i18n,
         typeCode: leaveType.code,
@@ -1500,6 +1502,7 @@ export function orgChartData(ctx: SessionContext, companyIds?: string[]) {
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode,
         role: position.title,
         department: department.name,
       })

@@ -2129,6 +2129,7 @@ export function listBatches(ctx: SessionContext, companyIds?: string[], payPerio
 export type LeaverAdvisoryRow = {
   employmentId: string;
   name: string;
+  employeeCode: string | null;
   terminatedOn: string;
   basic: number;
   annualBalance: number;
@@ -2164,6 +2165,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode,
         terminatedOn: employment.terminatedOn,
         basic: compensation.basicSalary,
       })
@@ -2206,6 +2208,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       out.push({
         employmentId: l.employmentId,
         name: l.name,
+        employeeCode: l.employeeCode,
         terminatedOn: l.terminatedOn!,
         basic,
         annualBalance: effectiveBalance,
@@ -2226,6 +2229,7 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
       .select({
         id: payslip.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode,
         basic: payslip.basicSalary,
         bonus: payslip.bonus,
         daysWorked: payslip.daysWorked,
@@ -2388,6 +2392,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode,
         basic: compensation.basicSalary,
         allowance: compensation.monthlyAllowance,
       })
@@ -2440,6 +2445,7 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       return {
         employmentId: e.employmentId,
         name: e.name,
+        employeeCode: e.employeeCode,
         basic: Number(e.basic),
         overtimeAmount: otMap.get(e.employmentId) ?? 0,
         // Per-bucket rate split for prefilling the four OT inputs; null ⇒ inputs default to 0 each.

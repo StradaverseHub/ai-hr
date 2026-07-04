@@ -228,7 +228,8 @@
       "internshipEndDate": "实习结束日期",
       "provisionalEndHint": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
       "businessUnit": "业务单位",
-      "businessUnitNone": "— 无 —"
+      "businessUnitNone": "— 无 —",
+      "colCode": "编号"
     },
     "detail": {
       "backToPeople": "员工",
@@ -1075,7 +1076,8 @@
       "pending": "待处理",
       "approved": "已批准",
       "rejected": "已驳回"
-    }
+    },
+    "code": "编号"
   },
   "performance": {
     "list": {
@@ -1179,7 +1181,9 @@
       "calibrationReviewer": "评估者",
       "calibrationCurrent": "当前",
       "calibrationProposed": "建议",
-      "calibrationSet": "设定"
+      "calibrationSet": "设定",
+      "colCode": "编号",
+      "calibrationCode": "编号"
     },
     "review": {
       "backMyWorkspace": "我的工作区",
@@ -1598,7 +1602,8 @@
       "holidayWarning": "{country}/{state} {year}：仅加载了 {required} 个公共假期中的 {loaded} 个 —— 休息日/加班计算可能受到影响。",
       "encashmentFrozenBadge": "离职申请获批时冻结",
       "encashmentOverriddenBadge": "已冻结（人力资源部覆盖）",
-      "encashmentFrozenAsOfTitle": "于 {date} 冻结"
+      "encashmentFrozenAsOfTitle": "于 {date} 冻结",
+      "colCode": "编号"
     },
     "transactions": {
       "title": "交易",

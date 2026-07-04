@@ -372,6 +372,7 @@ export type ReviewListRow = {
   employmentId: string;
   personId: string;
   employee: string;
+  employeeCode: string | null;
   reviewType: ReviewType;
   status: 'pending_manager' | 'pending_hr' | 'completed' | 'cancelled';
   endDate: string;
@@ -397,6 +398,7 @@ export function listReviews(
         employmentId: employmentReview.employmentId,
         personId: employmentReview.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         reviewType: employmentReview.reviewType,
         status: employmentReview.status,
         endDate: employmentReview.endDate,
@@ -410,6 +412,7 @@ export function listReviews(
         createdAt: employmentReview.createdAt,
       })
       .from(employmentReview)
+      .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
       .innerJoin(person, eq(person.id, employmentReview.personId))
       .where(opts.status ? eq(employmentReview.status, opts.status) : undefined)
       .orderBy(desc(employmentReview.createdAt))
@@ -426,6 +429,7 @@ export function reviewsFor(ctx: SessionContext, employmentId: string): Promise<R
         employmentId: employmentReview.employmentId,
         personId: employmentReview.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         reviewType: employmentReview.reviewType,
         status: employmentReview.status,
         endDate: employmentReview.endDate,
@@ -439,6 +443,7 @@ export function reviewsFor(ctx: SessionContext, employmentId: string): Promise<R
         createdAt: employmentReview.createdAt,
       })
       .from(employmentReview)
+      .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
       .innerJoin(person, eq(person.id, employmentReview.personId))
       .where(eq(employmentReview.employmentId, employmentId))
       .orderBy(desc(employmentReview.createdAt))
@@ -545,6 +550,7 @@ export function pendingManagerReviewsFor(
         employmentId: employmentReview.employmentId,
         personId: employmentReview.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         reviewType: employmentReview.reviewType,
         status: employmentReview.status,
         endDate: employmentReview.endDate,
@@ -558,6 +564,7 @@ export function pendingManagerReviewsFor(
         createdAt: employmentReview.createdAt,
       })
       .from(employmentReview)
+      .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
       .innerJoin(person, eq(person.id, employmentReview.personId))
       .where(
         and(

@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
@@ -142,6 +142,7 @@ export default async function BatchPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('colCode')}</th>
                 <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
                 <th className="px-4 py-2 font-medium">{t('colLastDay')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colUnusedAnnual')}</th>
@@ -152,6 +153,9 @@ export default async function BatchPage({
             <tbody className="divide-y divide-border">
               {leavers.map((l) => (
                 <tr key={l.employmentId}>
+                  <td className="px-4 py-2.5">
+                    <EmployeeCode code={l.employeeCode} />
+                  </td>
                   <td className="px-4 py-2.5 font-medium">
                     {l.name}
                     {/* ADR-0069: badge the source of annualBalance/suggested — a frozen resignation-
@@ -238,6 +242,7 @@ export default async function BatchPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  <th className="px-4 py-2 font-medium">{t('colCode')}</th>
                   <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
                   <th className="px-4 py-2 text-right font-medium">{t('colBasic')}</th>
                   <th className="px-4 py-2 text-right font-medium">{t('colOtBonusTp1Zakat')}</th>
@@ -247,6 +252,9 @@ export default async function BatchPage({
               <tbody className="divide-y divide-border">
                 {inputs.map((r) => (
                   <tr key={r.employmentId}>
+                    <td className="px-4 py-2.5">
+                      <EmployeeCode code={r.employeeCode} />
+                    </td>
                     <td className="px-4 py-2.5 font-medium">{r.name}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.basic)}</td>
                     <td className="px-4 py-2.5">
@@ -276,7 +284,7 @@ export default async function BatchPage({
                 ))}
                 {inputs.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                       {t('noActiveEmployees')}
                     </td>
                   </tr>
@@ -329,6 +337,7 @@ export default async function BatchPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('colCode')}</th>
                 <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colGross')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('colBonus')}</th>
@@ -345,6 +354,9 @@ export default async function BatchPage({
                 const st = sl.statutory as Record<string, number>;
                 return (
                   <tr key={sl.id}>
+                    <td className="px-4 py-2.5">
+                      <EmployeeCode code={sl.employeeCode} />
+                    </td>
                     <td className="px-4 py-2.5 font-medium">
                       {sl.name}
                       {sl.daysWorked != null && Number(sl.daysWorked) < periodDays && (
@@ -368,7 +380,7 @@ export default async function BatchPage({
               })}
               {slips.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {t('noPayslips')}
                   </td>
                 </tr>

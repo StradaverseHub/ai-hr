@@ -5,7 +5,7 @@ import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listCycles, managerCheckIns, managerPendingReviews } from '@/core/performance';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import {
   cancelCheckInAction,
   completeCheckInAction,
@@ -61,6 +61,7 @@ export default async function PerformancePage({
               <li key={r.reviewId} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <div>
                   <span className="font-medium">{r.employee}</span>
+                  {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                   <span className="ml-2 text-xs text-muted-foreground">{r.cycleName}</span>
                 </div>
                 <Link href={`/performance/review/${r.reviewId}`} className="text-sm text-primary hover:underline">

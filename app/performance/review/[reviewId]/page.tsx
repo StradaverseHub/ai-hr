@@ -73,7 +73,7 @@ export default async function ReviewPage({
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
         back={{ href: backHref, label: r.isSubject && !r.canManage ? t('backMyWorkspace') : t('backPerformance') }}
-        title={`${r.employee} — ${r.cycleName}`}
+        title={`${r.employee}${r.employeeCode ? ` (${r.employeeCode})` : ''} — ${r.cycleName}`}
         description={
           <>
             {r.periodStart} → {r.periodEnd}

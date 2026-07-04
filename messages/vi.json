@@ -228,7 +228,8 @@
       "internshipEndDate": "Ngày kết thúc thực tập",
       "provisionalEndHint": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
       "businessUnit": "Đơn vị kinh doanh",
-      "businessUnitNone": "— Không có —"
+      "businessUnitNone": "— Không có —",
+      "colCode": "Mã"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -1075,7 +1076,8 @@
       "pending": "Đang chờ",
       "approved": "Đã duyệt",
       "rejected": "Đã từ chối"
-    }
+    },
+    "code": "Mã"
   },
   "performance": {
     "list": {
@@ -1179,7 +1181,9 @@
       "calibrationReviewer": "Người đánh giá",
       "calibrationCurrent": "Hiện tại",
       "calibrationProposed": "Đề xuất",
-      "calibrationSet": "Đặt"
+      "calibrationSet": "Đặt",
+      "colCode": "Mã",
+      "calibrationCode": "Mã"
     },
     "review": {
       "backMyWorkspace": "Không gian của tôi",
@@ -1598,7 +1602,8 @@
       "holidayWarning": "{country}/{state} {year}: chỉ tải được {loaded}/{required} ngày lễ công cộng — các tính toán ngày nghỉ/làm thêm giờ có thể bị ảnh hưởng.",
       "encashmentFrozenBadge": "Đã khóa khi đơn nghỉ việc được phê duyệt",
       "encashmentOverriddenBadge": "Đã khóa (HR ghi đè)",
-      "encashmentFrozenAsOfTitle": "Đã khóa vào ngày {date}"
+      "encashmentFrozenAsOfTitle": "Đã khóa vào ngày {date}",
+      "colCode": "Mã"
     },
     "transactions": {
       "title": "Giao dịch",

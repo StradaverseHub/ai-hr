@@ -1085,6 +1085,7 @@ export function listCycles(ctx: SessionContext): Promise<CycleSummary[]> {
 export type RosterRow = {
   reviewId: string;
   employee: string;
+  employeeCode: string | null;
   reviewer: string | null;
   status: 'not_started' | 'self_review' | 'manager_review' | 'submitted' | 'acknowledged';
   selfRating: number | null;
@@ -1106,6 +1107,7 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
       .select({
         reviewId: performanceReview.id,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         reviewerEmploymentId: performanceReview.reviewerEmploymentId,
         status: performanceReview.status,
         selfRating: performanceReview.selfRating,
@@ -1138,6 +1140,7 @@ export function cycleDetail(ctx: SessionContext, cycleId: string) {
     const roster: RosterRow[] = rows.map((r) => ({
       reviewId: r.reviewId,
       employee: r.employee,
+      employeeCode: r.employeeCode,
       reviewer: r.reviewerEmploymentId ? reviewerNames.get(r.reviewerEmploymentId) ?? null : null,
       status: r.status,
       selfRating: r.selfRating,
@@ -1217,6 +1220,7 @@ export type ReviewView = {
   released: boolean;
   ratingScale: RatingScale;
   employee: string;
+  employeeCode: string | null;
   reviewer: string | null;
   status: RosterRow['status'];
   selfRating: number | null;
@@ -1258,6 +1262,7 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
         review: performanceReview,
         cycle: reviewCycle,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         subjectPersonId: employment.personId,
       })
       .from(performanceReview)
@@ -1304,6 +1309,7 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string): Promise<
       released,
       ratingScale: r.cycle.ratingScale as RatingScale,
       employee: r.employee,
+      employeeCode: r.employeeCode,
       reviewer: reviewerName,
       status: rv.status,
       selfRating: rv.selfRating,
@@ -1375,6 +1381,7 @@ export function managerPendingReviews(ctx: SessionContext) {
       .select({
         reviewId: performanceReview.id,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         cycleName: reviewCycle.name,
         status: performanceReview.status,
       })
@@ -1402,6 +1409,16 @@ async function namesForEmployments(tx: Tx, employmentIds: string[]): Promise<Map
     .innerJoin(person, eq(person.id, employment.personId))
     .where(inArray(employment.id, [...new Set(employmentIds)]));
   return new Map(rows.map((r) => [r.id, r.name]));
+}
+
+/** Map a set of employment ids → employee_code (one query). Nullable per employment. */
+async function codesForEmployments(tx: Tx, employmentIds: string[]): Promise<Map<string, string | null>> {
+  if (employmentIds.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: employment.id, code: employment.employeeCode })
+    .from(employment)
+    .where(inArray(employment.id, [...new Set(employmentIds)]));
+  return new Map(rows.map((r) => [r.id, r.code]));
 }
 
 /** The current administrative-line manager's employment id, or null (top of org).
@@ -2260,6 +2277,7 @@ export async function commitCalibration(ctx: SessionContext, p: { sessionId: str
 export type CalibrationRow = {
   reviewId: string;
   employee: string;
+  employeeCode: string | null;
   reviewer: string | null;
   overallRating: number | null;
   proposedRating: number | null;
@@ -2305,11 +2323,16 @@ export function calibrationView(ctx: SessionContext, cycleId: string): Promise<C
       tx,
       rows.flatMap((r) => [r.employmentId, r.reviewerEmploymentId].filter(Boolean) as string[]),
     );
+    const codes = await codesForEmployments(
+      tx,
+      rows.map((r) => r.employmentId),
+    );
 
     const calRows: CalibrationRow[] = rows
       .map((r) => ({
         reviewId: r.reviewId,
         employee: names.get(r.employmentId) ?? '—',
+        employeeCode: codes.get(r.employmentId) ?? null,
         reviewer: r.reviewerEmploymentId ? (names.get(r.reviewerEmploymentId) ?? null) : null,
         overallRating: r.overallRating,
         proposedRating: proposedByReview.get(r.reviewId) ?? null,

@@ -228,7 +228,8 @@
       "internshipEndDate": "Internship end date",
       "provisionalEndHint": "Probation end for full-time (defaults to +3 months); contract or internship end otherwise. Leave blank for none.",
       "businessUnit": "Business unit",
-      "businessUnitNone": "— None —"
+      "businessUnitNone": "— None —",
+      "colCode": "Code"
     },
     "detail": {
       "backToPeople": "People",
@@ -1075,7 +1076,8 @@
       "pending": "Pending",
       "approved": "Approved",
       "rejected": "Rejected"
-    }
+    },
+    "code": "Code"
   },
   "performance": {
     "list": {
@@ -1179,7 +1181,9 @@
       "reviewerAdminFallback": "— (admin)",
       "meritShort": "merit {pct}%",
       "bonusShort": "bonus {amount}",
-      "open": "Open"
+      "open": "Open",
+      "colCode": "Code",
+      "calibrationCode": "Code"
     },
     "review": {
       "backMyWorkspace": "My workspace",
@@ -1407,7 +1411,8 @@
       "summaryHeadcount": "Headcount",
       "consolidateTitle": "Consolidate data",
       "scopedCaption": "This run is scoped to selected employees. Overtime, shift differential, loan and zakat prefills below still apply company-wide; out-of-scope rows are ignored at processing. Claims prefill is scoped correctly.",
-      "holidayWarning": "{country}/{state} {year}: only {loaded} of {required} public holidays are loaded — rest-day/OT calculations may be affected."
+      "holidayWarning": "{country}/{state} {year}: only {loaded} of {required} public holidays are loaded — rest-day/OT calculations may be affected.",
+      "colCode": "Code"
     },
     "reports": {
       "pageTitle": "Payroll",

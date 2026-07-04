@@ -10,7 +10,7 @@ import { listPendingClaims } from '@/core/claims';
 import { listResignationRequests } from '@/core/offboarding';
 import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
 import { myEmployment } from '@/core/read';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import {
   approveClaimAction,
   approveCorrectionAction,
@@ -203,6 +203,7 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
                 <th className="px-4 py-2 font-medium">{t('dates')}</th>
@@ -215,6 +216,9 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {pendingLeave.map((r) => (
                 <tr key={r.id}>
+                  <td className="px-4 py-2.5">
+                    <EmployeeCode code={r.employeeCode} />
+                  </td>
                   <td className="px-4 py-2.5 font-medium">
                     <Link
                       href={`/people/${r.employmentId}`}
@@ -320,6 +324,7 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
                 <th className="px-4 py-2 font-medium">{t('originalDates')}</th>
@@ -332,6 +337,9 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {pendingCancellations.map((c) => (
                 <tr key={c.id}>
+                  <td className="px-4 py-2.5">
+                    <EmployeeCode code={c.employeeCode} />
+                  </td>
                   <td className="px-4 py-2.5 font-medium">{c.employee}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.leaveType}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
@@ -372,6 +380,7 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('type')}</th>
                 <th className="px-4 py-2 text-right font-medium">{t('amount')}</th>
@@ -382,6 +391,9 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {claims.map((c) => (
                 <tr key={c.id}>
+                  <td className="px-4 py-2.5">
+                    <EmployeeCode code={c.employeeCode} />
+                  </td>
                   <td className="px-4 py-2.5 font-medium">{c.claimantName}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">
                     {c.typeName}
@@ -411,6 +423,7 @@ export default async function ApprovalsPage({
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
+                <th className="px-4 py-2 font-medium">{t('code')}</th>
                 <th className="px-4 py-2 font-medium">{t('employee')}</th>
                 <th className="px-4 py-2 font-medium">{t('date')}</th>
                 <th className="px-4 py-2 font-medium">{t('proposed')}</th>
@@ -421,6 +434,9 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {corrections.map((c) => (
                 <tr key={c.id}>
+                  <td className="px-4 py-2.5">
+                    <EmployeeCode code={c.employeeCode} />
+                  </td>
                   <td className="px-4 py-2.5 font-medium">{c.employee}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
@@ -453,7 +469,10 @@ export default async function ApprovalsPage({
               {profileChanges.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">{r.employee}</div>
+                    <div className="text-sm font-medium">
+                      {r.employee}
+                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {Object.entries((r.proposed ?? {}) as Record<string, unknown>)
                         .map(([k, v]) => `${k} → ${v}`)
@@ -482,6 +501,7 @@ export default async function ApprovalsPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  <th className="px-4 py-2 font-medium">{t('code')}</th>
                   <th className="px-4 py-2 font-medium">{t('employee')}</th>
                   <th className="px-4 py-2 font-medium">{t('lastWorkingDay')}</th>
                   <th className="px-4 py-2 font-medium">{t('reason')}</th>
@@ -491,6 +511,9 @@ export default async function ApprovalsPage({
               <tbody className="divide-y divide-border">
                 {resignations.map((r) => (
                   <tr key={r.id}>
+                    <td className="px-4 py-2.5">
+                      <EmployeeCode code={r.employeeCode} />
+                    </td>
                     <td className="px-4 py-2.5 font-medium">
                       <Link
                         href={`/people/${r.employmentId}`}
@@ -529,9 +552,12 @@ export default async function ApprovalsPage({
             {managerReviews.map((r) => (
               <li key={r.id} className="px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
-                    {r.employee}
-                  </Link>
+                  <span className="flex items-center">
+                    <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
+                      {r.employee}
+                    </Link>
+                    {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
+                  </span>
                   <span className="text-xs text-muted-foreground">
                     {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')} · {tReview('dueDate')} {r.dueDate}
                   </span>
@@ -568,9 +594,12 @@ export default async function ApprovalsPage({
               {hrReviews.map((r) => (
                 <li key={r.id} className="px-4 py-3">
                   <div className="mb-1 flex items-center justify-between">
-                    <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
-                      {r.employee}
-                    </Link>
+                    <span className="flex items-center">
+                      <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
+                        {r.employee}
+                      </Link>
+                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')}
                     </span>

@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { calibrationView, cycleDetail } from '@/core/performance';
 import { listBatches } from '@/core/payroll';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import {
   calibrateAction,
@@ -220,6 +220,7 @@ export default async function CyclePage({
               <table className="w-full text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
+                    <th className="px-4 py-2 font-medium">{t('calibrationCode')}</th>
                     <th className="px-4 py-2 font-medium">{t('calibrationEmployee')}</th>
                     <th className="px-4 py-2 font-medium">{t('calibrationReviewer')}</th>
                     <th className="px-4 py-2 text-center font-medium">{t('calibrationCurrent')}</th>
@@ -229,6 +230,9 @@ export default async function CyclePage({
                 <tbody className="divide-y divide-border">
                   {calib.rows.map((cr) => (
                     <tr key={cr.reviewId}>
+                      <td className="px-4 py-2.5">
+                        <EmployeeCode code={cr.employeeCode} />
+                      </td>
                       <td className="px-4 py-2.5 font-medium">{cr.employee}</td>
                       <td className="px-4 py-2.5 text-muted-foreground">{cr.reviewer ?? '—'}</td>
                       <td className="px-4 py-2.5 text-center tabular-nums">{cr.overallRating ?? '—'}</td>
@@ -279,6 +283,7 @@ export default async function CyclePage({
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div className="text-sm">
                         <span className="font-medium">{r.employee}</span>
+                        {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                         <div className="text-xs text-muted-foreground">
                           {r.recommendedMeritPct != null && (
                             <>{t('meritOn', { pct: r.recommendedMeritPct, basic: rm(r.currentBasic) })} </>
@@ -351,6 +356,7 @@ export default async function CyclePage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  <th className="px-4 py-2 font-medium">{t('colCode')}</th>
                   <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
                   <th className="px-4 py-2 font-medium">{t('colReviewer')}</th>
                   <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
@@ -363,6 +369,9 @@ export default async function CyclePage({
               <tbody className="divide-y divide-border">
                 {roster.map((r) => (
                   <tr key={r.reviewId} className="hover:bg-muted/40">
+                    <td className="px-4 py-2.5">
+                      <EmployeeCode code={r.employeeCode} />
+                    </td>
                     <td className="px-4 py-2.5 font-medium">{r.employee}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">{r.reviewer ?? t('reviewerAdminFallback')}</td>
                     <td className={`px-4 py-2.5 capitalize ${STATUS_TONE[r.status] ?? ''}`}>

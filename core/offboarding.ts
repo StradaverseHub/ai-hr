@@ -155,12 +155,14 @@ export function listResignationRequests(
         employmentId: resignationRequest.employmentId,
         personId: resignationRequest.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode,
         lastWorkingDay: resignationRequest.lastWorkingDay,
         reason: resignationRequest.reason,
         status: resignationRequest.status,
         createdAt: resignationRequest.createdAt,
       })
       .from(resignationRequest)
+      .innerJoin(employment, eq(employment.id, resignationRequest.employmentId))
       .innerJoin(person, eq(person.id, resignationRequest.personId))
       .where(opts.status ? eq(resignationRequest.status, opts.status) : undefined)
       .orderBy(desc(resignationRequest.createdAt))

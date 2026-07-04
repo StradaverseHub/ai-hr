@@ -3,6 +3,7 @@
 import { Fragment, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { LoanRow, RepaymentRow } from '@/core/loans';
+import { EmployeeCode } from '@/components/ui';
 import {
   amendLoanAction,
   cancelLoanAction,
@@ -52,7 +53,10 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
         {loans.map((l) => (
           <Fragment key={l.id}>
             <tr className="hover:bg-muted/40">
-              <td className="px-4 py-2.5 font-medium">{l.employeeName}</td>
+              <td className="px-4 py-2.5 font-medium">
+                {l.employeeName}
+                {l.employeeCode && <EmployeeCode code={l.employeeCode} className="ml-2" />}
+              </td>
               <td className="px-4 py-2.5">{tType(l.loanType)}</td>
               <td className="px-4 py-2.5 tabular-nums">{money(l.principal)}</td>
               <td className="px-4 py-2.5 tabular-nums">{money(l.monthlyInstalment)}</td>
