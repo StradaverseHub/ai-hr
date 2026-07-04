@@ -70,7 +70,7 @@ Như ghi chú chú giải trên trang nêu rõ: *màu của đường nối mã 
 
 ## Mở trang chi tiết của một người
 
-Nhấp vào bất kỳ thẻ nào trên sơ đồ tổ chức, hoặc mở một người từ danh sách **People**, để đến trang chi tiết của họ (`/people/…`).
+Nhấp vào bất kỳ thẻ nào trên sơ đồ tổ chức, hoặc mở một người từ danh sách **People**, để đến trang chi tiết của họ (`/personnel/…`).
 
 Ở trên cùng, bạn sẽ thấy **tên** của người đó, một huy hiệu trạng thái (ví dụ `active` hoặc `terminated`), và một dòng tóm tắt hiển thị mã nhân viên, email, công ty và ngày tuyển dụng của họ. Một liên kết quay lại **People** đưa bạn trở về danh sách.
 

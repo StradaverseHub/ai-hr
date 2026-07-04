@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Read-only leave-entitlement breakdown panel (shared by /me and /people/[id]).
+ * Read-only leave-entitlement breakdown panel (shared by /me and /admin/personnel/[id]).
  *
  * Pure presentation: it renders the figures the server already reconstructed from the flat leave_ledger
  * (core/read.ts → leaveEntitlementBreakdown). It NEVER imports a DB client or a server action, so it is a
@@ -55,7 +55,7 @@ export function EntitlementBreakdown({
   data: EntitlementBreakdownData;
   /** The current as-at date driving the view (defaults to today server-side). */
   asOf: string;
-  /** The GET target of the as-at form (the page path, e.g. '/me' or '/people/<id>'). */
+  /** The GET target of the as-at form (the page path, e.g. '/me' or '/admin/personnel/<id>'). */
   action: string;
   /** Other query params to preserve across the as-at GET (kept as hidden inputs). */
   hiddenParams?: Record<string, string>;

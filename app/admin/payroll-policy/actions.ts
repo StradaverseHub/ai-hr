@@ -156,7 +156,7 @@ export async function assignPolicyAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId') ?? '');
   const rawPolicy = String(formData.get('policyId') ?? '').trim();
-  const dest = `/people/${employmentId}`;
+  const dest = `/admin/personnel/${employmentId}`;
   let errMsg: string | null = null;
   try {
     await assignPolicy(s, { employmentId, policyId: rawPolicy || null });

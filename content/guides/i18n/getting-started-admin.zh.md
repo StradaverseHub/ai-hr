@@ -46,7 +46,7 @@
 
 ### 批量 CSV 导入（第一天迁移）
 
-若要一次性导入整家公司，点击 **Import CSV（导入 CSV）**（位于 People 右上方），或前往 `/people/import`。
+若要一次性导入整家公司，点击 **Import CSV（导入 CSV）**（位于 People 右上方），或前往 `/admin/personnel/import`。
 
 1. 选择 **Target company（目标公司）**。
 2. 将你的 CSV 粘贴到 **CSV data（CSV 数据）** 中，或点击 **Load sample（加载示例）** 查看准确的格式。展开 **Column reference（列参考）** 查看必填列与可选列。

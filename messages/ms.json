@@ -111,7 +111,8 @@
     "reviews": "Penilaian",
     "locations": "Lokasi",
     "loans": "Pinjaman",
-    "payrollCycleConfig": "Kitaran Gaji"
+    "payrollCycleConfig": "Kitaran Gaji",
+    "personnelAdmin": "Kakitangan (admin)"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -494,7 +495,9 @@
         "geofencingToggle": "Kuatkuasakan geopagar",
         "radiusLabel": "Jejari dibenarkan (meter)",
         "hint": "Apabila geopagar dikuatkuasakan, daftar masuk/keluar akan disekat melainkan pekerja berada dalam jejari lokasi yang ditetapkan. Apabila dimatikan, lokasi masih direkodkan untuk audit."
-      }
+      },
+      "directorySubtitle": "Profil direktori kakitangan",
+      "viewFullRecord": "Lihat rekod penuh"
     },
     "import": {
       "title": "Import pekerja",

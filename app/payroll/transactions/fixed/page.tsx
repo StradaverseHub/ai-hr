@@ -43,7 +43,7 @@ export default async function FixedTransactionPage() {
                 <td className="px-4 py-2.5 text-muted-foreground">{e.company}</td>
                 <td className="px-4 py-2.5 text-right">
                   <Link
-                    href={`/people/${e.employmentId}`}
+                    href={`/personnel/${e.employmentId}`}
                     className="inline-flex items-center rounded-lg border border-border px-3 py-1 text-xs font-medium text-foreground transition-colors hover:bg-accent"
                   >
                     {t('fixed.manage')}

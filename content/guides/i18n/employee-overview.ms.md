@@ -20,7 +20,7 @@ Dalam bar sisi, halaman harian yang boleh digunakan oleh setiap pekerja dikumpul
 | --- | --- | --- |
 | **Dashboard** | `/` | Gambaran keseluruhan seluruh syarikat: bilangan pekerja, cuti umum akan datang, siapa yang baru menyertai |
 | **Layanan Diri Pekerja** | `/me` | Laman utama peribadi anda — kehadiran, cuti, gaji, butiran |
-| **People** | `/people` | Direktori kakitangan — cari dan layari rakan sekerja |
+| **People** | `/personnel` | Direktori kakitangan — cari dan layari rakan sekerja |
 | **Org chart** | `/org` | Struktur pelaporan sebagai pokok visual |
 | **Leave** | `/leave` | Kalendar cuti dikongsi dan permohonan anda |
 | **Attendance** | `/attendance` | Rekod kehadiran |
@@ -80,7 +80,7 @@ Di bahagian bawah, kad **Tax statement (EA / C.P.8A)** memberi anda penyata tahu
 
 ## Halaman harian yang lain
 
-- **People** (`/people`) — direktori syarikat. Cari rakan sekerja dan buka profil untuk melihat peranan dan butiran hubungan mereka.
+- **People** (`/personnel`) — direktori syarikat. Cari rakan sekerja dan buka profil untuk melihat peranan dan butiran hubungan mereka.
 - **Org chart** (`/org`) — struktur pelaporan dilukis sebagai pokok, supaya anda dapat melihat siapa melapor kepada siapa. Anda boleh kembangkan, runtuhkan, zum, dan cari.
 - **Leave** (`/leave`) — paparan dikongsi tentang siapa yang bercuti dan bila, di samping permohonan anda sendiri. Baki peribadi anda kekal sulit untuk diri anda sahaja.
 - **Attendance** (`/attendance`) — rekod kehadiran dari semasa ke semasa.

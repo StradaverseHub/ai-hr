@@ -40,8 +40,8 @@ export const ACTOR_LABEL: Record<string, string> = {
 
 /** aggregateType → the human label + the route it links to (id appended). null = not linkable. */
 const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }> = {
-  employee: { label: 'Employee', href: (id) => `/people/${id}` },
-  employment: { label: 'Employee', href: (id) => `/people/${id}` },
+  employee: { label: 'Employee', href: (id) => `/admin/personnel/${id}` },
+  employment: { label: 'Employee', href: (id) => `/admin/personnel/${id}` },
   person: { label: 'Person' },
   company: { label: 'Company' },
   department: { label: 'Department' },

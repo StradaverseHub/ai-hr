@@ -2,7 +2,7 @@ This guide is for the HR administrator setting up AI HR for the first time. It t
 
 ## 1. First login and the identity / role concept
 
-When you open the app you land on the **Dashboard**. The left sidebar is your map: Dashboard, My workspace, People, Org chart, Leave, Attendance, Approvals, Performance, and — for admins — an **Admin** group (Organization, Leave config, Users & roles, Audit trail) plus **Payroll**.
+When you open the app you land on the **Dashboard**. The left sidebar is your map: Dashboard, My workspace, Personnel, Org chart, Leave, Attendance, Approvals, Performance, and — for admins — an **Admin** group (Organization, Leave config, Users & roles, Audit trail) plus **Payroll**.
 
 **How identity works.** Production logins are provisioned through **WorkOS** (SSO or invite). In a local/dev environment you'll see a small **Dev as** dropdown in the top bar — it lets you "act as" any seeded principal (for example *HR Admin · hr_admin*) to test what each role sees. Pick the `hr_admin` (or `super_admin`) identity before you start; the Admin and Payroll sections only appear for those roles.
 
@@ -36,7 +36,7 @@ A typical Malaysian group has a holding company over an operating legal entity. 
 
 ## 3. Add people
 
-Open **People** in the sidebar. You have two ways to bring staff in.
+Open **Personnel** in the sidebar. You have two ways to bring staff in.
 
 ### Hire one at a time
 
@@ -46,7 +46,7 @@ Open **People** in the sidebar. You have two ways to bring staff in.
 
 ### Bulk CSV import (day-one migration)
 
-For onboarding a whole company at once, click **Import CSV** (top right of People), or go to `/people/import`.
+For onboarding a whole company at once, click **Import CSV** (top right of People), or go to `/admin/personnel/import`.
 
 1. Pick the **Target company**.
 2. Paste your CSV into **CSV data**, or click **Load sample** to see the exact format. Expand **Column reference** to see required vs optional columns.
@@ -63,7 +63,7 @@ For onboarding a whole company at once, click **Import CSV** (top right of Peopl
 
 ## 4. Set each employee's Malaysian statutory profile
 
-CSV import already captures the statutory basics. To review or fill them in for a hand-hired employee, open **People**, click the person's name, and use the **Statutory (Malaysia)** card:
+CSV import already captures the statutory basics. To review or fill them in for a hand-hired employee, open **Personnel**, click the person's name, and use the **Statutory (Malaysia)** card:
 
 | Field | What it's for |
 |---|---|

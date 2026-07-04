@@ -23,6 +23,6 @@ export async function commitImportAction(csv: string, companyId: string): Promis
   const s = await requireAdmin();
   const { records } = parseCsvRecords(csv);
   const result = await commitEmployeeImport(s, { companyId, records });
-  revalidatePath('/people');
+  revalidatePath('/admin/personnel');
   return result;
 }

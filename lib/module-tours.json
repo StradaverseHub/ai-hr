@@ -237,7 +237,7 @@
       {
         "id": "intro",
         "target": null,
-        "route": "/people",
+        "route": "/admin/personnel",
         "titleKey": "tour.people.intro.title",
         "bodyKey": "tour.people.intro.body",
         "placement": "center"
@@ -245,7 +245,7 @@
       {
         "id": "search",
         "target": "[data-tour=\"people-search\"]",
-        "route": "/people",
+        "route": "/admin/personnel",
         "titleKey": "tour.people.search.title",
         "bodyKey": "tour.people.search.body",
         "placement": "bottom"
@@ -253,7 +253,7 @@
       {
         "id": "table",
         "target": "[data-tour=\"people-table\"]",
-        "route": "/people",
+        "route": "/admin/personnel",
         "titleKey": "tour.people.table.title",
         "bodyKey": "tour.people.table.body",
         "placement": "top"
@@ -261,7 +261,7 @@
       {
         "id": "hire",
         "target": "[data-tour=\"people-hire\"]",
-        "route": "/people",
+        "route": "/admin/personnel",
         "titleKey": "tour.people.hire.title",
         "bodyKey": "tour.people.hire.body",
         "placement": "top"

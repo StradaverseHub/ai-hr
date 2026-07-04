@@ -30,7 +30,7 @@ The page assembles the report from that company's **payroll batch** for the peri
 
 ### Reading the readiness check
 
-Above the table, a red box may appear: **"N employee(s) missing identifiers needed to file."** This lists employees whose required IDs are blank for that report — for example a missing `Tax no`, `EPF no`, or `SOCSO no`. Missing values also show as empty red cells in the table. Fix these before you file: open the person under **People**, complete their statutory identity, re-run preview. A clean report has no red box.
+Above the table, a red box may appear: **"N employee(s) missing identifiers needed to file."** This lists employees whose required IDs are blank for that report — for example a missing `Tax no`, `EPF no`, or `SOCSO no`. Missing values also show as empty red cells in the table. Fix these before you file: open the person under **Personnel**, complete their statutory identity, re-run preview. A clean report has no red box.
 
 ## Exporting and recording a monthly report
 
@@ -115,7 +115,7 @@ The **payment summary** is a neutral employee / bank / account / net-pay CSV for
 ## Troubleshooting & common pitfalls
 
 - **"No payroll batch found …"** — run payroll for that company and period first, then preview again.
-- **Red "missing identifiers" box / empty red cells** — complete the employee's IC, Tax no, EPF no or SOCSO no under **People** before filing.
+- **Red "missing identifiers" box / empty red cells** — complete the employee's IC, Tax no, EPF no or SOCSO no under **Personnel** before filing.
 - **No CP39 .txt button** — it only appears for the CP39 report with **zero** readiness errors. Clear the red box first.
 - **EA / CP8D totals look low** — remember benefits-in-kind, accommodation, ESOS, gratuity, tax-exempt allowances, zakat and CP38 are not tracked; add them in MyTax before filing.
 - **Filing the wrong company's figures** — every report is per legal entity. Double-check the **Company** selector before you export.

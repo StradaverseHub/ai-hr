@@ -89,7 +89,7 @@ Click any row to expand it. A small detail block shows what changed — for edit
 
 ## Per-record History
 
-You don't have to wade through the global log to investigate one person. Open any employee from **People**, scroll to the **Change history** section near the bottom of their detail page. It uses the same expandable rows as the Audit trail, but pre-filtered to just that employee's events — role grants, profile and bank changes, compensation, statutory edits, and more.
+You don't have to wade through the global log to investigate one person. Open any employee from **Personnel**, scroll to the **Change history** section near the bottom of their detail page. It uses the same expandable rows as the Audit trail, but pre-filtered to just that employee's events — role grants, profile and bank changes, compensation, statutory edits, and more.
 
 > **Tip** The **Change history** block is admin-only. Managers and employees viewing a profile won't see it.
 

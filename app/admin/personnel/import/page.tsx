@@ -23,7 +23,7 @@ export default async function ImportPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
-        back={{ href: '/people', label: t('backLabel') }}
+        back={{ href: '/admin/personnel', label: t('backLabel') }}
         title={t('title')}
         description={t('description')}
       />

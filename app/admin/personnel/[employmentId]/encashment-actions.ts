@@ -7,7 +7,7 @@ import { unfreezeEncashment, adjustEncashment } from '@/core/leave-encashment';
 
 // ADR-0069: HR's two override powers on a frozen leave-encashment snapshot (mirrors cp38-actions.ts).
 // Both are admin-only (requireAdmin) and route through the event-logged service.
-const back = (employmentId: string, qs: string) => redirect(`/people/${employmentId}?${qs}`);
+const back = (employmentId: string, qs: string) => redirect(`/admin/personnel/${employmentId}?${qs}`);
 
 export async function unfreezeEncashmentAction(formData: FormData) {
   const s = await requireAdmin();
@@ -20,7 +20,7 @@ export async function unfreezeEncashmentAction(formData: FormData) {
   } catch (e) {
     back(employmentId, `encashmentError=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }
 
@@ -36,6 +36,6 @@ export async function adjustEncashmentAction(formData: FormData) {
   } catch (e) {
     back(employmentId, `encashmentError=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }

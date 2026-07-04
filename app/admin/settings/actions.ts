@@ -26,7 +26,8 @@ import {
 // — so a save/edit/archive/delete keeps the admin on the System Labels page (redirect-target guard, per plan).
 const SYSTEM_LABELS = '/admin/settings/system-labels';
 // The three catalog tables also back dropdowns on these routes, so revalidate them on every write.
-const REVALIDATE_ALSO = ['/admin/organization', '/people', '/people/import'];
+// (People → Personnel rename: the employee directory + import now live under /admin/personnel.)
+const REVALIDATE_ALSO = ['/admin/organization', '/admin/personnel', '/admin/personnel/import'];
 
 function fail(path: string, e: unknown): never {
   redirect(`${path}?error=${encodeURIComponent((e as Error).message)}`);

@@ -47,7 +47,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
-      { href: '/people', labelKey: 'people', icon: Users },
+      { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       { href: '/attendance', labelKey: 'attendance', icon: Clock },
@@ -70,6 +70,7 @@ const GROUPS: Group[] = [
     adminOnly: true,
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
+      { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
       { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags },
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
       { href: '/admin/leave-approval', labelKey: 'leaveApproval', icon: Workflow },

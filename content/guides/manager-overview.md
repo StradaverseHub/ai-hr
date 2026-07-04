@@ -2,7 +2,7 @@ This guide is for **people managers** — anyone with the `manager` role (and it
 
 ## What the Manage section unlocks
 
-Once your account has the manager role, a new group appears in the left sidebar under the heading **Manage**, sitting between the everyday pages (Dashboard, My workspace, People, Org chart, Leave, Attendance) and the admin-only tools. It contains two items:
+Once your account has the manager role, a new group appears in the left sidebar under the heading **Manage**, sitting between the everyday pages (Dashboard, My workspace, Personnel, Org chart, Leave, Attendance) and the admin-only tools. It contains two items:
 
 | Item | Where it goes | What it's for |
 | --- | --- | --- |
@@ -46,7 +46,7 @@ Two pages give you situational awareness before you even open the inbox.
 
 The **Dashboard** (the first sidebar item, or click the **AI HR** logo) is your morning overview. Across the top sit four stat cards — each is clickable and jumps straight to the relevant page:
 
-- **Headcount** → People
+- **Headcount** → Personnel
 - **Pending leave** (*Awaiting approval*) → Leave
 - **Companies** → Organization
 - **Latest payroll** → Payroll

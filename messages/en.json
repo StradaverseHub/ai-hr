@@ -80,7 +80,7 @@
     "dataPrivacy": "Data Privacy",
     "dashboard": "Dashboard",
     "myWorkspace": "Employee Self-Service",
-    "people": "People",
+    "people": "Personnel",
     "orgChart": "Org chart",
     "leave": "Leave",
     "attendance": "Attendance",
@@ -111,7 +111,8 @@
     "reviews": "Reviews",
     "locations": "Locations",
     "loans": "Loans",
-    "payrollCycleConfig": "Payroll Cycles"
+    "payrollCycleConfig": "Payroll Cycles",
+    "personnelAdmin": "Personnel (admin)"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -161,7 +162,7 @@
   },
   "people": {
     "list": {
-      "title": "People",
+      "title": "Personnel",
       "employeeCount": "{count, plural, one {# employee} other {# employees}}",
       "importCsv": "Import CSV",
       "profileChangeRequests": "Profile change requests",
@@ -494,7 +495,9 @@
         "geofencingToggle": "Enforce geofencing",
         "radiusLabel": "Allowed radius (metres)",
         "hint": "When geofencing is enforced, clock-in/out is blocked unless the employee is within the radius of an assigned site. When off, location is still captured for audit."
-      }
+      },
+      "directorySubtitle": "Staff directory profile",
+      "viewFullRecord": "View full record"
     },
     "import": {
       "title": "Import employees",

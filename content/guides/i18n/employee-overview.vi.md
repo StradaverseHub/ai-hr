@@ -20,7 +20,7 @@ Trong thanh bên, các trang hằng ngày mà mọi nhân viên có thể sử d
 | --- | --- | --- |
 | **Dashboard** | `/` | Tổng quan toàn công ty: số lượng nhân sự, các ngày lễ sắp tới, ai mới gia nhập |
 | **Tự phục vụ nhân viên** | `/me` | Trang chủ cá nhân của bạn — chấm công, nghỉ phép, lương, thông tin |
-| **People** | `/people` | Danh bạ nhân viên — tìm kiếm và duyệt qua đồng nghiệp |
+| **People** | `/personnel` | Danh bạ nhân viên — tìm kiếm và duyệt qua đồng nghiệp |
 | **Org chart** | `/org` | Cơ cấu báo cáo dưới dạng cây trực quan |
 | **Leave** | `/leave` | Lịch nghỉ phép chung và các yêu cầu của bạn |
 | **Attendance** | `/attendance` | Bản ghi chấm công |
@@ -80,7 +80,7 @@ Bảng **My payslips** liệt kê từng kỳ lương kèm công ty, lương g�
 
 ## Các trang hằng ngày khác
 
-- **People** (`/people`) — danh bạ công ty. Tìm kiếm đồng nghiệp và mở hồ sơ để xem vai trò và thông tin liên hệ của họ.
+- **People** (`/personnel`) — danh bạ công ty. Tìm kiếm đồng nghiệp và mở hồ sơ để xem vai trò và thông tin liên hệ của họ.
 - **Org chart** (`/org`) — cơ cấu báo cáo được vẽ dưới dạng cây, để bạn thấy ai báo cáo cho ai. Bạn có thể mở rộng, thu gọn, phóng to và tìm kiếm.
 - **Leave** (`/leave`) — một góc nhìn chung về ai nghỉ và khi nào, bên cạnh các yêu cầu của riêng bạn. Số dư cá nhân của bạn vẫn riêng tư chỉ dành cho bạn.
 - **Attendance** (`/attendance`) — bản ghi chấm công theo thời gian.

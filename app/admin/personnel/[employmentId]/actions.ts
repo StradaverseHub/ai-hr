@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -16,33 +16,33 @@ import { mapEpfUiMode } from '@/lib/epf-mode-map';
 const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
 
 export async function setReviewEndDateAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const rawType = String(formData.get('reviewType') ?? '');
   const reviewType = (REVIEW_TYPES as string[]).includes(rawType) ? (rawType as ReviewType) : 'probation';
   try {
     await setReviewEndDate(s, { employmentId, reviewType, endDate: String(formData.get('endDate') || '') || null });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function startReviewAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await startReview(s, { employmentId });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Review started`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Review started`);
 }
 
 export async function setEmploymentComponentAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   // 1.2.1 Fixed Transaction — the prorate Select maps inherit/yes/no → null/true/false (null = inherit the
   // catalog flag). The effective end-date and remarks are optional; an empty value is normalised to null.
@@ -72,14 +72,14 @@ export async function setEmploymentComponentAction(formData: FormData) {
         : e instanceof UnsupportedFixedCurrencyError
           ? t('currencyUnsupported')
           : (e as Error).message;
-    redirect(`/people/${employmentId}?error=${encodeURIComponent(msg)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function transferAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await transferEmployee(s, {
@@ -88,17 +88,17 @@ export async function transferAction(formData: FormData) {
       departmentId: String(formData.get('departmentId')),
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /** ADR-0054: set (or clear) an employee's location, effective-dated through the existing transfer path
  *  (CLOSE+INSERT on assignment). An empty locationId clears it. Cross-company coherence is enforced in
  *  the service. */
 export async function setLocationAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await transferEmployee(s, {
@@ -107,14 +107,14 @@ export async function setLocationAction(formData: FormData) {
       locationId: (formData.get('locationId') as string) || null,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function terminateAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     const rawType = String(formData.get('terminationType') ?? '');
@@ -130,14 +130,14 @@ export async function terminateAction(formData: FormData) {
       terminationReason: (formData.get('terminationReason') as string) || undefined,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function addReportingLineAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await setReportingLine(s, {
@@ -147,14 +147,14 @@ export async function addReportingLineAction(formData: FormData) {
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function endReportingLineAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await endReportingLine(s, {
@@ -162,17 +162,17 @@ export async function endReportingLineAction(formData: FormData) {
       endDate: String(formData.get('endDate')),
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /** Hierarchy Management (ADR-0052): create an approval delegation FROM this employment (the delegator
  *  going on leave) TO a stand-in delegate, windowed by valid-from/valid-to. Reuses setReportingLine with
  *  lineType 'delegate' — inheriting the bitemporal window, supersede, events, and RLS. */
 export async function addDelegationAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await setReportingLine(s, {
@@ -183,15 +183,15 @@ export async function addDelegationAction(formData: FormData) {
       validTo: String(formData.get('validTo') ?? '').trim() || null,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /** End an active delegation early (ADR-0052) — reuses endReportingLine (events + RLS). */
 export async function endDelegationAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await endReportingLine(s, {
@@ -199,14 +199,14 @@ export async function endDelegationAction(formData: FormData) {
       endDate: String(formData.get('endDate')),
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function setCompensationAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await setCompensation(s, {
@@ -216,10 +216,10 @@ export async function setCompensationAction(formData: FormData) {
       effectiveFrom: String(formData.get('effectiveFrom')),
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /** Parse the unified "Holiday calendar" selector value into a discriminated selection. The single field
@@ -233,7 +233,7 @@ function parseHolidayCalendar(raw: FormDataEntryValue | null): HolidayCalendarSe
 }
 
 export async function setPersonAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await updatePerson(s, {
@@ -251,10 +251,10 @@ export async function setPersonAction(formData: FormData) {
     // 2E (ADR-0041): seniority grade — same form, drives grade-scoped leave entitlements.
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /**
@@ -265,7 +265,7 @@ export async function setPersonAction(formData: FormData) {
  * change the PCB/tax bracket (a separate statutory field) — surfaced on-screen.
  */
 export async function setComplianceFieldsAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await setPersonComplianceFields(s, {
@@ -274,14 +274,14 @@ export async function setComplianceFieldsAction(formData: FormData) {
       maritalStatus: (formData.get('maritalStatus') as string) || null,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 export async function setStatutoryAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const personId = String(formData.get('personId'));
   const pack = packFor('MY');
@@ -330,15 +330,15 @@ export async function setStatutoryAction(formData: FormData) {
       zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /** ADR-0070 — set-based replace of an employee's assigned clocking sites. */
 export async function setEmployeeClockingLocationsAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await setEmployeeClockingLocations(s, {
@@ -346,15 +346,15 @@ export async function setEmployeeClockingLocationsAction(formData: FormData) {
       clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
 /** ADR-0070 — enable/disable geofencing for one employee + set its radius (metres). */
 export async function setGeofencingAction(formData: FormData) {
-  const s = await getSession();
+  const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   try {
     await setGeofencing(s, {
@@ -363,8 +363,8 @@ export async function setGeofencingAction(formData: FormData) {
       radiusM: formData.get('radiusM') ? Number(formData.get('radiusM')) : null,
     });
   } catch (e) {
-    redirect(`/people/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath(`/people/${employmentId}`);
-  redirect(`/people/${employmentId}?toast=Saved`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }

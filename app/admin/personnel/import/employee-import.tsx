@@ -184,7 +184,7 @@ export function EmployeeImport({
             </ul>
           )}
           <div className="flex items-center gap-3 px-4 py-3 text-sm">
-            <Link href="/people" className="text-primary hover:underline">
+            <Link href="/admin/personnel" className="text-primary hover:underline">
               {t('viewPeople')}
             </Link>
             <button

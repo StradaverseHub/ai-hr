@@ -111,7 +111,8 @@
     "reviews": "Đánh giá",
     "locations": "Địa điểm",
     "loans": "Khoản vay",
-    "payrollCycleConfig": "Chu kỳ trả lương"
+    "payrollCycleConfig": "Chu kỳ trả lương",
+    "personnelAdmin": "Nhân sự (quản trị)"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -494,7 +495,9 @@
         "geofencingToggle": "Áp dụng ranh giới địa lý",
         "radiusLabel": "Bán kính cho phép (mét)",
         "hint": "Khi ranh giới địa lý được áp dụng, việc chấm công vào/ra sẽ bị chặn trừ khi nhân viên nằm trong bán kính của địa điểm được gán. Khi tắt, vị trí vẫn được ghi lại để kiểm toán."
-      }
+      },
+      "directorySubtitle": "Hồ sơ danh bạ nhân viên",
+      "viewFullRecord": "Xem hồ sơ đầy đủ"
     },
     "import": {
       "title": "Nhập nhân viên",

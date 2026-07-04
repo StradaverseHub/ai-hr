@@ -70,7 +70,7 @@ Seperti yang dinyatakan oleh nota legenda pada halaman: *warna penyambung mengek
 
 ## Membuka halaman butiran seseorang
 
-Klik mana-mana kad pada carta organisasi, atau buka seseorang daripada senarai **People**, untuk sampai ke halaman butiran mereka (`/people/…`).
+Klik mana-mana kad pada carta organisasi, atau buka seseorang daripada senarai **People**, untuk sampai ke halaman butiran mereka (`/personnel/…`).
 
 Di bahagian atas anda akan melihat **nama** orang itu, satu lencana status (contohnya `active` atau `terminated`), dan satu baris ringkasan yang menunjukkan kod pekerja, e-mel, syarikat dan tarikh pengambilan mereka. Satu pautan balik **People** mengembalikan anda ke senarai.
 

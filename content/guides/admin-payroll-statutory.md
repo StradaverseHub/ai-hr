@@ -4,7 +4,7 @@ This guide is for HR administrators and payroll officers running monthly Malaysi
 
 Every figure on a payslip is driven by the employee's statutory profile. Set it up first, because anyone missing required data will still appear in the batch but with incomplete deductions.
 
-1. In the left sidebar, click **People**, then click the employee's name to open their detail page.
+1. In the left sidebar, click **Personnel**, then click the employee's name to open their detail page.
 2. Find the **Statutory (Malaysia)** card (right column, beside **Compensation**).
 3. Fill in the fields, then click **Save statutory**.
 
@@ -100,7 +100,7 @@ The payslip table shows **Gross**, **Bonus**, **EPF**, **SOCSO**, **EIS**, **PCB
 
 ## Final-pay advisory for leavers
 
-When you terminate someone (on their **People** detail page, **Terminate** card) and their last day falls inside a batch's period, the draft batch shows a **leavers** advisory listing **unused annual leave**, the **ORP per day** (basic ÷ 26), and a **suggested** pay-in-lieu amount (EA 1955 s.60E).
+When you terminate someone (on their **Personnel** detail page, **Terminate** card) and their last day falls inside a batch's period, the draft batch shows a **leavers** advisory listing **unused annual leave**, the **ORP per day** (basic ÷ 26), and a **suggested** pay-in-lieu amount (EA 1955 s.60E).
 
 **This is advisory only — there is no auto-pay.** If you choose to pay it, type the amount into that employee's **Bonus** field in the inputs editor before generating payslips. AI HR deliberately leaves the decision to you because the EPF/PCB treatment of leave encashment depends on your policy.
 

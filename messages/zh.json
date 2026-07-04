@@ -111,7 +111,8 @@
     "reviews": "评估",
     "locations": "地点",
     "loans": "贷款",
-    "payrollCycleConfig": "薪资周期"
+    "payrollCycleConfig": "薪资周期",
+    "personnelAdmin": "员工（管理）"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -494,7 +495,9 @@
         "geofencingToggle": "启用地理围栏",
         "radiusLabel": "允许半径（米）",
         "hint": "启用地理围栏后，除非员工位于已分配地点的半径范围内，否则将阻止签到/签退。关闭时，仍会记录位置以供审计。"
-      }
+      },
+      "directorySubtitle": "员工通讯录档案",
+      "viewFullRecord": "查看完整记录"
     },
     "import": {
       "title": "导入员工",

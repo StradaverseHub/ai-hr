@@ -1,4 +1,4 @@
-This guide is for HR administrators (`hr_admin` and `super_admin`) who own the people record and the organisation structure in AI HR. By the end you'll be able to set up companies, departments, positions and cost centres; hire and import employees; maintain each person's compensation, Malaysian statutory profile and reporting lines; run effective-dated transfers; and terminate employment — all from the **People** and **Admin → Organization** screens.
+This guide is for HR administrators (`hr_admin` and `super_admin`) who own the people record and the organisation structure in AI HR. By the end you'll be able to set up companies, departments, positions and cost centres; hire and import employees; maintain each person's compensation, Malaysian statutory profile and reporting lines; run effective-dated transfers; and terminate employment — all from the **Personnel** and **Admin → Organization** screens.
 
 ## Before you start: companies, departments, positions, cost centres
 
@@ -40,7 +40,7 @@ The same logic applies at company level: a company **in use** offers **Archive c
 
 ## Hiring an employee
 
-1. In the sidebar, click **People**. You'll see the employee table (Name, Department, Company, Status, Hired) with a search box and an employee count.
+1. In the sidebar, click **Personnel**. You'll see the employee table (Name, Department, Company, Status, Hired) with a search box and an employee count.
 2. Scroll to the **Hire an employee** panel at the bottom and expand it.
 3. Fill in **Full name**, **Email**, **Company**, **Department**, **Employment type** (`Full-time`, `Part-time`, `Contract` or `Intern`) and **Hire date** (defaults to today).
 4. Click **Hire**. The new person appears in the table and is given an employee code automatically. On hire, standing leave entitlements (annual, sick, hospitalisation) are granted per the company's country pack — annual leave is pro-rated for the months remaining in the hire year.
@@ -49,7 +49,7 @@ The same logic applies at company level: a company **in use** offers **Archive c
 
 ## The employee detail page
 
-Click any name in the **People** table to open that person's record. The header shows their employee code, email, company, hire date and a status badge. As an admin you can edit the following sections.
+Click any name in the **Personnel** table to open that person's record. The header shows their employee code, email, company, hire date and a status badge. As an admin you can edit the following sections.
 
 ### Personal details
 
@@ -114,7 +114,7 @@ In the **Terminate** card, pick a **Termination date** (defaults to today) and c
 
 For onboarding many people at once — for example a day-one migration — use the importer.
 
-1. On the **People** page, click **Import CSV** (top right; admins only). The **Import employees** page opens.
+1. On the **Personnel** page, click **Import CSV** (top right; admins only). The **Import employees** page opens.
 2. Pick the **Target company** (it defaults to your active company, or the entity with the most departments).
 3. Paste your rows into **CSV data**, or click **Load sample** to drop in a template you can edit.
 4. Expand **Column reference** to see what's recognised:

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
+import { requireAdmin } from '@/lib/authz';
 import { computeProvisionalEndOn, hireEmployee, resolveProbationMonths } from '@/core/org';
 import { listLeaveTypes } from '@/core/read';
 import { getPayrollConfig } from '@/core/payroll-config';
@@ -15,7 +15,7 @@ type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 const STANDING_GRANTS = new Set(['ANNUAL', 'SICK', 'HOSPITALIZATION']);
 
 export async function hireAction(formData: FormData) {
-  const session = await getSession();
+  const session = await requireAdmin();
   const str = (k: string) => {
     const v = String(formData.get(k) ?? '').trim();
     return v || undefined;
@@ -59,14 +59,14 @@ export async function hireAction(formData: FormData) {
         .map((t) => ({ id: t.id, code: t.code })),
     });
   } catch (e) {
-    redirect(`/people?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/people');
-  redirect('/people?toast=Employee hired');
+  revalidatePath('/admin/personnel');
+  redirect('/admin/personnel?toast=Employee hired');
 }
 
 export async function decideProfileChangeAction(formData: FormData) {
-  const session = await getSession();
+  const session = await requireAdmin();
   const decision = String(formData.get('decision')) as 'approved' | 'rejected';
   try {
     await decideProfileChange(session, {
@@ -74,8 +74,8 @@ export async function decideProfileChangeAction(formData: FormData) {
       decision,
     });
   } catch (e) {
-    redirect(`/people?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/admin/personnel?error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/people');
-  redirect(`/people?toast=${encodeURIComponent('Change ' + decision)}`);
+  revalidatePath('/admin/personnel');
+  redirect(`/admin/personnel?toast=${encodeURIComponent('Change ' + decision)}`);
 }

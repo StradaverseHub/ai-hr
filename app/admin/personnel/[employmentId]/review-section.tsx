@@ -81,7 +81,7 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
                 </span>
                 {r.status === 'completed' && (
                   <a
-                    href={`/people/${employmentId}/review/${r.id}/letter`}
+                    href={`/admin/personnel/${employmentId}/review/${r.id}/letter`}
                     className="text-primary underline-offset-2 hover:underline"
                   >
                     {t('downloadLetter')}

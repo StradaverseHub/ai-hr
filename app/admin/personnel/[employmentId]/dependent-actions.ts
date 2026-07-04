@@ -14,7 +14,7 @@ import {
 // page. Each action is admin-only (requireAdmin → RLS WITH CHECK is_admin()), routes through the
 // event-logged service, and revalidates the detail page. The page is keyed by employmentId (for the redirect
 // path) but the record is keyed by personId, passed through the hidden form field.
-const back = (employmentId: string, qs: string) => redirect(`/people/${employmentId}?${qs}`);
+const back = (employmentId: string, qs: string) => redirect(`/admin/personnel/${employmentId}?${qs}`);
 
 const errorMsg = (e: unknown): string =>
   e instanceof DependentValidationError ? e.message : (e as Error).message;
@@ -42,7 +42,7 @@ export async function addDependentAction(formData: FormData) {
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }
 
@@ -65,7 +65,7 @@ export async function editDependentAction(formData: FormData) {
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }
 
@@ -77,6 +77,6 @@ export async function archiveDependentAction(formData: FormData) {
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }

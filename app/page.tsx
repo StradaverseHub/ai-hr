@@ -143,7 +143,7 @@ export default async function DashboardPage({
       />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label={t('headcount')} value={stats.headcount} hint={t('activeEmployees')} href="/people" />
+        <StatCard label={t('headcount')} value={stats.headcount} hint={t('activeEmployees')} href="/personnel" />
         <StatCard label={t('pendingLeave')} value={stats.pendingLeave} hint={t('awaitingApproval')} href="/leave" />
         <StatCard
           label={t('companies')}
@@ -178,7 +178,7 @@ export default async function DashboardPage({
               <h2 className="text-sm font-semibold">{t('onboarding')}</h2>
               <p className="text-xs text-muted-foreground">{t('recentlyJoined')}</p>
             </div>
-            <Link href="/people" className="text-xs text-muted-foreground hover:text-foreground">
+            <Link href="/personnel" className="text-xs text-muted-foreground hover:text-foreground">
               {t('viewAll')}
             </Link>
           </div>

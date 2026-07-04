@@ -46,7 +46,7 @@ Buka **People** dalam bar sisi. Anda mempunyai dua cara untuk membawa masuk kaki
 
 ### Import CSV pukal (migrasi hari pertama)
 
-Untuk pengambilan seluruh syarikat sekaligus, klik **Import CSV** (kanan atas People), atau pergi ke `/people/import`.
+Untuk pengambilan seluruh syarikat sekaligus, klik **Import CSV** (kanan atas People), atau pergi ke `/admin/personnel/import`.
 
 1. Pilih **Target company**.
 2. Tampal CSV anda ke dalam **CSV data**, atau klik **Load sample** untuk melihat format yang tepat. Kembangkan **Column reference** untuk melihat lajur yang diperlukan berbanding pilihan.

@@ -46,7 +46,7 @@ Mở **People** trong thanh bên. Bạn có hai cách để đưa nhân sự và
 
 ### Nhập CSV hàng loạt (di chuyển dữ liệu ngày đầu tiên)
 
-Để onboard cả một công ty cùng lúc, nhấp **Import CSV** (góc trên bên phải của People), hoặc truy cập `/people/import`.
+Để onboard cả một công ty cùng lúc, nhấp **Import CSV** (góc trên bên phải của People), hoặc truy cập `/admin/personnel/import`.
 
 1. Chọn **Target company**.
 2. Dán CSV của bạn vào **CSV data**, hoặc nhấp **Load sample** để xem định dạng chính xác. Mở rộng **Column reference** để xem các cột bắt buộc so với tùy chọn.

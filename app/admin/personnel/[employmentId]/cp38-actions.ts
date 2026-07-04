@@ -9,7 +9,7 @@ import { setCp38, updateCp38, terminateCp38, Cp38PeriodProcessedError } from '@/
 // (requireAdmin), routes through the event-logged service, and revalidates the detail page. A
 // Cp38PeriodProcessedError surfaces as a friendly `?cp38Error=processed` query the page maps to a hint.
 const back = (employmentId: string, qs: string) =>
-  redirect(`/people/${employmentId}?${qs}`);
+  redirect(`/admin/personnel/${employmentId}?${qs}`);
 
 const errorKey = (e: unknown): string =>
   e instanceof Cp38PeriodProcessedError ? 'processed' : (e as Error).message;
@@ -34,7 +34,7 @@ export async function addCp38Action(formData: FormData) {
   } catch (e) {
     back(employmentId, `cp38Error=${encodeURIComponent(errorKey(e))}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }
 
@@ -53,7 +53,7 @@ export async function editCp38Action(formData: FormData) {
   } catch (e) {
     back(employmentId, `cp38Error=${encodeURIComponent(errorKey(e))}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }
 
@@ -65,6 +65,6 @@ export async function terminateCp38Action(formData: FormData) {
   } catch (e) {
     back(employmentId, `cp38Error=${encodeURIComponent(errorKey(e))}`);
   }
-  revalidatePath(`/people/${employmentId}`);
+  revalidatePath(`/admin/personnel/${employmentId}`);
   back(employmentId, 'toast=Saved');
 }

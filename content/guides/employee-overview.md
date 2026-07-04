@@ -20,7 +20,7 @@ In the sidebar, the everyday pages every employee can use are grouped at the top
 | --- | --- | --- |
 | **Dashboard** | `/` | Company-wide overview: headcount, upcoming public holidays, who's recently joined |
 | **Employee Self-Service** | `/me` | Your personal home — attendance, leave, pay, details |
-| **People** | `/people` | The staff directory — search and browse colleagues |
+| **Personnel** | `/personnel` | The staff directory — search and browse colleagues |
 | **Org chart** | `/org` | The reporting structure as a visual tree |
 | **Leave** | `/leave` | The shared leave calendar and your requests |
 | **Attendance** | `/attendance` | Attendance records |
@@ -80,7 +80,7 @@ At the bottom, the **Tax statement (EA / C.P.8A)** card gives you a yearly state
 
 ## The other everyday pages
 
-- **People** (`/people`) — the company directory. Search for colleagues and open a profile to see their role and contact details.
+- **Personnel** (`/personnel`) — the company directory. Search for colleagues and open a profile to see their role and contact details.
 - **Org chart** (`/org`) — the reporting structure drawn as a tree, so you can see who reports to whom. You can expand, collapse, zoom, and search.
 - **Leave** (`/leave`) — a shared view of who's off and when, alongside your own requests. Your personal balances stay private to you.
 - **Attendance** (`/attendance`) — attendance records over time.

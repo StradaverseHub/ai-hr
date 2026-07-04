@@ -228,7 +228,7 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 font-medium">
                     <Link
-                      href={`/people/${r.employmentId}`}
+                      href={`/personnel/${r.employmentId}`}
                       className="underline-offset-2 hover:text-primary hover:underline"
                       title={t('viewHistory')}
                     >
@@ -565,7 +565,7 @@ export default async function ApprovalsPage({
                     </td>
                     <td className="px-4 py-2.5 font-medium">
                       <Link
-                        href={`/people/${r.employmentId}`}
+                        href={`/personnel/${r.employmentId}`}
                         className="underline-offset-2 hover:text-primary hover:underline"
                         title={t('viewHistory')}
                       >
@@ -602,7 +602,7 @@ export default async function ApprovalsPage({
               <li key={r.id} className="px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="flex items-center">
-                    <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
+                    <Link href={`/personnel/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
                       {r.employee}
                     </Link>
                     {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
@@ -644,7 +644,7 @@ export default async function ApprovalsPage({
                 <li key={r.id} className="px-4 py-3">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="flex items-center">
-                      <Link href={`/people/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
+                      <Link href={`/personnel/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
                         {r.employee}
                       </Link>
                       {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}

@@ -70,9 +70,9 @@ As the legend note on the page puts it: *the connector colour encodes the report
 
 ## Open a person's detail page
 
-Click any card on the org chart, or open someone from the **People** list, to reach their detail page (`/people/…`).
+Click any card on the org chart, or open someone from the **Personnel** list, to reach their detail page (`/personnel/…`).
 
-At the top you'll see the person's **name**, a status badge (for example `active` or `terminated`), and a summary line showing their employee code, email, company and hire date. A **People** back-link returns you to the list.
+At the top you'll see the person's **name**, a status badge (for example `active` or `terminated`), and a summary line showing their employee code, email, company and hire date. A **Personnel** back-link returns you to the list.
 
 What you can view here within your scope:
 
