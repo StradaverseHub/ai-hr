@@ -1801,6 +1801,8 @@
       "multiCycleOffNote": "Hanya larian Bulanan tersedia. Kitaran tambahan (Bonus, Luar kitaran, Gaji Pendahuluan, Pertengahan Bulan) dimatikan untuk penyewa ini.",
       "existingRunsTitle": "Larian sedia ada untuk tempoh ini",
       "resumeDraft": "Sambung draf",
+      "confirmSelectionAndProcess": "Sahkan pilihan & teruskan",
+      "draftNotFoundOrNoAccess": "Draf ini tidak ditemui atau anda tidak mempunyai akses kepadanya.",
       "regularExistsNote": "Larian Bulanan untuk {period} sudah wujud. Sambung draf sedia ada, atau pilih kitaran lain.",
       "consolidationNote": "Data kehadiran, cuti, tuntutan dan pinjaman disatukan pada langkah semakan, selepas larian dicipta.",
       "cycle": {

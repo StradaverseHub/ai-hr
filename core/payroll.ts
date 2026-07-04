@@ -15,9 +15,11 @@ import {
   company,
   companyStatutoryMy,
   compensation,
+  employeeLoan,
   employeeStatutoryMy,
   employment,
   employmentPayComponent,
+  loanRepayment,
   payComponent,
   payrollBatchComponent,
   leaveLedger,
@@ -495,6 +497,112 @@ export async function createAdditionalRun(
       },
     });
     return { batchId: row.id };
+  });
+}
+
+/**
+ * Payroll Process wizard — resume a DRAFT batch and re-set its employee-selection scope (the "who's in
+ * this run" step, formerly bypassed for drafts). Draft-only (mirrors generatePayslips' BatchNotDraftError
+ * guard); the status read + the scope write happen inside ONE transaction so a concurrent double-submit
+ * cannot both pass a stale "still draft" read before either write lands.
+ *
+ * `employmentIds` is the resolved explicit selection the wizard posts when the admin narrowed the set
+ * (any filter use or manual deselect). It is intersected against the batch company's employees — the SAME
+ * cross-company membership guard createRunAction applies — so a stale/cross-company id can never widen or
+ * silently under-set the run. An empty/absent selection normalises to null scope (whole company), exactly
+ * as a fresh run's no-filter default.
+ *
+ * Cleanup (orphan-data safeguard): any employment present in the PREVIOUS scope but absent from the NEW
+ * scope has its payroll_input row deleted, and any loan instalment RESERVED to this batch for them is
+ * RELEASED back to 'scheduled' (reservedBatchId cleared) so a stale reservation is never stranded against
+ * the loan balance. Nothing is released for an employment that stays in scope.
+ */
+export async function updateBatchScope(
+  ctx: SessionContext,
+  p: { batchId: string; scope?: BatchScope },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, scope: payrollBatch.scope })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+
+    // Cross-company membership guard (same intersection createRunAction applies): keep only submitted ids
+    // that belong to this batch's company, so a stale/cross-company id can never reach the persisted scope.
+    const submittedEmploymentIds = (p.scope?.employmentIds ?? []).filter(Boolean);
+    let validEmploymentIds = submittedEmploymentIds;
+    if (submittedEmploymentIds.length) {
+      const companyEmps = await tx
+        .select({ id: employment.id })
+        .from(employment)
+        .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, submittedEmploymentIds)));
+      const valid = new Set(companyEmps.map((e) => e.id));
+      validEmploymentIds = submittedEmploymentIds.filter((id) => valid.has(id));
+    }
+    // Department ids in the scope carry through unchanged (the wizard's resume path posts explicit
+    // employment ids, not department filters, but keep the department dimension intact if present).
+    const nextScope = normalizeScope({
+      ...(p.scope?.departmentIds?.length ? { departmentIds: p.scope.departmentIds } : {}),
+      ...(validEmploymentIds.length ? { employmentIds: validEmploymentIds } : {}),
+    });
+
+    const prevScope = (batch.scope ?? null) as BatchScope | null;
+    // Resolve the CONCRETE employment-id membership of the previous and next scope so the removed set is
+    // computed off actual assignees (department scopes resolve to their current members), not raw arrays.
+    const prevResolved = await resolveBatchScopeFilter(tx, prevScope);
+    const nextResolved = await resolveBatchScopeFilter(tx, nextScope);
+    // A null resolved set means "whole company" (no filter). Removal only makes sense when the PREVIOUS
+    // scope was explicit — widening to whole-company removes nobody, and narrowing FROM whole-company can't
+    // enumerate a concrete removed set, so we only clean up when the previous scope was a concrete subset.
+    const prevIds = prevResolved.employmentIds;
+    const nextIds = new Set(nextResolved.employmentIds ?? []);
+    const removedEmploymentIds = prevIds ? prevIds.filter((id) => !nextIds.has(id)) : [];
+
+    await tx.update(payrollBatch).set({ scope: nextScope }).where(eq(payrollBatch.id, p.batchId));
+
+    for (const employmentId of removedEmploymentIds) {
+      // Release any loan instalment reserved to THIS batch for the removed employment back to 'scheduled'
+      // so its reservation is not stranded (the loan balance is untouched — nothing was applied yet).
+      const releasedRepayments = await tx
+        .update(loanRepayment)
+        .set({ status: 'scheduled', reservedBatchId: null })
+        .where(
+          and(
+            eq(loanRepayment.reservedBatchId, p.batchId),
+            eq(loanRepayment.employmentId, employmentId),
+            eq(loanRepayment.status, 'reserved'),
+          ),
+        )
+        .returning({ id: loanRepayment.id, loanId: loanRepayment.loanId });
+      for (const r of releasedRepayments) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'loan-repayment',
+          aggregateId: r.id,
+          eventType: 'loan.instalment.reservation-released',
+          actor: actorOf(ctx),
+          subjectEmploymentId: employmentId,
+          payload: { batchId: p.batchId, loanId: r.loanId, reason: 'removed-from-batch-scope' },
+        });
+      }
+      // Clear any keyed inputs (OT/bonus/claims/loan-deduction/…) for the removed employment on this batch.
+      await tx
+        .delete(payrollInput)
+        .where(and(eq(payrollInput.batchId, p.batchId), eq(payrollInput.employmentId, employmentId)));
+    }
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.scope.updated',
+      actor: actorOf(ctx),
+      payload: { before: prevScope, after: nextScope, removedEmploymentIds },
+    });
+    return { ok: true, removedEmploymentIds };
   });
 }
 

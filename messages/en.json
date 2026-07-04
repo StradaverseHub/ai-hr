@@ -1801,6 +1801,8 @@
       "multiCycleOffNote": "Only Monthly runs are available. Additional cycles (Bonus, Off-cycle, Advance Salary, Mid-Month) are switched off for this tenant.",
       "existingRunsTitle": "Existing runs for this period",
       "resumeDraft": "Resume draft",
+      "confirmSelectionAndProcess": "Confirm selection & continue",
+      "draftNotFoundOrNoAccess": "This draft could not be found or you don’t have access to it.",
       "regularExistsNote": "A Monthly run already exists for {period}. Resume the existing draft, or pick a different cycle.",
       "consolidationNote": "Attendance, leave, claims and loan data are consolidated on the review step, after the run is created.",
       "cycle": {

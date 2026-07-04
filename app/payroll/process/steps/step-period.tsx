@@ -3,6 +3,7 @@
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Field, inputCls } from '@/components/ui';
+import { resumeHref } from '../selection-logic';
 
 export type ExistingRun = {
   id: string;
@@ -118,7 +119,12 @@ export function StepPeriod({
                 <span className="text-muted-foreground">
                   {t(`runType.${r.runType}`)} · <span className="capitalize">{r.status}</span>
                 </span>
-                <Link href={`/payroll/${r.id}`} className="font-medium text-primary hover:underline">
+                {/* A DRAFT run resumes into the wizard at Employee Selection (the "who's in this run" step,
+                    formerly bypassed for drafts). Processed/closed runs keep their direct read-only link. */}
+                <Link
+                  href={resumeHref(r.id, r.status)}
+                  className="font-medium text-primary hover:underline"
+                >
                   {t('resumeDraft')}
                 </Link>
               </li>

@@ -1801,6 +1801,8 @@
       "multiCycleOffNote": "仅提供月度运行。此租户已关闭其他周期（奖金、非周期性、预支薪金、月中）。",
       "existingRunsTitle": "该周期的现有运行",
       "resumeDraft": "继续草稿",
+      "confirmSelectionAndProcess": "确认所选员工并继续",
+      "draftNotFoundOrNoAccess": "找不到此草稿，或您没有访问权限。",
       "regularExistsNote": "{period} 的月度运行已存在。请继续现有草稿，或选择其他周期。",
       "consolidationNote": "考勤、休假、报销和贷款数据将在创建运行后的审核步骤中汇总。",
       "cycle": {

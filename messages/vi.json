@@ -1801,6 +1801,8 @@
       "multiCycleOffNote": "Chỉ có sẵn đợt Hàng tháng. Các chu kỳ bổ sung (Thưởng, Ngoài chu kỳ, Tạm ứng lương, Giữa tháng) đã bị tắt cho租户 này.",
       "existingRunsTitle": "Các đợt hiện có cho kỳ này",
       "resumeDraft": "Tiếp tục bản nháp",
+      "confirmSelectionAndProcess": "Xác nhận lựa chọn & tiếp tục",
+      "draftNotFoundOrNoAccess": "Không tìm thấy bản nháp này hoặc bạn không có quyền truy cập.",
       "regularExistsNote": "Đợt Hàng tháng cho {period} đã tồn tại. Tiếp tục bản nháp hiện có, hoặc chọn chu kỳ khác.",
       "consolidationNote": "Dữ liệu chấm công, nghỉ phép, yêu cầu bồi hoàn và khoản vay được tổng hợp ở bước xem lại, sau khi đợt được tạo.",
       "cycle": {

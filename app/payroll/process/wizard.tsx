@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
-import { createRunAction, fetchPayrollRunEmployees } from './actions';
+import { createRunAction, fetchPayrollRunEmployees, resumeRunAction } from './actions';
 import { StepPeriod, type Company, type Cycle, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 
@@ -13,6 +13,20 @@ const STEPS = [
   { key: 'period', titleKey: 'stepPeriod' },
   { key: 'selection', titleKey: 'stepSelection' },
 ] as const;
+
+/** A DRAFT batch being resumed (the "who's in this run" step, formerly bypassed for drafts). Carries the
+ *  fixed identity of the existing batch — company/period/cycle are NOT editable mid-resume; only the
+ *  employee selection is. Off-cycle/bonus/adjustment drafts resume too, so cycle/paymentDate/remarks
+ *  carry through unchanged, not defaulted back to 'regular'. */
+export type ResumeBatch = {
+  id: string;
+  companyId: string;
+  payPeriod: string;
+  cycle: Cycle;
+  paymentDate: string;
+  remarks: string;
+  scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
+};
 
 function defaultPayDate(payPeriod: string, payDay: number | null | undefined): string {
   if (!payPeriod) return '';
@@ -33,6 +47,7 @@ export function Wizard({
   existingRuns,
   thisMonth,
   multiCycle,
+  resumeBatch,
 }: {
   companies: Company[];
   departments: (Master & { businessUnitId: string | null })[];
@@ -44,27 +59,38 @@ export function Wizard({
   existingRuns: ExistingRun[];
   thisMonth: string;
   multiCycle: boolean;
+  /** When set, the wizard opens in RESUME mode: Step 2 (Employee Selection) directly, Step 1 disabled,
+   *  company/period/cycle fixed to the existing draft, selection pre-seeded from the persisted scope. */
+  resumeBatch?: ResumeBatch;
 }) {
   const t = useTranslations('payroll.process');
-  const [step, setStep] = useState(0);
-  const [companyId, setCompanyId] = useState('');
-  const [payPeriod, setPayPeriod] = useState(thisMonth);
-  const [cycle, setCycle] = useState<Cycle>('regular');
-  const [paymentDate, setPaymentDate] = useState('');
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [filtersTouched, setFiltersTouched] = useState(false);
+  const isResume = !!resumeBatch;
+  // In resume mode we land straight on Step 2 (Employee Selection) with the batch identity fixed. The
+  // selection is seeded from the persisted scope: an explicit scope ⇒ filtersTouched=true + selected set;
+  // an empty/absent scope ⇒ filtersTouched=false so the whole-company default applies (step-selection.tsx).
+  const seededEmploymentIds = resumeBatch?.scope?.employmentIds ?? [];
+  const [step, setStep] = useState(isResume ? 1 : 0);
+  const [companyId, setCompanyId] = useState(resumeBatch?.companyId ?? '');
+  const [payPeriod, setPayPeriod] = useState(resumeBatch?.payPeriod ?? thisMonth);
+  const [cycle, setCycle] = useState<Cycle>(resumeBatch?.cycle ?? 'regular');
+  const [paymentDate, setPaymentDate] = useState(resumeBatch?.paymentDate ?? '');
+  const [selected, setSelected] = useState<Set<string>>(new Set(seededEmploymentIds));
+  const [filtersTouched, setFiltersTouched] = useState(seededEmploymentIds.length > 0);
   const [employees, setEmployees] = useState<PayrollRunEmployeeRow[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const defaultDate = defaultPayDate(payPeriod, payDayByCompany[companyId]);
 
-  // Reset per-company/period state so a changed Step-1 selection can never leak a stale Step-2 pick.
+  // Reset per-company/period state so a changed Step-1 selection can never leak a stale Step-2 pick. In
+  // resume mode the company/period are FIXED (Step 1 is disabled), so this reset would clobber the seeded
+  // selection on the first render — skip it entirely when resuming.
   useEffect(() => {
+    if (isResume) return;
     setSelected(new Set());
     setFiltersTouched(false);
     setEmployees([]);
-  }, [companyId, payPeriod]);
+  }, [companyId, payPeriod, isResume]);
 
   useEffect(() => {
     if (!companyId || !/^\d{4}-\d{2}$/.test(payPeriod)) return;
@@ -84,6 +110,20 @@ export function Wizard({
 
   const submit = () => {
     const fd = new FormData();
+    if (isResume && resumeBatch) {
+      // Resume path: re-set the EXISTING draft's scope, then hand off to the same Transaction Key-In
+      // screen a fresh run reaches. Never re-create the batch. Only post employmentIds when the admin
+      // actually narrowed the set (filtersTouched) — an untouched resume leaves the existing scope as-is.
+      fd.set('batchId', resumeBatch.id);
+      fd.set('filtersTouched', String(filtersTouched));
+      if (filtersTouched) {
+        for (const id of selected) fd.append('employmentIds', id);
+      }
+      startTransition(() => {
+        resumeRunAction(fd);
+      });
+      return;
+    }
     fd.set('companyId', companyId);
     fd.set('payPeriod', payPeriod);
     fd.set('cycle', cycle);
@@ -150,7 +190,9 @@ export function Wizard({
       </div>
 
       <div className="flex items-center justify-between border-t border-border px-4 py-3">
-        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
+        {/* Resume mode: company/period/cycle are fixed to the existing draft, so Back to Step 1 is disabled
+            (same disabled-idiom as the fresh-run step===0 case) — the admin only edits the selection. */}
+        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || isResume}>
           {t('back')}
         </Button>
         {step < STEPS.length - 1 ? (
@@ -159,7 +201,7 @@ export function Wizard({
           </Button>
         ) : (
           <Button type="button" onClick={submit} disabled={!step2Valid || isPending} data-tour="payroll-create-submit">
-            {isPending ? t('creating') : t('createRun')}
+            {isPending ? t('creating') : isResume ? t('confirmSelectionAndProcess') : t('createRun')}
           </Button>
         )}
       </div>

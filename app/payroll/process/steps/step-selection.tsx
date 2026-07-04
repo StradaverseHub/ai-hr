@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { EmployeeCode, Field, inputCls } from '@/components/ui';
+import { materializeToggle } from '../selection-logic';
 
 export type Master = { id: string; name: string; companyId: string };
 
@@ -87,15 +88,28 @@ export function StepSelection({
   const compLess = useMemo(() => employees.filter((e) => !e.hasCurrentCompensation), [employees]);
 
   const markFilterTouch = () => {
+    // A filter narrows the PREVIEW list only — it must NOT clobber an already-edited `selected` set (plan §3d):
+    // if the admin has deselected someone and then touches a filter, that manual deselection must survive
+    // (the resulting scope stays "everyone minus that one", not "reset to the whole filtered view"). So this
+    // deliberately only marks the selection as touched; it does not rewrite `selected`.
     if (!filtersTouched) onFiltersTouchedChange(true);
-    // Filters just narrowed the preview: the selection now needs to reflect what's VISIBLE, so reset to
-    // "everyone currently in the filtered view" (the common case) — the admin can still deselect individually.
   };
 
   const toggle = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    // Bug fix (plan §3d): when the selection has NOT yet been materialised (whole-company default, nothing
+    // touched, no filter active), every visible row renders CHECKED via the `!filtersTouched && !anyFilterActive`
+    // fallback — but `selected` is still empty. Toggling one row off `selected` (an empty set) would produce a
+    // SINGLETON {id}, i.e. "only that one selected" instead of "everyone except that one". materializeToggle
+    // seeds from the currently-checked visible rows FIRST on that first touch, then applies the toggle. After
+    // materialisation (filtersTouched or a filter active — incl. resume mode, which seeds from the persisted
+    // scope) it is the plain add/delete against `selected`. Same pure fn the unit test asserts.
+    const next = materializeToggle(
+      id,
+      selected,
+      filtered.map((e) => e.employmentId),
+      filtersTouched,
+      anyFilterActive,
+    );
     onSelectedChange(next);
     if (!filtersTouched) onFiltersTouchedChange(true);
   };

@@ -5,6 +5,7 @@ import { listBatches } from '@/core/payroll';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { PeriodSwitcher } from '@/components/period-switcher';
+import { resumeHref } from './process/selection-logic';
 
 const STATUS_STYLE: Record<string, string> = {
   draft: 'bg-muted text-muted-foreground',
@@ -77,7 +78,13 @@ export default async function PayrollPage({
               return (
                 <tr key={b.id} className="hover:bg-muted/40">
                   <td className="px-4 py-2.5">
-                    <Link href={`/payroll/${b.id}`} className="font-medium hover:text-primary">
+                    {/* A DRAFT batch resumes into the wizard at Employee Selection (the "who's in this run"
+                        step, formerly bypassed for drafts). Processed/closed batches open directly as
+                        read-only, unchanged. */}
+                    <Link
+                      href={resumeHref(b.id, b.status)}
+                      className="font-medium hover:text-primary"
+                    >
                       {b.payPeriod}
                     </Link>
                     {b.runType !== 'regular' && (

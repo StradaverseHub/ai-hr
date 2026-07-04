@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
-import { createAdditionalRun, createBatch } from '@/core/payroll';
+import { createAdditionalRun, createBatch, updateBatchScope } from '@/core/payroll';
 import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 
 /** Step 2 population (plan §2) — fetched by the client once company + period are chosen. */
@@ -70,4 +70,32 @@ export async function createRunAction(formData: FormData) {
       )}`
     : '';
   redirect(`/payroll/${batchId}?from=process${hw}`);
+}
+
+/**
+ * Payroll Process wizard — RESUME a draft batch. Called from Step 2's confirm button in resume mode: it
+ * re-sets the existing draft's employee-selection scope (never re-creates the batch) then hands off to the
+ * SAME Transaction Key-In screen (?from=process) a fresh run reaches. The scope is only posted when the
+ * admin actually narrowed the set (any filter use or manual deselect — the client posts employmentIds only
+ * then, mirroring createRunAction's touched rule); an untouched selection leaves the whole-company default.
+ * The cross-company intersection + orphan cleanup live in updateBatchScope (the service).
+ */
+export async function resumeRunAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const touched = String(formData.get('filtersTouched')) === 'true';
+  const submittedEmploymentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+  const scope = touched && submittedEmploymentIds.length ? { employmentIds: submittedEmploymentIds } : undefined;
+  try {
+    // Only re-set scope when the admin actually touched the selection; an untouched resume leaves the
+    // existing scope as-is (no needless write, no spurious removal cleanup).
+    if (touched) {
+      await updateBatchScope(s, { batchId, scope });
+    }
+  } catch (e) {
+    redirect(`/payroll/process?resume=${batchId}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll');
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(`/payroll/${batchId}?from=process`);
 }
