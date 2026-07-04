@@ -766,7 +766,8 @@
       "srcPolicy": "公司政策"
     },
     "importPunches": "导入打卡",
-    "colLocation": "地点"
+    "colLocation": "地点",
+    "otHoursLabel": "加班"
   },
   "org": {
     "title": "组织架构图",
@@ -1025,7 +1026,16 @@
     "locationNotice": "每次签到和签退都会记录您的位置，用于考勤核实。",
     "geofencePass": "在授权地点范围内",
     "geofenceNotEnforced": "未启用位置核查",
-    "distanceAway": "距离{m}米"
+    "distanceAway": "距离{m}米",
+    "otHoursLabel": "加班时数",
+    "otHoursPlaceholder": "例如 2",
+    "otHoursHelp": "普通打卡更正请保留时间；仅申请加班时请填写加班时数并清空时间。",
+    "reasonRequired": "原因",
+    "requestTravel": "申请出差",
+    "travelFromLabel": "起始",
+    "travelToLabel": "结束",
+    "travelRemarksPlaceholder": "外勤地点及原因",
+    "requestTravelButton": "提交出差申请"
   },
   "approvals": {
     "title": "审批",
@@ -1081,7 +1091,10 @@
       "approved": "已批准",
       "rejected": "已驳回"
     },
-    "code": "编号"
+    "code": "编号",
+    "otHoursLabel": "加班",
+    "travelRequests": "出差申请",
+    "noPendingTravel": "没有待处理的出差申请。"
   },
   "performance": {
     "list": {
@@ -2447,7 +2460,13 @@
       "saveShift": "保存班次",
       "cancelEdit": "取消",
       "shiftHint": "结束时间等于或早于开始时间的班次表示跨午夜（⊕）。该排班驱动考勤加班；无排班则回退到公司政策。",
-      "multiBreakStorageHint": "系统会保存并显示多个休息时段，但扣除的工时仍按其合计总额计算——按时段精确扣除为后续增强项。"
+      "multiBreakStorageHint": "系统会保存并显示多个休息时段，但扣除的工时仍按其合计总额计算——按时段精确扣除为后续增强项。",
+      "otApprovalCalc": "加班审批",
+      "otApprovalCalcLabel": "如何计算已批准的加班",
+      "otApprovalRequested": "采用员工申报的时数",
+      "otApprovalSystem": "采用系统计算的时数",
+      "otApprovalSmaller": "采用较小的一方",
+      "otApprovalCalcHint": "当加班申请获批时，此设置决定哪个数字成为已批准的加班。"
     },
     "toilPolicy": {
       "pageTitle": "调休",

@@ -13,6 +13,7 @@ import { isAdmin } from '../lib/authz';
 import type { SessionContext } from '../db/client';
 import { listLeaveRequests, listPendingLeaveCancellations } from './read';
 import { listAttendanceCorrections } from './attendance';
+import { listTravelRequests } from './travel-request';
 import { listProfileChangeRequests } from './profile';
 import { listPendingClaims } from './claims';
 import { listResignationRequests } from './offboarding';
@@ -34,12 +35,16 @@ export async function pendingApprovalsCount(
 
   if (!admin && !manager && managerReviews.length === 0) return 0;
 
-  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations, hrReviews] = await Promise.all([
+  const [leave, leaveCancellations, corrections, travel, profileChanges, claims, resignations, hrReviews] = await Promise.all([
     listLeaveRequests(ctx, scopeIds),
     // Partial Leave Cancellation (ADR-0065): pending cancellation requests need the same manager/admin
     // decision as a leave request, so they belong in the badge — with the same self-exclusion below.
     listPendingLeaveCancellations(ctx, scopeIds),
     listAttendanceCorrections(ctx, { companyIds: scopeIds, status: 'pending' }),
+    // ADR-0069 Travel Request: same request→decide workflow, same inbox. An employee CAN self-file a travel
+    // request (unlike a correction, which is blocked upstream), so it needs explicit self-exclusion below or
+    // the requester's own item would leak into their own bell-count.
+    listTravelRequests(ctx, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(ctx, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     listPendingClaims(ctx),
     // Resignations are HR-decided (the service requires admin), so only admins carry them in the badge.
@@ -55,10 +60,15 @@ export async function pendingApprovalsCount(
   const actionableCancellations = leaveCancellations.filter(
     (r) => ctx.personId == null || r.personId !== ctx.personId,
   );
+  // Self-exclusion for travel (see note above).
+  const actionableTravel = travel.filter(
+    (r) => ctx.personId == null || r.personId !== ctx.personId,
+  );
   return (
     actionableLeave.length +
     actionableCancellations.length +
     corrections.length +
+    actionableTravel.length +
     profileChanges.length +
     claims.length +
     resignations.length +

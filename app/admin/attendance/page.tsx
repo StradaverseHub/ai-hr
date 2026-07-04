@@ -130,6 +130,23 @@ export default async function AttendancePolicyPage({
                   </div>
                 </fieldset>
 
+                {/* ADR-0069: how an approved overtime request's minutes are resolved against the engine's figure. */}
+                <fieldset>
+                  <legend className="mb-1.5 text-sm font-medium text-foreground">{t('otApprovalCalc')}</legend>
+                  <Field label={t('otApprovalCalcLabel')}>
+                    <select
+                      name="otApprovalCalculation"
+                      defaultValue={p.otApprovalCalculation}
+                      className={inputCls}
+                    >
+                      <option value="requested">{t('otApprovalRequested')}</option>
+                      <option value="system_calculated">{t('otApprovalSystem')}</option>
+                      <option value="smaller_of">{t('otApprovalSmaller')}</option>
+                    </select>
+                  </Field>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{t('otApprovalCalcHint')}</p>
+                </fieldset>
+
                 <div className="flex items-center gap-3">
                   <button className={btnPrimary}>{t('save')}</button>
                   <span className="text-xs text-muted-foreground">{t('lateHint')}</span>

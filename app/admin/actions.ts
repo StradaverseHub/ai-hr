@@ -894,6 +894,11 @@ export async function setAttendancePolicyAction(fd: FormData) {
     if (v === 'full') workingDays.push(d);
     else if (v === 'half') halfWorkingDays.push(d);
   }
+  // ADR-0069: how an approved overtime request's minutes are resolved (requested | system_calculated | smaller_of).
+  const otRaw = String(fd.get('otApprovalCalculation') ?? 'system_calculated');
+  const otApprovalCalculation = (
+    otRaw === 'requested' || otRaw === 'smaller_of' ? otRaw : 'system_calculated'
+  ) as 'requested' | 'system_calculated' | 'smaller_of';
   try {
     await setAttendancePolicy(s, {
       companyId: String(fd.get('companyId') ?? ''),
@@ -904,6 +909,7 @@ export async function setAttendancePolicyAction(fd: FormData) {
       halfDayBefore: String(fd.get('halfDayBefore') ?? ''),
       workingDays,
       halfWorkingDays,
+      otApprovalCalculation,
     });
   } catch (e) {
     fail(ATTENDANCE_POLICY, e);

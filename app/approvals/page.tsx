@@ -5,6 +5,7 @@ import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
 import { listAttendanceCorrections } from '@/core/attendance';
+import { listTravelRequests } from '@/core/travel-request';
 import { listProfileChangeRequests } from '@/core/profile';
 import { listPendingClaims } from '@/core/claims';
 import { listResignationRequests } from '@/core/offboarding';
@@ -14,6 +15,7 @@ import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inp
 import {
   approveClaimAction,
   approveCorrectionAction,
+  approveTravelAction,
   approveLeaveAction,
   approveProfileChangeAction,
   decideLeaveCancellationAction,
@@ -124,10 +126,12 @@ export default async function ApprovalsPage({
     rejectReason: t('rejectReasonPlaceholder'),
   };
 
-  const [leave, leaveCancellations, corrections, profileChanges, claims, resignations] = await Promise.all([
+  const [leave, leaveCancellations, corrections, travel, profileChanges, claims, resignations] = await Promise.all([
     listLeaveRequests(s, scopeIds),
     listPendingLeaveCancellations(s, scopeIds),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
+    // ADR-0069 Travel Request: same inbox, same decide flow.
+    listTravelRequests(s, { companyIds: scopeIds, status: 'pending' }),
     admin ? listProfileChangeRequests(s, { companyIds: scopeIds, status: 'pending' }) : Promise.resolve([]),
     listPendingClaims(s),
     admin ? listResignationRequests(s, { status: 'pending' }) : Promise.resolve([]),
@@ -168,10 +172,13 @@ export default async function ApprovalsPage({
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
   const stageLabel = (kind: string | null) =>
     kind === 'hr_admin' ? t('stageHr') : kind === 'direct_manager' ? t('stageManager') : '';
+  // ADR-0069: travel can be self-filed, so self-exclude the viewer's own from the actionable count.
+  const pendingTravel = travel.filter((tr) => !mine(tr.personId));
   const total =
     pendingLeave.length +
     pendingCancellations.length +
     corrections.length +
+    pendingTravel.length +
     profileChanges.length +
     claims.length +
     resignations.length;
@@ -440,8 +447,12 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5 font-medium">{c.employee}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {c.proposedCheckIn.slice(0, 5)}
-                    {c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}
+                    {c.proposedCheckIn
+                      ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
+                      : ''}
+                    {c.requestedOtMinutes != null
+                      ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h`
+                      : ''}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
                   <td className="px-4 py-2.5">
@@ -449,6 +460,44 @@ export default async function ApprovalsPage({
                       action={approveCorrectionAction}
                       id={c.id}
                       disabled={mine(c.personId)}
+                      labels={decideLabels}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      {/* ADR-0069 Travel Requests */}
+      <Card className="overflow-hidden" data-tour="approvals-travel">
+        <SectionHeader title={t('travelRequests')} count={pendingTravel.length} />
+        {pendingTravel.length === 0 ? (
+          <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingTravel')}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2 font-medium">{t('employee')}</th>
+                <th className="px-4 py-2 font-medium">{t('dates')}</th>
+                <th className="px-4 py-2 font-medium">{t('reason')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('action')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {pendingTravel.map((tr) => (
+                <tr key={tr.id}>
+                  <td className="px-4 py-2.5 font-medium">{tr.employee}</td>
+                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
+                    {tr.travelFrom} → {tr.travelTo}
+                  </td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{tr.remarks}</td>
+                  <td className="px-4 py-2.5">
+                    <DecideButtons
+                      action={approveTravelAction}
+                      id={tr.id}
+                      disabled={mine(tr.personId)}
                       labels={decideLabels}
                     />
                   </td>

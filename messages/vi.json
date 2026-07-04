@@ -766,7 +766,8 @@
       "srcPolicy": "Chính sách công ty"
     },
     "importPunches": "Nhập chấm công",
-    "colLocation": "Địa điểm"
+    "colLocation": "Địa điểm",
+    "otHoursLabel": "Tăng ca"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -1025,7 +1026,16 @@
     "locationNotice": "Vị trí của bạn được ghi lại mỗi khi chấm công vào và ra để xác minh chuyên cần.",
     "geofencePass": "trong khu vực được phép",
     "geofenceNotEnforced": "không áp dụng vị trí",
-    "distanceAway": "cách {m}m"
+    "distanceAway": "cách {m}m",
+    "otHoursLabel": "Số giờ tăng ca",
+    "otHoursPlaceholder": "vd. 2",
+    "otHoursHelp": "Để trống thời gian cho việc sửa chấm công thông thường, hoặc nhập số giờ tăng ca (và xóa thời gian) cho yêu cầu chỉ tăng ca.",
+    "reasonRequired": "Lý do",
+    "requestTravel": "Yêu cầu công tác",
+    "travelFromLabel": "Từ",
+    "travelToLabel": "Đến",
+    "travelRemarksPlaceholder": "Nơi và lý do bạn làm việc bên ngoài",
+    "requestTravelButton": "Gửi yêu cầu công tác"
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -1081,7 +1091,10 @@
       "approved": "Đã duyệt",
       "rejected": "Đã từ chối"
     },
-    "code": "Mã"
+    "code": "Mã",
+    "otHoursLabel": "Tăng ca",
+    "travelRequests": "Yêu cầu công tác",
+    "noPendingTravel": "Không có yêu cầu công tác đang chờ."
   },
   "performance": {
     "list": {
@@ -2447,7 +2460,13 @@
       "saveShift": "Lưu ca",
       "cancelEdit": "Hủy",
       "shiftHint": "Ca kết thúc bằng hoặc trước giờ bắt đầu sẽ qua nửa đêm (⊕). Lịch này điều khiển OT chấm công; không có lịch sẽ dùng chính sách công ty.",
-      "multiBreakStorageHint": "Nhiều khoảng nghỉ được lưu và hiển thị, nhưng số giờ khấu trừ vẫn dùng tổng cộng của chúng — độ chính xác theo từng khoảng nghỉ là cải tiến trong tương lai."
+      "multiBreakStorageHint": "Nhiều khoảng nghỉ được lưu và hiển thị, nhưng số giờ khấu trừ vẫn dùng tổng cộng của chúng — độ chính xác theo từng khoảng nghỉ là cải tiến trong tương lai.",
+      "otApprovalCalc": "Phê duyệt tăng ca",
+      "otApprovalCalcLabel": "Cách tính giờ tăng ca đã duyệt",
+      "otApprovalRequested": "Dùng số giờ nhân viên yêu cầu",
+      "otApprovalSystem": "Dùng số giờ hệ thống tính",
+      "otApprovalSmaller": "Dùng giá trị nhỏ hơn",
+      "otApprovalCalcHint": "Khi một yêu cầu tăng ca được duyệt, thiết lập này quyết định con số nào trở thành giờ tăng ca đã duyệt."
     },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",

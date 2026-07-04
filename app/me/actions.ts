@@ -34,6 +34,7 @@ import {
   GeolocationRequiredError,
   OutsideGeofenceError,
 } from '@/core/attendance';
+import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
 import { submitResignation, withdrawResignation } from '@/core/offboarding';
@@ -200,15 +201,27 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
 export async function myRequestCorrection(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const date = String(formData.get('date'));
-  const checkInTime = String(formData.get('checkIn'));
+  const checkInTime = String(formData.get('checkIn') || '');
   const checkOutTime = String(formData.get('checkOut') || '');
   const reason = String(formData.get('reason') || '').trim();
+  // ADR-0069: optional overtime-hours field (decimal hours in the form → whole minutes for the service). An
+  // OT-only request (no clock-in/out) is allowed; the service validates "at least one of" + mandatory reason.
+  const otHoursRaw = String(formData.get('otHours') || '').trim();
+  let requestedOtMinutes: number | null = null;
+  if (otHoursRaw.length > 0) {
+    const hrs = Number(otHoursRaw);
+    if (!Number.isFinite(hrs) || hrs < 0) {
+      redirect(`/me?error=${encodeURIComponent('Overtime hours must be a non-negative number.')}`);
+    }
+    requestedOtMinutes = Math.round(hrs * 60);
+  }
   try {
     await requestAttendanceCorrection(s, {
       employmentId,
       date,
-      checkIn: checkInTime,
+      checkIn: checkInTime || null,
       checkOut: checkOutTime || null,
+      requestedOtMinutes,
       reason: reason || undefined,
     });
   } catch (e) {
@@ -216,6 +229,21 @@ export async function myRequestCorrection(formData: FormData) {
   }
   revalidatePath('/me');
   redirect('/me?toast=Correction+requested');
+}
+
+/** ADR-0069: submit a Travel Request (off-site work window). Same approvals inbox, same decide flow. */
+export async function myRequestTravel(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const travelFrom = String(formData.get('travelFrom') || '');
+  const travelTo = String(formData.get('travelTo') || '');
+  const remarks = String(formData.get('remarks') || '').trim();
+  try {
+    await requestTravel(s, { employmentId, travelFrom, travelTo, remarks: remarks || undefined });
+  } catch (e) {
+    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?toast=Travel+requested');
 }
 
 export async function myUpdateContact(formData: FormData) {

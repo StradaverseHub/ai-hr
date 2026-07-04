@@ -766,7 +766,8 @@
       "srcPolicy": "Dasar syarikat"
     },
     "importPunches": "Import perakam",
-    "colLocation": "Lokasi"
+    "colLocation": "Lokasi",
+    "otHoursLabel": "OT"
   },
   "org": {
     "title": "Carta organisasi",
@@ -1025,7 +1026,16 @@
     "locationNotice": "Lokasi anda direkodkan setiap kali anda daftar masuk dan daftar keluar untuk tujuan pengesahan kehadiran.",
     "geofencePass": "dalam lokasi dibenarkan",
     "geofenceNotEnforced": "lokasi tidak dikuatkuasakan",
-    "distanceAway": "{m}m jauh"
+    "distanceAway": "{m}m jauh",
+    "otHoursLabel": "Jam kerja lebih masa",
+    "otHoursPlaceholder": "cth. 2",
+    "otHoursHelp": "Biarkan masa untuk pembetulan waktu biasa, atau isi jam kerja lebih masa (dan kosongkan masa) untuk permohonan kerja lebih masa sahaja.",
+    "reasonRequired": "Sebab",
+    "requestTravel": "Mohon perjalanan",
+    "travelFromLabel": "Dari",
+    "travelToLabel": "Hingga",
+    "travelRemarksPlaceholder": "Di mana dan sebab anda berada di luar pejabat",
+    "requestTravelButton": "Hantar permohonan perjalanan"
   },
   "approvals": {
     "title": "Kelulusan",
@@ -1081,7 +1091,10 @@
       "approved": "Diluluskan",
       "rejected": "Ditolak"
     },
-    "code": "Kod"
+    "code": "Kod",
+    "otHoursLabel": "OT",
+    "travelRequests": "Permohonan Perjalanan",
+    "noPendingTravel": "Tiada permohonan perjalanan tertunggak."
   },
   "performance": {
     "list": {
@@ -2447,7 +2460,13 @@
       "saveShift": "Simpan syif",
       "cancelEdit": "Batal",
       "shiftHint": "Syif yang tamat pada atau sebelum waktu mula melepasi tengah malam (⊕). Jadual memacu OT kehadiran; tiada roster kembali kepada dasar syarikat.",
-      "multiBreakStorageHint": "Beberapa tempoh rehat disimpan dan dipaparkan, tetapi jam yang ditolak masih menggunakan jumlah gabungannya — ketepatan mengikut setiap rehat ialah penambahbaikan akan datang."
+      "multiBreakStorageHint": "Beberapa tempoh rehat disimpan dan dipaparkan, tetapi jam yang ditolak masih menggunakan jumlah gabungannya — ketepatan mengikut setiap rehat ialah penambahbaikan akan datang.",
+      "otApprovalCalc": "Kelulusan kerja lebih masa",
+      "otApprovalCalcLabel": "Cara mengira kerja lebih masa yang diluluskan",
+      "otApprovalRequested": "Guna jam yang dimohon pekerja",
+      "otApprovalSystem": "Guna jam yang dikira sistem",
+      "otApprovalSmaller": "Guna yang lebih kecil",
+      "otApprovalCalcHint": "Apabila permohonan kerja lebih masa diluluskan, ini menentukan angka mana yang menjadi kerja lebih masa yang diluluskan."
     },
     "toilPolicy": {
       "pageTitle": "Cuti ganti",

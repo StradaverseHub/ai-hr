@@ -219,8 +219,12 @@ export default async function AttendancePage({
                       </td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{c.attendanceDate}</td>
                       <td className="px-4 py-2.5 tabular-nums">
-                        {c.proposedCheckIn.slice(0, 5)}
-                        {c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}
+                        {c.proposedCheckIn
+                          ? `${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? ` → ${c.proposedCheckOut.slice(0, 5)}` : ''}`
+                          : ''}
+                        {c.requestedOtMinutes != null
+                          ? `${c.proposedCheckIn ? ' · ' : ''}${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h`
+                          : ''}
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{c.reason ?? '—'}</td>
                       <td className="px-4 py-2.5">

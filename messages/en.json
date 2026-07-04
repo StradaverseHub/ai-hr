@@ -766,7 +766,8 @@
       "srcPolicy": "Company policy"
     },
     "importPunches": "Import punches",
-    "colLocation": "Location"
+    "colLocation": "Location",
+    "otHoursLabel": "OT"
   },
   "org": {
     "title": "Org chart",
@@ -1025,7 +1026,16 @@
     "locationNotice": "Your location is recorded with every clock-in and clock-out for attendance verification.",
     "geofencePass": "within authorized location",
     "geofenceNotEnforced": "location not enforced",
-    "distanceAway": "{m}m away"
+    "distanceAway": "{m}m away",
+    "otHoursLabel": "Overtime hours",
+    "otHoursPlaceholder": "e.g. 2",
+    "otHoursHelp": "Leave the times for a normal clock fix, or fill overtime hours (and clear the times) for an overtime-only request.",
+    "reasonRequired": "Reason",
+    "requestTravel": "Request travel",
+    "travelFromLabel": "From",
+    "travelToLabel": "To",
+    "travelRemarksPlaceholder": "Where and why you were off-site",
+    "requestTravelButton": "Submit travel request"
   },
   "approvals": {
     "title": "Approvals",
@@ -1081,7 +1091,10 @@
       "approved": "Approved",
       "rejected": "Rejected"
     },
-    "code": "Code"
+    "code": "Code",
+    "otHoursLabel": "OT",
+    "travelRequests": "Travel Requests",
+    "noPendingTravel": "No pending travel requests."
   },
   "performance": {
     "list": {
@@ -2447,7 +2460,13 @@
       "saveShift": "Save shift",
       "cancelEdit": "Cancel",
       "shiftHint": "A shift ending at or before its start crosses midnight (⊕). The schedule drives attendance OT; no roster falls back to company policy.",
-      "multiBreakStorageHint": "Multiple break windows are saved and shown, but the hours deducted still use their combined total — per-break precision is a future enhancement."
+      "multiBreakStorageHint": "Multiple break windows are saved and shown, but the hours deducted still use their combined total — per-break precision is a future enhancement.",
+      "otApprovalCalc": "Overtime approval",
+      "otApprovalCalcLabel": "How to count approved overtime",
+      "otApprovalRequested": "Use the employee-requested hours",
+      "otApprovalSystem": "Use the system-calculated hours",
+      "otApprovalSmaller": "Use whichever is smaller",
+      "otApprovalCalcHint": "When an overtime request is approved, this decides which figure becomes the approved overtime."
     },
     "toilPolicy": {
       "pageTitle": "Time off in lieu",

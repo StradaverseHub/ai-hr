@@ -15,6 +15,7 @@ import {
   myTaxReliefEmploymentIds,
 } from '@/core/read';
 import { myAttendanceCorrections } from '@/core/attendance';
+import { myTravelRequests } from '@/core/travel-request';
 import { listLoansForEmployment } from '@/core/loans';
 import { myProfile, myProfileChangeRequests } from '@/core/profile';
 import { myResignation } from '@/core/offboarding';
@@ -32,6 +33,7 @@ import {
   myCreateGoal,
   myDeclinePeerFeedback,
   myRequestCorrection,
+  myRequestTravel,
   myRequestLeave,
   myPreviewLeaveDeduction,
   myRequestProfileChange,
@@ -117,7 +119,7 @@ export default async function MePage({
   // employee can still retrieve the relief history they need to file taxes (payslip RLS still gates rows).
   const taxReliefEmploymentIds = await myTaxReliefEmploymentIds(s);
   const locale = await getLocale(); // R37: render leave-type names in the employee's language
-  const [balances, requests, leaveTypes, payslips, taxRelief, attendance, corrections, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
+  const [balances, requests, leaveTypes, payslips, taxRelief, attendance, corrections, travelRequests, profile, profileRequests, reviews, goals, checkins, feedbackRequests, resignation, myLoans] =
     await Promise.all([
       leaveBalances(s, me.employmentId, locale),
       leaveRequestsFor(s, me.employmentId, locale),
@@ -127,6 +129,7 @@ export default async function MePage({
       myTaxRelief(s, taxReliefEmploymentIds),
       myAttendance(s, me.employmentId, 14),
       myAttendanceCorrections(s, me.employmentId),
+      myTravelRequests(s, me.employmentId),
       myProfile(s),
       myProfileChangeRequests(s, me.employmentId),
       myReviews(s),
@@ -318,15 +321,21 @@ export default async function MePage({
               </Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label={t('checkInLabel')}>
-                  <input type="time" name="checkIn" required defaultValue="09:00" className={inputCls} />
+                  <input type="time" name="checkIn" defaultValue="09:00" className={inputCls} />
                 </Field>
                 <Field label={t('checkOutLabel')}>
                   <input type="time" name="checkOut" defaultValue="18:00" className={inputCls} />
                 </Field>
               </div>
-              <Field label={t('reasonOptional')}>
-                <input name="reason" placeholder={t('reasonPlaceholder')} className={inputCls} />
+              {/* ADR-0069: optional overtime-hours request (leave blank for a plain clock fix; fill it and clear
+                  the times for an OT-only request). */}
+              <Field label={t('otHoursLabel')}>
+                <input type="number" name="otHours" min="0" step="0.25" placeholder={t('otHoursPlaceholder')} className={inputCls} />
               </Field>
+              <Field label={t('reasonRequired')}>
+                <input name="reason" required placeholder={t('reasonPlaceholder')} className={inputCls} />
+              </Field>
+              <p className="text-[11px] text-muted-foreground">{t('otHoursHelp')}</p>
               <Button type="submit" size="sm">
                 {t('requestCorrection')}
               </Button>
@@ -336,10 +345,48 @@ export default async function MePage({
                 {corrections.map((c) => (
                   <li key={c.id} className="flex items-center justify-between gap-2">
                     <span className="tabular-nums text-muted-foreground">
-                      {c.attendanceDate} · {c.proposedCheckIn.slice(0, 5)}
-                      {c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}
+                      {c.attendanceDate}
+                      {c.proposedCheckIn
+                        ? ` · ${c.proposedCheckIn.slice(0, 5)}${c.proposedCheckOut ? `–${c.proposedCheckOut.slice(0, 5)}` : ''}`
+                        : ''}
+                      {c.requestedOtMinutes != null ? ` · ${t('otHoursLabel')} ${(c.requestedOtMinutes / 60).toFixed(1)}h` : ''}
                     </span>
                     <Pill status={c.status} map={LEAVE_STATUS} label={t(`leaveStatus.${c.status}`)} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </details>
+
+          {/* ADR-0069: Travel Request (off-site work window). Same approvals inbox / decide flow. */}
+          <details className="mt-4 border-t border-border pt-4">
+            <summary className="cursor-pointer select-none text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('requestTravel')}
+            </summary>
+            <form action={myRequestTravel} className="mt-3 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t('travelFromLabel')}>
+                  <input type="date" name="travelFrom" required defaultValue={yesterday} className={inputCls} />
+                </Field>
+                <Field label={t('travelToLabel')}>
+                  <input type="date" name="travelTo" required defaultValue={yesterday} className={inputCls} />
+                </Field>
+              </div>
+              <Field label={t('reasonRequired')}>
+                <input name="remarks" required placeholder={t('travelRemarksPlaceholder')} className={inputCls} />
+              </Field>
+              <Button type="submit" size="sm">
+                {t('requestTravelButton')}
+              </Button>
+            </form>
+            {travelRequests.length > 0 && (
+              <ul className="mt-3 space-y-1.5 text-xs">
+                {travelRequests.map((tr) => (
+                  <li key={tr.id} className="flex items-center justify-between gap-2">
+                    <span className="tabular-nums text-muted-foreground">
+                      {tr.travelFrom} → {tr.travelTo}
+                    </span>
+                    <Pill status={tr.status} map={LEAVE_STATUS} label={t(`leaveStatus.${tr.status}`)} />
                   </li>
                 ))}
               </ul>

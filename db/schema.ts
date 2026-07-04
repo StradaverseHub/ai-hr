@@ -1326,6 +1326,16 @@ export const attendanceCorrectionStatusEnum = pgEnum('attendance_correction_stat
   'rejected',
 ]);
 
+// ADR-0069 Attendance Request Management: how an APPROVED overtime request's minutes are resolved against the
+// system's own live-computed figure. `requested` = trust the employee's requested figure; `system_calculated`
+// = trust the engine's derived figure (default); `smaller_of` = the lower of the two (conservative). Company-
+// level (attendance_policy.ot_approval_calculation).
+export const otApprovalCalculationEnum = pgEnum('ot_approval_calculation', [
+  'requested',
+  'system_calculated',
+  'smaller_of',
+]);
+
 // Clocking Location & Geofencing (ADR-0070). 'pass' = the punch was within a matched assigned site's
 // radius; 'not_enforced' = geofencing was OFF for that punch (coords may still be present). 'fail' does
 // NOT exist here — a blocked attempt never writes an attendance row; it is the
@@ -1424,6 +1434,9 @@ export const attendancePolicy = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::integer[]`),
+    // ADR-0069: how an approved overtime request's minutes are resolved against the engine's live figure
+    // (requested | system_calculated | smaller_of). Company-wide setting; default system_calculated.
+    otApprovalCalculation: otApprovalCalculationEnum('ot_approval_calculation').notNull().default('system_calculated'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
@@ -1441,15 +1454,62 @@ export const attendanceCorrection = pgTable(
       .notNull()
       .references(() => employment.id),
     attendanceDate: date('attendance_date').notNull(),
-    proposedCheckIn: time('proposed_check_in').notNull(),
+    // ADR-0069: relaxed to NULLABLE (was NOT NULL) so an OT-only request (no clock-in/out) can be represented.
+    // A DB check constraint (migration 0145) requires at least one of proposedCheckIn / proposedCheckOut /
+    // requestedOtMinutes to be present.
+    proposedCheckIn: time('proposed_check_in'),
     proposedCheckOut: time('proposed_check_out'),
     reason: text('reason'),
+    // ADR-0069 Attendance Request Management — overtime request fields (all nullable; a clock-only correction
+    // leaves them null, byte-identical to before):
+    //  • requestedOtMinutes — the employee's requested OT figure (from the form).
+    //  • approvedOtMinutes — the final value after applying attendance_policy.ot_approval_calculation. Written
+    //    at approval time; this is also the value pushed onto attendance.ot_minutes (single source of truth for
+    //    both the payroll prefill AND the TOIL auto-accrual — see decideAttendanceCorrection).
+    //  • otApprovalMethod — which of the 3 calculation options produced approvedOtMinutes, for audit.
+    // NOTE (ADR-0069): we deliberately do NOT persist a "systemCalculated" snapshot column — the comparison
+    // figure is computed LIVE at review time via deriveAttendance/scheduleFor, never stored.
+    requestedOtMinutes: integer('requested_ot_minutes'),
+    approvedOtMinutes: integer('approved_ot_minutes'),
+    otApprovalMethod: otApprovalCalculationEnum('ot_approval_method'),
     status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
     decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate)],
+  (t) => [
+    index('attendance_correction_employment_idx').on(t.employmentId, t.attendanceDate),
+    // ADR-0069 data-integrity: at most ONE pending request per (employment, date) — stops a clock-fix and a
+    // separate OT-only request for the same date both approving and clobbering each other on the attendance
+    // upsert. Partial unique so decided rows don't collide with a fresh request for the same date.
+    uniqueIndex('attendance_correction_one_pending_uq')
+      .on(t.employmentId, t.attendanceDate)
+      .where(sql`status = 'pending'`),
+  ],
+);
+
+// ADR-0069 Attendance Request Management — Travel Request. An approved date-range record marking that an
+// employee was working off-site for that window. Scoped to an AUDIT MARKER only: this codebase's geofencing
+// (ADR-0070) is a separate enforcement path; travel is surfaced as a badge via activeTravelRequestFor and is
+// NOT wired into DayContext/attendanceForDate (so it cannot silently change month-summary absence counting).
+// Reuses attendance_correction_status (pending/approved/rejected) and the same request→decide workflow.
+export const travelRequest = pgTable(
+  'travel_request',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    travelFrom: date('travel_from').notNull(),
+    travelTo: date('travel_to').notNull(),
+    remarks: text('remarks').notNull(),
+    status: attendanceCorrectionStatusEnum('status').notNull().default('pending'),
+    decidedByEmploymentId: uuid('decided_by_employment_id').references(() => employment.id),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('travel_request_employment_idx').on(t.employmentId, t.travelFrom)],
 );
 
 // ── Phase C: shift rosters (ADR-0032) ──────────────────────────────

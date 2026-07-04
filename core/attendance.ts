@@ -933,25 +933,97 @@ export function attendanceMonthSummary(
 
 // ───────────────────── Corrections (ADR-0011 Phase B) ─────────────────────
 
-/** Raise a correction request for a day's punches. RLS confines who an employment is
- *  visible to (self / manager / admin), so a peer cannot file for someone else. */
+export type OtApprovalMethod = 'requested' | 'system_calculated' | 'smaller_of';
+
+/** ADR-0069: resolve the APPROVED overtime minutes from the employee's requested figure, the engine's live
+ *  system-calculated figure, and the company's chosen method. Pure — the review UI shows both inputs live and
+ *  the decide path stamps the result. `system` is the engine-derived OT for the day (may be null when the day
+ *  has no clock-out to derive from, e.g. an OT-only request against an unclosed day) — treated as 0 there so a
+ *  `system_calculated`/`smaller_of` policy cannot silently approve a phantom figure. */
+export function resolveApprovedOt(
+  requested: number,
+  system: number | null,
+  method: OtApprovalMethod,
+): number {
+  const sys = system ?? 0;
+  switch (method) {
+    case 'requested':
+      return Math.max(0, Math.trunc(requested));
+    case 'system_calculated':
+      return Math.max(0, Math.trunc(sys));
+    case 'smaller_of':
+      return Math.max(0, Math.min(Math.trunc(requested), Math.trunc(sys)));
+  }
+}
+
+/** The company's OT-approval calculation method for an employee (from attendance_policy; default system_calculated). */
+async function otApprovalCalculationFor(tx: Tx, employmentId: string): Promise<OtApprovalMethod> {
+  const [row] = await tx
+    .select({ m: attendancePolicy.otApprovalCalculation })
+    .from(employment)
+    .leftJoin(attendancePolicy, eq(attendancePolicy.companyId, employment.companyId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  return (row?.m ?? 'system_calculated') as OtApprovalMethod;
+}
+
+/** Raise a correction request for a day's punches and/or an overtime request (ADR-0069). RLS confines who an
+ *  employment is visible to (self / manager / admin), so a peer cannot file for someone else.
+ *
+ *  ADR-0069: `checkIn` is now OPTIONAL — an "OT only" request supplies just `requestedOtMinutes` (and remarks).
+ *  Application-level validation enforces:
+ *    • at least one of (checkIn, checkOut, requestedOtMinutes) is present — mirrors the DB check constraint;
+ *    • a checkOut cannot be given without a checkIn (a lone checkOut has no anchor to derive against);
+ *    • `reason`/remarks is MANDATORY (enforced here, NOT at the DB layer — reason stays nullable to avoid a
+ *      breaking retroactive NOT NULL on the live table);
+ *    • requestedOtMinutes, when present, is a non-negative integer. */
 export async function requestAttendanceCorrection(
   ctx: SessionContext,
-  p: { employmentId: string; date: string; checkIn: string; checkOut?: string | null; reason?: string },
+  p: {
+    employmentId: string;
+    date: string;
+    checkIn?: string | null;
+    checkOut?: string | null;
+    requestedOtMinutes?: number | null;
+    reason?: string;
+  },
 ) {
+  const checkIn = p.checkIn ?? null;
+  const checkOut = p.checkOut ?? null;
+  const hasOt = p.requestedOtMinutes != null;
+  // At least one of clock-in / clock-out / OT (mirrors the DB check constraint, with a friendly message).
+  if (!checkIn && !checkOut && !hasOt) {
+    throw new Error('Provide at least one of a clock-in time, a clock-out time, or overtime hours.');
+  }
+  // A clock-out with no clock-in has no anchor to derive against.
+  if (checkOut && !checkIn) {
+    throw new Error('A clock-out time also needs a clock-in time.');
+  }
+  if (checkIn && checkOut && toMinutes(checkOut) <= toMinutes(checkIn)) {
+    throw new Error('Check-out must be after check-in');
+  }
+  // Remarks mandatory (application-level per ADR-0069).
+  const reason = (p.reason ?? '').trim();
+  if (reason.length === 0) {
+    throw new Error('A reason is required.');
+  }
+  let requestedOtMinutes: number | null = null;
+  if (hasOt) {
+    const ot = Math.trunc(p.requestedOtMinutes!);
+    if (!Number.isFinite(ot) || ot < 0) throw new Error('Overtime minutes must be a non-negative whole number.');
+    requestedOtMinutes = ot;
+  }
   return withTenant(ctx, async (tx) => {
-    if (p.checkOut && toMinutes(p.checkOut) <= toMinutes(p.checkIn)) {
-      throw new Error('Check-out must be after check-in');
-    }
     const [row] = await tx
       .insert(attendanceCorrection)
       .values({
         tenantId: ctx.tenantId,
         employmentId: p.employmentId,
         attendanceDate: p.date,
-        proposedCheckIn: p.checkIn,
-        proposedCheckOut: p.checkOut ?? null,
-        reason: p.reason ?? null,
+        proposedCheckIn: checkIn,
+        proposedCheckOut: checkOut,
+        requestedOtMinutes,
+        reason,
       })
       .returning({ id: attendanceCorrection.id });
     await appendEvent(tx, {
@@ -964,9 +1036,10 @@ export async function requestAttendanceCorrection(
       payload: {
         employmentId: p.employmentId,
         date: p.date,
-        checkIn: p.checkIn,
-        checkOut: p.checkOut ?? null,
-        reason: p.reason ?? null,
+        checkIn,
+        checkOut,
+        requestedOtMinutes,
+        reason,
       },
     });
     return { correctionId: row.id };
@@ -993,49 +1066,67 @@ export async function decideAttendanceCorrection(
     if (p.decision === 'approved') {
       const sched = await scheduleFor(tx, cor.employmentId, cor.attendanceDate);
       const dayType = sched.dayType;
-      const d = deriveAttendance(sched, cor.proposedCheckIn, cor.proposedCheckOut);
-      // ADR-0070: a correction always replaces both punches' geo-capture fields with null and leaves
-      // method NULL (no 'correction' enum value, per the panel's scope-creep cut) — the disclosed,
-      // approval-gated geofence bypass. Cutting this would leave a stale geofence attestation sitting
-      // next to punch times the correction actually wrote, which is the missing-edges bug the panel
-      // flagged; geofencing itself is NOT re-checked here (a human already approved this correction).
-      const [amended] = await tx
-        .insert(attendance)
-        .values({
-          tenantId: ctx.tenantId,
-          employmentId: cor.employmentId,
-          attendanceDate: cor.attendanceDate,
-          checkInAt: cor.proposedCheckIn,
-          checkOutAt: cor.proposedCheckOut,
-          status: d.status,
-          dayType,
-          workedMinutes: d.workedMinutes,
-          otMinutes: d.otMinutes,
-          remarks: 'Corrected',
-          checkInMethod: null,
-          checkInLat: null,
-          checkInLng: null,
-          checkInClockingLocationId: null,
-          checkInDistanceM: null,
-          checkInGeofenceStatus: null,
-          checkInRadiusM: null,
-          checkOutMethod: null,
-          checkOutLat: null,
-          checkOutLng: null,
-          checkOutClockingLocationId: null,
-          checkOutDistanceM: null,
-          checkOutGeofenceStatus: null,
-          checkOutRadiusM: null,
-        })
-        .onConflictDoUpdate({
-          target: [attendance.employmentId, attendance.attendanceDate],
-          set: {
+      const hasClockCorrection = cor.proposedCheckIn != null;
+      const hasOtRequest = cor.requestedOtMinutes != null;
+
+      // ADR-0069: resolve the APPROVED OT once, up front, so the SAME value is written to attendance.otMinutes,
+      // stamped on the correction row, and (crucially) read by maybeAutoAccrueOnApprovalTx below. The auto-accrual
+      // reads attendance.otMinutes AFTER we write it — so the DECISION (tested & documented in ADR-0069) is: TOIL
+      // auto-accrual consumes the POLICY-ADJUSTED approved OT, never the raw engine figure. attendance.otMinutes is
+      // the single source of truth for both the payroll prefill AND the TOIL day-credit math — no double-counting.
+      let approvedOtMinutes: number | null = null;
+      let otApprovalMethod: OtApprovalMethod | null = null;
+      let systemOtForComparison: number | null = null;
+      if (hasOtRequest) {
+        otApprovalMethod = await otApprovalCalculationFor(tx, cor.employmentId);
+        // The system-calculated comparison figure: derive live from the punches that WILL be authoritative for the
+        // day. For a clock correction that is the proposed punches; for an OT-only request it is the existing
+        // approved attendance row's punches (resolved below). Computed live — never stored (ADR-0069).
+        if (hasClockCorrection) {
+          systemOtForComparison = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut).otMinutes;
+        } else {
+          const [existing] = await tx
+            .select({ checkInAt: attendance.checkInAt, checkOutAt: attendance.checkOutAt })
+            .from(attendance)
+            .where(
+              and(
+                eq(attendance.employmentId, cor.employmentId),
+                eq(attendance.attendanceDate, cor.attendanceDate),
+              ),
+            )
+            .limit(1);
+          systemOtForComparison =
+            existing?.checkInAt != null
+              ? deriveAttendance(sched, existing.checkInAt, existing.checkOutAt).otMinutes
+              : null;
+        }
+        approvedOtMinutes = resolveApprovedOt(cor.requestedOtMinutes!, systemOtForComparison, otApprovalMethod);
+      }
+
+      let amendedId: string;
+      let eventPayload: Record<string, unknown>;
+
+      if (hasClockCorrection) {
+        const d = deriveAttendance(sched, cor.proposedCheckIn!, cor.proposedCheckOut);
+        // When OT was also requested, the approved (policy-adjusted) OT OVERRIDES the derived figure.
+        const otMinutes = hasOtRequest ? approvedOtMinutes : d.otMinutes;
+        // ADR-0070: a correction always replaces both punches' geo-capture fields with null and leaves
+        // method NULL (no 'correction' enum value, per the panel's scope-creep cut) — the disclosed,
+        // approval-gated geofence bypass. Cutting this would leave a stale geofence attestation sitting
+        // next to punch times the correction actually wrote, which is the missing-edges bug the panel
+        // flagged; geofencing itself is NOT re-checked here (a human already approved this correction).
+        const [amended] = await tx
+          .insert(attendance)
+          .values({
+            tenantId: ctx.tenantId,
+            employmentId: cor.employmentId,
+            attendanceDate: cor.attendanceDate,
             checkInAt: cor.proposedCheckIn,
             checkOutAt: cor.proposedCheckOut,
             status: d.status,
             dayType,
             workedMinutes: d.workedMinutes,
-            otMinutes: d.otMinutes,
+            otMinutes,
             remarks: 'Corrected',
             checkInMethod: null,
             checkInLat: null,
@@ -1051,17 +1142,36 @@ export async function decideAttendanceCorrection(
             checkOutDistanceM: null,
             checkOutGeofenceStatus: null,
             checkOutRadiusM: null,
-          },
-        })
-        .returning({ id: attendance.id });
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'attendance',
-        aggregateId: amended.id,
-        eventType: 'attendance.amended',
-        actor: actorOf(ctx),
-        subjectEmploymentId: cor.employmentId,
-        payload: {
+          })
+          .onConflictDoUpdate({
+            target: [attendance.employmentId, attendance.attendanceDate],
+            set: {
+              checkInAt: cor.proposedCheckIn,
+              checkOutAt: cor.proposedCheckOut,
+              status: d.status,
+              dayType,
+              workedMinutes: d.workedMinutes,
+              otMinutes,
+              remarks: 'Corrected',
+              checkInMethod: null,
+              checkInLat: null,
+              checkInLng: null,
+              checkInClockingLocationId: null,
+              checkInDistanceM: null,
+              checkInGeofenceStatus: null,
+              checkInRadiusM: null,
+              checkOutMethod: null,
+              checkOutLat: null,
+              checkOutLng: null,
+              checkOutClockingLocationId: null,
+              checkOutDistanceM: null,
+              checkOutGeofenceStatus: null,
+              checkOutRadiusM: null,
+            },
+          })
+          .returning({ id: attendance.id });
+        amendedId = amended.id;
+        eventPayload = {
           correctionId: cor.id,
           date: cor.attendanceDate,
           checkIn: cor.proposedCheckIn,
@@ -1069,15 +1179,69 @@ export async function decideAttendanceCorrection(
           status: d.status,
           dayType,
           workedMinutes: d.workedMinutes,
-          otMinutes: d.otMinutes,
-        },
+          otMinutes,
+        };
+      } else {
+        // OT-only request: there MUST already be an attendance row (you cannot bank OT against a day with no
+        // recorded work). We update ONLY that row's otMinutes to the approved figure — punches are left intact
+        // (we do NOT null them, unlike a clock correction).
+        const [existing] = await tx
+          .select({ id: attendance.id })
+          .from(attendance)
+          .where(
+            and(
+              eq(attendance.employmentId, cor.employmentId),
+              eq(attendance.attendanceDate, cor.attendanceDate),
+            ),
+          )
+          .limit(1);
+        if (!existing) {
+          throw new Error('No attendance record exists for this date to attach overtime to.');
+        }
+        await tx
+          .update(attendance)
+          .set({ otMinutes: approvedOtMinutes })
+          .where(eq(attendance.id, existing.id));
+        amendedId = existing.id;
+        eventPayload = {
+          correctionId: cor.id,
+          date: cor.attendanceDate,
+          dayType,
+          otMinutes: approvedOtMinutes,
+        };
+      }
+
+      // Stamp the OT-approval audit fields onto the correction row (requested + approved + method).
+      if (hasOtRequest) {
+        await tx
+          .update(attendanceCorrection)
+          .set({ approvedOtMinutes, otApprovalMethod })
+          .where(eq(attendanceCorrection.id, cor.id));
+        eventPayload = {
+          ...eventPayload,
+          requestedOtMinutes: cor.requestedOtMinutes,
+          systemCalculatedOtMinutes: systemOtForComparison,
+          approvedOtMinutes,
+          otApprovalMethod,
+        };
+      }
+
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'attendance',
+        aggregateId: amendedId,
+        eventType: 'attendance.amended',
+        actor: actorOf(ctx),
+        subjectEmploymentId: cor.employmentId,
+        payload: eventPayload,
       });
 
       // RL Control Engine (0113): auto-create the replacement-leave credit when this is the only reviewed
       // attendance-decision path. The approver above already passed assertCanDecide, so the auto-accrual runs
       // with requireDecideAuth:false (re-checking would hard-throw). It self-gates on dayType ∈ {rest_day,
       // holiday}, otMinutes>0, TOIL_ENABLED, and the company's enabled + autoAccrueOnApproval policy; eligibility
-      // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise.
+      // refusals are swallowed so auto-accrual NEVER blocks an approval. Skipped silently otherwise. Per ADR-0069
+      // it reads the POLICY-ADJUSTED attendance.otMinutes written above (single source of truth).
       await maybeAutoAccrueOnApprovalTx(tx, ctx, {
         employmentId: cor.employmentId,
         workedDate: cor.attendanceDate,
@@ -1123,6 +1287,9 @@ export function listAttendanceCorrections(
         attendanceDate: attendanceCorrection.attendanceDate,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
+        requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
+        approvedOtMinutes: attendanceCorrection.approvedOtMinutes,
+        otApprovalMethod: attendanceCorrection.otApprovalMethod,
         reason: attendanceCorrection.reason,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
@@ -1152,6 +1319,7 @@ export function myAttendanceCorrections(ctx: SessionContext, employmentId: strin
         attendanceDate: attendanceCorrection.attendanceDate,
         proposedCheckIn: attendanceCorrection.proposedCheckIn,
         proposedCheckOut: attendanceCorrection.proposedCheckOut,
+        requestedOtMinutes: attendanceCorrection.requestedOtMinutes,
         status: attendanceCorrection.status,
         createdAt: attendanceCorrection.createdAt,
       })
@@ -1174,6 +1342,8 @@ export type AttendancePolicyView = {
   // Feedback 31474452: weekdays marked as a Half working day (e.g. Saturday 9am-12pm). Disjoint from
   // workingDays. Always ints 1..7; empty = no half-day schedule (today's behaviour).
   halfWorkingDays: number[];
+  // ADR-0069: how an approved overtime request's minutes are resolved (requested | system_calculated | smaller_of).
+  otApprovalCalculation: OtApprovalMethod;
   isDefault: boolean; // true ⇒ no row saved yet; the form shows engine defaults
 };
 
@@ -1195,6 +1365,7 @@ export function listAttendancePolicies(
         halfDayBefore: attendancePolicy.halfDayBefore,
         workingDays: attendancePolicy.workingDays,
         halfWorkingDays: attendancePolicy.halfWorkingDays,
+        otApprovalCalculation: attendancePolicy.otApprovalCalculation,
       })
       .from(attendancePolicy)
       .where(inArray(attendancePolicy.companyId, companyIds));
@@ -1202,7 +1373,7 @@ export function listAttendancePolicies(
     return companyIds.map((companyId) => {
       const r = byCompany.get(companyId);
       return r
-        ? { ...r, isDefault: false }
+        ? { ...r, otApprovalCalculation: r.otApprovalCalculation as OtApprovalMethod, isDefault: false }
         : {
             companyId,
             workStart: DEFAULTS.workStart,
@@ -1212,6 +1383,7 @@ export function listAttendancePolicies(
             halfDayBefore: DEFAULTS.halfDayBefore,
             workingDays: DEFAULTS.workingDays,
             halfWorkingDays: DEFAULTS.halfWorkingDays,
+            otApprovalCalculation: 'system_calculated' as OtApprovalMethod,
             isDefault: true,
           };
     });
@@ -1238,6 +1410,9 @@ export async function setAttendancePolicy(
     workingDays: number[];
     // Feedback 31474452: weekdays marked Half (disjoint from workingDays). Optional — absent/undefined ⇒ [].
     halfWorkingDays?: number[];
+    // ADR-0069: how an approved overtime request's minutes are resolved. Optional — absent ⇒ preserved on an
+    // existing row / defaulted to system_calculated on a fresh row.
+    otApprovalCalculation?: OtApprovalMethod;
   },
 ) {
   const workStart = asTime(p.workStart, 'Work start');
@@ -1264,6 +1439,12 @@ export async function setAttendancePolicy(
   if (overlap.length > 0) {
     throw new Error('A day cannot be both a Full working day and a Half working day.');
   }
+  // ADR-0069: validate the OT-approval calculation option (when provided) against the 3-value enum.
+  const OT_METHODS: OtApprovalMethod[] = ['requested', 'system_calculated', 'smaller_of'];
+  if (p.otApprovalCalculation != null && !OT_METHODS.includes(p.otApprovalCalculation)) {
+    throw new Error('Invalid overtime approval calculation option.');
+  }
+  const otApprovalCalculation: OtApprovalMethod = p.otApprovalCalculation ?? 'system_calculated';
 
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
@@ -1278,10 +1459,11 @@ export async function setAttendancePolicy(
         halfDayBefore,
         workingDays,
         halfWorkingDays,
+        otApprovalCalculation,
       })
       .onConflictDoUpdate({
         target: attendancePolicy.companyId,
-        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays },
+        set: { workStart, workEnd, breakMinutes, lateAfter, halfDayBefore, workingDays, halfWorkingDays, otApprovalCalculation },
       })
       .returning({ id: attendancePolicy.id });
     await appendEvent(tx, {
@@ -1299,6 +1481,7 @@ export async function setAttendancePolicy(
         halfDayBefore,
         workingDays,
         halfWorkingDays,
+        otApprovalCalculation,
       },
     });
     return row;

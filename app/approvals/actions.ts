@@ -6,6 +6,7 @@ import { getSession } from '@/lib/session';
 import { decideLeave, decideLeaveDate, decideLeaveCancellation } from '@/core/leave';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
+import { decideTravelRequest } from '@/core/travel-request';
 import { decideProfileChange } from '@/core/profile';
 import { decideClaim } from '@/core/claims';
 import { decideResignation } from '@/core/offboarding';
@@ -94,6 +95,17 @@ export async function approveCorrectionAction(formData: FormData) {
     fail(e);
   }
   done(`Correction ${decision}`);
+}
+
+export async function approveTravelAction(formData: FormData) {
+  const s = await getSession();
+  const decision = String(formData.get('decision')) as 'approved' | 'rejected';
+  try {
+    await decideTravelRequest(s, { travelRequestId: String(formData.get('id')), decision });
+  } catch (e) {
+    fail(e);
+  }
+  done(`Travel ${decision}`);
 }
 
 export async function approveProfileChangeAction(formData: FormData) {

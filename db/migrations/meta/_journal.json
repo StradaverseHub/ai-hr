@@ -1023,6 +1023,13 @@
       "when": 1781862090000,
       "tag": "0145_org_catalog_description",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1781862100000,
+      "tag": "0146_attendance_request_management",
+      "breakpoints": true
     }
   ]
 }
