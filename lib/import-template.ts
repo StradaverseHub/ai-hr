@@ -26,6 +26,7 @@
 import { toCsv } from './csv';
 import { IMPORT_COLUMNS } from './import-schema';
 import { PAYROLL_HISTORY_COLUMNS } from './payroll-history-import-schema';
+import { LEAVE_IMPORT_COLUMNS } from './leave-import-schema';
 
 export type TemplateSpec = {
   id: string;
@@ -108,6 +109,25 @@ export const employeeTemplate: TemplateSpec = {
       'true', // is_resident
       'MALAYSIAN', // epf_citizenship
     ],
+  ],
+};
+
+/**
+ * Leave data import — columns DERIVED from the enforced contract (LEAVE_IMPORT_COLUMNS, all required),
+ * the same desync lock as the employee template. Two header-complete sample rows using a known demo-seed
+ * employee code (E1001) and the ANNUAL leave type so an unmodified download→upload round-trips clean:
+ * one opening-balance carry (adjustment) and one historical debit (negative days), matching the ticket's
+ * opening-balance + historical-leave-taken examples.
+ */
+export const leaveImportTemplate: TemplateSpec = {
+  id: 'leave-import',
+  filename: 'leave-import-template.csv',
+  columns: LEAVE_IMPORT_COLUMNS.required.map((key) => ({ key, required: true })),
+  sampleRows: [
+    // Opening / carry-forward balance as an adjustment (either sign allowed).
+    ['E1001', 'ANNUAL', 'adjustment', '5', '2026-01-01'],
+    // Historical leave taken as a debit (negative days).
+    ['E1001', 'ANNUAL', 'debit', '-2', '2026-03-14'],
   ],
 };
 

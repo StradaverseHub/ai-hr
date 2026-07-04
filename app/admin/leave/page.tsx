@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
@@ -474,6 +475,19 @@ export default async function LeaveConfigPage({
         <div className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
           <p>{t('encashmentEligibleTypesFixed')}</p>
           <p>{t('encashmentRoundingFixed')}</p>
+        </div>
+      </Card>
+
+      {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical
+          leave from a paste-CSV. Reached from here (like attendance/import and people/import), no new
+          top-level sidebar item. */}
+      <Card>
+        <SectionHeader title={t('importTitle')} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
+          <p className="max-w-md text-xs text-muted-foreground">{t('importHelp')}</p>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/admin/leave/import">{t('importLink')}</Link>
+          </Button>
         </div>
       </Card>
 

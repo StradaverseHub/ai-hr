@@ -15,9 +15,11 @@ import {
   attendancePunchTemplate,
   buildTemplateCsv,
   employeeTemplate,
+  leaveImportTemplate,
   payrollComponentTemplate,
   type TemplateSpec,
 } from '../lib/import-template';
+import { LEAVE_IMPORT_COLUMNS } from '../lib/leave-import-schema';
 
 describe('import templates', () => {
   describe('employee (the real desync lock)', () => {
@@ -37,7 +39,21 @@ describe('import templates', () => {
     });
   });
 
-  const specs: TemplateSpec[] = [employeeTemplate, attendancePunchTemplate, payrollComponentTemplate];
+  describe('leave-import (the desync lock)', () => {
+    it('columns exactly equal LEAVE_IMPORT_COLUMNS.required (all required)', () => {
+      const actual = leaveImportTemplate.columns.map((c) => c.key);
+      expect(actual).toEqual([...LEAVE_IMPORT_COLUMNS.required]);
+      // Every column in this template is required (there are no optional leave-import columns).
+      expect(leaveImportTemplate.columns.every((c) => c.required)).toBe(true);
+    });
+  });
+
+  const specs: TemplateSpec[] = [
+    employeeTemplate,
+    attendancePunchTemplate,
+    payrollComponentTemplate,
+    leaveImportTemplate,
+  ];
 
   describe.each(specs.map((s) => [s.id, s] as const))('all three: %s', (_id, spec) => {
     it('round-trips through parseCsvRecords to the same headers (toCsv ↔ parseCsvRecords, incl. CRLF)', () => {
