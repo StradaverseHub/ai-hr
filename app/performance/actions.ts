@@ -19,6 +19,7 @@ import {
   linkGoalToReview,
   lockGoalSetting,
   openCalibrationSession,
+  previewEligibleCount,
   proposeCalibration,
   proposeGoals,
   moveCycleToCalibration,
@@ -32,7 +33,10 @@ import {
   submitStageSelf,
   unlinkGoalFromReview,
   ALL_STAGE_KINDS,
+  type AssignmentStatus,
   type CycleStage,
+  type EligibilityRules,
+  type EmploymentTypeValue,
   type MeritBudget,
   type StageKind,
 } from '@/core/performance';
@@ -45,6 +49,32 @@ const str = (v: FormDataEntryValue | null) => {
   const s = String(v ?? '').trim();
   return s.length ? s : undefined;
 };
+
+const STATUS_VALUES: readonly AssignmentStatus[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
+const EMP_TYPE_VALUES: readonly EmploymentTypeValue[] = ['full_time', 'part_time', 'contract', 'intern'];
+
+/** Parse the eligibility-rule form fields (multi-selects + number + date) into an EligibilityRules
+ *  object. Shared by createCycleAction and previewEligibilityAction so both read the form identically. */
+function parseEligibilityRules(formData: FormData): EligibilityRules {
+  const companyIds = formData.getAll('eligibilityCompanyId').map(String).filter(Boolean);
+  const statuses = formData
+    .getAll('eligibilityStatus')
+    .map(String)
+    .filter((v): v is AssignmentStatus => (STATUS_VALUES as string[]).includes(v));
+  const employmentTypes = formData
+    .getAll('eligibilityEmploymentType')
+    .map(String)
+    .filter((v): v is EmploymentTypeValue => (EMP_TYPE_VALUES as string[]).includes(v));
+  const minServiceMonths = num(formData.get('minServiceMonths'));
+  const hiredBefore = str(formData.get('hiredBefore')) ?? null;
+  return {
+    companyIds: companyIds.length ? companyIds : undefined,
+    statuses: statuses.length ? statuses : undefined,
+    employmentTypes: employmentTypes.length ? employmentTypes : undefined,
+    minServiceMonths: minServiceMonths != null && minServiceMonths > 0 ? minServiceMonths : undefined,
+    hiredBefore,
+  };
+}
 
 export async function createCycleAction(formData: FormData) {
   const s = await getSession();
@@ -66,8 +96,7 @@ export async function createCycleAction(formData: FormData) {
       periodStart: String(formData.get('periodStart') ?? ''),
       periodEnd: String(formData.get('periodEnd') ?? ''),
       meritBudget,
-      excludeProbation: formData.get('excludeProbation') != null,
-      hiredBefore: str(formData.get('hiredBefore')) ?? null,
+      eligibilityRules: parseEligibilityRules(formData),
       stages,
     });
     cycleId = res.cycleId;
@@ -76,6 +105,24 @@ export async function createCycleAction(formData: FormData) {
   }
   revalidatePath('/performance');
   redirect(`/performance/${cycleId}`);
+}
+
+/**
+ * RPC-shaped (NOT redirecting) server action for the "Preview eligible employees" button. Returns the
+ * point-in-time count to the client island so it can render "N employees currently eligible (as of now)"
+ * without navigating away. Surfaces the cross-company-scope rejection (and any other) as an error string.
+ */
+export async function previewEligibilityAction(formData: FormData): Promise<{ count?: number; error?: string }> {
+  const s = await getSession();
+  try {
+    const { count } = await previewEligibleCount(s, {
+      companyId: str(formData.get('companyId')) ?? null,
+      eligibilityRules: parseEligibilityRules(formData),
+    });
+    return { count };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
 }
 
 async function cycleLifecycle(

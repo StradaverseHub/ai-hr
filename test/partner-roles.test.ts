@@ -213,7 +213,6 @@ describe('job-function partner roles (ADR-0049)', () => {
         name: 'FY26',
         periodStart: '2026-01-01',
         periodEnd: '2026-12-31',
-        excludeProbation: false,
       });
       await openCycle(pc, { cycleId });
       const [rev] = await withTenant(pc, (tx) =>
@@ -256,7 +255,6 @@ describe('job-function partner roles (ADR-0049)', () => {
         name: 'FY26',
         periodStart: '2026-01-01',
         periodEnd: '2026-12-31',
-        excludeProbation: false,
       });
       await openCycle(pc, { cycleId });
       const [rev] = await withTenant(pc, (tx) =>

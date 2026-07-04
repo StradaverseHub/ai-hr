@@ -9,9 +9,9 @@ import { Button, Card, EmployeeCode, ErrorBanner, Field, PageHeader, SectionHead
 import {
   cancelCheckInAction,
   completeCheckInAction,
-  createCycleAction,
   scheduleCheckInAction,
 } from './actions';
+import { NewCycleForm } from './new-cycle-form';
 
 export default async function PerformancePage({
   searchParams,
@@ -20,7 +20,6 @@ export default async function PerformancePage({
 }) {
   const { s } = await scopedSession();
   const t = await getTranslations('performance.list');
-  const tl = await getTranslations('performance.lifecycle');
   const admin = isAdmin(s);
   const manager = (s.roles ?? []).includes('manager');
   if (!admin && !manager) redirect('/');
@@ -196,64 +195,7 @@ export default async function PerformancePage({
           <Card data-tour="performance-new-cycle">
             <details>
               <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">{t('newCycle')}</summary>
-              <form action={createCycleAction} className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2">
-                <Field label={t('fieldName')}>
-                  <input name="name" required className={inputCls} placeholder={t('namePlaceholder')} />
-                </Field>
-                <Field label={t('fieldScope')}>
-                  <select name="companyId" className={inputCls} defaultValue="">
-                    <option value="">{t('scopeAllCompanies')}</option>
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('fieldPeriodStart')}>
-                  <input name="periodStart" type="date" required defaultValue={`${today.slice(0, 4)}-01-01`} className={inputCls} />
-                </Field>
-                <Field label={t('fieldPeriodEnd')}>
-                  <input name="periodEnd" type="date" required defaultValue={`${today.slice(0, 4)}-12-31`} className={inputCls} />
-                </Field>
-                <Field label={t('fieldMeritPool')}>
-                  <div className="flex gap-2">
-                    <select name="meritBudgetKind" className={inputCls} defaultValue="">
-                      <option value="">{t('meritNoPool')}</option>
-                      <option value="percent">{t('meritPercent')}</option>
-                      <option value="amount">{t('meritAmount')}</option>
-                    </select>
-                    <input name="meritBudgetValue" type="number" step="0.1" min="0" className={`${inputCls} w-28`} placeholder="3.5" />
-                  </div>
-                </Field>
-                <Field label={t('fieldHiredBefore')}>
-                  <input name="hiredBefore" type="date" className={inputCls} />
-                </Field>
-                <div className="sm:col-span-2">
-                  <Field label={tl('stagesField')}>
-                    <p className="mb-2 text-xs text-muted-foreground">{tl('stagesHint')}</p>
-                    <div className="flex flex-wrap gap-4 text-sm">
-                      {([
-                        ['goal_setting', tl('stageGoalSetting')],
-                        ['mid_year', tl('stageMidYear')],
-                        ['year_end', tl('stageYearEnd')],
-                      ] as const).map(([kind, label]) => (
-                        <label key={kind} className="flex items-center gap-2">
-                          <input type="checkbox" name="stage" value={kind} defaultChecked className="size-4" />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  </Field>
-                </div>
-                <label className="flex items-center gap-2 text-sm sm:col-span-2">
-                  <input type="checkbox" name="excludeProbation" defaultChecked className="size-4" />
-                  {t('excludeProbation')}
-                </label>
-                <div className="sm:col-span-2">
-                  <Button type="submit">{t('createCycle')}</Button>
-                </div>
-              </form>
+              <NewCycleForm companies={companies} today={today} />
             </details>
           </Card>
         </>

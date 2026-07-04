@@ -2307,8 +2307,13 @@ export const reviewCycle = pgTable(
     ratingScale: jsonb('rating_scale').notNull(), // [{ value:int, label:string }] — configurable
     // Optional merit pool the manager recommendations are tracked against (soft cap).
     meritBudget: jsonb('merit_budget'), // { kind: 'percent' | 'amount', value: number } | null
-    excludeProbation: boolean('exclude_probation').notNull().default(true),
-    hiredBefore: date('hired_before'), // only include employees hired on/before this; null = no cutoff
+    // Eligibility rules engine (Performance eligibility slice): a single JSONB criteria object that
+    // openCycle AND-combines to snapshot the roster. Same pattern as leave_type.eligibility — criteria
+    // live directly on the row, no child table, no lookup tables. Replaces the old boolean
+    // exclude_probation + date hired_before pair (clean cutover — the module has no production rows).
+    // Shape (all optional/AND-combined): { companyIds?, statuses?, employmentTypes?, minServiceMonths?,
+    // hiredBefore? }. Null/absent ⇒ every active in-scope employee is eligible.
+    eligibilityRules: jsonb('eligibility_rules'),
     // Lifecycle stages HR elected at initiation (JSONB, migration-free). Array of
     // { kind: 'goal_setting'|'mid_year'|'year_end', label, opensOn?, dueOn? }. Null/absent ⇒ all three.
     stages: jsonb('stages'),

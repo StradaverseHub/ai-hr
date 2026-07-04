@@ -1125,7 +1125,6 @@
       "meritPercent": "% bảng lương",
       "meritAmount": "RM (hàng tháng)",
       "fieldHiredBefore": "Chỉ tính nhân viên tuyển trước (tùy chọn)",
-      "excludeProbation": "Loại trừ nhân viên đang thử việc",
       "createCycle": "Tạo chu kỳ (nháp)",
       "checkinsTitle": "Trao đổi 1:1",
       "checkinsEmpty": "Chưa có buổi trao đổi nào. Hãy lên lịch với một nhân viên cấp dưới ở trên.",
@@ -1139,6 +1138,25 @@
       "checkinStatus_scheduled": "Đã lên lịch",
       "checkinStatus_completed": "Đã hoàn thành",
       "checkinStatus_cancelled": "Đã hủy"
+    },
+    "eligibility": {
+      "eligibilityRulesTitle": "Quy tắc điều kiện",
+      "fieldEligibility": "Kết hợp bất kỳ tiêu chí nào để quyết định ai được đưa vào chu kỳ. Để trống một trường để bỏ qua — tất cả quy tắc được kết hợp bằng VÀ.",
+      "fieldCompany": "Công ty",
+      "fieldStatus": "Trạng thái việc làm",
+      "fieldEmploymentType": "Loại việc làm",
+      "fieldMinService": "Thời gian phục vụ tối thiểu (tháng)",
+      "previewButtonLabel": "Xem trước nhân viên đủ điều kiện",
+      "eligibleCountLabel": "{count, plural, one {# nhân viên hiện đủ điều kiện (tính đến bây giờ)} other {# nhân viên hiện đủ điều kiện (tính đến bây giờ)}}",
+      "status_active": "Đang làm việc",
+      "status_on_leave": "Đang nghỉ phép",
+      "status_probation": "Thử việc",
+      "status_offboarding": "Đang nghỉ việc",
+      "status_terminated": "Đã chấm dứt",
+      "employmentType_full_time": "Toàn thời gian",
+      "employmentType_part_time": "Bán thời gian",
+      "employmentType_contract": "Hợp đồng",
+      "employmentType_intern": "Thực tập"
     },
     "cycle": {
       "back": "Đánh giá hiệu suất",

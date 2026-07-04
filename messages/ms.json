@@ -1125,7 +1125,6 @@
       "meritPercent": "% daripada gaji",
       "meritAmount": "RM (bulanan)",
       "fieldHiredBefore": "Hanya masukkan kakitangan yang diambil sebelum (pilihan)",
-      "excludeProbation": "Kecualikan pekerja dalam percubaan",
       "createCycle": "Cipta kitaran (draf)",
       "checkinsTitle": "Sesi semakan 1:1",
       "checkinsEmpty": "Belum ada sesi semakan. Jadualkan satu dengan laporan di atas.",
@@ -1139,6 +1138,25 @@
       "checkinStatus_scheduled": "Dijadualkan",
       "checkinStatus_completed": "Selesai",
       "checkinStatus_cancelled": "Dibatalkan"
+    },
+    "eligibility": {
+      "eligibilityRulesTitle": "Peraturan kelayakan",
+      "fieldEligibility": "Gabungkan mana-mana kriteria ini untuk menentukan siapa yang disertakan dalam kitaran. Biarkan medan kosong untuk melangkaunya — semua peraturan digabungkan dengan DAN.",
+      "fieldCompany": "Syarikat",
+      "fieldStatus": "Status pekerjaan",
+      "fieldEmploymentType": "Jenis pekerjaan",
+      "fieldMinService": "Tempoh perkhidmatan minimum (bulan)",
+      "previewButtonLabel": "Pratonton pekerja yang layak",
+      "eligibleCountLabel": "{count, plural, one {# pekerja layak setakat ini (setakat sekarang)} other {# pekerja layak setakat ini (setakat sekarang)}}",
+      "status_active": "Aktif",
+      "status_on_leave": "Bercuti",
+      "status_probation": "Percubaan",
+      "status_offboarding": "Penamatan",
+      "status_terminated": "Ditamatkan",
+      "employmentType_full_time": "Sepenuh masa",
+      "employmentType_part_time": "Separuh masa",
+      "employmentType_contract": "Kontrak",
+      "employmentType_intern": "Pelatih"
     },
     "cycle": {
       "back": "Prestasi",

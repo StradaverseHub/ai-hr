@@ -1125,7 +1125,6 @@
       "meritPercent": "薪资百分比",
       "meritAmount": "RM（每月）",
       "fieldHiredBefore": "仅包含此日期之前入职的员工（选填）",
-      "excludeProbation": "排除试用期员工",
       "createCycle": "创建周期（草稿）",
       "checkinsTitle": "一对一面谈",
       "checkinsEmpty": "暂无面谈。请在上方与下属安排一次。",
@@ -1139,6 +1138,25 @@
       "checkinStatus_scheduled": "已安排",
       "checkinStatus_completed": "已完成",
       "checkinStatus_cancelled": "已取消"
+    },
+    "eligibility": {
+      "eligibilityRulesTitle": "资格规则",
+      "fieldEligibility": "组合以下任意条件来决定周期纳入哪些人。留空某项即跳过该条件——所有规则以“且”组合。",
+      "fieldCompany": "公司",
+      "fieldStatus": "雇佣状态",
+      "fieldEmploymentType": "雇佣类型",
+      "fieldMinService": "最短服务年限（月）",
+      "previewButtonLabel": "预览符合资格的员工",
+      "eligibleCountLabel": "{count, plural, one {当前有 # 名员工符合资格（截至此刻）} other {当前有 # 名员工符合资格（截至此刻）}}",
+      "status_active": "在职",
+      "status_on_leave": "休假中",
+      "status_probation": "试用期",
+      "status_offboarding": "离职中",
+      "status_terminated": "已终止",
+      "employmentType_full_time": "全职",
+      "employmentType_part_time": "兼职",
+      "employmentType_contract": "合同",
+      "employmentType_intern": "实习"
     },
     "cycle": {
       "back": "绩效",

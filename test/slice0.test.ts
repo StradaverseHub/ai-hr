@@ -2334,7 +2334,7 @@ describe('UC — performance: state machine, authz, pay seam', () => {
       name: '2026 Mid',
       periodStart: '2026-01-01',
       periodEnd: '2026-12-31',
-      hiredBefore: '2026-06-30',
+      eligibilityRules: { hiredBefore: '2026-06-30' },
     });
     await openCycle(a, { cycleId });
     const reviews = await owner.db

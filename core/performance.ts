@@ -62,6 +62,110 @@ export const DEFAULT_RATING_SCALE: RatingScale = [
 export type RatingScale = { value: number; label: string }[];
 export type MeritBudget = { kind: 'percent' | 'amount'; value: number } | null;
 
+// ───────────────────────────── Eligibility rules engine ─────────────────────────────
+
+/** assignment.status values used by the Status predicate — mirrors assignmentStatusEnum. */
+export type AssignmentStatus = 'active' | 'on_leave' | 'probation' | 'offboarding' | 'terminated';
+/** assignment.employmentType values used by the Employment-Type predicate — mirrors employmentTypeEnum. */
+export type EmploymentTypeValue = 'full_time' | 'part_time' | 'contract' | 'intern';
+
+/**
+ * Configurable eligibility criteria for who a review cycle snapshots at open (Performance eligibility
+ * slice). All fields optional and AND-combined — an absent/empty predicate always passes. Structured so
+ * Business-Unit / Department / Position / Grade can be added later without a shape change (deferred).
+ *
+ * Stored as JSONB directly on review_cycle.eligibility_rules (same pattern as leave_type.eligibility).
+ */
+export type EligibilityRules = {
+  /** Cycle-scope companies (company.id). Empty/absent = every company the cycle already covers. */
+  companyIds?: string[];
+  /** assignment.status whitelist. Empty/absent = any status. */
+  statuses?: AssignmentStatus[];
+  /** assignment.employmentType whitelist — how HR excludes interns. Empty/absent = any type. */
+  employmentTypes?: EmploymentTypeValue[];
+  /** Minimum months of service (today − hiredOn, whole months) required. Absent = no minimum. */
+  minServiceMonths?: number;
+  /** Only include employees hired on/before this ISO date. Null/absent = no cutoff. */
+  hiredBefore?: string | null;
+};
+
+/** The candidate row `evaluateEligibility` reads. `status`/`employmentType`/`companyId` are null when the
+ *  employee has NO current assignment row (left-join gap) — see the null-handling decision below. */
+export type EligibilityCandidate = {
+  hiredOn: string; // ISO date; employment.hiredOn is authoritative and never null
+  status: AssignmentStatus | null;
+  employmentType: EmploymentTypeValue | null;
+  companyId: string | null;
+};
+
+/** Whole months between two ISO dates (hiredOn → asOf), never negative. Used by the minServiceMonths
+ *  predicate. Day-of-month aware so "6 months" means the calendar anniversary, not 6×30 days. */
+export function serviceMonths(hiredOn: string, asOf: string): number {
+  const h = new Date(hiredOn + 'T00:00:00Z');
+  const a = new Date(asOf + 'T00:00:00Z');
+  let months = (a.getUTCFullYear() - h.getUTCFullYear()) * 12 + (a.getUTCMonth() - h.getUTCMonth());
+  if (a.getUTCDate() < h.getUTCDate()) months -= 1;
+  return Math.max(0, months);
+}
+
+/**
+ * Pure, DB-free eligibility predicate — mirrors the maternityAllowanceEligibility pattern in core/leave.ts.
+ * AND-combines every configured predicate; an empty/absent rule always passes that predicate. Returns the
+ * decision plus the reasons it failed (for previews / debugging).
+ *
+ * NULL-HANDLING (explicit, panel-flagged — confirm-before-build item #3, shipping the excluded default):
+ *   An employee with NO current assignment row arrives here with status/employmentType/companyId = null.
+ *   Any configured statuses / employmentTypes / companyIds predicate then FAILS (excluded by default) —
+ *   we do NOT silently pass a null through the new stricter predicate set. If NONE of those three
+ *   predicates is configured, a null-assignment employee still passes (only hiredOn-based predicates
+ *   apply), matching "no filter can't exclude what it doesn't check."
+ *
+ * CONCURRENT EMPLOYMENT (documented decision — confirm-before-build item #2): this evaluates ONE
+ * employment row. A person holding two eligible employments gets two independent performance_review rows
+ * (one per role), matching today's two-field-filter behaviour. See the concurrent-employment fixture in
+ * test/performance-eligibility.test.ts, which pins this as intentional, not a bug.
+ */
+export function evaluateEligibility(
+  emp: EligibilityCandidate,
+  rules: EligibilityRules | null | undefined,
+  asOf: string,
+): { eligible: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+  const r = rules ?? {};
+
+  if (r.statuses && r.statuses.length > 0) {
+    if (emp.status == null || !r.statuses.includes(emp.status)) reasons.push('status');
+  }
+  if (r.employmentTypes && r.employmentTypes.length > 0) {
+    if (emp.employmentType == null || !r.employmentTypes.includes(emp.employmentType)) reasons.push('employmentType');
+  }
+  if (r.companyIds && r.companyIds.length > 0) {
+    if (emp.companyId == null || !r.companyIds.includes(emp.companyId)) reasons.push('companyId');
+  }
+  if (r.minServiceMonths != null && r.minServiceMonths > 0) {
+    if (serviceMonths(emp.hiredOn, asOf) < r.minServiceMonths) reasons.push('minServiceMonths');
+  }
+  if (r.hiredBefore) {
+    if (emp.hiredOn > r.hiredBefore) reasons.push('hiredBefore');
+  }
+
+  return { eligible: reasons.length === 0, reasons };
+}
+
+/** Strip a raw eligibility-rules input down to the persisted/summarisable shape — drops empty arrays and
+ *  null/absent fields so both the stored JSONB and the event payload stay minimal and PII-free (ids/enums
+ *  only). Returns null when nothing meaningful is configured. */
+export function normalizeEligibilityRules(rules: EligibilityRules | null | undefined): EligibilityRules | null {
+  if (!rules) return null;
+  const out: EligibilityRules = {};
+  if (rules.companyIds && rules.companyIds.length > 0) out.companyIds = [...rules.companyIds];
+  if (rules.statuses && rules.statuses.length > 0) out.statuses = [...rules.statuses];
+  if (rules.employmentTypes && rules.employmentTypes.length > 0) out.employmentTypes = [...rules.employmentTypes];
+  if (rules.minServiceMonths != null && rules.minServiceMonths > 0) out.minServiceMonths = rules.minServiceMonths;
+  if (rules.hiredBefore) out.hiredBefore = rules.hiredBefore;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const money = (n: number) => round2(n).toFixed(2);
 const isAdminCtx = (ctx: SessionContext) =>
@@ -106,8 +210,7 @@ export async function createCycle(
     periodEnd: string;
     ratingScale?: RatingScale;
     meritBudget?: MeritBudget;
-    excludeProbation?: boolean;
-    hiredBefore?: string | null;
+    eligibilityRules?: EligibilityRules | null;
     stages?: CycleStage[];
   },
 ) {
@@ -119,6 +222,18 @@ export async function createCycle(
   if (p.periodEnd < p.periodStart) throw new PerfError('Cycle period end is before its start');
   const scale = p.ratingScale ?? DEFAULT_RATING_SCALE;
   if (!Array.isArray(scale) || scale.length < 2) throw new PerfError('A rating scale needs at least two points');
+  const eligibilityRules = normalizeEligibilityRules(p.eligibilityRules);
+  // Cross-company guard (2c): eligibilityRules.companyIds is a SECOND, independent filter beside
+  // cycle.companyId. Without this, a partner scoped to Company A could set companyIds=[CompanyB] on a
+  // group-wide cycle and spawn reviews for staff outside their grant. Every id must be inside the
+  // caller's authorized subtree — the same check canAdminPerfCtx already applies to cycle.companyId.
+  if (eligibilityRules?.companyIds) {
+    for (const cid of eligibilityRules.companyIds) {
+      if (!canAdminPerfCtx(ctx, cid)) {
+        throw new PerfError('An eligibility rule references a company outside your authorized scope');
+      }
+    }
+  }
   // HR elects which lifecycle stages run; default = all three. Normalize + reject empty / unknown.
   const stages = cycleStages(p.stages);
   return withTenant(ctx, async (tx) => {
@@ -133,8 +248,7 @@ export async function createCycle(
         status: 'draft',
         ratingScale: scale,
         meritBudget: p.meritBudget ?? null,
-        excludeProbation: p.excludeProbation ?? true,
-        hiredBefore: p.hiredBefore ?? null,
+        eligibilityRules,
         stages,
       })
       .returning({ id: reviewCycle.id });
@@ -144,14 +258,83 @@ export async function createCycle(
       aggregateId: row.id,
       eventType: 'review-cycle.created',
       actor: actorOf(ctx),
-      payload: { name: p.name.trim(), companyId: p.companyId ?? null, periodStart: p.periodStart, periodEnd: p.periodEnd },
+      // Rules summary is ids/enums only (no PII), so it is safe to carry in the audit event.
+      payload: { name: p.name.trim(), companyId: p.companyId ?? null, periodStart: p.periodStart, periodEnd: p.periodEnd, eligibilityRules },
     });
     return { cycleId: row.id };
   });
 }
 
-/** Open a draft cycle: snapshot active employees in scope (minus probation / late hires) into one
- *  review each, with the administrative-line manager as reviewer. Idempotent via the draft guard. */
+/**
+ * The shared candidate query both openCycle and previewEligibleCount run, so preview and the actual
+ * snapshot can never drift. Returns one row per employment (the SUBJECT), joined to its CURRENT
+ * assignment via a DISTINCT ON (employmentId) latest-row-wins tiebreak.
+ *
+ * DUPLICATE-ASSIGNMENT GUARD: assignment has no DB constraint guaranteeing at most one "current" row per
+ * employment (only a non-unique index). A plain LEFT JOIN would fan a stray duplicate "current" row out
+ * into two candidate rows for one employee — silently spawning two performance_review rows in one cycle,
+ * violating the one-review-per-employee-per-cycle assumption downstream (calibration / comp linkage). The
+ * DISTINCT ON picks exactly one current assignment (latest validFrom, then latest recordedAt) so a
+ * duplicate can never fan out the candidate set. Employees with NO current assignment still appear once,
+ * with null status/employmentType (evaluateEligibility's null-handling then decides inclusion).
+ *
+ * RLS already limits the rows to employments the caller administers. employment.terminatedOn stays the
+ * authoritative "terminated" signal (2b) — filtered here in the WHERE — while assignment.status is an
+ * ADDITIONAL predicate applied by evaluateEligibility, never a replacement.
+ */
+async function eligibilityCandidates(
+  tx: Tx,
+  tenantId: string,
+  cycleCompanyId: string | null,
+): Promise<Array<{ employmentId: string } & EligibilityCandidate>> {
+  // DISTINCT ON (employment_id) with a latest-row-wins ORDER BY collapses any duplicate "current"
+  // assignment rows to one. LEFT JOIN keeps employments with no current assignment (null status/type).
+  const rows = await tx
+    .select({
+      employmentId: employment.id,
+      hiredOn: employment.hiredOn,
+      companyId: employment.companyId,
+      status: sql<AssignmentStatus | null>`${assignment.status}`,
+      employmentType: sql<EmploymentTypeValue | null>`${assignment.employmentType}`,
+    })
+    .from(employment)
+    .leftJoin(
+      assignment,
+      and(
+        eq(assignment.employmentId, employment.id),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .where(
+      and(
+        eq(employment.tenantId, tenantId),
+        isNull(employment.terminatedOn),
+        cycleCompanyId ? eq(employment.companyId, cycleCompanyId) : undefined,
+      ),
+    )
+    .orderBy(
+      employment.id,
+      sql`${assignment.validFrom} desc nulls last`,
+      sql`${assignment.recordedAt} desc nulls last`,
+    )
+    // DISTINCT ON employment.id, keeping the first row per the ORDER BY (latest current assignment wins).
+    .then((all) => {
+      const seen = new Set<string>();
+      const out: typeof all = [];
+      for (const r of all) {
+        if (seen.has(r.employmentId)) continue;
+        seen.add(r.employmentId);
+        out.push(r);
+      }
+      return out;
+    });
+  return rows;
+}
+
+/** Open a draft cycle: snapshot eligible employees in scope into one review each, with the
+ *  administrative-line manager as reviewer. Eligibility is the configured eligibilityRules, run through
+ *  the pure evaluateEligibility. Idempotent via the draft guard. */
 export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
   return withTenant(ctx, async (tx) => {
     const cycle = await loadCycle(tx, p.cycleId);
@@ -160,31 +343,10 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
     }
     if (cycle.status !== 'draft') throw new PerfError(`Cycle is already ${cycle.status}; only a draft can be opened`);
 
-    // Snapshot membership. RLS already limits this to employees the opener administers.
-    const emps = await tx
-      .select({ employmentId: employment.id, hiredOn: employment.hiredOn, status: assignment.status })
-      .from(employment)
-      .leftJoin(
-        assignment,
-        and(
-          eq(assignment.employmentId, employment.id),
-          isNull(assignment.validTo),
-          isNull(assignment.supersededAt),
-        ),
-      )
-      .where(
-        and(
-          eq(employment.tenantId, ctx.tenantId),
-          isNull(employment.terminatedOn),
-          cycle.companyId ? eq(employment.companyId, cycle.companyId) : undefined,
-        ),
-      );
-
-    const members = emps.filter((e) => {
-      if (cycle.excludeProbation && e.status === 'probation') return false;
-      if (cycle.hiredBefore && e.hiredOn > cycle.hiredBefore) return false;
-      return true;
-    });
+    const rules = (cycle.eligibilityRules ?? null) as EligibilityRules | null;
+    const asOf = new Date().toISOString().slice(0, 10);
+    const candidates = await eligibilityCandidates(tx, ctx.tenantId, cycle.companyId);
+    const members = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible);
 
     let spawned = 0;
     for (const e of members) {
@@ -209,6 +371,39 @@ export async function openCycle(ctx: SessionContext, p: { cycleId: string }) {
       payload: { reviewsSpawned: spawned },
     });
     return { reviewsSpawned: spawned };
+  });
+}
+
+/**
+ * Point-in-time preview of how many employees a rule set would snapshot — the "Preview eligible
+ * employees" button. Runs the EXACT same candidate query + evaluateEligibility openCycle uses (via the
+ * shared eligibilityCandidates), so the number can only differ from the real open by real-world data
+ * changes between preview and submit (a hire/transfer) — expected, covered by the UI's "as of now" label,
+ * not special-cased here. Read-only: no DomainEvent (nothing changes state).
+ */
+export async function previewEligibleCount(
+  ctx: SessionContext,
+  p: { companyId?: string | null; eligibilityRules?: EligibilityRules | null },
+): Promise<{ count: number }> {
+  // Same authorization as createCycle: only an admin / scoped partner may preview a company's roster.
+  if (!canAdminPerfCtx(ctx, p.companyId ?? null)) {
+    throw new PerfError('Only an admin or performance & comp partner can preview cycle eligibility');
+  }
+  const rules = normalizeEligibilityRules(p.eligibilityRules);
+  // Cross-company guard (2c) applied here too, so a preview cannot probe headcount outside the caller's
+  // grant by naming another company in companyIds.
+  if (rules?.companyIds) {
+    for (const cid of rules.companyIds) {
+      if (!canAdminPerfCtx(ctx, cid)) {
+        throw new PerfError('An eligibility rule references a company outside your authorized scope');
+      }
+    }
+  }
+  return withTenant(ctx, async (tx) => {
+    const asOf = new Date().toISOString().slice(0, 10);
+    const candidates = await eligibilityCandidates(tx, ctx.tenantId, p.companyId ?? null);
+    const count = candidates.filter((c) => evaluateEligibility(c, rules, asOf).eligible).length;
+    return { count };
   });
 }
 

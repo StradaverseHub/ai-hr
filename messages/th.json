@@ -1125,7 +1125,6 @@
       "meritPercent": "% ของเงินเดือน",
       "meritAmount": "RM (รายเดือน)",
       "fieldHiredBefore": "รวมเฉพาะพนักงานที่จ้างก่อน (ไม่บังคับ)",
-      "excludeProbation": "ไม่รวมพนักงานที่อยู่ในช่วงทดลองงาน",
       "createCycle": "สร้างรอบ (ร่าง)",
       "checkinsTitle": "การพูดคุยตัวต่อตัว",
       "checkinsEmpty": "ยังไม่มีการพูดคุย นัดหมายกับลูกทีมจากด้านบน",
@@ -1139,6 +1138,25 @@
       "checkinStatus_scheduled": "นัดหมายแล้ว",
       "checkinStatus_completed": "เสร็จสิ้นแล้ว",
       "checkinStatus_cancelled": "ยกเลิกแล้ว"
+    },
+    "eligibility": {
+      "eligibilityRulesTitle": "กฎเกณฑ์คุณสมบัติ",
+      "fieldEligibility": "รวมเกณฑ์เหล่านี้เพื่อกำหนดว่าใครจะถูกรวมในรอบการประเมิน เว้นช่องว่างไว้เพื่อข้ามเกณฑ์นั้น — กฎทั้งหมดรวมกันด้วย AND",
+      "fieldCompany": "บริษัท",
+      "fieldStatus": "สถานะการจ้างงาน",
+      "fieldEmploymentType": "ประเภทการจ้างงาน",
+      "fieldMinService": "อายุงานขั้นต่ำ (เดือน)",
+      "previewButtonLabel": "แสดงตัวอย่างพนักงานที่มีสิทธิ์",
+      "eligibleCountLabel": "{count, plural, one {พนักงาน # คนมีสิทธิ์ในขณะนี้ (ณ ตอนนี้)} other {พนักงาน # คนมีสิทธิ์ในขณะนี้ (ณ ตอนนี้)}}",
+      "status_active": "ทำงานอยู่",
+      "status_on_leave": "ลางาน",
+      "status_probation": "ทดลองงาน",
+      "status_offboarding": "กำลังออกจากงาน",
+      "status_terminated": "สิ้นสุดการจ้าง",
+      "employmentType_full_time": "เต็มเวลา",
+      "employmentType_part_time": "พาร์ทไทม์",
+      "employmentType_contract": "สัญญาจ้าง",
+      "employmentType_intern": "ฝึกงาน"
     },
     "cycle": {
       "back": "ผลงาน",

@@ -1137,8 +1137,26 @@
       "meritPercent": "% of payroll",
       "meritAmount": "RM (monthly)",
       "fieldHiredBefore": "Only include staff hired before (optional)",
-      "excludeProbation": "Exclude employees on probation",
       "createCycle": "Create cycle (draft)"
+    },
+    "eligibility": {
+      "eligibilityRulesTitle": "Eligibility rules",
+      "fieldEligibility": "Combine any of these to decide who the cycle includes. Leave a field empty to skip it — all rules are combined with AND.",
+      "fieldCompany": "Company",
+      "fieldStatus": "Employment status",
+      "fieldEmploymentType": "Employment type",
+      "fieldMinService": "Minimum service length (months)",
+      "previewButtonLabel": "Preview eligible employees",
+      "eligibleCountLabel": "{count, plural, one {# employee currently eligible (as of now)} other {# employees currently eligible (as of now)}}",
+      "status_active": "Active",
+      "status_on_leave": "On leave",
+      "status_probation": "Probation",
+      "status_offboarding": "Offboarding",
+      "status_terminated": "Terminated",
+      "employmentType_full_time": "Full-time",
+      "employmentType_part_time": "Part-time",
+      "employmentType_contract": "Contract",
+      "employmentType_intern": "Intern"
     },
     "cycle": {
       "back": "Performance",

@@ -1125,7 +1125,6 @@
       "meritPercent": "ஊதியத்தின் %",
       "meritAmount": "RM (மாதந்தோறும்)",
       "fieldHiredBefore": "இதற்கு முன் பணியமர்த்தப்பட்ட பணியாளர்களை மட்டும் சேர் (விருப்பத்தேர்வு)",
-      "excludeProbation": "தகுதிக் காலத்தில் உள்ள பணியாளர்களை விலக்கு",
       "createCycle": "சுழற்சியை உருவாக்கு (வரைவு)",
       "checkinsTitle": "1:1 சந்திப்புகள்",
       "checkinsEmpty": "இன்னும் சந்திப்புகள் இல்லை. மேலே உள்ள அறிக்கையாளர் ஒருவருடன் ஒன்றை திட்டமிடுங்கள்.",
@@ -1139,6 +1138,25 @@
       "checkinStatus_scheduled": "திட்டமிடப்பட்டது",
       "checkinStatus_completed": "முடிக்கப்பட்டது",
       "checkinStatus_cancelled": "ரத்துசெய்யப்பட்டது"
+    },
+    "eligibility": {
+      "eligibilityRulesTitle": "தகுதி விதிகள்",
+      "fieldEligibility": "சுழற்சியில் யார் சேர்க்கப்படுவர் என்பதைத் தீர்மானிக்க இந்த அளவுகோல்களில் எதையேனும் இணைக்கவும். ஒரு புலத்தை தவிர்க்க அதை காலியாக விடவும் — அனைத்து விதிகளும் AND மூலம் இணைக்கப்படுகின்றன.",
+      "fieldCompany": "நிறுவனம்",
+      "fieldStatus": "வேலை நிலை",
+      "fieldEmploymentType": "வேலை வகை",
+      "fieldMinService": "குறைந்தபட்ச பணிக்காலம் (மாதங்கள்)",
+      "previewButtonLabel": "தகுதியான பணியாளர்களை முன்னோட்டமிடு",
+      "eligibleCountLabel": "{count, plural, one {தற்போது # பணியாளர் தகுதியானவர் (இப்போதைக்கு)} other {தற்போது # பணியாளர்கள் தகுதியானவர்கள் (இப்போதைக்கு)}}",
+      "status_active": "செயலில்",
+      "status_on_leave": "விடுப்பில்",
+      "status_probation": "தகுதிக் காலம்",
+      "status_offboarding": "வெளியேற்றம்",
+      "status_terminated": "நிறுத்தப்பட்டது",
+      "employmentType_full_time": "முழுநேரம்",
+      "employmentType_part_time": "பகுதிநேரம்",
+      "employmentType_contract": "ஒப்பந்தம்",
+      "employmentType_intern": "பயிற்சியாளர்"
     },
     "cycle": {
       "back": "செயல்திறன்",
