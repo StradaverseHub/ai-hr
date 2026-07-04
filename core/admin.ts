@@ -1635,6 +1635,16 @@ function cleanDurations(d: LeaveDurationType[] | null | undefined): LeaveDuratio
 const DOC_MIME_SET = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at 10 MB
 
+/**
+ * Custom validation messages (custom-messages migration): the fixed allow-list of rule keys an admin may
+ * author an override message for. Keyed by the same camelCase field name as the rule's config column, so
+ * the "which rule → which message" mapping is self-evident. Only the backdating rule exists today; a future
+ * validation rule adds its config-field name here (and the LeaveType schema comment). Each message is
+ * capped at CUSTOM_MESSAGE_MAX_LEN characters (enforced in the service, not the DB).
+ */
+const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays'] as const;
+const CUSTOM_MESSAGE_MAX_LEN = 500;
+
 export async function updateLeaveType(
   ctx: SessionContext,
   p: {
@@ -1659,6 +1669,13 @@ export async function updateLeaveType(
     // unrelated rename/doc/payroll save never silently resets it. The gate (single-step company + full-day
     // + working-days) is enforced at requestLeave time; this only stores the opt-in.
     perDateApproval?: boolean;
+    // Custom validation messages (custom-messages migration): admin-authored override text keyed by the
+    // rule's config field name (currently only `backdatingLimitDays`). OWN tri-state (undefined = leave
+    // column). This is a read-then-patch-then-write on a SHARED JSONB column: we merge the caller's keys
+    // onto whatever is already stored so a save that touches only one rule's message never clobbers
+    // another rule's message. Any future writer of this column MUST follow the same merge-in-transaction
+    // convention. Each message is capped at 500 chars and only known rule keys are accepted.
+    customMessages?: Record<string, string> | null;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
@@ -1685,11 +1702,28 @@ export async function updateLeaveType(
   // Partial Leave Approval (ADR-0068): its OWN tri-state, mirroring touchPayroll/touchBackdating — a save
   // from any other sub-form omits perDateApproval, so per_date_approval stays untouched (no silent reset).
   const touchPartial = p.perDateApproval !== undefined;
+  // Custom validation messages (custom-messages migration): OWN tri-state, mirroring touchBackdating. The
+  // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
+  // adds its config-field name here and to the LeaveType schema comment.
+  const touchCustomMessages = p.customMessages !== undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
   }
   if (p.backdatingLimitDays != null && (!Number.isInteger(p.backdatingLimitDays) || p.backdatingLimitDays < 0)) {
     throw new Error('“Backdating limit (days)” must be a whole number ≥ 0.');
+  }
+  // Custom validation messages: reject unknown rule keys and over-long messages up front. The set of
+  // known keys is deliberately small (one rule today); expand it as new validation rules ship.
+  if (touchCustomMessages && p.customMessages != null) {
+    for (const key of Object.keys(p.customMessages)) {
+      if (!CUSTOM_MESSAGE_RULE_KEYS.includes(key as (typeof CUSTOM_MESSAGE_RULE_KEYS)[number])) {
+        throw new Error(`Unknown custom-message rule key: ${key}.`);
+      }
+      const raw = p.customMessages[key];
+      if (typeof raw === 'string' && raw.trim().length > CUSTOM_MESSAGE_MAX_LEN) {
+        throw new Error('Custom message must be 500 characters or fewer.');
+      }
+    }
   }
   if (p.allowedMimeTypes !== undefined && p.allowedMimeTypes.some((m) => !DOC_MIME_SET.includes(m as (typeof DOC_MIME_SET)[number]))) {
     throw new Error('Allowed file types must be a subset of PDF, JPG, PNG.');
@@ -1726,10 +1760,31 @@ export async function updateLeaveType(
         sendToPayroll: leaveType.sendToPayroll,
         backdatingLimitDays: leaveType.backdatingLimitDays,
         perDateApproval: leaveType.perDateApproval,
+        // Must be selected so before?.customMessages reflects what was actually stored — without it the
+        // audit diff and the read-then-patch merge would always see undefined (silently clobbering).
+        customMessages: leaveType.customMessages,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // Custom validation messages: read-then-patch-then-write on the SHARED JSONB column. Start from what is
+    // already stored, apply the caller's touched keys: a value that is empty or all-whitespace after trim is
+    // treated as "not configured" and the key is REMOVED (never stored as an empty string, so it round-trips
+    // to the built-in default rather than rendering a blank banner). An explicit null clears all messages.
+    let nextCustomMessages: Record<string, string> | null | undefined;
+    if (touchCustomMessages) {
+      if (p.customMessages === null) {
+        nextCustomMessages = null;
+      } else {
+        const merged: Record<string, string> = { ...(before?.customMessages ?? {}) };
+        for (const key of Object.keys(p.customMessages!)) {
+          const trimmed = (p.customMessages![key] ?? '').trim();
+          if (trimmed.length === 0) delete merged[key];
+          else merged[key] = trimmed;
+        }
+        nextCustomMessages = Object.keys(merged).length === 0 ? null : merged;
+      }
+    }
     await tx
       .update(leaveType)
       .set({
@@ -1740,6 +1795,7 @@ export async function updateLeaveType(
         ...backdatingSet,
         ...partialSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
+        ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -1766,6 +1822,7 @@ export async function updateLeaveType(
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
+          ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
         },
         after: {
           name,
@@ -1786,6 +1843,7 @@ export async function updateLeaveType(
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
             : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
+          ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
         },
       },
     });

@@ -779,6 +779,13 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // "block not shown at all" ⇒ leave column.
   const touchPartial = fd.get('partialApproval') === '1';
   const partialFields = touchPartial ? { perDateApproval: fd.get('perDateApproval') === 'on' } : {};
+  // Custom validation messages (custom-messages migration): the "Custom system message" textarea lives in the
+  // SAME sub-form as the backdating limit, so it is read/forwarded only when `backdating=1` — one sub-form,
+  // one atomic save. The service trims + treats blank as "not configured" (removes the key), so a blank box
+  // round-trips to the built-in default. Only the backdatingLimitDays key is authored here (the only rule).
+  const customMessageFields = touchBackdating
+    ? { customMessages: { backdatingLimitDays: String(fd.get('customMessageBackdating') ?? '').trim() } }
+    : {};
   try {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
@@ -789,6 +796,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...payrollFields,
       ...backdatingFields,
       ...partialFields,
+      ...customMessageFields,
     });
   } catch (e) {
     fail(LEAVE, e);

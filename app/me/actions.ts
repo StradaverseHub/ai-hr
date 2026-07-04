@@ -167,8 +167,11 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
       : t('documentRequired', { typeName: name });
   }
   if (e instanceof LeaveRemarkRequiredError) return t('employeeRemarkRequired', { typeName: name });
+  // Custom validation messages (custom-messages migration): when HR configured an override message for the
+  // backdating rule, the service passes it through the typed error verbatim — render it as-is (do NOT
+  // re-localize or interpolate an admin-authored free-text string). Absent ⇒ the built-in localized default.
   if (e instanceof LeaveBackdatingNotAllowedError)
-    return t('backdatingNotAllowed', { typeName: name, days: e.limitDays });
+    return e.customMessage ?? t('backdatingNotAllowed', { typeName: name, days: e.limitDays });
   if (e instanceof LeaveDocumentTypeError) {
     const labels: Record<string, string> = { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG' };
     return t('fileTypeNotAllowed', { allowed: e.allowed.map((m) => labels[m] ?? m).join(', ') });

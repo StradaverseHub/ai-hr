@@ -1,0 +1,23 @@
+-- Custom Validation Messages for Leave Configuration (feedback: "Custom Validation Messages for Leave
+-- Configuration").
+--
+-- Adds a per-leave-type JSONB map of admin-authored override messages shown to the employee when a leave-
+-- validation rule blocks their request. Keyed by the same camelCase field name as the rule's config column
+-- (currently only `backdatingLimitDays`), so the "which rule → which message" mapping is self-evident and
+-- needs no lookup table:  { backdatingLimitDays?: string, [futureRuleKey]?: string }.
+--
+-- custom_messages = null (or a key absent) ⇒ show the built-in localized default (existing behaviour; nothing
+-- breaks for current types). When a rule fires and the corresponding key is present, requestLeave passes the
+-- admin string through the typed error verbatim and the action-layer localizer renders it instead of the
+-- interpolated default (see core/leave.ts LeaveBackdatingNotAllowedError + app/me/actions.ts
+-- localizeLeaveError). The 500-char per-message cap is enforced in the service (core/admin.ts
+-- updateLeaveType), not the DB.
+--
+-- JSONB extension point per CLAUDE.md: future validation rules add their own key with no migration. This is
+-- ONE shared column across all rule keys — any writer MUST read-then-patch-then-write within the same
+-- transaction, or it clobbers other rules' messages (last-writer-wins). Closest schema precedent is
+-- leave_type.i18n (a JSONB map keyed by a variable string).
+--
+-- No RLS change: leave_type already has tenant-read + admin-write policies; a new column inherits the
+-- table's row-level policies (same as the 0133 backdating_limit_days migration).
+ALTER TABLE leave_type ADD COLUMN custom_messages jsonb;

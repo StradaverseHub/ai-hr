@@ -615,6 +615,15 @@ export const leaveType = pgTable('leave_type', {
   // the document config. Intentionally not enforced for Emergency Leave (inherently retroactive; field hidden
   // in the admin UI for EL).
   backdatingLimitDays: integer('backdating_limit_days'),
+  // Custom validation messages (custom-messages migration): admin-authored override text shown to the
+  // employee when a leave-validation rule blocks their request, keyed by the same camelCase field name as
+  // the rule's config column (e.g. { backdatingLimitDays: "…" }). null/absent key ⇒ show the built-in
+  // localized default. JSONB extension point per CLAUDE.md: future validation rules add their own key
+  // here with no migration. IMPORTANT for future writers: this is ONE shared column across all rule keys —
+  // any writer MUST read-then-patch-then-write within the same transaction (see core/admin.ts
+  // updateLeaveType), or it will silently clobber other rules' messages (last-writer-wins). The 500-char
+  // cap per message is enforced in the service, not the DB.
+  customMessages: jsonb('custom_messages').$type<Record<string, string>>(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

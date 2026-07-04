@@ -252,6 +252,7 @@ export default async function LeaveConfigPage({
               employeeRemarkRequired={t.employeeRemarkRequired}
               hrRemarkRequired={t.hrRemarkRequired}
               backdatingLimitDays={t.backdatingLimitDays ?? null}
+              customMessages={(t.customMessages as Record<string, string> | null) ?? null}
               paid={t.paid}
               sendToPayroll={t.sendToPayroll}
               counting={t.counting}

@@ -284,11 +284,18 @@ export class LeaveDocumentRequiredError extends Error {
 export class LeaveBackdatingNotAllowedError extends Error {
   readonly typeName?: string;
   readonly limitDays: number;
-  constructor(limitDays: number, typeName?: string) {
-    super(`${typeName ?? 'This leave type'} cannot be backdated more than ${limitDays} day(s).`);
+  // Custom validation messages (custom-messages migration): when the leave type has an admin-authored
+  // customMessages.backdatingLimitDays override, it is passed here and used VERBATIM as the Error message
+  // instead of the interpolated default. The action-layer localizer (localizeLeaveError) detects a present
+  // customMessage and renders it as-is — it does NOT re-localize or interpolate an admin-authored string.
+  // Absent ⇒ the built-in localized default is shown (existing behaviour).
+  readonly customMessage?: string;
+  constructor(limitDays: number, typeName?: string, customMessage?: string) {
+    super(customMessage ?? `${typeName ?? 'This leave type'} cannot be backdated more than ${limitDays} day(s).`);
     this.name = 'LeaveBackdatingNotAllowedError';
     this.typeName = typeName;
     this.limitDays = limitDays;
+    this.customMessage = customMessage;
   }
 }
 
@@ -838,6 +845,9 @@ export async function requestLeave(
         durations: leaveType.durations,
         perDateApproval: leaveType.perDateApproval,
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        // Custom validation messages (custom-messages migration): the admin-authored override map, keyed by
+        // rule config field. Passed through the typed error so the localizer shows it verbatim.
+        customMessages: leaveType.customMessages,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -874,7 +884,11 @@ export async function requestLeave(
     const limit = lt?.backdatingLimitDays ?? null;
     const backdatedOverride = isAdmin(ctx) && exceedsBackdatingLimit(p.startDate, today, limit);
     if (!isAdmin(ctx) && exceedsBackdatingLimit(p.startDate, today, limit)) {
-      throw new LeaveBackdatingNotAllowedError(limit!, lt?.name);
+      // Custom validation messages (custom-messages migration): pass the admin-authored override for THIS
+      // rule (keyed by its config field name) through the typed error so the localizer renders it verbatim;
+      // absent ⇒ the built-in localized default. A future rule follows the same look-up-then-pass-through
+      // pattern (customMessages[ruleKey]) plus a branch in the action-layer localizer.
+      throw new LeaveBackdatingNotAllowedError(limit!, lt?.name, lt?.customMessages?.backdatingLimitDays || undefined);
     }
 
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';

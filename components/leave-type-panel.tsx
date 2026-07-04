@@ -279,6 +279,7 @@ export function LeaveTypePanel({
   employeeRemarkRequired,
   hrRemarkRequired,
   backdatingLimitDays,
+  customMessages,
   paid,
   sendToPayroll,
   counting,
@@ -314,6 +315,10 @@ export function LeaveTypePanel({
   /** Configurable backdated-leave restriction (0133): how many days back a leave of this type may be applied;
    *  null = no limit. Threaded so the sub-form round-trips. Field hidden for Emergency Leave (code === 'EMERGENCY'). */
   backdatingLimitDays: number | null;
+  /** Custom validation messages (custom-messages migration): admin-authored override text keyed by rule config
+   *  field (currently only `backdatingLimitDays`). Threaded so the "Custom system message" textarea round-trips.
+   *  null / absent key = show the built-in localized default. */
+  customMessages: Record<string, string> | null;
   /** Whether this type is paid — drives the read-only "Affects payroll deduction" display (derived = !paid). */
   paid: boolean;
   /** Unpaid payroll-impact: emit the on-approval payroll signal. Editable in the "Payroll impact" sub-form. */
@@ -761,6 +766,20 @@ export function LeaveTypePanel({
                     className={`${inputCls} w-24`}
                   />
                 </Field>
+                {/* Custom validation messages (custom-messages migration): optional HR-authored override for
+                    the backdating block message. Lives in the SAME form as the limit so it saves atomically
+                    with `backdating=1`. Blank = keep the built-in localized default. */}
+                <Field label={t('customMessageLabel')}>
+                  <textarea
+                    name="customMessageBackdating"
+                    maxLength={500}
+                    rows={2}
+                    defaultValue={customMessages?.backdatingLimitDays ?? ''}
+                    placeholder={t('customMessagePlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground">{t('customMessageHelp')}</p>
                 <Button type="submit" size="sm">
                   {t('save')}
                 </Button>

@@ -356,6 +356,9 @@ export function listLeaveTypes(
         // checkbox renders unchecked on every reload). counting is already selected above — the panel needs it
         // to grey out the toggle for calendar-counted types where the feature can never fire.
         perDateApproval: leaveType.perDateApproval,
+        // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
+        // message" textarea (MUST be projected or the textarea renders empty on every reload).
+        customMessages: leaveType.customMessages,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
