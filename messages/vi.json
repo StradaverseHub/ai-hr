@@ -89,6 +89,7 @@
     "performance": "Đánh giá hiệu suất",
     "admin": "Quản trị",
     "organization": "Tổ chức",
+    "systemLabels": "Nhãn hệ thống",
     "leaveConfig": "Cấu hình nghỉ phép",
     "holidays": "Ngày lễ",
     "payroll": "Bảng lương",
@@ -1949,6 +1950,15 @@
       "businessUnitCodePlaceholder": "BU1",
       "businessUnitNamePlaceholder": "vd. Bán lẻ"
     },
+    "systemLabels": {
+      "pageTitle": "Nhãn hệ thống",
+      "pageDescription": "Thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh — theo từng công ty.",
+      "companies": "Công ty",
+      "noCompaniesInScope": "Không có công ty trong phạm vi.",
+      "countSummary": "{dept} pb · {pos} cv · {cc} ttcp · {bu} đvkd",
+      "fieldDescription": "Mô tả",
+      "descriptionPlaceholder": "Ghi chú ngắn (tùy chọn)"
+    },
     "leave": {
       "pageTitle": "Cấu hình nghỉ phép",
       "pageDescription": "Các loại nghỉ phép và chính sách hưởng phép của chúng",
@@ -2786,7 +2796,17 @@
         },
         "orgCompanies": {
           "title": "Công ty và dữ liệu nền tảng",
-          "body": "Mở bất kỳ công ty nào để quản lý phòng ban, vị trí và trung tâm chi phí của nó. Dùng **Thêm công ty** bên dưới để đăng ký một công ty mới. Đó là toàn bộ chuyến tham quan!"
+          "body": "Mở bất kỳ công ty nào để quản lý thông tin, danh tính pháp lý và hồ sơ ngân hàng của nó. Dùng **Thêm công ty** bên dưới để đăng ký một công ty mới. Các danh sách dùng chung — phòng ban, vị trí, trung tâm chi phí — nay nằm trong Nhãn hệ thống."
+        }
+      },
+      "systemLabels": {
+        "intro": {
+          "title": "Nhãn hệ thống",
+          "body": "Đây là nơi bạn thiết lập các danh sách dùng chung mà mọi người chọn — phòng ban, vị trí, trung tâm chi phí và đơn vị kinh doanh — cho từng công ty."
+        },
+        "companies": {
+          "title": "Danh mục theo công ty",
+          "body": "Mở một công ty để thêm, sửa, lưu trữ hoặc xóa phòng ban, vị trí, trung tâm chi phí và đơn vị kinh doanh của nó. Mỗi mục có thể kèm mô tả tùy chọn."
         }
       },
       "performance": {

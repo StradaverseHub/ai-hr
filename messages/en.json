@@ -89,6 +89,7 @@
     "performance": "Performance",
     "admin": "Admin",
     "organization": "Organization",
+    "systemLabels": "System Labels",
     "leaveConfig": "Leave config",
     "holidays": "Holidays",
     "payroll": "Payroll",
@@ -1872,7 +1873,7 @@
     },
     "organization": {
       "pageTitle": "Organization",
-      "pageDescription": "Each company manages its details, statutory identity, departments, positions and cost centres",
+      "pageDescription": "Each company manages its details, statutory identity and bank profiles",
       "groupStructure": "Group structure",
       "noCompaniesYet": "No companies yet.",
       "companies": "Companies",
@@ -1948,6 +1949,15 @@
       "businessUnitNone": "— None —",
       "businessUnitCodePlaceholder": "BU1",
       "businessUnitNamePlaceholder": "e.g. Retail"
+    },
+    "systemLabels": {
+      "pageTitle": "System Labels",
+      "pageDescription": "Set up the shared lists everyone else picks from — departments, positions, cost centers and business units — per company.",
+      "companies": "Companies",
+      "noCompaniesInScope": "No companies in scope.",
+      "countSummary": "{dept} dept · {pos} pos · {cc} cc · {bu} bu",
+      "fieldDescription": "Description",
+      "descriptionPlaceholder": "Short note (optional)"
     },
     "leave": {
       "pageTitle": "Leave configuration",
@@ -2786,7 +2796,17 @@
         },
         "orgCompanies": {
           "title": "Companies and master data",
-          "body": "Open any company to manage its departments, positions, and cost centers. Use **Add company** below to register a new one. That's the tour!"
+          "body": "Open any company to manage its details, statutory identity, and bank profiles. Use **Add company** below to register a new one. The shared lists — departments, positions, cost centers — now live under System Labels."
+        }
+      },
+      "systemLabels": {
+        "intro": {
+          "title": "System Labels",
+          "body": "This is where you set up the shared lists everyone else picks from — departments, positions, cost centers and business units — for each company."
+        },
+        "companies": {
+          "title": "Per-company catalogs",
+          "body": "Open a company to add, edit, archive or delete its departments, positions, cost centers and business units. Each can carry an optional description."
         }
       },
       "performance": {

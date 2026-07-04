@@ -89,6 +89,7 @@
     "performance": "绩效",
     "admin": "管理后台",
     "organization": "组织",
+    "systemLabels": "系统标签",
     "leaveConfig": "休假配置",
     "holidays": "公共假期",
     "payroll": "薪资",
@@ -1949,6 +1950,15 @@
       "businessUnitCodePlaceholder": "BU1",
       "businessUnitNamePlaceholder": "例如：零售"
     },
+    "systemLabels": {
+      "pageTitle": "系统标签",
+      "pageDescription": "按公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元。",
+      "companies": "公司",
+      "noCompaniesInScope": "范围内没有公司。",
+      "countSummary": "{dept} 部门 · {pos} 职位 · {cc} 成本中心 · {bu} 业务单元",
+      "fieldDescription": "描述",
+      "descriptionPlaceholder": "简短备注（可选）"
+    },
     "leave": {
       "pageTitle": "休假配置",
       "pageDescription": "休假类型及其应享政策",
@@ -2786,7 +2796,17 @@
         },
         "orgCompanies": {
           "title": "公司与主数据",
-          "body": "打开任意公司管理其部门、职位和成本中心。使用下方的 **添加公司** 注册新公司。导览结束！"
+          "body": "打开任意公司管理其详情、法定身份和银行资料。使用下方的 **添加公司** 注册新公司。共享列表——部门、职位、成本中心——现位于系统标签下。"
+        }
+      },
+      "systemLabels": {
+        "intro": {
+          "title": "系统标签",
+          "body": "在此为每家公司设置供其他人选用的共享列表——部门、职位、成本中心和业务单元。"
+        },
+        "companies": {
+          "title": "各公司目录",
+          "body": "打开一家公司即可添加、编辑、归档或删除其部门、职位、成本中心和业务单元。每项均可附带可选描述。"
         }
       },
       "performance": {

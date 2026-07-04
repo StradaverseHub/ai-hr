@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
-import { EditableRow } from './editable-row';
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -40,14 +39,6 @@ const BANK_LABEL: Record<PanelBankProfile['bank'], string> = {
   public_bank: 'Public Bank',
   rhb: 'RHB',
 };
-export type ChildRow = {
-  id: string;
-  display: string;
-  sub?: string | null;
-  fields: { name: string; label: string; value: string; options?: { value: string; label: string }[] }[];
-  inUse: boolean;
-  archived: boolean;
-};
 
 const badge = {
   amber:
@@ -62,29 +53,21 @@ function SubHeader({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</div>;
 }
 
-/** One legal entity as an expandable panel: details, group parent, statutory identity, and its
- *  departments / positions / cost centers — everything "inside the company", per the mental
- *  model. The tables stay split underneath (children are 1:N; statutory identity lives in the
- *  country pack per ADR-0008); only the editing surface is unified. */
+/** One legal entity as an expandable panel: company details, group parent, statutory identity, and bank
+ *  disbursement profiles — everything "about running the company". The org catalogs (departments /
+ *  positions / cost centers / business units) moved to the Settings → System Labels admin page; this
+ *  panel is now purely company/legal/bank management. */
 export function CompanyPanel({
   company,
   companies,
   statutory,
   bankProfiles,
-  departments,
-  positions,
-  costCenters,
-  businessUnits,
   actions,
 }: {
   company: PanelCompany;
   companies: { id: string; name: string }[];
   statutory: PanelStatutory;
   bankProfiles: PanelBankProfile[];
-  departments: ChildRow[];
-  positions: ChildRow[];
-  costCenters: ChildRow[];
-  businessUnits: ChildRow[];
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -93,21 +76,6 @@ export function CompanyPanel({
     setStatutory: Action;
     setBankProfile: Action;
     removeBankProfile: Action;
-    createDepartment: Action;
-    updateDepartment: Action;
-    archiveDepartment: Action;
-    deleteDepartment: Action;
-    createPosition: Action;
-    updatePosition: Action;
-    archivePosition: Action;
-    deletePosition: Action;
-    createCostCenter: Action;
-    updateCostCenter: Action;
-    archiveCostCenter: Action;
-    deleteCostCenter: Action;
-    createBusinessUnit: Action;
-    updateBusinessUnit: Action;
-    archiveBusinessUnit: Action;
   };
 }) {
   const t = useTranslations('admin.organization');
@@ -144,13 +112,6 @@ export function CompanyPanel({
           {c.archivedAt && <span className={badge.muted}>{t('archived')}</span>}
         </button>
         <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-          <span className="tabular-nums">
-            {t('countSummary', {
-              dept: departments.length,
-              pos: positions.length,
-              cc: costCenters.length,
-            })}
-          </span>
           {isMY &&
             (statMissing === 0 ? (
               <span className={badge.emerald}>{t('statutoryComplete')}</span>
@@ -370,155 +331,6 @@ export function CompanyPanel({
               <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
             </div>
           )}
-
-          {/* Children: departments / positions / cost centers — scoped to this company */}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            <div className="rounded-lg bg-background p-3">
-              <SubHeader>{t('departmentsCount', { count: departments.length })}</SubHeader>
-              <ul className="mt-1 divide-y divide-border/60">
-                {departments.map((d) => (
-                  <EditableRow
-                    key={d.id}
-                    id={d.id}
-                    display={d.display}
-                    sub={d.sub}
-                    fields={d.fields}
-                    inUse={d.inUse}
-                    archived={d.archived}
-                    updateAction={actions.updateDepartment}
-                    archiveAction={actions.archiveDepartment}
-                    deleteAction={actions.deleteDepartment}
-                  />
-                ))}
-                {departments.length === 0 && (
-                  <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
-                )}
-              </ul>
-              <form action={actions.createDepartment} className="mt-2 flex flex-wrap items-end gap-2">
-                <input type="hidden" name="companyId" value={c.id} />
-                <Field label={t('newDepartment')}>
-                  <input name="name" required placeholder={t('departmentPlaceholder')} className={inputCls} />
-                </Field>
-                <Field label={t('fieldBusinessUnit')}>
-                  <select name="businessUnitId" defaultValue="" className={inputCls}>
-                    <option value="">{t('businessUnitNone')}</option>
-                    {businessUnits
-                      .filter((bu) => !bu.archived)
-                      .map((bu) => (
-                        <option key={bu.id} value={bu.id}>
-                          {bu.display}
-                        </option>
-                      ))}
-                  </select>
-                </Field>
-                <Button type="submit" size="sm" variant="outline">
-                  {t('add')}
-                </Button>
-              </form>
-            </div>
-
-            <div className="rounded-lg bg-background p-3">
-              <SubHeader>{t('positionsCount', { count: positions.length })}</SubHeader>
-              <ul className="mt-1 divide-y divide-border/60">
-                {positions.map((p) => (
-                  <EditableRow
-                    key={p.id}
-                    id={p.id}
-                    display={p.display}
-                    sub={p.sub}
-                    fields={p.fields}
-                    inUse={p.inUse}
-                    archived={p.archived}
-                    updateAction={actions.updatePosition}
-                    archiveAction={actions.archivePosition}
-                    deleteAction={actions.deletePosition}
-                  />
-                ))}
-                {positions.length === 0 && <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>}
-              </ul>
-              <form action={actions.createPosition} className="mt-2 flex items-end gap-2">
-                <input type="hidden" name="companyId" value={c.id} />
-                <Field label={t('newPosition')}>
-                  <input name="title" required placeholder={t('positionPlaceholder')} className={inputCls} />
-                </Field>
-                <Button type="submit" size="sm" variant="outline">
-                  {t('add')}
-                </Button>
-              </form>
-            </div>
-
-            <div className="rounded-lg bg-background p-3">
-              <SubHeader>{t('costCentersCount', { count: costCenters.length })}</SubHeader>
-              <ul className="mt-1 divide-y divide-border/60">
-                {costCenters.map((cc) => (
-                  <EditableRow
-                    key={cc.id}
-                    id={cc.id}
-                    display={cc.display}
-                    sub={cc.sub}
-                    fields={cc.fields}
-                    inUse={cc.inUse}
-                    archived={cc.archived}
-                    updateAction={actions.updateCostCenter}
-                    archiveAction={actions.archiveCostCenter}
-                    deleteAction={actions.deleteCostCenter}
-                  />
-                ))}
-                {costCenters.length === 0 && (
-                  <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
-                )}
-              </ul>
-              <form action={actions.createCostCenter} className="mt-2 space-y-2">
-                <input type="hidden" name="companyId" value={c.id} />
-                <div className="flex items-end gap-2">
-                  <Field label={t('fieldCode')}>
-                    <input name="code" required placeholder={t('costCenterCodePlaceholder')} className={`${inputCls} w-20`} />
-                  </Field>
-                  <Field label={t('fieldName')}>
-                    <input name="name" required placeholder={t('costCenterNamePlaceholder')} className={inputCls} />
-                  </Field>
-                  <Button type="submit" size="sm" variant="outline">
-                    {t('add')}
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          {/* Business Units — a flat, company-scoped catalog (ADR-0068); departments link to a BU. */}
-          <div className="rounded-lg bg-background p-3">
-            <SubHeader>{t('businessUnitsCount', { count: businessUnits.length })}</SubHeader>
-            <ul className="mt-1 divide-y divide-border/60">
-              {businessUnits.map((bu) => (
-                <EditableRow
-                  key={bu.id}
-                  id={bu.id}
-                  display={bu.display}
-                  sub={bu.sub}
-                  fields={bu.fields}
-                  inUse={bu.inUse}
-                  archived={bu.archived}
-                  updateAction={actions.updateBusinessUnit}
-                  archiveAction={actions.archiveBusinessUnit}
-                />
-              ))}
-              {businessUnits.length === 0 && (
-                <li className="py-2 text-xs text-muted-foreground">{t('noneYet')}</li>
-              )}
-            </ul>
-            <form action={actions.createBusinessUnit} className="mt-2 flex items-end gap-2">
-              <input type="hidden" name="companyId" value={c.id} />
-              <Field label={t('fieldCode')}>
-                <input name="code" required placeholder={t('businessUnitCodePlaceholder')} className={`${inputCls} w-20`} />
-              </Field>
-              <Field label={t('fieldName')}>
-                <input name="name" required placeholder={t('businessUnitNamePlaceholder')} className={inputCls} />
-              </Field>
-              <Button type="submit" size="sm" variant="outline">
-                {t('add')}
-              </Button>
-            </form>
-          </div>
         </div>
       )}
     </li>

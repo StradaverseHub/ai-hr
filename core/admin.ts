@@ -207,9 +207,10 @@ async function resolveDepartmentBusinessUnitId(
 
 export async function createDepartment(
   ctx: SessionContext,
-  p: { companyId: string; name: string; parentDepartmentId?: string; businessUnitId?: string | null },
+  p: { companyId: string; name: string; parentDepartmentId?: string; businessUnitId?: string | null; description?: string },
 ) {
   const name = cleanName(p.name, 'Department name');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
     // Belt-and-braces (mirrors the RLS clamp in app.heads_department_of, migration 0121): a parent
     // department must belong to the SAME company, so a cross-company department tree — which would leak
@@ -231,6 +232,7 @@ export async function createDepartment(
         name,
         parentDepartmentId: p.parentDepartmentId || null,
         businessUnitId,
+        description,
       })
       .returning({ id: department.id })
       .catch((e) => {
@@ -243,7 +245,7 @@ export async function createDepartment(
       aggregateId: row.id,
       eventType: 'department.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name: p.name, businessUnitId },
+      payload: { companyId: p.companyId, name: p.name, businessUnitId, description },
     });
     return row;
   });
@@ -251,13 +253,14 @@ export async function createDepartment(
 
 export async function createPosition(
   ctx: SessionContext,
-  p: { companyId: string; title: string; jobFamily?: string },
+  p: { companyId: string; title: string; jobFamily?: string; description?: string },
 ) {
   const title = cleanName(p.title, 'Position title');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(position)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, title, jobFamily: p.jobFamily?.trim() || null })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, title, jobFamily: p.jobFamily?.trim() || null, description })
       .returning({ id: position.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
@@ -269,7 +272,7 @@ export async function createPosition(
       aggregateId: row.id,
       eventType: 'position.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, title: p.title },
+      payload: { companyId: p.companyId, title: p.title, description },
     });
     return row;
   });
@@ -277,14 +280,15 @@ export async function createPosition(
 
 export async function createCostCenter(
   ctx: SessionContext,
-  p: { companyId: string; code: string; name: string },
+  p: { companyId: string; code: string; name: string; description?: string },
 ) {
   const code = cleanName(p.code, 'Cost-center code');
   const name = cleanName(p.name, 'Cost-center name');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(costCenter)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, description })
       .returning({ id: costCenter.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
@@ -296,7 +300,7 @@ export async function createCostCenter(
       aggregateId: row.id,
       eventType: 'cost-center.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, code: p.code },
+      payload: { companyId: p.companyId, code: p.code, description },
     });
     return row;
   });
@@ -307,14 +311,15 @@ export async function createCostCenter(
  *  and a DomainEvent on every write. No parent/child hierarchy (reporter decision). */
 export async function createBusinessUnit(
   ctx: SessionContext,
-  p: { companyId: string; code: string; name: string },
+  p: { companyId: string; code: string; name: string; description?: string },
 ) {
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(businessUnit)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, code, name, description })
       .returning({ id: businessUnit.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
@@ -326,7 +331,7 @@ export async function createBusinessUnit(
       aggregateId: row.id,
       eventType: 'business-unit.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, code: p.code },
+      payload: { companyId: p.companyId, code: p.code, description },
     });
     return row;
   });
@@ -937,6 +942,103 @@ export function listBusinessUnits(
   );
 }
 
+// ── System Labels reads (description-bearing) ───────────────────────────────────────────────────────
+// The System Labels admin page is the ONLY consumer of `description`, so it gets its own read queries that
+// select the column. The general-purpose listDepartments/listPositions/listCostCenters/listBusinessUnits
+// used by the hire form and People filters are deliberately left untouched (no description) — narrow scope.
+
+export function listDepartmentsForLabels(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: department.id,
+        companyId: department.companyId,
+        name: department.name,
+        businessUnitId: department.businessUnitId,
+        description: department.description,
+        archivedAt: department.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
+      })
+      .from(department)
+      .where(
+        opts.companyIds && opts.companyIds.length ? inArray(department.companyId, opts.companyIds) : undefined,
+      )
+      .orderBy(department.name),
+  );
+}
+
+export function listPositionsForLabels(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: position.id,
+        companyId: position.companyId,
+        title: position.title,
+        jobFamily: position.jobFamily,
+        description: position.description,
+        archivedAt: position.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
+      })
+      .from(position)
+      .where(
+        opts.companyIds && opts.companyIds.length ? inArray(position.companyId, opts.companyIds) : undefined,
+      )
+      .orderBy(position.title),
+  );
+}
+
+export function listCostCentersForLabels(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: costCenter.id,
+        companyId: costCenter.companyId,
+        code: costCenter.code,
+        name: costCenter.name,
+        description: costCenter.description,
+        archivedAt: costCenter.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
+      })
+      .from(costCenter)
+      .where(
+        opts.companyIds && opts.companyIds.length ? inArray(costCenter.companyId, opts.companyIds) : undefined,
+      )
+      .orderBy(costCenter.code),
+  );
+}
+
+export function listBusinessUnitsForLabels(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: businessUnit.id,
+        companyId: businessUnit.companyId,
+        code: businessUnit.code,
+        name: businessUnit.name,
+        description: businessUnit.description,
+        archivedAt: businessUnit.archivedAt,
+        inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
+      })
+      .from(businessUnit)
+      .where(
+        opts.companyIds && opts.companyIds.length ? inArray(businessUnit.companyId, opts.companyIds) : undefined,
+      )
+      .orderBy(businessUnit.code),
+  );
+}
+
 export function listLeavePolicies(ctx: SessionContext) {
   return withTenant(ctx, (tx) =>
     tx
@@ -1386,14 +1488,16 @@ export function listUsers(ctx: SessionContext) {
 
 export async function updateDepartment(
   ctx: SessionContext,
-  p: { id: string; name: string; businessUnitId?: string | null },
+  p: { id: string; name: string; businessUnitId?: string | null; description?: string },
 ) {
   const name = cleanName(p.name, 'Department name');
+  // description always overwrites (like name), stored null when blank — no tri-state.
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
     // businessUnitId is tri-state: undefined → leave the column untouched (a name-only rename must NOT wipe
     // the BU); null/'' → clear it; an id → set it (validated to the department's own company). Fetch the
     // department's company for the cross-company guard when a non-empty id is supplied.
-    const setValues: { name: string; businessUnitId?: string | null } = { name };
+    const setValues: { name: string; description: string | null; businessUnitId?: string | null } = { name, description };
     if (p.businessUnitId !== undefined) {
       const [dep] = await tx
         .select({ companyId: department.companyId })
@@ -1428,14 +1532,15 @@ export async function deleteDepartment(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updatePosition(ctx: SessionContext, p: { id: string; title: string; jobFamily?: string }) {
+export async function updatePosition(ctx: SessionContext, p: { id: string; title: string; jobFamily?: string; description?: string }) {
   const title = cleanName(p.title, 'Position title');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null }).where(eq(position.id, p.id)).catch((e) => {
+    await tx.update(position).set({ title, jobFamily: p.jobFamily?.trim() || null, description }).where(eq(position.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A position titled “${title}” already exists in this company.`);
       throw e;
     });
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title } });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'position', aggregateId: p.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title, description } });
   });
 }
 export function archivePosition(ctx: SessionContext, p: { id: string; archived: boolean }) {
@@ -1456,15 +1561,16 @@ export async function deletePosition(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateCostCenter(ctx: SessionContext, p: { id: string; code: string; name: string }) {
+export async function updateCostCenter(ctx: SessionContext, p: { id: string; code: string; name: string; description?: string }) {
   const code = cleanName(p.code, 'Cost-center code');
   const name = cleanName(p.name, 'Cost-center name');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.update(costCenter).set({ code, name }).where(eq(costCenter.id, p.id)).catch((e) => {
+    await tx.update(costCenter).set({ code, name, description }).where(eq(costCenter.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A cost center with code “${code}” already exists in this company.`);
       throw e;
     });
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code } });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'cost-center', aggregateId: p.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code, description } });
   });
 }
 export function archiveCostCenter(ctx: SessionContext, p: { id: string; archived: boolean }) {
@@ -1485,15 +1591,16 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateBusinessUnit(ctx: SessionContext, p: { id: string; code: string; name: string }) {
+export async function updateBusinessUnit(ctx: SessionContext, p: { id: string; code: string; name: string; description?: string }) {
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
+  const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.update(businessUnit).set({ code, name }).where(eq(businessUnit.id, p.id)).catch((e) => {
+    await tx.update(businessUnit).set({ code, name, description }).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
       throw e;
     });
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'business-unit', aggregateId: p.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code } });
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'business-unit', aggregateId: p.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code, description } });
   });
 }
 export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archived: boolean }) {

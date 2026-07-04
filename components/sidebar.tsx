@@ -25,6 +25,7 @@ import {
   Lock,
   ScrollText,
   ShieldCheck,
+  Tags,
   Target,
   SlidersHorizontal,
   UserRound,
@@ -68,6 +69,7 @@ const GROUPS: Group[] = [
     adminOnly: true,
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
+      { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags },
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
       { href: '/admin/leave-approval', labelKey: 'leaveApproval', icon: Workflow },
       { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays },

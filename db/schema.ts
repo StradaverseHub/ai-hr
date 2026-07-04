@@ -341,6 +341,9 @@ export const position = pgTable(
       .references(() => company.id),
     title: text('title').notNull(),
     jobFamily: text('job_family'),
+    // System Labels (migration 0145): optional admin note. Nullable, mirrors job_family; shown only on
+    // the System Labels admin CRUD screen, not in the shared hire-form/People read paths.
+    description: text('description'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -360,6 +363,8 @@ export const businessUnit = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
+    // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
+    description: text('description'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -379,6 +384,8 @@ export const department = pgTable(
     // BU on the hire form). Validated to the same company as the department at write time in the service.
     businessUnitId: uuid('business_unit_id').references(() => businessUnit.id),
     name: text('name').notNull(),
+    // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
+    description: text('description'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -395,6 +402,8 @@ export const costCenter = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
+    // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
+    description: text('description'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

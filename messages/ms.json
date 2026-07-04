@@ -89,6 +89,7 @@
     "performance": "Prestasi",
     "admin": "Pentadbir",
     "organization": "Organisasi",
+    "systemLabels": "Label Sistem",
     "leaveConfig": "Konfigurasi cuti",
     "holidays": "Cuti umum",
     "payroll": "Gaji",
@@ -1949,6 +1950,15 @@
       "businessUnitCodePlaceholder": "UP1",
       "businessUnitNamePlaceholder": "cth. Runcit"
     },
+    "systemLabels": {
+      "pageTitle": "Label Sistem",
+      "pageDescription": "Sediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan — mengikut syarikat.",
+      "companies": "Syarikat",
+      "noCompaniesInScope": "Tiada syarikat dalam skop.",
+      "countSummary": "{dept} jbtn · {pos} jwtn · {cc} pk · {bu} up",
+      "fieldDescription": "Keterangan",
+      "descriptionPlaceholder": "Nota ringkas (pilihan)"
+    },
     "leave": {
       "pageTitle": "Konfigurasi cuti",
       "pageDescription": "Jenis cuti dan dasar kelayakannya",
@@ -2786,7 +2796,17 @@
         },
         "orgCompanies": {
           "title": "Syarikat dan data induk",
-          "body": "Buka mana-mana syarikat untuk mengurus jabatan, jawatan dan pusat kosnya. Gunakan **Tambah syarikat** di bawah untuk mendaftarkan yang baharu. Itu sahaja lawatannya!"
+          "body": "Buka mana-mana syarikat untuk mengurus butiran, identiti statutori dan profil banknya. Gunakan **Tambah syarikat** di bawah untuk mendaftarkan yang baharu. Senarai kongsi — jabatan, jawatan, pusat kos — kini berada di bawah Label Sistem."
+        }
+      },
+      "systemLabels": {
+        "intro": {
+          "title": "Label Sistem",
+          "body": "Di sinilah anda menyediakan senarai kongsi yang dipilih oleh semua orang — jabatan, jawatan, pusat kos dan unit perniagaan — bagi setiap syarikat."
+        },
+        "companies": {
+          "title": "Katalog setiap syarikat",
+          "body": "Buka syarikat untuk menambah, menyunting, mengarkib atau memadam jabatan, jawatan, pusat kos dan unit perniagaannya. Setiap satu boleh mempunyai keterangan pilihan."
         }
       },
       "performance": {

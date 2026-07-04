@@ -1,35 +1,19 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { companyTree, listCompanies, listDepartments } from '@/core/read';
-import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
+import { companyTree, listCompanies } from '@/core/read';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { CompanyPanel, type ChildRow, type PanelBankProfile } from '@/components/company-panel';
+import { CompanyPanel, type PanelBankProfile } from '@/components/company-panel';
 import {
-  archiveBusinessUnitAction,
   archiveCompanyAction,
-  archiveCostCenterAction,
-  archiveDepartmentAction,
-  archivePositionAction,
-  createBusinessUnitAction,
   createCompanyAction,
-  createCostCenterAction,
-  createDepartmentAction,
-  createPositionAction,
   deleteCompanyAction,
-  deleteCostCenterAction,
-  deleteDepartmentAction,
-  deletePositionAction,
   removeCompanyBankProfileAction,
   setCompanyBankProfileAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
-  updateBusinessUnitAction,
   updateCompanyAction,
-  updateCostCenterAction,
-  updateDepartmentAction,
-  updatePositionAction,
 } from '../actions';
 
 type TreeNode = { id: string; name: string; country: string; parentId: string | null };
@@ -67,13 +51,10 @@ export default async function OrganizationPage({
   const { error } = await searchParams;
   const t = await getTranslations('admin.organization');
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
-  // the active company context, since they are now the per-company management surface.
-  const [companies, departments, positions, costCenters, businessUnits, tree, statutory, bankProfiles] = await Promise.all([
+  // the active company context. Org catalogs (departments/positions/cost-centers/business-units) moved to
+  // Settings → System Labels, so this page no longer fetches them.
+  const [companies, tree, statutory, bankProfiles] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
-    listDepartments(s, { includeArchived: true }),
-    listPositions(s, { includeArchived: true }),
-    listCostCenters(s, { includeArchived: true }),
-    listBusinessUnits(s, { includeArchived: true }),
     companyTree(s),
     listCompanyStatutoryMY(s),
     listAllCompanyBankProfiles(s),
@@ -88,70 +69,6 @@ export default async function OrganizationPage({
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
   const scoped = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
 
-  // Business Unit options for the Department edit-row dropdown: this company's ACTIVE BUs + a "— None —"
-  // option. Departments link to a BU (ADR-0068); the select reuses EditableRow's new options support.
-  const buOptions = (companyId: string) => [
-    { value: '', label: t('businessUnitNone') },
-    ...businessUnits
-      .filter((bu) => bu.companyId === companyId && !bu.archivedAt)
-      .map((bu) => ({ value: bu.id, label: `${bu.code} — ${bu.name}` })),
-  ];
-  const deptRows = (companyId: string): ChildRow[] =>
-    departments
-      .filter((d) => d.companyId === companyId)
-      .map((d) => ({
-        id: d.id,
-        display: d.name,
-        fields: [
-          { name: 'name', label: t('fieldName'), value: d.name },
-          { name: 'businessUnitId', label: t('fieldBusinessUnit'), value: d.businessUnitId ?? '', options: buOptions(companyId) },
-        ],
-        inUse: d.inUse,
-        archived: !!d.archivedAt,
-      }));
-  const buRows = (companyId: string): ChildRow[] =>
-    businessUnits
-      .filter((bu) => bu.companyId === companyId)
-      .map((bu) => ({
-        id: bu.id,
-        display: bu.code,
-        sub: bu.name,
-        fields: [
-          { name: 'code', label: t('fieldCode'), value: bu.code },
-          { name: 'name', label: t('fieldName'), value: bu.name },
-        ],
-        inUse: bu.inUse,
-        archived: !!bu.archivedAt,
-      }));
-  const posRows = (companyId: string): ChildRow[] =>
-    positions
-      .filter((p) => p.companyId === companyId)
-      .map((p) => ({
-        id: p.id,
-        display: p.title,
-        sub: p.jobFamily,
-        fields: [
-          { name: 'title', label: t('fieldTitle'), value: p.title },
-          { name: 'jobFamily', label: t('fieldJobFamily'), value: p.jobFamily ?? '' },
-        ],
-        inUse: p.inUse,
-        archived: !!p.archivedAt,
-      }));
-  const ccRows = (companyId: string): ChildRow[] =>
-    costCenters
-      .filter((c) => c.companyId === companyId)
-      .map((c) => ({
-        id: c.id,
-        display: c.code,
-        sub: c.name,
-        fields: [
-          { name: 'code', label: t('fieldCode'), value: c.code },
-          { name: 'name', label: t('fieldName'), value: c.name },
-        ],
-        inUse: c.inUse,
-        archived: !!c.archivedAt,
-      }));
-
   const actions = {
     updateCompany: updateCompanyAction,
     archiveCompany: archiveCompanyAction,
@@ -160,21 +77,6 @@ export default async function OrganizationPage({
     setStatutory: setCompanyStatutoryAction,
     setBankProfile: setCompanyBankProfileAction,
     removeBankProfile: removeCompanyBankProfileAction,
-    createDepartment: createDepartmentAction,
-    updateDepartment: updateDepartmentAction,
-    archiveDepartment: archiveDepartmentAction,
-    deleteDepartment: deleteDepartmentAction,
-    createPosition: createPositionAction,
-    updatePosition: updatePositionAction,
-    archivePosition: archivePositionAction,
-    deletePosition: deletePositionAction,
-    createCostCenter: createCostCenterAction,
-    updateCostCenter: updateCostCenterAction,
-    archiveCostCenter: archiveCostCenterAction,
-    deleteCostCenter: deleteCostCenterAction,
-    createBusinessUnit: createBusinessUnitAction,
-    updateBusinessUnit: updateBusinessUnitAction,
-    archiveBusinessUnit: archiveBusinessUnitAction,
   };
 
   return (
@@ -218,10 +120,6 @@ export default async function OrganizationPage({
               companies={companies}
               statutory={statBy.get(c.id) ?? null}
               bankProfiles={bankBy.get(c.id) ?? []}
-              departments={deptRows(c.id)}
-              positions={posRows(c.id)}
-              costCenters={ccRows(c.id)}
-              businessUnits={buRows(c.id)}
               actions={actions}
             />
           ))}

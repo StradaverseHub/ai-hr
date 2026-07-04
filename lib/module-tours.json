@@ -292,6 +292,35 @@
       }
     ]
   },
+  "systemLabels": {
+    "id": "systemLabels",
+    "steps": [
+      {
+        "id": "intro",
+        "target": null,
+        "route": "/admin/settings/system-labels",
+        "titleKey": "tour.systemLabels.intro.title",
+        "bodyKey": "tour.systemLabels.intro.body",
+        "placement": "center",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      },
+      {
+        "id": "companies",
+        "target": "[data-tour=\"system-labels-companies\"]",
+        "route": "/admin/settings/system-labels",
+        "titleKey": "tour.systemLabels.companies.title",
+        "bodyKey": "tour.systemLabels.companies.body",
+        "placement": "top",
+        "roles": [
+          "hr_admin",
+          "super_admin"
+        ]
+      }
+    ]
+  },
   "performance": {
     "id": "performance",
     "steps": [

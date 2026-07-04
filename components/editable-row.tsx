@@ -6,12 +6,15 @@ import { Button, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
 /** A field renders as a plain text input by default; supply `options` to render a `<select>` instead
- *  (used for the Department↔Business-Unit dropdown). `value` is the pre-selected option value. */
+ *  (used for the Department↔Business-Unit dropdown). `value` is the pre-selected option value.
+ *  `wide` widens the input beyond the default w-44 slot — for free-text like the System Labels
+ *  description, which would be cramped in a code/name-sized box. */
 type FieldDef = {
   name: string;
   label: string;
   value: string;
   options?: { value: string; label: string }[];
+  wide?: boolean;
 };
 
 /**
@@ -71,7 +74,7 @@ export function EditableRow({
                 defaultValue={f.value}
                 placeholder={f.label}
                 aria-label={f.label}
-                className={`${inputCls} w-44`}
+                className={`${inputCls} ${f.wide ? 'w-72' : 'w-44'}`}
               />
             ),
           )}
