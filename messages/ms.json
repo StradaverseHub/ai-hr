@@ -1717,6 +1717,11 @@
         "desc": "Set dasar gaji bernama — cipta, salin dan urus dasar yang ditetapkan kepada pekerja.",
         "cta": "Buka dasar gaji"
       },
+      "loans": {
+        "title": "Pinjaman",
+        "desc": "Ansuran pinjaman pekerja — ditolak automatik setiap kitaran gaji.",
+        "cta": "Buka pinjaman"
+      },
       "period": {
         "title": "Templat Tempoh Gaji",
         "desc": "Lensa penjadualan konfigurasi syarikat — masa hari potongan dan hari bayaran bagi setiap tempoh.",

@@ -1717,6 +1717,11 @@
         "desc": "Các bộ chính sách lương được đặt tên — tạo, sao chép và quản lý các chính sách được gán cho nhân viên.",
         "cta": "Mở chính sách lương"
       },
+      "loans": {
+        "title": "Khoản vay",
+        "desc": "Khoản trả góp vay của nhân viên — tự động khấu trừ mỗi kỳ lương.",
+        "cta": "Mở khoản vay"
+      },
       "period": {
         "title": "Mẫu kỳ lương",
         "desc": "Góc nhìn lập lịch của cấu hình công ty — thời điểm ngày chốt và ngày trả cho từng kỳ.",

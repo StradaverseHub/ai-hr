@@ -1717,6 +1717,11 @@
         "desc": "Named payroll policy sets — create, copy and manage the policies assigned to employees.",
         "cta": "Open payroll policies"
       },
+      "loans": {
+        "title": "Loans",
+        "desc": "Employee loan instalments — auto-deducted each payroll cycle.",
+        "cta": "Open loans"
+      },
       "period": {
         "title": "Payroll Period Template",
         "desc": "The scheduling lens of the company config — cut-off and pay-day timing for each period.",
