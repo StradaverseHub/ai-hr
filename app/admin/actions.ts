@@ -773,6 +773,12 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const backdatingFields = touchBackdating
     ? { backdatingLimitDays: backdatingRaw === '' ? null : Number(backdatingRaw) }
     : {};
+  // Partial Leave Approval (ADR-0068): its own sub-form posts `partialApproval=1` (marker) so a rename /
+  // eligibility / durations / document / payroll / backdating edit that omits it leaves per_date_approval
+  // untouched (same tri-state guard). Unchecked-when-rendered ⇒ false; the marker distinguishes that from
+  // "block not shown at all" ⇒ leave column.
+  const touchPartial = fd.get('partialApproval') === '1';
+  const partialFields = touchPartial ? { perDateApproval: fd.get('perDateApproval') === 'on' } : {};
   try {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
@@ -782,6 +788,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...docFields,
       ...payrollFields,
       ...backdatingFields,
+      ...partialFields,
     });
   } catch (e) {
     fail(LEAVE, e);

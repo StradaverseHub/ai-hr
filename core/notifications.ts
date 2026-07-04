@@ -65,7 +65,20 @@ const REGISTRY: Record<string, Spec> = {
   'leave-request.approved': {
     kind: 'leave.approved',
     category: 'leave',
-    render: () => ({ severity: 'info', title: 'Leave approved', body: 'Your leave request was approved.', linkPath: '/me' }),
+    // Partial Leave Approval notification fix: a MIXED per-date outcome (finalizeLeaveApproval sets
+    // payload.mixed === true when ≥1 date was approved AND ≥1 rejected) renders an honest "partially
+    // approved" body that deep-links to /me, where the existing per-date breakdown shows which dates were
+    // approved/rejected and why. Every other approval (whole-request, all-approved per-date) has no `mixed`
+    // flag and keeps the flat "approved" body — byte-identical to today.
+    render: (p) =>
+      p?.mixed === true
+        ? {
+            severity: 'info',
+            title: 'Leave partially approved',
+            body: 'Some dates in your leave request were approved and some were not — tap to see the breakdown.',
+            linkPath: '/me',
+          }
+        : { severity: 'info', title: 'Leave approved', body: 'Your leave request was approved.', linkPath: '/me' },
   },
   'leave-request.rejected': {
     kind: 'leave.rejected',

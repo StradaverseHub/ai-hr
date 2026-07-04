@@ -281,6 +281,8 @@ export function LeaveTypePanel({
   backdatingLimitDays,
   paid,
   sendToPayroll,
+  counting,
+  perDateApproval,
   policies,
   grades,
   companies,
@@ -316,6 +318,12 @@ export function LeaveTypePanel({
   paid: boolean;
   /** Unpaid payroll-impact: emit the on-approval payroll signal. Editable in the "Payroll impact" sub-form. */
   sendToPayroll: boolean;
+  /** How this type is counted ('working_days' | 'calendar_days'). Partial approval only fires for
+   *  working_days types — threaded so the per-date toggle can warn when it won't apply. */
+  counting: string;
+  /** Partial Leave Approval (ADR-0068): whether managers can approve/reject individual dates within a
+   *  multi-day request. Editable in the "Per-date approval" sub-form. */
+  perDateApproval: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -690,6 +698,45 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('payrollImpactHelp')}</p>
+          </div>
+
+          {/* Partial Leave Approval (ADR-0068). Its own sub-form (own tri-state) posts `partialApproval=1`.
+              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company
+              whose leave approval chain is single-step; when the type can never satisfy that, we still let the
+              admin set the flag but show a greyed note explaining it won't apply (rather than silently no-op). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
+              <input type="hidden" name="partialApproval" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="perDateApproval"
+                  defaultChecked={perDateApproval}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('perDateApprovalLabel')}
+              </label>
+              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
+                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
+              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {code === 'REPLACEMENT'
+                    ? t('perDateApprovalNoteReplacement')
+                    : t('perDateApprovalNoteCounting')}
+                </p>
+              )}
+              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
+              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
           </div>
 
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts

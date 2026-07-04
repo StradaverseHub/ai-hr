@@ -328,6 +328,52 @@ describe('updateLeaveType — backdatingLimitDays tri-state', () => {
   });
 });
 
+// Partial Leave Approval (ADR-0068): perDateApproval is an own tri-state on updateLeaveType, mirroring
+// backdatingLimitDays above — an unrelated save must not reset it, and an explicit toggle must round-trip.
+describe('updateLeaveType — perDateApproval tri-state', () => {
+  it('an explicit toggle sets and reads the value via the admin service + read projection', async () => {
+    const ltId = await leaveType(uniqCode(), null);
+    await updateLeaveType(adminCtx(b), { id: ltId, name: 'PD', perDateApproval: true });
+    const types = await listLeaveTypes(adminCtx(b), { includeArchived: true });
+    expect(types.find((x) => x.id === ltId)?.perDateApproval).toBe(true);
+    // …and back off.
+    await updateLeaveType(adminCtx(b), { id: ltId, name: 'PD', perDateApproval: false });
+    const after = await listLeaveTypes(adminCtx(b), { includeArchived: true });
+    expect(after.find((x) => x.id === ltId)?.perDateApproval).toBe(false);
+  });
+
+  it('a plain rename (no perDateApproval) does NOT clear an enabled flag', async () => {
+    const ltId = await leaveType(uniqCode(), null);
+    await updateLeaveType(adminCtx(b), { id: ltId, name: 'PD', perDateApproval: true });
+    // Touch ONLY the name — perDateApproval is undefined ⇒ must not change.
+    await updateLeaveType(adminCtx(b), { id: ltId, name: 'PD renamed' });
+    const types = await listLeaveTypes(adminCtx(b), { includeArchived: true });
+    const t = types.find((x) => x.id === ltId);
+    expect(t?.perDateApproval).toBe(true);
+    expect(t?.name).toBe('PD renamed');
+  });
+
+  it('a rename does NOT claim a perDateApproval change in the audit event', async () => {
+    const ltId = await leaveType(uniqCode(), null);
+    await updateLeaveType(adminCtx(b), { id: ltId, name: 'PD2' });
+    const payload = await latestEventPayload(b.tenantId, ltId, 'leave-type.updated');
+    const before = payload?.before as Record<string, unknown> | undefined;
+    const after = payload?.after as Record<string, unknown> | undefined;
+    expect('perDateApproval' in (before ?? {})).toBe(false);
+    expect('perDateApproval' in (after ?? {})).toBe(false);
+  });
+
+  it('an explicit toggle labels the change in its own audit block', async () => {
+    const ltId = await leaveType(uniqCode(), null);
+    await updateLeaveType(adminCtx(b), { id: ltId, name: 'PD3', perDateApproval: true });
+    const payload = await latestEventPayload(b.tenantId, ltId, 'leave-type.updated');
+    const before = payload?.before as Record<string, unknown>;
+    const after = payload?.after as Record<string, unknown>;
+    expect(before.perDateApproval).toBe(false);
+    expect(after.perDateApproval).toBe(true);
+  });
+});
+
 describe('i18n — backdatingNotAllowed renders in all 6 locales with both tokens', () => {
   it.each(LOCALES)('locale %s substitutes {typeName} and {days}', async (locale) => {
     const messages = (await import(`../messages/${locale}.json`)).default;

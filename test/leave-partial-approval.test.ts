@@ -263,6 +263,39 @@ describe('Partial Leave Approval — per-date decisions + finalization', () => {
   });
 });
 
+describe('Partial Leave Approval — mixed-outcome notification signal', () => {
+  it('a MIXED finalization (approve 2, reject 1) tags the leave-request.approved event payload mixed: true', async () => {
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D10, decision: 'approved' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D11, decision: 'approved' });
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D12, decision: 'rejected', rejectReason: 'no' });
+    const evt = await latestEventPayload(b.tenantId, res.leaveRequestId, 'leave-request.approved');
+    expect(evt?.mixed).toBe(true);
+  });
+
+  it('an ALL-APPROVED per-date finalization does NOT tag mixed (byte-identical to a whole-request approval)', async () => {
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    for (const d of [D10, D11, D12]) {
+      await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: d, decision: 'approved' });
+    }
+    const evt = await latestEventPayload(b.tenantId, res.leaveRequestId, 'leave-request.approved');
+    expect(evt).not.toHaveProperty('mixed');
+  });
+
+  it('backward-compat: a plain (non-per-date) whole-request approval carries NO mixed field', async () => {
+    // Flag OFF ⇒ no date rows ⇒ the ordinary decideLeave whole-request path (the majority approval path).
+    await owner.db.update(schema.leaveType).set({ perDateApproval: false }).where(eq(schema.leaveType.id, b.annualLeaveTypeId));
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    expect(await dateRows(res.leaveRequestId)).toHaveLength(0);
+    await decideLeave(mgrCtx, { leaveRequestId: res.leaveRequestId, decision: 'approved' });
+    const evt = await latestEventPayload(b.tenantId, res.leaveRequestId, 'leave-request.approved');
+    expect(evt).not.toHaveProperty('mixed');
+  });
+});
+
 describe('Partial Leave Approval — span-consumer correctness (the central fix)', () => {
   // Approve D10 + D12, reject D11 (interior + non-contiguous). Every consumer must count only D10 & D12.
   async function approveWithMiddleRejected(reqId: string) {
@@ -441,6 +474,26 @@ describe('Partial Leave Approval — REPLACEMENT + multi-step guards', () => {
       .from(schema.leaveApprovalStep)
       .where(eq(schema.leaveApprovalStep.leaveRequestId, res.leaveRequestId));
     expect(steps.length).toBeGreaterThan(0);
+  });
+
+  it('in-flight: a company flipping to multi-step mid-request does NOT strand already-created per-date rows', async () => {
+    // The gate is read ONCE at requestLeave time; decideLeaveDate never re-checks the company flag. So a
+    // per-date request that already has its date rows continues to resolve via decideLeaveDate regardless of a
+    // later company-level flip — confirming, not assuming, the documented in-flight behaviour.
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    expect(await dateRows(res.leaveRequestId)).toHaveLength(3);
+    // Decide one date, THEN flip the company to multi-step.
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D10, decision: 'approved' });
+    await owner.db.update(schema.company).set({ leaveMultiApproval: true }).where(eq(schema.company.id, b.companyId));
+    // The remaining dates still resolve through the per-date path and finalize correctly.
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D11, decision: 'approved' });
+    const last = await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D12, decision: 'rejected', rejectReason: 'no' });
+    expect(last.status).toBe('approved');
+    // Mixed outcome ⇒ only the 2 approved dates debited (20 − 2 = 18), and the event carries mixed: true.
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(18);
+    const evt = await latestEventPayload(b.tenantId, res.leaveRequestId, 'leave-request.approved');
+    expect(evt?.mixed).toBe(true);
   });
 });
 

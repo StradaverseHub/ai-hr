@@ -1547,6 +1547,11 @@ export async function updateLeaveType(
     // OWN tri-state (undefined = leave column), NOT nested under touchDoc — it is a request-validation rule,
     // not a document setting, so a doc-only save must not touch it and the audit diff must label it correctly.
     backdatingLimitDays?: number | null;
+    // Partial Leave Approval (ADR-0068): expose per_date_approval as an editable toggle. OWN tri-state
+    // (undefined = leave column untouched), mirroring sendToPayroll/backdating — its own sub-form so an
+    // unrelated rename/doc/payroll save never silently resets it. The gate (single-step company + full-day
+    // + working-days) is enforced at requestLeave time; this only stores the opt-in.
+    perDateApproval?: boolean;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
@@ -1570,6 +1575,9 @@ export async function updateLeaveType(
   // doc-only save carries no backdating marker, so nesting it under touchDoc would drop it from the set and
   // mislabel the audit diff.
   const touchBackdating = p.backdatingLimitDays !== undefined;
+  // Partial Leave Approval (ADR-0068): its OWN tri-state, mirroring touchPayroll/touchBackdating — a save
+  // from any other sub-form omits perDateApproval, so per_date_approval stays untouched (no silent reset).
+  const touchPartial = p.perDateApproval !== undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
   }
@@ -1593,6 +1601,8 @@ export async function updateLeaveType(
   };
   // Configurable backdated-leave restriction (0133): its own set fragment, merged alongside docSet.
   const backdatingSet = touchBackdating ? { backdatingLimitDays: p.backdatingLimitDays } : {};
+  // Partial Leave Approval (ADR-0068): its own set fragment.
+  const partialSet = touchPartial ? { perDateApproval: p.perDateApproval } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -1608,6 +1618,7 @@ export async function updateLeaveType(
         hrRemarkRequired: leaveType.hrRemarkRequired,
         sendToPayroll: leaveType.sendToPayroll,
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        perDateApproval: leaveType.perDateApproval,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -1620,6 +1631,7 @@ export async function updateLeaveType(
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
         ...backdatingSet,
+        ...partialSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
       })
       .where(eq(leaveType.id, p.id));
@@ -1646,6 +1658,7 @@ export async function updateLeaveType(
             : {}),
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
+          ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
         },
         after: {
           name,
@@ -1665,6 +1678,7 @@ export async function updateLeaveType(
           ...(touchBackdating
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
             : {}),
+          ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
         },
       },
     });

@@ -99,6 +99,12 @@ async function main() {
     leaveTypeIds[lt.code] = row.id;
   }
   const annual = { id: leaveTypeIds.ANNUAL };
+  // Partial Leave Approval demo (ADR-0068): opt ANNUAL into per-date approval so a tester can actually reach
+  // the feature. ANNUAL is full-day + working_days-counted, which the gate requires. The primary demo
+  // `company` runs a MULTI-STEP chain (leaveMultiApproval=true above), where per-date approval intentionally
+  // falls back to the whole-request flow — so the reachable scenario lives in the single-step `holding`
+  // company below (see "Partial Leave Approval demo — single-step" block).
+  await owner.db.update(schema.leaveType).set({ perDateApproval: true }).where(eq(schema.leaveType.id, annual.id));
   // Standing entitlements granted on every hire (EA s.60E / s.60F via the MY pack).
   const standingGrants = [
     { id: leaveTypeIds.ANNUAL, code: 'ANNUAL' },
@@ -415,7 +421,58 @@ async function main() {
     leaveRequestId: rejected.leaveRequestId,
     decision: 'rejected',
     deciderEmploymentId: manager.employmentId,
+    // Partial Leave Approval (0131) made a reject reason mandatory; the seed's demo rejection must supply one
+    // or the whole seed aborts here (and never reaches the per-date demo block below).
+    rejectReason: 'Insufficient coverage on this date — please reschedule.',
   });
+
+  // Partial Leave Approval demo — single-step (ADR-0068): the primary `company` runs a multi-step chain, where
+  // per-date approval intentionally does NOT fire. So the REACHABLE per-date scenario lives in the `holding`
+  // company, which is single-step (leaveMultiApproval defaults to false). We hire one employee there reporting
+  // to Daniel (already Group CFO at holding), grant ANNUAL, and file a PENDING 3-working-day ANNUAL request.
+  // Because ANNUAL now opts into per-date approval and the company is single-step, requestLeave decomposes the
+  // request into per-date rows — so a tester who opens Daniel's approvals inbox sees one row with the
+  // expandable per-date breakdown (approve some dates, reject others). Wrapped in try/catch so a demo-data
+  // hiccup never fails the whole seed.
+  try {
+    const pdManager = daniel2; // Daniel's holding-company employment (Group CFO)
+    const pdSub = await hireEmployee(admin, {
+      person: { fullName: 'Priya Devan', primaryEmail: 'priya@demo.test' },
+      companyId: holding.id,
+      departmentId: groupDept.id,
+      positionId: groupPos.id,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-06',
+      grantLeaveTypes: [{ id: annual.id, code: 'ANNUAL' }],
+    });
+    const [pdUser] = await owner.db
+      .insert(schema.appUser)
+      .values({ tenantId: DEV_TENANT_ID, workosUserId: 'seed:priya@demo.test', personId: pdSub.personId })
+      .returning({ id: schema.appUser.id });
+    await owner.db
+      .insert(schema.roleAssignment)
+      .values({ tenantId: DEV_TENANT_ID, appUserId: pdUser.id, role: 'employee', companyId: null });
+    await reportsTo(pdSub.employmentId, pdManager.employmentId, 'administrative', '2026-01-06');
+    // A top-up grant so the 3-day request comfortably clears the finalization balance gate.
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: DEV_TENANT_ID,
+      employmentId: pdSub.employmentId,
+      leaveTypeId: annual.id,
+      entryType: 'accrual',
+      days: '14.00',
+      effectiveOn: '2026-01-06',
+    });
+    const pdSession: SessionContext = { tenantId: DEV_TENANT_ID, userId: pdUser.id, roles: ['employee'], personId: pdSub.personId };
+    // 3 consecutive working days (Mon–Wed) — left PENDING so the manager can approve some / reject others.
+    await requestLeave(pdSession, {
+      employmentId: pdSub.employmentId,
+      leaveTypeId: annual.id,
+      startDate: '2026-08-10',
+      endDate: '2026-08-12',
+    });
+  } catch (e) {
+    console.warn(`  (partial-approval demo skipped: ${(e as Error).message})`);
+  }
 
   // Performance (ADR-0013): a live annual cycle so the module has shape — most reviews sit at
   // self-review; Aisyah's is finalized with a 5% merit recommendation awaiting enactment.

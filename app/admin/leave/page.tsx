@@ -253,6 +253,8 @@ export default async function LeaveConfigPage({
               backdatingLimitDays={t.backdatingLimitDays ?? null}
               paid={t.paid}
               sendToPayroll={t.sendToPayroll}
+              counting={t.counting}
+              perDateApproval={t.perDateApproval}
               policies={polByType.get(t.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}

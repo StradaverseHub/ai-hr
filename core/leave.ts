@@ -1606,13 +1606,19 @@ type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; d
  *  per-date finalization debit only the sum of APPROVED dates instead of the whole request span; it defaults
  *  to req.days for every non-per-date caller (byte-identical behaviour). Guard: since §4C excludes REPLACEMENT
  *  from per-date approval, the daysOverride path never reaches the consumeReplacementLeaveTx branch with a
- *  partial `need`; we assert that invariant so the TOIL consume-on-approve register is never under-consumed. */
+ *  partial `need`; we assert that invariant so the TOIL consume-on-approve register is never under-consumed.
+ *  `mixed` (Partial Leave Approval notification fix): the sole caller that sets it is decideLeaveDate's
+ *  finalization when ≥1 date was approved AND ≥1 was rejected — it tags the approved-event payload so the
+ *  notification renderer emits the honest "partially approved — see the breakdown" body instead of a flat
+ *  "approved". It defaults to false/omitted so every non-per-date call site's event payload is byte-identical
+ *  to today (the multi-step chain finalization and the single-step whole-request approval never pass it). */
 async function finalizeLeaveApproval(
   tx: Tx,
   ctx: SessionContext,
   req: DecidableLeave,
   deciderEmploymentId?: string,
   daysOverride?: number,
+  mixed = false,
 ) {
   const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
   const need = daysOverride ?? Number(req.days);
@@ -1669,6 +1675,11 @@ async function finalizeLeaveApproval(
     payload: {
       decision: 'approved',
       deciderEmploymentId: deciderEmploymentId ?? null,
+      // Partial Leave Approval notification fix (ADR-0068 follow-up): only the mixed per-date outcome
+      // (≥1 approved + ≥1 rejected) sets this. It is the single minimal signal the notification renderer
+      // reads to emit the "partially approved" body. Omitted (not `mixed: false`) for every other caller so
+      // the whole-request / all-approved payload shape stays byte-identical to today.
+      ...(mixed ? { mixed: true } : {}),
       // When the type opts in (sendToPayroll), attach an ADVISORY payroll-impact contract for a future
       // payroll integration to consume. It is telemetry, NOT a deduction source: the authoritative deduction
       // remains unpaidDaysByEmployment()'s live status='approved' re-query (which auto-corrects on any future
@@ -1928,8 +1939,11 @@ export async function decideLeaveDate(
     // All-approved OR mixed (≥1 approved) → single ledger debit for sum(approved days) + status='approved'.
     // §4A makes balance/calendar/attendance/payroll count ONLY the approved dates regardless of top-level
     // status, so a mixed outcome uses 'approved' + per-date truth (no new "partially_approved" enum this round).
+    // A MIXED outcome (≥1 approved AND ≥1 rejected) tags the approved event so the employee's notification
+    // honestly reads "partially approved — see the breakdown" rather than a flat "approved".
     const approvedDays = approved.reduce((s, d) => s + Number(d.days), 0);
-    await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, approvedDays);
+    const mixed = rejected.length > 0;
+    await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, approvedDays, mixed);
     return { status: 'approved' as const };
   });
 }

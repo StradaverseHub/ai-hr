@@ -352,6 +352,10 @@ export function listLeaveTypes(
         // Configurable backdated-leave restriction (0133): feeds the admin panel's "Backdating limit (days)"
         // input (MUST be projected here or the input renders empty on every reload — "my setting didn't save").
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        // Partial Leave Approval (ADR-0068): feeds the admin panel's per-date toggle (MUST be projected or the
+        // checkbox renders unchecked on every reload). counting is already selected above — the panel needs it
+        // to grey out the toggle for calendar-counted types where the feature can never fire.
+        perDateApproval: leaveType.perDateApproval,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,

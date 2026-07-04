@@ -82,6 +82,29 @@ describe('notification dispatch + reads (ADR-0034 34-2)', () => {
     expect(await listNotifications(A.ctx, B.employmentId)).toHaveLength(0);
   });
 
+  it('a MIXED leave-request.approved (payload.mixed=true) renders the "partially approved" body + /me deep-link', async () => {
+    const A = await makeEmployee();
+    await owner.db.insert(schema.domainEvent).values([
+      // A mixed per-date outcome tags the approved event with mixed: true (see core/leave finalizeLeaveApproval).
+      event('leave-request.approved', A.employmentId, { decision: 'approved', mixed: true }),
+    ]);
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(1);
+    const [n] = await listNotifications(A.ctx, A.employmentId);
+    expect(n.kind).toBe('leave.approved');
+    expect(n.title).toBe('Leave partially approved');
+    expect(n.body).toMatch(/partially|breakdown|some dates/i);
+    expect(n.linkPath).toBe('/me');
+  });
+
+  it('a plain (non-mixed) leave-request.approved keeps the flat "Leave approved" body', async () => {
+    const A = await makeEmployee();
+    await owner.db.insert(schema.domainEvent).values([event('leave-request.approved', A.employmentId, { decision: 'approved' })]);
+    await dispatchNotifications(adminCtx(b), {});
+    const [n] = await listNotifications(A.ctx, A.employmentId);
+    expect(n.title).toBe('Leave approved');
+    expect(n.body).toBe('Your leave request was approved.');
+  });
+
   it('unread count + mark read', async () => {
     const A = await makeEmployee();
     await owner.db.insert(schema.domainEvent).values(event('toil.accrued', A.employmentId, { daysCredited: 2, workedDate: '2026-07-05' }));
