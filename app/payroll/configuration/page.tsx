@@ -11,6 +11,8 @@ import { latestAvailablePackVersion } from '@/lib/statutory-pack-available';
 import { archiveStatutoryAction, archiveStatutoryComponentAction } from './actions';
 import Link from 'next/link';
 
+const BASE = '/payroll/configuration';
+
 const pct = (n: number) => {
   const v = n * 100;
   return `${Number.isInteger(v) ? v : v.toFixed(2)}%`;
@@ -49,14 +51,21 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Scalar per-body sections that get an inline Edit form (whole-ruleset bodies use ?edit=1 instead). */
+type ScalarSection = 'epf' | 'ot';
+const SCALAR_SECTIONS: ScalarSection[] = ['epf', 'ot'];
+const isScalarSection = (v: string | undefined): v is ScalarSection =>
+  v != null && (SCALAR_SECTIONS as string[]).includes(v);
+
 export default async function StatutoryConfigPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string; error?: string }>;
+  searchParams: Promise<{ edit?: string; error?: string; section?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.config');
-  const { edit, error } = await searchParams;
+  const { edit, error, section } = await searchParams;
+  const activeSection = isScalarSection(section) ? section : undefined;
   const pack = packFor('MY');
 
   if (!pack) {
@@ -111,6 +120,52 @@ export default async function StatutoryConfigPage({
 
   // ─────────────────────────────── View mode ───────────────────────────────
   const sampleBands = (bands: ContribBand[]) => [bands[0], bands[bands.length - 1]];
+
+  // Labels for the per-body scalar override form — shared between the inline section forms and the
+  // bottom shared form so copy stays consistent.
+  const componentDefaults = {
+    epf: {
+      employeeRate: ruleset.epf.employeeRate,
+      employerRateLow: ruleset.epf.employerRateLow,
+      employerRateHigh: ruleset.epf.employerRateHigh,
+      employerThreshold: ruleset.epf.employerThreshold,
+    },
+    ot: { wageCeiling: ruleset.ot.wageCeiling },
+    hrdf: ruleset.hrdf ?? MY_HRDF,
+  };
+  const componentLabels = {
+    body: t('componentBody'),
+    body_epf: t('body_epf'),
+    body_ot: t('body_ot'),
+    body_hrdf: t('body_hrdf'),
+    effectiveFrom: t('effectiveFrom'),
+    version: t('version'),
+    notes: t('fieldNotes'),
+    epfEmployeeRate: t('epfEmployeeRate'),
+    epfEmployerRateLow: t('epfEmployerRateLow'),
+    epfEmployerRateHigh: t('epfEmployerRateHigh'),
+    epfEmployerThreshold: t('epfEmployerThreshold'),
+    otWageCeiling: t('otWageCeiling'),
+    hrdfMandatory: t('hrdfMandatory'),
+    hrdfOptional: t('hrdfOptional'),
+    publish: t('componentPublish'),
+    cancelEdit: t('cancelEdit'),
+    cancelHref: BASE,
+  };
+
+  // Concurrency-mitigation hint (ADR-0037 revision): surface the newest live override per body so an
+  // admin can eyeball whether it changed since they opened the page. Newest-effective row wins; archived
+  // rows are ignored. Pre-existing insert-only model — no locking added in this pass.
+  const latestOverrideByBody = new Map<string, { version: string; effectiveFrom: string }>();
+  for (const co of componentOverrides) {
+    if (co.archivedAt) continue;
+    if (!latestOverrideByBody.has(co.body))
+      latestOverrideByBody.set(co.body, { version: co.version, effectiveFrom: co.effectiveFrom });
+  }
+  const lastEditedHint = (body: string) => {
+    const o = latestOverrideByBody.get(body);
+    return o ? t('lastEdited', { version: o.version, effectiveFrom: o.effectiveFrom }) : null;
+  };
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -190,30 +245,79 @@ export default async function StatutoryConfigPage({
       <div className="grid gap-4 md:grid-cols-2">
         {/* EPF */}
         <Card className="p-4">
-          <h2 className="text-sm font-semibold">{t('secEpf')}</h2>
-          <div className="mt-2 divide-y divide-border">
-            <Row label={t('epfEmployeeRate')} value={pct(ruleset.epf.employeeRate)} />
-            <Row label={t('epfEmployerRateLow')} value={pct(ruleset.epf.employerRateLow)} />
-            <Row label={t('epfEmployerRateHigh')} value={pct(ruleset.epf.employerRateHigh)} />
-            <Row label={t('epfEmployerThreshold')} value={rm(ruleset.epf.employerThreshold)} />
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-sm font-semibold">{t('secEpf')}</h2>
+            {activeSection !== 'epf' && (
+              <Link href={`${BASE}?section=epf`}>
+                <Button variant="outline" size="sm">
+                  {t('editSection', { body: t('body_epf') })}
+                </Button>
+              </Link>
+            )}
           </div>
-          <SourceMeta src={src.epf} label={t('verified')} />
+          {activeSection === 'epf' ? (
+            <>
+              <p className="mt-2 text-xs text-muted-foreground">{t('editSectionIntro')}</p>
+              <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} lockedBody="epf" />
+            </>
+          ) : (
+            <>
+              <div className="mt-2 divide-y divide-border">
+                <Row label={t('epfEmployeeRate')} value={pct(ruleset.epf.employeeRate)} />
+                <Row label={t('epfEmployerRateLow')} value={pct(ruleset.epf.employerRateLow)} />
+                <Row label={t('epfEmployerRateHigh')} value={pct(ruleset.epf.employerRateHigh)} />
+                <Row label={t('epfEmployerThreshold')} value={rm(ruleset.epf.employerThreshold)} />
+              </div>
+              {lastEditedHint('epf') && (
+                <p className="mt-2 text-[11px] text-muted-foreground">{lastEditedHint('epf')}</p>
+              )}
+              <SourceMeta src={src.epf} label={t('verified')} />
+            </>
+          )}
         </Card>
 
         {/* Overtime */}
         <Card className="p-4">
-          <h2 className="text-sm font-semibold">{t('secOt')}</h2>
-          <div className="mt-2 divide-y divide-border">
-            <Row label={t('otWageCeiling')} value={rm(ruleset.ot.wageCeiling)} />
-            <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-sm font-semibold">{t('secOt')}</h2>
+            {activeSection !== 'ot' && (
+              <Link href={`${BASE}?section=ot`}>
+                <Button variant="outline" size="sm">
+                  {t('editSection', { body: t('body_ot') })}
+                </Button>
+              </Link>
+            )}
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>
-          <SourceMeta src={src.ot} label={t('verified')} />
+          {activeSection === 'ot' ? (
+            <>
+              <p className="mt-2 text-xs text-muted-foreground">{t('editSectionIntro')}</p>
+              <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} lockedBody="ot" />
+            </>
+          ) : (
+            <>
+              <div className="mt-2 divide-y divide-border">
+                <Row label={t('otWageCeiling')} value={rm(ruleset.ot.wageCeiling)} />
+                <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>
+              {lastEditedHint('ot') && (
+                <p className="mt-2 text-[11px] text-muted-foreground">{lastEditedHint('ot')}</p>
+              )}
+              <SourceMeta src={src.ot} label={t('verified')} />
+            </>
+          )}
         </Card>
 
         {/* SOCSO */}
         <Card className="p-4">
-          <h2 className="text-sm font-semibold">{t('secSocso')}</h2>
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-sm font-semibold">{t('secSocso')}</h2>
+            <Link href={`${BASE}?edit=1`}>
+              <Button variant="outline" size="sm">
+                {t('editSection', { body: t('body_socso') })}
+              </Button>
+            </Link>
+          </div>
           <div className="mt-2 divide-y divide-border">
             <Row label={`${t('rate')} (employer / employee)`} value={`${pct(ruleset.socso.rates.employer)} / ${pct(ruleset.socso.rates.employee)}`} />
             <Row label="Category 1 / 2 bands" value={`${ruleset.socso.category1.length} / ${ruleset.socso.category2.length}`} />
@@ -229,7 +333,14 @@ export default async function StatutoryConfigPage({
 
         {/* EIS */}
         <Card className="p-4">
-          <h2 className="text-sm font-semibold">{t('secEis')}</h2>
+          <div className="flex items-start justify-between gap-2">
+            <h2 className="text-sm font-semibold">{t('secEis')}</h2>
+            <Link href={`${BASE}?edit=1`}>
+              <Button variant="outline" size="sm">
+                {t('editSection', { body: t('body_eis') })}
+              </Button>
+            </Link>
+          </div>
           <div className="mt-2 divide-y divide-border">
             <Row label={`${t('rate')} (employer / employee)`} value={`${pct(ruleset.eis.rates.employer)} / ${pct(ruleset.eis.rates.employee)}`} />
             <Row label="Bands" value={String(ruleset.eis.bands.length)} />
@@ -246,7 +357,14 @@ export default async function StatutoryConfigPage({
 
       {/* PCB — full width */}
       <Card className="p-4">
-        <h2 className="text-sm font-semibold">{t('secPcb')}</h2>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-sm font-semibold">{t('secPcb')}</h2>
+          <Link href={`${BASE}?edit=1`}>
+            <Button variant="outline" size="sm">
+              {t('editSection', { body: t('body_pcb') })}
+            </Button>
+          </Link>
+        </div>
         <div className="mt-2 grid gap-x-8 sm:grid-cols-2">
           <Row label={t('reliefIndividual')} value={rm(ruleset.pcb.reliefs.individual)} />
           <Row label={t('reliefSpouse')} value={rm(ruleset.pcb.reliefs.spouse)} />
@@ -332,35 +450,7 @@ export default async function StatutoryConfigPage({
       <Card className="p-4">
         <h2 className="text-sm font-semibold">{t('componentTitle')}</h2>
         <p className="mt-1 text-xs text-muted-foreground">{t('componentIntro')}</p>
-        <StatutoryComponentForm
-          defaults={{
-            epf: {
-              employeeRate: ruleset.epf.employeeRate,
-              employerRateLow: ruleset.epf.employerRateLow,
-              employerRateHigh: ruleset.epf.employerRateHigh,
-              employerThreshold: ruleset.epf.employerThreshold,
-            },
-            ot: { wageCeiling: ruleset.ot.wageCeiling },
-            hrdf: ruleset.hrdf ?? MY_HRDF,
-          }}
-          labels={{
-            body: t('componentBody'),
-            body_epf: t('body_epf'),
-            body_ot: t('body_ot'),
-            body_hrdf: t('body_hrdf'),
-            effectiveFrom: t('effectiveFrom'),
-            version: t('version'),
-            notes: t('fieldNotes'),
-            epfEmployeeRate: t('epfEmployeeRate'),
-            epfEmployerRateLow: t('epfEmployerRateLow'),
-            epfEmployerRateHigh: t('epfEmployerRateHigh'),
-            epfEmployerThreshold: t('epfEmployerThreshold'),
-            otWageCeiling: t('otWageCeiling'),
-            hrdfMandatory: t('hrdfMandatory'),
-            hrdfOptional: t('hrdfOptional'),
-            publish: t('componentPublish'),
-          }}
-        />
+        <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} />
         {componentOverrides.length > 0 && (
           <div className="mt-4 overflow-x-auto border-t border-border pt-3">
             <table className="w-full text-sm">

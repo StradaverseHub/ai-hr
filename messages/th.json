@@ -1506,7 +1506,11 @@
       "componentBody": "หน่วยงาน",
       "componentPublish": "เผยแพร่การแทนที่",
       "hrdfMandatory": "อัตราบังคับ HRDF",
-      "hrdfOptional": "อัตราเลือก HRDF"
+      "hrdfOptional": "อัตราเลือก HRDF",
+      "editSection": "แก้ไข {body}",
+      "editSectionIntro": "เผยแพร่การแทนที่ที่มีผลตามวันที่สำหรับหน่วยงานนี้ ค่าเริ่มต้นที่ตรวจสอบแล้วยังคงเป็นค่าสำรอง สลิปเงินเดือนที่ผ่านมายังคงสแนปช็อตไว้",
+      "cancelEdit": "ยกเลิก",
+      "lastEdited": "การแทนที่ล่าสุด: {version} · มีผล {effectiveFrom}"
     },
     "batch": {
       "back": "เงินเดือน",

@@ -1506,7 +1506,11 @@
       "componentBody": "机构",
       "componentPublish": "发布覆盖",
       "hrdfMandatory": "HRDF 强制费率",
-      "hrdfOptional": "HRDF 可选费率"
+      "hrdfOptional": "HRDF 可选费率",
+      "editSection": "编辑{body}",
+      "editSectionIntro": "为该机构发布按生效日期的覆盖。已核实的默认值仍作为后备；过往工资单保留其快照。",
+      "cancelEdit": "取消",
+      "lastEdited": "最近覆盖：{version} · 生效 {effectiveFrom}"
     },
     "batch": {
       "back": "薪资",

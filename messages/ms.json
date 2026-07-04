@@ -1506,7 +1506,11 @@
       "componentBody": "Badan",
       "componentPublish": "Terbitkan tindihan",
       "hrdfMandatory": "Kadar mandatori HRDF",
-      "hrdfOptional": "Kadar pilihan HRDF"
+      "hrdfOptional": "Kadar pilihan HRDF",
+      "editSection": "Edit {body}",
+      "editSectionIntro": "Terbitkan pindaan berkuat kuasa bertarikh untuk badan ini. Nilai lalai yang disahkan kekal sebagai sandaran; slip gaji lepas mengekalkan syotnya.",
+      "cancelEdit": "Batal",
+      "lastEdited": "Pindaan terakhir: {version} · berkuat kuasa {effectiveFrom}"
     },
     "batch": {
       "back": "Gaji",

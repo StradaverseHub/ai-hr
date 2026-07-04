@@ -1506,7 +1506,11 @@
       "componentBody": "அமைப்பு",
       "componentPublish": "மேலெழுதலை வெளியிடு",
       "hrdfMandatory": "HRDF கட்டாய விகிதம்",
-      "hrdfOptional": "HRDF விருப்ப விகிதம்"
+      "hrdfOptional": "HRDF விருப்ப விகிதம்",
+      "editSection": "{body} திருத்து",
+      "editSectionIntro": "இந்த அமைப்புக்கு அமல் தேதியிட்ட மேலெழுதலை வெளியிடவும். சரிபார்க்கப்பட்ட இயல்புநிலை மதிப்புகள் பின்னிலையாக இருக்கும்; கடந்த சம்பள சீட்டுகள் தங்கள் ஸ்னாப்ஷாட்டை வைத்திருக்கும்.",
+      "cancelEdit": "ரத்து",
+      "lastEdited": "கடைசி மேலெழுதல்: {version} · அமல் {effectiveFrom}"
     },
     "batch": {
       "back": "ஊதியம்",

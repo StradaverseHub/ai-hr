@@ -1606,7 +1606,11 @@
       "componentBody": "Body",
       "componentPublish": "Publish override",
       "hrdfMandatory": "HRDF mandatory rate",
-      "hrdfOptional": "HRDF optional rate"
+      "hrdfOptional": "HRDF optional rate",
+      "editSection": "Edit {body}",
+      "editSectionIntro": "Publish an effective-dated override for this body. The verified defaults stay the fallback; past payslips keep their snapshot.",
+      "cancelEdit": "Cancel",
+      "lastEdited": "Last override: {version} · effective {effectiveFrom}"
     },
     "transactions": {
       "title": "Transactions",
