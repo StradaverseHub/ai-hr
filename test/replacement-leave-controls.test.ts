@@ -176,6 +176,7 @@ describe('Auto-accrual on attendance approval (step 2)', () => {
       date: REST_DAY,
       checkIn: '08:00:00',
       checkOut: '17:00:00',
+      reason: 'Correction',
     });
     await decideAttendanceCorrection(a, { correctionId: cor.correctionId, decision: 'approved' });
     return employmentId;
@@ -193,7 +194,7 @@ describe('Auto-accrual on attendance approval (step 2)', () => {
 
     // Re-approve the same day via a fresh correction: the no-double-bank guard is swallowed (no throw, no dup).
     const a = adminCtx(b);
-    const cor2 = await requestAttendanceCorrection(a, { employmentId, date: REST_DAY, checkIn: '08:00:00', checkOut: '17:00:00' });
+    const cor2 = await requestAttendanceCorrection(a, { employmentId, date: REST_DAY, checkIn: '08:00:00', checkOut: '17:00:00', reason: 'Correction' });
     await expect(decideAttendanceCorrection(a, { correctionId: cor2.correctionId, decision: 'approved' })).resolves.toMatchObject({ status: 'approved' });
     expect(await replacementBalance(employmentId)).toBe(1); // still one credit
   });
@@ -209,7 +210,7 @@ describe('Auto-accrual on attendance approval (step 2)', () => {
     const { a, employmentId } = await hire(3000);
     await setToilPolicy(a, policy(b.companyId, { autoAccrueOnApproval: true, allowFirstScheduleEligible: false }));
     await setRestDay(a, { employmentId, shiftDate: REST_DAY });
-    const cor = await requestAttendanceCorrection(a, { employmentId, date: REST_DAY, checkIn: '08:00:00', checkOut: '17:00:00' });
+    const cor = await requestAttendanceCorrection(a, { employmentId, date: REST_DAY, checkIn: '08:00:00', checkOut: '17:00:00', reason: 'Correction' });
     await expect(decideAttendanceCorrection(a, { correctionId: cor.correctionId, decision: 'approved' })).resolves.toMatchObject({ status: 'approved' });
     expect(await replacementBalance(employmentId)).toBe(0);
   });

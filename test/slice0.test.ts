@@ -1362,6 +1362,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       date: '2026-06-04',
       checkIn: '09:00',
       checkOut: '19:00', // really stayed to 19:00
+      reason: 'Correction',
     });
     await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
 
@@ -1388,6 +1389,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       date: '2026-06-03',
       checkIn: '09:00',
       checkOut: '18:00',
+      reason: 'Correction',
     });
     const mgrCtx: SessionContext = {
       tenantId: base.tenantId,
@@ -1409,6 +1411,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       date: '2026-06-03',
       checkIn: '09:00',
       checkOut: '18:00',
+      reason: 'Correction',
     });
     const selfCtx: SessionContext = {
       tenantId: base.tenantId,
@@ -1429,6 +1432,7 @@ describe('Attendance corrections — request → decide (ADR-0011 Phase B)', () 
       date: '2026-06-03',
       checkIn: '09:00',
       checkOut: '18:00',
+      reason: 'Correction',
     });
     await decideAttendanceCorrection(a, { correctionId, decision: 'rejected' });
     const rows = await attRow(employmentId, '2026-06-03');

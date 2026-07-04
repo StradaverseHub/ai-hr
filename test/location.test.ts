@@ -272,6 +272,7 @@ describe('location master data (ADR-0054)', () => {
       date: '2026-07-06',
       checkIn: '09:00:00',
       checkOut: '18:00:00',
+      reason: 'Correction',
     });
 
     const sum = await attendanceMonthSummary(a, { month: '2026-07', companyIds: [b.companyId], today: '2026-07-06' });

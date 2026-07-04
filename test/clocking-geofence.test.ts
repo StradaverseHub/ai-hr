@@ -474,6 +474,7 @@ describe('import + correction geo-nulling (ADR-0070)', () => {
       date: '2026-07-06',
       checkIn: '09:00:00',
       checkOut: '18:00:00',
+      reason: 'Correction',
     });
     await decideAttendanceCorrection(a, { correctionId, decision: 'approved' });
 
