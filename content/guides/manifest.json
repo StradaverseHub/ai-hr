@@ -12,7 +12,7 @@
     { "slug": "manager-approvals", "title": "Manager Guide: Approving Leave, Attendance & Profile Changes", "audience": "manager", "category": "approvals", "order": 9 },
     { "slug": "manager-team-org", "title": "Manager Guide: Your Team, Reporting Lines & Org Chart", "audience": "manager", "category": "org", "order": 10 },
     { "slug": "manager-performance", "title": "Manager Guide: Running Reviews for Your Team", "audience": "manager", "category": "performance", "order": 11 },
-    { "slug": "employee-overview", "title": "Employee Guide: Getting Started in Your Workspace", "audience": "employee", "category": "getting-started", "order": 12 },
+    { "slug": "employee-overview", "title": "Employee Guide: Getting Started in Employee Self-Service", "audience": "employee", "category": "getting-started", "order": 12 },
     { "slug": "employee-leave", "title": "Employee Guide: Checking Your Balance & Requesting Leave", "audience": "employee", "category": "leave", "order": 13 },
     { "slug": "employee-attendance", "title": "Employee Guide: Clocking In/Out & Correction Requests", "audience": "employee", "category": "attendance", "order": 14 },
     { "slug": "employee-payslips", "title": "Employee Guide: Payslips & Your Annual EA Form", "audience": "employee", "category": "payroll", "order": 15 },

@@ -79,7 +79,7 @@
     "roster": "Roster",
     "dataPrivacy": "Data Privacy",
     "dashboard": "Dashboard",
-    "myWorkspace": "My workspace",
+    "myWorkspace": "Employee Self-Service",
     "people": "People",
     "orgChart": "Org chart",
     "leave": "Leave",
@@ -791,7 +791,7 @@
     "collapseReports": "Collapse reports"
   },
   "me": {
-    "title": "My workspace",
+    "title": "Employee Self-Service",
     "notLinked": "This account isn’t linked to an employee profile. Use the identity switcher in the top bar to act as an employee (e.g. Aisyah or Daniel).",
     "todayHeading": "Today",
     "checkIn": "Check in",
@@ -940,7 +940,7 @@
       "closed": "Closed"
     },
     "payslip": {
-      "backToWorkspace": "My workspace",
+      "backToWorkspace": "Employee Self-Service",
       "title": "Payslip · {payPeriod}",
       "earnings": "Earnings",
       "basicSalary": "Basic salary",
@@ -1222,7 +1222,7 @@
       "calibrationCode": "Code"
     },
     "review": {
-      "backMyWorkspace": "My workspace",
+      "backMyWorkspace": "Employee Self-Service",
       "backPerformance": "Performance",
       "reviewerLabel": "Reviewer: {reviewer}",
       "selfReviewTitle": "Self-review",
@@ -2692,7 +2692,7 @@
     "welcomeBody": "A quick 30-second tour of where everything lives. You can replay it any time from the help button in the top bar.",
     "navTitle": "Your navigation",
     "navBody": "Every module lives in this sidebar. What you see here depends on your role — employees, managers and HR admins each get their own tools.",
-    "workspaceTitle": "My workspace",
+    "workspaceTitle": "Employee Self-Service",
     "workspaceBody": "Your personal hub: profile, payslips, leave balance and attendance — everything about you, in one place.",
     "kbTitle": "Knowledge Base",
     "kbBody": "Step-by-step guides for every module, plus your company’s policies and documents. Start here whenever you’re unsure how something works.",
@@ -3386,7 +3386,7 @@
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",
     "intro": "Declare your total optional personal tax reliefs (LHDN form TP1) for an assessment year. The latest submitted amount reduces your monthly tax deduction (PCB/MTD).",
-    "backToWorkspace": "Back to My Workspace",
+    "backToWorkspace": "Back to Employee Self-Service",
     "yearLabel": "Assessment year",
     "viewYear": "View year",
     "declarationHeading": "Declaration for {year}",

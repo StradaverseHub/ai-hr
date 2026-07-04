@@ -79,7 +79,7 @@
     "roster": "排班",
     "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
-    "myWorkspace": "我的工作台",
+    "myWorkspace": "员工自助服务",
     "people": "员工",
     "orgChart": "组织架构图",
     "leave": "休假",
@@ -791,7 +791,7 @@
     "collapseReports": "收起下属"
   },
   "me": {
-    "title": "我的工作台",
+    "title": "员工自助服务",
     "notLinked": "此账户尚未关联员工档案。请使用顶栏的身份切换器以员工身份操作（例如 Aisyah 或 Daniel）。",
     "todayHeading": "今天",
     "checkIn": "签到",
@@ -907,7 +907,7 @@
       "closed": "已关闭"
     },
     "payslip": {
-      "backToWorkspace": "我的工作台",
+      "backToWorkspace": "员工自助服务",
       "title": "工资单 · {payPeriod}",
       "earnings": "收入",
       "basicSalary": "基本工资",
@@ -1222,7 +1222,7 @@
       "calibrationCode": "编号"
     },
     "review": {
-      "backMyWorkspace": "我的工作区",
+      "backMyWorkspace": "员工自助服务",
       "backPerformance": "绩效",
       "reviewerLabel": "评估人：{reviewer}",
       "selfReviewTitle": "自评",
@@ -2692,7 +2692,7 @@
     "welcomeBody": "用 30 秒快速了解各项功能的位置。随时可以从顶栏的帮助按钮重新观看。",
     "navTitle": "你的导航栏",
     "navBody": "所有模块都在左侧边栏。你能看到的内容取决于你的角色——员工、经理和 HR 管理员各有专属工具。",
-    "workspaceTitle": "我的工作区",
+    "workspaceTitle": "员工自助服务",
     "workspaceBody": "你的专属中心：个人资料、工资单、休假余额和考勤——关于你的一切，尽在一处。",
     "kbTitle": "知识库",
     "kbBody": "每个模块的分步指南，以及公司的政策和文档。不确定如何操作时，先来这里查看。",
@@ -3386,7 +3386,7 @@
   "taxRelief": {
     "title": "个人税务减免 (TP1)",
     "intro": "申报您在某个课税年度的可选个人税务减免总额（LHDN TP1 表格）。最新提交的金额将减少您的每月预扣税（PCB/MTD）。",
-    "backToWorkspace": "返回我的工作区",
+    "backToWorkspace": "返回员工自助服务",
     "yearLabel": "课税年度",
     "viewYear": "查看年度",
     "declarationHeading": "{year} 年度申报",

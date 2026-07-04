@@ -79,7 +79,7 @@
     "roster": "Lịch ca",
     "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
-    "myWorkspace": "Không gian của tôi",
+    "myWorkspace": "Tự phục vụ nhân viên",
     "people": "Nhân sự",
     "orgChart": "Sơ đồ tổ chức",
     "leave": "Nghỉ phép",
@@ -791,7 +791,7 @@
     "collapseReports": "Thu gọn nhân viên"
   },
   "me": {
-    "title": "Không gian của tôi",
+    "title": "Tự phục vụ nhân viên",
     "notLinked": "Tài khoản này chưa được liên kết với hồ sơ nhân viên. Dùng bộ chuyển danh tính ở thanh trên cùng để hoạt động với tư cách nhân viên (ví dụ Aisyah hoặc Daniel).",
     "todayHeading": "Hôm nay",
     "checkIn": "Vào ca",
@@ -907,7 +907,7 @@
       "closed": "Đã đóng"
     },
     "payslip": {
-      "backToWorkspace": "Không gian của tôi",
+      "backToWorkspace": "Tự phục vụ nhân viên",
       "title": "Phiếu lương · {payPeriod}",
       "earnings": "Thu nhập",
       "basicSalary": "Lương cơ bản",
@@ -1222,7 +1222,7 @@
       "calibrationCode": "Mã"
     },
     "review": {
-      "backMyWorkspace": "Không gian của tôi",
+      "backMyWorkspace": "Tự phục vụ nhân viên",
       "backPerformance": "Hiệu suất",
       "reviewerLabel": "Người đánh giá: {reviewer}",
       "selfReviewTitle": "Tự đánh giá",
@@ -2692,7 +2692,7 @@
     "welcomeBody": "Một chuyến tham quan nhanh 30 giây để biết mọi thứ nằm ở đâu. Bạn có thể xem lại bất cứ lúc nào từ nút trợ giúp trên thanh trên cùng.",
     "navTitle": "Thanh điều hướng của bạn",
     "navBody": "Mọi phân hệ đều nằm trong thanh bên này. Những gì bạn thấy ở đây tùy thuộc vào vai trò của bạn — nhân viên, quản lý và quản trị viên nhân sự đều có công cụ riêng.",
-    "workspaceTitle": "Không gian của tôi",
+    "workspaceTitle": "Tự phục vụ nhân viên",
     "workspaceBody": "Trung tâm cá nhân của bạn: hồ sơ, phiếu lương, số ngày nghỉ phép và chấm công — mọi thứ về bạn, ở cùng một nơi.",
     "kbTitle": "Cơ sở tri thức",
     "kbBody": "Hướng dẫn từng bước cho mọi phân hệ, cùng với chính sách và tài liệu của công ty bạn. Hãy bắt đầu từ đây mỗi khi bạn chưa rõ điều gì đó hoạt động ra sao.",
@@ -3386,7 +3386,7 @@
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",
     "intro": "Khai báo tổng các khoản giảm trừ thuế cá nhân tùy chọn của bạn (mẫu TP1 của LHDN) cho một năm tính thuế. Số tiền đã nộp gần nhất sẽ giảm khoản khấu trừ thuế hằng tháng của bạn (PCB/MTD).",
-    "backToWorkspace": "Quay lại Không gian của tôi",
+    "backToWorkspace": "Quay lại Tự phục vụ nhân viên",
     "yearLabel": "Năm tính thuế",
     "viewYear": "Xem năm",
     "declarationHeading": "Khai báo cho năm {year}",

@@ -1,8 +1,8 @@
-Welcome to **AI HR** — your company's HR home for everything from clocking in to requesting leave, checking your payslips, and keeping your details up to date. This guide is for **employees** opening the app for the first time. By the end you'll know how to log in, find your way around the **My workspace** page, use the everyday pages in the sidebar, and set the app to your preferred language and theme. No special role is needed — everything here is available to every employee.
+Welcome to **AI HR** — your company's HR home for everything from clocking in to requesting leave, checking your payslips, and keeping your details up to date. This guide is for **employees** opening the app for the first time. By the end you'll know how to log in, find your way around the **Employee Self-Service** page, use the everyday pages in the sidebar, and set the app to your preferred language and theme. No special role is needed — everything here is available to every employee.
 
 ## Logging in
 
-Open AI HR in your browser using the link your HR team gave you and sign in. Once you're in, you land on the **Dashboard** — the company overview. The very first place to make your own, though, is **My workspace**, which is all about *you*.
+Open AI HR in your browser using the link your HR team gave you and sign in. Once you're in, you land on the **Dashboard** — the company overview. The very first place to make your own, though, is **Employee Self-Service**, which is all about *you*.
 
 **Note:** AI HR can hold more than one company under one roof, and you may even hold more than one position. The app handles that for you — you don't have to pick a company to see your own information.
 
@@ -19,7 +19,7 @@ In the sidebar, the everyday pages every employee can use are grouped at the top
 | Page | Where it goes | What it's for |
 | --- | --- | --- |
 | **Dashboard** | `/` | Company-wide overview: headcount, upcoming public holidays, who's recently joined |
-| **My workspace** | `/me` | Your personal home — attendance, leave, pay, details |
+| **Employee Self-Service** | `/me` | Your personal home — attendance, leave, pay, details |
 | **People** | `/people` | The staff directory — search and browse colleagues |
 | **Org chart** | `/org` | The reporting structure as a visual tree |
 | **Leave** | `/leave` | The shared leave calendar and your requests |
@@ -29,9 +29,9 @@ In the sidebar, the everyday pages every employee can use are grouped at the top
 
 **Note:** Don't worry if a colleague's screen has extra sections like **Manage** or **Admin** — those only appear for managers and HR admins. As an employee you'll see the everyday pages above, and that's by design.
 
-## My workspace — your home page
+## Employee Self-Service — your home page
 
-In the left sidebar, click **My workspace** (the person icon). At the top you'll see your name, employee code, position and department. Below that the page is laid out as a set of cards.
+In the left sidebar, click **Employee Self-Service** (the person icon). At the top you'll see your name, employee code, position and department. Below that the page is laid out as a set of cards.
 
 ### Clock in and out (today's attendance)
 
@@ -106,7 +106,7 @@ Right next to the language picker in the **top bar** is the **theme toggle**. Cl
 
 ## Troubleshooting
 
-- **"My workspace says I'm not linked."** Your login isn't connected to an employee record yet. Ask your HR admin to link your account.
+- **"Employee Self-Service says I'm not linked."** Your login isn't connected to an employee record yet. Ask your HR admin to link your account.
 - **I clicked Check in but nothing else appears.** Refresh the page — the **Today** card should now show your check-in time and a **Check out** button.
 - **My leave or correction still says `pending`.** That's normal: it's waiting on your manager or HR to approve. You'll see it flip to `approved` or `rejected` once they decide.
 - **I can't edit my bank or tax details.** Those are approval-gated by design. Use **Request a change** under **Bank & tax** and submit it for HR to review.

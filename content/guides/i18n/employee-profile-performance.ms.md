@@ -1,6 +1,6 @@
-Panduan ini adalah untuk pekerja yang menggunakan **Ruang kerja saya** untuk memastikan butiran mereka sentiasa terkini dan untuk menyertai penilaian prestasi. Anda akan belajar cara mengemas kini maklumat hubungan anda sendiri dalam beberapa saat, cara meminta perubahan kepada butiran yang menjejaskan gaji (akaun bank dan kategori PCB/cukai) yang memerlukan kelulusan dahulu, dan cara melengkapkan penilaian kendiri anda serta mengakui penilaian pengurus anda setelah ia dikeluarkan.
+Panduan ini adalah untuk pekerja yang menggunakan **Layanan Diri Pekerja** untuk memastikan butiran mereka sentiasa terkini dan untuk menyertai penilaian prestasi. Anda akan belajar cara mengemas kini maklumat hubungan anda sendiri dalam beberapa saat, cara meminta perubahan kepada butiran yang menjejaskan gaji (akaun bank dan kategori PCB/cukai) yang memerlukan kelulusan dahulu, dan cara melengkapkan penilaian kendiri anda serta mengakui penilaian pengurus anda setelah ia dikeluarkan.
 
-Semua perkara di sini berada di satu tempat: pada bar sisi kiri, klik **Ruang kerja saya** (halaman `/me`). Tatal ke bawah ke kad **Butiran saya** dan, lebih ke bawah, jadual **Penilaian saya**.
+Semua perkara di sini berada di satu tempat: pada bar sisi kiri, klik **Layanan Diri Pekerja** (halaman `/me`). Tatal ke bawah ke kad **Butiran saya** dan, lebih ke bawah, jadual **Penilaian saya**.
 
 ## Mengemas kini profil anda sendiri
 
@@ -18,7 +18,7 @@ Di sebelah kiri kad **Butiran saya**, di bawah nota **Kemas kini hubungan terpak
 
 Untuk mengemas kininya:
 
-1. Pada bar sisi kiri, klik **Ruang kerja saya**.
+1. Pada bar sisi kiri, klik **Layanan Diri Pekerja**.
 2. Tatal ke kad **Butiran saya**.
 3. Taipkan nilai baharu anda ke dalam mana-mana medan di atas. Anda boleh menukar satu atau beberapa pada satu masa.
 4. Klik **Simpan butiran**.
@@ -62,7 +62,7 @@ Permintaan anda kemudian muncul dalam senarai kecil di bawah borang dengan pil s
 
 ## Penilaian prestasi anda
 
-Apabila anda sebahagian daripada kitaran penilaian, jadual **Penilaian saya** muncul lebih ke bawah dalam **Ruang kerja saya**. Setiap baris memaparkan **Kitaran**, **Status** dalam bahasa mudah, penilaian **Keseluruhan** (setelah dikeluarkan), dan pautan di sebelah kanan memberitahu anda apa yang perlu dilakukan.
+Apabila anda sebahagian daripada kitaran penilaian, jadual **Penilaian saya** muncul lebih ke bawah dalam **Layanan Diri Pekerja**. Setiap baris memaparkan **Kitaran**, **Status** dalam bahasa mudah, penilaian **Keseluruhan** (setelah dikeluarkan), dan pautan di sebelah kanan memberitahu anda apa yang perlu dilakukan.
 
 Teks status ditulis dari sudut pandangan anda:
 
@@ -74,7 +74,7 @@ Teks status ditulis dari sudut pandangan anda:
 | Sedia untuk diakui | Penilaian telah dikeluarkan — baca dan akuinya | **Akui** |
 | Telah diakui | Selesai semuanya | **Lihat** |
 
-Klik pautan tindakan untuk membuka halaman penilaian (`/performance/review/...`). Pautan **Kembali ke Ruang kerja saya** terletak di bahagian atas supaya anda boleh kembali dengan mudah.
+Klik pautan tindakan untuk membuka halaman penilaian (`/performance/review/...`). Pautan **Kembali ke Layanan Diri Pekerja** terletak di bahagian atas supaya anda boleh kembali dengan mudah.
 
 ### Melengkapkan penilaian kendiri anda
 
@@ -104,7 +104,7 @@ Mengakui merekodkan bahawa anda telah membaca penilaian itu — ia tidak bermakn
 
 ## Penyelesaian masalah
 
-- **Ruang kerja saya mengatakan akaun saya tidak dipautkan.** Jika anda melihat mesej bahawa akaun anda tidak dipautkan ke profil pekerja, log masuk anda belum dihubungkan ke rekod pekerja lagi. Ciri profil dan penilaian hanya muncul setelah HR memautkan akaun anda — hubungi HR.
+- **Layanan Diri Pekerja mengatakan akaun saya tidak dipautkan.** Jika anda melihat mesej bahawa akaun anda tidak dipautkan ke profil pekerja, log masuk anda belum dihubungkan ke rekod pekerja lagi. Ciri profil dan penilaian hanya muncul setelah HR memautkan akaun anda — hubungi HR.
 - **Saya tidak nampak jadual Penilaian saya.** Ia hanya muncul apabila anda mempunyai sekurang-kurangnya satu penilaian dalam sesuatu kitaran. Tiada kitaran, tiada jadual.
 - **Perubahan bank/cukai saya masih memaparkan nilai lama.** Semak senarai permintaan di bawah **Minta perubahan**. Jika pil masih berbunyi `pending`, ia sedang menunggu pentadbir; jika ia berbunyi `rejected`, hantar permintaan baharu (dan semak semula yang anda telah memasukkan kedua-dua nama bank dan nombor akaun bersama).
 - **Butang Akui tiada di situ.** Penilaian belum dikeluarkan lagi. Tunggu status **Penilaian saya** berbunyi **Sedia untuk diakui**.

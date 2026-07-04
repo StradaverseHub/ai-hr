@@ -79,7 +79,7 @@
     "roster": "Roster",
     "dataPrivacy": "Privasi Data",
     "dashboard": "Papan pemuka",
-    "myWorkspace": "Ruang kerja saya",
+    "myWorkspace": "Layanan Diri Pekerja",
     "people": "Kakitangan",
     "orgChart": "Carta organisasi",
     "leave": "Cuti",
@@ -791,7 +791,7 @@
     "collapseReports": "Kuncupkan lapor"
   },
   "me": {
-    "title": "Ruang kerja saya",
+    "title": "Layanan Diri Pekerja",
     "notLinked": "Akaun ini tidak dipautkan kepada profil pekerja. Gunakan penukar identiti di bar atas untuk bertindak sebagai pekerja (cth. Aisyah atau Daniel).",
     "todayHeading": "Hari ini",
     "checkIn": "Daftar masuk",
@@ -907,7 +907,7 @@
       "closed": "Ditutup"
     },
     "payslip": {
-      "backToWorkspace": "Ruang kerja saya",
+      "backToWorkspace": "Layanan Diri Pekerja",
       "title": "Slip gaji · {payPeriod}",
       "earnings": "Pendapatan",
       "basicSalary": "Gaji asas",
@@ -1222,7 +1222,7 @@
       "calibrationCode": "Kod"
     },
     "review": {
-      "backMyWorkspace": "Ruang kerja saya",
+      "backMyWorkspace": "Layanan Diri Pekerja",
       "backPerformance": "Prestasi",
       "reviewerLabel": "Penilai: {reviewer}",
       "selfReviewTitle": "Penilaian kendiri",
@@ -2692,7 +2692,7 @@
     "welcomeBody": "Lawatan pantas 30 saat untuk mengenali lokasi setiap perkara. Anda boleh mainkan semula bila-bila masa melalui butang bantuan di bar atas.",
     "navTitle": "Navigasi anda",
     "navBody": "Setiap modul terletak di bar sisi ini. Apa yang anda nampak di sini bergantung pada peranan anda — pekerja, pengurus dan pentadbir HR masing-masing mempunyai alat tersendiri.",
-    "workspaceTitle": "Ruang kerja saya",
+    "workspaceTitle": "Layanan Diri Pekerja",
     "workspaceBody": "Hab peribadi anda: profil, slip gaji, baki cuti dan kehadiran — segala-galanya tentang anda, di satu tempat.",
     "kbTitle": "Pusat Pengetahuan",
     "kbBody": "Panduan langkah demi langkah untuk setiap modul, serta dasar dan dokumen syarikat anda. Mulakan di sini setiap kali anda tidak pasti cara sesuatu berfungsi.",
@@ -3386,7 +3386,7 @@
   "taxRelief": {
     "title": "Pelepasan Cukai Peribadi (TP1)",
     "intro": "Isytiharkan jumlah pelepasan cukai peribadi pilihan anda (borang TP1 LHDN) bagi sesuatu tahun taksiran. Jumlah terkini yang dihantar akan mengurangkan potongan cukai bulanan anda (PCB/MTD).",
-    "backToWorkspace": "Kembali ke Ruang Kerja Saya",
+    "backToWorkspace": "Kembali ke Layanan Diri Pekerja",
     "yearLabel": "Tahun taksiran",
     "viewYear": "Lihat tahun",
     "declarationHeading": "Pengisytiharan bagi {year}",
