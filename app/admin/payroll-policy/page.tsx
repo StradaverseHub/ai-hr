@@ -4,6 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listPolicies, POLICY_TYPES, type PolicyRow } from '@/core/payroll-policy';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { settingsBack } from '@/app/payroll/setup/back';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { copyPolicyAction, createPolicyAction, deletePolicyAction, setStatusAction, updatePolicyAction } from './actions';
@@ -56,7 +57,7 @@ export default async function PayrollPolicyPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await settingsBack()} />
       {error && <ErrorBanner message={error} />}
 
       <p className="rounded-[1.25rem] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">

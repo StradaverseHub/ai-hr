@@ -4,6 +4,7 @@ import { listCompanies } from '@/core/read';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { getCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { settingsBack } from '@/app/payroll/setup/back';
 import { savePayrollConfigAction } from './actions';
 
 const HRDF = ['not_registered', 'mandatory', 'optional'] as const;
@@ -30,7 +31,7 @@ export default async function PayrollConfigPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await settingsBack()} />
       {error && <ErrorBanner message={error} />}
 
       {companies.length === 0 ? (

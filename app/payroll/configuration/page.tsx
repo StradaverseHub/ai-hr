@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { packFor } from '@/localization/registry';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
+import { settingsBack } from '@/app/payroll/setup/back';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
@@ -66,12 +67,13 @@ export default async function StatutoryConfigPage({
   const t = await getTranslations('payroll.config');
   const { edit, error, section } = await searchParams;
   const activeSection = isScalarSection(section) ? section : undefined;
+  const back = await settingsBack();
   const pack = packFor('MY');
 
   if (!pack) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('title')} />
+        <PageHeader title={t('title')} back={back} />
         <ErrorBanner message="No localization pack for MY." />
       </div>
     );
@@ -96,6 +98,7 @@ export default async function StatutoryConfigPage({
       <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader
           title={t('editTitle')}
+          back={back}
           actions={
             <Link href="/payroll/configuration">
               <Button variant="outline" size="sm">
@@ -172,6 +175,7 @@ export default async function StatutoryConfigPage({
       <PageHeader
         title={t('title')}
         description={t('subtitle')}
+        back={back}
         actions={
           <Link href="/payroll/configuration?edit=1">
             <Button size="sm">{t('edit')}</Button>
