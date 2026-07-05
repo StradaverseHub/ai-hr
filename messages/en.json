@@ -1659,8 +1659,14 @@
         "fixedDesc": "Recurring allowances and deductions per employee, effective-dated.",
         "fixedCta": "Manage recurring",
         "individualTitle": "Individual Transaction",
-        "individualDesc": "One-off components for a draft batch, plus TP1 relief and zakat.",
-        "individualCta": "Add one-off"
+        "individualDesc": "One-off components for a draft batch.",
+        "individualCta": "Add one-off",
+        "tp1Title": "TP1 Relief",
+        "tp1Desc": "Monthly TP1 tax relief per employee on a draft batch.",
+        "tp1Cta": "Edit TP1 relief",
+        "zakatTitle": "Zakat",
+        "zakatDesc": "Zakat paid via salary per employee on a draft batch.",
+        "zakatCta": "Edit zakat"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -1675,7 +1681,7 @@
       },
       "individual": {
         "title": "Individual Transaction",
-        "subtitle": "One-off batch components, TP1 relief and zakat.",
+        "subtitle": "One-off batch components.",
         "pickBatch": "Draft batch",
         "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
         "addTitle": "Add a one-off component",
@@ -1689,12 +1695,6 @@
         "added": "Component added.",
         "csvTitle": "Bulk import (CSV)",
         "csvIntro": "Load many one-off components at once.",
-        "deductionTitle": "TP1 relief & zakat",
-        "deductionIntro": "Monthly tax relief (TP1) and zakat for one employee. Saving these does not change overtime or bonus on the same row.",
-        "tp1": "TP1 relief",
-        "tp1Title": "Monthly tax deduction relief (TP1) — reduces PCB/MTD.",
-        "zakat": "Zakat",
-        "zakatTitle": "Zakat paid via salary — credited against PCB/MTD.",
         "save": "Save",
         "saved": "Saved.",
         "unsupportedComponent": "That component cannot be used on a batch in this version. Pick a payable component.",
@@ -1734,6 +1734,28 @@
           "bonus": "Bonus",
           "adjustment": "Adjustment"
         }
+      },
+      "tp1": {
+        "title": "TP1 Relief",
+        "subtitle": "Monthly TP1 tax relief per employee for a draft batch.",
+        "pickBatch": "Draft batch",
+        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
+        "employee": "Employee",
+        "amount": "TP1 relief",
+        "save": "Save",
+        "saved": "Saved.",
+        "empty": "No employees in this batch."
+      },
+      "zakat": {
+        "title": "Zakat",
+        "subtitle": "Zakat paid via salary per employee for a draft batch.",
+        "pickBatch": "Draft batch",
+        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
+        "employee": "Employee",
+        "amount": "Zakat",
+        "save": "Save",
+        "saved": "Saved.",
+        "empty": "No employees in this batch."
       }
     },
     "setup": {

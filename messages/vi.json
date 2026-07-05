@@ -1659,8 +1659,14 @@
         "fixedDesc": "Phụ cấp và khấu trừ định kỳ theo nhân viên, có ngày hiệu lực.",
         "fixedCta": "Quản lý định kỳ",
         "individualTitle": "Giao dịch Riêng lẻ",
-        "individualDesc": "Thành phần một lần cho đợt nháp, cùng với miễn giảm TP1 và zakat.",
-        "individualCta": "Thêm một lần"
+        "individualDesc": "Thành phần một lần cho đợt nháp.",
+        "individualCta": "Thêm một lần",
+        "tp1Title": "Miễn giảm TP1",
+        "tp1Desc": "Miễn giảm thuế TP1 hàng tháng theo nhân viên trên đợt nháp.",
+        "tp1Cta": "Sửa miễn giảm TP1",
+        "zakatTitle": "Zakat",
+        "zakatDesc": "Zakat trả qua lương theo nhân viên trên đợt nháp.",
+        "zakatCta": "Sửa zakat"
       },
       "fixed": {
         "title": "Giao dịch Cố định",
@@ -1675,7 +1681,7 @@
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",
-        "subtitle": "Thành phần đợt một lần, miễn giảm TP1 và zakat.",
+        "subtitle": "Thành phần đợt một lần.",
         "pickBatch": "Đợt nháp",
         "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
         "addTitle": "Thêm thành phần một lần",
@@ -1689,12 +1695,6 @@
         "added": "Đã thêm thành phần.",
         "csvTitle": "Nhập hàng loạt (CSV)",
         "csvIntro": "Tải nhiều thành phần một lần cùng lúc.",
-        "deductionTitle": "Miễn giảm TP1 & zakat",
-        "deductionIntro": "Miễn giảm thuế hàng tháng (TP1) và zakat cho một nhân viên. Lưu các mục này không thay đổi tăng ca hoặc thưởng trên cùng hàng.",
-        "tp1": "Miễn giảm TP1",
-        "tp1Title": "Miễn giảm khấu trừ thuế hàng tháng (TP1) — giảm PCB/MTD.",
-        "zakat": "Zakat",
-        "zakatTitle": "Zakat trả qua lương — được ghi có vào PCB/MTD.",
         "save": "Lưu",
         "saved": "Đã lưu.",
         "unsupportedComponent": "Thành phần đó không thể dùng trên đợt trong phiên bản này. Hãy chọn một thành phần có thể chi trả.",
@@ -1734,6 +1734,28 @@
           "bonus": "Thưởng",
           "adjustment": "Điều chỉnh"
         }
+      },
+      "tp1": {
+        "title": "Miễn giảm TP1",
+        "subtitle": "Miễn giảm thuế TP1 hàng tháng theo nhân viên cho đợt nháp.",
+        "pickBatch": "Đợt nháp",
+        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
+        "employee": "Nhân viên",
+        "amount": "Miễn giảm TP1",
+        "save": "Lưu",
+        "saved": "Đã lưu.",
+        "empty": "Không có nhân viên trong đợt này."
+      },
+      "zakat": {
+        "title": "Zakat",
+        "subtitle": "Zakat trả qua lương theo nhân viên cho đợt nháp.",
+        "pickBatch": "Đợt nháp",
+        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
+        "employee": "Nhân viên",
+        "amount": "Zakat",
+        "save": "Lưu",
+        "saved": "Đã lưu.",
+        "empty": "Không có nhân viên trong đợt này."
       }
     },
     "setup": {

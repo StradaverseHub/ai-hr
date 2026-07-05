@@ -9,7 +9,6 @@ import { PayrollTabs } from '@/components/payroll-tabs';
 import { ComponentImport } from '../../[batchId]/component-import';
 import {
   addBatchComponentAction,
-  setDeductionInputAction,
   createIndividualTxnAction,
   updateIndividualTxnAction,
   deleteIndividualTxnAction,
@@ -138,51 +137,8 @@ export default async function IndividualTransactionPage({
             </Card>
           )}
 
-          <Card className="overflow-hidden">
-            <SectionHeader title={t('individual.deductionTitle')} count={rows.length} />
-            <p className="px-4 pt-3 text-xs text-muted-foreground">{t('individual.deductionIntro')}</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">{t('individual.employee')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('individual.deductionTitle')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {rows.map((r) => (
-                    <tr key={r.employmentId}>
-                      <td className="px-4 py-2.5 font-medium">{r.name}</td>
-                      <td className="px-4 py-2.5">
-                        <form action={setDeductionInputAction} className="flex items-center justify-end gap-2">
-                          <input type="hidden" name="batchId" value={selected} />
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('individual.tp1Title')}>
-                            {t('individual.tp1')}
-                            <input name="tp1Deduction" type="number" min="0" step="0.01" defaultValue={r.tp1Deduction} className={`${inputCls} w-24 text-right`} />
-                          </label>
-                          <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('individual.zakatTitle')}>
-                            {t('individual.zakat')}
-                            <input name="zakat" type="number" min="0" step="0.01" defaultValue={r.zakat} className={`${inputCls} w-24 text-right`} />
-                          </label>
-                          <Button type="submit" variant="secondary">
-                            {t('individual.save')}
-                          </Button>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="px-4 py-8 text-center text-muted-foreground">
-                        {t('individual.noBatches')}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+          {/* TP1 relief & zakat moved to dedicated screens (/payroll/transactions/tp1 and /zakat) — this
+              screen no longer edits them (approved plan: separate TP1/Zakat into their own functions). */}
 
           <Card className="overflow-hidden">
             <SectionHeader title={t('individual.txnTitle')} count={txns.length} />

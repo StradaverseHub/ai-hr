@@ -54,6 +54,28 @@ export default async function PayrollTransactionsPage() {
             {t('hub.individualCta')}
           </Link>
         </Card>
+
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.tp1Title')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.tp1Desc')}</p>
+          <Link
+            href="/payroll/transactions/tp1"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.tp1Cta')}
+          </Link>
+        </Card>
+
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.zakatTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.zakatDesc')}</p>
+          <Link
+            href="/payroll/transactions/zakat"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.zakatCta')}
+          </Link>
+        </Card>
       </div>
     </div>
   );

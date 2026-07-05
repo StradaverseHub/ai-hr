@@ -1659,8 +1659,14 @@
         "fixedDesc": "Elaun dan potongan berulang bagi setiap pekerja, mengikut tarikh berkuat kuasa.",
         "fixedCta": "Urus berulang",
         "individualTitle": "Transaksi Individu",
-        "individualDesc": "Komponen sekali sahaja untuk kelompok draf, serta pelepasan TP1 dan zakat.",
-        "individualCta": "Tambah sekali sahaja"
+        "individualDesc": "Komponen sekali sahaja untuk kelompok draf.",
+        "individualCta": "Tambah sekali sahaja",
+        "tp1Title": "Pelepasan TP1",
+        "tp1Desc": "Pelepasan cukai TP1 bulanan bagi setiap pekerja pada kelompok draf.",
+        "tp1Cta": "Edit pelepasan TP1",
+        "zakatTitle": "Zakat",
+        "zakatDesc": "Zakat dibayar melalui gaji bagi setiap pekerja pada kelompok draf.",
+        "zakatCta": "Edit zakat"
       },
       "fixed": {
         "title": "Transaksi Tetap",
@@ -1675,7 +1681,7 @@
       },
       "individual": {
         "title": "Transaksi Individu",
-        "subtitle": "Komponen kelompok sekali sahaja, pelepasan TP1 dan zakat.",
+        "subtitle": "Komponen kelompok sekali sahaja.",
         "pickBatch": "Kelompok draf",
         "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
         "addTitle": "Tambah komponen sekali sahaja",
@@ -1689,12 +1695,6 @@
         "added": "Komponen ditambah.",
         "csvTitle": "Import pukal (CSV)",
         "csvIntro": "Muatkan banyak komponen sekali sahaja serentak.",
-        "deductionTitle": "Pelepasan TP1 & zakat",
-        "deductionIntro": "Pelepasan cukai bulanan (TP1) dan zakat untuk seorang pekerja. Menyimpan ini tidak mengubah kerja lebih masa atau bonus pada baris yang sama.",
-        "tp1": "Pelepasan TP1",
-        "tp1Title": "Pelepasan potongan cukai bulanan (TP1) — mengurangkan PCB/MTD.",
-        "zakat": "Zakat",
-        "zakatTitle": "Zakat dibayar melalui gaji — dikreditkan terhadap PCB/MTD.",
         "save": "Simpan",
         "saved": "Disimpan.",
         "unsupportedComponent": "Komponen itu tidak boleh digunakan pada kelompok dalam versi ini. Pilih komponen yang boleh dibayar.",
@@ -1734,6 +1734,28 @@
           "bonus": "Bonus",
           "adjustment": "Pelarasan"
         }
+      },
+      "tp1": {
+        "title": "Pelepasan TP1",
+        "subtitle": "Pelepasan cukai TP1 bulanan bagi setiap pekerja untuk kelompok draf.",
+        "pickBatch": "Kelompok draf",
+        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
+        "employee": "Pekerja",
+        "amount": "Pelepasan TP1",
+        "save": "Simpan",
+        "saved": "Disimpan.",
+        "empty": "Tiada pekerja dalam kelompok ini."
+      },
+      "zakat": {
+        "title": "Zakat",
+        "subtitle": "Zakat dibayar melalui gaji bagi setiap pekerja untuk kelompok draf.",
+        "pickBatch": "Kelompok draf",
+        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
+        "employee": "Pekerja",
+        "amount": "Zakat",
+        "save": "Simpan",
+        "saved": "Disimpan.",
+        "empty": "Tiada pekerja dalam kelompok ini."
       }
     },
     "setup": {

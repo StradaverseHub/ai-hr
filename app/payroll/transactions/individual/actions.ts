@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { setPayrollDeductionInput, BatchNotDraftError } from '@/core/payroll';
+import { BatchNotDraftError } from '@/core/payroll';
 import { setPayrollBatchComponent, UnsupportedBatchComponentError } from '@/core/pay-components';
 import {
   createIndividualTxn,
@@ -55,30 +55,6 @@ export async function addBatchComponentAction(formData: FormData) {
   }
   revalidatePath('/payroll/transactions/individual');
   back(batchId, 'toast=added');
-}
-
-/**
- * Feature 1.2 — set ONLY TP1 relief and zakat for one employee on a draft batch.
- * DATA-LOSS FIX: setPayrollInput is a full-row overwrite that zeroes omitted fields. setPayrollDeductionInput
- * does a read-modify-write — it preserves the row's overtime/bonus while updating tp1/zakat — so a TP1/zakat
- * edit here never silently resets earnings. Same event shape (payroll-batch.input-set).
- */
-export async function setDeductionInputAction(formData: FormData) {
-  const s = await requireAdmin();
-  const batchId = String(formData.get('batchId'));
-  const employmentId = String(formData.get('employmentId'));
-  try {
-    await setPayrollDeductionInput(s, {
-      batchId,
-      employmentId,
-      tp1Deduction: Number(formData.get('tp1Deduction')) || 0,
-      zakat: Number(formData.get('zakat')) || 0,
-    });
-  } catch (e) {
-    back(batchId, `error=${encodeURIComponent((e as Error).message)}`);
-  }
-  revalidatePath('/payroll/transactions/individual');
-  back(batchId, 'toast=saved');
 }
 
 /**

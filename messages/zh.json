@@ -1659,8 +1659,14 @@
         "fixedDesc": "每位员工的经常性津贴和扣除，按生效日期。",
         "fixedCta": "管理经常项",
         "individualTitle": "个别交易",
-        "individualDesc": "草稿批次的一次性组件，以及 TP1 减免和天课。",
-        "individualCta": "添加一次性"
+        "individualDesc": "草稿批次的一次性组件。",
+        "individualCta": "添加一次性",
+        "tp1Title": "TP1 减免",
+        "tp1Desc": "草稿批次中每位员工的每月 TP1 税务减免。",
+        "tp1Cta": "编辑 TP1 减免",
+        "zakatTitle": "天课",
+        "zakatDesc": "草稿批次中每位员工通过薪资缴纳的天课。",
+        "zakatCta": "编辑天课"
       },
       "fixed": {
         "title": "固定交易",
@@ -1675,7 +1681,7 @@
       },
       "individual": {
         "title": "个别交易",
-        "subtitle": "一次性批次组件、TP1 减免和天课。",
+        "subtitle": "一次性批次组件。",
         "pickBatch": "草稿批次",
         "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
         "addTitle": "添加一次性组件",
@@ -1689,12 +1695,6 @@
         "added": "已添加组件。",
         "csvTitle": "批量导入 (CSV)",
         "csvIntro": "一次加载多个一次性组件。",
-        "deductionTitle": "TP1 减免与天课",
-        "deductionIntro": "为一名员工设置每月税务减免 (TP1) 和天课。保存这些不会更改同一行的加班或奖金。",
-        "tp1": "TP1 减免",
-        "tp1Title": "每月税务扣除减免 (TP1) — 减少 PCB/MTD。",
-        "zakat": "天课",
-        "zakatTitle": "通过薪资缴纳的天课 — 抵扣 PCB/MTD。",
         "save": "保存",
         "saved": "已保存。",
         "unsupportedComponent": "该组件在此版本中不能用于批次。请选择可支付的组件。",
@@ -1734,6 +1734,28 @@
           "bonus": "奖金",
           "adjustment": "调整"
         }
+      },
+      "tp1": {
+        "title": "TP1 减免",
+        "subtitle": "草稿批次中每位员工的每月 TP1 税务减免。",
+        "pickBatch": "草稿批次",
+        "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
+        "employee": "员工",
+        "amount": "TP1 减免",
+        "save": "保存",
+        "saved": "已保存。",
+        "empty": "此批次中没有员工。"
+      },
+      "zakat": {
+        "title": "天课",
+        "subtitle": "草稿批次中每位员工通过薪资缴纳的天课。",
+        "pickBatch": "草稿批次",
+        "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
+        "employee": "员工",
+        "amount": "天课",
+        "save": "保存",
+        "saved": "已保存。",
+        "empty": "此批次中没有员工。"
       }
     },
     "setup": {
