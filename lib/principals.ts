@@ -1,4 +1,5 @@
 import { client } from '../db/client';
+import { demoSwitcherEnabled } from './demo-mode';
 
 export type Principal = { userId: string; name: string; roles: string[] };
 
@@ -6,7 +7,7 @@ export type Principal = { userId: string; name: string; roles: string[] };
  *  Hidden in production (ADR-0072: real WorkOS auth replaces the dev shim; the switcher only exists on
  *  developers' own machines). Mirrors the getSession() NODE_ENV !== 'production' dev-path predicate. */
 export async function listPrincipals(): Promise<Principal[]> {
-  if (process.env.NODE_ENV === 'production') return [];
+  if (!demoSwitcherEnabled()) return []; // empty in a real deployment; populated in dev + the gated demo
   const rows = await client<{ user_id: string; name: string; roles: string[] }[]>`
     select user_id, name, roles from app.dev_principals()
     order by case
