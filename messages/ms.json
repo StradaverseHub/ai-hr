@@ -113,7 +113,8 @@
     "loans": "Pinjaman",
     "payrollCycleConfig": "Kitaran Gaji",
     "personnelAdmin": "Kakitangan (admin)",
-    "securityPermission": "Keselamatan & kebenaran"
+    "securityPermission": "Keselamatan & kebenaran",
+    "attendanceAllowance": "Elaun kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1656,7 +1657,9 @@
       "encashmentFrozenBadge": "Dibekukan semasa kelulusan peletakan jawatan",
       "encashmentOverriddenBadge": "Dibekukan (diatasi oleh HR)",
       "encashmentFrozenAsOfTitle": "Dibekukan setakat {date}",
-      "colCode": "Kod"
+      "colCode": "Kod",
+      "transferAllowance": "Pindahkan elaun",
+      "allowanceGateWarning": "Komponen gaji bertaip dimatikan — pemindahan akan direkodkan tetapi tidak akan sampai ke slip gaji sehingga ia diaktifkan."
     },
     "transactions": {
       "title": "Transaksi",
@@ -1702,7 +1705,11 @@
         "outOfScope": "Pekerja itu tiada dalam skop syarikat semasa anda.",
         "dateError": "Tarikh tamat tidak boleh sebelum tarikh mula.",
         "currencyUnsupported": "Hanya MYR disokong — gaji dikira dalam MYR.",
-        "amountError": "Jumlah mesti lebih daripada sifar."
+        "amountError": "Jumlah mesti lebih daripada sifar.",
+        "open": "Buka editor",
+        "colEmployee": "Pekerja",
+        "colCompany": "Syarikat",
+        "manage": "Urus"
       },
       "individual": {
         "title": "Transaksi Individu",
@@ -2723,7 +2730,8 @@
       "batches": "Proses Gaji",
       "reports": "Laporan",
       "transactions": "Transaksi",
-      "setup": "Tetapan"
+      "setup": "Tetapan",
+      "configuration": "Konfigurasi"
     },
     "printButton": {
       "print": "Cetak / Simpan PDF"
@@ -3786,6 +3794,103 @@
     "error": {
       "generic": "Log masuk gagal. Sila cuba lagi.",
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebentar dan cuba lagi."
+    }
+  },
+  "attendanceAllowance": {
+    "title": "Elaun kehadiran",
+    "description": "Ganjari kehadiran yang baik dengan elaun tetap melalui penggajian. Tetapkan syarat sekali; sistem menyemak setiap pekerja dan anda memindahkan jumlah yang layak ke dalam larian gaji.",
+    "scopeNotice": "Versi pertama ini menyokong kaedah Bulanan dan syarat yang boleh dikira dengan pasti: hari kehadiran, hari tidak hadir, bilangan lewat, jumlah hari cuti, dan kehadiran sempurna. Syarat berasaskan minit dan mengikut jenis cuti, serta kaedah Harian, ialah susulan yang dirancang.",
+    "emptyScope": "Tiada syarikat dalam skop semasa. Gunakan penukar syarikat di atas.",
+    "catalogTitle": "Polisi",
+    "empty": "Belum ada polisi elaun kehadiran.",
+    "status": {
+      "active": "Aktif",
+      "inactive": "Tidak aktif"
+    },
+    "method": {
+      "monthly": "Bulanan"
+    },
+    "fields": {
+      "code": "Kod",
+      "name": "Nama",
+      "company": "Syarikat",
+      "amount": "Jumlah (RM)",
+      "payComponent": "Pendapatan gaji",
+      "effectiveFrom": "Berkuat kuasa dari",
+      "method": "Kaedah",
+      "status": "Status",
+      "departments": "Jabatan",
+      "businessUnits": "Unit perniagaan",
+      "companies": "Syarikat"
+    },
+    "criteria": {
+      "minAttendanceDays": "Hari kehadiran minimum",
+      "maxAbsentDays": "Hari tidak hadir maksimum",
+      "maxLateCount": "Bilangan lewat maksimum",
+      "maxTotalLeaveDays": "Hari cuti maksimum",
+      "requirePerfectAttendance": "Perlukan kehadiran sempurna (tiada tidak hadir, tiada lewat)"
+    },
+    "reason": {
+      "minAttendanceDays": "Hari kehadiran {actual} di bawah minimum {threshold}",
+      "maxAbsentDays": "Hari tidak hadir {actual} melebihi maksimum {threshold}",
+      "maxLateCount": "Kelewatan {actual} melebihi maksimum {threshold}",
+      "maxTotalLeaveDays": "Hari cuti {actual} melebihi maksimum {threshold}",
+      "requirePerfectAttendance": "Kehadiran sempurna diperlukan, tetapi terdapat {actual} hari tidak hadir/lewat"
+    },
+    "form": {
+      "createTitle": "Polisi baharu",
+      "editTitle": "Sunting polisi",
+      "selectCompany": "Pilih syarikat…",
+      "selectComponent": "Pilih pendapatan gaji…",
+      "dailyComingSoon": "Kaedah Harian akan datang.",
+      "criteriaTitle": "Syarat kelayakan",
+      "noLimit": "Tiada had",
+      "scopeTitle": "Siapa yang terpakai",
+      "scopeHint": "Biarkan semua tidak ditanda untuk terpakai kepada setiap pekerja dalam syarikat.",
+      "noDepartments": "Tiada jabatan dalam skop.",
+      "noBusinessUnits": "Tiada unit perniagaan dalam skop.",
+      "noCompanies": "Tiada syarikat dalam skop.",
+      "save": "Simpan perubahan",
+      "create": "Cipta polisi",
+      "cancel": "Batal"
+    },
+    "actions": {
+      "title": "Tindakan",
+      "edit": "Sunting",
+      "activate": "Aktifkan",
+      "deactivate": "Nyahaktif",
+      "archive": "Arkib",
+      "archiveConfirmTitle": "Arkibkan polisi ini?",
+      "archiveConfirmBody": "Ia akan disembunyikan daripada senarai aktif. Ini tidak boleh dibatalkan dari sini."
+    },
+    "panel": {
+      "title": "Elaun kehadiran",
+      "noPolicies": "Tiada polisi elaun kehadiran ditetapkan.",
+      "configure": "Tetapkan polisi",
+      "policy": "Polisi",
+      "filter": "Papar",
+      "filterAll": "Semua",
+      "filterQualified": "Layak",
+      "filterDisqualified": "Tidak layak",
+      "evaluate": "Nilai",
+      "gateWarning": "Pindahkan wang dari skrin larian gaji.",
+      "colEmployee": "Pekerja",
+      "colStatus": "Status",
+      "colAmount": "Jumlah",
+      "colReason": "Syarat",
+      "qualified": "Layak",
+      "disqualified": "Tidak layak",
+      "noCriteria": "Tiada syarat ditetapkan",
+      "empty": "Tiada pekerja untuk polisi dan bulan ini.",
+      "note": "Penilaian membaca kehadiran semasa. Untuk angka tepat, gunakan bulan yang telah lengkap."
+    },
+    "errors": {
+      "duplicateCode": "Polisi dengan kod ini sudah wujud untuk syarikat ini."
+    },
+    "toasts": {
+      "saved": "Polisi disimpan",
+      "statusChanged": "Status polisi dikemas kini",
+      "archived": "Polisi diarkibkan"
     }
   }
 }

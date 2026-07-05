@@ -113,7 +113,8 @@
     "loans": "Loans",
     "payrollCycleConfig": "Payroll Cycles",
     "personnelAdmin": "Personnel (admin)",
-    "securityPermission": "Security & permissions"
+    "securityPermission": "Security & permissions",
+    "attendanceAllowance": "Attendance allowance"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1459,7 +1460,9 @@
       "consolidateTitle": "Consolidate data",
       "scopedCaption": "This run is scoped to selected employees. Overtime, shift differential, loan and zakat prefills below still apply company-wide; out-of-scope rows are ignored at processing. Claims prefill is scoped correctly.",
       "holidayWarning": "{country}/{state} {year}: only {loaded} of {required} public holidays are loaded — rest-day/OT calculations may be affected.",
-      "colCode": "Code"
+      "colCode": "Code",
+      "transferAllowance": "Transfer allowance",
+      "allowanceGateWarning": "Typed pay-components is off — a transfer will be recorded but won't reach payslips until it is enabled."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -1702,7 +1705,11 @@
         "outOfScope": "That employee is not in your current company scope.",
         "dateError": "End date cannot be before the start date.",
         "currencyUnsupported": "Only MYR is supported — payroll is computed in MYR.",
-        "amountError": "Amount must be greater than zero."
+        "amountError": "Amount must be greater than zero.",
+        "open": "Open editor",
+        "colEmployee": "Employee",
+        "colCompany": "Company",
+        "manage": "Manage"
       },
       "individual": {
         "title": "Individual Transaction",
@@ -2723,7 +2730,8 @@
       "batches": "Payroll Process",
       "reports": "Reports",
       "transactions": "Transactions",
-      "setup": "Settings"
+      "setup": "Settings",
+      "configuration": "Configuration"
     },
     "printButton": {
       "print": "Print / Save PDF"
@@ -3786,6 +3794,103 @@
     "error": {
       "generic": "Sign-in failed. Please try again.",
       "rateLimited": "Too many attempts. Please wait a moment and try again."
+    }
+  },
+  "attendanceAllowance": {
+    "title": "Attendance allowance",
+    "description": "Reward good attendance with a fixed allowance paid through payroll. Set the conditions once; the system checks each employee and you transfer the qualified amounts into a payroll run.",
+    "scopeNotice": "This first version supports the Monthly method and the conditions we can compute reliably: attendance days, absent days, late count, total leave days, and perfect attendance. Minute-based and per-leave-type conditions, and the Daily method, are planned follow-ups.",
+    "emptyScope": "No companies in the current scope. Use the company switcher above.",
+    "catalogTitle": "Policies",
+    "empty": "No attendance-allowance policies yet.",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "method": {
+      "monthly": "Monthly"
+    },
+    "fields": {
+      "code": "Code",
+      "name": "Name",
+      "company": "Company",
+      "amount": "Amount (RM)",
+      "payComponent": "Payroll earning",
+      "effectiveFrom": "Effective from",
+      "method": "Method",
+      "status": "Status",
+      "departments": "Departments",
+      "businessUnits": "Business units",
+      "companies": "Companies"
+    },
+    "criteria": {
+      "minAttendanceDays": "Minimum attendance days",
+      "maxAbsentDays": "Maximum absent days",
+      "maxLateCount": "Maximum late arrivals",
+      "maxTotalLeaveDays": "Maximum leave days",
+      "requirePerfectAttendance": "Require perfect attendance (no absence, no lateness)"
+    },
+    "reason": {
+      "minAttendanceDays": "Attendance days {actual} below the minimum {threshold}",
+      "maxAbsentDays": "Absent days {actual} exceed the maximum {threshold}",
+      "maxLateCount": "Late arrivals {actual} exceed the maximum {threshold}",
+      "maxTotalLeaveDays": "Leave days {actual} exceed the maximum {threshold}",
+      "requirePerfectAttendance": "Perfect attendance required, but there were {actual} absence/late days"
+    },
+    "form": {
+      "createTitle": "New policy",
+      "editTitle": "Edit policy",
+      "selectCompany": "Select a company…",
+      "selectComponent": "Select a payroll earning…",
+      "dailyComingSoon": "Daily method coming soon.",
+      "criteriaTitle": "Eligibility conditions",
+      "noLimit": "No limit",
+      "scopeTitle": "Who it applies to",
+      "scopeHint": "Leave everything unticked to apply to every employee in the company.",
+      "noDepartments": "No departments in scope.",
+      "noBusinessUnits": "No business units in scope.",
+      "noCompanies": "No companies in scope.",
+      "save": "Save changes",
+      "create": "Create policy",
+      "cancel": "Cancel"
+    },
+    "actions": {
+      "title": "Actions",
+      "edit": "Edit",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "archive": "Archive",
+      "archiveConfirmTitle": "Archive this policy?",
+      "archiveConfirmBody": "It will be hidden from the active list. This cannot be undone from here."
+    },
+    "panel": {
+      "title": "Attendance allowance",
+      "noPolicies": "No attendance-allowance policies configured.",
+      "configure": "Configure policies",
+      "policy": "Policy",
+      "filter": "Show",
+      "filterAll": "All",
+      "filterQualified": "Qualified",
+      "filterDisqualified": "Not qualified",
+      "evaluate": "Evaluate",
+      "gateWarning": "Transfer money from the payroll run screen.",
+      "colEmployee": "Employee",
+      "colStatus": "Status",
+      "colAmount": "Amount",
+      "colReason": "Conditions",
+      "qualified": "Qualified",
+      "disqualified": "Not qualified",
+      "noCriteria": "No conditions set",
+      "empty": "No employees to show for this policy and month.",
+      "note": "Evaluation reads current attendance. For accurate figures, use a completed month."
+    },
+    "errors": {
+      "duplicateCode": "A policy with this code already exists for this company."
+    },
+    "toasts": {
+      "saved": "Policy saved",
+      "statusChanged": "Policy status updated",
+      "archived": "Policy archived"
     }
   }
 }

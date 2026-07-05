@@ -17,6 +17,7 @@ import {
   appUser,
   assignment,
   attendance,
+  attendanceAllowancePolicy,
   clockingLocation,
   company,
   compensation,
@@ -35,6 +36,7 @@ import {
   leaveRequestDate,
   leaveType,
   location,
+  payComponent,
   payrollBatch,
   payrollPolicy,
   payslip,
@@ -44,6 +46,7 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
+import { evaluateAllowancesForPeriod } from './attendance-allowance';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -2235,4 +2238,54 @@ export function companyTree(ctx: SessionContext) {
       .from(company)
       .orderBy(company.legalName),
   );
+}
+
+// ───────────────── Attendance Allowance (ADR-0072) ─────────────────
+
+/** The attendance-allowance policies for the admin catalog table (joined to their pay component's name/code
+ *  for display). Excludes archived unless asked. RLS scopes to the tenant; company scoping is applied when
+ *  companyIds is passed (mirrors the other admin lists). */
+export function listAllowancePolicies(
+  ctx: SessionContext,
+  opts: { companyIds?: string[]; includeArchived?: boolean } = {},
+) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: attendanceAllowancePolicy.id,
+        companyId: attendanceAllowancePolicy.companyId,
+        companyName: company.legalName,
+        code: attendanceAllowancePolicy.code,
+        name: attendanceAllowancePolicy.name,
+        method: attendanceAllowancePolicy.method,
+        amount: attendanceAllowancePolicy.amount,
+        payComponentId: attendanceAllowancePolicy.payComponentId,
+        payComponentCode: payComponent.code,
+        payComponentName: payComponent.name,
+        effectiveFrom: attendanceAllowancePolicy.effectiveFrom,
+        status: attendanceAllowancePolicy.status,
+        criteria: attendanceAllowancePolicy.criteria,
+        scope: attendanceAllowancePolicy.scope,
+        archivedAt: attendanceAllowancePolicy.archivedAt,
+      })
+      .from(attendanceAllowancePolicy)
+      .innerJoin(company, eq(company.id, attendanceAllowancePolicy.companyId))
+      .leftJoin(payComponent, eq(payComponent.id, attendanceAllowancePolicy.payComponentId))
+      .where(
+        opts.companyIds && opts.companyIds.length
+          ? inArray(attendanceAllowancePolicy.companyId, opts.companyIds)
+          : undefined,
+      )
+      .orderBy(company.legalName, attendanceAllowancePolicy.code);
+    return opts.includeArchived ? rows : rows.filter((r) => r.archivedAt == null);
+  });
+}
+
+/** The dashboard rows for the Attendance page allowances panel: the live evaluation of one policy for a
+ *  month. Pure read (evaluateAllowancesForPeriod), RLS-trimmed via the shared monthly summary. */
+export function allowancePreviewForPeriod(
+  ctx: SessionContext,
+  p: { policyId: string; month: string; today?: string },
+) {
+  return evaluateAllowancesForPeriod(ctx, p);
 }

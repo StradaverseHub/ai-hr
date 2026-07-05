@@ -113,7 +113,8 @@
     "loans": "Khoản vay",
     "payrollCycleConfig": "Chu kỳ trả lương",
     "personnelAdmin": "Nhân sự (quản trị)",
-    "securityPermission": "Bảo mật & quyền hạn"
+    "securityPermission": "Bảo mật & quyền hạn",
+    "attendanceAllowance": "Phụ cấp chuyên cần"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1656,7 +1657,9 @@
       "encashmentFrozenBadge": "Đã khóa khi đơn nghỉ việc được phê duyệt",
       "encashmentOverriddenBadge": "Đã khóa (HR ghi đè)",
       "encashmentFrozenAsOfTitle": "Đã khóa vào ngày {date}",
-      "colCode": "Mã"
+      "colCode": "Mã",
+      "transferAllowance": "Chuyển phụ cấp",
+      "allowanceGateWarning": "Thành phần lương định kiểu đang tắt — việc chuyển sẽ được ghi nhận nhưng không vào phiếu lương cho đến khi được bật."
     },
     "transactions": {
       "title": "Giao dịch",
@@ -1702,7 +1705,11 @@
         "outOfScope": "Nhân viên đó không thuộc phạm vi công ty hiện tại của bạn.",
         "dateError": "Ngày kết thúc không được trước ngày bắt đầu.",
         "currencyUnsupported": "Chỉ hỗ trợ MYR — lương được tính bằng MYR.",
-        "amountError": "Số tiền phải lớn hơn không."
+        "amountError": "Số tiền phải lớn hơn không.",
+        "open": "Mở trình chỉnh sửa",
+        "colEmployee": "Nhân viên",
+        "colCompany": "Công ty",
+        "manage": "Quản lý"
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",
@@ -2723,7 +2730,8 @@
       "batches": "Quy trình tính lương",
       "reports": "Báo cáo",
       "transactions": "Giao dịch",
-      "setup": "Cài đặt"
+      "setup": "Cài đặt",
+      "configuration": "Cấu hình"
     },
     "printButton": {
       "print": "In / Lưu PDF"
@@ -3786,6 +3794,103 @@
     "error": {
       "generic": "Đăng nhập thất bại. Vui lòng thử lại.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi một lát rồi thử lại."
+    }
+  },
+  "attendanceAllowance": {
+    "title": "Phụ cấp chuyên cần",
+    "description": "Thưởng cho việc đi làm đều đặn bằng một khoản phụ cấp cố định qua bảng lương. Thiết lập điều kiện một lần; hệ thống kiểm tra từng nhân viên và bạn chuyển các khoản đủ điều kiện vào đợt lương.",
+    "scopeNotice": "Phiên bản đầu tiên này hỗ trợ phương thức Hàng tháng và các điều kiện có thể tính toán đáng tin cậy: ngày đi làm, ngày vắng mặt, số lần đi trễ, tổng ngày nghỉ và chuyên cần hoàn hảo. Các điều kiện theo phút và theo loại nghỉ, cùng phương thức Hàng ngày, là các phần tiếp theo đã lên kế hoạch.",
+    "emptyScope": "Không có công ty trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
+    "catalogTitle": "Chính sách",
+    "empty": "Chưa có chính sách phụ cấp chuyên cần.",
+    "status": {
+      "active": "Hoạt động",
+      "inactive": "Không hoạt động"
+    },
+    "method": {
+      "monthly": "Hàng tháng"
+    },
+    "fields": {
+      "code": "Mã",
+      "name": "Tên",
+      "company": "Công ty",
+      "amount": "Số tiền (RM)",
+      "payComponent": "Khoản thu nhập lương",
+      "effectiveFrom": "Hiệu lực từ",
+      "method": "Phương thức",
+      "status": "Trạng thái",
+      "departments": "Phòng ban",
+      "businessUnits": "Đơn vị kinh doanh",
+      "companies": "Công ty"
+    },
+    "criteria": {
+      "minAttendanceDays": "Số ngày đi làm tối thiểu",
+      "maxAbsentDays": "Số ngày vắng mặt tối đa",
+      "maxLateCount": "Số lần đi trễ tối đa",
+      "maxTotalLeaveDays": "Số ngày nghỉ tối đa",
+      "requirePerfectAttendance": "Yêu cầu chuyên cần hoàn hảo (không vắng, không trễ)"
+    },
+    "reason": {
+      "minAttendanceDays": "Ngày đi làm {actual} thấp hơn tối thiểu {threshold}",
+      "maxAbsentDays": "Ngày vắng {actual} vượt tối đa {threshold}",
+      "maxLateCount": "Số lần trễ {actual} vượt tối đa {threshold}",
+      "maxTotalLeaveDays": "Ngày nghỉ {actual} vượt tối đa {threshold}",
+      "requirePerfectAttendance": "Yêu cầu chuyên cần hoàn hảo, nhưng có {actual} ngày vắng/trễ"
+    },
+    "form": {
+      "createTitle": "Chính sách mới",
+      "editTitle": "Sửa chính sách",
+      "selectCompany": "Chọn công ty…",
+      "selectComponent": "Chọn khoản thu nhập lương…",
+      "dailyComingSoon": "Phương thức Hàng ngày sắp ra mắt.",
+      "criteriaTitle": "Điều kiện đủ tiêu chuẩn",
+      "noLimit": "Không giới hạn",
+      "scopeTitle": "Áp dụng cho ai",
+      "scopeHint": "Để trống tất cả để áp dụng cho mọi nhân viên trong công ty.",
+      "noDepartments": "Không có phòng ban trong phạm vi.",
+      "noBusinessUnits": "Không có đơn vị kinh doanh trong phạm vi.",
+      "noCompanies": "Không có công ty trong phạm vi.",
+      "save": "Lưu thay đổi",
+      "create": "Tạo chính sách",
+      "cancel": "Hủy"
+    },
+    "actions": {
+      "title": "Hành động",
+      "edit": "Sửa",
+      "activate": "Kích hoạt",
+      "deactivate": "Vô hiệu hóa",
+      "archive": "Lưu trữ",
+      "archiveConfirmTitle": "Lưu trữ chính sách này?",
+      "archiveConfirmBody": "Nó sẽ bị ẩn khỏi danh sách hoạt động. Không thể hoàn tác từ đây."
+    },
+    "panel": {
+      "title": "Phụ cấp chuyên cần",
+      "noPolicies": "Chưa cấu hình chính sách phụ cấp chuyên cần.",
+      "configure": "Cấu hình chính sách",
+      "policy": "Chính sách",
+      "filter": "Hiển thị",
+      "filterAll": "Tất cả",
+      "filterQualified": "Đủ điều kiện",
+      "filterDisqualified": "Không đủ điều kiện",
+      "evaluate": "Đánh giá",
+      "gateWarning": "Chuyển tiền từ màn hình đợt lương.",
+      "colEmployee": "Nhân viên",
+      "colStatus": "Trạng thái",
+      "colAmount": "Số tiền",
+      "colReason": "Điều kiện",
+      "qualified": "Đủ điều kiện",
+      "disqualified": "Không đủ điều kiện",
+      "noCriteria": "Chưa đặt điều kiện",
+      "empty": "Không có nhân viên nào cho chính sách và tháng này.",
+      "note": "Đánh giá đọc dữ liệu chuyên cần hiện tại. Để có số liệu chính xác, hãy dùng tháng đã hoàn thành."
+    },
+    "errors": {
+      "duplicateCode": "Đã tồn tại một chính sách có mã này cho công ty này."
+    },
+    "toasts": {
+      "saved": "Đã lưu chính sách",
+      "statusChanged": "Đã cập nhật trạng thái chính sách",
+      "archived": "Đã lưu trữ chính sách"
     }
   }
 }

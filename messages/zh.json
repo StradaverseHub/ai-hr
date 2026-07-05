@@ -113,7 +113,8 @@
     "loans": "贷款",
     "payrollCycleConfig": "薪资周期",
     "personnelAdmin": "员工（管理）",
-    "securityPermission": "安全与权限"
+    "securityPermission": "安全与权限",
+    "attendanceAllowance": "出勤津贴"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1656,7 +1657,9 @@
       "encashmentFrozenBadge": "离职申请获批时冻结",
       "encashmentOverriddenBadge": "已冻结（人力资源部覆盖）",
       "encashmentFrozenAsOfTitle": "于 {date} 冻结",
-      "colCode": "编号"
+      "colCode": "编号",
+      "transferAllowance": "转入津贴",
+      "allowanceGateWarning": "类型化薪资组件已关闭——转入将被记录，但在启用之前不会进入工资单。"
     },
     "transactions": {
       "title": "交易",
@@ -1702,7 +1705,11 @@
         "outOfScope": "该员工不在您当前的公司范围内。",
         "dateError": "结束日期不能早于开始日期。",
         "currencyUnsupported": "仅支持 MYR — 薪资以 MYR 计算。",
-        "amountError": "金额必须大于零。"
+        "amountError": "金额必须大于零。",
+        "open": "打开编辑器",
+        "colEmployee": "员工",
+        "colCompany": "公司",
+        "manage": "管理"
       },
       "individual": {
         "title": "个别交易",
@@ -2723,7 +2730,8 @@
       "batches": "薪资流程",
       "reports": "报表",
       "transactions": "交易",
-      "setup": "设置"
+      "setup": "设置",
+      "configuration": "配置"
     },
     "printButton": {
       "print": "打印 / 保存 PDF"
@@ -3786,6 +3794,103 @@
     "error": {
       "generic": "登录失败，请重试。",
       "rateLimited": "尝试次数过多，请稍候再试。"
+    }
+  },
+  "attendanceAllowance": {
+    "title": "出勤津贴",
+    "description": "通过薪资以固定津贴奖励良好出勤。只需设置一次条件；系统会检查每位员工，您再将符合资格的金额转入薪资批次。",
+    "scopeNotice": "第一个版本支持\"按月\"方法以及可可靠计算的条件：出勤天数、缺勤天数、迟到次数、请假总天数和全勤。基于分钟和按请假类型的条件，以及\"按日\"方法，是计划中的后续功能。",
+    "emptyScope": "当前范围内没有公司。请使用上方的公司切换器。",
+    "catalogTitle": "政策",
+    "empty": "尚无出勤津贴政策。",
+    "status": {
+      "active": "启用",
+      "inactive": "停用"
+    },
+    "method": {
+      "monthly": "按月"
+    },
+    "fields": {
+      "code": "代码",
+      "name": "名称",
+      "company": "公司",
+      "amount": "金额 (RM)",
+      "payComponent": "薪资项目",
+      "effectiveFrom": "生效日期",
+      "method": "方法",
+      "status": "状态",
+      "departments": "部门",
+      "businessUnits": "业务单位",
+      "companies": "公司"
+    },
+    "criteria": {
+      "minAttendanceDays": "最少出勤天数",
+      "maxAbsentDays": "最多缺勤天数",
+      "maxLateCount": "最多迟到次数",
+      "maxTotalLeaveDays": "最多请假天数",
+      "requirePerfectAttendance": "要求全勤（无缺勤、无迟到）"
+    },
+    "reason": {
+      "minAttendanceDays": "出勤天数 {actual} 低于最少 {threshold}",
+      "maxAbsentDays": "缺勤天数 {actual} 超过最多 {threshold}",
+      "maxLateCount": "迟到次数 {actual} 超过最多 {threshold}",
+      "maxTotalLeaveDays": "请假天数 {actual} 超过最多 {threshold}",
+      "requirePerfectAttendance": "需要全勤，但有 {actual} 天缺勤/迟到"
+    },
+    "form": {
+      "createTitle": "新政策",
+      "editTitle": "编辑政策",
+      "selectCompany": "选择公司…",
+      "selectComponent": "选择薪资项目…",
+      "dailyComingSoon": "\"按日\"方法即将推出。",
+      "criteriaTitle": "资格条件",
+      "noLimit": "无限制",
+      "scopeTitle": "适用对象",
+      "scopeHint": "全部不勾选则适用于公司内每位员工。",
+      "noDepartments": "范围内没有部门。",
+      "noBusinessUnits": "范围内没有业务单位。",
+      "noCompanies": "范围内没有公司。",
+      "save": "保存更改",
+      "create": "创建政策",
+      "cancel": "取消"
+    },
+    "actions": {
+      "title": "操作",
+      "edit": "编辑",
+      "activate": "启用",
+      "deactivate": "停用",
+      "archive": "归档",
+      "archiveConfirmTitle": "归档此政策？",
+      "archiveConfirmBody": "它将从启用列表中隐藏。此操作无法从此处撤销。"
+    },
+    "panel": {
+      "title": "出勤津贴",
+      "noPolicies": "尚未配置出勤津贴政策。",
+      "configure": "配置政策",
+      "policy": "政策",
+      "filter": "显示",
+      "filterAll": "全部",
+      "filterQualified": "符合资格",
+      "filterDisqualified": "不符合资格",
+      "evaluate": "评估",
+      "gateWarning": "请在薪资批次页面转账。",
+      "colEmployee": "员工",
+      "colStatus": "状态",
+      "colAmount": "金额",
+      "colReason": "条件",
+      "qualified": "符合资格",
+      "disqualified": "不符合资格",
+      "noCriteria": "未设置条件",
+      "empty": "此政策和月份没有可显示的员工。",
+      "note": "评估读取当前出勤。为获得准确数字，请使用已完成的月份。"
+    },
+    "errors": {
+      "duplicateCode": "此公司已存在使用该代码的政策。"
+    },
+    "toasts": {
+      "saved": "政策已保存",
+      "statusChanged": "政策状态已更新",
+      "archived": "政策已归档"
     }
   }
 }

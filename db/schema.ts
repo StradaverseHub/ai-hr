@@ -2319,6 +2319,72 @@ export const payrollBatchComponent = pgTable(
   (t) => [uniqueIndex('payroll_batch_component_uq').on(t.batchId, t.employmentId, t.componentId)],
 );
 
+// ───────────────── Attendance Allowance (ADR-0072) ─────────────────
+// A company-scoped catalog policy that rewards good attendance: a fixed amount paid to employees who
+// meet a set of MONTHLY attendance conditions, transferred into a draft payroll run via the existing
+// pay-component prefill path. Evaluation is a PURE READ (no award table) — the only persisted output is
+// the payroll_batch_component row at transfer time (claims/OT precedent). RLS: tenant-catalog read,
+// admin-of-company write (mirrors clocking_location / business_unit). `method` is a text tag (v1 accepts
+// only 'monthly'; Daily deferred — no enum, so adding it later needs no migration).
+
+// v1 monthly criteria — EVERY field is a pure function of MonthSummaryRow. Deferred conditions
+// (late-minutes, early-out, per-leave-type caps, adjustment/OT-rejection counts) are NOT declared here:
+// a criterion that is not computable from the stored roll-up is not in the type.
+export type AttendanceAllowanceCriteria = {
+  /** present + late + halfDay must be >= this (days actually shown up). */
+  minAttendanceDays?: number;
+  /** absent days must be <= this. */
+  maxAbsentDays?: number;
+  /** COUNT of late-status days must be <= this. */
+  maxLateCount?: number;
+  /** leaveDays must be <= this. */
+  maxTotalLeaveDays?: number;
+  /** absent == 0 && late == 0. */
+  requirePerfectAttendance?: boolean;
+};
+
+// Empty object ⇒ all-in-scope. Each list is an OR within its axis; axes AND together (a policy scoped to
+// one department AND one BU matches employees in that department AND that BU).
+export type AttendanceAllowanceScope = {
+  departmentIds?: string[];
+  businessUnitIds?: string[];
+  companyIds?: string[];
+};
+
+export const attendanceAllowancePolicy = pgTable(
+  'attendance_allowance_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    // v1 accepts only 'monthly' (app-side check). Text, not pgEnum — low-cardinality tag; Daily later.
+    method: text('method').notNull().default('monthly'),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    payComponentId: uuid('pay_component_id')
+      .notNull()
+      .references(() => payComponent.id),
+    effectiveFrom: date('effective_from').notNull(),
+    // active | inactive (app-side check). Archive (archivedAt) hides from the active catalog.
+    status: text('status').notNull().default('active'),
+    criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
+    scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('attendance_allowance_policy_company_idx').on(t.tenantId, t.companyId),
+    // Per-company code uniqueness among live (non-archived) rows — mirrors business_unit / clocking_location.
+    uniqueIndex('attendance_allowance_policy_code_uq')
+      .on(t.tenantId, t.companyId, sql`lower(${t.code})`)
+      .where(sql`${t.archivedAt} is null`),
+    check('attendance_allowance_policy_amount_nonneg', sql`${t.amount} >= 0`),
+  ],
+);
+
 // ───────────────── 1.2.2 Individual Transaction (ADR-0055) ─────────────────
 // A pure dated one-off transaction ledger: per-employee, non-recurring earnings/deductions/overtime/
 // unpaid/leave entries tied to a transaction date, belonging to exactly one month+cycle (payroll_batch).

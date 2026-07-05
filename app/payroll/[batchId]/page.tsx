@@ -4,8 +4,9 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
-import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction } from '../actions';
+import { listAllowancePolicies } from '@/core/read';
+import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, transferAllowancesAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
 
@@ -32,6 +33,13 @@ export default async function BatchPage({
   // 1.2.8 (ADR-0060): loan deductions are RESERVED onto a regular draft run only; show the running summary.
   const isRegular = batch.runType === 'regular';
   const loanSummary = batch.status === 'draft' && isRegular ? await loanSummaryForBatch(s, batchId) : { loans: 0, total: 0 };
+  // Attendance Allowance (ADR-0072): active policies in this batch's company available to transfer.
+  const allowancePolicies =
+    batch.status === 'draft'
+      ? await listAllowancePolicies(s, { companyIds: [batch.companyId] }).then((rows) =>
+          rows.filter((r) => r.status === 'active'),
+        )
+      : [];
   const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
   // Bulk component import (1D) is only meaningful when the kernel reads typed components.
@@ -236,7 +244,27 @@ export default async function BatchPage({
                   {t('prefillFixedZakat')}
                 </Button>
               </form>
+              {/* Attendance Allowance (ADR-0072) — pick an active policy and transfer its qualified
+                  allowances onto this draft. Gated by TYPED_PAY_COMPONENTS_ENABLED. */}
+              {allowancePolicies.length > 0 && (
+                <form action={transferAllowancesAction} className="flex items-center gap-2">
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  <select name="policyId" className={inputCls} defaultValue={allowancePolicies[0]?.id}>
+                    {allowancePolicies.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — RM {Number(p.amount).toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                  <Button type="submit" size="sm" variant="secondary">
+                    {t('transferAllowance')}
+                  </Button>
+                </form>
+              )}
             </div>
+            {allowancePolicies.length > 0 && !typedComponentsOn && (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t('allowanceGateWarning')}</p>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

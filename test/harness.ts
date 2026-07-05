@@ -38,6 +38,8 @@ const ALL_TABLES = [
   // ADR-0072 — real auth: invitations must be truncated between tests, and the global unique index on
   // app_user.workos_user_id would otherwise let a leaked subject collide across test files.
   'app_invitation',
+  // ADR-0072 — attendance allowance policy (a leaked row would trip the partial-unique code index).
+  'attendance_allowance_policy',
 ];
 
 export async function migrateTestDb() {
