@@ -2059,7 +2059,18 @@
       "fieldBusinessUnit": "Business unit",
       "businessUnitNone": "— None —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "e.g. Retail"
+      "businessUnitNamePlaceholder": "e.g. Retail",
+      "logoSection": "Logo",
+      "logoUpload": "Upload logo",
+      "logoReplace": "Replace logo",
+      "logoRemove": "Remove logo",
+      "logoNone": "No logo set",
+      "logoSave": "Save logo",
+      "logoHint": "PNG or JPG, up to 2 MB",
+      "logoInvalidType": "Only PNG or JPG images are allowed",
+      "logoTooLarge": "Logo exceeds 2 MB",
+      "searchCompanies": "Search companies by name or registration number",
+      "noMatches": "No companies match your search"
     },
     "systemLabels": {
       "pageTitle": "System Labels",

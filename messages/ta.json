@@ -2059,7 +2059,18 @@
       "fieldBusinessUnit": "வணிகப் பிரிவு",
       "businessUnitNone": "— எதுவுமில்லை —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "எ.கா. சில்லறை"
+      "businessUnitNamePlaceholder": "எ.கா. சில்லறை",
+      "logoSection": "சின்னம்",
+      "logoUpload": "சின்னத்தைப் பதிவேற்று",
+      "logoReplace": "சின்னத்தை மாற்று",
+      "logoRemove": "சின்னத்தை அகற்று",
+      "logoNone": "சின்னம் அமைக்கப்படவில்லை",
+      "logoSave": "சின்னத்தைச் சேமி",
+      "logoHint": "PNG அல்லது JPG, 2 MB வரை",
+      "logoInvalidType": "PNG அல்லது JPG படங்கள் மட்டுமே அனுமதிக்கப்படும்",
+      "logoTooLarge": "சின்னம் 2 MB-ஐ மீறுகிறது",
+      "searchCompanies": "பெயர் அல்லது பதிவு எண் மூலம் நிறுவனங்களைத் தேடு",
+      "noMatches": "உங்கள் தேடலுக்கு பொருந்தும் நிறுவனங்கள் இல்லை"
     },
     "systemLabels": {
       "pageTitle": "அமைப்பு லேபிள்கள்",

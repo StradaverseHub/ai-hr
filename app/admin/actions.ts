@@ -34,6 +34,8 @@ import {
   revokeRole,
   setCompanyParent,
   setCompanyLeaveCycle,
+  setCompanyLogo,
+  removeCompanyLogo,
   setLeaveHalfDayFullDeduction,
   createJobGrade,
   archiveJobGrade,
@@ -96,6 +98,53 @@ export async function createCompanyAction(formData: FormData) {
       currency: String(formData.get('currency') ?? 'MYR'),
       registrationNo: (formData.get('registrationNo') as string) || undefined,
     });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+/**
+ * Derive a TRUSTWORTHY image mime from the file's leading bytes (fail-closed: unknown signature → null). A
+ * local 5-line copy — deliberately NOT the claims sniffMime (which trusts PDF) and NOT extracted into a
+ * shared module, so the claims path stays byte-identical. PNG + JPEG only; SVG is never accepted (its
+ * scriptable payload survives sniffing as a valid image).
+ */
+function sniffImageMime(bytes: Buffer): 'image/png' | 'image/jpeg' | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  return null;
+}
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+
+export async function setCompanyLogoAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    const file = formData.get('logo');
+    if (!(file instanceof File) || file.size === 0) throw new Error('Choose a logo image to upload');
+    // Check size BEFORE buffering, so a 50 MB upload is rejected without reading it all into memory.
+    if (file.size > LOGO_MAX_BYTES) throw new Error('Logo exceeds 2 MB');
+    const content = Buffer.from(await file.arrayBuffer());
+    const mimeType = sniffImageMime(content);
+    if (!mimeType) throw new Error('Only PNG or JPG images are allowed');
+    await setCompanyLogo(s, {
+      companyId: String(formData.get('companyId')),
+      content,
+      fileName: file.name,
+      mimeType,
+      sizeBytes: content.byteLength,
+    });
+  } catch (e) {
+    fail(ORG, e);
+  }
+  ok(ORG);
+}
+
+export async function removeCompanyLogoAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await removeCompanyLogo(s, { companyId: String(formData.get('companyId')) });
   } catch (e) {
     fail(ORG, e);
   }

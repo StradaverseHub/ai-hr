@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Button, Field, inputCls } from './ui';
+import { cn } from '@/lib/utils';
+import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
 type Action = (fd: FormData) => void | Promise<void>;
@@ -16,6 +17,7 @@ export type PanelCompany = {
   archivedAt: Date | null;
   inUse: boolean;
   parentId: string | null;
+  hasLogo: boolean;
 };
 export type PanelStatutory = {
   epfEmployerNo: string | null;
@@ -53,6 +55,32 @@ function SubHeader({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</div>;
 }
 
+/** The company's logo (served inline by the RLS-scoped logo route) or the initials Avatar placeholder when
+ *  none is set. On an <img> load error (e.g. a corrupt-but-sniffed file) it falls back to the Avatar. */
+function CompanyLogo({
+  hasLogo,
+  companyId,
+  name,
+  className,
+}: {
+  hasLogo: boolean;
+  companyId: string;
+  name: string;
+  className?: string;
+}) {
+  const [broken, setBroken] = useState(false);
+  if (!hasLogo || broken) return <Avatar name={name} className={className} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- dynamic bytea served by our RLS route; not a static asset
+    <img
+      src={`/admin/organization/logo/${companyId}`}
+      alt=""
+      onError={() => setBroken(true)}
+      className={cn('size-8 shrink-0 rounded-full object-cover ring-1 ring-border', className)}
+    />
+  );
+}
+
 /** One legal entity as an expandable panel: company details, group parent, statutory identity, and bank
  *  disbursement profiles — everything "about running the company". The org catalogs (departments /
  *  positions / cost centers / business units) moved to the Settings → System Labels admin page; this
@@ -63,6 +91,7 @@ export function CompanyPanel({
   statutory,
   bankProfiles,
   actions,
+  className,
 }: {
   company: PanelCompany;
   companies: { id: string; name: string }[];
@@ -76,7 +105,11 @@ export function CompanyPanel({
     setStatutory: Action;
     setBankProfile: Action;
     removeBankProfile: Action;
+    setCompanyLogo: Action;
+    removeCompanyLogo: Action;
   };
+  // Applied by OrganizationList to CSS-hide non-matching rows during search (keeps the panel mounted).
+  className?: string;
 }) {
   const t = useTranslations('admin.organization');
   const [expanded, setExpanded] = useState(false);
@@ -88,12 +121,12 @@ export function CompanyPanel({
     : 0;
 
   return (
-    <li className={c.archivedAt ? 'opacity-60' : ''}>
+    <li className={cn(c.archivedAt ? 'opacity-60' : '', className)}>
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
           aria-expanded={expanded}
         >
           <svg
@@ -106,6 +139,7 @@ export function CompanyPanel({
           >
             <path d="M7.5 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
+          <CompanyLogo hasLogo={c.hasLogo} companyId={c.id} name={c.name} />
           <span className="truncate text-sm font-medium text-foreground">{c.name}</span>
           {c.registrationNo && <span className="text-xs text-muted-foreground">{c.registrationNo}</span>}
           <span className={badge.muted}>{c.country}</span>
@@ -207,6 +241,36 @@ export function CompanyPanel({
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Company logo — branding (upload PNG/JPG, replace, remove). Admin-only writes (RLS). */}
+          <div className="space-y-2.5 rounded-lg bg-background p-3">
+            <SubHeader>{t('logoSection')}</SubHeader>
+            <div className="flex flex-wrap items-center gap-3">
+              <CompanyLogo hasLogo={c.hasLogo} companyId={c.id} name={c.name} className="size-12" />
+              <form action={actions.setCompanyLogo} className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="companyId" value={c.id} />
+                <input
+                  type="file"
+                  name="logo"
+                  required
+                  accept="image/png,image/jpeg"
+                  className="max-w-[16rem] text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs file:font-medium file:text-foreground hover:file:bg-muted/70"
+                />
+                <Button type="submit" size="sm">
+                  {c.hasLogo ? t('logoReplace') : t('logoUpload')}
+                </Button>
+              </form>
+              {c.hasLogo && (
+                <form action={actions.removeCompanyLogo}>
+                  <input type="hidden" name="companyId" value={c.id} />
+                  <Button type="submit" size="sm" variant="ghost" className="text-destructive hover:text-destructive">
+                    {t('logoRemove')}
+                  </Button>
+                </form>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{c.hasLogo ? t('logoHint') : `${t('logoNone')} · ${t('logoHint')}`}</p>
           </div>
 
           {/* Statutory identity — country-pack section (ADR-0008) */}

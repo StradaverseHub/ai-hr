@@ -226,6 +226,9 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
         leaveHalfDayFullDeduction: company.leaveHalfDayFullDeduction,
         archivedAt: company.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.company_id = company.id) or exists (select 1 from employment e where e.company_id = company.id) or exists (select 1 from company c where c.parent_company_id = company.id)`,
+        // hasLogo: EXISTS against the company_logo side table (NEVER the bytes — the blob is a different
+        // table, so this can only ever pull a boolean). Non-breaking, name-based add for existing callers.
+        hasLogo: sql<boolean>`exists (select 1 from company_logo cl where cl.company_id = company.id)`,
       })
       .from(company)
       .where(opts.includeArchived ? undefined : isNull(company.archivedAt))

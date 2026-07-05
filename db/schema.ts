@@ -179,6 +179,32 @@ export const company = pgTable(
   ],
 );
 
+// company_logo = 1:1 branding logo for a company, stored as a bytea SIDE TABLE (mirrors claim_attachment /
+// leave_request_attachment) so the (potentially large) blob is NEVER accidentally pulled by a company SELECT.
+// PNG/JPEG only — the mime is re-derived from magic bytes at upload (SVG is excluded: its payload survives
+// sniffing as a valid image but is scriptable). RLS posture: read is tenant-wide (a logo is low-sensitivity
+// branding, visible to any same-tenant member exactly like the company row itself); WRITE is admin-of-the-
+// company only (app.is_admin_for(company_id)). unique(company_id) enforces the 1:1 so setCompanyLogo upserts.
+export const companyLogo = pgTable(
+  'company_logo',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .unique()
+      .references(() => company.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('company_logo_company_idx').on(t.companyId)],
+);
+
 // location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
 // supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
 // company.default_work_state). `country` is captured for display only — the engine keeps using

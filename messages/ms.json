@@ -2059,7 +2059,18 @@
       "fieldBusinessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
       "businessUnitCodePlaceholder": "UP1",
-      "businessUnitNamePlaceholder": "cth. Runcit"
+      "businessUnitNamePlaceholder": "cth. Runcit",
+      "logoSection": "Logo",
+      "logoUpload": "Muat naik logo",
+      "logoReplace": "Ganti logo",
+      "logoRemove": "Buang logo",
+      "logoNone": "Tiada logo ditetapkan",
+      "logoSave": "Simpan logo",
+      "logoHint": "PNG atau JPG, sehingga 2 MB",
+      "logoInvalidType": "Hanya imej PNG atau JPG dibenarkan",
+      "logoTooLarge": "Logo melebihi 2 MB",
+      "searchCompanies": "Cari syarikat mengikut nama atau nombor pendaftaran",
+      "noMatches": "Tiada syarikat sepadan dengan carian anda"
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",

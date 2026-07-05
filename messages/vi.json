@@ -2059,7 +2059,18 @@
       "fieldBusinessUnit": "Đơn vị kinh doanh",
       "businessUnitNone": "— Không có —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "vd. Bán lẻ"
+      "businessUnitNamePlaceholder": "vd. Bán lẻ",
+      "logoSection": "Logo",
+      "logoUpload": "Tải logo lên",
+      "logoReplace": "Thay logo",
+      "logoRemove": "Xóa logo",
+      "logoNone": "Chưa đặt logo",
+      "logoSave": "Lưu logo",
+      "logoHint": "PNG hoặc JPG, tối đa 2 MB",
+      "logoInvalidType": "Chỉ cho phép ảnh PNG hoặc JPG",
+      "logoTooLarge": "Logo vượt quá 2 MB",
+      "searchCompanies": "Tìm công ty theo tên hoặc số đăng ký",
+      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn"
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",

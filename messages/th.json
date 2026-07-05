@@ -2059,7 +2059,18 @@
       "fieldBusinessUnit": "หน่วยธุรกิจ",
       "businessUnitNone": "— ไม่มี —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "เช่น ค้าปลีก"
+      "businessUnitNamePlaceholder": "เช่น ค้าปลีก",
+      "logoSection": "โลโก้",
+      "logoUpload": "อัปโหลดโลโก้",
+      "logoReplace": "เปลี่ยนโลโก้",
+      "logoRemove": "ลบโลโก้",
+      "logoNone": "ยังไม่ได้ตั้งค่าโลโก้",
+      "logoSave": "บันทึกโลโก้",
+      "logoHint": "PNG หรือ JPG ขนาดไม่เกิน 2 MB",
+      "logoInvalidType": "อนุญาตเฉพาะรูปภาพ PNG หรือ JPG เท่านั้น",
+      "logoTooLarge": "โลโก้มีขนาดเกิน 2 MB",
+      "searchCompanies": "ค้นหาบริษัทตามชื่อหรือเลขทะเบียน",
+      "noMatches": "ไม่มีบริษัทที่ตรงกับการค้นหาของคุณ"
     },
     "systemLabels": {
       "pageTitle": "ป้ายระบบ",

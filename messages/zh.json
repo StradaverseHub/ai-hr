@@ -2059,7 +2059,18 @@
       "fieldBusinessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "例如：零售"
+      "businessUnitNamePlaceholder": "例如：零售",
+      "logoSection": "徽标",
+      "logoUpload": "上传徽标",
+      "logoReplace": "替换徽标",
+      "logoRemove": "移除徽标",
+      "logoNone": "未设置徽标",
+      "logoSave": "保存徽标",
+      "logoHint": "PNG 或 JPG，最大 2 MB",
+      "logoInvalidType": "仅允许 PNG 或 JPG 图片",
+      "logoTooLarge": "徽标超过 2 MB",
+      "searchCompanies": "按名称或注册号搜索公司",
+      "noMatches": "没有符合搜索条件的公司"
     },
     "systemLabels": {
       "pageTitle": "系统标签",

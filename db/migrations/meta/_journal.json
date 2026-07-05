@@ -1072,6 +1072,13 @@
       "when": 1781862151000,
       "tag": "0152_fixed_transaction_run_type",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1781862152000,
+      "tag": "0153_company_logo",
+      "breakpoints": true
     }
   ]
 }
