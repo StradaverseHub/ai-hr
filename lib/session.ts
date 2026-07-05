@@ -1,22 +1,43 @@
 import { cookies } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
+import { AuthRequiredError } from './auth-errors';
 
 /**
- * DEV-ONLY session shim. Real sessions will come from WorkOS (next slice).
+ * Session resolution (ADR-0072). Two paths, gated by NODE_ENV:
  *
- * Production-guarded: throws if NODE_ENV is 'production', so it can never silently become an
- * auth bypass. The active principal is selected by the `dev_user` cookie (set by the dev
- * identity switcher), defaulting to the seeded admin (DEV_USER_ID). The principal's tenant,
- * person, and roles are resolved from the DB via the SECURITY DEFINER `app.principal()` seam —
- * the SAME bootstrap WorkOS will use (keyed by workos_user_id instead of the internal id).
+ *  • DEV (NODE_ENV !== 'production'): the dev identity switcher — the active principal is the `dev_user`
+ *    cookie (or DEV_USER_ID), resolved via app.principal(). Kept so `pnpm dev` and the test harness are
+ *    never forced through WorkOS. This is the ONLY path that reads app.principal() by internal id.
  *
- * When WorkOS lands, only this function changes: it verifies the session token, maps to an
- * app_user, and calls the same resolver. Every page/action keeps calling getSession() unchanged.
+ *  • PRODUCTION: verify the WorkOS session, take its subject, resolve it to an app_user via the
+ *    SECURITY DEFINER app.principal_by_subject(). SessionContext.userId is the returned INTERNAL
+ *    app_user.id uuid (NOT the WorkOS subject — app.current_user_id() casts it to uuid, so a subject
+ *    string would break every self-scoped RLS predicate). No/expired session, or a subject that maps to
+ *    no app_user (offboarded user with a still-valid cookie) → AuthRequiredError, which the app layout
+ *    catches and redirects to /login (never a 500, never a stale resolve).
+ *
+ * Every page/action keeps calling getSession() unchanged; only this function knows about WorkOS.
  */
 const DEV_COOKIE = 'dev_user';
 
+const isDev = () => process.env.NODE_ENV !== 'production';
+
 /** A row from `app.principal()` — `grants` may be null (defensively typed). */
 type PrincipalRow = { tenant_id: string; person_id: string | null; grants: Grant[] | null };
+/** A row from `app.principal_by_subject()` — additionally carries the internal app_user id. */
+type SubjectPrincipalRow = PrincipalRow & { app_user_id: string };
+
+/** Shape a principal row + a known userId into a SessionContext (shared by both paths). */
+function toSession(userId: string, principal: PrincipalRow): SessionContext {
+  const grants = (principal.grants ?? []) as Grant[];
+  return {
+    tenantId: principal.tenant_id,
+    userId,
+    personId: principal.person_id,
+    grants,
+    roles: Array.from(new Set(grants.map((g) => g.role))),
+  };
+}
 
 /**
  * Resolve a dev principal id to a SessionContext, tolerant of stale/unknown ids. Tries the cookie
@@ -38,36 +59,47 @@ export async function resolveDevPrincipal(
   }
   for (const id of ids) {
     const [principal] = await lookup(id);
-    if (principal) {
-      const grants = (principal.grants ?? []) as Grant[];
-      return {
-        tenantId: principal.tenant_id,
-        userId: id,
-        personId: principal.person_id,
-        grants,
-        roles: Array.from(new Set(grants.map((g) => g.role))),
-      };
-    }
+    if (principal) return toSession(id, principal);
   }
   throw new Error(
     `No valid dev principal (tried ${ids.join(', ')}) — run \`pnpm db:seed\`, then pick an identity.`,
   );
 }
 
+/**
+ * Resolve a verified WorkOS subject to a SessionContext via app.principal_by_subject(). Pure +
+ * injectable (`lookup`) so the offboarded-subject path is unit-testable without a live WorkOS. Puts
+ * the returned INTERNAL app_user.id into userId. Throws AuthRequiredError when the subject maps to no
+ * app_user (deleted/offboarded user, still-valid cookie) — fail closed, never a stale resolve.
+ */
+export async function resolveWorkosPrincipal(
+  lookup: (subject: string) => Promise<SubjectPrincipalRow[]>,
+  subject: string,
+): Promise<SessionContext> {
+  const [principal] = await lookup(subject);
+  if (!principal) throw new AuthRequiredError('No account is linked to this login.');
+  return toSession(principal.app_user_id, principal);
+}
+
 export async function getSession(): Promise<SessionContext> {
-  // In production the dev session is an auth bypass, so it's blocked — UNLESS this is an explicitly
-  // opted-in gated demo (ALLOW_DEMO_SESSION=true, behind the SHARE_PASSWORD gate; see HOSTING.md).
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SESSION !== 'true') {
-    throw new Error(
-      'Dev session is not allowed in production — set ALLOW_DEMO_SESSION=true for a gated demo, or wire WorkOS auth.',
-    );
+  if (isDev()) {
+    const cookieStore = await cookies();
+    const cookieUser = cookieStore.get(DEV_COOKIE)?.value;
+    const fallback = process.env.DEV_USER_ID;
+    const lookup = (id: string) =>
+      client<PrincipalRow[]>`
+        select tenant_id, person_id, grants from app.principal(${id}::uuid)
+      `;
+    return resolveDevPrincipal(lookup, cookieUser, fallback);
   }
-  const cookieStore = await cookies();
-  const cookieUser = cookieStore.get(DEV_COOKIE)?.value;
-  const fallback = process.env.DEV_USER_ID;
-  const lookup = (id: string) =>
-    client<PrincipalRow[]>`
-      select tenant_id, person_id, grants from app.principal(${id}::uuid)
+
+  // Production: WorkOS is the auth. Imported lazily so the dev/test path never loads the WorkOS SDK.
+  const { currentWorkosSession } = await import('./workos');
+  const session = await currentWorkosSession();
+  if (!session) throw new AuthRequiredError('No active session.');
+  const lookup = (subject: string) =>
+    client<SubjectPrincipalRow[]>`
+      select app_user_id, tenant_id, person_id, grants from app.principal_by_subject(${subject})
     `;
-  return resolveDevPrincipal(lookup, cookieUser, fallback);
+  return resolveWorkosPrincipal(lookup, session.subject);
 }
