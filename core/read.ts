@@ -58,6 +58,13 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         employeeCode: employment.employeeCode,
         status: assignment.status,
         department: department.name,
+        // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to
+        // filter Step-2 batches whose scope names departments the employee belongs to (a UX filter; the
+        // bulk service re-checks scope membership authoritatively). Nullable, like department.
+        departmentId: assignment.departmentId,
+        // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
+        // employee card (Employee ID / Name / Department / Position). Nullable, like department.
+        position: position.title,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -75,6 +82,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         ),
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
       .orderBy(person.fullName),
   );
@@ -87,6 +95,8 @@ export type EmployeeListRow = {
   employeeCode: string | null;
   status: string | null;
   department: string | null;
+  departmentId: string | null;
+  position: string | null;
   company: string;
   companyId: string;
   hiredOn: string;
@@ -142,6 +152,8 @@ export function listEmployeesPage(
         employeeCode: employment.employeeCode,
         status: assignment.status,
         department: department.name,
+        departmentId: assignment.departmentId,
+        position: position.title,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -152,6 +164,7 @@ export function listEmployeesPage(
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(where)
       .orderBy(person.fullName)
       .limit(p.limit)
