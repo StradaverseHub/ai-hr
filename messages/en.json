@@ -2296,7 +2296,7 @@
         "extended": "Extended",
         "custom": "Custom"
       },
-      "archetypeHint": "Standard = official gazetted holidays only (national + the calendar’s states). Extended = official holidays plus company-defined extra days. Custom = a fully hand-managed list; national holidays are not added automatically."
+      "archetypeHint": "Standard = official gazetted holidays only (national + the group’s states). Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick into this group; every other date, including national holidays, is a normal working day. Assign a group to staff on their profile (or map it to a location) and they follow exactly these rules."
     },
     "users": {
       "title": "Users & roles",

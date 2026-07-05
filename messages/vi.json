@@ -2296,7 +2296,7 @@
         "extended": "Mở rộng",
         "custom": "Tùy chỉnh"
       },
-      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của lịch). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = danh sách hoàn toàn quản lý thủ công; ngày lễ quốc gia không được thêm tự động."
+      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của nhóm). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = chỉ những ngày lễ bạn tự chọn vào nhóm này; mọi ngày khác, kể cả ngày lễ quốc gia, đều là ngày làm việc bình thường. Gán một nhóm cho nhân viên trên hồ sơ của họ (hoặc ánh xạ vào một địa điểm) và họ sẽ tuân theo đúng các quy tắc này."
     },
     "users": {
       "title": "Người dùng & vai trò",

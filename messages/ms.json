@@ -2296,7 +2296,7 @@
         "extended": "Diperluas",
         "custom": "Tersuai"
       },
-      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kalendar). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = senarai yang diuruskan sepenuhnya secara manual; cuti kebangsaan tidak ditambah secara automatik."
+      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kumpulan). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = hanya cuti yang anda pilih sendiri ke dalam kumpulan ini; setiap tarikh lain, termasuk cuti kebangsaan, ialah hari bekerja biasa. Berikan kumpulan kepada pekerja pada profil mereka (atau petakan ke lokasi) dan mereka akan mengikut peraturan ini dengan tepat."
     },
     "users": {
       "title": "Pengguna & peranan",
