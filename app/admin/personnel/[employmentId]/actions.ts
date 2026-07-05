@@ -7,7 +7,7 @@ import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
-import { FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
+import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, type ReviewType } from '@/core/employment-review';
 import { setPersonComplianceFields } from '@/core/profile';
 import { packFor } from '@/localization/registry';
@@ -63,15 +63,17 @@ export async function setEmploymentComponentAction(formData: FormData) {
       remarks,
     });
   } catch (e) {
-    // Surface the two typed validation errors as localised inline messages (people.detail.dateError /
-    // currencyUnsupported); any other error falls back to its raw message via the same ?error= banner.
+    // Surface the typed validation errors as localised inline messages (people.detail.dateError /
+    // currencyUnsupported / amountError); any other error falls back to its raw message via the same ?error= banner.
     const t = await getTranslations('people.detail');
     const msg =
       e instanceof FixedTransactionDateError
         ? t('dateError')
         : e instanceof UnsupportedFixedCurrencyError
           ? t('currencyUnsupported')
-          : (e as Error).message;
+          : e instanceof FixedTransactionAmountError
+            ? t('amountError')
+            : (e as Error).message;
     redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);

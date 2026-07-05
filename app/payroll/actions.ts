@@ -14,6 +14,7 @@ import {
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
 import { prefillLoansForBatch } from '@/core/loans';
+import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 
 // Note: run creation (regular + additional) moved to app/payroll/process/actions.ts (createRunAction) as
 // part of the Payroll Process wizard — creation is now the wizard's TERMINAL action. createBatch /
@@ -183,6 +184,32 @@ export async function prefillFixedZakatAction(formData: FormData) {
     applied === 0
       ? 'No active fixed-zakat elections for this batch'
       : `Fixed zakat prefilled for ${applied} employee${applied === 1 ? '' : 's'}`;
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+// Attendance Allowance (ADR-0072) — transfer a Monthly policy's qualified allowances onto this draft
+// batch. Gated by TYPED_PAY_COMPONENTS_ENABLED (off ⇒ no-op with a clear banner). Re-derives qualification
+// live at transfer time and reverses rows for employees who no longer qualify. Actor passed via session.
+export async function transferAllowancesAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const policyId = String(formData.get('policyId') ?? '');
+  if (!policyId) redirect(`/payroll/${batchId}?error=${encodeURIComponent('Select an attendance-allowance policy first')}`);
+  let applied = 0;
+  let ineligible = 0;
+  let reversed = 0;
+  let gated = false;
+  try {
+    ({ applied, ineligible, reversed, gated } = await transferAllowancesToBatch(s, { batchId, policyId }));
+  } catch (e) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  const note = gated
+    ? "Transfer recorded 0 rows — the typed pay-components feature is off, so this won't reach payslips yet"
+    : `Attendance allowance transferred to ${applied} employee${applied === 1 ? '' : 's'}` +
+      (ineligible ? ` (${ineligible} did not qualify)` : '') +
+      (reversed ? `; removed ${reversed} previously-transferred row${reversed === 1 ? '' : 's'} that no longer qualify` : '');
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
 }
 

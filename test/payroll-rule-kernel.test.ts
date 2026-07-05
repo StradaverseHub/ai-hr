@@ -80,7 +80,9 @@ describe('Payroll Setup — pay-rule kernel (flag ON)', () => {
       rule,
     });
     const compId = (await listPayComponents(a)).find((c) => c.code === code)!.id;
-    await setEmploymentPayComponent(a, { employmentId, componentId: compId, amount, effectiveFrom: '2026-01-01' });
+    // allowZeroAmount: a rule-driven component's stored base amount may legitimately be 0 (the rule computes
+    // the payable value); the amount>0 guard would otherwise reject a valid rule-only fixture.
+    await setEmploymentPayComponent(a, { employmentId, componentId: compId, amount, effectiveFrom: '2026-01-01', allowZeroAmount: true });
   }
 
   async function runBatch(period: string) {
@@ -164,7 +166,8 @@ describe('Payroll Setup — pay-rule kernel (flag ON)', () => {
       rule: { kind: 'flat_capped', value: 300, cap: 200 },
     });
     const compId = (await listPayComponents(a)).find((c) => c.code === 'BIKRULE')!.id;
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: compId, amount: 0, effectiveFrom: '2026-01-01' });
+    // allowZeroAmount: the pay-RULE computes the payable value; the stored base amount is a 0 placeholder.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: compId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-07' });
     process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';

@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { demoSwitcherEnabled } from '@/lib/demo-mode';
 
 /**
  * /login (ADR-0072). In production this redirects to the WorkOS AuthKit hosted login. In dev the app
@@ -9,7 +10,8 @@ import { getTranslations } from 'next-intl/server';
 export default async function LoginPage() {
   const t = await getTranslations('auth');
 
-  if (process.env.NODE_ENV === 'production') {
+  // Real deployment → WorkOS hosted login. Dev + gated demo (ALLOW_DEMO_SESSION) → identity switcher.
+  if (!demoSwitcherEnabled()) {
     const { signInUrl } = await import('@/lib/workos');
     redirect(await signInUrl('/'));
   }

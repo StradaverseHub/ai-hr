@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { packFor } from '@/localization/registry';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
+import { settingsBack } from '@/app/payroll/setup/back';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
@@ -66,12 +67,13 @@ export default async function StatutoryConfigPage({
   const t = await getTranslations('payroll.config');
   const { edit, error, section } = await searchParams;
   const activeSection = isScalarSection(section) ? section : undefined;
+  const back = await settingsBack();
   const pack = packFor('MY');
 
   if (!pack) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
-        <PageHeader title={t('title')} />
+        <PageHeader title={t('title')} back={back} />
         <ErrorBanner message="No localization pack for MY." />
       </div>
     );
@@ -96,6 +98,7 @@ export default async function StatutoryConfigPage({
       <div className="mx-auto max-w-5xl space-y-6">
         <PageHeader
           title={t('editTitle')}
+          back={back}
           actions={
             <Link href="/payroll/configuration">
               <Button variant="outline" size="sm">
@@ -104,7 +107,10 @@ export default async function StatutoryConfigPage({
             </Link>
           }
         />
-        <PayrollTabs active="configuration" />
+        {/* Config page lives under the Settings tab (arrived via Settings -> Statutory Configuration);
+            URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
+            — do not repoint to /payroll/setup. */}
+        <PayrollTabs active="setup" />
         <ErrorBanner message={error} />
         <Card className="border-amber-300/60 bg-amber-50/50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {t('safetyNote')}
@@ -130,7 +136,11 @@ export default async function StatutoryConfigPage({
       employerRateHigh: ruleset.epf.employerRateHigh,
       employerThreshold: ruleset.epf.employerThreshold,
     },
-    ot: { wageCeiling: ruleset.ot.wageCeiling },
+    ot: {
+      wageCeiling: ruleset.ot.wageCeiling,
+      restDayExcessMultiplier: ruleset.ot.restDayExcessMultiplier ?? 2,
+      holidayExcessMultiplier: ruleset.ot.holidayExcessMultiplier ?? 3,
+    },
     hrdf: ruleset.hrdf ?? MY_HRDF,
   };
   const componentLabels = {
@@ -146,6 +156,8 @@ export default async function StatutoryConfigPage({
     epfEmployerRateHigh: t('epfEmployerRateHigh'),
     epfEmployerThreshold: t('epfEmployerThreshold'),
     otWageCeiling: t('otWageCeiling'),
+    otRestDayExcessMultiplier: t('otRestDayExcessMultiplier'),
+    otHolidayExcessMultiplier: t('otHolidayExcessMultiplier'),
     hrdfMandatory: t('hrdfMandatory'),
     hrdfOptional: t('hrdfOptional'),
     publish: t('componentPublish'),
@@ -172,13 +184,17 @@ export default async function StatutoryConfigPage({
       <PageHeader
         title={t('title')}
         description={t('subtitle')}
+        back={back}
         actions={
           <Link href="/payroll/configuration?edit=1">
             <Button size="sm">{t('edit')}</Button>
           </Link>
         }
       />
-      <PayrollTabs active="configuration" />
+      {/* Config page lives under the Settings tab (arrived via Settings -> Statutory Configuration);
+          URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
+          — do not repoint to /payroll/setup. */}
+      <PayrollTabs active="setup" />
       <ErrorBanner message={error} />
 
       {/* Active-set banner — three-way: built-in default / vendor pack / tenant override */}
@@ -297,6 +313,14 @@ export default async function StatutoryConfigPage({
             <>
               <div className="mt-2 divide-y divide-border">
                 <Row label={t('otWageCeiling')} value={rm(ruleset.ot.wageCeiling)} />
+                <Row
+                  label={t('otRestDayExcessMultiplier')}
+                  value={`${ruleset.ot.restDayExcessMultiplier ?? 2}×`}
+                />
+                <Row
+                  label={t('otHolidayExcessMultiplier')}
+                  value={`${ruleset.ot.holidayExcessMultiplier ?? 3}×`}
+                />
                 <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
               </div>
               <p className="mt-3 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>

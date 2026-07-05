@@ -1065,6 +1065,27 @@
       "when": 1781862150000,
       "tag": "0151_real_auth_workos",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1781862151000,
+      "tag": "0152_fixed_transaction_run_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1781862152000,
+      "tag": "0153_company_logo",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1781862153000,
+      "tag": "0154_attendance_allowance",
+      "breakpoints": true
     }
   ]
 }

@@ -147,10 +147,15 @@ export async function effectiveHolidayState(
       ws: employment.workState,
       cds: company.defaultWorkState,
       groupStates: holidayGroup.states,
+      // ADR-0067 (direct-assign): the per-employee assigned group's archetype, so the s.60D guard mirrors
+      // holidayDatesFor for a custom/extended group assigned DIRECTLY on the profile. Reuses the holidayGroup
+      // join already present at line 157.
+      empGroupArchetype: holidayGroup.archetype,
       locationState: location.state,
       // ADR-0067: the location-CALENDAR (mapped on the open assignment's location), its archetype + states.
       calArchetype: locationCalendar.archetype,
       calStates: locationCalendar.states,
+      mappedCalendar: location.holidayGroupId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
@@ -166,6 +171,13 @@ export async function effectiveHolidayState(
   if (!emp) return null;
   // A mapped Custom calendar is hand-managed and ignores the gazette → suppress the s.60D warning.
   if (emp.calArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };
+  // ADR-0067 (direct-assign): a Custom group assigned DIRECTLY on the profile (no location calendar mapped)
+  // is likewise hand-managed and ignores the gazette in holidayDatesFor — so the "gazette < 11" warning would
+  // be false noise. Suppress it to keep effectiveHolidayState and holidayDatesFor in agreement. Extended is
+  // deliberately NOT suppressed here: an extended group still includes the gazette, so the warning stays
+  // meaningful (matching how the location 'extended' path is treated).
+  if (!emp.mappedCalendar && emp.empGroupArchetype === 'custom')
+    return { country: emp.country, state: null, skipCompleteness: true };
   // Standard/Extended: the location-calendar's own states[] are the gazette source (they win over a bare
   // location.state, §3). Fall back to today's precedence when no calendar is mapped.
   const calFirst = Array.isArray(emp.calStates) ? (emp.calStates as string[])[0] : undefined;
@@ -234,6 +246,12 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
       ws: employment.workState,
       cds: company.defaultWorkState,
       groupStates: holidayGroup.states,
+      // ADR-0067 (direct-assign): the per-employee assigned group's archetype. When a custom/extended group
+      // is assigned DIRECTLY on the profile (employment.holidayGroupId) rather than via a location mapping,
+      // this lets the resolver honour the hand-picked / extended semantic instead of degrading to a plain
+      // state UNION. Reuses the existing holidayGroup join at line 250 — one extra 1:1 column, .limit(1)-safe.
+      empGroupArchetype: holidayGroup.archetype,
+      empHolidayGroupId: employment.holidayGroupId,
       // ADR-0054: location.state overlay from the employee's OPEN assignment row — the top of the
       // precedence so leave matches attendance (which resolves the same order in core/attendance.ts).
       locationState: location.state,
@@ -315,6 +333,59 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
       ),
     );
   if (groupRows.length > 0) return new Set(groupRows.map((h) => h.d));
+
+  // ── ADR-0067 (direct-assign) — per-employee-group archetype branch. Mirrors the location-calendar
+  // pre-check above, but for a custom/extended group assigned DIRECTLY on the profile
+  // (employment.holidayGroupId) rather than via a location mapping. Placement is deliberate and documented:
+  // it runs AFTER the location-calendar pre-check (a site-level location calendar keeps its higher
+  // precedence — a location is a stronger signal than a per-person default) and AFTER the Step-1
+  // business-group company override early-return (a company-subtree override still wins), and BEFORE the
+  // Step-2 state fallback. It fires ONLY when NO location calendar is mapped (mappedCalendar IS NULL), the
+  // Step-1 override produced nothing (groupRows was empty), the employee has a directly-assigned group
+  // (empHolidayGroupId set), and that group's archetype is 'custom' or 'extended'. A 'standard' (or unset)
+  // group falls through to Step 2 BYTE-IDENTICALLY, preserving the regression guarantee for every existing
+  // state-based / default employee.
+  if (
+    !emp.mappedCalendar &&
+    emp.empHolidayGroupId &&
+    (emp.empGroupArchetype === 'custom' || emp.empGroupArchetype === 'extended')
+  ) {
+    // The company-scoped ad-hoc rows for this employee's company chain in the window (same query as Step-1).
+    const adHocRows = await tx
+      .select({ d: holiday.holidayDate })
+      .from(holiday)
+      .where(
+        and(
+          gte(holiday.holidayDate, startDate),
+          lte(holiday.holidayDate, endDate),
+          eq(holiday.country, emp.country),
+          sql`${holiday.companyId} IS NOT NULL`,
+          sql`app.is_company_descendant(${emp.companyId}, ${holiday.companyId})`,
+        ),
+      );
+    if (emp.empGroupArchetype === 'custom') {
+      // CUSTOM = exactly the hand-picked list: ONLY the company-scoped ad-hoc rows, no gazette. A national
+      // date the custom group omits is therefore a normal working day for that staff member — the reporter's
+      // "pick which holidays, leave out Wesak" model, verbatim.
+      return new Set(adHocRows.map((h) => h.d));
+    }
+    // EXTENDED = official gazette ∪ company ad-hoc. The gazette half is keyed on the ASSIGNED group's
+    // states[] (national ∪ group.states), mirroring the location-calendar extended path above.
+    const groupStates: string[] = Array.isArray(emp.groupStates) ? (emp.groupStates as string[]) : [];
+    const gazetteRows = await tx
+      .select({ d: holiday.holidayDate })
+      .from(holiday)
+      .where(
+        and(
+          gte(holiday.holidayDate, startDate),
+          lte(holiday.holidayDate, endDate),
+          eq(holiday.country, emp.country),
+          isNull(holiday.companyId),
+          groupStates.length ? or(isNull(holiday.state), inArray(holiday.state, groupStates)) : isNull(holiday.state),
+        ),
+      );
+    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d)]);
+  }
 
   // Step 2 — 2C fallback: national ∪ effState. A mapped STANDARD calendar contributes its states[] as the
   // gazette state source (the named override wins over a bare location.state, §3); otherwise the existing

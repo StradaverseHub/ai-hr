@@ -9,7 +9,11 @@
  * Retrieved: 2026-06-06.
  */
 
-export const MY_STATUTORY_VERSION = '2026.3';
+export const MY_STATUTORY_VERSION = '2026.4';
+// 2026.4 (2026-07-04): OT ruleset gains two configurable EXCESS-hours factors —
+//   ot.restDayExcessMultiplier (2.0, s.60(3)(c)) and ot.holidayExcessMultiplier (3.0, s.60D(3)(aa)).
+//   Both optional with EA-value fallbacks, so older DB overrides carrying only ot.wageCeiling stay
+//   byte-identical. The workday 1.5× rate is deliberately NOT added (owned by payroll-policy-config).
 // 2026.1 (2026-06-11): SOCSO bands extended to the RM6,000 ceiling and EIS Second Schedule
 //   band amounts encoded, both verbatim from PERKESO's official Nov-2024 rate PDFs (replacing
 //   the rate-based approximations above RM5,000 / for EIS). EPF unchanged.
@@ -427,8 +431,20 @@ export const MY_EIS_RATES = { employer: 0.002, employee: 0.002 };
 // Overtime (Employment Act 1955, First Schedule Amendment Order 2022)
 // Employees with monthly wages > RM4,000 are outside the statutory OT entitlement
 // (ss.60/60A(3)/60D(3)). The OT multipliers themselves live in payroll.ts (overtimePay).
-// ─────────────────────────────────────────────────────────────────────────────
+//
+// The workday OT rate (s.60A(3)(a), 1.5×) is NOT here — it is already HR-configurable per employment via
+// core/payroll-policy-config.ts (PayrollPolicyConfig.overtime.multiplier, floored at s.60A). Exposing it a
+// second time on the ruleset would double-scale the workday leg (once in overtimePay, once in
+// applyOvertimeCaps), so only the genuinely un-configurable EXCESS-hours factors are made editable here:
+//   - rest-day hours beyond normal ⇒ 2× hourly (s.60(3)(c))
+//   - public-holiday hours beyond normal ⇒ 3× hourly (s.60D(3)(aa))
+// The base-day compensation legs (rest-day ½/1-day ORP under s.60(3)(b); the 2-days' ORP for working a
+// public holiday under s.60D(3)(a)) are EA-fixed base-day pay, NOT OT multipliers, and stay hardcoded.
 export const MY_OT_WAGE_CEILING = 4000;
+/** Rest-day OVERTIME (hours beyond normal) factor on the hourly rate — EA s.60(3)(c). */
+export const MY_OT_RESTDAY_EXCESS = 2.0;
+/** Public-holiday OVERTIME (hours beyond normal) factor on the hourly rate — EA s.60D(3)(aa). */
+export const MY_OT_HOLIDAY_EXCESS = 3.0;
 
 // ─────────────────────────── HRD Corp levy (PSMB Act 2001) ───────────────────────────
 // Mandatory 1% of HRDF wages for employers with 10+ Malaysian employees (s.14); optional 0.5%
@@ -481,7 +497,14 @@ export type StatutoryRuleset = {
     bands: PcbBand[];
     reliefs: { individual: number; spouse: number; perChild: number; epfReliefCap: number };
   };
-  ot: { wageCeiling: number };
+  ot: {
+    wageCeiling: number;
+    /** Rest-day excess-hours factor (s.60(3)(c)). Optional: overrides predating 2026.4 omit it and
+     *  overtimePay falls back to the EA built-in MY_OT_RESTDAY_EXCESS (2.0). */
+    restDayExcessMultiplier?: number;
+    /** Public-holiday excess-hours factor (s.60D(3)(aa)). Optional fallback to MY_OT_HOLIDAY_EXCESS (3.0). */
+    holidayExcessMultiplier?: number;
+  };
   /** HRD Corp levy rates (#6, ADR-0037). Optional: overrides/packs predating 2026.4 omit it and
    *  `hrdfLevy` falls back to the built-in MY_HRDF. A first-class versioned body via the overlay. */
   hrdf?: { mandatoryRate: number; optionalRate: number };
@@ -504,6 +527,10 @@ export const DEFAULT_MY_STATUTORY: StatutoryRuleset = {
   },
   eis: { bands: MY_EIS_BANDS, rates: MY_EIS_RATES },
   pcb: { bands: MY_PCB_BANDS, reliefs: MY_RELIEFS },
-  ot: { wageCeiling: MY_OT_WAGE_CEILING },
+  ot: {
+    wageCeiling: MY_OT_WAGE_CEILING,
+    restDayExcessMultiplier: MY_OT_RESTDAY_EXCESS,
+    holidayExcessMultiplier: MY_OT_HOLIDAY_EXCESS,
+  },
   hrdf: MY_HRDF,
 };

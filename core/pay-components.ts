@@ -47,6 +47,16 @@ const cleanEaLine = (v: unknown): string | null =>
 const cleanRounding = (v: unknown): RoundingMethod =>
   ROUNDING_METHODS.includes(v as RoundingMethod) ? (v as RoundingMethod) : 'none';
 
+// Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle taxonomy. REUSES the existing
+// payroll_run_type enum values (the product's real cycle master keyed by the multi-cycle engine); no new
+// vocabulary. Stored constrained on employment_pay_component.run_type; null = unspecified.
+export const FIXED_TRANSACTION_CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
+export type FixedTransactionCycle = (typeof FIXED_TRANSACTION_CYCLES)[number];
+// Coerce any input to a valid cycle or null — an unknown value (URL tamper, stale form) becomes null
+// (unspecified) rather than being persisted or leaking into the event payload.
+const cleanCycle = (v: unknown): FixedTransactionCycle | null =>
+  FIXED_TRANSACTION_CYCLES.includes(v as FixedTransactionCycle) ? (v as FixedTransactionCycle) : null;
+
 async function componentIdByCode(tx: Tx, tenantId: string, code: string): Promise<string | null> {
   const [row] = await tx
     .select({ id: payComponent.id })
@@ -118,6 +128,8 @@ export function listEmploymentPayComponents(ctx: SessionContext, employmentId: s
         prorateOverride: employmentPayComponent.prorateOverride,
         prorates: payComponent.prorates,
         remarks: employmentPayComponent.remarks,
+        // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag (null = unspecified).
+        runType: employmentPayComponent.runType,
       })
       .from(employmentPayComponent)
       .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
@@ -303,6 +315,20 @@ export class UnsupportedFixedCurrencyError extends Error {
 }
 
 /**
+ * Fixed Transaction screen (feedback b7fc8583) — thrown at WRITE time when the amount is not strictly
+ * positive (<= 0). The invariant is enforced on the aggregate (setEmploymentPayComponent) so BOTH UI write
+ * paths (the new Fixed Transaction screen AND the people-detail editor, which previously coerced a bad input
+ * to 0 and silently wrote it) inherit the guard. The backfill helpers legitimately seed a 0-amount row for a
+ * zero-allowance compensation line — they opt out explicitly via `allowZeroAmount: true`, and only they do.
+ */
+export class FixedTransactionAmountError extends Error {
+  constructor() {
+    super('fixed-transaction-amount-invalid');
+    this.name = 'FixedTransactionAmountError';
+  }
+}
+
+/**
  * Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation).
  *
  * 1.2.1 Fixed Transaction extends this with an optional effective END date (written to `validTo` of the new
@@ -329,6 +355,12 @@ export function setEmploymentPayComponent(
     currency?: string;
     prorateOverride?: boolean | null;
     remarks?: string | null;
+    // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag. Cleaned to one of
+    // regular/off_cycle/bonus/adjustment or null (unspecified). Stored + event-logged; the kernel ignores it.
+    runType?: FixedTransactionCycle | null;
+    // Backfill-only opt-out of the amount>0 guard: the compensation backfill legitimately seeds a 0-amount
+    // row for a zero-allowance line. ONLY the backfill call sites pass this true; every UI path inherits the guard.
+    allowZeroAmount?: boolean;
   },
   outerTx?: Tx,
 ) {
@@ -337,12 +369,17 @@ export function setEmploymentPayComponent(
   const effectiveTo = p.effectiveTo ?? null;
   // Currency guard — single write-time site, MYR-only kernel.
   const currency = p.currency ?? 'MYR';
+  // Cycle tag — cleaned to the enum or null; never trust a raw form/URL value.
+  const runType = cleanCycle(p.runType);
   const run = async (tx: Tx) => {
     // Validate inside the returned promise (not at call time) so the function ALWAYS returns a promise — a
     // bad value rejects rather than throwing synchronously, giving callers (and `.rejects` in tests) a single
     // uniform contract. Both checks still run before any write.
     if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
     if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
+    // Amount>0 invariant on the aggregate — inherited by every UI write path. The backfill opts out for its
+    // legitimate zero-allowance seed rows only (allowZeroAmount).
+    if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
     const [cur] = await tx
       .select({ id: employmentPayComponent.id })
       .from(employmentPayComponent)
@@ -372,6 +409,7 @@ export function setEmploymentPayComponent(
         currency,
         prorateOverride: p.prorateOverride ?? null,
         remarks: p.remarks ?? null,
+        runType,
       })
       .returning({ id: employmentPayComponent.id });
     await appendEvent(tx, {
@@ -382,8 +420,10 @@ export function setEmploymentPayComponent(
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
       // ADR-0030 Layer 0: amount lives on employment_pay_component[aggregateId]; reference, not cleartext.
-      // effectiveTo / currency / prorateOverride are non-PII references/flags (not in the banned set).
-      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom, effectiveTo, currency, prorateOverride: p.prorateOverride ?? null },
+      // effectiveTo / currency / prorateOverride / runType are non-PII references/flags (not in the banned
+      // set). runType is a constrained enum (cleaned above) so it is safe in the immutable log — unlike the
+      // free-text `remarks`, which stays deliberately EXCLUDED here (PDPA Layer-0).
+      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom, effectiveTo, currency, prorateOverride: p.prorateOverride ?? null, runType },
     });
     return { id: row.id };
   };
@@ -482,8 +522,10 @@ export function backfillEmploymentComponentsFromCompensation(ctx: SessionContext
       .where(and(isNull(compensation.validTo), isNull(compensation.supersededAt)));
     let count = 0;
     for (const c of comps) {
-      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: basicId, amount: Number(c.basicSalary), effectiveFrom: c.validFrom }, tx);
-      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: allowId, amount: Number(c.monthlyAllowance ?? 0), effectiveFrom: c.validFrom }, tx);
+      // allowZeroAmount: a compensation line may legitimately have basic 0 or a zero allowance; the backfill
+      // must seed those 0-amount rows so the typed path stays byte-identical. Only the backfill opts out.
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: basicId, amount: Number(c.basicSalary), effectiveFrom: c.validFrom, allowZeroAmount: true }, tx);
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: allowId, amount: Number(c.monthlyAllowance ?? 0), effectiveFrom: c.validFrom, allowZeroAmount: true }, tx);
       count += 1;
     }
     return { employments: count };

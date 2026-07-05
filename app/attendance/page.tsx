@@ -3,8 +3,11 @@ import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForDate, attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
+import { allowancePreviewForPeriod, listAllowancePolicies } from '@/core/read';
 import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Badge } from '@/components/ui/badge';
 import { TimelineNav } from '@/components/timeline-nav';
+import { OtReportExport } from '@/components/ot-report-export';
 import { checkInAction, checkOutAction, decideCorrectionAction } from './actions';
 
 const STATUS: Record<string, string> = {
@@ -44,7 +47,7 @@ const shiftMonth = (month: string, by: number) => {
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; date?: string; month?: string }>;
+  searchParams: Promise<{ error?: string; date?: string; month?: string; policy?: string; qualified?: string }>;
 }) {
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
@@ -71,6 +74,29 @@ export default async function AttendancePage({
   ]);
   const monthHref = (m: string) => `/attendance?date=${date}&month=${m}`;
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
+
+  // Attendance Allowance (ADR-0072). The active allowance policies in scope, and the live evaluation of the
+  // selected one for the shown month (pure read — nothing persisted). Admin-only surface.
+  const ta = await getTranslations('attendanceAllowance');
+  const allowancePolicies = isAdmin
+    ? await listAllowancePolicies(s, { companyIds: scopeIds }).then((rows) =>
+        rows.filter((r) => r.status === 'active'),
+      )
+    : [];
+  const selectedPolicyId =
+    sp.policy && allowancePolicies.some((p) => p.id === sp.policy) ? sp.policy : allowancePolicies[0]?.id;
+  const selectedPolicy = allowancePolicies.find((p) => p.id === selectedPolicyId) ?? null;
+  const allowancePreview =
+    isAdmin && selectedPolicyId
+      ? await allowancePreviewForPeriod(s, { policyId: selectedPolicyId, month, today: todayIso })
+      : null;
+  const qualifiedFilter = sp.qualified; // 'yes' | 'no' | undefined
+  const previewRows = (allowancePreview?.rows ?? []).filter((r) => {
+    if (qualifiedFilter === 'yes') return r.qualified;
+    if (qualifiedFilter === 'no') return !r.qualified;
+    return true;
+  });
+  const criterionLabel = (key: string) => ta(`criteria.${key}`);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -268,6 +294,18 @@ export default async function AttendancePage({
             <span className="ml-2 text-muted-foreground">{monthLabel(month)}</span>
           </div>
           <div className="flex items-center gap-1.5">
+            {isAdmin && (
+              <OtReportExport
+                month={month}
+                labels={{
+                  export: t('exportOtReport'),
+                  format: t('otReportFormat'),
+                  csv: t('otReportCsv'),
+                  xlsx: t('otReportXlsx'),
+                  pdf: t('otReportPdf'),
+                }}
+              />
+            )}
             <Link
               href={monthHref(shiftMonth(month, -1))}
               aria-label={t('previousMonth')}
@@ -350,6 +388,104 @@ export default async function AttendancePage({
           {t('summaryNote')}
         </p>
       </Card>
+
+      {/* Attendance Allowance panel (ADR-0072) — admin-only. Live evaluation of a policy for the month. */}
+      {isAdmin && (
+        <Card className="overflow-hidden">
+          <SectionHeader title={ta('panel.title')} count={previewRows.length} />
+          {allowancePolicies.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              {ta('panel.noPolicies')}{' '}
+              <Link href="/admin/attendance-allowance" className="text-primary hover:underline">
+                {ta('panel.configure')}
+              </Link>
+            </p>
+          ) : (
+            <>
+              {/* Policy + qualified filter — GET form (server-driven, no client state). */}
+              <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
+                <input type="hidden" name="date" value={date} />
+                <input type="hidden" name="month" value={month} />
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {ta('panel.policy')}
+                  <select name="policy" defaultValue={selectedPolicyId} className={inputCls}>
+                    {allowancePolicies.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — RM {Number(p.amount).toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                  {ta('panel.filter')}
+                  <select name="qualified" defaultValue={qualifiedFilter ?? ''} className={inputCls}>
+                    <option value="">{ta('panel.filterAll')}</option>
+                    <option value="yes">{ta('panel.filterQualified')}</option>
+                    <option value="no">{ta('panel.filterDisqualified')}</option>
+                  </select>
+                </label>
+                <Button type="submit" variant="outline" size="sm">
+                  {ta('panel.evaluate')}
+                </Button>
+                {selectedPolicy && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {ta('panel.gateWarning')}
+                  </span>
+                )}
+              </form>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">{ta('panel.colEmployee')}</th>
+                      <th className="px-4 py-2 font-medium">{ta('panel.colStatus')}</th>
+                      <th className="px-4 py-2 text-right font-medium">{ta('panel.colAmount')}</th>
+                      <th className="px-4 py-2 font-medium">{ta('panel.colReason')}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {previewRows.map((r) => (
+                      <tr key={r.employmentId}>
+                        <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                        <td className="px-4 py-2.5">
+                          <Badge variant={r.qualified ? 'success' : 'default'}>
+                            {r.qualified ? ta('panel.qualified') : ta('panel.disqualified')}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">RM {Number(r.amount).toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                          {r.perCriterion.length === 0 ? (
+                            ta('panel.noCriteria')
+                          ) : (
+                            <ul className="space-y-0.5">
+                              {r.perCriterion.map((c) => (
+                                <li key={c.key} className={c.pass ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
+                                  {c.pass ? '✓' : '✗'} {criterionLabel(c.key)}: {c.actual} / {c.threshold}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    {previewRows.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                          {ta('panel.empty')}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+                {ta('panel.note')}
+              </p>
+            </>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

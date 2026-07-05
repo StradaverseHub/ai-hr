@@ -179,6 +179,32 @@ export const company = pgTable(
   ],
 );
 
+// company_logo = 1:1 branding logo for a company, stored as a bytea SIDE TABLE (mirrors claim_attachment /
+// leave_request_attachment) so the (potentially large) blob is NEVER accidentally pulled by a company SELECT.
+// PNG/JPEG only — the mime is re-derived from magic bytes at upload (SVG is excluded: its payload survives
+// sniffing as a valid image but is scriptable). RLS posture: read is tenant-wide (a logo is low-sensitivity
+// branding, visible to any same-tenant member exactly like the company row itself); WRITE is admin-of-the-
+// company only (app.is_admin_for(company_id)). unique(company_id) enforces the 1:1 so setCompanyLogo upserts.
+export const companyLogo = pgTable(
+  'company_logo',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .unique()
+      .references(() => company.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('company_logo_company_idx').on(t.companyId)],
+);
+
 // location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
 // supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
 // company.default_work_state). `country` is captured for display only — the engine keeps using
@@ -2231,6 +2257,14 @@ export const employmentPayComponent = pgTable(
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag captured on the dedicated screen.
+    // Reuses the existing payroll_run_type taxonomy (regular/off_cycle/bonus/adjustment) — NOT a new
+    // vocabulary — so the label aligns byte-for-byte with the engine's own cycle master for any future
+    // routing follow-up. Nullable, no default: null = unspecified, so every legacy row and every write from
+    // the people-detail editor (which never sends it) stays byte-identical. The kernel does NOT read this
+    // column in this build (payout still follows the valid_from/valid_to window, exactly as recurring
+    // amounts work today); it is captured, stored and shown, but does not route which run pays the item.
+    runType: payrollRunTypeEnum('run_type'),
   },
   (t) => [index('employment_pay_component_idx').on(t.employmentId, t.validFrom)],
 );
@@ -2283,6 +2317,72 @@ export const payrollBatchComponent = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('payroll_batch_component_uq').on(t.batchId, t.employmentId, t.componentId)],
+);
+
+// ───────────────── Attendance Allowance (ADR-0072) ─────────────────
+// A company-scoped catalog policy that rewards good attendance: a fixed amount paid to employees who
+// meet a set of MONTHLY attendance conditions, transferred into a draft payroll run via the existing
+// pay-component prefill path. Evaluation is a PURE READ (no award table) — the only persisted output is
+// the payroll_batch_component row at transfer time (claims/OT precedent). RLS: tenant-catalog read,
+// admin-of-company write (mirrors clocking_location / business_unit). `method` is a text tag (v1 accepts
+// only 'monthly'; Daily deferred — no enum, so adding it later needs no migration).
+
+// v1 monthly criteria — EVERY field is a pure function of MonthSummaryRow. Deferred conditions
+// (late-minutes, early-out, per-leave-type caps, adjustment/OT-rejection counts) are NOT declared here:
+// a criterion that is not computable from the stored roll-up is not in the type.
+export type AttendanceAllowanceCriteria = {
+  /** present + late + halfDay must be >= this (days actually shown up). */
+  minAttendanceDays?: number;
+  /** absent days must be <= this. */
+  maxAbsentDays?: number;
+  /** COUNT of late-status days must be <= this. */
+  maxLateCount?: number;
+  /** leaveDays must be <= this. */
+  maxTotalLeaveDays?: number;
+  /** absent == 0 && late == 0. */
+  requirePerfectAttendance?: boolean;
+};
+
+// Empty object ⇒ all-in-scope. Each list is an OR within its axis; axes AND together (a policy scoped to
+// one department AND one BU matches employees in that department AND that BU).
+export type AttendanceAllowanceScope = {
+  departmentIds?: string[];
+  businessUnitIds?: string[];
+  companyIds?: string[];
+};
+
+export const attendanceAllowancePolicy = pgTable(
+  'attendance_allowance_policy',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    // v1 accepts only 'monthly' (app-side check). Text, not pgEnum — low-cardinality tag; Daily later.
+    method: text('method').notNull().default('monthly'),
+    amount: numeric('amount', { precision: 12, scale: 2 }).notNull(),
+    payComponentId: uuid('pay_component_id')
+      .notNull()
+      .references(() => payComponent.id),
+    effectiveFrom: date('effective_from').notNull(),
+    // active | inactive (app-side check). Archive (archivedAt) hides from the active catalog.
+    status: text('status').notNull().default('active'),
+    criteria: jsonb('criteria').$type<AttendanceAllowanceCriteria>().notNull().default({}),
+    scope: jsonb('scope').$type<AttendanceAllowanceScope>().notNull().default({}),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('attendance_allowance_policy_company_idx').on(t.tenantId, t.companyId),
+    // Per-company code uniqueness among live (non-archived) rows — mirrors business_unit / clocking_location.
+    uniqueIndex('attendance_allowance_policy_code_uq')
+      .on(t.tenantId, t.companyId, sql`lower(${t.code})`)
+      .where(sql`${t.archivedAt} is null`),
+    check('attendance_allowance_policy_amount_nonneg', sql`${t.amount} >= 0`),
+  ],
 );
 
 // ───────────────── 1.2.2 Individual Transaction (ADR-0055) ─────────────────

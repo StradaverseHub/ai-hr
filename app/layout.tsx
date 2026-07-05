@@ -21,6 +21,7 @@ import { getSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
+import { demoSwitcherEnabled } from '@/lib/demo-mode';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
@@ -74,8 +75,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     throw e;
   }
   const principals = await listPrincipals();
-  // Dev identity switcher is developers-only (never a live deployment). NODE_ENV !== 'production'.
-  const showDevSwitcher = process.env.NODE_ENV !== 'production';
+  // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
+  const showDevSwitcher = demoSwitcherEnabled();
   const allowed = await allowedCompanies(session);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';

@@ -21,6 +21,7 @@ import {
   assignment,
   businessUnit,
   company,
+  companyLogo,
   costCenter,
   department,
   domainEvent,
@@ -1922,6 +1923,98 @@ export async function setLeaveHalfDayFullDeduction(ctx: SessionContext, p: { com
     });
   });
 }
+// ─────────────────────────── Company logo (branding) ───────────────────────────
+// A 1:1 logo stored in the company_logo SIDE TABLE (schema.ts). PNG/JPEG only; the mime is sniffed from
+// magic bytes at the action boundary before it reaches here (SVG is excluded — scriptable). Read is
+// tenant-wide (branding), WRITE is admin-of-the-company (RLS company_logo_rls WITH CHECK). updateCompany is
+// UNTOUCHED — the logo is a separate mutation so the company details form stays byte-identical to today.
+export const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB, same cap the app uses elsewhere
+export const ALLOWED_LOGO_MIME = ['image/png', 'image/jpeg'] as const;
+
+/** Fail-closed logo validation (empty / oversized / disallowed MIME). Mirrors the claims
+ *  assertValidAttachment shape so callers reject the same files with the same-shaped errors. */
+function assertValidLogo(mimeType: string, content: Buffer): void {
+  if (content.byteLength === 0) throw new Error('Empty file');
+  if (content.byteLength > LOGO_MAX_BYTES) throw new Error('Logo exceeds 2 MB');
+  if (!(ALLOWED_LOGO_MIME as readonly string[]).includes(mimeType)) {
+    throw new Error('Only PNG or JPG images are allowed');
+  }
+}
+
+/** Upsert a company's logo (insert-or-update on the unique company_id). Substrate: appends company.logo.set
+ *  with ONLY derived, non-PII payload fields — never the bytes and never the raw user-supplied fileName
+ *  (PDPA / ADR-0030 posture). */
+export async function setCompanyLogo(
+  ctx: SessionContext,
+  p: { companyId: string; content: Buffer; fileName: string; mimeType: string; sizeBytes: number },
+) {
+  assertValidLogo(p.mimeType, p.content);
+  return withTenant(ctx, async (tx) => {
+    await tx
+      .insert(companyLogo)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId: p.companyId,
+        content: p.content,
+        fileName: p.fileName,
+        mimeType: p.mimeType,
+        sizeBytes: p.sizeBytes,
+        uploadedByUserId: ctx.userId ?? null,
+      })
+      .onConflictDoUpdate({
+        target: companyLogo.companyId,
+        set: {
+          content: p.content,
+          fileName: p.fileName,
+          mimeType: p.mimeType,
+          sizeBytes: p.sizeBytes,
+          uploadedByUserId: ctx.userId ?? null,
+          updatedAt: sql`now()`,
+        },
+      });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.logo.set',
+      actor: actorOf(ctx),
+      payload: { mimeType: p.mimeType, sizeBytes: p.sizeBytes },
+    });
+    return { companyId: p.companyId };
+  });
+}
+
+/** Remove a company's logo. No-op-safe if none exists. Substrate: appends company.logo.removed (no fileName). */
+export async function removeCompanyLogo(ctx: SessionContext, p: { companyId: string }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.delete(companyLogo).where(eq(companyLogo.companyId, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: 'company.logo.removed',
+      actor: actorOf(ctx),
+      payload: { removed: true },
+    });
+    return { companyId: p.companyId };
+  });
+}
+
+/** Read a company's logo bytes for the serve route (RLS scopes visibility to same-tenant members). */
+export async function getCompanyLogo(
+  ctx: SessionContext,
+  companyId: string,
+): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ content: companyLogo.content, fileName: companyLogo.fileName, mimeType: companyLogo.mimeType })
+      .from(companyLogo)
+      .where(eq(companyLogo.companyId, companyId))
+      .limit(1);
+    return row ? { content: row.content, fileName: row.fileName, mimeType: row.mimeType } : null;
+  });
+}
+
 export function archiveCompany(ctx: SessionContext, p: { id: string; archived: boolean }) {
   return withTenant(ctx, async (tx) => {
     await tx.update(company).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(company.id, p.id));

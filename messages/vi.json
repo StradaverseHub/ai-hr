@@ -112,7 +112,9 @@
     "locations": "Địa điểm",
     "loans": "Khoản vay",
     "payrollCycleConfig": "Chu kỳ trả lương",
-    "personnelAdmin": "Nhân sự (quản trị)"
+    "personnelAdmin": "Nhân sự (quản trị)",
+    "securityPermission": "Bảo mật & quyền hạn",
+    "attendanceAllowance": "Phụ cấp chuyên cần"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -381,6 +383,7 @@
       "statusActive": "Đang áp dụng",
       "statusEnded": "Đã kết thúc",
       "dateError": "Ngày kết thúc hiệu lực không được trước ngày bắt đầu hiệu lực.",
+      "amountError": "Số tiền phải lớn hơn không.",
       "currencyUnsupported": "Chỉ hỗ trợ MYR — lương được tính bằng MYR.",
       "epfVoluntaryHint": "Nhập tổng tỷ lệ của mỗi bên bằng hoặc cao hơn mức tối thiểu theo luật (người lao động 11%, người SDLĐ 12–13%). Để trống để giữ mức theo luật.",
       "epfSemiAutoHint": "Nhập tỷ lệ người lao động bằng hoặc cao hơn mức 11% theo luật. Phần người sử dụng lao động giữ tự động (theo luật).",
@@ -771,7 +774,12 @@
     },
     "importPunches": "Nhập chấm công",
     "colLocation": "Địa điểm",
-    "otHoursLabel": "Tăng ca"
+    "otHoursLabel": "Tăng ca",
+    "exportOtReport": "Xuất báo cáo OT",
+    "otReportFormat": "Định dạng",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -1350,7 +1358,7 @@
       "periodContext": "Kỳ lương",
       "allPeriods": "Tất cả kỳ lương",
       "filteredEmpty": "Không có quy trình tính lương nào cho kỳ lương này.",
-      "newRun": "Tạo đợt lương mới",
+      "newRun": "Tạo chu kỳ chạy lương",
       "colPaymentDate": "Ngày thanh toán",
       "paymentDateLegacyNote": "Các đợt được tạo trước bản phát hành này hiển thị ngày mặc định của hệ thống (ngày 28)."
     },
@@ -1490,7 +1498,7 @@
       "epfEmployerThreshold": "Ngưỡng mức chủ lao động (RM/tháng)",
       "contribCeiling": "Mức trần tiền lương đóng góp (RM)",
       "otWageCeiling": "Mức trần tiền lương hưởng tăng ca (RM/tháng)",
-      "otMultipliersNote": "Hệ số tăng ca (1.5× ngày làm việc, 2× ngày nghỉ, 3× ngày lễ) được Đạo luật Việc làm ấn định và không thể cấu hình.",
+      "otMultipliersNote": "Mức 1.5× ngày làm việc và lương ngày cơ bản (½/1 ngày cho ngày nghỉ, 2 ngày cho ngày lễ) do Đạo luật Việc làm quy định cố định. Hệ số vượt giờ của ngày nghỉ và ngày lễ mặc định theo luật là 2× / 3× và có thể điều chỉnh tại đây.",
       "reliefIndividual": "Giảm trừ cá nhân (RM/năm)",
       "reliefSpouse": "Giảm trừ vợ/chồng — Loại 2 (RM/năm)",
       "reliefPerChild": "Giảm trừ mỗi con (RM/năm)",
@@ -1547,7 +1555,9 @@
       "editSection": "Sửa {body}",
       "editSectionIntro": "Phát hành ghi đè có hiệu lực theo ngày cho cơ quan này. Giá trị mặc định đã xác minh vẫn là dự phòng; phiếu lương trước đây giữ nguyên ảnh chụp của chúng.",
       "cancelEdit": "Hủy",
-      "lastEdited": "Ghi đè gần nhất: {version} · hiệu lực {effectiveFrom}"
+      "lastEdited": "Ghi đè gần nhất: {version} · hiệu lực {effectiveFrom}",
+      "otRestDayExcessMultiplier": "Hệ số OT vượt giờ ngày nghỉ (× theo giờ)",
+      "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)"
     },
     "batch": {
       "back": "Bảng lương",
@@ -1647,7 +1657,9 @@
       "encashmentFrozenBadge": "Đã khóa khi đơn nghỉ việc được phê duyệt",
       "encashmentOverriddenBadge": "Đã khóa (HR ghi đè)",
       "encashmentFrozenAsOfTitle": "Đã khóa vào ngày {date}",
-      "colCode": "Mã"
+      "colCode": "Mã",
+      "transferAllowance": "Chuyển phụ cấp",
+      "allowanceGateWarning": "Thành phần lương định kiểu đang tắt — việc chuyển sẽ được ghi nhận nhưng không vào phiếu lương cho đến khi được bật."
     },
     "transactions": {
       "title": "Giao dịch",
@@ -1659,23 +1671,49 @@
         "fixedDesc": "Phụ cấp và khấu trừ định kỳ theo nhân viên, có ngày hiệu lực.",
         "fixedCta": "Quản lý định kỳ",
         "individualTitle": "Giao dịch Riêng lẻ",
-        "individualDesc": "Thành phần một lần cho đợt nháp, cùng với miễn giảm TP1 và zakat.",
-        "individualCta": "Thêm một lần"
+        "individualDesc": "Thành phần một lần cho đợt nháp.",
+        "individualCta": "Thêm một lần",
+        "tp1Title": "Miễn giảm TP1",
+        "tp1Desc": "Miễn giảm thuế TP1 hàng tháng theo nhân viên trên đợt nháp.",
+        "tp1Cta": "Sửa miễn giảm TP1",
+        "zakatTitle": "Zakat",
+        "zakatDesc": "Zakat trả qua lương theo nhân viên trên đợt nháp.",
+        "zakatCta": "Sửa zakat"
       },
       "fixed": {
-        "title": "Giao dịch Cố định",
-        "subtitle": "Thành phần lương định kỳ theo nhân viên, có ngày hiệu lực.",
-        "intro": "Chọn một nhân viên để quản lý phụ cấp và khấu trừ định kỳ của họ. Thay đổi sẽ có hiệu lực trên phiếu lương được tạo tiếp theo.",
+        "title": "Giao dịch cố định",
+        "subtitle": "Các khoản chi trả cố định lặp lại cho một nhân viên, có ngày hiệu lực.",
+        "intro": "Thêm một khoản cố định cho một mục chi trả trong một khoảng thời gian. Nó áp dụng cho các kỳ tính lương có kỳ nằm trong khoảng đó. Thay đổi có hiệu lực trên phiếu lương được tạo tiếp theo.",
         "pickEmployee": "Nhân viên",
-        "open": "Mở trình chỉnh sửa",
         "empty": "Không có nhân viên trong phạm vi hiện tại.",
+        "employeeId": "Mã nhân viên",
+        "employeeName": "Tên",
+        "formTitle": "Thêm giao dịch cố định",
+        "payrollItem": "Mục chi trả",
+        "payrollCycle": "Chu kỳ tính lương",
+        "amount": "Số tiền",
+        "startDate": "Ngày bắt đầu",
+        "endDate": "Ngày kết thúc",
+        "remarks": "Ghi chú",
+        "add": "Thêm",
+        "status": "Trạng thái",
+        "statusActive": "Đang hoạt động",
+        "statusEnded": "Đã kết thúc",
+        "cycleUnspecified": "Chưa xác định",
+        "noTransactions": "Chưa có giao dịch cố định cho nhân viên này.",
+        "required": "Nhân viên, mục chi trả, chu kỳ, ngày bắt đầu và số tiền là bắt buộc.",
+        "outOfScope": "Nhân viên đó không thuộc phạm vi công ty hiện tại của bạn.",
+        "dateError": "Ngày kết thúc không được trước ngày bắt đầu.",
+        "currencyUnsupported": "Chỉ hỗ trợ MYR — lương được tính bằng MYR.",
+        "amountError": "Số tiền phải lớn hơn không.",
+        "open": "Mở trình chỉnh sửa",
         "colEmployee": "Nhân viên",
         "colCompany": "Công ty",
         "manage": "Quản lý"
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",
-        "subtitle": "Thành phần đợt một lần, miễn giảm TP1 và zakat.",
+        "subtitle": "Thành phần đợt một lần.",
         "pickBatch": "Đợt nháp",
         "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
         "addTitle": "Thêm thành phần một lần",
@@ -1689,12 +1727,6 @@
         "added": "Đã thêm thành phần.",
         "csvTitle": "Nhập hàng loạt (CSV)",
         "csvIntro": "Tải nhiều thành phần một lần cùng lúc.",
-        "deductionTitle": "Miễn giảm TP1 & zakat",
-        "deductionIntro": "Miễn giảm thuế hàng tháng (TP1) và zakat cho một nhân viên. Lưu các mục này không thay đổi tăng ca hoặc thưởng trên cùng hàng.",
-        "tp1": "Miễn giảm TP1",
-        "tp1Title": "Miễn giảm khấu trừ thuế hàng tháng (TP1) — giảm PCB/MTD.",
-        "zakat": "Zakat",
-        "zakatTitle": "Zakat trả qua lương — được ghi có vào PCB/MTD.",
         "save": "Lưu",
         "saved": "Đã lưu.",
         "unsupportedComponent": "Thành phần đó không thể dùng trên đợt trong phiên bản này. Hãy chọn một thành phần có thể chi trả.",
@@ -1733,7 +1765,65 @@
           "off_cycle": "Ngoài chu kỳ",
           "bonus": "Thưởng",
           "adjustment": "Điều chỉnh"
-        }
+        },
+        "deductionTitle": "Miễn giảm TP1 & zakat",
+        "deductionIntro": "Miễn giảm thuế hàng tháng (TP1) và zakat cho một nhân viên. Lưu các mục này không thay đổi tăng ca hoặc thưởng trên cùng hàng.",
+        "tp1": "Miễn giảm TP1",
+        "tp1Title": "Miễn giảm khấu trừ thuế hàng tháng (TP1) — giảm PCB/MTD.",
+        "zakat": "Zakat",
+        "zakatTitle": "Zakat trả qua lương — được ghi có vào PCB/MTD.",
+        "stepEmployee": "Nhân viên",
+        "stepPeriod": "Kỳ & chu kỳ",
+        "stepEntry": "Mục nhập",
+        "stepSave": "Xem lại & lưu",
+        "employeeSearch": "Tìm nhân viên",
+        "searchPlaceholder": "Tìm theo tên hoặc mã nhân viên…",
+        "noEmployees": "Không có nhân viên phù hợp.",
+        "empId": "Mã nhân viên",
+        "dept": "Phòng ban",
+        "position": "Chức vụ",
+        "next": "Tiếp tục",
+        "pickRun": "Đợt chạy",
+        "noDraftForSelection": "Không có đợt nháp cho kỳ và chu kỳ này.",
+        "noDraftForSelectionLink": "Tạo một đợt trong Xử lý lương",
+        "gridAddRow": "Thêm dòng",
+        "gridDeleteRow": "Xóa",
+        "colItem": "Khoản lương",
+        "colEffectiveDate": "Ngày hiệu lực",
+        "colAmount": "Số tiền",
+        "colRemarks": "Ghi chú",
+        "rowIncomplete": "Một số dòng chưa hoàn chỉnh hoặc không hợp lệ — hãy sửa các dòng được tô sáng trước khi lưu.",
+        "amountNotPositive": "Số tiền phải lớn hơn không.",
+        "companyMismatch": "Nhân viên này không thuộc công ty của đợt chạy đã chọn.",
+        "employeeNotInScope": "Nhân viên này không nằm trong đợt lương đã chọn.",
+        "saveSuccess": "Đã lưu {count} giao dịch.",
+        "reviewCount": "{count} giao dịch sẽ được lưu.",
+        "saving": "Đang lưu…",
+        "saveAll": "Lưu tất cả",
+        "otherTools": "Công cụ khác",
+        "back": "Quay lại"
+      },
+      "tp1": {
+        "title": "Miễn giảm TP1",
+        "subtitle": "Miễn giảm thuế TP1 hàng tháng theo nhân viên cho đợt nháp.",
+        "pickBatch": "Đợt nháp",
+        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
+        "employee": "Nhân viên",
+        "amount": "Miễn giảm TP1",
+        "save": "Lưu",
+        "saved": "Đã lưu.",
+        "empty": "Không có nhân viên trong đợt này."
+      },
+      "zakat": {
+        "title": "Zakat",
+        "subtitle": "Zakat trả qua lương theo nhân viên cho đợt nháp.",
+        "pickBatch": "Đợt nháp",
+        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
+        "employee": "Nhân viên",
+        "amount": "Zakat",
+        "save": "Lưu",
+        "saved": "Đã lưu.",
+        "empty": "Không có nhân viên trong đợt này."
       }
     },
     "setup": {
@@ -1976,7 +2066,18 @@
       "fieldBusinessUnit": "Đơn vị kinh doanh",
       "businessUnitNone": "— Không có —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "vd. Bán lẻ"
+      "businessUnitNamePlaceholder": "vd. Bán lẻ",
+      "logoSection": "Logo",
+      "logoUpload": "Tải logo lên",
+      "logoReplace": "Thay logo",
+      "logoRemove": "Xóa logo",
+      "logoNone": "Chưa đặt logo",
+      "logoSave": "Lưu logo",
+      "logoHint": "PNG hoặc JPG, tối đa 2 MB",
+      "logoInvalidType": "Chỉ cho phép ảnh PNG hoặc JPG",
+      "logoTooLarge": "Logo vượt quá 2 MB",
+      "searchCompanies": "Tìm công ty theo tên hoặc số đăng ký",
+      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn"
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
@@ -2296,7 +2397,7 @@
         "extended": "Mở rộng",
         "custom": "Tùy chỉnh"
       },
-      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của lịch). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = danh sách hoàn toàn quản lý thủ công; ngày lễ quốc gia không được thêm tự động."
+      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của nhóm). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = chỉ những ngày lễ bạn tự chọn vào nhóm này; mọi ngày khác, kể cả ngày lễ quốc gia, đều là ngày làm việc bình thường. Gán một nhóm cho nhân viên trên hồ sơ của họ (hoặc ánh xạ vào một địa điểm) và họ sẽ tuân theo đúng các quy tắc này."
     },
     "users": {
       "title": "Người dùng & vai trò",
@@ -2325,7 +2426,28 @@
       "inviteScope": "Phạm vi công ty",
       "inviteSubmit": "Gửi lời mời",
       "pendingInvitations": "Lời mời đang chờ",
-      "revokeInvitation": "Thu hồi"
+      "revokeInvitation": "Thu hồi",
+      "sectionFunctionAccess": "Quyền truy cập chức năng",
+      "functionAccessCaption": "Vai trò nào có thể mở từng màn hình. Điều này phản ánh quyền truy cập mà hệ thống thực thi; đây là chế độ xem tham chiếu, không phải trình chỉnh sửa — việc thực thi được thay đổi trong các bộ bảo vệ vai trò và chính sách cơ sở dữ liệu.",
+      "accessible": "Có thể truy cập",
+      "notAccessible": "Không có quyền",
+      "screenColumn": "Màn hình",
+      "screen": {
+        "loans": "Khoản vay",
+        "payrollConfig": "Cấu hình bảng lương",
+        "payrollPolicy": "Chính sách bảng lương",
+        "payComponents": "Thành phần lương"
+      },
+      "scope": {
+        "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
+        "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi."
+      }
     },
     "audit": {
       "title": "Nhật ký kiểm toán",
@@ -2607,9 +2729,9 @@
     "payrollTabs": {
       "batches": "Quy trình tính lương",
       "reports": "Báo cáo",
-      "configuration": "Cấu hình",
       "transactions": "Giao dịch",
-      "setup": "Cài đặt"
+      "setup": "Cài đặt",
+      "configuration": "Cấu hình"
     },
     "printButton": {
       "print": "In / Lưu PDF"
@@ -2802,8 +2924,8 @@
           "body": "Mọi lần chạy lương đều nằm ở đây. Nhấp vào một kỳ để mở quy trình tính lương và xem lại phiếu lương, lương thực nhận và tổng các khoản pháp định."
         },
         "create": {
-          "title": "Tạo đợt lương mới",
-          "body": "Nhấp **Tạo đợt lương mới** để mở trình hướng dẫn: chọn kỳ và chu kỳ, chọn nhân viên, sau đó xem lại và xử lý."
+          "title": "Tạo chu kỳ chạy lương",
+          "body": "Nhấp **Tạo chu kỳ chạy lương** để mở trình hướng dẫn: chọn kỳ và chu kỳ, chọn nhân viên, sau đó xem lại và xử lý."
         },
         "reports": {
           "title": "Báo cáo pháp định",
@@ -3672,6 +3794,103 @@
     "error": {
       "generic": "Đăng nhập thất bại. Vui lòng thử lại.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi một lát rồi thử lại."
+    }
+  },
+  "attendanceAllowance": {
+    "title": "Phụ cấp chuyên cần",
+    "description": "Thưởng cho việc đi làm đều đặn bằng một khoản phụ cấp cố định qua bảng lương. Thiết lập điều kiện một lần; hệ thống kiểm tra từng nhân viên và bạn chuyển các khoản đủ điều kiện vào đợt lương.",
+    "scopeNotice": "Phiên bản đầu tiên này hỗ trợ phương thức Hàng tháng và các điều kiện có thể tính toán đáng tin cậy: ngày đi làm, ngày vắng mặt, số lần đi trễ, tổng ngày nghỉ và chuyên cần hoàn hảo. Các điều kiện theo phút và theo loại nghỉ, cùng phương thức Hàng ngày, là các phần tiếp theo đã lên kế hoạch.",
+    "emptyScope": "Không có công ty trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
+    "catalogTitle": "Chính sách",
+    "empty": "Chưa có chính sách phụ cấp chuyên cần.",
+    "status": {
+      "active": "Hoạt động",
+      "inactive": "Không hoạt động"
+    },
+    "method": {
+      "monthly": "Hàng tháng"
+    },
+    "fields": {
+      "code": "Mã",
+      "name": "Tên",
+      "company": "Công ty",
+      "amount": "Số tiền (RM)",
+      "payComponent": "Khoản thu nhập lương",
+      "effectiveFrom": "Hiệu lực từ",
+      "method": "Phương thức",
+      "status": "Trạng thái",
+      "departments": "Phòng ban",
+      "businessUnits": "Đơn vị kinh doanh",
+      "companies": "Công ty"
+    },
+    "criteria": {
+      "minAttendanceDays": "Số ngày đi làm tối thiểu",
+      "maxAbsentDays": "Số ngày vắng mặt tối đa",
+      "maxLateCount": "Số lần đi trễ tối đa",
+      "maxTotalLeaveDays": "Số ngày nghỉ tối đa",
+      "requirePerfectAttendance": "Yêu cầu chuyên cần hoàn hảo (không vắng, không trễ)"
+    },
+    "reason": {
+      "minAttendanceDays": "Ngày đi làm {actual} thấp hơn tối thiểu {threshold}",
+      "maxAbsentDays": "Ngày vắng {actual} vượt tối đa {threshold}",
+      "maxLateCount": "Số lần trễ {actual} vượt tối đa {threshold}",
+      "maxTotalLeaveDays": "Ngày nghỉ {actual} vượt tối đa {threshold}",
+      "requirePerfectAttendance": "Yêu cầu chuyên cần hoàn hảo, nhưng có {actual} ngày vắng/trễ"
+    },
+    "form": {
+      "createTitle": "Chính sách mới",
+      "editTitle": "Sửa chính sách",
+      "selectCompany": "Chọn công ty…",
+      "selectComponent": "Chọn khoản thu nhập lương…",
+      "dailyComingSoon": "Phương thức Hàng ngày sắp ra mắt.",
+      "criteriaTitle": "Điều kiện đủ tiêu chuẩn",
+      "noLimit": "Không giới hạn",
+      "scopeTitle": "Áp dụng cho ai",
+      "scopeHint": "Để trống tất cả để áp dụng cho mọi nhân viên trong công ty.",
+      "noDepartments": "Không có phòng ban trong phạm vi.",
+      "noBusinessUnits": "Không có đơn vị kinh doanh trong phạm vi.",
+      "noCompanies": "Không có công ty trong phạm vi.",
+      "save": "Lưu thay đổi",
+      "create": "Tạo chính sách",
+      "cancel": "Hủy"
+    },
+    "actions": {
+      "title": "Hành động",
+      "edit": "Sửa",
+      "activate": "Kích hoạt",
+      "deactivate": "Vô hiệu hóa",
+      "archive": "Lưu trữ",
+      "archiveConfirmTitle": "Lưu trữ chính sách này?",
+      "archiveConfirmBody": "Nó sẽ bị ẩn khỏi danh sách hoạt động. Không thể hoàn tác từ đây."
+    },
+    "panel": {
+      "title": "Phụ cấp chuyên cần",
+      "noPolicies": "Chưa cấu hình chính sách phụ cấp chuyên cần.",
+      "configure": "Cấu hình chính sách",
+      "policy": "Chính sách",
+      "filter": "Hiển thị",
+      "filterAll": "Tất cả",
+      "filterQualified": "Đủ điều kiện",
+      "filterDisqualified": "Không đủ điều kiện",
+      "evaluate": "Đánh giá",
+      "gateWarning": "Chuyển tiền từ màn hình đợt lương.",
+      "colEmployee": "Nhân viên",
+      "colStatus": "Trạng thái",
+      "colAmount": "Số tiền",
+      "colReason": "Điều kiện",
+      "qualified": "Đủ điều kiện",
+      "disqualified": "Không đủ điều kiện",
+      "noCriteria": "Chưa đặt điều kiện",
+      "empty": "Không có nhân viên nào cho chính sách và tháng này.",
+      "note": "Đánh giá đọc dữ liệu chuyên cần hiện tại. Để có số liệu chính xác, hãy dùng tháng đã hoàn thành."
+    },
+    "errors": {
+      "duplicateCode": "Đã tồn tại một chính sách có mã này cho công ty này."
+    },
+    "toasts": {
+      "saved": "Đã lưu chính sách",
+      "statusChanged": "Đã cập nhật trạng thái chính sách",
+      "archived": "Đã lưu trữ chính sách"
     }
   }
 }

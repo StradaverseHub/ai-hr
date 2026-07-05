@@ -17,7 +17,7 @@ import { asc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employment, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
-import { BatchNotDraftError, daysInMonth } from './payroll';
+import { BatchNotDraftError, daysInMonth, resolveBatchScopeFilter, type BatchScope } from './payroll';
 
 const money = (v: number) => Number(v).toFixed(2);
 
@@ -68,6 +68,43 @@ export class TxnDateOutOfPeriodError extends Error {
   }
 }
 
+/** Thrown when a bulk row's `amount` is not strictly positive. Deductions are represented by
+ *  kind='deduction' with a POSITIVE magnitude (the ledger stores amounts as magnitudes via money()),
+ *  so zero/negative is never a legitimate value. Kept as a validation-key throw (not an exported class)
+ *  per the actions.ts friendly-key pattern; surfaced as the 'amountNotPositive' key. */
+export class AmountNotPositiveError extends Error {
+  constructor(public readonly amount: number) {
+    super(`Amount ${amount} must be greater than zero.`);
+    this.name = 'AmountNotPositiveError';
+  }
+}
+
+/** Thrown when the chosen employment does not belong to the batch's company. The employee-first flow can
+ *  otherwise resolve a batch in the wrong company (createIndividualTxn does not cross-check), so the bulk
+ *  wrapper is the defence-in-depth backstop behind the UI's company filter (C3). */
+export class CompanyMismatchError extends Error {
+  constructor(
+    public readonly employmentCompanyId: string,
+    public readonly batchCompanyId: string,
+  ) {
+    super(`Employment company ${employmentCompanyId} does not match batch company ${batchCompanyId}.`);
+    this.name = 'CompanyMismatchError';
+  }
+}
+
+/** Thrown when the batch's scope (departments / explicit employments) excludes the chosen employment.
+ *  A scoped batch narrows generation to a subset; the ledger FK does not enforce membership, so an
+ *  out-of-scope row would be silently ignored at generation — reject it here instead (C4). */
+export class EmploymentNotInBatchScopeError extends Error {
+  constructor(
+    public readonly employmentId: string,
+    public readonly batchId: string,
+  ) {
+    super(`Employment ${employmentId} is not in the scope of batch ${batchId}.`);
+    this.name = 'EmploymentNotInBatchScopeError';
+  }
+}
+
 export type IndividualTxnRow = {
   id: string;
   employmentId: string;
@@ -88,20 +125,31 @@ function periodBounds(payPeriod: string): { periodStart: string; periodEnd: stri
   return { periodStart, periodEnd };
 }
 
-/** Load a draft batch (or throw if not draft / not found). Returns its period for date validation. */
-async function loadDraftBatch(tx: Tx, batchId: string): Promise<{ payPeriod: string }> {
+/** Load a draft batch (or throw if not draft / not found). Returns period + company + scope so the bulk
+ *  wrapper can enforce the C3 (company match) and C4 (scope membership) correctness guards. Exported for
+ *  the bulk wrapper (C5); the single-row methods below keep using it too, ignoring the extra columns. */
+export async function loadDraftBatch(
+  tx: Tx,
+  batchId: string,
+): Promise<{ payPeriod: string; companyId: string; scope: BatchScope | null }> {
   const [batch] = await tx
-    .select({ status: payrollBatch.status, payPeriod: payrollBatch.payPeriod })
+    .select({
+      status: payrollBatch.status,
+      payPeriod: payrollBatch.payPeriod,
+      companyId: payrollBatch.companyId,
+      scope: payrollBatch.scope,
+    })
     .from(payrollBatch)
     .where(eq(payrollBatch.id, batchId))
     .limit(1);
   if (!batch) throw new BatchNotDraftError();
   if (batch.status !== 'draft') throw new BatchNotDraftError();
-  return { payPeriod: batch.payPeriod };
+  return { payPeriod: batch.payPeriod, companyId: batch.companyId, scope: (batch.scope as BatchScope | null) ?? null };
 }
 
-/** Validate that txnDate falls within the period; throw TxnDateOutOfPeriodError otherwise. */
-function assertDateInPeriod(txnDate: string, payPeriod: string): void {
+/** Validate that txnDate falls within the period; throw TxnDateOutOfPeriodError otherwise. Exported for
+ *  the bulk wrapper (C5) so it re-uses the identical calendar-month bounds the single-row path uses. */
+export function assertDateInPeriod(txnDate: string, payPeriod: string): void {
   const { periodStart, periodEnd } = periodBounds(payPeriod);
   if (txnDate < periodStart || txnDate > periodEnd) {
     throw new TxnDateOutOfPeriodError(txnDate, periodStart, periodEnd);
@@ -182,6 +230,104 @@ export function createIndividualTxn(
   });
 }
 
+/** One editable grid row for the bulk save (Step 3 of the wizard). */
+export type BulkTxnRow = {
+  kind: string;
+  txnDate: string;
+  amount: number;
+  quantity?: number | null;
+  unit?: string | null;
+  notes?: string | null;
+};
+
+/**
+ * 1.2.2 — Save a whole grid of dated one-off transactions for ONE employee against ONE draft batch, in a
+ * SINGLE transaction (the wizard's Step 4 "save all valid entries in one transaction"). Either every row
+ * commits or none does — a mid-transaction failure on any later row rolls back the earlier inserts and
+ * their events. This is the ONE net-new backend method; it deliberately does NOT loop createIndividualTxn
+ * (that opens N transactions with no rollback — C5/scope-creep note).
+ *
+ * Correctness guards, in order (fail fast, whole-transaction rollback):
+ *  - draft batch (BatchNotDraftError) — re-checked inside the transaction so a draft→non-draft flip
+ *    between selection and save loses nothing (C8/C10).
+ *  - company match: employment.companyId == batch.companyId (CompanyMismatchError, C3).
+ *  - scope membership: employment ∈ batch.scope (EmploymentNotInBatchScopeError, C4).
+ *  - per row: valid kind / unit; date-in-period (assertDateInPeriod); amount > 0 (AmountNotPositiveError, C6).
+ *
+ * One 'payroll.individual-txn.created' DomainEvent is appended PER inserted row (aggregateId = the new row
+ * id), byte-identical in shape to createIndividualTxn's event, so per-record History/replay attach and the
+ * substrate-coverage grep passes (C7).
+ */
+export function createIndividualTxnsBulk(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; rows: BulkTxnRow[] },
+): Promise<{ ids: string[] }> {
+  return withTenant(ctx, async (tx) => {
+    // Load + validate the draft batch ONCE inside the transaction (C5/C8: the draft re-check happens here).
+    const { payPeriod, companyId: batchCompanyId, scope } = await loadDraftBatch(tx, p.batchId);
+
+    // C3 — the chosen employment must belong to the batch's company (the employee-first flow can otherwise
+    // resolve a batch in the wrong company; createIndividualTxn never cross-checked this).
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp || emp.companyId !== batchCompanyId) {
+      throw new CompanyMismatchError(emp?.companyId ?? 'unknown', batchCompanyId);
+    }
+
+    // C4 — the employment must be within the batch's scope (departments ∪ explicit employments). A null/empty
+    // scope means "whole company" (already company-matched above), so no membership check is needed then.
+    const { employmentIds } = await resolveBatchScopeFilter(tx, scope);
+    if (employmentIds !== null && !employmentIds.includes(p.employmentId)) {
+      throw new EmploymentNotInBatchScopeError(p.employmentId, p.batchId);
+    }
+
+    // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
+    // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
+    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null }> = [];
+    for (const r of p.rows) {
+      if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
+      if (r.unit != null && !isTxnUnit(r.unit)) throw new InvalidTxnUnitError(r.unit);
+      assertDateInPeriod(r.txnDate, payPeriod);
+      if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
+      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes });
+    }
+
+    const ids: string[] = [];
+    for (const r of validated) {
+      const [row] = await tx
+        .insert(payrollIndividualTxn)
+        .values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId: p.employmentId,
+          kind: r.kind,
+          txnDate: r.txnDate,
+          amount: money(r.amount),
+          quantity: r.quantity != null ? money(r.quantity) : null,
+          unit: r.unit ?? null,
+          notes: r.notes ?? null,
+        })
+        .returning({ id: payrollIndividualTxn.id });
+      // C7 — one event PER row, byte-identical in shape to the single-row create event.
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-individual-txn',
+        aggregateId: row.id,
+        eventType: 'payroll.individual-txn.created',
+        actor: actorOf(ctx),
+        subjectEmploymentId: p.employmentId,
+        // ADR-0030 Layer 0: references + kind, no cleartext amount.
+        payload: { batchId: p.batchId, employmentId: p.employmentId, kind: r.kind, txnDate: r.txnDate },
+      });
+      ids.push(row.id);
+    }
+    return { ids };
+  });
+}
+
 /**
  * Patch a dated one-off transaction. Draft-only; re-validates date-in-period against the (unchanged) batch
  * period. A patch may change any of kind / txnDate / amount / quantity / unit / notes.
@@ -216,6 +362,9 @@ export function updateIndividualTxn(
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
     const nextDate = p.txnDate ?? existing.txnDate;
     assertDateInPeriod(nextDate, payPeriod);
+    // C6 — the retained edit path is the OTHER surviving write surface (the create-form path is removed).
+    // Enforce the same amount>0 magnitude rule the bulk save enforces, so both write paths agree.
+    if (p.amount !== undefined && !(p.amount > 0)) throw new AmountNotPositiveError(p.amount);
 
     const patch: Record<string, unknown> = {};
     if (p.kind !== undefined) patch.kind = p.kind;

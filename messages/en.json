@@ -112,7 +112,9 @@
     "locations": "Locations",
     "loans": "Loans",
     "payrollCycleConfig": "Payroll Cycles",
-    "personnelAdmin": "Personnel (admin)"
+    "personnelAdmin": "Personnel (admin)",
+    "securityPermission": "Security & permissions",
+    "attendanceAllowance": "Attendance allowance"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -381,6 +383,7 @@
       "statusActive": "Active",
       "statusEnded": "Ended",
       "dateError": "Effective end date cannot be before the effective start date.",
+      "amountError": "Amount must be greater than zero.",
       "currencyUnsupported": "Only MYR is supported — payroll is computed in MYR.",
       "epfVoluntaryHint": "Enter each side's total rate at or above the statutory floor (employee 11%, employer 12–13%). Leave a side blank to keep it statutory.",
       "epfSemiAutoHint": "Enter the employee rate at or above the statutory 11%. The employer side stays automatic (statutory).",
@@ -771,7 +774,12 @@
     },
     "importPunches": "Import punches",
     "colLocation": "Location",
-    "otHoursLabel": "OT"
+    "otHoursLabel": "OT",
+    "exportOtReport": "Export OT report",
+    "otReportFormat": "Format",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "Org chart",
@@ -1350,7 +1358,7 @@
       "periodContext": "Pay period",
       "allPeriods": "All periods",
       "filteredEmpty": "No payroll processes for this pay period.",
-      "newRun": "New payroll run",
+      "newRun": "Create Payroll Run Cycle",
       "colPaymentDate": "Payment date",
       "paymentDateLegacyNote": "Runs created before this release show the system default date (the 28th)."
     },
@@ -1452,7 +1460,9 @@
       "consolidateTitle": "Consolidate data",
       "scopedCaption": "This run is scoped to selected employees. Overtime, shift differential, loan and zakat prefills below still apply company-wide; out-of-scope rows are ignored at processing. Claims prefill is scoped correctly.",
       "holidayWarning": "{country}/{state} {year}: only {loaded} of {required} public holidays are loaded — rest-day/OT calculations may be affected.",
-      "colCode": "Code"
+      "colCode": "Code",
+      "transferAllowance": "Transfer allowance",
+      "allowanceGateWarning": "Typed pay-components is off — a transfer will be recorded but won't reach payslips until it is enabled."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -1590,7 +1600,7 @@
       "epfEmployerThreshold": "Employer-rate threshold (RM/month)",
       "contribCeiling": "Contribution wage ceiling (RM)",
       "otWageCeiling": "OT entitlement wage ceiling (RM/month)",
-      "otMultipliersNote": "OT multipliers (1.5× workday, 2× rest day, 3× holiday) are fixed by the Employment Act and are not configurable.",
+      "otMultipliersNote": "The 1.5× workday rate and the base-day pay (½/1-day rest-day, 2 days for a public holiday) are fixed by the Employment Act. The rest-day and public-holiday excess-hours rates default to the legal 2× / 3× and can be adjusted here.",
       "reliefIndividual": "Individual relief (RM/yr)",
       "reliefSpouse": "Spouse relief — Cat 2 (RM/yr)",
       "reliefPerChild": "Relief per child (RM/yr)",
@@ -1647,7 +1657,9 @@
       "editSection": "Edit {body}",
       "editSectionIntro": "Publish an effective-dated override for this body. The verified defaults stay the fallback; past payslips keep their snapshot.",
       "cancelEdit": "Cancel",
-      "lastEdited": "Last override: {version} · effective {effectiveFrom}"
+      "lastEdited": "Last override: {version} · effective {effectiveFrom}",
+      "otRestDayExcessMultiplier": "Rest-day OT excess rate (× hourly)",
+      "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)"
     },
     "transactions": {
       "title": "Transactions",
@@ -1659,23 +1671,49 @@
         "fixedDesc": "Recurring allowances and deductions per employee, effective-dated.",
         "fixedCta": "Manage recurring",
         "individualTitle": "Individual Transaction",
-        "individualDesc": "One-off components for a draft batch, plus TP1 relief and zakat.",
-        "individualCta": "Add one-off"
+        "individualDesc": "One-off components for a draft batch.",
+        "individualCta": "Add one-off",
+        "tp1Title": "TP1 Relief",
+        "tp1Desc": "Monthly TP1 tax relief per employee on a draft batch.",
+        "tp1Cta": "Edit TP1 relief",
+        "zakatTitle": "Zakat",
+        "zakatDesc": "Zakat paid via salary per employee on a draft batch.",
+        "zakatCta": "Edit zakat"
       },
       "fixed": {
         "title": "Fixed Transaction",
-        "subtitle": "Recurring per-employee pay components, effective-dated.",
-        "intro": "Pick an employee to manage their recurring allowances and deductions. Changes take effect on the next generated payslip.",
+        "subtitle": "Recurring fixed pay items for one employee, effective-dated.",
+        "intro": "Add a fixed amount for a pay item over a date range. It applies to payroll runs whose period falls in that range. Changes take effect on the next generated payslip.",
         "pickEmployee": "Employee",
-        "open": "Open editor",
         "empty": "No employees in the current scope.",
+        "employeeId": "Employee ID",
+        "employeeName": "Name",
+        "formTitle": "Add fixed transaction",
+        "payrollItem": "Pay item",
+        "payrollCycle": "Payroll cycle",
+        "amount": "Amount",
+        "startDate": "Start date",
+        "endDate": "End date",
+        "remarks": "Remarks",
+        "add": "Add",
+        "status": "Status",
+        "statusActive": "Active",
+        "statusEnded": "Ended",
+        "cycleUnspecified": "Unspecified",
+        "noTransactions": "No fixed transactions for this employee yet.",
+        "required": "Employee, pay item, cycle, start date and amount are required.",
+        "outOfScope": "That employee is not in your current company scope.",
+        "dateError": "End date cannot be before the start date.",
+        "currencyUnsupported": "Only MYR is supported — payroll is computed in MYR.",
+        "amountError": "Amount must be greater than zero.",
+        "open": "Open editor",
         "colEmployee": "Employee",
         "colCompany": "Company",
         "manage": "Manage"
       },
       "individual": {
         "title": "Individual Transaction",
-        "subtitle": "One-off batch components, TP1 relief and zakat.",
+        "subtitle": "One-off batch components.",
         "pickBatch": "Draft batch",
         "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
         "addTitle": "Add a one-off component",
@@ -1689,12 +1727,6 @@
         "added": "Component added.",
         "csvTitle": "Bulk import (CSV)",
         "csvIntro": "Load many one-off components at once.",
-        "deductionTitle": "TP1 relief & zakat",
-        "deductionIntro": "Monthly tax relief (TP1) and zakat for one employee. Saving these does not change overtime or bonus on the same row.",
-        "tp1": "TP1 relief",
-        "tp1Title": "Monthly tax deduction relief (TP1) — reduces PCB/MTD.",
-        "zakat": "Zakat",
-        "zakatTitle": "Zakat paid via salary — credited against PCB/MTD.",
         "save": "Save",
         "saved": "Saved.",
         "unsupportedComponent": "That component cannot be used on a batch in this version. Pick a payable component.",
@@ -1733,7 +1765,65 @@
           "off_cycle": "Off-cycle",
           "bonus": "Bonus",
           "adjustment": "Adjustment"
-        }
+        },
+        "deductionTitle": "TP1 relief & zakat",
+        "deductionIntro": "Monthly tax relief (TP1) and zakat for one employee. Saving these does not change overtime or bonus on the same row.",
+        "tp1": "TP1 relief",
+        "tp1Title": "Monthly tax deduction relief (TP1) — reduces PCB/MTD.",
+        "zakat": "Zakat",
+        "zakatTitle": "Zakat paid via salary — credited against PCB/MTD.",
+        "stepEmployee": "Employee",
+        "stepPeriod": "Period & cycle",
+        "stepEntry": "Entries",
+        "stepSave": "Review & save",
+        "employeeSearch": "Search employee",
+        "searchPlaceholder": "Search by name or employee ID…",
+        "noEmployees": "No matching employees.",
+        "empId": "Employee ID",
+        "dept": "Department",
+        "position": "Position",
+        "next": "Continue",
+        "pickRun": "Run",
+        "noDraftForSelection": "No draft run for this period and cycle.",
+        "noDraftForSelectionLink": "Create one in Payroll Process",
+        "gridAddRow": "Add row",
+        "gridDeleteRow": "Delete",
+        "colItem": "Payroll item",
+        "colEffectiveDate": "Effective date",
+        "colAmount": "Amount",
+        "colRemarks": "Remarks",
+        "rowIncomplete": "Some rows are incomplete or invalid — fix the highlighted rows before saving.",
+        "amountNotPositive": "Amount must be greater than zero.",
+        "companyMismatch": "This employee does not belong to the selected run's company.",
+        "employeeNotInScope": "This employee is not included in the selected payroll run.",
+        "saveSuccess": "Saved {count} transaction(s).",
+        "reviewCount": "{count} transaction(s) will be saved.",
+        "saving": "Saving…",
+        "saveAll": "Save all",
+        "otherTools": "Other tools",
+        "back": "Back"
+      },
+      "tp1": {
+        "title": "TP1 Relief",
+        "subtitle": "Monthly TP1 tax relief per employee for a draft batch.",
+        "pickBatch": "Draft batch",
+        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
+        "employee": "Employee",
+        "amount": "TP1 relief",
+        "save": "Save",
+        "saved": "Saved.",
+        "empty": "No employees in this batch."
+      },
+      "zakat": {
+        "title": "Zakat",
+        "subtitle": "Zakat paid via salary per employee for a draft batch.",
+        "pickBatch": "Draft batch",
+        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
+        "employee": "Employee",
+        "amount": "Zakat",
+        "save": "Save",
+        "saved": "Saved.",
+        "empty": "No employees in this batch."
       }
     },
     "setup": {
@@ -1976,7 +2066,18 @@
       "fieldBusinessUnit": "Business unit",
       "businessUnitNone": "— None —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "e.g. Retail"
+      "businessUnitNamePlaceholder": "e.g. Retail",
+      "logoSection": "Logo",
+      "logoUpload": "Upload logo",
+      "logoReplace": "Replace logo",
+      "logoRemove": "Remove logo",
+      "logoNone": "No logo set",
+      "logoSave": "Save logo",
+      "logoHint": "PNG or JPG, up to 2 MB",
+      "logoInvalidType": "Only PNG or JPG images are allowed",
+      "logoTooLarge": "Logo exceeds 2 MB",
+      "searchCompanies": "Search companies by name or registration number",
+      "noMatches": "No companies match your search"
     },
     "systemLabels": {
       "pageTitle": "System Labels",
@@ -2296,7 +2397,7 @@
         "extended": "Extended",
         "custom": "Custom"
       },
-      "archetypeHint": "Standard = official gazetted holidays only (national + the calendar’s states). Extended = official holidays plus company-defined extra days. Custom = a fully hand-managed list; national holidays are not added automatically."
+      "archetypeHint": "Standard = official gazetted holidays only (national + the group’s states). Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick into this group; every other date, including national holidays, is a normal working day. Assign a group to staff on their profile (or map it to a location) and they follow exactly these rules."
     },
     "users": {
       "title": "Users & roles",
@@ -2325,7 +2426,28 @@
       "inviteScope": "Company scope",
       "inviteSubmit": "Send invitation",
       "pendingInvitations": "Pending invitations",
-      "revokeInvitation": "Revoke"
+      "revokeInvitation": "Revoke",
+      "sectionFunctionAccess": "Function access",
+      "functionAccessCaption": "Which role can reach each screen. This mirrors the access the system enforces; it is a reference view, not an editor — changing enforcement lives in the role guards and database policies.",
+      "accessible": "Can access",
+      "notAccessible": "No access",
+      "screenColumn": "Screen",
+      "screen": {
+        "loans": "Loans",
+        "payrollConfig": "Payroll configuration",
+        "payrollPolicy": "Payroll policy",
+        "payComponents": "Pay components"
+      },
+      "scope": {
+        "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
+        "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
+        "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
+        "approvals": "Managers and above; what appears follows your actual reporting lines.",
+        "roster": "Managers and above; what appears follows your actual reporting lines.",
+        "performance": "Managers and above; what appears follows your actual reporting lines.",
+        "leaveApproval": "Managers and admins; what appears follows your actual reporting lines.",
+        "payrollConfig": "Everyone can open this; only admins for the company can change it."
+      }
     },
     "audit": {
       "title": "Audit trail",
@@ -2607,9 +2729,9 @@
     "payrollTabs": {
       "batches": "Payroll Process",
       "reports": "Reports",
-      "configuration": "Configuration",
       "transactions": "Transactions",
-      "setup": "Settings"
+      "setup": "Settings",
+      "configuration": "Configuration"
     },
     "printButton": {
       "print": "Print / Save PDF"
@@ -2802,8 +2924,8 @@
           "body": "Every pay run lives here. Click a period to open a payroll process and review payslips, net pay, and statutory totals."
         },
         "create": {
-          "title": "New payroll run",
-          "body": "Click **New payroll run** to open the guided wizard: pick the period and cycle, choose employees, then review and process."
+          "title": "Create Payroll Run Cycle",
+          "body": "Click **Create Payroll Run Cycle** to open the guided wizard: pick the period and cycle, choose employees, then review and process."
         },
         "reports": {
           "title": "Statutory reports",
@@ -3672,6 +3794,103 @@
     "error": {
       "generic": "Sign-in failed. Please try again.",
       "rateLimited": "Too many attempts. Please wait a moment and try again."
+    }
+  },
+  "attendanceAllowance": {
+    "title": "Attendance allowance",
+    "description": "Reward good attendance with a fixed allowance paid through payroll. Set the conditions once; the system checks each employee and you transfer the qualified amounts into a payroll run.",
+    "scopeNotice": "This first version supports the Monthly method and the conditions we can compute reliably: attendance days, absent days, late count, total leave days, and perfect attendance. Minute-based and per-leave-type conditions, and the Daily method, are planned follow-ups.",
+    "emptyScope": "No companies in the current scope. Use the company switcher above.",
+    "catalogTitle": "Policies",
+    "empty": "No attendance-allowance policies yet.",
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "method": {
+      "monthly": "Monthly"
+    },
+    "fields": {
+      "code": "Code",
+      "name": "Name",
+      "company": "Company",
+      "amount": "Amount (RM)",
+      "payComponent": "Payroll earning",
+      "effectiveFrom": "Effective from",
+      "method": "Method",
+      "status": "Status",
+      "departments": "Departments",
+      "businessUnits": "Business units",
+      "companies": "Companies"
+    },
+    "criteria": {
+      "minAttendanceDays": "Minimum attendance days",
+      "maxAbsentDays": "Maximum absent days",
+      "maxLateCount": "Maximum late arrivals",
+      "maxTotalLeaveDays": "Maximum leave days",
+      "requirePerfectAttendance": "Require perfect attendance (no absence, no lateness)"
+    },
+    "reason": {
+      "minAttendanceDays": "Attendance days {actual} below the minimum {threshold}",
+      "maxAbsentDays": "Absent days {actual} exceed the maximum {threshold}",
+      "maxLateCount": "Late arrivals {actual} exceed the maximum {threshold}",
+      "maxTotalLeaveDays": "Leave days {actual} exceed the maximum {threshold}",
+      "requirePerfectAttendance": "Perfect attendance required, but there were {actual} absence/late days"
+    },
+    "form": {
+      "createTitle": "New policy",
+      "editTitle": "Edit policy",
+      "selectCompany": "Select a company…",
+      "selectComponent": "Select a payroll earning…",
+      "dailyComingSoon": "Daily method coming soon.",
+      "criteriaTitle": "Eligibility conditions",
+      "noLimit": "No limit",
+      "scopeTitle": "Who it applies to",
+      "scopeHint": "Leave everything unticked to apply to every employee in the company.",
+      "noDepartments": "No departments in scope.",
+      "noBusinessUnits": "No business units in scope.",
+      "noCompanies": "No companies in scope.",
+      "save": "Save changes",
+      "create": "Create policy",
+      "cancel": "Cancel"
+    },
+    "actions": {
+      "title": "Actions",
+      "edit": "Edit",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "archive": "Archive",
+      "archiveConfirmTitle": "Archive this policy?",
+      "archiveConfirmBody": "It will be hidden from the active list. This cannot be undone from here."
+    },
+    "panel": {
+      "title": "Attendance allowance",
+      "noPolicies": "No attendance-allowance policies configured.",
+      "configure": "Configure policies",
+      "policy": "Policy",
+      "filter": "Show",
+      "filterAll": "All",
+      "filterQualified": "Qualified",
+      "filterDisqualified": "Not qualified",
+      "evaluate": "Evaluate",
+      "gateWarning": "Transfer money from the payroll run screen.",
+      "colEmployee": "Employee",
+      "colStatus": "Status",
+      "colAmount": "Amount",
+      "colReason": "Conditions",
+      "qualified": "Qualified",
+      "disqualified": "Not qualified",
+      "noCriteria": "No conditions set",
+      "empty": "No employees to show for this policy and month.",
+      "note": "Evaluation reads current attendance. For accurate figures, use a completed month."
+    },
+    "errors": {
+      "duplicateCode": "A policy with this code already exists for this company."
+    },
+    "toasts": {
+      "saved": "Policy saved",
+      "statusChanged": "Policy status updated",
+      "archived": "Policy archived"
     }
   }
 }

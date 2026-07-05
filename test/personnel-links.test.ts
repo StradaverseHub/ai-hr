@@ -3,8 +3,8 @@
  *
  * The module was renamed "People" → "Personnel" and split into a read-only employee directory
  * (`/personnel`) and an admin-only management surface (`/admin/personnel`). Every non-admin inbound
- * surface (dashboard headcount tile + onboarding link, org chart, leave approvals, the payroll
- * fixed-transactions "manage" link) must resolve to the everyday `/personnel` route — NOT the admin
+ * surface (dashboard headcount tile + onboarding link, org chart, leave approvals) must resolve to the
+ * everyday `/personnel` route — NOT the admin
  * route and NOT the retired `/people` route, or a normal employee/manager would be bounced. Audit-log
  * entity links, being an admin surface, resolve to `/admin/personnel`.
  *
@@ -32,7 +32,10 @@ describe('People → Personnel: everyday inbound links resolve to /personnel (ne
     { file: 'app/page.tsx', label: 'dashboard headcount tile + onboarding view-all' },
     { file: 'components/org-chart.tsx', label: 'org chart node link' },
     { file: 'app/approvals/page.tsx', label: 'leave approval requester links' },
-    { file: 'app/payroll/transactions/fixed/page.tsx', label: 'payroll fixed-transactions manage link' },
+    // NB: app/payroll/transactions/fixed/page.tsx used to belong here (it listed employees with a
+    // "manage" → /personnel link). Feedback b7fc8583 replaced it with a self-contained fixed-transaction
+    // editor that picks an employee via a <select> — it has no inbound /personnel link by design, so it
+    // is no longer an everyday personnel-link surface to guard.
   ];
 
   for (const { file, label } of everyday) {

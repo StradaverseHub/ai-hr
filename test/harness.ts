@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 export const owner = createDb(process.env.TEST_MIGRATION_DATABASE_URL!);
 
 const ALL_TABLES = [
-  'tenant', 'company', 'person', 'position', 'department', 'cost_center', 'employment',
+  'tenant', 'company', 'company_logo', 'person', 'position', 'department', 'cost_center', 'employment',
   'assignment', 'reporting_line', 'leave_type', 'leave_policy', 'leave_ledger',
   'leave_request', 'leave_request_date', 'leave_cancellation_request', 'app_user', 'role_assignment', 'domain_event',
   'compensation', 'employee_statutory_my', 'tenant_counter',
@@ -38,6 +38,8 @@ const ALL_TABLES = [
   // ADR-0072 — real auth: invitations must be truncated between tests, and the global unique index on
   // app_user.workos_user_id would otherwise let a leaked subject collide across test files.
   'app_invitation',
+  // ADR-0072 — attendance allowance policy (a leaked row would trip the partial-unique code index).
+  'attendance_allowance_policy',
 ];
 
 export async function migrateTestDb() {

@@ -17,6 +17,7 @@ import {
   appUser,
   assignment,
   attendance,
+  attendanceAllowancePolicy,
   clockingLocation,
   company,
   compensation,
@@ -35,6 +36,7 @@ import {
   leaveRequestDate,
   leaveType,
   location,
+  payComponent,
   payrollBatch,
   payrollPolicy,
   payslip,
@@ -44,6 +46,7 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
+import { evaluateAllowancesForPeriod } from './attendance-allowance';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -58,6 +61,13 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         employeeCode: employment.employeeCode,
         status: assignment.status,
         department: department.name,
+        // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to
+        // filter Step-2 batches whose scope names departments the employee belongs to (a UX filter; the
+        // bulk service re-checks scope membership authoritatively). Nullable, like department.
+        departmentId: assignment.departmentId,
+        // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
+        // employee card (Employee ID / Name / Department / Position). Nullable, like department.
+        position: position.title,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -75,6 +85,7 @@ export function listEmployees(ctx: SessionContext, companyIds?: string[]) {
         ),
       )
       .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined)
       .orderBy(person.fullName),
   );
@@ -87,6 +98,8 @@ export type EmployeeListRow = {
   employeeCode: string | null;
   status: string | null;
   department: string | null;
+  departmentId: string | null;
+  position: string | null;
   company: string;
   companyId: string;
   hiredOn: string;
@@ -142,6 +155,8 @@ export function listEmployeesPage(
         employeeCode: employment.employeeCode,
         status: assignment.status,
         department: department.name,
+        departmentId: assignment.departmentId,
+        position: position.title,
         company: company.legalName,
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
@@ -152,6 +167,7 @@ export function listEmployeesPage(
       .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
       .where(where)
       .orderBy(person.fullName)
       .limit(p.limit)
@@ -213,6 +229,9 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
         leaveHalfDayFullDeduction: company.leaveHalfDayFullDeduction,
         archivedAt: company.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.company_id = company.id) or exists (select 1 from employment e where e.company_id = company.id) or exists (select 1 from company c where c.parent_company_id = company.id)`,
+        // hasLogo: EXISTS against the company_logo side table (NEVER the bytes — the blob is a different
+        // table, so this can only ever pull a boolean). Non-breaking, name-based add for existing callers.
+        hasLogo: sql<boolean>`exists (select 1 from company_logo cl where cl.company_id = company.id)`,
       })
       .from(company)
       .where(opts.includeArchived ? undefined : isNull(company.archivedAt))
@@ -2219,4 +2238,54 @@ export function companyTree(ctx: SessionContext) {
       .from(company)
       .orderBy(company.legalName),
   );
+}
+
+// ───────────────── Attendance Allowance (ADR-0072) ─────────────────
+
+/** The attendance-allowance policies for the admin catalog table (joined to their pay component's name/code
+ *  for display). Excludes archived unless asked. RLS scopes to the tenant; company scoping is applied when
+ *  companyIds is passed (mirrors the other admin lists). */
+export function listAllowancePolicies(
+  ctx: SessionContext,
+  opts: { companyIds?: string[]; includeArchived?: boolean } = {},
+) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: attendanceAllowancePolicy.id,
+        companyId: attendanceAllowancePolicy.companyId,
+        companyName: company.legalName,
+        code: attendanceAllowancePolicy.code,
+        name: attendanceAllowancePolicy.name,
+        method: attendanceAllowancePolicy.method,
+        amount: attendanceAllowancePolicy.amount,
+        payComponentId: attendanceAllowancePolicy.payComponentId,
+        payComponentCode: payComponent.code,
+        payComponentName: payComponent.name,
+        effectiveFrom: attendanceAllowancePolicy.effectiveFrom,
+        status: attendanceAllowancePolicy.status,
+        criteria: attendanceAllowancePolicy.criteria,
+        scope: attendanceAllowancePolicy.scope,
+        archivedAt: attendanceAllowancePolicy.archivedAt,
+      })
+      .from(attendanceAllowancePolicy)
+      .innerJoin(company, eq(company.id, attendanceAllowancePolicy.companyId))
+      .leftJoin(payComponent, eq(payComponent.id, attendanceAllowancePolicy.payComponentId))
+      .where(
+        opts.companyIds && opts.companyIds.length
+          ? inArray(attendanceAllowancePolicy.companyId, opts.companyIds)
+          : undefined,
+      )
+      .orderBy(company.legalName, attendanceAllowancePolicy.code);
+    return opts.includeArchived ? rows : rows.filter((r) => r.archivedAt == null);
+  });
+}
+
+/** The dashboard rows for the Attendance page allowances panel: the live evaluation of one policy for a
+ *  month. Pure read (evaluateAllowancesForPeriod), RLS-trimmed via the shared monthly summary. */
+export function allowancePreviewForPeriod(
+  ctx: SessionContext,
+  p: { policyId: string; month: string; today?: string },
+) {
+  return evaluateAllowancesForPeriod(ctx, p);
 }

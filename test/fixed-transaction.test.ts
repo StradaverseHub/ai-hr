@@ -15,8 +15,10 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips } from '../core/payroll';
 import {
+  FixedTransactionAmountError,
   FixedTransactionDateError,
   UnsupportedFixedCurrencyError,
+  backfillEmploymentComponentsFromCompensation,
   listEmploymentPayComponents,
   listPayComponents,
   seedPayComponentCatalog,
@@ -119,7 +121,8 @@ describe('1.2.1 Fixed Transaction', () => {
     const basicId = await codeId(a, 'BASIC');
     const allowId = await codeId(a, 'ALLOWANCE');
     // BASIC 0 so the wage base is just the allowance; ALLOWANCE 1000 with the override under test.
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-05-16' });
+    // allowZeroAmount: a zero basic is a legitimate fixture value (same class the amount>0 guard exempts).
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-05-16', allowZeroAmount: true });
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16', prorateOverride });
 
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
@@ -155,7 +158,7 @@ describe('1.2.1 Fixed Transaction', () => {
     await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
     const basicId = await codeId(a, 'BASIC');
     const allowId = await codeId(a, 'ALLOWANCE');
-    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
     // prorateOverride=false ⇒ full amount when in-window, so the value cleanly signals included (777) vs not (0).
     await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 777, effectiveFrom: validFrom, effectiveTo: validTo, prorateOverride: false });
 
@@ -295,5 +298,150 @@ describe('1.2.1 Fixed Transaction', () => {
     });
     // ADR-0030 Layer-0: the amount is a reference on the row, never inlined into the immutable event log.
     expect(payload).not.toHaveProperty('amount');
+  });
+
+  // ───────────────────── Fixed Transaction screen: run_type cycle (feedback b7fc8583) ─────────────────────
+
+  it('persists runType and coerces an unknown cycle value to null', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'Cycle', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    // A valid cycle persists as the enum value.
+    const { id: bonusId } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', runType: 'bonus',
+    });
+    expect((await rowOf(bonusId)).runType).toBe('bonus');
+
+    // An unknown/tampered value is coerced to null (unspecified), never persisted verbatim.
+    const { id: badId } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-02-01', runType: 'monthly' as never,
+    });
+    expect((await rowOf(badId)).runType).toBeNull();
+
+    // Omitting runType leaves it null (byte-identical to the people-editor path, which never sends it).
+    const { id: noneId } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-03-01',
+    });
+    expect((await rowOf(noneId)).runType).toBeNull();
+  });
+
+  it('the set event payload carries the cleaned runType and still never carries amount or remarks', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'CycleEvt', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01',
+      runType: 'off_cycle', remarks: 'phone bill',
+    });
+    const payload = await latestEventPayload(base.tenantId, id, 'employment-pay-component.set');
+    expect(payload).toMatchObject({ employmentId: e.employmentId, componentId: allowId, runType: 'off_cycle' });
+    // Constrained enum is safe in the log; the free-text remarks + the amount are PDPA-excluded (ADR-0030 L0).
+    expect(payload).not.toHaveProperty('amount');
+    expect(payload).not.toHaveProperty('remarks');
+
+    // An unknown cycle is cleaned to null in the payload too (never leaks the raw value).
+    const { id: id2 } = await setEmploymentPayComponent(a, {
+      employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-02-01', runType: 'garbage' as never,
+    });
+    const payload2 = await latestEventPayload(base.tenantId, id2, 'employment-pay-component.set');
+    expect(payload2).toMatchObject({ runType: null });
+  });
+
+  it('listEmploymentPayComponents returns run_type for the table', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'CycleList', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const housingId = await codeId(a, 'HOUSING');
+    // One row with a cycle, one without (legacy/people-editor style) — the list surfaces both, null preserved.
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01', runType: 'adjustment' });
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: housingId, amount: 200, effectiveFrom: '2026-01-01' });
+
+    const list = await listEmploymentPayComponents(a, e.employmentId);
+    expect(list.find((r) => r.code === 'ALLOWANCE')!.runType).toBe('adjustment');
+    expect(list.find((r) => r.code === 'HOUSING')!.runType).toBeNull();
+  });
+
+  // ───────────────────── amount>0 guard (feedback b7fc8583) ─────────────────────
+
+  it('amount <= 0 throws FixedTransactionAmountError at the service boundary for a normal write', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'AmtGuard', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 0, effectiveFrom: '2026-01-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionAmountError);
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: -5, effectiveFrom: '2026-01-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionAmountError);
+    // A strictly-positive amount is accepted.
+    await expect(
+      setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 0.01, effectiveFrom: '2026-01-01' }),
+    ).resolves.toMatchObject({ id: expect.any(String) });
+  });
+
+  it("the backfill's allowZeroAmount path still writes a 0-amount row without throwing", async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    // A compensation row with a ZERO monthly allowance — the backfill must seed a 0-amount ALLOWANCE row.
+    const e = await hire(a, base, 'BackfillZero', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 3000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+
+    await expect(backfillEmploymentComponentsFromCompensation(a)).resolves.toBeDefined();
+    const list = await listEmploymentPayComponents(a, e.employmentId);
+    const allow = list.find((r) => r.code === 'ALLOWANCE');
+    expect(allow).toBeDefined();
+    expect(Number(allow!.amount)).toBeCloseTo(0, 2);
+  });
+
+  it('effectiveTo < effectiveFrom still throws FixedTransactionDateError with a runType present', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'CycleDate', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await expect(
+      setEmploymentPayComponent(a, {
+        employmentId: e.employmentId, componentId: allowId, amount: 100,
+        effectiveFrom: '2026-05-01', effectiveTo: '2026-04-30', runType: 'regular',
+      }),
+    ).rejects.toBeInstanceOf(FixedTransactionDateError);
+  });
+
+  it('run_type does NOT alter payslip output (calculation-unchanged guarantee)', async () => {
+    // Two identical mid-month joiners in the SAME company/period; one carries a cycle tag, one does not. The
+    // payslip allowance column must be byte-identical — the stored run_type is decorative for payout here.
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    async function allowanceOf(name: string, ic: string, withCycle: boolean): Promise<string> {
+      const e = await hire(a, base, name, '2026-05-16');
+      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-05-16' });
+      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: ic });
+      await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-05-16', allowZeroAmount: true });
+      await setEmploymentPayComponent(a, {
+        employmentId: e.employmentId, componentId: allowId, amount: 1000, effectiveFrom: '2026-05-16', prorateOverride: false,
+        runType: withCycle ? 'bonus' : null,
+      });
+      return e.employmentId;
+    }
+    const withId = await allowanceOf('CycleCalcYes', '900101011234', true);
+    const withoutId = await allowanceOf('CycleCalcNo', '900202022345', false);
+
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+
+    const slips = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    const withSlip = slips.find((p) => p.employmentId === withId)!;
+    const withoutSlip = slips.find((p) => p.employmentId === withoutId)!;
+    // Both joined 2026-05-16 with an identical 1000 non-prorating allowance ⇒ identical allowance column.
+    expect(withSlip.allowance).toBe(withoutSlip.allowance);
   });
 });

@@ -5,12 +5,15 @@ import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { CompanyPanel, type PanelBankProfile } from '@/components/company-panel';
+import { OrganizationList } from '@/components/organization-list';
 import {
   archiveCompanyAction,
   createCompanyAction,
   deleteCompanyAction,
   removeCompanyBankProfileAction,
+  removeCompanyLogoAction,
   setCompanyBankProfileAction,
+  setCompanyLogoAction,
   setCompanyParentAction,
   setCompanyStatutoryAction,
   updateCompanyAction,
@@ -77,6 +80,8 @@ export default async function OrganizationPage({
     setStatutory: setCompanyStatutoryAction,
     setBankProfile: setCompanyBankProfileAction,
     removeBankProfile: removeCompanyBankProfileAction,
+    setCompanyLogo: setCompanyLogoAction,
+    removeCompanyLogo: removeCompanyLogoAction,
   };
 
   return (
@@ -100,30 +105,37 @@ export default async function OrganizationPage({
 
       <Card data-tour="people-org-companies">
         <SectionHeader title={t('companies')} count={scoped.length} />
-        <ul className="divide-y divide-border">
-          {scoped.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</li>
-          )}
-          {scoped.map((c) => (
-            <CompanyPanel
-              key={c.id}
-              company={{
-                id: c.id,
-                name: c.name,
-                country: c.country,
-                currency: c.currency,
-                registrationNo: c.registrationNo,
-                archivedAt: c.archivedAt,
-                inUse: c.inUse,
-                parentId: parentBy.get(c.id) ?? null,
-              }}
-              companies={companies}
-              statutory={statBy.get(c.id) ?? null}
-              bankProfiles={bankBy.get(c.id) ?? []}
-              actions={actions}
-            />
-          ))}
-        </ul>
+        {scoped.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
+        ) : (
+          <OrganizationList
+            items={scoped.map((c) => ({
+              id: c.id,
+              name: c.name,
+              registrationNo: c.registrationNo,
+              node: (
+                <CompanyPanel
+                  key={c.id}
+                  company={{
+                    id: c.id,
+                    name: c.name,
+                    country: c.country,
+                    currency: c.currency,
+                    registrationNo: c.registrationNo,
+                    archivedAt: c.archivedAt,
+                    inUse: c.inUse,
+                    parentId: parentBy.get(c.id) ?? null,
+                    hasLogo: c.hasLogo,
+                  }}
+                  companies={companies}
+                  statutory={statBy.get(c.id) ?? null}
+                  bankProfiles={bankBy.get(c.id) ?? []}
+                  actions={actions}
+                />
+              ),
+            }))}
+          />
+        )}
         <form
           action={createCompanyAction}
           data-tour="people-org-add"

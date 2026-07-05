@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { client, type Grant, type SessionContext } from '../db/client';
 import { AuthRequiredError } from './auth-errors';
+import { demoSwitcherEnabled } from './demo-mode';
 
 /**
  * Session resolution (ADR-0072). Two paths, gated by NODE_ENV:
@@ -19,8 +20,6 @@ import { AuthRequiredError } from './auth-errors';
  * Every page/action keeps calling getSession() unchanged; only this function knows about WorkOS.
  */
 const DEV_COOKIE = 'dev_user';
-
-const isDev = () => process.env.NODE_ENV !== 'production';
 
 /** A row from `app.principal()` — `grants` may be null (defensively typed). */
 type PrincipalRow = { tenant_id: string; person_id: string | null; grants: Grant[] | null };
@@ -82,7 +81,8 @@ export async function resolveWorkosPrincipal(
 }
 
 export async function getSession(): Promise<SessionContext> {
-  if (isDev()) {
+  // Dev switcher path: real dev, plus the gated demo (ALLOW_DEMO_SESSION — see lib/demo-mode).
+  if (demoSwitcherEnabled()) {
     const cookieStore = await cookies();
     const cookieUser = cookieStore.get(DEV_COOKIE)?.value;
     const fallback = process.env.DEV_USER_ID;

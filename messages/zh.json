@@ -112,7 +112,9 @@
     "locations": "地点",
     "loans": "贷款",
     "payrollCycleConfig": "薪资周期",
-    "personnelAdmin": "员工（管理）"
+    "personnelAdmin": "员工（管理）",
+    "securityPermission": "安全与权限",
+    "attendanceAllowance": "出勤津贴"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -381,6 +383,7 @@
       "statusActive": "生效中",
       "statusEnded": "已结束",
       "dateError": "生效结束日期不能早于生效开始日期。",
+      "amountError": "金额必须大于零。",
       "currencyUnsupported": "仅支持 MYR — 薪资以 MYR 计算。",
       "epfVoluntaryHint": "输入每一方的总缴交率，须达到或高于法定下限（雇员 11%，雇主 12–13%）。留空则维持法定比率。",
       "epfSemiAutoHint": "输入雇员比率，须达到或高于法定的 11%。雇主一方维持自动（法定）。",
@@ -771,7 +774,12 @@
     },
     "importPunches": "导入打卡",
     "colLocation": "地点",
-    "otHoursLabel": "加班"
+    "otHoursLabel": "加班",
+    "exportOtReport": "导出加班报告",
+    "otReportFormat": "格式",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "组织架构图",
@@ -1350,7 +1358,7 @@
       "periodContext": "发薪周期",
       "allPeriods": "所有周期",
       "filteredEmpty": "此发薪周期暂无薪资流程。",
-      "newRun": "新建薪资运行",
+      "newRun": "创建薪资运行周期",
       "colPaymentDate": "付款日期",
       "paymentDateLegacyNote": "在此版本之前创建的运行显示系统默认日期（28日）。"
     },
@@ -1490,7 +1498,7 @@
       "epfEmployerThreshold": "雇主缴费率阈值（RM/月）",
       "contribCeiling": "缴费薪资上限（RM）",
       "otWageCeiling": "加班资格薪资上限（RM/月）",
-      "otMultipliersNote": "加班倍率（工作日 1.5×、休息日 2×、假期 3×）由《雇佣法令》固定，不可配置。",
+      "otMultipliersNote": "1.5× 工作日费率及基础日薪（休息日 ½/1 天、公共假期 2 天）由《雇佣法令》固定。休息日与公共假期的超时费率默认为法定的 2× / 3×，可在此处调整。",
       "reliefIndividual": "个人减免（RM/年）",
       "reliefSpouse": "配偶减免 — 类别 2（RM/年）",
       "reliefPerChild": "每名子女减免（RM/年）",
@@ -1547,7 +1555,9 @@
       "editSection": "编辑{body}",
       "editSectionIntro": "为该机构发布按生效日期的覆盖。已核实的默认值仍作为后备；过往工资单保留其快照。",
       "cancelEdit": "取消",
-      "lastEdited": "最近覆盖：{version} · 生效 {effectiveFrom}"
+      "lastEdited": "最近覆盖：{version} · 生效 {effectiveFrom}",
+      "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
+      "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）"
     },
     "batch": {
       "back": "薪资",
@@ -1647,7 +1657,9 @@
       "encashmentFrozenBadge": "离职申请获批时冻结",
       "encashmentOverriddenBadge": "已冻结（人力资源部覆盖）",
       "encashmentFrozenAsOfTitle": "于 {date} 冻结",
-      "colCode": "编号"
+      "colCode": "编号",
+      "transferAllowance": "转入津贴",
+      "allowanceGateWarning": "类型化薪资组件已关闭——转入将被记录，但在启用之前不会进入工资单。"
     },
     "transactions": {
       "title": "交易",
@@ -1659,23 +1671,49 @@
         "fixedDesc": "每位员工的经常性津贴和扣除，按生效日期。",
         "fixedCta": "管理经常项",
         "individualTitle": "个别交易",
-        "individualDesc": "草稿批次的一次性组件，以及 TP1 减免和天课。",
-        "individualCta": "添加一次性"
+        "individualDesc": "草稿批次的一次性组件。",
+        "individualCta": "添加一次性",
+        "tp1Title": "TP1 减免",
+        "tp1Desc": "草稿批次中每位员工的每月 TP1 税务减免。",
+        "tp1Cta": "编辑 TP1 减免",
+        "zakatTitle": "天课",
+        "zakatDesc": "草稿批次中每位员工通过薪资缴纳的天课。",
+        "zakatCta": "编辑天课"
       },
       "fixed": {
         "title": "固定交易",
-        "subtitle": "每位员工的经常性薪资组件，按生效日期。",
-        "intro": "选择一名员工以管理其经常性津贴和扣除。更改将在下次生成的工资单上生效。",
+        "subtitle": "针对单个员工的经常性固定薪资项目，按生效日期计算。",
+        "intro": "为某个薪资项目在一个日期范围内添加固定金额。凡薪资周期落在该范围内的薪资运行都会应用此项。更改将在下一次生成的工资单上生效。",
         "pickEmployee": "员工",
-        "open": "打开编辑器",
         "empty": "当前范围内没有员工。",
+        "employeeId": "员工编号",
+        "employeeName": "姓名",
+        "formTitle": "添加固定交易",
+        "payrollItem": "薪资项目",
+        "payrollCycle": "薪资周期",
+        "amount": "金额",
+        "startDate": "开始日期",
+        "endDate": "结束日期",
+        "remarks": "备注",
+        "add": "添加",
+        "status": "状态",
+        "statusActive": "生效中",
+        "statusEnded": "已结束",
+        "cycleUnspecified": "未指定",
+        "noTransactions": "此员工尚无固定交易。",
+        "required": "员工、薪资项目、周期、开始日期和金额均为必填项。",
+        "outOfScope": "该员工不在您当前的公司范围内。",
+        "dateError": "结束日期不能早于开始日期。",
+        "currencyUnsupported": "仅支持 MYR — 薪资以 MYR 计算。",
+        "amountError": "金额必须大于零。",
+        "open": "打开编辑器",
         "colEmployee": "员工",
         "colCompany": "公司",
         "manage": "管理"
       },
       "individual": {
         "title": "个别交易",
-        "subtitle": "一次性批次组件、TP1 减免和天课。",
+        "subtitle": "一次性批次组件。",
         "pickBatch": "草稿批次",
         "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
         "addTitle": "添加一次性组件",
@@ -1689,12 +1727,6 @@
         "added": "已添加组件。",
         "csvTitle": "批量导入 (CSV)",
         "csvIntro": "一次加载多个一次性组件。",
-        "deductionTitle": "TP1 减免与天课",
-        "deductionIntro": "为一名员工设置每月税务减免 (TP1) 和天课。保存这些不会更改同一行的加班或奖金。",
-        "tp1": "TP1 减免",
-        "tp1Title": "每月税务扣除减免 (TP1) — 减少 PCB/MTD。",
-        "zakat": "天课",
-        "zakatTitle": "通过薪资缴纳的天课 — 抵扣 PCB/MTD。",
         "save": "保存",
         "saved": "已保存。",
         "unsupportedComponent": "该组件在此版本中不能用于批次。请选择可支付的组件。",
@@ -1733,7 +1765,65 @@
           "off_cycle": "非常规",
           "bonus": "奖金",
           "adjustment": "调整"
-        }
+        },
+        "deductionTitle": "TP1 减免与天课",
+        "deductionIntro": "为一名员工设置每月税务减免 (TP1) 和天课。保存这些不会更改同一行的加班或奖金。",
+        "tp1": "TP1 减免",
+        "tp1Title": "每月税务扣除减免 (TP1) — 减少 PCB/MTD。",
+        "zakat": "天课",
+        "zakatTitle": "通过薪资缴纳的天课 — 抵扣 PCB/MTD。",
+        "stepEmployee": "员工",
+        "stepPeriod": "周期与类型",
+        "stepEntry": "录入",
+        "stepSave": "复核与保存",
+        "employeeSearch": "搜索员工",
+        "searchPlaceholder": "按姓名或员工编号搜索…",
+        "noEmployees": "没有匹配的员工。",
+        "empId": "员工编号",
+        "dept": "部门",
+        "position": "职位",
+        "next": "继续",
+        "pickRun": "批次",
+        "noDraftForSelection": "此周期和类型没有草稿批次。",
+        "noDraftForSelectionLink": "在薪资处理中创建",
+        "gridAddRow": "添加行",
+        "gridDeleteRow": "删除",
+        "colItem": "薪资项目",
+        "colEffectiveDate": "生效日期",
+        "colAmount": "金额",
+        "colRemarks": "备注",
+        "rowIncomplete": "部分行不完整或无效 — 请先修正高亮的行再保存。",
+        "amountNotPositive": "金额必须大于零。",
+        "companyMismatch": "该员工不属于所选批次的公司。",
+        "employeeNotInScope": "该员工未包含在所选薪资批次中。",
+        "saveSuccess": "已保存 {count} 笔交易。",
+        "reviewCount": "将保存 {count} 笔交易。",
+        "saving": "保存中…",
+        "saveAll": "全部保存",
+        "otherTools": "其他工具",
+        "back": "返回"
+      },
+      "tp1": {
+        "title": "TP1 减免",
+        "subtitle": "草稿批次中每位员工的每月 TP1 税务减免。",
+        "pickBatch": "草稿批次",
+        "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
+        "employee": "员工",
+        "amount": "TP1 减免",
+        "save": "保存",
+        "saved": "已保存。",
+        "empty": "此批次中没有员工。"
+      },
+      "zakat": {
+        "title": "天课",
+        "subtitle": "草稿批次中每位员工通过薪资缴纳的天课。",
+        "pickBatch": "草稿批次",
+        "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
+        "employee": "员工",
+        "amount": "天课",
+        "save": "保存",
+        "saved": "已保存。",
+        "empty": "此批次中没有员工。"
       }
     },
     "setup": {
@@ -1976,7 +2066,18 @@
       "fieldBusinessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
       "businessUnitCodePlaceholder": "BU1",
-      "businessUnitNamePlaceholder": "例如：零售"
+      "businessUnitNamePlaceholder": "例如：零售",
+      "logoSection": "徽标",
+      "logoUpload": "上传徽标",
+      "logoReplace": "替换徽标",
+      "logoRemove": "移除徽标",
+      "logoNone": "未设置徽标",
+      "logoSave": "保存徽标",
+      "logoHint": "PNG 或 JPG，最大 2 MB",
+      "logoInvalidType": "仅允许 PNG 或 JPG 图片",
+      "logoTooLarge": "徽标超过 2 MB",
+      "searchCompanies": "按名称或注册号搜索公司",
+      "noMatches": "没有符合搜索条件的公司"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
@@ -2296,7 +2397,7 @@
         "extended": "扩展",
         "custom": "自定义"
       },
-      "archetypeHint": "标准 = 仅官方公布的假日（全国 + 该日历的州属假日）。扩展 = 官方假日加上公司自定的额外日期。自定义 = 完全手动管理的列表；不会自动添加全国假日。"
+      "archetypeHint": "标准 = 仅官方公布的假日（全国 + 该组的州属假日）。扩展 = 官方假日加上公司自定的额外日期。自定义 = 仅限你手动挑选加入本组的假日；包括全国假日在内的其他日期一律视为正常工作日。将某个组分配给员工的档案（或映射到某个地点），他们就会完全按照这些规则执行。"
     },
     "users": {
       "title": "用户与角色",
@@ -2325,7 +2426,28 @@
       "inviteScope": "公司范围",
       "inviteSubmit": "发送邀请",
       "pendingInvitations": "待处理邀请",
-      "revokeInvitation": "撤销"
+      "revokeInvitation": "撤销",
+      "sectionFunctionAccess": "功能访问",
+      "functionAccessCaption": "哪个角色可以进入每个屏幕。此处反映系统实际执行的访问权限，仅为参考视图，并非编辑器——执行规则在角色守卫和数据库策略中更改。",
+      "accessible": "可访问",
+      "notAccessible": "无访问权",
+      "screenColumn": "屏幕",
+      "screen": {
+        "loans": "贷款",
+        "payrollConfig": "薪资配置",
+        "payrollPolicy": "薪资政策",
+        "payComponents": "薪资组成"
+      },
+      "scope": {
+        "people": "所有人都可打开；列表仅限于你有权查看的人员。",
+        "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
+        "attendance": "所有人都可打开；你查看自己的考勤，经理和管理员查看下属的考勤。",
+        "approvals": "经理及以上；显示内容取决于你实际的汇报线。",
+        "roster": "经理及以上；显示内容取决于你实际的汇报线。",
+        "performance": "经理及以上；显示内容取决于你实际的汇报线。",
+        "leaveApproval": "经理和管理员；显示内容取决于你实际的汇报线。",
+        "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。"
+      }
     },
     "audit": {
       "title": "审计日志",
@@ -2607,9 +2729,9 @@
     "payrollTabs": {
       "batches": "薪资流程",
       "reports": "报表",
-      "configuration": "配置",
       "transactions": "交易",
-      "setup": "设置"
+      "setup": "设置",
+      "configuration": "配置"
     },
     "printButton": {
       "print": "打印 / 保存 PDF"
@@ -2802,8 +2924,8 @@
           "body": "每次发薪都在这里。点击某个周期可打开薪资流程，查看工资单、实发工资和法定汇总。"
         },
         "create": {
-          "title": "新建薪资运行",
-          "body": "点击 **新建薪资运行** 打开引导向导：选择周期和类型，选择员工，然后审核并处理。"
+          "title": "创建薪资运行周期",
+          "body": "点击 **创建薪资运行周期** 打开引导向导：选择周期和类型，选择员工，然后审核并处理。"
         },
         "reports": {
           "title": "法定报表",
@@ -3672,6 +3794,103 @@
     "error": {
       "generic": "登录失败，请重试。",
       "rateLimited": "尝试次数过多，请稍候再试。"
+    }
+  },
+  "attendanceAllowance": {
+    "title": "出勤津贴",
+    "description": "通过薪资以固定津贴奖励良好出勤。只需设置一次条件；系统会检查每位员工，您再将符合资格的金额转入薪资批次。",
+    "scopeNotice": "第一个版本支持\"按月\"方法以及可可靠计算的条件：出勤天数、缺勤天数、迟到次数、请假总天数和全勤。基于分钟和按请假类型的条件，以及\"按日\"方法，是计划中的后续功能。",
+    "emptyScope": "当前范围内没有公司。请使用上方的公司切换器。",
+    "catalogTitle": "政策",
+    "empty": "尚无出勤津贴政策。",
+    "status": {
+      "active": "启用",
+      "inactive": "停用"
+    },
+    "method": {
+      "monthly": "按月"
+    },
+    "fields": {
+      "code": "代码",
+      "name": "名称",
+      "company": "公司",
+      "amount": "金额 (RM)",
+      "payComponent": "薪资项目",
+      "effectiveFrom": "生效日期",
+      "method": "方法",
+      "status": "状态",
+      "departments": "部门",
+      "businessUnits": "业务单位",
+      "companies": "公司"
+    },
+    "criteria": {
+      "minAttendanceDays": "最少出勤天数",
+      "maxAbsentDays": "最多缺勤天数",
+      "maxLateCount": "最多迟到次数",
+      "maxTotalLeaveDays": "最多请假天数",
+      "requirePerfectAttendance": "要求全勤（无缺勤、无迟到）"
+    },
+    "reason": {
+      "minAttendanceDays": "出勤天数 {actual} 低于最少 {threshold}",
+      "maxAbsentDays": "缺勤天数 {actual} 超过最多 {threshold}",
+      "maxLateCount": "迟到次数 {actual} 超过最多 {threshold}",
+      "maxTotalLeaveDays": "请假天数 {actual} 超过最多 {threshold}",
+      "requirePerfectAttendance": "需要全勤，但有 {actual} 天缺勤/迟到"
+    },
+    "form": {
+      "createTitle": "新政策",
+      "editTitle": "编辑政策",
+      "selectCompany": "选择公司…",
+      "selectComponent": "选择薪资项目…",
+      "dailyComingSoon": "\"按日\"方法即将推出。",
+      "criteriaTitle": "资格条件",
+      "noLimit": "无限制",
+      "scopeTitle": "适用对象",
+      "scopeHint": "全部不勾选则适用于公司内每位员工。",
+      "noDepartments": "范围内没有部门。",
+      "noBusinessUnits": "范围内没有业务单位。",
+      "noCompanies": "范围内没有公司。",
+      "save": "保存更改",
+      "create": "创建政策",
+      "cancel": "取消"
+    },
+    "actions": {
+      "title": "操作",
+      "edit": "编辑",
+      "activate": "启用",
+      "deactivate": "停用",
+      "archive": "归档",
+      "archiveConfirmTitle": "归档此政策？",
+      "archiveConfirmBody": "它将从启用列表中隐藏。此操作无法从此处撤销。"
+    },
+    "panel": {
+      "title": "出勤津贴",
+      "noPolicies": "尚未配置出勤津贴政策。",
+      "configure": "配置政策",
+      "policy": "政策",
+      "filter": "显示",
+      "filterAll": "全部",
+      "filterQualified": "符合资格",
+      "filterDisqualified": "不符合资格",
+      "evaluate": "评估",
+      "gateWarning": "请在薪资批次页面转账。",
+      "colEmployee": "员工",
+      "colStatus": "状态",
+      "colAmount": "金额",
+      "colReason": "条件",
+      "qualified": "符合资格",
+      "disqualified": "不符合资格",
+      "noCriteria": "未设置条件",
+      "empty": "此政策和月份没有可显示的员工。",
+      "note": "评估读取当前出勤。为获得准确数字，请使用已完成的月份。"
+    },
+    "errors": {
+      "duplicateCode": "此公司已存在使用该代码的政策。"
+    },
+    "toasts": {
+      "saved": "政策已保存",
+      "statusChanged": "政策状态已更新",
+      "archived": "政策已归档"
     }
   }
 }

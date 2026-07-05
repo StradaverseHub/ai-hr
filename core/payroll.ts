@@ -627,6 +627,12 @@ export async function setPayrollInput(
      *  and the bonus enact — pass `'preserve'` to leave the stored provenance untouched (NULL on insert).
      */
     otSource?: 'manual' | 'preserve';
+    /** ADR-0050 §0.4 TP1 provenance. `setPayrollInput` is the manual-save path, so it stamps
+     *  tp1_source=null ('manual') by DEFAULT — a direct call (admin form, importer, test) records that the
+     *  TP1 figure is a hand-keyed override, so a later TP1 self-relief prefill leaves it untouched. The
+     *  deduction-only wrapper passes `'preserve'` for a ZAKAT-only write (no TP1 edit) so the untouched TP1
+     *  keeps its stored provenance ('tp1_self' stays auto-tracked) — mirrors the otSource:'preserve' path. */
+    tp1SourceMode?: 'manual' | 'preserve';
   },
   /** Optional caller transaction — pass it so this participates in an enclosing transaction
    *  (the performance bonus enact) and commits/rolls back atomically with it. */
@@ -658,6 +664,11 @@ export async function setPayrollInput(
     // Fix-5 (M#17): resolve OT provenance. Default 'manual' (this is the manual-save path); 'preserve'
     // (deduction-only / bonus-enact) ⇒ leave the stored column untouched on update, NULL on insert.
     const otSource: 'manual' | undefined = p.otSource === 'preserve' ? undefined : 'manual';
+    // ADR-0050 §0.4: resolve TP1 provenance. Default 'manual' (a direct/admin TP1 write resets provenance
+    // to a sticky manual override, exactly as today). 'preserve' (a zakat-only deduction write that does NOT
+    // touch TP1) ⇒ omit tp1_source from the update .set() so a live 'tp1_self' relief keeps auto-tracking.
+    // Mirrors the otSource:'preserve' mechanism above. On INSERT there is no prior TP1, so both modes NULL.
+    const stampTp1Source: boolean = p.tp1SourceMode !== 'preserve';
     const [existing] = await tx
       .select({ id: payrollInput.id })
       .from(payrollInput)
@@ -671,9 +682,10 @@ export async function setPayrollInput(
           overtimeAmount: overtimeAmount.toFixed(2),
           bonusAmount: bonusAmount.toFixed(2),
           tp1Deduction: tp1Deduction.toFixed(2),
-          // ADR-0050 §0.4: an admin write resets TP1 provenance to manual (null) → sticky, so a later
-          // TP1 self-relief prefill leaves this override untouched.
-          tp1Source: null,
+          // ADR-0050 §0.4: a TP1 write resets provenance to manual (null) → sticky, so a later TP1
+          // self-relief prefill leaves this override untouched. A zakat-only write ('preserve') omits the
+          // key entirely, leaving a 'tp1_self' relief auto-tracked (same conditional-spread as otSource).
+          ...(stampTp1Source ? { tp1Source: null } : {}),
           zakat: zakat.toFixed(2),
           // Persist the OT decomposition only when supplied; omit the key entirely otherwise so a
           // TP1-only / bonus-enact round-trip leaves the existing breakdown untouched (not nulled).
@@ -774,6 +786,12 @@ export async function setPayrollDeductionInput(
         // Fix-5 (M#17): a TP1/zakat-only write is NOT an OT change — preserve the existing ot_source
         // (attendance-derived stays attendance-derived).
         otSource: 'preserve',
+        // ADR-0050 §0.4: preserve the stored TP1 provenance UNLESS this call actually edits TP1. A TP1 edit
+        // (p.tp1Deduction provided) is a real manual override → 'manual' (reset provenance, matches today);
+        // a zakat-only write (p.tp1Deduction undefined) must NOT poison a live 'tp1_self' relief → 'preserve'
+        // so the untouched TP1 keeps auto-tracking. This also fixes the pre-existing prefillFixedZakat
+        // poisoning, which reaches this wrapper with zakat only.
+        tp1SourceMode: p.tp1Deduction === undefined ? 'preserve' : 'manual',
       },
       tx,
     );
@@ -1153,6 +1171,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
         monthlyWages: wages,
         days: daysBy.get(employmentId) ?? [],
         wageCeiling: rules.ot.wageCeiling,
+        restDayExcessMultiplier: rules.ot.restDayExcessMultiplier,
+        holidayExcessMultiplier: rules.ot.holidayExcessMultiplier,
       });
       if (!result.eligible) {
         ineligible += 1;
@@ -2499,7 +2519,8 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     // s.60I(1A) ORP (wages/26) + hourly (ORP/8) basis and the RM4,000 eligibility — READ-ONLY, computed
     // from the same overtimePay/compensation source the kernel uses. Pack may be absent (non-MY) ⇒ skip.
     const pack = packFor(batch.country);
-    const otCeiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).ot.wageCeiling : undefined;
+    const otRules = pack ? (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).ot : undefined;
+    const otCeiling = otRules?.wageCeiling;
     const emps = await tx
       .select({
         employmentId: employment.id,
@@ -2553,7 +2574,15 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       const wages = round2(Number(e.basic) + Number(e.allowance ?? 0));
       // s.60I(1A): ORP = wages/26, hourly = ORP/8. Run the engine with no days to get just the basis +
       // eligibility against the statutory wage ceiling — the SAME computation that monetizes a prefill.
-      const basis = pack ? pack.payroll.overtimePay({ monthlyWages: wages, days: [], wageCeiling: otCeiling }) : null;
+      const basis = pack
+        ? pack.payroll.overtimePay({
+            monthlyWages: wages,
+            days: [],
+            wageCeiling: otCeiling,
+            restDayExcessMultiplier: otRules?.restDayExcessMultiplier,
+            holidayExcessMultiplier: otRules?.holidayExcessMultiplier,
+          })
+        : null;
       return {
         employmentId: e.employmentId,
         name: e.name,

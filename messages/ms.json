@@ -112,7 +112,9 @@
     "locations": "Lokasi",
     "loans": "Pinjaman",
     "payrollCycleConfig": "Kitaran Gaji",
-    "personnelAdmin": "Kakitangan (admin)"
+    "personnelAdmin": "Kakitangan (admin)",
+    "securityPermission": "Keselamatan & kebenaran",
+    "attendanceAllowance": "Elaun kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -381,6 +383,7 @@
       "statusActive": "Aktif",
       "statusEnded": "Tamat",
       "dateError": "Tarikh tamat berkuat kuasa tidak boleh sebelum tarikh mula berkuat kuasa.",
+      "amountError": "Jumlah mesti lebih daripada sifar.",
       "currencyUnsupported": "Hanya MYR disokong — gaji dikira dalam MYR.",
       "epfVoluntaryHint": "Masukkan kadar penuh setiap pihak pada atau melebihi paras berkanun (pekerja 11%, majikan 12–13%). Biar kosong untuk kekal berkanun.",
       "epfSemiAutoHint": "Masukkan kadar pekerja pada atau melebihi 11% berkanun. Bahagian majikan kekal automatik (berkanun).",
@@ -771,7 +774,12 @@
     },
     "importPunches": "Import perakam",
     "colLocation": "Lokasi",
-    "otHoursLabel": "OT"
+    "otHoursLabel": "OT",
+    "exportOtReport": "Eksport laporan OT",
+    "otReportFormat": "Format",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "Carta organisasi",
@@ -1350,7 +1358,7 @@
       "periodContext": "Tempoh gaji",
       "allPeriods": "Semua tempoh",
       "filteredEmpty": "Tiada proses gaji untuk tempoh gaji ini.",
-      "newRun": "Larian gaji baharu",
+      "newRun": "Cipta Kitaran Larian Gaji",
       "colPaymentDate": "Tarikh bayaran",
       "paymentDateLegacyNote": "Larian yang dicipta sebelum keluaran ini memaparkan tarikh lalai sistem (28hb)."
     },
@@ -1490,7 +1498,7 @@
       "epfEmployerThreshold": "Ambang kadar majikan (RM/bulan)",
       "contribCeiling": "Siling upah caruman (RM)",
       "otWageCeiling": "Siling upah kelayakan OT (RM/bulan)",
-      "otMultipliersNote": "Pendarab OT (1.5× hari bekerja, 2× hari rehat, 3× cuti umum) ditetapkan oleh Akta Kerja dan tidak boleh dikonfigurasikan.",
+      "otMultipliersNote": "Kadar 1.5× hari bekerja dan bayaran hari asas (½/1 hari untuk hari rehat, 2 hari untuk cuti umum) ditetapkan oleh Akta Kerja. Kadar lebihan jam bagi hari rehat dan cuti umum lalai kepada 2× / 3× mengikut undang-undang dan boleh diselaraskan di sini.",
       "reliefIndividual": "Pelepasan individu (RM/thn)",
       "reliefSpouse": "Pelepasan pasangan — Kat 2 (RM/thn)",
       "reliefPerChild": "Pelepasan setiap anak (RM/thn)",
@@ -1547,7 +1555,9 @@
       "editSection": "Edit {body}",
       "editSectionIntro": "Terbitkan pindaan berkuat kuasa bertarikh untuk badan ini. Nilai lalai yang disahkan kekal sebagai sandaran; slip gaji lepas mengekalkan syotnya.",
       "cancelEdit": "Batal",
-      "lastEdited": "Pindaan terakhir: {version} · berkuat kuasa {effectiveFrom}"
+      "lastEdited": "Pindaan terakhir: {version} · berkuat kuasa {effectiveFrom}",
+      "otRestDayExcessMultiplier": "Kadar lebihan OT hari rehat (× sejam)",
+      "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)"
     },
     "batch": {
       "back": "Gaji",
@@ -1647,7 +1657,9 @@
       "encashmentFrozenBadge": "Dibekukan semasa kelulusan peletakan jawatan",
       "encashmentOverriddenBadge": "Dibekukan (diatasi oleh HR)",
       "encashmentFrozenAsOfTitle": "Dibekukan setakat {date}",
-      "colCode": "Kod"
+      "colCode": "Kod",
+      "transferAllowance": "Pindahkan elaun",
+      "allowanceGateWarning": "Komponen gaji bertaip dimatikan — pemindahan akan direkodkan tetapi tidak akan sampai ke slip gaji sehingga ia diaktifkan."
     },
     "transactions": {
       "title": "Transaksi",
@@ -1659,23 +1671,49 @@
         "fixedDesc": "Elaun dan potongan berulang bagi setiap pekerja, mengikut tarikh berkuat kuasa.",
         "fixedCta": "Urus berulang",
         "individualTitle": "Transaksi Individu",
-        "individualDesc": "Komponen sekali sahaja untuk kelompok draf, serta pelepasan TP1 dan zakat.",
-        "individualCta": "Tambah sekali sahaja"
+        "individualDesc": "Komponen sekali sahaja untuk kelompok draf.",
+        "individualCta": "Tambah sekali sahaja",
+        "tp1Title": "Pelepasan TP1",
+        "tp1Desc": "Pelepasan cukai TP1 bulanan bagi setiap pekerja pada kelompok draf.",
+        "tp1Cta": "Edit pelepasan TP1",
+        "zakatTitle": "Zakat",
+        "zakatDesc": "Zakat dibayar melalui gaji bagi setiap pekerja pada kelompok draf.",
+        "zakatCta": "Edit zakat"
       },
       "fixed": {
         "title": "Transaksi Tetap",
-        "subtitle": "Komponen gaji berulang bagi setiap pekerja, mengikut tarikh berkuat kuasa.",
-        "intro": "Pilih pekerja untuk mengurus elaun dan potongan berulang mereka. Perubahan berkuat kuasa pada slip gaji seterusnya yang dijana.",
+        "subtitle": "Item gaji tetap berulang untuk seorang pekerja, bertarikh berkuat kuasa.",
+        "intro": "Tambah jumlah tetap bagi satu item gaji dalam julat tarikh. Ia dikenakan pada proses gaji yang tempohnya berada dalam julat itu. Perubahan berkuat kuasa pada slip gaji seterusnya yang dijana.",
         "pickEmployee": "Pekerja",
-        "open": "Buka editor",
         "empty": "Tiada pekerja dalam skop semasa.",
+        "employeeId": "ID Pekerja",
+        "employeeName": "Nama",
+        "formTitle": "Tambah transaksi tetap",
+        "payrollItem": "Item gaji",
+        "payrollCycle": "Kitaran gaji",
+        "amount": "Jumlah",
+        "startDate": "Tarikh mula",
+        "endDate": "Tarikh tamat",
+        "remarks": "Catatan",
+        "add": "Tambah",
+        "status": "Status",
+        "statusActive": "Aktif",
+        "statusEnded": "Tamat",
+        "cycleUnspecified": "Tidak dinyatakan",
+        "noTransactions": "Belum ada transaksi tetap untuk pekerja ini.",
+        "required": "Pekerja, item gaji, kitaran, tarikh mula dan jumlah adalah wajib.",
+        "outOfScope": "Pekerja itu tiada dalam skop syarikat semasa anda.",
+        "dateError": "Tarikh tamat tidak boleh sebelum tarikh mula.",
+        "currencyUnsupported": "Hanya MYR disokong — gaji dikira dalam MYR.",
+        "amountError": "Jumlah mesti lebih daripada sifar.",
+        "open": "Buka editor",
         "colEmployee": "Pekerja",
         "colCompany": "Syarikat",
         "manage": "Urus"
       },
       "individual": {
         "title": "Transaksi Individu",
-        "subtitle": "Komponen kelompok sekali sahaja, pelepasan TP1 dan zakat.",
+        "subtitle": "Komponen kelompok sekali sahaja.",
         "pickBatch": "Kelompok draf",
         "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
         "addTitle": "Tambah komponen sekali sahaja",
@@ -1689,12 +1727,6 @@
         "added": "Komponen ditambah.",
         "csvTitle": "Import pukal (CSV)",
         "csvIntro": "Muatkan banyak komponen sekali sahaja serentak.",
-        "deductionTitle": "Pelepasan TP1 & zakat",
-        "deductionIntro": "Pelepasan cukai bulanan (TP1) dan zakat untuk seorang pekerja. Menyimpan ini tidak mengubah kerja lebih masa atau bonus pada baris yang sama.",
-        "tp1": "Pelepasan TP1",
-        "tp1Title": "Pelepasan potongan cukai bulanan (TP1) — mengurangkan PCB/MTD.",
-        "zakat": "Zakat",
-        "zakatTitle": "Zakat dibayar melalui gaji — dikreditkan terhadap PCB/MTD.",
         "save": "Simpan",
         "saved": "Disimpan.",
         "unsupportedComponent": "Komponen itu tidak boleh digunakan pada kelompok dalam versi ini. Pilih komponen yang boleh dibayar.",
@@ -1733,7 +1765,65 @@
           "off_cycle": "Luar kitaran",
           "bonus": "Bonus",
           "adjustment": "Pelarasan"
-        }
+        },
+        "deductionTitle": "Pelepasan TP1 & zakat",
+        "deductionIntro": "Pelepasan cukai bulanan (TP1) dan zakat untuk seorang pekerja. Menyimpan ini tidak mengubah kerja lebih masa atau bonus pada baris yang sama.",
+        "tp1": "Pelepasan TP1",
+        "tp1Title": "Pelepasan potongan cukai bulanan (TP1) — mengurangkan PCB/MTD.",
+        "zakat": "Zakat",
+        "zakatTitle": "Zakat dibayar melalui gaji — dikreditkan terhadap PCB/MTD.",
+        "stepEmployee": "Pekerja",
+        "stepPeriod": "Tempoh & kitaran",
+        "stepEntry": "Entri",
+        "stepSave": "Semak & simpan",
+        "employeeSearch": "Cari pekerja",
+        "searchPlaceholder": "Cari mengikut nama atau ID pekerja…",
+        "noEmployees": "Tiada pekerja yang sepadan.",
+        "empId": "ID Pekerja",
+        "dept": "Jabatan",
+        "position": "Jawatan",
+        "next": "Teruskan",
+        "pickRun": "Larian",
+        "noDraftForSelection": "Tiada larian draf untuk tempoh dan kitaran ini.",
+        "noDraftForSelectionLink": "Cipta satu dalam Proses Gaji",
+        "gridAddRow": "Tambah baris",
+        "gridDeleteRow": "Padam",
+        "colItem": "Item gaji",
+        "colEffectiveDate": "Tarikh berkuat kuasa",
+        "colAmount": "Jumlah",
+        "colRemarks": "Catatan",
+        "rowIncomplete": "Sesetengah baris tidak lengkap atau tidak sah — betulkan baris yang ditandakan sebelum menyimpan.",
+        "amountNotPositive": "Jumlah mesti lebih besar daripada sifar.",
+        "companyMismatch": "Pekerja ini bukan milik syarikat larian yang dipilih.",
+        "employeeNotInScope": "Pekerja ini tidak termasuk dalam larian gaji yang dipilih.",
+        "saveSuccess": "{count} transaksi telah disimpan.",
+        "reviewCount": "{count} transaksi akan disimpan.",
+        "saving": "Menyimpan…",
+        "saveAll": "Simpan semua",
+        "otherTools": "Alat lain",
+        "back": "Kembali"
+      },
+      "tp1": {
+        "title": "Pelepasan TP1",
+        "subtitle": "Pelepasan cukai TP1 bulanan bagi setiap pekerja untuk kelompok draf.",
+        "pickBatch": "Kelompok draf",
+        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
+        "employee": "Pekerja",
+        "amount": "Pelepasan TP1",
+        "save": "Simpan",
+        "saved": "Disimpan.",
+        "empty": "Tiada pekerja dalam kelompok ini."
+      },
+      "zakat": {
+        "title": "Zakat",
+        "subtitle": "Zakat dibayar melalui gaji bagi setiap pekerja untuk kelompok draf.",
+        "pickBatch": "Kelompok draf",
+        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
+        "employee": "Pekerja",
+        "amount": "Zakat",
+        "save": "Simpan",
+        "saved": "Disimpan.",
+        "empty": "Tiada pekerja dalam kelompok ini."
       }
     },
     "setup": {
@@ -1976,7 +2066,18 @@
       "fieldBusinessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
       "businessUnitCodePlaceholder": "UP1",
-      "businessUnitNamePlaceholder": "cth. Runcit"
+      "businessUnitNamePlaceholder": "cth. Runcit",
+      "logoSection": "Logo",
+      "logoUpload": "Muat naik logo",
+      "logoReplace": "Ganti logo",
+      "logoRemove": "Buang logo",
+      "logoNone": "Tiada logo ditetapkan",
+      "logoSave": "Simpan logo",
+      "logoHint": "PNG atau JPG, sehingga 2 MB",
+      "logoInvalidType": "Hanya imej PNG atau JPG dibenarkan",
+      "logoTooLarge": "Logo melebihi 2 MB",
+      "searchCompanies": "Cari syarikat mengikut nama atau nombor pendaftaran",
+      "noMatches": "Tiada syarikat sepadan dengan carian anda"
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",
@@ -2296,7 +2397,7 @@
         "extended": "Diperluas",
         "custom": "Tersuai"
       },
-      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kalendar). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = senarai yang diuruskan sepenuhnya secara manual; cuti kebangsaan tidak ditambah secara automatik."
+      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kumpulan). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = hanya cuti yang anda pilih sendiri ke dalam kumpulan ini; setiap tarikh lain, termasuk cuti kebangsaan, ialah hari bekerja biasa. Berikan kumpulan kepada pekerja pada profil mereka (atau petakan ke lokasi) dan mereka akan mengikut peraturan ini dengan tepat."
     },
     "users": {
       "title": "Pengguna & peranan",
@@ -2325,7 +2426,28 @@
       "inviteScope": "Skop syarikat",
       "inviteSubmit": "Hantar jemputan",
       "pendingInvitations": "Jemputan belum selesai",
-      "revokeInvitation": "Batalkan"
+      "revokeInvitation": "Batalkan",
+      "sectionFunctionAccess": "Akses fungsi",
+      "functionAccessCaption": "Peranan mana boleh mencapai setiap skrin. Ini mencerminkan akses yang dikuatkuasakan sistem; ia paparan rujukan, bukan penyunting — penguatkuasaan diubah dalam pengawal peranan dan dasar pangkalan data.",
+      "accessible": "Boleh akses",
+      "notAccessible": "Tiada akses",
+      "screenColumn": "Skrin",
+      "screen": {
+        "loans": "Pinjaman",
+        "payrollConfig": "Konfigurasi gaji",
+        "payrollPolicy": "Dasar gaji",
+        "payComponents": "Komponen gaji"
+      },
+      "scope": {
+        "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
+        "leave": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "attendance": "Semua orang boleh membukanya; anda lihat kehadiran sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "approvals": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "leaveApproval": "Pengurus dan pentadbir; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya."
+      }
     },
     "audit": {
       "title": "Jejak audit",
@@ -2607,9 +2729,9 @@
     "payrollTabs": {
       "batches": "Proses Gaji",
       "reports": "Laporan",
-      "configuration": "Konfigurasi",
       "transactions": "Transaksi",
-      "setup": "Tetapan"
+      "setup": "Tetapan",
+      "configuration": "Konfigurasi"
     },
     "printButton": {
       "print": "Cetak / Simpan PDF"
@@ -2802,8 +2924,8 @@
           "body": "Setiap pemprosesan gaji berada di sini. Klik satu tempoh untuk membuka proses gaji dan menyemak slip gaji, gaji bersih dan jumlah berkanun."
         },
         "create": {
-          "title": "Larian gaji baharu",
-          "body": "Klik **Larian gaji baharu** untuk membuka wizard berpandu: pilih tempoh dan kitaran, pilih pekerja, kemudian semak dan proses."
+          "title": "Cipta Kitaran Larian Gaji",
+          "body": "Klik **Cipta Kitaran Larian Gaji** untuk membuka wizard berpandu: pilih tempoh dan kitaran, pilih pekerja, kemudian semak dan proses."
         },
         "reports": {
           "title": "Laporan berkanun",
@@ -3672,6 +3794,103 @@
     "error": {
       "generic": "Log masuk gagal. Sila cuba lagi.",
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebentar dan cuba lagi."
+    }
+  },
+  "attendanceAllowance": {
+    "title": "Elaun kehadiran",
+    "description": "Ganjari kehadiran yang baik dengan elaun tetap melalui penggajian. Tetapkan syarat sekali; sistem menyemak setiap pekerja dan anda memindahkan jumlah yang layak ke dalam larian gaji.",
+    "scopeNotice": "Versi pertama ini menyokong kaedah Bulanan dan syarat yang boleh dikira dengan pasti: hari kehadiran, hari tidak hadir, bilangan lewat, jumlah hari cuti, dan kehadiran sempurna. Syarat berasaskan minit dan mengikut jenis cuti, serta kaedah Harian, ialah susulan yang dirancang.",
+    "emptyScope": "Tiada syarikat dalam skop semasa. Gunakan penukar syarikat di atas.",
+    "catalogTitle": "Polisi",
+    "empty": "Belum ada polisi elaun kehadiran.",
+    "status": {
+      "active": "Aktif",
+      "inactive": "Tidak aktif"
+    },
+    "method": {
+      "monthly": "Bulanan"
+    },
+    "fields": {
+      "code": "Kod",
+      "name": "Nama",
+      "company": "Syarikat",
+      "amount": "Jumlah (RM)",
+      "payComponent": "Pendapatan gaji",
+      "effectiveFrom": "Berkuat kuasa dari",
+      "method": "Kaedah",
+      "status": "Status",
+      "departments": "Jabatan",
+      "businessUnits": "Unit perniagaan",
+      "companies": "Syarikat"
+    },
+    "criteria": {
+      "minAttendanceDays": "Hari kehadiran minimum",
+      "maxAbsentDays": "Hari tidak hadir maksimum",
+      "maxLateCount": "Bilangan lewat maksimum",
+      "maxTotalLeaveDays": "Hari cuti maksimum",
+      "requirePerfectAttendance": "Perlukan kehadiran sempurna (tiada tidak hadir, tiada lewat)"
+    },
+    "reason": {
+      "minAttendanceDays": "Hari kehadiran {actual} di bawah minimum {threshold}",
+      "maxAbsentDays": "Hari tidak hadir {actual} melebihi maksimum {threshold}",
+      "maxLateCount": "Kelewatan {actual} melebihi maksimum {threshold}",
+      "maxTotalLeaveDays": "Hari cuti {actual} melebihi maksimum {threshold}",
+      "requirePerfectAttendance": "Kehadiran sempurna diperlukan, tetapi terdapat {actual} hari tidak hadir/lewat"
+    },
+    "form": {
+      "createTitle": "Polisi baharu",
+      "editTitle": "Sunting polisi",
+      "selectCompany": "Pilih syarikat…",
+      "selectComponent": "Pilih pendapatan gaji…",
+      "dailyComingSoon": "Kaedah Harian akan datang.",
+      "criteriaTitle": "Syarat kelayakan",
+      "noLimit": "Tiada had",
+      "scopeTitle": "Siapa yang terpakai",
+      "scopeHint": "Biarkan semua tidak ditanda untuk terpakai kepada setiap pekerja dalam syarikat.",
+      "noDepartments": "Tiada jabatan dalam skop.",
+      "noBusinessUnits": "Tiada unit perniagaan dalam skop.",
+      "noCompanies": "Tiada syarikat dalam skop.",
+      "save": "Simpan perubahan",
+      "create": "Cipta polisi",
+      "cancel": "Batal"
+    },
+    "actions": {
+      "title": "Tindakan",
+      "edit": "Sunting",
+      "activate": "Aktifkan",
+      "deactivate": "Nyahaktif",
+      "archive": "Arkib",
+      "archiveConfirmTitle": "Arkibkan polisi ini?",
+      "archiveConfirmBody": "Ia akan disembunyikan daripada senarai aktif. Ini tidak boleh dibatalkan dari sini."
+    },
+    "panel": {
+      "title": "Elaun kehadiran",
+      "noPolicies": "Tiada polisi elaun kehadiran ditetapkan.",
+      "configure": "Tetapkan polisi",
+      "policy": "Polisi",
+      "filter": "Papar",
+      "filterAll": "Semua",
+      "filterQualified": "Layak",
+      "filterDisqualified": "Tidak layak",
+      "evaluate": "Nilai",
+      "gateWarning": "Pindahkan wang dari skrin larian gaji.",
+      "colEmployee": "Pekerja",
+      "colStatus": "Status",
+      "colAmount": "Jumlah",
+      "colReason": "Syarat",
+      "qualified": "Layak",
+      "disqualified": "Tidak layak",
+      "noCriteria": "Tiada syarat ditetapkan",
+      "empty": "Tiada pekerja untuk polisi dan bulan ini.",
+      "note": "Penilaian membaca kehadiran semasa. Untuk angka tepat, gunakan bulan yang telah lengkap."
+    },
+    "errors": {
+      "duplicateCode": "Polisi dengan kod ini sudah wujud untuk syarikat ini."
+    },
+    "toasts": {
+      "saved": "Polisi disimpan",
+      "statusChanged": "Status polisi dikemas kini",
+      "archived": "Polisi diarkibkan"
     }
   }
 }

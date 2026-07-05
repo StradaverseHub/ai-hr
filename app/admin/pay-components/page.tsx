@@ -5,6 +5,7 @@ import { EA_FORM_LINES, ROUNDING_METHODS, listPayComponents } from '@/core/pay-c
 import { isAiConfigured } from '@/core/ai-config';
 import type { PayRule } from '@/core/pay-rule';
 import { Card, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { settingsBack } from '@/app/payroll/setup/back';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayRuleEditor } from './pay-rule-editor';
 import { archiveComponentAction, deleteComponentAction, seedCatalogAction, upsertComponentAction } from './actions';
@@ -26,7 +27,7 @@ export default async function PayComponentsPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('title')} description={t('description')} />
+      <PageHeader title={t('title')} description={t('description')} back={await settingsBack()} />
 
       <p className="rounded-[1.25rem] border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
         {t('previewNotice')}

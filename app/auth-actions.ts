@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { logout as logoutService, requestPasswordReset } from '@/core/auth';
+import { demoSwitcherEnabled } from '@/lib/demo-mode';
 
 /**
  * Log the current user out: append app-user.logged-out (auth-audit) then clear/revoke the WorkOS
@@ -18,8 +19,8 @@ export async function logoutAction() {
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
   }
-  if (process.env.NODE_ENV !== 'production') {
-    // Dev switcher path — no WorkOS session to revoke; the dev cookie stays (developers keep switching).
+  if (demoSwitcherEnabled()) {
+    // Dev/demo switcher path — no WorkOS session to revoke; the dev cookie stays (switcher keeps working).
     redirect('/login');
   }
   await logoutService({ tenantId: session.tenantId, userId: session.userId! }, undefined, '/login');
