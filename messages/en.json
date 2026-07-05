@@ -2317,7 +2317,15 @@
         "super_admin": "super admin",
         "payroll_partner": "Payroll Partner",
         "performance_comp_partner": "Performance & Comp Partner"
-      }
+      },
+      "inviteTitle": "Invite a user",
+      "inviteHint": "New accounts are created by invitation only — there is no open sign-up. The person receives a one-time email link to set their password.",
+      "inviteEmail": "Email",
+      "inviteRole": "Role",
+      "inviteScope": "Company scope",
+      "inviteSubmit": "Send invitation",
+      "pendingInvitations": "Pending invitations",
+      "revokeInvitation": "Revoke"
     },
     "audit": {
       "title": "Audit trail",
@@ -3638,6 +3646,32 @@
       "duplicateName": "A cycle with this name already exists for this company.",
       "regularConflict": "This company already has an active Regular cycle. Only one is allowed.",
       "inUse": "This cycle is used in {refs} payroll run(s) — deactivate it instead of deleting."
+    }
+  },
+  "auth": {
+    "logout": "Log out",
+    "login": {
+      "title": "Sign in",
+      "devNote": "This is a development build — the identity switcher is used instead of a real login.",
+      "enterApp": "Enter the app"
+    },
+    "invite": {
+      "title": "You've been invited",
+      "subtitle": "Activate your account and set a password to get started.",
+      "activate": "Activate account",
+      "expiryNote": "This invitation link can only be used once and expires after a few days."
+    },
+    "reset": {
+      "title": "Reset your password",
+      "subtitle": "Enter your email and we'll send you a link to set a new password.",
+      "emailLabel": "Email",
+      "submit": "Send reset link",
+      "sent": "If an account exists for that email, a password reset link is on its way.",
+      "backToLogin": "Back to sign in"
+    },
+    "error": {
+      "generic": "Sign-in failed. Please try again.",
+      "rateLimited": "Too many attempts. Please wait a moment and try again."
     }
   }
 }

@@ -64,6 +64,7 @@ import {
   ClockingLocationInUseError,
 } from '@/core/clocking-location';
 import { requireAdmin } from '@/lib/authz';
+import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
 import type { ToilAccrualBasis, ToilExpiryAction } from '@/db/schema';
@@ -625,6 +626,32 @@ export async function revokeRoleAction(formData: FormData) {
   const s = await getSession();
   try {
     await revokeRole(s, { roleAssignmentId: String(formData.get('roleAssignmentId')) });
+  } catch (e) {
+    fail(USERS, e);
+  }
+  ok(USERS);
+}
+
+// ADR-0072 — invitation-only account creation. Invite by email + role (+ optional company scope);
+// revoke a still-pending invitation. Group-admin gated in the service; RLS is the backstop.
+export async function inviteUserAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await inviteUser(s, {
+      email: String(formData.get('email') ?? '').trim(),
+      role: String(formData.get('role') ?? 'employee'),
+      companyId: (formData.get('companyId') as string) || null,
+    });
+  } catch (e) {
+    fail(USERS, e);
+  }
+  ok(USERS);
+}
+
+export async function revokeInvitationAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await revokeInvitation(s, { invitationId: String(formData.get('invitationId')) });
   } catch (e) {
     fail(USERS, e);
   }

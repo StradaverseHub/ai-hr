@@ -2317,7 +2317,15 @@
         "super_admin": "super admin",
         "payroll_partner": "Đối tác Bảng lương",
         "performance_comp_partner": "Đối tác Hiệu suất & Lương thưởng"
-      }
+      },
+      "inviteTitle": "Mời người dùng",
+      "inviteHint": "Tài khoản mới chỉ được tạo bằng lời mời — không có đăng ký mở. Người đó sẽ nhận được liên kết email dùng một lần để đặt mật khẩu.",
+      "inviteEmail": "Email",
+      "inviteRole": "Vai trò",
+      "inviteScope": "Phạm vi công ty",
+      "inviteSubmit": "Gửi lời mời",
+      "pendingInvitations": "Lời mời đang chờ",
+      "revokeInvitation": "Thu hồi"
     },
     "audit": {
       "title": "Nhật ký kiểm toán",
@@ -3638,6 +3646,32 @@
       "duplicateName": "Đã có chu kỳ với tên này cho công ty này.",
       "regularConflict": "Công ty này đã có một chu kỳ Thường đang hoạt động. Chỉ cho phép một chu kỳ.",
       "inUse": "Chu kỳ này được dùng trong {refs} đợt trả lương — hãy vô hiệu hóa thay vì xóa."
+    }
+  },
+  "auth": {
+    "logout": "Đăng xuất",
+    "login": {
+      "title": "Đăng nhập",
+      "devNote": "Đây là bản dựng phát triển — trình chuyển đổi danh tính được dùng thay cho đăng nhập thật.",
+      "enterApp": "Vào ứng dụng"
+    },
+    "invite": {
+      "title": "Bạn đã được mời",
+      "subtitle": "Kích hoạt tài khoản và đặt mật khẩu để bắt đầu.",
+      "activate": "Kích hoạt tài khoản",
+      "expiryNote": "Liên kết lời mời này chỉ dùng được một lần và hết hạn sau vài ngày."
+    },
+    "reset": {
+      "title": "Đặt lại mật khẩu của bạn",
+      "subtitle": "Nhập email của bạn và chúng tôi sẽ gửi liên kết để đặt mật khẩu mới.",
+      "emailLabel": "Email",
+      "submit": "Gửi liên kết đặt lại",
+      "sent": "Nếu có tài khoản cho email đó, liên kết đặt lại mật khẩu đang được gửi đến.",
+      "backToLogin": "Quay lại đăng nhập"
+    },
+    "error": {
+      "generic": "Đăng nhập thất bại. Vui lòng thử lại.",
+      "rateLimited": "Quá nhiều lần thử. Vui lòng đợi một lát rồi thử lại."
     }
   }
 }

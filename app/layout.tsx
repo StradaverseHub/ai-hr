@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Geist_Mono } from 'next/font/google';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale } from 'next-intl/server';
 import './globals.css';
@@ -12,10 +12,13 @@ import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
+import { LogoutButton } from '@/components/logout-button';
 import { CompanySwitcher } from '@/components/company-switcher';
 import { TourLauncher } from '@/components/tour-launcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
+import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { AuthRequiredError } from '@/lib/auth-errors';
 import { canManagePayroll, canManagePerfComp, isAdmin } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { allowedCompanies } from '@/core/read';
@@ -35,8 +38,44 @@ export const metadata: Metadata = {
   description: 'AI-native HR platform',
 };
 
+// Auth routes (ADR-0072): rendered WITHOUT the authenticated app shell and WITHOUT the getSession
+// gate — otherwise the layout's redirect-to-/login would loop on /login itself.
+const AUTH_ROUTE_PREFIXES = ['/login', '/callback', '/invite', '/reset-password'];
+
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const [session, principals, locale] = await Promise.all([getSession(), listPrincipals(), getLocale()]);
+  const pathname = (await headers()).get('x-pathname') ?? '';
+  const isAuthRoute = AUTH_ROUTE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+  const locale = await getLocale();
+
+  if (isAuthRoute) {
+    // Bare shell for the login flow: fonts + theme + intl, no sidebar / topbar / session.
+    return (
+      <html
+        lang={locale}
+        className={`${jakarta.variable} ${geistMono.variable} h-full antialiased`}
+        suppressHydrationWarning
+      >
+        <body className="h-dvh overflow-auto bg-canvas font-sans">
+          <NextIntlClientProvider>
+            <Providers>{children}</Providers>
+          </NextIntlClientProvider>
+        </body>
+      </html>
+    );
+  }
+
+  // ADR-0072: resolve the session; an unauthenticated / offboarded principal (AuthRequiredError from
+  // the WorkOS path) redirects to /login rather than 500-ing the whole app.
+  let session;
+  try {
+    session = await getSession();
+  } catch (e) {
+    if (e instanceof AuthRequiredError) redirect('/login');
+    throw e;
+  }
+  const principals = await listPrincipals();
+  // Dev identity switcher is developers-only (never a live deployment). NODE_ENV !== 'production'.
+  const showDevSwitcher = process.env.NODE_ENV !== 'production';
   const allowed = await allowedCompanies(session);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
@@ -76,12 +115,18 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               <header className="flex h-16 shrink-0 items-center justify-between gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)]">
                 <div className="flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground">
-                  <span className="inline-flex size-1.5 rounded-full bg-amber-500" title="Dev session" />
                   <span className="font-medium text-foreground/80">Demo Group</span>
-                  <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
-                    dev
-                  </span>
-                  <DevIdentitySwitcher principals={principals} current={session.userId ?? ''} />
+                  {showDevSwitcher && (
+                    <>
+                      <span
+                        className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400"
+                        title="Dev session"
+                      >
+                        dev
+                      </span>
+                      <DevIdentitySwitcher principals={principals} current={session.userId ?? ''} />
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2.5">
                   <CompanySwitcher companies={allowed} selected={scopeIds} />
@@ -98,6 +143,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     <ThemeToggle />
                   </span>
                   <TourLauncher />
+                  <LogoutButton />
                 </div>
               </header>
               <main className="min-w-0 flex-1 overflow-y-auto pb-1">{children}</main>

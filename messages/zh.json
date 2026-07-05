@@ -2317,7 +2317,15 @@
         "super_admin": "超级管理员",
         "payroll_partner": "薪资合作伙伴",
         "performance_comp_partner": "绩效与薪酬合作伙伴"
-      }
+      },
+      "inviteTitle": "邀请用户",
+      "inviteHint": "新账户仅通过邀请创建——不设公开注册。受邀者会收到一次性电子邮件链接以设置密码。",
+      "inviteEmail": "电子邮件",
+      "inviteRole": "角色",
+      "inviteScope": "公司范围",
+      "inviteSubmit": "发送邀请",
+      "pendingInvitations": "待处理邀请",
+      "revokeInvitation": "撤销"
     },
     "audit": {
       "title": "审计日志",
@@ -3638,6 +3646,32 @@
       "duplicateName": "此公司已存在同名周期。",
       "regularConflict": "此公司已有一个启用的常规周期。仅允许一个。",
       "inUse": "此周期已用于 {refs} 个薪资批次——请停用而非删除。"
+    }
+  },
+  "auth": {
+    "logout": "退出登录",
+    "login": {
+      "title": "登录",
+      "devNote": "这是开发版本——使用身份切换器代替真实登录。",
+      "enterApp": "进入应用"
+    },
+    "invite": {
+      "title": "您已被邀请",
+      "subtitle": "激活您的账户并设置密码即可开始使用。",
+      "activate": "激活账户",
+      "expiryNote": "此邀请链接只能使用一次，几天后过期。"
+    },
+    "reset": {
+      "title": "重置密码",
+      "subtitle": "输入您的电子邮件，我们会发送设置新密码的链接。",
+      "emailLabel": "电子邮件",
+      "submit": "发送重置链接",
+      "sent": "如果该电子邮件存在对应账户，密码重置链接即将送达。",
+      "backToLogin": "返回登录"
+    },
+    "error": {
+      "generic": "登录失败，请重试。",
+      "rateLimited": "尝试次数过多，请稍候再试。"
     }
   }
 }

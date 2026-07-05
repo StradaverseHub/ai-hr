@@ -303,6 +303,32 @@ export const roleAssignment = pgTable(
   ],
 );
 
+// app_invitation = admin-issued, single-use, expiring invite to create/link an app_user (ADR-0072).
+// The raw token is emailed via WorkOS and NEVER stored — only its sha256 hash. The un-authenticated
+// consume path runs through the SECURITY DEFINER app.consume_invitation (migration 0151), not the ORM.
+export const appInvitation = pgTable(
+  'app_invitation',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id').references(() => company.id),
+    email: text('email').notNull(),
+    role: text('role').notNull(),
+    personId: uuid('person_id').references(() => person.id),
+    // sha256(raw) hex; the raw opaque base64url token is never returned to the client (schema.ts convention).
+    tokenHash: text('token_hash').notNull(),
+    status: text('status').notNull().default('pending'), // pending | accepted | revoked | expired
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdBy: uuid('created_by').references(() => appUser.id),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('app_invitation_token_hash_uq').on(t.tokenHash),
+    index('app_invitation_tenant_idx').on(t.tenantId, t.status),
+  ],
+);
+
 // ─────────────────────── Identity & Org (ADR-0003) ───────────────────────
 // person = the global human identity within a tenant (holds PII).
 

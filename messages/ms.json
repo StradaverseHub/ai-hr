@@ -2317,7 +2317,15 @@
         "super_admin": "super admin",
         "payroll_partner": "Rakan Penggajian",
         "performance_comp_partner": "Rakan Prestasi & Pampasan"
-      }
+      },
+      "inviteTitle": "Jemput pengguna",
+      "inviteHint": "Akaun baharu dicipta melalui jemputan sahaja — tiada pendaftaran terbuka. Orang itu menerima pautan e-mel sekali guna untuk menetapkan kata laluan mereka.",
+      "inviteEmail": "E-mel",
+      "inviteRole": "Peranan",
+      "inviteScope": "Skop syarikat",
+      "inviteSubmit": "Hantar jemputan",
+      "pendingInvitations": "Jemputan belum selesai",
+      "revokeInvitation": "Batalkan"
     },
     "audit": {
       "title": "Jejak audit",
@@ -3638,6 +3646,32 @@
       "duplicateName": "Kitaran dengan nama ini sudah wujud untuk syarikat ini.",
       "regularConflict": "Syarikat ini sudah mempunyai kitaran Biasa yang aktif. Hanya satu dibenarkan.",
       "inUse": "Kitaran ini digunakan dalam {refs} larian gaji — nyahaktifkan sebaliknya daripada memadam."
+    }
+  },
+  "auth": {
+    "logout": "Log keluar",
+    "login": {
+      "title": "Log masuk",
+      "devNote": "Ini ialah binaan pembangunan — penukar identiti digunakan sebagai ganti log masuk sebenar.",
+      "enterApp": "Masuk ke aplikasi"
+    },
+    "invite": {
+      "title": "Anda telah dijemput",
+      "subtitle": "Aktifkan akaun anda dan tetapkan kata laluan untuk bermula.",
+      "activate": "Aktifkan akaun",
+      "expiryNote": "Pautan jemputan ini hanya boleh digunakan sekali dan tamat tempoh selepas beberapa hari."
+    },
+    "reset": {
+      "title": "Set semula kata laluan anda",
+      "subtitle": "Masukkan e-mel anda dan kami akan menghantar pautan untuk menetapkan kata laluan baharu.",
+      "emailLabel": "E-mel",
+      "submit": "Hantar pautan set semula",
+      "sent": "Jika akaun wujud untuk e-mel itu, pautan set semula kata laluan sedang dalam perjalanan.",
+      "backToLogin": "Kembali ke log masuk"
+    },
+    "error": {
+      "generic": "Log masuk gagal. Sila cuba lagi.",
+      "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebentar dan cuba lagi."
     }
   }
 }

@@ -35,6 +35,9 @@ const ALL_TABLES = [
   // truncated them between test files (a currently-live isolation bug). A rule/BU row from an earlier test
   // file would silently survive and match (or throw the wildcard-unique index) in a later one.
   'leave_approval_policy', 'business_unit',
+  // ADR-0072 — real auth: invitations must be truncated between tests, and the global unique index on
+  // app_user.workos_user_id would otherwise let a leaked subject collide across test files.
+  'app_invitation',
 ];
 
 export async function migrateTestDb() {
@@ -43,6 +46,14 @@ export async function migrateTestDb() {
 
 export async function resetDb() {
   await owner.db.execute(sql.raw(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`));
+  // ADR-0072: TRUNCATE tenant also drops the reserved system tenant that pre-auth auth events FK to
+  // (app.append_auth_event stamps tenant 0…0 for login-failed / reset-request). Re-seed it (idempotent)
+  // so the auth-audit writer keeps working across tests. Real tenants are seeded per-test as usual.
+  await owner.db.execute(
+    sql`INSERT INTO tenant (id, workos_org_id, name)
+        VALUES ('00000000-0000-0000-0000-000000000000'::uuid, 'org_system_auth_audit', 'System (auth audit)')
+        ON CONFLICT (id) DO NOTHING`,
+  );
 }
 
 export async function closeAll() {
