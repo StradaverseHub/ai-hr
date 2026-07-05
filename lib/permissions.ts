@@ -180,6 +180,13 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     routes: ['/admin/attendance', '/attendance/import'],
   },
+  {
+    screenKey: 'attendanceAllowance',
+    href: '/admin/attendance-allowance',
+    labelKey: 'nav.attendanceAllowance',
+    guard: 'scopedAdmin',
+    routes: ['/admin/attendance-allowance'],
+  },
   { screenKey: 'locations', href: '/admin/locations', labelKey: 'nav.locations', guard: 'requireAdmin', routes: ['/admin/locations'] },
   { screenKey: 'toilPolicy', href: '/admin/toil', labelKey: 'nav.toilPolicy', guard: 'requireAdmin', routes: ['/admin/toil'] },
   {
@@ -207,6 +214,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transactions',
       '/payroll/transactions/fixed',
       '/payroll/transactions/individual',
+      '/payroll/transactions/tp1',
+      '/payroll/transactions/zakat',
     ],
   },
   {
