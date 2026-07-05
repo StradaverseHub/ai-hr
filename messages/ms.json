@@ -1351,7 +1351,7 @@
       "periodContext": "Tempoh gaji",
       "allPeriods": "Semua tempoh",
       "filteredEmpty": "Tiada proses gaji untuk tempoh gaji ini.",
-      "newRun": "Larian gaji baharu",
+      "newRun": "Cipta Kitaran Larian Gaji",
       "colPaymentDate": "Tarikh bayaran",
       "paymentDateLegacyNote": "Larian yang dicipta sebelum keluaran ini memaparkan tarikh lalai sistem (28hb)."
     },
@@ -2882,8 +2882,8 @@
           "body": "Setiap pemprosesan gaji berada di sini. Klik satu tempoh untuk membuka proses gaji dan menyemak slip gaji, gaji bersih dan jumlah berkanun."
         },
         "create": {
-          "title": "Larian gaji baharu",
-          "body": "Klik **Larian gaji baharu** untuk membuka wizard berpandu: pilih tempoh dan kitaran, pilih pekerja, kemudian semak dan proses."
+          "title": "Cipta Kitaran Larian Gaji",
+          "body": "Klik **Cipta Kitaran Larian Gaji** untuk membuka wizard berpandu: pilih tempoh dan kitaran, pilih pekerja, kemudian semak dan proses."
         },
         "reports": {
           "title": "Laporan berkanun",

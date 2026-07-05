@@ -1351,7 +1351,7 @@
       "periodContext": "Pay period",
       "allPeriods": "All periods",
       "filteredEmpty": "No payroll processes for this pay period.",
-      "newRun": "New payroll run",
+      "newRun": "Create Payroll Run Cycle",
       "colPaymentDate": "Payment date",
       "paymentDateLegacyNote": "Runs created before this release show the system default date (the 28th)."
     },
@@ -2882,8 +2882,8 @@
           "body": "Every pay run lives here. Click a period to open a payroll process and review payslips, net pay, and statutory totals."
         },
         "create": {
-          "title": "New payroll run",
-          "body": "Click **New payroll run** to open the guided wizard: pick the period and cycle, choose employees, then review and process."
+          "title": "Create Payroll Run Cycle",
+          "body": "Click **Create Payroll Run Cycle** to open the guided wizard: pick the period and cycle, choose employees, then review and process."
         },
         "reports": {
           "title": "Statutory reports",

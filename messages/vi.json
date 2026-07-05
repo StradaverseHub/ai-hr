@@ -1351,7 +1351,7 @@
       "periodContext": "Kỳ lương",
       "allPeriods": "Tất cả kỳ lương",
       "filteredEmpty": "Không có quy trình tính lương nào cho kỳ lương này.",
-      "newRun": "Tạo đợt lương mới",
+      "newRun": "Tạo chu kỳ chạy lương",
       "colPaymentDate": "Ngày thanh toán",
       "paymentDateLegacyNote": "Các đợt được tạo trước bản phát hành này hiển thị ngày mặc định của hệ thống (ngày 28)."
     },
@@ -2882,8 +2882,8 @@
           "body": "Mọi lần chạy lương đều nằm ở đây. Nhấp vào một kỳ để mở quy trình tính lương và xem lại phiếu lương, lương thực nhận và tổng các khoản pháp định."
         },
         "create": {
-          "title": "Tạo đợt lương mới",
-          "body": "Nhấp **Tạo đợt lương mới** để mở trình hướng dẫn: chọn kỳ và chu kỳ, chọn nhân viên, sau đó xem lại và xử lý."
+          "title": "Tạo chu kỳ chạy lương",
+          "body": "Nhấp **Tạo chu kỳ chạy lương** để mở trình hướng dẫn: chọn kỳ và chu kỳ, chọn nhân viên, sau đó xem lại và xử lý."
         },
         "reports": {
           "title": "Báo cáo pháp định",
