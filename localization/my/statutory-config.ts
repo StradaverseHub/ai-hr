@@ -364,6 +364,16 @@ export function validateStatutoryRuleset(data: StatutoryRuleset): string[] {
   }
 
   if (!data.ot || !nonNeg(data.ot.wageCeiling)) errs.push('Overtime wage ceiling must be ≥ 0.');
+  else {
+    // The two excess-hours multipliers are OPTIONAL (missing ⇒ EA fallback in overtimePay). But any PRESENT
+    // value must be a finite number > 0 — a 0 or negative multiplier is a data error that would silently
+    // zero (or invert) rest-day / holiday overtime pay.
+    const posMult = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
+    if (data.ot.restDayExcessMultiplier != null && !posMult(data.ot.restDayExcessMultiplier))
+      errs.push('Overtime rest-day excess multiplier must be a number greater than 0.');
+    if (data.ot.holidayExcessMultiplier != null && !posMult(data.ot.holidayExcessMultiplier))
+      errs.push('Overtime public-holiday excess multiplier must be a number greater than 0.');
+  }
 
   return errs;
 }
@@ -518,6 +528,8 @@ function changedFields(before: StatutoryRuleset, after: StatutoryRuleset): strin
     ['epf.employerThreshold', before.epf?.employerThreshold, after.epf?.employerThreshold],
     ['contribCeiling', before.contribCeiling, after.contribCeiling],
     ['ot.wageCeiling', before.ot?.wageCeiling, after.ot?.wageCeiling],
+    ['ot.restDayExcessMultiplier', before.ot?.restDayExcessMultiplier, after.ot?.restDayExcessMultiplier],
+    ['ot.holidayExcessMultiplier', before.ot?.holidayExcessMultiplier, after.ot?.holidayExcessMultiplier],
     ['pcb.reliefs.individual', before.pcb?.reliefs?.individual, after.pcb?.reliefs?.individual],
     ['pcb.reliefs.spouse', before.pcb?.reliefs?.spouse, after.pcb?.reliefs?.spouse],
     ['pcb.reliefs.perChild', before.pcb?.reliefs?.perChild, after.pcb?.reliefs?.perChild],

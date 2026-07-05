@@ -5,6 +5,7 @@ import { scopedSession } from '@/lib/scope';
 import { attendanceForDate, attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
 import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { TimelineNav } from '@/components/timeline-nav';
+import { OtReportExport } from '@/components/ot-report-export';
 import { checkInAction, checkOutAction, decideCorrectionAction } from './actions';
 
 const STATUS: Record<string, string> = {
@@ -268,6 +269,18 @@ export default async function AttendancePage({
             <span className="ml-2 text-muted-foreground">{monthLabel(month)}</span>
           </div>
           <div className="flex items-center gap-1.5">
+            {isAdmin && (
+              <OtReportExport
+                month={month}
+                labels={{
+                  export: t('exportOtReport'),
+                  format: t('otReportFormat'),
+                  csv: t('otReportCsv'),
+                  xlsx: t('otReportXlsx'),
+                  pdf: t('otReportPdf'),
+                }}
+              />
+            )}
             <Link
               href={monthHref(shiftMonth(month, -1))}
               aria-label={t('previousMonth')}

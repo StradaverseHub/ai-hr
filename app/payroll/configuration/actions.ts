@@ -51,6 +51,12 @@ export async function setStatutoryComponentAction(formData: FormData) {
   const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
   const notes = String(formData.get('notes') ?? '').trim() || null;
   const num = (k: string) => Number(formData.get(k));
+  /** An optional numeric field: present + non-empty ⇒ its number; absent/blank ⇒ undefined (preserve). */
+  const optNum = (k: string): number | undefined => {
+    const raw = formData.get(k);
+    if (raw == null || String(raw).trim() === '') return undefined;
+    return Number(raw);
+  };
 
   // Merge onto the baseline that will be active on the effective date (preserves EPF band tables).
   const current = (await pack!.statutoryConfig.readActive(s, { asOf: effectiveFrom || undefined })).ruleset;
@@ -64,7 +70,17 @@ export async function setStatutoryComponentAction(formData: FormData) {
       employerThreshold: num('employerThreshold'),
     };
   } else if (body === 'ot') {
-    data = { wageCeiling: num('wageCeiling') };
+    // Merge onto the active ot slice (epf-style spread) so editing wageCeiling alone preserves the two excess
+    // multipliers, and editing a multiplier alone preserves wageCeiling. A submitted (non-blank) field wins;
+    // a blank field falls through to the current value (or the EA fallback the calculator applies).
+    const restMult = optNum('restDayExcessMultiplier');
+    const holidayMult = optNum('holidayExcessMultiplier');
+    data = {
+      ...current.ot,
+      wageCeiling: num('wageCeiling'),
+      ...(restMult !== undefined ? { restDayExcessMultiplier: restMult } : {}),
+      ...(holidayMult !== undefined ? { holidayExcessMultiplier: holidayMult } : {}),
+    };
   } else if (body === 'hrdf') {
     data = { mandatoryRate: num('mandatoryRate'), optionalRate: num('optionalRate') };
   } else {

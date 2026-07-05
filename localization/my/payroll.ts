@@ -623,6 +623,10 @@ export function overtimePay(p: {
   normalDailyHours?: number;
   /** Statutory OT entitlement ceiling (ADR-0019); defaults to the EA First Schedule RM4,000. */
   wageCeiling?: number;
+  /** Rest-day EXCESS-hours factor (s.60(3)(c)); configurable via the ot ruleset. Default EA 2×. */
+  restDayExcessMultiplier?: number;
+  /** Public-holiday EXCESS-hours factor (s.60D(3)(aa)); configurable via the ot ruleset. Default EA 3×. */
+  holidayExcessMultiplier?: number;
 }): OvertimePayResult {
   const hoursPerDay = p.normalDailyHours ?? 8;
   const orp = round2(p.monthlyWages / 26);
@@ -630,6 +634,10 @@ export function overtimePay(p: {
   const eligible = p.monthlyWages <= (p.wageCeiling ?? MY_OT_WAGE_CEILING);
   const out: OvertimePayResult = { eligible, orp, hourly, workday: 0, restDay: 0, holiday: 0, total: 0 };
   if (!eligible) return out;
+  // The two EXCESS-hours factors are HR-configurable (ADR-0019 ot ruleset); the workday 1.5× and the base-day
+  // legs (rest-day ½/1-day ORP, holiday 2-days ORP) are EA-fixed and stay literal.
+  const restExcess = p.restDayExcessMultiplier ?? 2;
+  const holidayExcess = p.holidayExcessMultiplier ?? 3;
   const normalMin = hoursPerDay * 60;
   for (const d of p.days) {
     const m = Math.max(0, d.minutes);
@@ -639,10 +647,10 @@ export function overtimePay(p: {
     } else if (d.dayType === 'rest_day') {
       const within = Math.min(m, normalMin);
       out.restDay += within <= normalMin / 2 ? 0.5 * orp : orp;
-      out.restDay += (Math.max(0, m - normalMin) / 60) * 2 * hourly;
+      out.restDay += (Math.max(0, m - normalMin) / 60) * restExcess * hourly;
     } else {
       out.holiday += 2 * orp;
-      out.holiday += (Math.max(0, m - normalMin) / 60) * 3 * hourly;
+      out.holiday += (Math.max(0, m - normalMin) / 60) * holidayExcess * hourly;
     }
   }
   out.workday = round2(out.workday);

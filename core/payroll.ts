@@ -1171,6 +1171,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
         monthlyWages: wages,
         days: daysBy.get(employmentId) ?? [],
         wageCeiling: rules.ot.wageCeiling,
+        restDayExcessMultiplier: rules.ot.restDayExcessMultiplier,
+        holidayExcessMultiplier: rules.ot.holidayExcessMultiplier,
       });
       if (!result.eligible) {
         ineligible += 1;
@@ -2517,7 +2519,8 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
     // s.60I(1A) ORP (wages/26) + hourly (ORP/8) basis and the RM4,000 eligibility — READ-ONLY, computed
     // from the same overtimePay/compensation source the kernel uses. Pack may be absent (non-MY) ⇒ skip.
     const pack = packFor(batch.country);
-    const otCeiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).ot.wageCeiling : undefined;
+    const otRules = pack ? (await pack.payroll.loadRuleset(tx, { asOf: periodEnd })).ot : undefined;
+    const otCeiling = otRules?.wageCeiling;
     const emps = await tx
       .select({
         employmentId: employment.id,
@@ -2571,7 +2574,15 @@ export function batchInputRows(ctx: SessionContext, batchId: string) {
       const wages = round2(Number(e.basic) + Number(e.allowance ?? 0));
       // s.60I(1A): ORP = wages/26, hourly = ORP/8. Run the engine with no days to get just the basis +
       // eligibility against the statutory wage ceiling — the SAME computation that monetizes a prefill.
-      const basis = pack ? pack.payroll.overtimePay({ monthlyWages: wages, days: [], wageCeiling: otCeiling }) : null;
+      const basis = pack
+        ? pack.payroll.overtimePay({
+            monthlyWages: wages,
+            days: [],
+            wageCeiling: otCeiling,
+            restDayExcessMultiplier: otRules?.restDayExcessMultiplier,
+            holidayExcessMultiplier: otRules?.holidayExcessMultiplier,
+          })
+        : null;
       return {
         employmentId: e.employmentId,
         name: e.name,

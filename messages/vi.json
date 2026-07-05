@@ -772,7 +772,12 @@
     },
     "importPunches": "Nhập chấm công",
     "colLocation": "Địa điểm",
-    "otHoursLabel": "Tăng ca"
+    "otHoursLabel": "Tăng ca",
+    "exportOtReport": "Xuất báo cáo OT",
+    "otReportFormat": "Định dạng",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "Sơ đồ tổ chức",
@@ -1491,7 +1496,7 @@
       "epfEmployerThreshold": "Ngưỡng mức chủ lao động (RM/tháng)",
       "contribCeiling": "Mức trần tiền lương đóng góp (RM)",
       "otWageCeiling": "Mức trần tiền lương hưởng tăng ca (RM/tháng)",
-      "otMultipliersNote": "Hệ số tăng ca (1.5× ngày làm việc, 2× ngày nghỉ, 3× ngày lễ) được Đạo luật Việc làm ấn định và không thể cấu hình.",
+      "otMultipliersNote": "Mức 1.5× ngày làm việc và lương ngày cơ bản (½/1 ngày cho ngày nghỉ, 2 ngày cho ngày lễ) do Đạo luật Việc làm quy định cố định. Hệ số vượt giờ của ngày nghỉ và ngày lễ mặc định theo luật là 2× / 3× và có thể điều chỉnh tại đây.",
       "reliefIndividual": "Giảm trừ cá nhân (RM/năm)",
       "reliefSpouse": "Giảm trừ vợ/chồng — Loại 2 (RM/năm)",
       "reliefPerChild": "Giảm trừ mỗi con (RM/năm)",
@@ -1548,7 +1553,9 @@
       "editSection": "Sửa {body}",
       "editSectionIntro": "Phát hành ghi đè có hiệu lực theo ngày cho cơ quan này. Giá trị mặc định đã xác minh vẫn là dự phòng; phiếu lương trước đây giữ nguyên ảnh chụp của chúng.",
       "cancelEdit": "Hủy",
-      "lastEdited": "Ghi đè gần nhất: {version} · hiệu lực {effectiveFrom}"
+      "lastEdited": "Ghi đè gần nhất: {version} · hiệu lực {effectiveFrom}",
+      "otRestDayExcessMultiplier": "Hệ số OT vượt giờ ngày nghỉ (× theo giờ)",
+      "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)"
     },
     "batch": {
       "back": "Bảng lương",

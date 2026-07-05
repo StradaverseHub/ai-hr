@@ -772,7 +772,12 @@
     },
     "importPunches": "导入打卡",
     "colLocation": "地点",
-    "otHoursLabel": "加班"
+    "otHoursLabel": "加班",
+    "exportOtReport": "导出加班报告",
+    "otReportFormat": "格式",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "组织架构图",
@@ -1491,7 +1496,7 @@
       "epfEmployerThreshold": "雇主缴费率阈值（RM/月）",
       "contribCeiling": "缴费薪资上限（RM）",
       "otWageCeiling": "加班资格薪资上限（RM/月）",
-      "otMultipliersNote": "加班倍率（工作日 1.5×、休息日 2×、假期 3×）由《雇佣法令》固定，不可配置。",
+      "otMultipliersNote": "1.5× 工作日费率及基础日薪（休息日 ½/1 天、公共假期 2 天）由《雇佣法令》固定。休息日与公共假期的超时费率默认为法定的 2× / 3×，可在此处调整。",
       "reliefIndividual": "个人减免（RM/年）",
       "reliefSpouse": "配偶减免 — 类别 2（RM/年）",
       "reliefPerChild": "每名子女减免（RM/年）",
@@ -1548,7 +1553,9 @@
       "editSection": "编辑{body}",
       "editSectionIntro": "为该机构发布按生效日期的覆盖。已核实的默认值仍作为后备；过往工资单保留其快照。",
       "cancelEdit": "取消",
-      "lastEdited": "最近覆盖：{version} · 生效 {effectiveFrom}"
+      "lastEdited": "最近覆盖：{version} · 生效 {effectiveFrom}",
+      "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
+      "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）"
     },
     "batch": {
       "back": "薪资",

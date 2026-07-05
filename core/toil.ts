@@ -606,14 +606,15 @@ async function expireAccrualsTx(
   }
   const replacementTypeId = await ensureReplacementLeaveType(tx, ctx.tenantId);
 
-  // Phase-B #14: resolve the wage ceiling per distinct country once (the OT-eligibility threshold). The exact
-  // statutory entitlement only governs a First-Schedule employee (wages ≤ ceiling); above it, OT comp is
-  // contractual and the generic ORP × banked-days basis is kept unchanged.
-  const ceilingByCountry = new Map<string | null, number>();
+  // Phase-B #14: resolve the OT body per distinct country once (the eligibility ceiling + the two configurable
+  // excess-hours multipliers). The exact statutory entitlement only governs a First-Schedule employee (wages ≤
+  // ceiling); above it, OT comp is contractual and the generic ORP × banked-days basis is kept unchanged.
+  type OtBody = { wageCeiling: number; restDayExcessMultiplier?: number; holidayExcessMultiplier?: number };
+  const otByCountry = new Map<string | null, OtBody>();
   for (const country of new Set(countryBy.values())) {
     const pack = packFor(country);
-    const ceiling = pack ? (await pack.payroll.loadRuleset(tx, { asOf })).ot.wageCeiling : 4000;
-    ceilingByCountry.set(country, ceiling);
+    const ot = pack ? (await pack.payroll.loadRuleset(tx, { asOf })).ot : { wageCeiling: 4000 };
+    otByCountry.set(country, ot);
   }
 
   /**
@@ -626,11 +627,20 @@ async function expireAccrualsTx(
   const convertAmountFor = (a: SweepRow): { amount: number; basis: 'statutory_exact' | 'generic_orp' } => {
     const wages = wagesBy.get(a.employmentId) ?? 0;
     const country = countryBy.get(a.employmentId) ?? null;
-    const ceiling = ceilingByCountry.get(country) ?? 4000;
+    const ot = otByCountry.get(country) ?? { wageCeiling: 4000 };
+    const ceiling = ot.wageCeiling;
     const pack = packFor(country);
     if (pack && wages > 0 && wages <= ceiling) {
       // Exact statutory cash for the worked day-type (s.60(3) rest day, s.60D(3) holiday, s.60A workday OT).
-      const otp = pack.payroll.overtimePay({ monthlyWages: wages, days: [{ dayType: a.dayType, minutes: a.otMinutes }], wageCeiling: ceiling });
+      // The two configurable excess-hours multipliers (ADR-0019 ot ruleset) are threaded so TOIL cash-out
+      // never diverges from what the same day would earn in payroll.
+      const otp = pack.payroll.overtimePay({
+        monthlyWages: wages,
+        days: [{ dayType: a.dayType, minutes: a.otMinutes }],
+        wageCeiling: ceiling,
+        restDayExcessMultiplier: ot.restDayExcessMultiplier,
+        holidayExcessMultiplier: ot.holidayExcessMultiplier,
+      });
       if (otp.eligible) return { amount: round2(otp.total), basis: 'statutory_exact' };
     }
     // Not First-Schedule (or no pack): contractual ORP × remaining banked days.

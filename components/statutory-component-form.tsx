@@ -8,7 +8,7 @@ type ScalarBody = 'epf' | 'ot' | 'hrdf';
 
 export type ComponentFormDefaults = {
   epf: { employeeRate: number; employerRateLow: number; employerRateHigh: number; employerThreshold: number };
-  ot: { wageCeiling: number };
+  ot: { wageCeiling: number; restDayExcessMultiplier: number; holidayExcessMultiplier: number };
   hrdf: { mandatoryRate: number; optionalRate: number };
 };
 
@@ -73,9 +73,31 @@ export function StatutoryComponentForm({
         </>
       )}
       {body === 'ot' && (
-        <Field label={labels.otWageCeiling}>
-          <input name="wageCeiling" type={num} step="1" defaultValue={defaults.ot.wageCeiling} className={inputCls} />
-        </Field>
+        <>
+          <Field label={labels.otWageCeiling}>
+            <input name="wageCeiling" type={num} step="1" defaultValue={defaults.ot.wageCeiling} className={inputCls} />
+          </Field>
+          <Field label={labels.otRestDayExcessMultiplier}>
+            <input
+              name="restDayExcessMultiplier"
+              type={num}
+              step="0.1"
+              min="0.1"
+              defaultValue={defaults.ot.restDayExcessMultiplier}
+              className={inputCls}
+            />
+          </Field>
+          <Field label={labels.otHolidayExcessMultiplier}>
+            <input
+              name="holidayExcessMultiplier"
+              type={num}
+              step="0.1"
+              min="0.1"
+              defaultValue={defaults.ot.holidayExcessMultiplier}
+              className={inputCls}
+            />
+          </Field>
+        </>
       )}
       {body === 'hrdf' && (
         <>

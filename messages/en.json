@@ -772,7 +772,12 @@
     },
     "importPunches": "Import punches",
     "colLocation": "Location",
-    "otHoursLabel": "OT"
+    "otHoursLabel": "OT",
+    "exportOtReport": "Export OT report",
+    "otReportFormat": "Format",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "Org chart",
@@ -1591,7 +1596,7 @@
       "epfEmployerThreshold": "Employer-rate threshold (RM/month)",
       "contribCeiling": "Contribution wage ceiling (RM)",
       "otWageCeiling": "OT entitlement wage ceiling (RM/month)",
-      "otMultipliersNote": "OT multipliers (1.5× workday, 2× rest day, 3× holiday) are fixed by the Employment Act and are not configurable.",
+      "otMultipliersNote": "The 1.5× workday rate and the base-day pay (½/1-day rest-day, 2 days for a public holiday) are fixed by the Employment Act. The rest-day and public-holiday excess-hours rates default to the legal 2× / 3× and can be adjusted here.",
       "reliefIndividual": "Individual relief (RM/yr)",
       "reliefSpouse": "Spouse relief — Cat 2 (RM/yr)",
       "reliefPerChild": "Relief per child (RM/yr)",
@@ -1648,7 +1653,9 @@
       "editSection": "Edit {body}",
       "editSectionIntro": "Publish an effective-dated override for this body. The verified defaults stay the fallback; past payslips keep their snapshot.",
       "cancelEdit": "Cancel",
-      "lastEdited": "Last override: {version} · effective {effectiveFrom}"
+      "lastEdited": "Last override: {version} · effective {effectiveFrom}",
+      "otRestDayExcessMultiplier": "Rest-day OT excess rate (× hourly)",
+      "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)"
     },
     "transactions": {
       "title": "Transactions",

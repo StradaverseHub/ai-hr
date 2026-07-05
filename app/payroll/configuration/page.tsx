@@ -133,7 +133,11 @@ export default async function StatutoryConfigPage({
       employerRateHigh: ruleset.epf.employerRateHigh,
       employerThreshold: ruleset.epf.employerThreshold,
     },
-    ot: { wageCeiling: ruleset.ot.wageCeiling },
+    ot: {
+      wageCeiling: ruleset.ot.wageCeiling,
+      restDayExcessMultiplier: ruleset.ot.restDayExcessMultiplier ?? 2,
+      holidayExcessMultiplier: ruleset.ot.holidayExcessMultiplier ?? 3,
+    },
     hrdf: ruleset.hrdf ?? MY_HRDF,
   };
   const componentLabels = {
@@ -149,6 +153,8 @@ export default async function StatutoryConfigPage({
     epfEmployerRateHigh: t('epfEmployerRateHigh'),
     epfEmployerThreshold: t('epfEmployerThreshold'),
     otWageCeiling: t('otWageCeiling'),
+    otRestDayExcessMultiplier: t('otRestDayExcessMultiplier'),
+    otHolidayExcessMultiplier: t('otHolidayExcessMultiplier'),
     hrdfMandatory: t('hrdfMandatory'),
     hrdfOptional: t('hrdfOptional'),
     publish: t('componentPublish'),
@@ -301,6 +307,14 @@ export default async function StatutoryConfigPage({
             <>
               <div className="mt-2 divide-y divide-border">
                 <Row label={t('otWageCeiling')} value={rm(ruleset.ot.wageCeiling)} />
+                <Row
+                  label={t('otRestDayExcessMultiplier')}
+                  value={`${ruleset.ot.restDayExcessMultiplier ?? 2}×`}
+                />
+                <Row
+                  label={t('otHolidayExcessMultiplier')}
+                  value={`${ruleset.ot.holidayExcessMultiplier ?? 3}×`}
+                />
                 <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
               </div>
               <p className="mt-3 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>

@@ -772,7 +772,12 @@
     },
     "importPunches": "Import perakam",
     "colLocation": "Lokasi",
-    "otHoursLabel": "OT"
+    "otHoursLabel": "OT",
+    "exportOtReport": "Eksport laporan OT",
+    "otReportFormat": "Format",
+    "otReportCsv": "CSV",
+    "otReportXlsx": "Excel",
+    "otReportPdf": "PDF"
   },
   "org": {
     "title": "Carta organisasi",
@@ -1491,7 +1496,7 @@
       "epfEmployerThreshold": "Ambang kadar majikan (RM/bulan)",
       "contribCeiling": "Siling upah caruman (RM)",
       "otWageCeiling": "Siling upah kelayakan OT (RM/bulan)",
-      "otMultipliersNote": "Pendarab OT (1.5× hari bekerja, 2× hari rehat, 3× cuti umum) ditetapkan oleh Akta Kerja dan tidak boleh dikonfigurasikan.",
+      "otMultipliersNote": "Kadar 1.5× hari bekerja dan bayaran hari asas (½/1 hari untuk hari rehat, 2 hari untuk cuti umum) ditetapkan oleh Akta Kerja. Kadar lebihan jam bagi hari rehat dan cuti umum lalai kepada 2× / 3× mengikut undang-undang dan boleh diselaraskan di sini.",
       "reliefIndividual": "Pelepasan individu (RM/thn)",
       "reliefSpouse": "Pelepasan pasangan — Kat 2 (RM/thn)",
       "reliefPerChild": "Pelepasan setiap anak (RM/thn)",
@@ -1548,7 +1553,9 @@
       "editSection": "Edit {body}",
       "editSectionIntro": "Terbitkan pindaan berkuat kuasa bertarikh untuk badan ini. Nilai lalai yang disahkan kekal sebagai sandaran; slip gaji lepas mengekalkan syotnya.",
       "cancelEdit": "Batal",
-      "lastEdited": "Pindaan terakhir: {version} · berkuat kuasa {effectiveFrom}"
+      "lastEdited": "Pindaan terakhir: {version} · berkuat kuasa {effectiveFrom}",
+      "otRestDayExcessMultiplier": "Kadar lebihan OT hari rehat (× sejam)",
+      "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)"
     },
     "batch": {
       "back": "Gaji",
