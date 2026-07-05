@@ -2231,6 +2231,14 @@ export const employmentPayComponent = pgTable(
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
+    // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag captured on the dedicated screen.
+    // Reuses the existing payroll_run_type taxonomy (regular/off_cycle/bonus/adjustment) — NOT a new
+    // vocabulary — so the label aligns byte-for-byte with the engine's own cycle master for any future
+    // routing follow-up. Nullable, no default: null = unspecified, so every legacy row and every write from
+    // the people-detail editor (which never sends it) stays byte-identical. The kernel does NOT read this
+    // column in this build (payout still follows the valid_from/valid_to window, exactly as recurring
+    // amounts work today); it is captured, stored and shown, but does not route which run pays the item.
+    runType: payrollRunTypeEnum('run_type'),
   },
   (t) => [index('employment_pay_component_idx').on(t.employmentId, t.validFrom)],
 );

@@ -1,0 +1,29 @@
+-- Fixed Transaction screen (feedback b7fc8583) — the dedicated Payroll then Transactions then Fixed
+-- Transaction screen captures a "Payroll Cycle" tag alongside the pay item, amount and effective window.
+--
+-- The cycle REUSES the existing payroll_run_type taxonomy (regular / off_cycle / bonus / adjustment) — the
+-- product's real cycle master, keyed by the multi-cycle engine — rather than inventing a parallel
+-- vocabulary. Storing it as a constrained enum column (not free-text remarks) keeps it queryable for any
+-- future routing follow-up, aligns byte-for-byte with the engine's own taxonomy, and is safe to place in
+-- the DomainEvent payload (unlike free-text remarks, which is PDPA-excluded per ADR-0030).
+--
+-- Nullable, no default:
+--   NULL          legacy rows + every write from the untouched people-detail editor (which never sends a
+--                 cycle) stay byte-identical — the screen shows these as "unspecified".
+--   regular/off_cycle/bonus/adjustment   a cycle the admin explicitly chose on the new screen.
+--
+-- The kernel does NOT read this column in this build: payout still follows the valid_from / valid_to window
+-- exactly as recurring amounts work today (the recurring-component kernel query filters only on employment +
+-- window + superseded_at — no cycle dimension). The cycle is captured, stored and shown, but does not route
+-- which payroll run pays the item. Wiring the cycle to steer payout is a deliberate follow-up that would
+-- require touching payroll processing, which this feedback item forbids.
+--
+-- Additive + nullable + backfill-safe. The existing employment_pay_component RLS policy
+-- (employment_pay_component_rls, migration 0065, FOR ALL — admin-or-self read / admin write) and the
+-- ai_hr_app DML grants (migration 0071) cover this column by inheritance — a column add needs no new policy
+-- or grant. The compat golden snapshots explicit payslip columns (not SELECT *), so this is byte-identical.
+--
+-- Rollback:
+--   ALTER TABLE employment_pay_component DROP COLUMN run_type;
+ALTER TABLE "employment_pay_component"
+  ADD COLUMN IF NOT EXISTS "run_type" "payroll_run_type";
