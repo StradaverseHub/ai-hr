@@ -112,7 +112,8 @@
     "locations": "地点",
     "loans": "贷款",
     "payrollCycleConfig": "薪资周期",
-    "personnelAdmin": "员工（管理）"
+    "personnelAdmin": "员工（管理）",
+    "securityPermission": "安全与权限"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -2383,7 +2384,28 @@
       "inviteScope": "公司范围",
       "inviteSubmit": "发送邀请",
       "pendingInvitations": "待处理邀请",
-      "revokeInvitation": "撤销"
+      "revokeInvitation": "撤销",
+      "sectionFunctionAccess": "功能访问",
+      "functionAccessCaption": "哪个角色可以进入每个屏幕。此处反映系统实际执行的访问权限，仅为参考视图，并非编辑器——执行规则在角色守卫和数据库策略中更改。",
+      "accessible": "可访问",
+      "notAccessible": "无访问权",
+      "screenColumn": "屏幕",
+      "screen": {
+        "loans": "贷款",
+        "payrollConfig": "薪资配置",
+        "payrollPolicy": "薪资政策",
+        "payComponents": "薪资组成"
+      },
+      "scope": {
+        "people": "所有人都可打开；列表仅限于你有权查看的人员。",
+        "leave": "所有人都可打开；你查看自己的假期，经理和管理员查看下属的假期。",
+        "attendance": "所有人都可打开；你查看自己的考勤，经理和管理员查看下属的考勤。",
+        "approvals": "经理及以上；显示内容取决于你实际的汇报线。",
+        "roster": "经理及以上；显示内容取决于你实际的汇报线。",
+        "performance": "经理及以上；显示内容取决于你实际的汇报线。",
+        "leaveApproval": "经理和管理员；显示内容取决于你实际的汇报线。",
+        "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。"
+      }
     },
     "audit": {
       "title": "审计日志",

@@ -112,7 +112,8 @@
     "locations": "Lokasi",
     "loans": "Pinjaman",
     "payrollCycleConfig": "Kitaran Gaji",
-    "personnelAdmin": "Kakitangan (admin)"
+    "personnelAdmin": "Kakitangan (admin)",
+    "securityPermission": "Keselamatan & kebenaran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -2383,7 +2384,28 @@
       "inviteScope": "Skop syarikat",
       "inviteSubmit": "Hantar jemputan",
       "pendingInvitations": "Jemputan belum selesai",
-      "revokeInvitation": "Batalkan"
+      "revokeInvitation": "Batalkan",
+      "sectionFunctionAccess": "Akses fungsi",
+      "functionAccessCaption": "Peranan mana boleh mencapai setiap skrin. Ini mencerminkan akses yang dikuatkuasakan sistem; ia paparan rujukan, bukan penyunting — penguatkuasaan diubah dalam pengawal peranan dan dasar pangkalan data.",
+      "accessible": "Boleh akses",
+      "notAccessible": "Tiada akses",
+      "screenColumn": "Skrin",
+      "screen": {
+        "loans": "Pinjaman",
+        "payrollConfig": "Konfigurasi gaji",
+        "payrollPolicy": "Dasar gaji",
+        "payComponents": "Komponen gaji"
+      },
+      "scope": {
+        "people": "Semua orang boleh membukanya; senarai dihadkan kepada orang yang anda dibenarkan lihat.",
+        "leave": "Semua orang boleh membukanya; anda lihat cuti sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "attendance": "Semua orang boleh membukanya; anda lihat kehadiran sendiri, pengurus dan pentadbir lihat laporan mereka.",
+        "approvals": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "leaveApproval": "Pengurus dan pentadbir; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
+        "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya."
+      }
     },
     "audit": {
       "title": "Jejak audit",

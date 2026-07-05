@@ -112,7 +112,8 @@
     "locations": "Địa điểm",
     "loans": "Khoản vay",
     "payrollCycleConfig": "Chu kỳ trả lương",
-    "personnelAdmin": "Nhân sự (quản trị)"
+    "personnelAdmin": "Nhân sự (quản trị)",
+    "securityPermission": "Bảo mật & quyền hạn"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -2383,7 +2384,28 @@
       "inviteScope": "Phạm vi công ty",
       "inviteSubmit": "Gửi lời mời",
       "pendingInvitations": "Lời mời đang chờ",
-      "revokeInvitation": "Thu hồi"
+      "revokeInvitation": "Thu hồi",
+      "sectionFunctionAccess": "Quyền truy cập chức năng",
+      "functionAccessCaption": "Vai trò nào có thể mở từng màn hình. Điều này phản ánh quyền truy cập mà hệ thống thực thi; đây là chế độ xem tham chiếu, không phải trình chỉnh sửa — việc thực thi được thay đổi trong các bộ bảo vệ vai trò và chính sách cơ sở dữ liệu.",
+      "accessible": "Có thể truy cập",
+      "notAccessible": "Không có quyền",
+      "screenColumn": "Màn hình",
+      "screen": {
+        "loans": "Khoản vay",
+        "payrollConfig": "Cấu hình bảng lương",
+        "payrollPolicy": "Chính sách bảng lương",
+        "payComponents": "Thành phần lương"
+      },
+      "scope": {
+        "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
+        "leave": "Mọi người đều có thể mở; bạn thấy phép của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "attendance": "Mọi người đều có thể mở; bạn thấy chấm công của mình, quản lý và quản trị viên thấy của cấp dưới.",
+        "approvals": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
+        "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi."
+      }
     },
     "audit": {
       "title": "Nhật ký kiểm toán",

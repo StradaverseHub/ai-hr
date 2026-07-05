@@ -112,7 +112,8 @@
     "locations": "Locations",
     "loans": "Loans",
     "payrollCycleConfig": "Payroll Cycles",
-    "personnelAdmin": "Personnel (admin)"
+    "personnelAdmin": "Personnel (admin)",
+    "securityPermission": "Security & permissions"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -2383,7 +2384,28 @@
       "inviteScope": "Company scope",
       "inviteSubmit": "Send invitation",
       "pendingInvitations": "Pending invitations",
-      "revokeInvitation": "Revoke"
+      "revokeInvitation": "Revoke",
+      "sectionFunctionAccess": "Function access",
+      "functionAccessCaption": "Which role can reach each screen. This mirrors the access the system enforces; it is a reference view, not an editor — changing enforcement lives in the role guards and database policies.",
+      "accessible": "Can access",
+      "notAccessible": "No access",
+      "screenColumn": "Screen",
+      "screen": {
+        "loans": "Loans",
+        "payrollConfig": "Payroll configuration",
+        "payrollPolicy": "Payroll policy",
+        "payComponents": "Pay components"
+      },
+      "scope": {
+        "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
+        "leave": "Everyone can open this; you see your own leave, managers and admins see their reports.",
+        "attendance": "Everyone can open this; you see your own attendance, managers and admins see their reports.",
+        "approvals": "Managers and above; what appears follows your actual reporting lines.",
+        "roster": "Managers and above; what appears follows your actual reporting lines.",
+        "performance": "Managers and above; what appears follows your actual reporting lines.",
+        "leaveApproval": "Managers and admins; what appears follows your actual reporting lines.",
+        "payrollConfig": "Everyone can open this; only admins for the company can change it."
+      }
     },
     "audit": {
       "title": "Audit trail",

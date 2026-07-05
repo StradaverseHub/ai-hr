@@ -4,6 +4,8 @@ import { listUsers } from '@/core/admin';
 import { listPendingInvitations } from '@/core/auth';
 import { adminCompanies, listCompanies } from '@/core/read';
 import { Avatar, Card, ErrorBanner, PageHeader, RoleTag, SectionHeader, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { FunctionAccessGrid } from '@/components/function-access-grid';
+import { type Role, type ScreenEntry } from '@/lib/permissions';
 import { assignRoleAction, inviteUserAction, revokeInvitationAction, revokeRoleAction } from '../actions';
 
 const ROLES = [
@@ -25,6 +27,10 @@ export default async function UsersPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const t = await getTranslations('admin.users');
+  // Second namespace for the access-grid column labels that map 1:1 to a top-level nav entry. Having two
+  // getTranslations scopes makes this a multi-namespace file, which the i18n static-key coverage check
+  // (test C) skips — the labelKeys resolved dynamically below are pinned by function-access.test.ts instead.
+  const tNav = await getTranslations('nav');
   const s = await requireAdmin();
   const { error } = await searchParams;
   const groupAdmin = isGroupAdmin(s);
@@ -37,6 +43,16 @@ export default async function UsersPage({
   ]);
   const roleOptions = groupAdmin ? ROLES : (['hr_admin'] as const);
   const companyName = (id: string | null) => companies.find((c) => c.id === id)?.name ?? null;
+
+  // Column label: a `nav.*` labelKey resolves against the nav namespace; an `admin.users.screen.*`
+  // labelKey against this page's own namespace. Both are static keys pinned by function-access.test.ts.
+  const screenLabel = (screen: ScreenEntry): string =>
+    screen.labelKey.startsWith('nav.')
+      ? tNav(screen.labelKey.slice('nav.'.length))
+      : t(screen.labelKey.slice('admin.users.'.length));
+  const scopeNoteFor = (screen: ScreenEntry): string | null =>
+    screen.hasScopeNote ? t(`scope.${screen.screenKey}`) : null;
+  const roleLabelFor = (role: Role): string => t(`role.${role}`);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -57,6 +73,23 @@ export default async function UsersPage({
           em: (chunks) => <em>{chunks}</em>,
         })}
       </div>
+
+      <Card data-tour="admin-function-access">
+        <SectionHeader title={t('sectionFunctionAccess')} />
+        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('functionAccessCaption')}</p>
+        <div className="p-4 pt-3">
+          <FunctionAccessGrid
+            roleLabel={roleLabelFor}
+            screenLabel={screenLabel}
+            scopeNote={scopeNoteFor}
+            labels={{
+              accessible: t('accessible'),
+              notAccessible: t('notAccessible'),
+              screenColumn: t('screenColumn'),
+            }}
+          />
+        </div>
+      </Card>
 
       {/* ADR-0072 — invitation-only account creation. Group admins invite by email + role; there is no
           open self sign-up. Company-scoped delegated admins manage roles but not the login itself. */}

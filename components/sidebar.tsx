@@ -85,7 +85,7 @@ const GROUPS: Group[] = [
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       { href: '/admin/privacy', labelKey: 'dataPrivacy', icon: Lock },
       { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },
-      { href: '/admin/users', labelKey: 'usersRoles', icon: ShieldCheck },
+      { href: '/admin/users', labelKey: 'securityPermission', icon: ShieldCheck },
     ],
   },
 ];
