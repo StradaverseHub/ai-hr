@@ -2694,7 +2694,6 @@
     "payrollTabs": {
       "batches": "กระบวนการจ่ายเงินเดือน",
       "reports": "รายงาน",
-      "configuration": "การตั้งค่า",
       "transactions": "ธุรกรรม",
       "setup": "การตั้งค่า"
     },

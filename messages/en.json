@@ -2694,7 +2694,6 @@
     "payrollTabs": {
       "batches": "Payroll Process",
       "reports": "Reports",
-      "configuration": "Configuration",
       "transactions": "Transactions",
       "setup": "Settings"
     },

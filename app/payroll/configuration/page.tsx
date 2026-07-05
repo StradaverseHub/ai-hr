@@ -107,7 +107,10 @@ export default async function StatutoryConfigPage({
             </Link>
           }
         />
-        <PayrollTabs active="configuration" />
+        {/* Config page lives under the Settings tab (arrived via Settings -> Statutory Configuration);
+            URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
+            — do not repoint to /payroll/setup. */}
+        <PayrollTabs active="setup" />
         <ErrorBanner message={error} />
         <Card className="border-amber-300/60 bg-amber-50/50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {t('safetyNote')}
@@ -188,7 +191,10 @@ export default async function StatutoryConfigPage({
           </Link>
         }
       />
-      <PayrollTabs active="configuration" />
+      {/* Config page lives under the Settings tab (arrived via Settings -> Statutory Configuration);
+          URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
+          — do not repoint to /payroll/setup. */}
+      <PayrollTabs active="setup" />
       <ErrorBanner message={error} />
 
       {/* Active-set banner — three-way: built-in default / vendor pack / tenant override */}
