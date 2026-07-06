@@ -1,6 +1,6 @@
-Hướng dẫn này dành cho nhân viên sử dụng **Tự phục vụ nhân viên** để cập nhật thông tin của chính mình và tham gia đánh giá hiệu suất. Bạn sẽ học cách tự cập nhật thông tin liên hệ trong vài giây, cách yêu cầu thay đổi những chi tiết ảnh hưởng đến lương (tài khoản ngân hàng và hạng mục PCB/thuế) cần được phê duyệt trước, và cách hoàn thành bản tự đánh giá cũng như xác nhận đánh giá của quản lý sau khi nó được phát hành.
+Hướng dẫn này dành cho nhân viên sử dụng **Hồ sơ của tôi** để cập nhật thông tin của chính mình và tham gia đánh giá hiệu suất. Bạn sẽ học cách tự cập nhật thông tin liên hệ trong vài giây, cách yêu cầu thay đổi những chi tiết ảnh hưởng đến lương (tài khoản ngân hàng và hạng mục PCB/thuế) cần được phê duyệt trước, và cách hoàn thành bản tự đánh giá cũng như xác nhận đánh giá của quản lý sau khi nó được phát hành.
 
-Mọi thứ ở đây đều nằm tại một nơi: trong thanh bên trái, nhấp **Tự phục vụ nhân viên** (trang `/me`). Cuộn xuống thẻ **Chi tiết của tôi** và, thấp hơn nữa, bảng **Đánh giá của tôi**.
+Mọi thứ ở đây đều nằm tại một nơi: trong thanh bên trái, nhấp **Hồ sơ của tôi** (trang `/me`). Cuộn xuống thẻ **Chi tiết của tôi** và, thấp hơn nữa, bảng **Đánh giá của tôi**.
 
 ## Cập nhật hồ sơ của chính bạn
 
@@ -18,7 +18,7 @@ Hồ sơ của bạn được chia thành hai phần theo mức độ rủi ro. 
 
 Để cập nhật chúng:
 
-1. Trong thanh bên trái, nhấp **Tự phục vụ nhân viên**.
+1. Trong thanh bên trái, nhấp **Hồ sơ của tôi**.
 2. Cuộn đến thẻ **Chi tiết của tôi**.
 3. Nhập các giá trị mới của bạn vào bất kỳ trường nào ở trên. Bạn có thể thay đổi một hoặc nhiều trường cùng lúc.
 4. Nhấp **Lưu chi tiết**.
@@ -62,7 +62,7 @@ Sau đó yêu cầu của bạn xuất hiện trong danh sách nhỏ bên dướ
 
 ## Đánh giá hiệu suất của bạn
 
-Khi bạn là một phần của chu kỳ đánh giá, một bảng **Đánh giá của tôi** xuất hiện thấp hơn trong **Tự phục vụ nhân viên**. Mỗi hàng hiển thị **Chu kỳ**, một **Trạng thái** bằng ngôn ngữ dễ hiểu, xếp hạng **Tổng thể** (sau khi được phát hành), và một liên kết bên phải cho bạn biết phải làm gì.
+Khi bạn là một phần của chu kỳ đánh giá, một bảng **Đánh giá của tôi** xuất hiện thấp hơn trong **Hồ sơ của tôi**. Mỗi hàng hiển thị **Chu kỳ**, một **Trạng thái** bằng ngôn ngữ dễ hiểu, xếp hạng **Tổng thể** (sau khi được phát hành), và một liên kết bên phải cho bạn biết phải làm gì.
 
 Văn bản trạng thái được viết từ góc nhìn của bạn:
 
@@ -74,7 +74,7 @@ Văn bản trạng thái được viết từ góc nhìn của bạn:
 | Sẵn sàng xác nhận | Đánh giá đã được phát hành — đọc và xác nhận nó | **Xác nhận** |
 | Đã xác nhận | Hoàn tất | **Xem** |
 
-Nhấp liên kết hành động để mở trang đánh giá (`/performance/review/...`). Một liên kết **Quay lại Tự phục vụ nhân viên** nằm ở trên cùng để bạn có thể quay lại dễ dàng.
+Nhấp liên kết hành động để mở trang đánh giá (`/performance/review/...`). Một liên kết **Quay lại Hồ sơ của tôi** nằm ở trên cùng để bạn có thể quay lại dễ dàng.
 
 ### Hoàn thành bản tự đánh giá của bạn
 
@@ -104,7 +104,7 @@ Xác nhận ghi lại rằng bạn đã đọc bản đánh giá — điều đ�
 
 ## Khắc phục sự cố
 
-- **Tự phục vụ nhân viên báo rằng tài khoản của tôi chưa được liên kết.** Nếu bạn thấy thông báo rằng tài khoản của bạn chưa được liên kết với một hồ sơ nhân viên, nghĩa là lần đăng nhập của bạn chưa được kết nối với một bản ghi nhân viên. Các tính năng hồ sơ và đánh giá chỉ xuất hiện sau khi HR liên kết tài khoản của bạn — hãy liên hệ HR.
+- **Hồ sơ của tôi báo rằng tài khoản của tôi chưa được liên kết.** Nếu bạn thấy thông báo rằng tài khoản của bạn chưa được liên kết với một hồ sơ nhân viên, nghĩa là lần đăng nhập của bạn chưa được kết nối với một bản ghi nhân viên. Các tính năng hồ sơ và đánh giá chỉ xuất hiện sau khi HR liên kết tài khoản của bạn — hãy liên hệ HR.
 - **Tôi không thấy bảng Đánh giá của tôi.** Nó chỉ hiển thị khi bạn có ít nhất một bản đánh giá trong một chu kỳ. Không có chu kỳ, không có bảng.
 - **Thay đổi ngân hàng/thuế của tôi vẫn hiển thị các giá trị cũ.** Hãy kiểm tra danh sách yêu cầu dưới **Yêu cầu thay đổi**. Nếu nhãn vẫn ghi `pending`, nó đang chờ một quản trị viên; nếu nó ghi `rejected`, hãy gửi một yêu cầu mới (và kiểm tra lại rằng bạn đã điền cả tên ngân hàng và số tài khoản cùng nhau).
 - **Không có nút Xác nhận.** Bản đánh giá chưa được phát hành. Hãy chờ trạng thái **Đánh giá của tôi** hiển thị **Sẵn sàng xác nhận**.

@@ -79,7 +79,7 @@
     "roster": "排班",
     "dataPrivacy": "数据隐私",
     "dashboard": "仪表盘",
-    "myWorkspace": "员工自助服务",
+    "myWorkspace": "我的资料",
     "people": "员工",
     "orgChart": "组织架构图",
     "leave": "休假",
@@ -802,7 +802,7 @@
     "collapseReports": "收起下属"
   },
   "me": {
-    "title": "员工自助服务",
+    "title": "我的资料",
     "notLinked": "此账户尚未关联员工档案。请使用顶栏的身份切换器以员工身份操作（例如 Aisyah 或 Daniel）。",
     "todayHeading": "今天",
     "checkIn": "签到",
@@ -918,7 +918,7 @@
       "closed": "已关闭"
     },
     "payslip": {
-      "backToWorkspace": "员工自助服务",
+      "backToWorkspace": "我的资料",
       "title": "工资单 · {payPeriod}",
       "earnings": "收入",
       "basicSalary": "基本工资",
@@ -1233,7 +1233,7 @@
       "calibrationCode": "编号"
     },
     "review": {
-      "backMyWorkspace": "员工自助服务",
+      "backMyWorkspace": "我的资料",
       "backPerformance": "绩效",
       "reviewerLabel": "评估人：{reviewer}",
       "selfReviewTitle": "自评",
@@ -1678,7 +1678,10 @@
         "tp1Cta": "编辑 TP1 减免",
         "zakatTitle": "天课",
         "zakatDesc": "草稿批次中每位员工通过薪资缴纳的天课。",
-        "zakatCta": "编辑天课"
+        "zakatCta": "编辑天课",
+        "loansTitle": "贷款",
+        "loansDesc": "员工贷款分期 — 每个薪资周期自动扣除。",
+        "loansCta": "打开贷款"
       },
       "fixed": {
         "title": "固定交易",
@@ -1776,6 +1779,7 @@
         "stepPeriod": "周期与类型",
         "stepEntry": "录入",
         "stepSave": "复核与保存",
+        "company": "公司",
         "employeeSearch": "搜索员工",
         "searchPlaceholder": "按姓名或员工编号搜索…",
         "noEmployees": "没有匹配的员工。",
@@ -1848,6 +1852,11 @@
         "title": "贷款",
         "desc": "员工贷款分期 — 每个薪资周期自动扣除。",
         "cta": "打开贷款"
+      },
+      "cycles": {
+        "title": "薪资周期",
+        "desc": "定义并维护薪资处理下拉菜单中显示的周期名称。",
+        "cta": "打开薪资周期"
       },
       "period": {
         "title": "薪资周期模板",
@@ -2311,6 +2320,7 @@
       "importTitle": "导入休假数据",
       "importHelp": "从粘贴的 CSV 批量导入期初余额、结转、历史休假和临时额度。余额会立即更新。",
       "importLink": "打开导入工具",
+      "importAction": "导入",
       "import": {
         "title": "导入休假数据",
         "description": "粘贴休假交易（期初余额、结转、历史休假、临时额度），预览每一行，然后仅导入有效的行。",
@@ -2825,7 +2835,7 @@
     "welcomeBody": "用 30 秒快速了解各项功能的位置。随时可以从顶栏的帮助按钮重新观看。",
     "navTitle": "你的导航栏",
     "navBody": "所有模块都在左侧边栏。你能看到的内容取决于你的角色——员工、经理和 HR 管理员各有专属工具。",
-    "workspaceTitle": "员工自助服务",
+    "workspaceTitle": "我的资料",
     "workspaceBody": "你的专属中心：个人资料、工资单、休假余额和考勤——关于你的一切，尽在一处。",
     "kbTitle": "知识库",
     "kbBody": "每个模块的分步指南，以及公司的政策和文档。不确定如何操作时，先来这里查看。",
@@ -3420,8 +3430,9 @@
     "rulesTitle": "审批规则",
     "addRule": "添加规则",
     "editRule": "编辑",
-    "archiveRule": "归档",
-    "archiveConfirm": "归档此规则？正在进行的申请将保留其当前的审批链。",
+    "archiveRule": "删除",
+    "archiveConfirm": "删除此规则？正在进行的申请将保留其当前的审批链。",
+    "company": "公司",
     "ruleName": "规则名称",
     "ruleNamePlaceholder": "例如：财务经理",
     "leaveType": "假期类型",
@@ -3519,7 +3530,7 @@
   "taxRelief": {
     "title": "个人税务减免 (TP1)",
     "intro": "申报您在某个课税年度的可选个人税务减免总额（LHDN TP1 表格）。最新提交的金额将减少您的每月预扣税（PCB/MTD）。",
-    "backToWorkspace": "返回员工自助服务",
+    "backToWorkspace": "返回我的资料",
     "yearLabel": "课税年度",
     "viewYear": "查看年度",
     "declarationHeading": "{year} 年度申报",

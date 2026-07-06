@@ -159,7 +159,15 @@ export default async function LeaveConfigPage({
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <PageHeader
+        title={t('pageTitle')}
+        description={t('pageDescription')}
+        actions={
+          <Button asChild>
+            <Link href="/admin/leave/import">{t('importAction')}</Link>
+          </Button>
+        }
+      />
       <ErrorBanner message={error} />
 
       {/* Leave Entitlement Rules Engine — consolidated view: every effective rule, the resolution order in

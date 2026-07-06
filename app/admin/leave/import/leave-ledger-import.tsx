@@ -83,7 +83,7 @@ export function LeaveLedgerImport() {
 
   return (
     <div className="space-y-6">
-      <Card className="p-5">
+      <Card id="leave-import-form" className="scroll-mt-6 p-5">
         <Field label={t('csvData')}>
           <textarea
             className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}

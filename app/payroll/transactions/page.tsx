@@ -76,6 +76,17 @@ export default async function PayrollTransactionsPage() {
             {t('hub.zakatCta')}
           </Link>
         </Card>
+
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.loansTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.loansDesc')}</p>
+          <Link
+            href="/admin/loans"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.loansCta')}
+          </Link>
+        </Card>
       </div>
     </div>
   );

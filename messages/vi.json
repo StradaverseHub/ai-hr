@@ -79,7 +79,7 @@
     "roster": "Lịch ca",
     "dataPrivacy": "Quyền riêng tư dữ liệu",
     "dashboard": "Bảng điều khiển",
-    "myWorkspace": "Tự phục vụ nhân viên",
+    "myWorkspace": "Hồ sơ của tôi",
     "people": "Nhân sự",
     "orgChart": "Sơ đồ tổ chức",
     "leave": "Nghỉ phép",
@@ -802,7 +802,7 @@
     "collapseReports": "Thu gọn nhân viên"
   },
   "me": {
-    "title": "Tự phục vụ nhân viên",
+    "title": "Hồ sơ của tôi",
     "notLinked": "Tài khoản này chưa được liên kết với hồ sơ nhân viên. Dùng bộ chuyển danh tính ở thanh trên cùng để hoạt động với tư cách nhân viên (ví dụ Aisyah hoặc Daniel).",
     "todayHeading": "Hôm nay",
     "checkIn": "Vào ca",
@@ -918,7 +918,7 @@
       "closed": "Đã đóng"
     },
     "payslip": {
-      "backToWorkspace": "Tự phục vụ nhân viên",
+      "backToWorkspace": "Hồ sơ của tôi",
       "title": "Phiếu lương · {payPeriod}",
       "earnings": "Thu nhập",
       "basicSalary": "Lương cơ bản",
@@ -1233,7 +1233,7 @@
       "calibrationCode": "Mã"
     },
     "review": {
-      "backMyWorkspace": "Tự phục vụ nhân viên",
+      "backMyWorkspace": "Hồ sơ của tôi",
       "backPerformance": "Hiệu suất",
       "reviewerLabel": "Người đánh giá: {reviewer}",
       "selfReviewTitle": "Tự đánh giá",
@@ -1678,7 +1678,10 @@
         "tp1Cta": "Sửa miễn giảm TP1",
         "zakatTitle": "Zakat",
         "zakatDesc": "Zakat trả qua lương theo nhân viên trên đợt nháp.",
-        "zakatCta": "Sửa zakat"
+        "zakatCta": "Sửa zakat",
+        "loansTitle": "Khoản vay",
+        "loansDesc": "Khoản trả góp vay của nhân viên — tự động khấu trừ mỗi kỳ lương.",
+        "loansCta": "Mở khoản vay"
       },
       "fixed": {
         "title": "Giao dịch cố định",
@@ -1776,6 +1779,7 @@
         "stepPeriod": "Kỳ & chu kỳ",
         "stepEntry": "Mục nhập",
         "stepSave": "Xem lại & lưu",
+        "company": "Công ty",
         "employeeSearch": "Tìm nhân viên",
         "searchPlaceholder": "Tìm theo tên hoặc mã nhân viên…",
         "noEmployees": "Không có nhân viên phù hợp.",
@@ -1848,6 +1852,11 @@
         "title": "Khoản vay",
         "desc": "Khoản trả góp vay của nhân viên — tự động khấu trừ mỗi kỳ lương.",
         "cta": "Mở khoản vay"
+      },
+      "cycles": {
+        "title": "Chu kỳ trả lương",
+        "desc": "Xác định và duy trì tên chu kỳ hiển thị trong menu Quy trình trả lương.",
+        "cta": "Mở chu kỳ trả lương"
       },
       "period": {
         "title": "Mẫu kỳ lương",
@@ -2311,6 +2320,7 @@
       "importTitle": "Nhập dữ liệu nghỉ phép",
       "importHelp": "Nhập hàng loạt số dư đầu kỳ, chuyển tiếp, nghỉ phép lịch sử và tín dụng đặc biệt từ CSV đã dán. Số dư được cập nhật ngay lập tức.",
       "importLink": "Mở công cụ nhập",
+      "importAction": "Nhập",
       "import": {
         "title": "Nhập dữ liệu nghỉ phép",
         "description": "Dán các giao dịch nghỉ phép (số dư đầu kỳ, chuyển tiếp, nghỉ phép lịch sử, tín dụng đặc biệt), xem trước từng dòng, sau đó chỉ nhập các dòng hợp lệ.",
@@ -2825,7 +2835,7 @@
     "welcomeBody": "Một chuyến tham quan nhanh 30 giây để biết mọi thứ nằm ở đâu. Bạn có thể xem lại bất cứ lúc nào từ nút trợ giúp trên thanh trên cùng.",
     "navTitle": "Thanh điều hướng của bạn",
     "navBody": "Mọi phân hệ đều nằm trong thanh bên này. Những gì bạn thấy ở đây tùy thuộc vào vai trò của bạn — nhân viên, quản lý và quản trị viên nhân sự đều có công cụ riêng.",
-    "workspaceTitle": "Tự phục vụ nhân viên",
+    "workspaceTitle": "Hồ sơ của tôi",
     "workspaceBody": "Trung tâm cá nhân của bạn: hồ sơ, phiếu lương, số ngày nghỉ phép và chấm công — mọi thứ về bạn, ở cùng một nơi.",
     "kbTitle": "Cơ sở tri thức",
     "kbBody": "Hướng dẫn từng bước cho mọi phân hệ, cùng với chính sách và tài liệu của công ty bạn. Hãy bắt đầu từ đây mỗi khi bạn chưa rõ điều gì đó hoạt động ra sao.",
@@ -3420,8 +3430,9 @@
     "rulesTitle": "Quy tắc phê duyệt",
     "addRule": "Thêm quy tắc",
     "editRule": "Sửa",
-    "archiveRule": "Lưu trữ",
-    "archiveConfirm": "Lưu trữ quy tắc này? Các yêu cầu đang xử lý vẫn giữ chuỗi phê duyệt hiện tại.",
+    "archiveRule": "Xóa",
+    "archiveConfirm": "Xóa quy tắc này? Các yêu cầu đang xử lý vẫn giữ chuỗi phê duyệt hiện tại.",
+    "company": "Công ty",
     "ruleName": "Tên quy tắc",
     "ruleNamePlaceholder": "vd. Quản lý tài chính",
     "leaveType": "Loại nghỉ phép",
@@ -3519,7 +3530,7 @@
   "taxRelief": {
     "title": "Giảm trừ thuế cá nhân (TP1)",
     "intro": "Khai báo tổng các khoản giảm trừ thuế cá nhân tùy chọn của bạn (mẫu TP1 của LHDN) cho một năm tính thuế. Số tiền đã nộp gần nhất sẽ giảm khoản khấu trừ thuế hằng tháng của bạn (PCB/MTD).",
-    "backToWorkspace": "Quay lại Tự phục vụ nhân viên",
+    "backToWorkspace": "Quay lại Hồ sơ của tôi",
     "yearLabel": "Năm tính thuế",
     "viewYear": "Xem năm",
     "declarationHeading": "Khai báo cho năm {year}",

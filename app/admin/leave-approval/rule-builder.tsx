@@ -27,6 +27,7 @@ export type RuleBuilderLabels = {
   editRule: string;
   archiveRule: string;
   archiveConfirm: string;
+  company: string;
   ruleName: string;
   ruleNamePlaceholder: string;
   leaveType: string;
@@ -63,6 +64,7 @@ const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as con
  *  edited separately by the LeaveApprovalEditor above; this manages the more-specific rules. */
 export function RuleBuilder({
   companyId,
+  companies,
   rules,
   leaveTypes,
   businessUnits,
@@ -74,6 +76,7 @@ export function RuleBuilder({
   labels,
 }: {
   companyId: string;
+  companies: Option[];
   rules: RuleRow[];
   leaveTypes: Option[];
   businessUnits: Option[];
@@ -166,6 +169,7 @@ export function RuleBuilder({
         <RuleForm
           key={editing === 'new' ? 'new' : editing.id}
           companyId={companyId}
+          companies={companies}
           rule={editing === 'new' ? null : editing}
           leaveTypes={leaveTypes}
           businessUnits={businessUnits}
@@ -184,6 +188,7 @@ export function RuleBuilder({
 
 function RuleForm({
   companyId,
+  companies,
   rule,
   leaveTypes,
   businessUnits,
@@ -196,6 +201,7 @@ function RuleForm({
   onCancel,
 }: {
   companyId: string;
+  companies: Option[];
   rule: RuleRow | null;
   leaveTypes: Option[];
   businessUnits: Option[];
@@ -234,11 +240,21 @@ function RuleForm({
 
   return (
     <form action={saveAction} className="space-y-4 rounded-lg border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
-      <input type="hidden" name="companyId" value={companyId} />
       {rule && <input type="hidden" name="ruleId" value={rule.id} />}
       <input type="hidden" name="levels" value={levels.join(',')} />
 
       <div className="text-sm font-semibold">{rule ? labels.editRule : labels.addRule}</div>
+
+      <label className="block space-y-1 text-sm">
+        <span className="text-xs font-medium text-muted-foreground">{labels.company}</span>
+        <select name="companyId" defaultValue={companyId} required className={inputCls}>
+          {companies.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <label className="block space-y-1 text-sm">
         <span className="text-xs font-medium text-muted-foreground">{labels.ruleName}</span>

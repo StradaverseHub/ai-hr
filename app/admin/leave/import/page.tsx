@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { PageHeader } from '@/components/ui';
+import { Button, PageHeader } from '@/components/ui';
 import { LeaveLedgerImport } from './leave-ledger-import';
 
 export default async function LeaveImportPage() {
@@ -15,6 +15,11 @@ export default async function LeaveImportPage() {
         back={{ href: '/admin/leave', label: t('backLabel') }}
         title={t('title')}
         description={t('description')}
+        actions={
+          <Button asChild>
+            <a href="#leave-import-form">{t('title')}</a>
+          </Button>
+        }
       />
       <LeaveLedgerImport />
     </div>
