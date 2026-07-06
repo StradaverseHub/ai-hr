@@ -4,14 +4,22 @@
  * terminateEmploymentTx — a 'voluntary' termination, the single source of truth for ending employment.
  * Same request → approve rails as the profile-change / claims / leave flows.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, person, resignationRequest } from '../db/schema';
+import { employment, person, resignationRequest, resignationRequestAttachment } from '../db/schema';
 import { assertCanDecide } from './approvals';
 import { freezeOnResignationApprovalTx } from './leave-encashment';
+import { validateLeaveDocument } from './leave';
 import { terminateEmploymentTx } from './org';
+
+// #42cff598: the file types the resignation ticket specifies (PDF / JPG / PNG) and a fixed 10 MB ceiling.
+// Resignation has no per-type config table like leave, so the allowed set + ceiling are constants here.
+// The gate itself (validateLeaveDocument + its LeaveDocumentTypeError/LeaveDocumentSizeError) is reused,
+// not re-implemented, so the wording matches leave and stays localized in all 6 locales.
+const RESIGNATION_DOC_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+const RESIGNATION_DOC_MAX_BYTES = 10 * 1024 * 1024;
 
 export class ResignationError extends Error {
   constructor(message: string) {
@@ -148,8 +156,8 @@ export function listResignationRequests(
   ctx: SessionContext,
   opts: { status?: 'pending' | 'accepted' | 'rejected' | 'withdrawn' } = {},
 ) {
-  return withTenant(ctx, (tx) =>
-    tx
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
       .select({
         id: resignationRequest.id,
         employmentId: resignationRequest.employmentId,
@@ -166,8 +174,31 @@ export function listResignationRequests(
       .innerJoin(person, eq(person.id, resignationRequest.personId))
       .where(opts.status ? eq(resignationRequest.status, opts.status) : undefined)
       .orderBy(desc(resignationRequest.createdAt))
-      .limit(100),
-  );
+      .limit(100);
+    // #42cff598: batch-fetch each request's attachments (metadata only) in one query so the inbox can
+    // render a "View document" link per file. Same RLS transaction, so only visible files come back.
+    const ids = rows.map((r) => r.id);
+    const atts =
+      ids.length === 0
+        ? []
+        : await tx
+            .select({
+              id: resignationRequestAttachment.id,
+              resignationRequestId: resignationRequestAttachment.resignationRequestId,
+              fileName: resignationRequestAttachment.fileName,
+              mimeType: resignationRequestAttachment.mimeType,
+            })
+            .from(resignationRequestAttachment)
+            .where(inArray(resignationRequestAttachment.resignationRequestId, ids))
+            .orderBy(desc(resignationRequestAttachment.createdAt));
+    const byRequest = new Map<string, { id: string; fileName: string; mimeType: string }[]>();
+    for (const a of atts) {
+      const list = byRequest.get(a.resignationRequestId) ?? [];
+      list.push({ id: a.id, fileName: a.fileName, mimeType: a.mimeType });
+      byRequest.set(a.resignationRequestId, list);
+    }
+    return rows.map((r) => ({ ...r, documents: byRequest.get(r.id) ?? [] }));
+  });
 }
 
 /** The caller's own most-recent resignation (the /me status + withdraw control). */
@@ -186,5 +217,99 @@ export function myResignation(ctx: SessionContext, employmentId: string) {
       .orderBy(desc(resignationRequest.createdAt))
       .limit(1);
     return row ?? null;
+  });
+}
+
+// ── Resignation supporting documents (#42cff598, ADR-0042) ──
+// Verbatim reuse of the leave-attachment stack retargeted to resignation_request: the same bytea side-table,
+// the same validateLeaveDocument gate, and the same can_see_employment RLS (subject + manager + admin).
+
+/** Attach a supporting document to a PENDING resignation. employment_id is denormalized from the request so
+ *  the attachment's RLS matches the request (subject + manager + admin). Documents may only be added while
+ *  the resignation is pending, mirroring the leave guard. */
+export async function addResignationAttachment(
+  ctx: SessionContext,
+  p: { resignationRequestId: string; fileName: string; mimeType: string; content: Buffer },
+): Promise<{ id: string }> {
+  if (p.content.byteLength === 0) throw new ResignationError('Empty file');
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx
+      .select({ employmentId: resignationRequest.employmentId, status: resignationRequest.status })
+      .from(resignationRequest)
+      .where(eq(resignationRequest.id, p.resignationRequestId))
+      .limit(1);
+    if (!req) throw new ResignationError('Resignation not found (or not visible).');
+    if (req.status !== 'pending') throw new ResignationError('Documents can only be added while the resignation is pending.');
+    // Defence-in-depth: the /me action already validates before submitResignation commits (so a bad file
+    // never leaves an orphan pending resignation); this re-checks for any other caller. Reuses the leave
+    // gate + its typed errors — no new MIME/size list here.
+    validateLeaveDocument(
+      { allowedMimeTypes: RESIGNATION_DOC_MIME_TYPES, maxDocBytes: RESIGNATION_DOC_MAX_BYTES },
+      { mimeType: p.mimeType, sizeBytes: p.content.byteLength },
+    );
+    const [row] = await tx
+      .insert(resignationRequestAttachment)
+      .values({
+        tenantId: ctx.tenantId,
+        resignationRequestId: p.resignationRequestId,
+        employmentId: req.employmentId,
+        content: p.content,
+        fileName: p.fileName,
+        mimeType: p.mimeType,
+        sizeBytes: p.content.byteLength,
+        uploadedByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: resignationRequestAttachment.id });
+    // SUBSTRATE: a new state-changing write — the DomainEvent is mandatory.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'resignation',
+      aggregateId: p.resignationRequestId,
+      eventType: 'resignation.document.attached',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { fileName: p.fileName, sizeBytes: p.content.byteLength },
+    });
+    return { id: row.id };
+  });
+}
+
+/** List a resignation's attachments (metadata only, no content) so the approvals inbox can render one
+ *  link per file. Read-only, RLS-scoped (subject + manager + admin) — no event. */
+export function listResignationAttachments(
+  ctx: SessionContext,
+  resignationRequestId: string,
+): Promise<{ id: string; fileName: string; mimeType: string; sizeBytes: number }[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: resignationRequestAttachment.id,
+        fileName: resignationRequestAttachment.fileName,
+        mimeType: resignationRequestAttachment.mimeType,
+        sizeBytes: resignationRequestAttachment.sizeBytes,
+      })
+      .from(resignationRequestAttachment)
+      .where(eq(resignationRequestAttachment.resignationRequestId, resignationRequestId))
+      .orderBy(desc(resignationRequestAttachment.createdAt)),
+  );
+}
+
+/** Stream one resignation attachment by its own id. Runs under RLS (subject + manager + admin via
+ *  can_see_employment). Read-only — no event. */
+export async function getResignationAttachmentById(
+  ctx: SessionContext,
+  attachmentId: string,
+): Promise<{ content: Buffer; fileName: string; mimeType: string } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        content: resignationRequestAttachment.content,
+        fileName: resignationRequestAttachment.fileName,
+        mimeType: resignationRequestAttachment.mimeType,
+      })
+      .from(resignationRequestAttachment)
+      .where(eq(resignationRequestAttachment.id, attachmentId))
+      .limit(1);
+    return row ? { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType } : null;
   });
 }

@@ -79,7 +79,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const showDevSwitcher = demoSwitcherEnabled();
   const allowed = await allowedCompanies(session);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
-  const railCollapsed = (await cookies()).get('rail_collapsed')?.value === '1';
+  const cookieStore = await cookies();
+  const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
+  // Per-group open state for collapsible nav sections (b3dc0f78); read SSR-side to avoid a flash.
+  const openGroups = { nav_attendance_open: cookieStore.get('nav_attendance_open')?.value === '1' };
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   // Notification bell shows the approvals queue — only managers/admins have one.
@@ -112,6 +115,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
               defaultCollapsed={railCollapsed}
+              openGroups={openGroups}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4">
               <header className="flex h-16 shrink-0 items-center justify-between gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)]">

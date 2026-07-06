@@ -279,6 +279,8 @@ export function LeaveTypePanel({
   employeeRemarkRequired,
   hrRemarkRequired,
   backdatingLimitDays,
+  expiryValue,
+  expiryUnit,
   customMessages,
   paid,
   sendToPayroll,
@@ -315,6 +317,11 @@ export function LeaveTypePanel({
   /** Configurable backdated-leave restriction (0133): how many days back a leave of this type may be applied;
    *  null = no limit. Threaded so the sub-form round-trips. Field hidden for Emergency Leave (code === 'EMERGENCY'). */
   backdatingLimitDays: number | null;
+  /** Leave Type Expiry Field (fec49317): age-from-earning expiry pair — after this many months/days from the
+   *  date each portion is earned, unused days lapse. Both null = no expiry. Threaded so the sub-form
+   *  round-trips. Hidden for Annual (owned by the per-policy carry-forward expiry engine). */
+  expiryValue: number | null;
+  expiryUnit: string | null;
   /** Custom validation messages (custom-messages migration): admin-authored override text keyed by rule config
    *  field (currently only `backdatingLimitDays`). Threaded so the "Custom system message" textarea round-trips.
    *  null / absent key = show the built-in localized default. */
@@ -785,6 +792,44 @@ export function LeaveTypePanel({
                 </Button>
               </form>
               <p className="text-xs text-muted-foreground">{t('backdatingSectionHelp')}</p>
+            </div>
+          )}
+
+          {/* Leave Type Expiry Field (fec49317). Its own sub-form (own tri-state) posts `expiry=1`.
+              Hidden for Annual — Annual already has per-policy carry-forward expiry (a second age-based
+              forfeit would double-count) — and for Emergency Leave, which carries no balance. Both inputs
+              blank ⇒ clears the expiry; a number + unit configures age-from-earning expiry. */}
+          {!isAnnual && code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('expirySectionTitle')}</span>
+              <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the expiry_value / expiry_unit columns (tri-state guard) */}
+                <input type="hidden" name="expiry" value="1" />
+                <Field label={t('expiryValueLabel')}>
+                  <input
+                    name="expiryValue"
+                    type="number"
+                    min="1"
+                    step="1"
+                    defaultValue={expiryValue ?? ''}
+                    placeholder={t('expiryValuePlaceholder')}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                <Field label={t('expiryUnitLabel')}>
+                  <select name="expiryUnit" defaultValue={expiryUnit ?? 'months'} className={`${inputCls} w-32`}>
+                    <option value="months">{t('expiryUnitMonths')}</option>
+                    <option value="days">{t('expiryUnitDays')}</option>
+                  </select>
+                </Field>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('expirySectionHelp')}</p>
             </div>
           )}
 

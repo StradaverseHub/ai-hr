@@ -52,9 +52,11 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Scalar per-body sections that get an inline Edit form (whole-ruleset bodies use ?edit=1 instead). */
-type ScalarSection = 'epf' | 'ot';
-const SCALAR_SECTIONS: ScalarSection[] = ['epf', 'ot'];
+/** Scalar per-body sections that get an inline Edit form (whole-ruleset bodies use ?edit=1 instead).
+ *  Overtime was removed here (feedback e776d17d) — OT rates are now edited on the Attendance Policy
+ *  screen, not under Payroll statutory settings. Only EPF remains an inline scalar section. */
+type ScalarSection = 'epf';
+const SCALAR_SECTIONS: ScalarSection[] = ['epf'];
 const isScalarSection = (v: string | undefined): v is ScalarSection =>
   v != null && (SCALAR_SECTIONS as string[]).includes(v);
 
@@ -231,7 +233,11 @@ export default async function StatutoryConfigPage({
         <h2 className="text-sm font-semibold">{t('perBodyTitle')}</h2>
         <p className="mt-1 text-xs text-muted-foreground">{t('perBodySubtitle')}</p>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {STATUTORY_BODIES.map((b) => {
+          {/* 'ot' is filtered from this statutory grid (feedback e776d17d) — overtime is now owned by the
+              Attendance module. HAZARD H1: filter at the render site only; do NOT remove 'ot' from the
+              STATUTORY_BODIES constant, or the relocated OT write path (setComponentOverrideMY body
+              validation) and the kernel's own body resolution break. */}
+          {STATUTORY_BODIES.filter((b) => b !== 'ot').map((b) => {
             const c = components[b];
             return (
               <div key={b} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
@@ -283,6 +289,10 @@ export default async function StatutoryConfigPage({
                 <Row label={t('epfEmployerRateLow')} value={pct(ruleset.epf.employerRateLow)} />
                 <Row label={t('epfEmployerRateHigh')} value={pct(ruleset.epf.employerRateHigh)} />
                 <Row label={t('epfEmployerThreshold')} value={rm(ruleset.epf.employerThreshold)} />
+                {/* contribCeiling is a statutory contribution ceiling (not an OT field). It used to display
+                    inside the removed Overtime card; kept visible here so relocating OT (feedback e776d17d)
+                    doesn't drop it from the statutory page. */}
+                <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
               </div>
               {lastEditedHint('epf') && (
                 <p className="mt-2 text-[11px] text-muted-foreground">{lastEditedHint('epf')}</p>
@@ -292,45 +302,9 @@ export default async function StatutoryConfigPage({
           )}
         </Card>
 
-        {/* Overtime */}
-        <Card className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t('secOt')}</h2>
-            {activeSection !== 'ot' && (
-              <Link href={`${BASE}?section=ot`}>
-                <Button variant="outline" size="sm">
-                  {t('editSection', { body: t('body_ot') })}
-                </Button>
-              </Link>
-            )}
-          </div>
-          {activeSection === 'ot' ? (
-            <>
-              <p className="mt-2 text-xs text-muted-foreground">{t('editSectionIntro')}</p>
-              <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} lockedBody="ot" />
-            </>
-          ) : (
-            <>
-              <div className="mt-2 divide-y divide-border">
-                <Row label={t('otWageCeiling')} value={rm(ruleset.ot.wageCeiling)} />
-                <Row
-                  label={t('otRestDayExcessMultiplier')}
-                  value={`${ruleset.ot.restDayExcessMultiplier ?? 2}×`}
-                />
-                <Row
-                  label={t('otHolidayExcessMultiplier')}
-                  value={`${ruleset.ot.holidayExcessMultiplier ?? 3}×`}
-                />
-                <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>
-              {lastEditedHint('ot') && (
-                <p className="mt-2 text-[11px] text-muted-foreground">{lastEditedHint('ot')}</p>
-              )}
-              <SourceMeta src={src.ot} label={t('verified')} />
-            </>
-          )}
-        </Card>
+        {/* Overtime card removed (feedback e776d17d) — OT rates are now edited on the Attendance Policy
+            screen (/admin/attendance). Payroll still consumes the same resolved ruleset.ot value; only the
+            editing surface moved. */}
 
         {/* SOCSO */}
         <Card className="p-4">
@@ -474,7 +448,9 @@ export default async function StatutoryConfigPage({
       <Card className="p-4">
         <h2 className="text-sm font-semibold">{t('componentTitle')}</h2>
         <p className="mt-1 text-xs text-muted-foreground">{t('componentIntro')}</p>
-        <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} />
+        {/* 'ot' excluded from the picker (feedback e776d17d) — overtime rates are configured on the
+            Attendance Policy screen, not under Payroll statutory settings. */}
+        <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} bodies={['epf', 'hrdf']} />
         {componentOverrides.length > 0 && (
           <div className="mt-4 overflow-x-auto border-t border-border pt-3">
             <table className="w-full text-sm">

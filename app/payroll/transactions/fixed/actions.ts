@@ -7,8 +7,12 @@ import { listEmployees } from '@/core/read';
 import {
   FixedTransactionAmountError,
   FixedTransactionDateError,
+  FixedTransactionNotFoundError,
   UnsupportedFixedCurrencyError,
+  archiveEmploymentPayComponent,
+  endEmploymentPayComponent,
   setEmploymentPayComponent,
+  updateEmploymentPayComponent,
   type FixedTransactionCycle,
 } from '@/core/pay-components';
 
@@ -60,17 +64,125 @@ export async function createFixedTransactionAction(formData: FormData) {
       runType: runType as FixedTransactionCycle,
     });
   } catch (e) {
-    const key =
-      e instanceof FixedTransactionDateError
-        ? 'dateError'
-        : e instanceof UnsupportedFixedCurrencyError
-          ? 'currencyUnsupported'
-          : e instanceof FixedTransactionAmountError
-            ? 'amountError'
-            : (e as Error).message;
-    return back(employmentId, `error=${encodeURIComponent(key)}`);
+    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
   }
 
   revalidatePath('/payroll/transactions/fixed');
   return back(employmentId, 'toast=saved');
+}
+
+/** Map a typed pay-component error to a localised ?error= key the page resolves; else the raw message. */
+function fixedErrorKey(e: unknown): string {
+  return e instanceof FixedTransactionDateError
+    ? 'dateError'
+    : e instanceof UnsupportedFixedCurrencyError
+      ? 'currencyUnsupported'
+      : e instanceof FixedTransactionAmountError
+        ? 'amountError'
+        : e instanceof FixedTransactionNotFoundError
+          ? 'notFound'
+          : (e as Error).message;
+}
+
+/**
+ * Re-validate that the supplied employmentId is in the admin's company scope (RLS isolates tenants, not
+ * company scope — so a URL-tampered out-of-scope id must be rejected here, exactly like the create action).
+ * Returns the session on success; on failure returns null after issuing the redirect (caller returns early).
+ */
+async function requireScopedEmployment(employmentId: string) {
+  const { s, scopeIds } = await scopedAdmin();
+  const employees = await listEmployees(s, scopeIds);
+  if (!employmentId || !employees.some((e) => e.employmentId === employmentId)) {
+    back(null, 'error=outOfScope');
+    return null;
+  }
+  return s;
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — EDIT an existing fixed transaction by versioning (see
+ * updateEmploymentPayComponent). Repeats the scope-guard, maps typed errors to the localised keys, and
+ * re-reads the list on success. Additive: the Add form and its action are untouched.
+ */
+export async function updateFixedTransactionAction(formData: FormData) {
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const s = await requireScopedEmployment(employmentId);
+  if (!s) return;
+
+  const id = String(formData.get('id') ?? '');
+  const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
+  const runType = String(formData.get('runType') ?? '');
+  const amount = Number(formData.get('amount'));
+  const effectiveTo = String(formData.get('effectiveTo') ?? '').trim() || null;
+  const remarks = String(formData.get('remarks') ?? '').trim() || null;
+
+  if (!id || !effectiveFrom || !(amount > 0)) {
+    return back(employmentId, 'error=required');
+  }
+
+  try {
+    await updateEmploymentPayComponent(s, {
+      id,
+      employmentId,
+      amount,
+      effectiveFrom,
+      effectiveTo,
+      remarks,
+      runType: runType as FixedTransactionCycle,
+    });
+  } catch (e) {
+    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+  }
+
+  revalidatePath('/payroll/transactions/fixed');
+  return back(employmentId, 'toast=saved');
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — STOP a fixed transaction from a date (end-date it). The row keeps paying
+ * through the end date, then drops out of the payroll calculation. Scope-guarded, error-mapped.
+ */
+export async function endFixedTransactionAction(formData: FormData) {
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const s = await requireScopedEmployment(employmentId);
+  if (!s) return;
+
+  const id = String(formData.get('id') ?? '');
+  const effectiveTo = String(formData.get('effectiveTo') ?? '').trim();
+  if (!id || !effectiveTo) {
+    return back(employmentId, 'error=required');
+  }
+
+  try {
+    await endEmploymentPayComponent(s, { id, employmentId, effectiveTo });
+  } catch (e) {
+    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+  }
+
+  revalidatePath('/payroll/transactions/fixed');
+  return back(employmentId, 'toast=saved');
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — REMOVE/ARCHIVE (void) a fixed transaction: it is dropped from the list
+ * and excluded from payroll entirely. Confirmation is enforced in the UI (ConfirmSubmit). Scope-guarded.
+ */
+export async function archiveFixedTransactionAction(formData: FormData) {
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const s = await requireScopedEmployment(employmentId);
+  if (!s) return;
+
+  const id = String(formData.get('id') ?? '');
+  if (!id) {
+    return back(employmentId, 'error=required');
+  }
+
+  try {
+    await archiveEmploymentPayComponent(s, { id, employmentId });
+  } catch (e) {
+    return back(employmentId, `error=${encodeURIComponent(fixedErrorKey(e))}`);
+  }
+
+  revalidatePath('/payroll/transactions/fixed');
+  return back(employmentId, 'toast=deleted');
 }

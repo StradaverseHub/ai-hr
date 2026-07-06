@@ -7,8 +7,11 @@ import { listCompanies } from '@/core/read';
 import { listAttendancePolicies } from '@/core/attendance';
 import { listShifts } from '@/core/roster';
 import { formatBreakDisplay } from '@/core/shift-break-display';
+import { packFor } from '@/localization/registry';
+import { MY_HRDF } from '@/localization/my/statutory-tables';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ShiftTimeFields } from '@/components/shift-time-fields';
+import { StatutoryComponentForm } from '@/components/statutory-component-form';
 import { ScrollToCompany } from './scroll-to-company';
 import { setAttendancePolicyAction } from '../actions';
 import { archiveShiftAction, createShiftAction, duplicateShiftAction, updateShiftAction } from './shift-actions';
@@ -47,6 +50,46 @@ export default async function AttendancePolicyPage({
     await Promise.all(visible.map(async (c) => [c.id, await listShifts(s, c.id)] as const)),
   );
 
+  // Overtime rates (feedback e776d17d) — relocated out of Payroll > Statutory Configuration because OT is
+  // an attendance/working-hours rule, not a statutory contribution. This reads the SAME resolved MY
+  // ruleset the statutory page reads (pack.statutoryConfig.readActive) and edits the SAME 'ot' slice
+  // through the SAME setStatutoryComponentAction write path, so payroll consumes an identical value — only
+  // the editing screen moves. The wage ceiling stays labelled as an Employment Act s.60A legal eligibility
+  // limit (Hazard H2), and this slice is unrelated to the per-policy otApprovalCalculation setting below
+  // (Hazard H3). Tenant-global, so it renders once (not per company).
+  const pack = packFor('MY');
+  const otRuleset = pack ? (await pack.statutoryConfig.readActive(s)).ruleset : null;
+  const otComponentDefaults = otRuleset
+    ? {
+        epf: {
+          employeeRate: otRuleset.epf.employeeRate,
+          employerRateLow: otRuleset.epf.employerRateLow,
+          employerRateHigh: otRuleset.epf.employerRateHigh,
+          employerThreshold: otRuleset.epf.employerThreshold,
+        },
+        ot: {
+          wageCeiling: otRuleset.ot.wageCeiling,
+          restDayExcessMultiplier: otRuleset.ot.restDayExcessMultiplier ?? 2,
+          holidayExcessMultiplier: otRuleset.ot.holidayExcessMultiplier ?? 3,
+        },
+        hrdf: otRuleset.hrdf ?? MY_HRDF,
+      }
+    : null;
+  const otComponentLabels = {
+    effectiveFrom: t('otEffectiveFrom'),
+    version: t('otVersion'),
+    notes: t('otNotes'),
+    otWageCeiling: t('otWageCeiling'),
+    otRestDayExcessMultiplier: t('otRestDayExcessMultiplier'),
+    otHolidayExcessMultiplier: t('otHolidayExcessMultiplier'),
+    // Body picker / EPF / HRDF labels are unused when lockedBody="ot", but the shared form's label bag
+    // is typed loosely; supply the OT-relevant keys plus safe fallbacks.
+    publish: t('otPublish'),
+    cancelEdit: t('otCancel'),
+    cancelHref: '/admin/attendance',
+  };
+  const rm = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <Suspense fallback={null}>
@@ -54,6 +97,46 @@ export default async function AttendancePolicyPage({
       </Suspense>
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
+
+      {/* ── Overtime rates (relocated from Payroll > Statutory Configuration — feedback e776d17d) ──────── */}
+      {otRuleset && otComponentDefaults && (
+        <Card id="overtime-rates" className="scroll-mt-6 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">{t('otRatesTitle')}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{t('otRatesIntro')}</p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-x-8 sm:grid-cols-3">
+            <div className="flex items-baseline justify-between gap-4 py-1.5">
+              <span className="text-sm text-muted-foreground">{t('otWageCeiling')}</span>
+              <span className="font-mono text-sm font-medium tabular-nums">{rm(otRuleset.ot.wageCeiling)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 py-1.5">
+              <span className="text-sm text-muted-foreground">{t('otRestDayExcessMultiplier')}</span>
+              <span className="font-mono text-sm font-medium tabular-nums">
+                {`${otRuleset.ot.restDayExcessMultiplier ?? 2}×`}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 py-1.5">
+              <span className="text-sm text-muted-foreground">{t('otHolidayExcessMultiplier')}</span>
+              <span className="font-mono text-sm font-medium tabular-nums">
+                {`${otRuleset.ot.holidayExcessMultiplier ?? 3}×`}
+              </span>
+            </div>
+          </div>
+          <p className="mt-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            {t('otWageCeilingLegalNote')}
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>
+          <StatutoryComponentForm
+            defaults={otComponentDefaults}
+            labels={otComponentLabels}
+            lockedBody="ot"
+            returnTo="/admin/attendance"
+          />
+        </Card>
+      )}
 
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>

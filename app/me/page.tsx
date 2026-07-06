@@ -1204,6 +1204,18 @@ export default async function MePage({
             <Field label={t('resignationReasonLabel')}>
               <textarea name="reason" rows={3} className={inputCls} placeholder={t('resignationReasonPlaceholder')} />
             </Field>
+            {/* #42cff598: supporting documents (e.g. a signed resignation letter). Multiple files; the
+                `accept` attribute is a client hint only — validateLeaveDocument is the real server-side gate. */}
+            <Field label={t('resignationDocumentLabel')}>
+              <input
+                type="file"
+                name="document"
+                multiple
+                accept="image/jpeg,image/png,application/pdf"
+                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{t('resignationDocumentHint')}</p>
+            </Field>
             <Button type="submit" size="sm" variant="outline">
               {t('submitResignation')}
             </Button>

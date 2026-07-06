@@ -114,7 +114,10 @@
     "payrollCycleConfig": "Payroll Cycles",
     "personnelAdmin": "Personnel (admin)",
     "securityPermission": "Security & permissions",
-    "attendanceAllowance": "Attendance allowance"
+    "attendanceAllowance": "Attendance allowance",
+    "attendanceRecords": "Attendance records",
+    "clockingLocation": "Clocking location",
+    "attendanceImport": "Attendance import"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -1047,7 +1050,9 @@
     "travelFromLabel": "From",
     "travelToLabel": "To",
     "travelRemarksPlaceholder": "Where and why you were off-site",
-    "requestTravelButton": "Submit travel request"
+    "requestTravelButton": "Submit travel request",
+    "resignationDocumentLabel": "Supporting document",
+    "resignationDocumentHint": "Optional. Attach your resignation letter or supporting files (PDF, JPG or PNG, up to 10 MB each). You can attach more than one."
   },
   "approvals": {
     "title": "Approvals",
@@ -1659,7 +1664,9 @@
       "cancelEdit": "Cancel",
       "lastEdited": "Last override: {version} · effective {effectiveFrom}",
       "otRestDayExcessMultiplier": "Rest-day OT excess rate (× hourly)",
-      "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)"
+      "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)",
+      "secCeilings": "Contribution ceilings",
+      "ceilingsNote": "Overtime rates are configured under the Attendance module (Attendance policy → Overtime rates), not here."
     },
     "transactions": {
       "title": "Transactions",
@@ -1712,7 +1719,19 @@
         "open": "Open editor",
         "colEmployee": "Employee",
         "colCompany": "Company",
-        "manage": "Manage"
+        "manage": "Manage",
+        "actions": "Actions",
+        "edit": "Edit",
+        "save": "Save",
+        "editHint": "Saving records the new value from the effective date forward and keeps the earlier history.",
+        "stop": "Stop",
+        "stopDate": "Last date to pay",
+        "stopHint": "The item keeps paying up to this date, then stops in later payroll runs.",
+        "stopConfirm": "Stop from date",
+        "deleteTitle": "Remove this fixed transaction?",
+        "deleteBody": "This removes the item from the list and excludes it from all payroll calculations. This cannot be undone.",
+        "delete": "Remove",
+        "notFound": "That fixed transaction no longer exists."
       },
       "individual": {
         "title": "Individual Transaction",
@@ -2355,7 +2374,14 @@
         "terminatedEmployeeWarning": "Terminated employee",
         "notAuthorizedError": "Not authorized for this employee's company",
         "toilNotSupportedError": "TOIL import not supported — use the TOIL grant tool"
-      }
+      },
+      "expirySectionTitle": "Leave expiry",
+      "expiryValueLabel": "Leave expiry",
+      "expiryValuePlaceholder": "No expiry",
+      "expiryUnitLabel": "Unit",
+      "expiryUnitMonths": "Months",
+      "expiryUnitDays": "Days",
+      "expirySectionHelp": "Unused days of this leave type expire this long after each portion is earned, and drop out of the balance. Leave the number blank for no expiry. Expired days still appear in leave reports. Not available for Annual leave, which uses carry-forward expiry instead."
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -2624,7 +2650,19 @@
       "otApprovalRequested": "Use the employee-requested hours",
       "otApprovalSystem": "Use the system-calculated hours",
       "otApprovalSmaller": "Use whichever is smaller",
-      "otApprovalCalcHint": "When an overtime request is approved, this decides which figure becomes the approved overtime."
+      "otApprovalCalcHint": "When an overtime request is approved, this decides which figure becomes the approved overtime.",
+      "otRatesTitle": "Overtime rates",
+      "otRatesIntro": "Overtime rates (the entitlement wage ceiling and the excess-hours multipliers) are managed here, alongside working hours and shifts. Payroll keeps using the same values; only the editing screen moved out of Payroll statutory settings.",
+      "otWageCeiling": "OT entitlement wage ceiling (RM/month)",
+      "otRestDayExcessMultiplier": "Rest-day OT excess rate (× hourly)",
+      "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)",
+      "otWageCeilingLegalNote": "The RM 4,000 wage ceiling is the Employment Act s.60A overtime-eligibility limit — a legal threshold, not a free operational rate. Change it only if the law changes.",
+      "otMultipliersNote": "The 1.5× workday rate and the base-day pay (½/1-day rest-day, 2 days for a public holiday) are fixed by the Employment Act. The rest-day and public-holiday excess-hours rates default to the legal 2× / 3× and can be adjusted here.",
+      "otEffectiveFrom": "Effective from",
+      "otVersion": "Version",
+      "otNotes": "Notes",
+      "otPublish": "Publish OT rates",
+      "otCancel": "Cancel"
     },
     "toilPolicy": {
       "pageTitle": "Time off in lieu",

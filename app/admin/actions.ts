@@ -849,6 +849,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const backdatingFields = touchBackdating
     ? { backdatingLimitDays: backdatingRaw === '' ? null : Number(backdatingRaw) }
     : {};
+  // Leave Type Expiry Field (fec49317): its own sub-form posts `expiry=1` (marker) so any other save leaves
+  // expiry_value / expiry_unit untouched (same tri-state guard). A blank value clears the pair (both null ⇒
+  // no expiry); a number + unit configures age-from-earning expiry. The service normalizes/validates and
+  // rejects a half-configured pair. The unit is only forwarded when a value is present, so a blank save
+  // reliably clears both columns.
+  const touchExpiry = fd.get('expiry') === '1';
+  const expiryRaw = String(fd.get('expiryValue') ?? '').trim();
+  const expiryUnitRaw = String(fd.get('expiryUnit') ?? '').trim();
+  const expiryFields = touchExpiry
+    ? expiryRaw === ''
+      ? { expiryValue: null, expiryUnit: null }
+      : { expiryValue: Number(expiryRaw), expiryUnit: (expiryUnitRaw === 'days' ? 'days' : 'months') as 'months' | 'days' }
+    : {};
   // Partial Leave Approval (ADR-0068): its own sub-form posts `partialApproval=1` (marker) so a rename /
   // eligibility / durations / document / payroll / backdating edit that omits it leaves per_date_approval
   // untouched (same tri-state guard). Unchecked-when-rendered ⇒ false; the marker distinguishes that from
@@ -871,6 +884,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...docFields,
       ...payrollFields,
       ...backdatingFields,
+      ...expiryFields,
       ...partialFields,
       ...customMessageFields,
     });

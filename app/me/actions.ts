@@ -37,7 +37,7 @@ import {
 import { requestTravel } from '@/core/travel-request';
 import { requestProfileChange, updateOwnContact, type ProfileChangeProposed } from '@/core/profile';
 import { saveTp1Draft, submitTp1 } from '@/core/tax-relief';
-import { submitResignation, withdrawResignation } from '@/core/offboarding';
+import { addResignationAttachment, submitResignation, withdrawResignation } from '@/core/offboarding';
 import { LeaveBalanceFrozenError } from '@/core/leave-encashment';
 import {
   createGoal,
@@ -323,14 +323,40 @@ export async function mySubmitTp1(formData: FormData) {
 
 // ── Resignation (ADR-0042, #29) — employee-initiated, HR-approved offboarding ──
 
+// #42cff598: the PDF/JPG/PNG + 10 MB gate reused for resignation attachments (same set the ticket asks
+// for). Mirrors the fixed list in core/offboarding.ts so the pre-commit check and the service check agree.
+const RESIGNATION_DOC_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+const RESIGNATION_DOC_MAX_BYTES = 10 * 1024 * 1024;
+
 export async function mySubmitResignation(formData: FormData) {
   const { s, employmentId } = await resolveMe();
   const lastWorkingDay = String(formData.get('lastWorkingDay') ?? '').trim();
   const reason = String(formData.get('reason') ?? '').trim();
+  // #42cff598: supporting documents (e.g. a signed resignation letter). Multiple files supported.
+  const files = formData.getAll('document').filter((f): f is File => f instanceof File && f.size > 0);
   try {
-    await submitResignation(s, { employmentId, lastWorkingDay, reason: reason || null });
+    // Orphan-prevention: validate every file BEFORE submitResignation commits the row + event, so a
+    // disallowed/oversized file never leaves a committed pending resignation behind (same placement as leave).
+    for (const file of files) {
+      validateLeaveDocument(
+        { allowedMimeTypes: RESIGNATION_DOC_MIME_TYPES, maxDocBytes: RESIGNATION_DOC_MAX_BYTES },
+        { mimeType: file.type || 'application/octet-stream', sizeBytes: file.size },
+      );
+    }
+    const { requestId } = await submitResignation(s, { employmentId, lastWorkingDay, reason: reason || null });
+    for (const file of files) {
+      await addResignationAttachment(s, {
+        resignationRequestId: requestId,
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        content: Buffer.from(await file.arrayBuffer()),
+      });
+    }
   } catch (e) {
-    redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);
+    // Reuse localizeLeaveError: the two file-validation errors thrown above are LeaveDocumentTypeError /
+    // LeaveDocumentSizeError, so the PDF/JPG/PNG and size messages appear already translated in all 6
+    // locales. Non-file errors (e.g. ResignationError) fall through to their own message.
+    redirect(`/me?error=${encodeURIComponent(await localizeLeaveError(e))}`);
   }
   revalidatePath('/me');
   redirect('/me?toast=Resignation+submitted');
