@@ -1,8 +1,8 @@
-Selamat datang ke **AI HR** — pusat sumber manusia syarikat anda untuk segala-galanya, daripada merakam kehadiran sehingga memohon cuti, menyemak slip gaji, dan memastikan butiran anda sentiasa terkini. Panduan ini adalah untuk **pekerja** yang membuka aplikasi buat kali pertama. Menjelang akhir panduan ini, anda akan tahu cara log masuk, cara mencari arah di halaman **Layanan Diri Pekerja**, cara menggunakan halaman harian di bar sisi, dan cara menetapkan aplikasi kepada bahasa serta tema pilihan anda. Tiada peranan khas diperlukan — segala-galanya di sini tersedia untuk setiap pekerja.
+Selamat datang ke **AI HR** — pusat sumber manusia syarikat anda untuk segala-galanya, daripada merakam kehadiran sehingga memohon cuti, menyemak slip gaji, dan memastikan butiran anda sentiasa terkini. Panduan ini adalah untuk **pekerja** yang membuka aplikasi buat kali pertama. Menjelang akhir panduan ini, anda akan tahu cara log masuk, cara mencari arah di halaman **Profil Saya**, cara menggunakan halaman harian di bar sisi, dan cara menetapkan aplikasi kepada bahasa serta tema pilihan anda. Tiada peranan khas diperlukan — segala-galanya di sini tersedia untuk setiap pekerja.
 
 ## Log masuk
 
-Buka AI HR dalam pelayar anda menggunakan pautan yang diberikan oleh pasukan HR anda dan log masuk. Sebaik sahaja anda masuk, anda akan tiba di **Dashboard** — gambaran keseluruhan syarikat. Namun, tempat pertama untuk anda jadikan milik anda sendiri ialah **Layanan Diri Pekerja**, yang berkisar sepenuhnya tentang *anda*.
+Buka AI HR dalam pelayar anda menggunakan pautan yang diberikan oleh pasukan HR anda dan log masuk. Sebaik sahaja anda masuk, anda akan tiba di **Dashboard** — gambaran keseluruhan syarikat. Namun, tempat pertama untuk anda jadikan milik anda sendiri ialah **Profil Saya**, yang berkisar sepenuhnya tentang *anda*.
 
 **Nota:** AI HR boleh menampung lebih daripada satu syarikat di bawah satu bumbung, dan anda mungkin juga memegang lebih daripada satu jawatan. Aplikasi ini menguruskannya untuk anda — anda tidak perlu memilih syarikat untuk melihat maklumat anda sendiri.
 
@@ -19,7 +19,7 @@ Dalam bar sisi, halaman harian yang boleh digunakan oleh setiap pekerja dikumpul
 | Halaman | Ke mana ia menuju | Untuk apa |
 | --- | --- | --- |
 | **Dashboard** | `/` | Gambaran keseluruhan seluruh syarikat: bilangan pekerja, cuti umum akan datang, siapa yang baru menyertai |
-| **Layanan Diri Pekerja** | `/me` | Laman utama peribadi anda — kehadiran, cuti, gaji, butiran |
+| **Profil Saya** | `/me` | Laman utama peribadi anda — kehadiran, cuti, gaji, butiran |
 | **People** | `/personnel` | Direktori kakitangan — cari dan layari rakan sekerja |
 | **Org chart** | `/org` | Struktur pelaporan sebagai pokok visual |
 | **Leave** | `/leave` | Kalendar cuti dikongsi dan permohonan anda |
@@ -29,9 +29,9 @@ Dalam bar sisi, halaman harian yang boleh digunakan oleh setiap pekerja dikumpul
 
 **Nota:** Jangan risau jika skrin rakan sekerja mempunyai bahagian tambahan seperti **Manage** atau **Admin** — bahagian itu hanya muncul untuk pengurus dan pentadbir HR. Sebagai pekerja, anda akan melihat halaman harian di atas, dan itu memang direka sebegitu.
 
-## Layanan Diri Pekerja — laman utama anda
+## Profil Saya — laman utama anda
 
-Dalam bar sisi kiri, klik **Layanan Diri Pekerja** (ikon orang). Di bahagian atas, anda akan melihat nama, kod pekerja, jawatan dan jabatan anda. Di bawahnya, halaman disusun sebagai satu set kad.
+Dalam bar sisi kiri, klik **Profil Saya** (ikon orang). Di bahagian atas, anda akan melihat nama, kod pekerja, jawatan dan jabatan anda. Di bawahnya, halaman disusun sebagai satu set kad.
 
 ### Rakam masuk dan keluar (kehadiran hari ini)
 
@@ -106,7 +106,7 @@ Tepat di sebelah pemilih bahasa dalam **bar atas** ialah **togol tema**. Klik **
 
 ## Penyelesaian masalah
 
-- **"Layanan Diri Pekerja mengatakan saya tidak dipautkan."** Log masuk anda belum disambungkan kepada rekod pekerja. Minta pentadbir HR anda untuk memautkan akaun anda.
+- **"Profil Saya mengatakan saya tidak dipautkan."** Log masuk anda belum disambungkan kepada rekod pekerja. Minta pentadbir HR anda untuk memautkan akaun anda.
 - **Saya klik Check in tetapi tiada apa-apa lagi yang muncul.** Muat semula halaman — kad **Today** kini sepatutnya memaparkan masa anda merakam masuk dan satu butang **Check out**.
 - **Cuti atau pembetulan saya masih mengatakan `pending`.** Itu normal: ia sedang menunggu pengurus atau HR anda untuk meluluskannya. Anda akan melihatnya bertukar menjadi `approved` atau `rejected` sebaik sahaja mereka membuat keputusan.
 - **Saya tidak boleh menyunting butiran bank atau cukai saya.** Butiran tersebut memang direka untuk memerlukan kelulusan. Gunakan **Request a change** di bawah **Bank & tax** dan serahkannya untuk disemak oleh HR.

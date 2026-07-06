@@ -25,10 +25,10 @@ export default async function PayrollSetupPage() {
   const t = await getTranslations('payroll.setup');
 
   const cards = [
+    { key: 'cycles', href: '/admin/payroll-cycle' },
     { key: 'policies', href: '/admin/payroll-config' },
     { key: 'items', href: '/admin/pay-components' },
     { key: 'payrollPolicies', href: '/admin/payroll-policy' },
-    { key: 'loans', href: '/admin/loans' },
     { key: 'period', href: '/admin/payroll-config' },
     { key: 'submission', href: '/admin/payroll-config' },
     { key: 'ea', href: '/admin/pay-components' },

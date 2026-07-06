@@ -25,6 +25,7 @@ export type WizardEmployee = {
   department: string | null;
   departmentId: string | null;
   position: string | null;
+  company: string;
   companyId: string;
 };
 
@@ -68,15 +69,18 @@ function batchIncludesEmployee(b: WizardBatch, emp: WizardEmployee): boolean {
 export function TxnGrid({
   employees,
   batches,
+  companies,
   processHref,
 }: {
   employees: WizardEmployee[];
   batches: WizardBatch[];
+  companies: { id: string; name: string }[];
   processHref: string;
 }) {
   const t = useTranslations('payroll.transactions.individual');
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
+  const [companyId, setCompanyId] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [period, setPeriod] = useState('');
   const [runType, setRunType] = useState('');
@@ -111,13 +115,29 @@ export function TxnGrid({
 
   const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
+    // Narrow to the chosen company BEFORE the name/number match and BEFORE the 25-row slice, so the cap
+    // counts only in-company rows — a large first company must never fill all 25 slots and hide a small
+    // selected company's people. This is view-only narrowing; the set is already access-fenced upstream.
+    const inCompany = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
     const base = q
-      ? employees.filter(
+      ? inCompany.filter(
           (e) => e.name.toLowerCase().includes(q) || (e.employeeCode ?? '').toLowerCase().includes(q),
         )
-      : employees;
+      : inCompany;
     return base.slice(0, 25);
-  }, [employees, query]);
+  }, [employees, query, companyId]);
+
+  // Pre-select the sole company so single-company admins see no change (their one company is chosen for
+  // them and the search behaves exactly as before).
+  useEffect(() => {
+    if (companies.length === 1) setCompanyId(companies[0].id);
+  }, [companies]);
+
+  // Reset the selected employee when the company changes so a stale pick from another company can't carry
+  // forward. The employeeId effect below then unwinds period/run/batch, so this one line clears the chain.
+  useEffect(() => {
+    setEmployeeId('');
+  }, [companyId]);
 
   // Reset every downstream selection when the chosen employee changes — a stale period/run/batch from a
   // different employee (possibly a different company) must never leak forward.
@@ -255,6 +275,18 @@ export function TxnGrid({
         {/* ── Step 1 — Employee ── */}
         {step === 0 && (
           <div className="space-y-4">
+            {/* Company pre-filter — narrows the employee list to one company before search. A leading
+                placeholder only when there's a real choice; a single company is auto-selected above. */}
+            <Field label={t('company')}>
+              <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={inputCls}>
+                {companies.length > 1 && <option value="">—</option>}
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label={t('employeeSearch')}>
               <input
                 type="search"
@@ -282,7 +314,7 @@ export function TxnGrid({
                     <span className="min-w-0">
                       <span className="block truncate font-medium text-foreground">{e.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {e.employeeCode ?? '—'} · {e.department ?? '—'} · {e.position ?? '—'}
+                        {e.company} · {e.employeeCode ?? '—'} · {e.department ?? '—'} · {e.position ?? '—'}
                       </span>
                     </span>
                     {active && <span className="shrink-0 text-primary">✓</span>}

@@ -79,7 +79,7 @@
     "roster": "Roster",
     "dataPrivacy": "Data Privacy",
     "dashboard": "Dashboard",
-    "myWorkspace": "Employee Self-Service",
+    "myWorkspace": "My Profile",
     "people": "Personnel",
     "orgChart": "Org chart",
     "leave": "Leave",
@@ -802,7 +802,7 @@
     "collapseReports": "Collapse reports"
   },
   "me": {
-    "title": "Employee Self-Service",
+    "title": "My Profile",
     "notLinked": "This account isn’t linked to an employee profile. Use the identity switcher in the top bar to act as an employee (e.g. Aisyah or Daniel).",
     "todayHeading": "Today",
     "checkIn": "Check in",
@@ -951,7 +951,7 @@
       "closed": "Closed"
     },
     "payslip": {
-      "backToWorkspace": "Employee Self-Service",
+      "backToWorkspace": "My Profile",
       "title": "Payslip · {payPeriod}",
       "earnings": "Earnings",
       "basicSalary": "Basic salary",
@@ -1233,7 +1233,7 @@
       "calibrationCode": "Code"
     },
     "review": {
-      "backMyWorkspace": "Employee Self-Service",
+      "backMyWorkspace": "My Profile",
       "backPerformance": "Performance",
       "reviewerLabel": "Reviewer: {reviewer}",
       "selfReviewTitle": "Self-review",
@@ -1678,7 +1678,10 @@
         "tp1Cta": "Edit TP1 relief",
         "zakatTitle": "Zakat",
         "zakatDesc": "Zakat paid via salary per employee on a draft batch.",
-        "zakatCta": "Edit zakat"
+        "zakatCta": "Edit zakat",
+        "loansTitle": "Loans",
+        "loansDesc": "Employee loan instalments — auto-deducted each payroll cycle.",
+        "loansCta": "Open loans"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -1776,6 +1779,7 @@
         "stepPeriod": "Period & cycle",
         "stepEntry": "Entries",
         "stepSave": "Review & save",
+        "company": "Company",
         "employeeSearch": "Search employee",
         "searchPlaceholder": "Search by name or employee ID…",
         "noEmployees": "No matching employees.",
@@ -1848,6 +1852,11 @@
         "title": "Loans",
         "desc": "Employee loan instalments — auto-deducted each payroll cycle.",
         "cta": "Open loans"
+      },
+      "cycles": {
+        "title": "Payroll Cycles",
+        "desc": "Define and maintain the cycle names the Payroll Process dropdown offers.",
+        "cta": "Open payroll cycles"
       },
       "period": {
         "title": "Payroll Period Template",
@@ -2311,6 +2320,7 @@
       "importTitle": "Import leave data",
       "importHelp": "Bulk-load opening balances, carry-forward, historical leave taken and ad-hoc credits from a pasted CSV. Balances update immediately.",
       "importLink": "Open importer",
+      "importAction": "Import",
       "import": {
         "title": "Import leave data",
         "description": "Paste leave transactions (opening balances, carry-forward, historical leave, ad-hoc credits), preview each row, then import only the valid ones.",
@@ -2825,7 +2835,7 @@
     "welcomeBody": "A quick 30-second tour of where everything lives. You can replay it any time from the help button in the top bar.",
     "navTitle": "Your navigation",
     "navBody": "Every module lives in this sidebar. What you see here depends on your role — employees, managers and HR admins each get their own tools.",
-    "workspaceTitle": "Employee Self-Service",
+    "workspaceTitle": "My Profile",
     "workspaceBody": "Your personal hub: profile, payslips, leave balance and attendance — everything about you, in one place.",
     "kbTitle": "Knowledge Base",
     "kbBody": "Step-by-step guides for every module, plus your company’s policies and documents. Start here whenever you’re unsure how something works.",
@@ -3420,8 +3430,9 @@
     "rulesTitle": "Approval rules",
     "addRule": "Add rule",
     "editRule": "Edit",
-    "archiveRule": "Archive",
-    "archiveConfirm": "Archive this rule? Requests already in progress keep their current approval chain.",
+    "archiveRule": "Delete",
+    "archiveConfirm": "Delete this rule? Requests already in progress keep their current approval chain.",
+    "company": "Company",
     "ruleName": "Rule name",
     "ruleNamePlaceholder": "e.g. Finance managers",
     "leaveType": "Leave type",
@@ -3519,7 +3530,7 @@
   "taxRelief": {
     "title": "Personal Tax Relief (TP1)",
     "intro": "Declare your total optional personal tax reliefs (LHDN form TP1) for an assessment year. The latest submitted amount reduces your monthly tax deduction (PCB/MTD).",
-    "backToWorkspace": "Back to Employee Self-Service",
+    "backToWorkspace": "Back to My Profile",
     "yearLabel": "Assessment year",
     "viewYear": "View year",
     "declarationHeading": "Declaration for {year}",

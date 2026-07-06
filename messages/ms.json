@@ -79,7 +79,7 @@
     "roster": "Roster",
     "dataPrivacy": "Privasi Data",
     "dashboard": "Papan pemuka",
-    "myWorkspace": "Layanan Diri Pekerja",
+    "myWorkspace": "Profil Saya",
     "people": "Kakitangan",
     "orgChart": "Carta organisasi",
     "leave": "Cuti",
@@ -802,7 +802,7 @@
     "collapseReports": "Kuncupkan lapor"
   },
   "me": {
-    "title": "Layanan Diri Pekerja",
+    "title": "Profil Saya",
     "notLinked": "Akaun ini tidak dipautkan kepada profil pekerja. Gunakan penukar identiti di bar atas untuk bertindak sebagai pekerja (cth. Aisyah atau Daniel).",
     "todayHeading": "Hari ini",
     "checkIn": "Daftar masuk",
@@ -918,7 +918,7 @@
       "closed": "Ditutup"
     },
     "payslip": {
-      "backToWorkspace": "Layanan Diri Pekerja",
+      "backToWorkspace": "Profil Saya",
       "title": "Slip gaji · {payPeriod}",
       "earnings": "Pendapatan",
       "basicSalary": "Gaji asas",
@@ -1233,7 +1233,7 @@
       "calibrationCode": "Kod"
     },
     "review": {
-      "backMyWorkspace": "Layanan Diri Pekerja",
+      "backMyWorkspace": "Profil Saya",
       "backPerformance": "Prestasi",
       "reviewerLabel": "Penilai: {reviewer}",
       "selfReviewTitle": "Penilaian kendiri",
@@ -1678,7 +1678,10 @@
         "tp1Cta": "Edit pelepasan TP1",
         "zakatTitle": "Zakat",
         "zakatDesc": "Zakat dibayar melalui gaji bagi setiap pekerja pada kelompok draf.",
-        "zakatCta": "Edit zakat"
+        "zakatCta": "Edit zakat",
+        "loansTitle": "Pinjaman",
+        "loansDesc": "Ansuran pinjaman pekerja — ditolak automatik setiap kitaran gaji.",
+        "loansCta": "Buka pinjaman"
       },
       "fixed": {
         "title": "Transaksi Tetap",
@@ -1776,6 +1779,7 @@
         "stepPeriod": "Tempoh & kitaran",
         "stepEntry": "Entri",
         "stepSave": "Semak & simpan",
+        "company": "Syarikat",
         "employeeSearch": "Cari pekerja",
         "searchPlaceholder": "Cari mengikut nama atau ID pekerja…",
         "noEmployees": "Tiada pekerja yang sepadan.",
@@ -1848,6 +1852,11 @@
         "title": "Pinjaman",
         "desc": "Ansuran pinjaman pekerja — ditolak automatik setiap kitaran gaji.",
         "cta": "Buka pinjaman"
+      },
+      "cycles": {
+        "title": "Kitaran Gaji",
+        "desc": "Tentukan dan selenggara nama kitaran yang ditawarkan oleh menu Proses Gaji.",
+        "cta": "Buka kitaran gaji"
       },
       "period": {
         "title": "Templat Tempoh Gaji",
@@ -2311,6 +2320,7 @@
       "importTitle": "Import data cuti",
       "importHelp": "Muat naik pukal baki pembukaan, bawa hadapan, cuti sejarah dan kredit ad-hoc daripada CSV yang ditampal. Baki dikemas kini serta-merta.",
       "importLink": "Buka pengimport",
+      "importAction": "Import",
       "import": {
         "title": "Import data cuti",
         "description": "Tampal transaksi cuti (baki pembukaan, bawa hadapan, cuti sejarah, kredit ad-hoc), pratonton setiap baris, kemudian import hanya baris yang sah.",
@@ -2825,7 +2835,7 @@
     "welcomeBody": "Lawatan pantas 30 saat untuk mengenali lokasi setiap perkara. Anda boleh mainkan semula bila-bila masa melalui butang bantuan di bar atas.",
     "navTitle": "Navigasi anda",
     "navBody": "Setiap modul terletak di bar sisi ini. Apa yang anda nampak di sini bergantung pada peranan anda — pekerja, pengurus dan pentadbir HR masing-masing mempunyai alat tersendiri.",
-    "workspaceTitle": "Layanan Diri Pekerja",
+    "workspaceTitle": "Profil Saya",
     "workspaceBody": "Hab peribadi anda: profil, slip gaji, baki cuti dan kehadiran — segala-galanya tentang anda, di satu tempat.",
     "kbTitle": "Pusat Pengetahuan",
     "kbBody": "Panduan langkah demi langkah untuk setiap modul, serta dasar dan dokumen syarikat anda. Mulakan di sini setiap kali anda tidak pasti cara sesuatu berfungsi.",
@@ -3420,8 +3430,9 @@
     "rulesTitle": "Peraturan kelulusan",
     "addRule": "Tambah peraturan",
     "editRule": "Sunting",
-    "archiveRule": "Arkib",
-    "archiveConfirm": "Arkibkan peraturan ini? Permohonan yang sedang diproses mengekalkan rantaian kelulusan sedia ada.",
+    "archiveRule": "Padam",
+    "archiveConfirm": "Padam peraturan ini? Permohonan yang sedang diproses mengekalkan rantaian kelulusan sedia ada.",
+    "company": "Syarikat",
     "ruleName": "Nama peraturan",
     "ruleNamePlaceholder": "cth. Pengurus kewangan",
     "leaveType": "Jenis cuti",
@@ -3519,7 +3530,7 @@
   "taxRelief": {
     "title": "Pelepasan Cukai Peribadi (TP1)",
     "intro": "Isytiharkan jumlah pelepasan cukai peribadi pilihan anda (borang TP1 LHDN) bagi sesuatu tahun taksiran. Jumlah terkini yang dihantar akan mengurangkan potongan cukai bulanan anda (PCB/MTD).",
-    "backToWorkspace": "Kembali ke Layanan Diri Pekerja",
+    "backToWorkspace": "Kembali ke Profil Saya",
     "yearLabel": "Tahun taksiran",
     "viewYear": "Lihat tahun",
     "declarationHeading": "Pengisytiharan bagi {year}",

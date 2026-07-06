@@ -1,6 +1,6 @@
-This guide is for employees using **Employee Self-Service** to keep their own details current and to take part in performance reviews. You'll learn how to update your contact information yourself in seconds, how to request changes to pay-affecting details (bank account and PCB/tax category) that need an approval first, and how to complete your self-review and acknowledge your manager's review once it's released.
+This guide is for employees using **My Profile** to keep their own details current and to take part in performance reviews. You'll learn how to update your contact information yourself in seconds, how to request changes to pay-affecting details (bank account and PCB/tax category) that need an approval first, and how to complete your self-review and acknowledge your manager's review once it's released.
 
-Everything here lives in one place: in the left sidebar, click **Employee Self-Service** (the `/me` page). Scroll down to the **My details** card and, lower down, the **My reviews** table.
+Everything here lives in one place: in the left sidebar, click **My Profile** (the `/me` page). Scroll down to the **My details** card and, lower down, the **My reviews** table.
 
 ## Updating your own profile
 
@@ -18,7 +18,7 @@ On the left of the **My details** card, under the note **Contact updates apply i
 
 To update them:
 
-1. In the left sidebar, click **Employee Self-Service**.
+1. In the left sidebar, click **My Profile**.
 2. Scroll to the **My details** card.
 3. Type your new values into any of the fields above. You can change one or several at once.
 4. Click **Save details**.
@@ -62,7 +62,7 @@ Your request then appears in the small list under the form with a status pill: `
 
 ## Your performance reviews
 
-When you're part of a review cycle, a **My reviews** table appears further down **Employee Self-Service**. Each row shows the **Cycle**, a plain-English **Status**, the **Overall** rating (once released), and a link on the right telling you what to do.
+When you're part of a review cycle, a **My reviews** table appears further down **My Profile**. Each row shows the **Cycle**, a plain-English **Status**, the **Overall** rating (once released), and a link on the right telling you what to do.
 
 The status text is written from your point of view:
 
@@ -74,7 +74,7 @@ The status text is written from your point of view:
 | Ready to acknowledge | The review is released — read and acknowledge it | **Acknowledge** |
 | Acknowledged | All done | **View** |
 
-Click the action link to open the review page (`/performance/review/...`). A **Back to Employee Self-Service** link sits at the top so you can return easily.
+Click the action link to open the review page (`/performance/review/...`). A **Back to My Profile** link sits at the top so you can return easily.
 
 ### Completing your self-review
 
@@ -104,7 +104,7 @@ Acknowledging records that you've read the review — it doesn't mean you have t
 
 ## Troubleshooting
 
-- **Employee Self-Service says my account isn't linked.** If you see a message that your account isn't linked to an employee profile, your login hasn't been connected to an employee record yet. The profile and review features only appear once HR links your account — contact HR.
+- **My Profile says my account isn't linked.** If you see a message that your account isn't linked to an employee profile, your login hasn't been connected to an employee record yet. The profile and review features only appear once HR links your account — contact HR.
 - **I don't see a My reviews table.** It only shows when you have at least one review in a cycle. No cycle, no table.
 - **My bank/tax change still shows the old values.** Check the request list under **Request a change**. If the pill still reads `pending`, it's waiting on an admin; if it reads `rejected`, submit a new request (and double-check you included both bank name and account number together).
 - **The Acknowledge button isn't there.** The review hasn't been released yet. Wait for the **My reviews** status to read **Ready to acknowledge**.

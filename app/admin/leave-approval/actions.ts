@@ -65,7 +65,7 @@ export async function archiveLeaveApprovalRuleAction(formData: FormData) {
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
-  redirect(`${PAGE}?toast=${encodeURIComponent('Rule archived')}`);
+  redirect(`${PAGE}?toast=${encodeURIComponent('Rule deleted')}`);
 }
 
 function parseLevels(formData: FormData): string[] {

@@ -63,6 +63,7 @@ export default async function LeaveApprovalPage({
     editRule: t('editRule'),
     archiveRule: t('archiveRule'),
     archiveConfirm: t('archiveConfirm'),
+    company: t('company'),
     ruleName: t('ruleName'),
     ruleNamePlaceholder: t('ruleNamePlaceholder'),
     leaveType: t('leaveType'),
@@ -114,6 +115,7 @@ export default async function LeaveApprovalPage({
             />
             <RuleBuilder
               companyId={company.id}
+              companies={companies.map((c) => ({ id: c.id, label: c.name }))}
               rules={rules.filter((r) => !isCompanyDefault(r))}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
               businessUnits={businessUnitsAll

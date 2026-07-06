@@ -1,8 +1,8 @@
-Chào mừng bạn đến với **AI HR** — trung tâm nhân sự của công ty bạn cho mọi việc, từ chấm công đến xin nghỉ phép, kiểm tra phiếu lương và giữ cho thông tin của bạn luôn cập nhật. Hướng dẫn này dành cho **nhân viên** mở ứng dụng lần đầu tiên. Đến cuối hướng dẫn, bạn sẽ biết cách đăng nhập, cách định hướng trong trang **Tự phục vụ nhân viên**, cách sử dụng các trang hằng ngày trong thanh bên, và cách đặt ứng dụng theo ngôn ngữ và giao diện bạn ưa thích. Không cần vai trò đặc biệt nào — mọi thứ ở đây đều có sẵn cho mọi nhân viên.
+Chào mừng bạn đến với **AI HR** — trung tâm nhân sự của công ty bạn cho mọi việc, từ chấm công đến xin nghỉ phép, kiểm tra phiếu lương và giữ cho thông tin của bạn luôn cập nhật. Hướng dẫn này dành cho **nhân viên** mở ứng dụng lần đầu tiên. Đến cuối hướng dẫn, bạn sẽ biết cách đăng nhập, cách định hướng trong trang **Hồ sơ của tôi**, cách sử dụng các trang hằng ngày trong thanh bên, và cách đặt ứng dụng theo ngôn ngữ và giao diện bạn ưa thích. Không cần vai trò đặc biệt nào — mọi thứ ở đây đều có sẵn cho mọi nhân viên.
 
 ## Đăng nhập
 
-Mở AI HR trong trình duyệt của bạn bằng liên kết mà nhóm HR cung cấp và đăng nhập. Sau khi vào, bạn sẽ đến **Dashboard** — bảng tổng quan của công ty. Tuy nhiên, nơi đầu tiên để bạn biến thành của riêng mình là **Tự phục vụ nhân viên**, nơi tất cả đều xoay quanh *bạn*.
+Mở AI HR trong trình duyệt của bạn bằng liên kết mà nhóm HR cung cấp và đăng nhập. Sau khi vào, bạn sẽ đến **Dashboard** — bảng tổng quan của công ty. Tuy nhiên, nơi đầu tiên để bạn biến thành của riêng mình là **Hồ sơ của tôi**, nơi tất cả đều xoay quanh *bạn*.
 
 **Lưu ý:** AI HR có thể chứa nhiều hơn một công ty dưới cùng một mái nhà, và bạn thậm chí có thể giữ nhiều hơn một vị trí. Ứng dụng xử lý việc đó cho bạn — bạn không cần chọn một công ty để xem thông tin của chính mình.
 
@@ -19,7 +19,7 @@ Trong thanh bên, các trang hằng ngày mà mọi nhân viên có thể sử d
 | Trang | Đường dẫn | Dùng để làm gì |
 | --- | --- | --- |
 | **Dashboard** | `/` | Tổng quan toàn công ty: số lượng nhân sự, các ngày lễ sắp tới, ai mới gia nhập |
-| **Tự phục vụ nhân viên** | `/me` | Trang chủ cá nhân của bạn — chấm công, nghỉ phép, lương, thông tin |
+| **Hồ sơ của tôi** | `/me` | Trang chủ cá nhân của bạn — chấm công, nghỉ phép, lương, thông tin |
 | **People** | `/personnel` | Danh bạ nhân viên — tìm kiếm và duyệt qua đồng nghiệp |
 | **Org chart** | `/org` | Cơ cấu báo cáo dưới dạng cây trực quan |
 | **Leave** | `/leave` | Lịch nghỉ phép chung và các yêu cầu của bạn |
@@ -29,9 +29,9 @@ Trong thanh bên, các trang hằng ngày mà mọi nhân viên có thể sử d
 
 **Lưu ý:** Đừng lo nếu màn hình của đồng nghiệp có thêm các mục như **Manage** hay **Admin** — những mục đó chỉ xuất hiện với người quản lý và quản trị viên HR. Là một nhân viên, bạn sẽ thấy các trang hằng ngày ở trên, và điều đó là cố ý thiết kế như vậy.
 
-## Tự phục vụ nhân viên — trang chủ của bạn
+## Hồ sơ của tôi — trang chủ của bạn
 
-Trong thanh bên trái, nhấp **Tự phục vụ nhân viên** (biểu tượng người). Ở phía trên bạn sẽ thấy tên, mã nhân viên, vị trí và phòng ban của mình. Bên dưới đó, trang được bố trí thành một bộ thẻ.
+Trong thanh bên trái, nhấp **Hồ sơ của tôi** (biểu tượng người). Ở phía trên bạn sẽ thấy tên, mã nhân viên, vị trí và phòng ban của mình. Bên dưới đó, trang được bố trí thành một bộ thẻ.
 
 ### Chấm công vào và ra (chấm công hôm nay)
 
@@ -106,7 +106,7 @@ Ngay bên cạnh bộ chọn ngôn ngữ trong **thanh trên cùng** là **nút 
 
 ## Khắc phục sự cố
 
-- **"Tự phục vụ nhân viên báo rằng tôi chưa được liên kết."** Đăng nhập của bạn chưa được kết nối với một bản ghi nhân viên. Hãy nhờ quản trị viên HR liên kết tài khoản của bạn.
+- **"Hồ sơ của tôi báo rằng tôi chưa được liên kết."** Đăng nhập của bạn chưa được kết nối với một bản ghi nhân viên. Hãy nhờ quản trị viên HR liên kết tài khoản của bạn.
 - **Tôi đã nhấp Check in nhưng không có gì khác xuất hiện.** Hãy làm mới trang — thẻ **Today** bây giờ sẽ hiển thị thời điểm chấm công vào và một nút **Check out**.
 - **Nghỉ phép hoặc yêu cầu chỉnh sửa của tôi vẫn báo `pending`.** Đó là bình thường: nó đang chờ người quản lý hoặc HR của bạn phê duyệt. Bạn sẽ thấy nó chuyển thành `approved` hoặc `rejected` khi họ quyết định.
 - **Tôi không thể chỉnh sửa thông tin ngân hàng hoặc thuế của mình.** Những thông tin đó cần được phê duyệt theo thiết kế. Hãy dùng **Request a change** dưới mục **Bank & tax** và gửi để HR xem xét.

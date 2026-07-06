@@ -1,28 +1,21 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { batchInputRows, listBatches } from '@/core/payroll';
-import { listEmployees } from '@/core/read';
-import { listSupportedBatchComponents } from '@/core/pay-components';
+import { listBatches } from '@/core/payroll';
+import { listCompanies, listEmployees } from '@/core/read';
 import { listIndividualTxns, TXN_KINDS, TXN_UNITS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
-import { ComponentImport } from '../../[batchId]/component-import';
 import { TxnGrid, type WizardBatch, type WizardEmployee } from './txn-grid';
-import {
-  addBatchComponentAction,
-  setDeductionInputAction,
-  updateIndividualTxnAction,
-  deleteIndividualTxnAction,
-} from './actions';
+import { updateIndividualTxnAction, deleteIndividualTxnAction } from './actions';
 
 /**
  * 1.2.2 Individual Transaction — a guided four-step flow for one-off payroll items.
  * Primary path: the TxnGrid wizard (Step 1 pick employee → Step 2 pick period+cycle+run resolving a draft
  * batch in the employee's company → Step 3 an editable spreadsheet-like grid → Step 4 one atomic Save).
- * Below it, a batch-scoped ledger of the resulting transactions (with inline edit/delete) and — visually
- * separated as "Other tools" — the legacy one-off-component and TP1/zakat cards (kept per the plan's
- * fallback; the reporter may later have them relocated).
+ * Below it, a batch-scoped ledger of the resulting transactions with inline edit/delete. The page is kept
+ * strictly focused on pay-item management; CSV bulk import lives on the batch detail page, and TP1 relief /
+ * zakat each have their own dedicated screen linked from the Transactions hub.
  */
 export default async function IndividualTransactionPage({
   searchParams,
@@ -34,8 +27,19 @@ export default async function IndividualTransactionPage({
   const { batchId, error } = await searchParams;
   const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
 
-  const [allBatches, employees] = await Promise.all([listBatches(s, scopeIds), listEmployees(s, scopeIds)]);
+  const [allBatches, employees, companies] = await Promise.all([
+    listBatches(s, scopeIds),
+    listEmployees(s, scopeIds),
+    listCompanies(s),
+  ]);
   const draftBatches = allBatches.filter((b) => b.status === 'draft');
+
+  // The wizard's Company pre-filter is view-only narrowing on the already access-fenced employee list, so
+  // scope the dropdown to the same authorised set (scopeIds) that listEmployees was fenced to — never let
+  // the dropdown widen the set. RLS already excludes archived companies here.
+  const scopedCompanies = companies
+    .filter((c) => scopeIds.includes(c.id))
+    .map((c) => ({ id: c.id, name: c.name }));
 
   const wizardEmployees: WizardEmployee[] = employees.map((e) => ({
     employmentId: e.employmentId,
@@ -44,6 +48,7 @@ export default async function IndividualTransactionPage({
     department: e.department,
     departmentId: e.departmentId,
     position: e.position,
+    company: e.company,
     companyId: e.companyId,
   }));
   const wizardBatches: WizardBatch[] = draftBatches.map((b) => ({
@@ -58,13 +63,7 @@ export default async function IndividualTransactionPage({
   // The batch-scoped ledger below the wizard: an explicit ?batchId= selection wins; else the first draft.
   const selected = batchId && draftBatches.some((b) => b.id === batchId) ? batchId : draftBatches[0]?.id ?? null;
   const selectedBatch = selected ? draftBatches.find((b) => b.id === selected) ?? null : null;
-  const [rows, components, txns] = selected
-    ? await Promise.all([
-        batchInputRows(s, selected),
-        listSupportedBatchComponents(s),
-        listIndividualTxns(s, { batchId: selected }),
-      ])
-    : [[], [], []];
+  const txns = selected ? await listIndividualTxns(s, { batchId: selected }) : [];
   const multiCycleOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
   const periodRunCount = new Map<string, number>();
   for (const b of draftBatches) periodRunCount.set(b.payPeriod, (periodRunCount.get(b.payPeriod) ?? 0) + 1);
@@ -100,7 +99,12 @@ export default async function IndividualTransactionPage({
       <ErrorBanner message={errorMessage} />
 
       {/* ── Primary: the four-step wizard ── */}
-      <TxnGrid employees={wizardEmployees} batches={wizardBatches} processHref="/payroll/process" />
+      <TxnGrid
+        employees={wizardEmployees}
+        batches={wizardBatches}
+        companies={scopedCompanies}
+        processHref="/payroll/process"
+      />
       {draftBatches.length === 0 && (
         <p className="text-sm text-muted-foreground">{t('individual.noBatches')}</p>
       )}
@@ -252,104 +256,6 @@ export default async function IndividualTransactionPage({
             </table>
           </div>
         </Card>
-      )}
-
-      {/* ── Other tools (legacy) — kept, visually separated from the wizard ── */}
-      {selected && (
-        <div className="space-y-6 border-t border-border pt-6">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('individual.otherTools')}
-          </p>
-
-          <Card className="overflow-hidden">
-            <SectionHeader title={t('individual.addTitle')} />
-            <p className="px-4 pt-3 text-xs text-muted-foreground">{t('individual.addIntro')}</p>
-            <form action={addBatchComponentAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-5">
-              <input type="hidden" name="batchId" value={selected} />
-              <Field label={t('individual.employee')}>
-                <select name="employmentId" required className={inputCls}>
-                  {rows.map((r) => (
-                    <option key={r.employmentId} value={r.employmentId}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('individual.component')}>
-                <select name="componentId" required className={inputCls}>
-                  {components.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.code})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('individual.amount')}>
-                <input name="amount" type="number" min="0" step="0.01" required className={`${inputCls} text-right`} />
-              </Field>
-              <Field label={t('individual.notes')}>
-                <input name="notes" type="text" placeholder={t('individual.notesPlaceholder')} className={inputCls} />
-              </Field>
-              <Button type="submit">{t('individual.add')}</Button>
-            </form>
-          </Card>
-
-          {typedComponentsOn && (
-            <Card>
-              <SectionHeader title={t('individual.csvTitle')} />
-              <div className="px-4 pb-4">
-                <p className="mb-3 text-xs text-muted-foreground">{t('individual.csvIntro')}</p>
-                <ComponentImport batchId={selected} />
-              </div>
-            </Card>
-          )}
-
-          <Card className="overflow-hidden">
-            <SectionHeader title={t('individual.deductionTitle')} count={rows.length} />
-            <p className="px-4 pt-3 text-xs text-muted-foreground">{t('individual.deductionIntro')}</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">{t('individual.employee')}</th>
-                    <th className="px-4 py-2 text-right font-medium">{t('individual.deductionTitle')}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {rows.map((r) => (
-                    <tr key={r.employmentId}>
-                      <td className="px-4 py-2.5 font-medium">{r.name}</td>
-                      <td className="px-4 py-2.5">
-                        <form action={setDeductionInputAction} className="flex items-center justify-end gap-2">
-                          <input type="hidden" name="batchId" value={selected} />
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('individual.tp1Title')}>
-                            {t('individual.tp1')}
-                            <input name="tp1Deduction" type="number" min="0" step="0.01" defaultValue={r.tp1Deduction} className={`${inputCls} w-24 text-right`} />
-                          </label>
-                          <label className="flex items-center gap-1 text-[10px] uppercase text-muted-foreground" title={t('individual.zakatTitle')}>
-                            {t('individual.zakat')}
-                            <input name="zakat" type="number" min="0" step="0.01" defaultValue={r.zakat} className={`${inputCls} w-24 text-right`} />
-                          </label>
-                          <Button type="submit" variant="secondary">
-                            {t('individual.save')}
-                          </Button>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="px-4 py-8 text-center text-muted-foreground">
-                        {t('individual.noBatches')}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
       )}
     </div>
   );
