@@ -430,6 +430,163 @@ export function setEmploymentPayComponent(
   return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
+/**
+ * Thrown when an edit/stop/archive targets a row that does not exist (or is not visible to the caller's
+ * tenant/scope — RLS confines the read, so a foreign id simply comes back empty). Surfaces a friendly
+ * "not found" rather than a silent no-op so a URL-tampered / stale id can be mapped to a localised message.
+ */
+export class FixedTransactionNotFoundError extends Error {
+  constructor() {
+    super('fixed-transaction-not-found');
+    this.name = 'FixedTransactionNotFoundError';
+  }
+}
+
+/**
+ * Enhancement of Individual/Fixed Transaction (feedback 1e2704f2) — EDIT an existing recurring fixed pay
+ * value by VERSIONING (the aggregate is an effective-dated, supersede-on-write log; this is the system's
+ * design rule per ticket point #8 "overwrite OR version" — we version to preserve history and avoid
+ * double-pay). The edit re-invokes the existing `set` path from a new `effectiveFrom`, which auto-closes the
+ * prior OPEN row at that date (no double-count across the supersession close) and inherits every guard
+ * (FixedTransactionDateError / UnsupportedFixedCurrencyError / FixedTransactionAmountError). The `id`
+ * identifies WHICH row the admin is editing; we resolve its `componentId`/`employmentId` from the row itself
+ * so a tampered componentId can't retarget the write, then apply the new amount/dates/cycle/remarks as a
+ * fresh version. Event: `employment-pay-component.set` is appended by the underlying `set` (the versioned
+ * write IS a set); no separate `.updated` event is needed and none is fabricated.
+ */
+export function updateEmploymentPayComponent(
+  ctx: SessionContext,
+  p: {
+    id: string;
+    employmentId: string;
+    amount: number;
+    effectiveFrom: string;
+    effectiveTo?: string | null;
+    runType?: FixedTransactionCycle | null;
+    remarks?: string | null;
+    prorateOverride?: boolean | null;
+  },
+) {
+  return withTenant(ctx, async (tx) => {
+    // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
+    // can only touch a row the admin is actually looking at; a foreign/stale id yields no row.
+    const [row] = await tx
+      .select({ componentId: employmentPayComponent.componentId, currency: employmentPayComponent.currency })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+    // Version via the existing set path (auto-closes the prior open row at effectiveFrom, appends its event,
+    // re-runs the date/currency/amount guards). We pass the row's own currency through so an edit on a legacy
+    // MYR row stays MYR (the UI is MYR-only; this just avoids re-defaulting).
+    return setEmploymentPayComponent(
+      ctx,
+      {
+        employmentId: p.employmentId,
+        componentId: row.componentId,
+        amount: p.amount,
+        effectiveFrom: p.effectiveFrom,
+        effectiveTo: p.effectiveTo ?? null,
+        currency: row.currency,
+        prorateOverride: p.prorateOverride ?? null,
+        remarks: p.remarks ?? null,
+        runType: p.runType ?? null,
+      },
+      tx,
+    );
+  });
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — STOP a recurring fixed item from a date: set its inclusive `validTo` to
+ * the last month it should pay. The row survives, keeps paying THROUGH `validTo`, and drops out of the kernel
+ * afterward (the kernel selects on `validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)
+ * AND supersededAt IS NULL` — core/payroll.ts). It still appears in the list marked "Ended"
+ * (listEmploymentPayComponents filters only supersededAt). Guards effectiveTo >= the row's validFrom.
+ */
+export function endEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string; effectiveTo: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ validFrom: employmentPayComponent.validFrom })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+    // Inclusive end-date must not precede the start (same axis, ISO strings compare chronologically).
+    if (p.effectiveTo < row.validFrom) throw new FixedTransactionDateError();
+    await tx
+      .update(employmentPayComponent)
+      .set({ validTo: p.effectiveTo })
+      .where(eq(employmentPayComponent.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-pay-component',
+      aggregateId: p.id,
+      eventType: 'employment-pay-component.ended',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      // effectiveTo is a non-PII date reference (mirrors the `set` payload); no amount, no free-text remarks.
+      payload: { employmentId: p.employmentId, effectiveTo: p.effectiveTo },
+    });
+    return { id: p.id };
+  });
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — REMOVE/ARCHIVE (void) a recurring fixed item: set `supersededAt = now()`.
+ * The kernel then excludes it ENTIRELY (its select requires supersededAt IS NULL) and
+ * listEmploymentPayComponents drops it from the screen — the true "delete/archive ⇒ no longer used in
+ * payroll, no longer shown" semantics (ticket point #11). No hard delete: the row is preserved for audit /
+ * replay, consistent with the effective-dated log design.
+ */
+export function archiveEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: employmentPayComponent.id })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+    await tx
+      .update(employmentPayComponent)
+      .set({ supersededAt: new Date() })
+      .where(eq(employmentPayComponent.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-pay-component',
+      aggregateId: p.id,
+      eventType: 'employment-pay-component.archived',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { employmentId: p.employmentId },
+    });
+    return { id: p.id };
+  });
+}
+
 // ───────────────────── Per-batch one-off ─────────────────────
 
 /**

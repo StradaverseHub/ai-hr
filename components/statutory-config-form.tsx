@@ -22,7 +22,6 @@ type FormState = {
   epfEmployerRateHigh: string;
   epfEmployerThreshold: string;
   contribCeiling: string;
-  otWageCeiling: string;
   reliefIndividual: string;
   reliefSpouse: string;
   reliefPerChild: string;
@@ -37,7 +36,6 @@ function initState(r: StatutoryRuleset): FormState {
     epfEmployerRateHigh: toPct(r.epf.employerRateHigh),
     epfEmployerThreshold: String(r.epf.employerThreshold),
     contribCeiling: String(r.contribCeiling),
-    otWageCeiling: String(r.ot.wageCeiling),
     reliefIndividual: String(r.pcb.reliefs.individual),
     reliefSpouse: String(r.pcb.reliefs.spouse),
     reliefPerChild: String(r.pcb.reliefs.perChild),
@@ -63,7 +61,11 @@ function assemble(s: FormState, base: StatutoryRuleset): unknown {
       employerThreshold: num(s.epfEmployerThreshold),
     },
     contribCeiling: num(s.contribCeiling),
-    ot: { wageCeiling: num(s.otWageCeiling) },
+    // OT is no longer edited from this advanced editor (feedback e776d17d) — it is managed on the
+    // Attendance Policy screen. Carry the whole existing ot slice through unchanged (wageCeiling +
+    // both excess multipliers) so a raw-editor save never drops overtime data. `...base` above already
+    // spreads base.ot, so this line is belt-and-braces to make the intent explicit and future-proof.
+    ot: base.ot,
     pcb: {
       ...base.pcb,
       reliefs: {
@@ -158,14 +160,14 @@ export function StatutoryConfigForm({
         </div>
       </Card>
 
-      {/* Ceilings + OT */}
+      {/* Ceilings — OT wage ceiling removed here (feedback e776d17d); overtime rates are edited on the
+          Attendance Policy screen. The stored ot slice still round-trips unchanged via assemble(). */}
       <Card className="p-4">
-        <h2 className="mb-3 text-sm font-semibold">{t('secOt')}</h2>
+        <h2 className="mb-3 text-sm font-semibold">{t('secCeilings')}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
-          <NumField label={t('otWageCeiling')} value={s.otWageCeiling} onChange={(v) => set('otWageCeiling', v)} suffix="RM" />
           <NumField label={t('contribCeiling')} value={s.contribCeiling} onChange={(v) => set('contribCeiling', v)} suffix="RM" />
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>
+        <p className="mt-3 text-xs text-muted-foreground">{t('ceilingsNote')}</p>
       </Card>
 
       {/* PCB reliefs + bands */}

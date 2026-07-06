@@ -114,7 +114,10 @@
     "payrollCycleConfig": "Kitaran Gaji",
     "personnelAdmin": "Kakitangan (admin)",
     "securityPermission": "Keselamatan & kebenaran",
-    "attendanceAllowance": "Elaun kehadiran"
+    "attendanceAllowance": "Elaun kehadiran",
+    "attendanceRecords": "Rekod kehadiran",
+    "clockingLocation": "Lokasi merekod masa",
+    "attendanceImport": "Import kehadiran"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -1047,7 +1050,9 @@
     "travelFromLabel": "Dari",
     "travelToLabel": "Hingga",
     "travelRemarksPlaceholder": "Di mana dan sebab anda berada di luar pejabat",
-    "requestTravelButton": "Hantar permohonan perjalanan"
+    "requestTravelButton": "Hantar permohonan perjalanan",
+    "resignationDocumentLabel": "Dokumen sokongan",
+    "resignationDocumentHint": "Pilihan. Lampirkan surat peletakan jawatan atau fail sokongan anda (PDF, JPG atau PNG, sehingga 10 MB setiap satu). Anda boleh melampirkan lebih daripada satu."
   },
   "approvals": {
     "title": "Kelulusan",
@@ -1557,7 +1562,9 @@
       "cancelEdit": "Batal",
       "lastEdited": "Pindaan terakhir: {version} · berkuat kuasa {effectiveFrom}",
       "otRestDayExcessMultiplier": "Kadar lebihan OT hari rehat (× sejam)",
-      "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)"
+      "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)",
+      "secCeilings": "Siling caruman",
+      "ceilingsNote": "Kadar kerja lebih masa dikonfigurasikan di bawah modul Kehadiran (Dasar kehadiran → Kadar kerja lebih masa), bukan di sini."
     },
     "batch": {
       "back": "Gaji",
@@ -1712,7 +1719,19 @@
         "open": "Buka editor",
         "colEmployee": "Pekerja",
         "colCompany": "Syarikat",
-        "manage": "Urus"
+        "manage": "Urus",
+        "actions": "Tindakan",
+        "edit": "Sunting",
+        "save": "Simpan",
+        "editHint": "Menyimpan akan merekod nilai baharu mulai tarikh berkuat kuasa dan mengekalkan sejarah terdahulu.",
+        "stop": "Berhenti",
+        "stopDate": "Tarikh akhir bayaran",
+        "stopHint": "Item ini terus dibayar sehingga tarikh ini, kemudian berhenti dalam gaji seterusnya.",
+        "stopConfirm": "Berhenti mulai tarikh",
+        "deleteTitle": "Keluarkan transaksi tetap ini?",
+        "deleteBody": "Ini akan mengeluarkan item daripada senarai dan mengecualikannya daripada semua pengiraan gaji. Tindakan ini tidak boleh dibatalkan.",
+        "delete": "Keluarkan",
+        "notFound": "Transaksi tetap itu tidak wujud lagi."
       },
       "individual": {
         "title": "Transaksi Individu",
@@ -2355,7 +2374,14 @@
         "terminatedEmployeeWarning": "Pekerja tamat perkhidmatan",
         "notAuthorizedError": "Tidak dibenarkan untuk syarikat pekerja ini",
         "toilNotSupportedError": "Import TOIL tidak disokong — guna alat pemberian TOIL"
-      }
+      },
+      "expirySectionTitle": "Luput cuti",
+      "expiryValueLabel": "Luput cuti",
+      "expiryValuePlaceholder": "Tiada luput",
+      "expiryUnitLabel": "Unit",
+      "expiryUnitMonths": "Bulan",
+      "expiryUnitDays": "Hari",
+      "expirySectionHelp": "Hari yang tidak digunakan bagi jenis cuti ini akan luput selepas tempoh ini dari setiap bahagian diperoleh, dan digugurkan daripada baki. Biarkan nombor kosong untuk tiada luput. Hari yang luput masih dipaparkan dalam laporan cuti. Tidak tersedia untuk Cuti Tahunan, yang menggunakan luput bawa ke hadapan."
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -2624,7 +2650,19 @@
       "otApprovalRequested": "Guna jam yang dimohon pekerja",
       "otApprovalSystem": "Guna jam yang dikira sistem",
       "otApprovalSmaller": "Guna yang lebih kecil",
-      "otApprovalCalcHint": "Apabila permohonan kerja lebih masa diluluskan, ini menentukan angka mana yang menjadi kerja lebih masa yang diluluskan."
+      "otApprovalCalcHint": "Apabila permohonan kerja lebih masa diluluskan, ini menentukan angka mana yang menjadi kerja lebih masa yang diluluskan.",
+      "otRatesTitle": "Kadar kerja lebih masa",
+      "otRatesIntro": "Kadar kerja lebih masa (siling upah dan pengganda lebihan jam) diurus di sini, sejajar dengan waktu bekerja dan syif. Pemprosesan gaji terus menggunakan nilai yang sama; hanya skrin penyuntingan yang berpindah dari Konfigurasi Berkanun Payroll.",
+      "otWageCeiling": "Siling upah kelayakan OT (RM/bulan)",
+      "otRestDayExcessMultiplier": "Kadar lebihan OT hari rehat (× sejam)",
+      "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)",
+      "otWageCeilingLegalNote": "Siling upah RM4,000 ialah had kelayakan di bawah seksyen 60A Akta Kerja, bukan kadar operasi bebas. Ubah hanya jika undang-undang berubah.",
+      "otMultipliersNote": "Kadar 1.5× hari bekerja dan bayaran hari asas (½/1 hari untuk hari rehat, 2 hari untuk cuti umum) ditetapkan oleh Akta Kerja. Kadar lebihan jam bagi hari rehat dan cuti umum lalai kepada 2× / 3× mengikut undang-undang dan boleh diselaraskan di sini.",
+      "otEffectiveFrom": "Berkuat kuasa dari",
+      "otVersion": "Versi",
+      "otNotes": "Nota",
+      "otPublish": "Terbitkan kadar OT",
+      "otCancel": "Batal"
     },
     "toilPolicy": {
       "pageTitle": "Cuti ganti",

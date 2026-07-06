@@ -17,12 +17,16 @@ import { createBatch, generatePayslips } from '../core/payroll';
 import {
   FixedTransactionAmountError,
   FixedTransactionDateError,
+  FixedTransactionNotFoundError,
   UnsupportedFixedCurrencyError,
+  archiveEmploymentPayComponent,
   backfillEmploymentComponentsFromCompensation,
+  endEmploymentPayComponent,
   listEmploymentPayComponents,
   listPayComponents,
   seedPayComponentCatalog,
   setEmploymentPayComponent,
+  updateEmploymentPayComponent,
 } from '../core/pay-components';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -443,5 +447,147 @@ describe('1.2.1 Fixed Transaction', () => {
     const withoutSlip = slips.find((p) => p.employmentId === withoutId)!;
     // Both joined 2026-05-16 with an identical 1000 non-prorating allowance ⇒ identical allowance column.
     expect(withSlip.allowance).toBe(withoutSlip.allowance);
+  });
+
+  // ───────────────── Edit / Stop / Remove lifecycle (feedback 1e2704f2) ─────────────────
+
+  it('updateEmploymentPayComponent VERSIONS the value: prior open row is closed at effectiveFrom, a new open row carries the new amount (no double-count)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EditVer', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+
+    const { id: original } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 300, effectiveFrom: '2026-01-01', runType: 'regular' });
+    // Edit: raise the amount from 2026-04-01 forward.
+    const { id: edited } = await updateEmploymentPayComponent(a, { id: original, employmentId: e.employmentId, amount: 600, effectiveFrom: '2026-04-01', runType: 'bonus' });
+
+    expect(edited).not.toBe(original);
+    const orig = await rowOf(original);
+    const now = await rowOf(edited);
+    expect(orig.validTo).toBe('2026-04-01'); // prior window truncated at the new start — no overlap/double-count
+    expect(orig.supersededAt).toBeNull();
+    expect(Number(now.amount)).toBeCloseTo(600, 2);
+    expect(now.validFrom).toBe('2026-04-01');
+    expect(now.validTo).toBeNull();
+    expect(now.runType).toBe('bonus');
+    // The list shows the ended prior version + the current one (both non-superseded).
+    const allow = (await listEmploymentPayComponents(a, e.employmentId)).filter((r) => r.code === 'ALLOWANCE');
+    expect(allow).toHaveLength(2);
+  });
+
+  it('updateEmploymentPayComponent re-runs the guards (amount>0, end>=start)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EditGuard', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 100, effectiveFrom: '2026-01-01' });
+
+    await expect(
+      updateEmploymentPayComponent(a, { id, employmentId: e.employmentId, amount: 0, effectiveFrom: '2026-02-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionAmountError);
+    await expect(
+      updateEmploymentPayComponent(a, { id, employmentId: e.employmentId, amount: 100, effectiveFrom: '2026-05-01', effectiveTo: '2026-04-30' }),
+    ).rejects.toBeInstanceOf(FixedTransactionDateError);
+  });
+
+  it('updateEmploymentPayComponent rejects a foreign/stale id with FixedTransactionNotFoundError', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'EditNF', '2026-01-01');
+    await expect(
+      updateEmploymentPayComponent(a, { id: '00000000-0000-0000-0000-000000000000', employmentId: e.employmentId, amount: 100, effectiveFrom: '2026-01-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionNotFoundError);
+  });
+
+  it('archiveEmploymentPayComponent drops the row from the list AND from the kernel calculation for the affected period', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ArchDrop', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', prorateOverride: false });
+
+    // Present before archive.
+    expect((await listEmploymentPayComponents(a, e.employmentId)).some((r) => r.id === id)).toBe(true);
+    await archiveEmploymentPayComponent(a, { id, employmentId: e.employmentId });
+    // Gone from the list.
+    expect((await listEmploymentPayComponents(a, e.employmentId)).some((r) => r.id === id)).toBe(false);
+    // Gone from payroll: the May payslip pays 0 allowance (kernel requires supersededAt IS NULL).
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId });
+    expect(Number((await payslipOf(batchId)).allowance)).toBeCloseTo(0, 2);
+  });
+
+  it('archiveEmploymentPayComponent appends an employment-pay-component.archived event (no amount, no remarks)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ArchEvt', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', remarks: 'phone' });
+    await archiveEmploymentPayComponent(a, { id, employmentId: e.employmentId });
+    const payload = await latestEventPayload(base.tenantId, id, 'employment-pay-component.archived');
+    expect(payload).toMatchObject({ employmentId: e.employmentId });
+    expect(payload).not.toHaveProperty('amount');
+    expect(payload).not.toHaveProperty('remarks');
+  });
+
+  it('archiveEmploymentPayComponent rejects a foreign id and an already-archived row with FixedTransactionNotFoundError', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'ArchNF', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01' });
+    await archiveEmploymentPayComponent(a, { id, employmentId: e.employmentId });
+    // Second archive finds no non-superseded row.
+    await expect(archiveEmploymentPayComponent(a, { id, employmentId: e.employmentId })).rejects.toBeInstanceOf(FixedTransactionNotFoundError);
+  });
+
+  it('endEmploymentPayComponent end-dates the row: it keeps paying THROUGH validTo then stops, and shows as ended', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'StopDate', '2026-01-01');
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 0, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    const basicId = await codeId(a, 'BASIC');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: basicId, amount: 0, effectiveFrom: '2026-01-01', allowZeroAmount: true });
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-01-01', prorateOverride: false });
+
+    // Stop it at 2026-05-31 (inclusive) — May is the last month it pays.
+    await endEmploymentPayComponent(a, { id, employmentId: e.employmentId, effectiveTo: '2026-05-31' });
+    const row = await rowOf(id);
+    expect(row.validTo).toBe('2026-05-31');
+    expect(row.supersededAt).toBeNull();
+    // Still listed (ended, not superseded).
+    expect((await listEmploymentPayComponents(a, e.employmentId)).some((r) => r.id === id)).toBe(true);
+
+    // Pays in May (validTo == periodEnd is inclusive) …
+    const may = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+    await generatePayslips(a, { batchId: may.batchId });
+    expect(Number((await payslipOf(may.batchId)).allowance)).toBeCloseTo(500, 2);
+    // … and NOT in June (validTo < periodStart).
+    const jun = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' });
+    await generatePayslips(a, { batchId: jun.batchId });
+    const junSlip = (await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, jun.batchId), eq(schema.payslip.employmentId, e.employmentId))))[0];
+    expect(Number(junSlip.allowance)).toBeCloseTo(0, 2);
+  });
+
+  it('endEmploymentPayComponent rejects an end-date before the row start (FixedTransactionDateError) and a foreign id (FixedTransactionNotFoundError)', async () => {
+    const a = adminCtx(base);
+    await seedPayComponentCatalog(a);
+    const e = await hire(a, base, 'StopGuard', '2026-01-01');
+    const allowId = await codeId(a, 'ALLOWANCE');
+    const { id } = await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: allowId, amount: 500, effectiveFrom: '2026-03-01' });
+    await expect(
+      endEmploymentPayComponent(a, { id, employmentId: e.employmentId, effectiveTo: '2026-02-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionDateError);
+    await expect(
+      endEmploymentPayComponent(a, { id: '00000000-0000-0000-0000-000000000000', employmentId: e.employmentId, effectiveTo: '2026-05-01' }),
+    ).rejects.toBeInstanceOf(FixedTransactionNotFoundError);
   });
 });

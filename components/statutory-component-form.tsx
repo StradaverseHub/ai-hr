@@ -22,27 +22,47 @@ export type ComponentFormDefaults = {
  * EPF submit path lives in setStatutoryComponentAction, which spread-merges scalar rates onto the active
  * EPF slice so Part A / Part E / non-citizen band data survives — no change to that here.
  */
+const ALL_BODIES: ScalarBody[] = ['epf', 'ot', 'hrdf'];
+
 export function StatutoryComponentForm({
   defaults,
   labels,
   lockedBody,
+  returnTo,
+  bodies = ALL_BODIES,
 }: {
   defaults: ComponentFormDefaults;
   labels: Record<string, string>;
   lockedBody?: ScalarBody;
+  /** Optional same-origin app path the action redirects/revalidates back to after saving. Defaults to
+   *  /payroll/configuration in the action. The Attendance Policy screen passes /admin/attendance so the
+   *  relocated OT-rates form returns the admin to Attendance instead of Payroll (feedback e776d17d). */
+  returnTo?: string;
+  /** Which bodies the picker offers when not locked. The statutory page passes ['epf','hrdf'] so overtime
+   *  is no longer configurable under Payroll statutory settings (feedback e776d17d); the OT editor lives on
+   *  the Attendance Policy screen via lockedBody="ot". */
+  bodies?: ScalarBody[];
 }) {
-  const [body, setBody] = useState<ScalarBody>(lockedBody ?? 'epf');
+  const [body, setBody] = useState<ScalarBody>(lockedBody ?? bodies[0] ?? 'epf');
   const num = 'number';
+  const bodyLabel: Record<ScalarBody, string | undefined> = {
+    epf: labels.body_epf,
+    ot: labels.body_ot,
+    hrdf: labels.body_hrdf,
+  };
   return (
     <form action={setStatutoryComponentAction} className="mt-3 grid gap-3 md:grid-cols-2">
+      {returnTo && <input type="hidden" name="returnTo" value={returnTo} />}
       {lockedBody ? (
         <input type="hidden" name="body" value={lockedBody} />
       ) : (
         <Field label={labels.body}>
           <select name="body" value={body} onChange={(e) => setBody(e.target.value as ScalarBody)} className={inputCls}>
-            <option value="epf">{labels.body_epf}</option>
-            <option value="ot">{labels.body_ot}</option>
-            <option value="hrdf">{labels.body_hrdf}</option>
+            {bodies.map((b) => (
+              <option key={b} value={b}>
+                {bodyLabel[b]}
+              </option>
+            ))}
           </select>
         </Field>
       )}

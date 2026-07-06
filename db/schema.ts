@@ -667,6 +667,17 @@ export const leaveType = pgTable('leave_type', {
   // the document config. Intentionally not enforced for Emergency Leave (inherently retroactive; field hidden
   // in the admin UI for EL).
   backdatingLimitDays: integer('backdating_limit_days'),
+  // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry for this leave type. Each accrual
+  // portion lapses `expiry_value` `expiry_unit` (months | days) after the date it was earned (its ledger
+  // effective_on); the expireAgedLeave sweep (core/leave.ts) posts a negative `adjustment` per due batch,
+  // so lapsed days drop out of the balance (a plain ledger sum) and therefore out of encashment. Reuses the
+  // TOIL expires-on / oldest-first sweep pattern — NOT the carry-forward reconstruction. Both null ⇒ no
+  // expiry (existing behaviour; nothing breaks for current types). SCOPE: deliberately NOT applied to
+  // ANNUAL (that code already has per-policy carry-forward expiry via expireCarriedLeave — layering a second
+  // age-expiry there would double-forfeit); the sweep filters ANNUAL out. `expiry_unit` is constrained to
+  // 'months' | 'days' by a DB check; `expiry_value` must be >= 1 (validated in updateLeaveType).
+  expiryValue: integer('expiry_value'),
+  expiryUnit: text('expiry_unit'), // 'months' | 'days' (null when no expiry)
   // Custom validation messages (custom-messages migration): admin-authored override text shown to the
   // employee when a leave-validation rule blocks their request, keyed by the same camelCase field name as
   // the rule's config column (e.g. { backdatingLimitDays: "…" }). null/absent key ⇒ show the built-in
@@ -1907,6 +1918,31 @@ export const resignationRequest = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('resignation_request_employment_idx').on(t.employmentId, t.status)],
+);
+
+// #42cff598 (ADR-0042): supporting documents for a resignation (e.g. signed resignation letter). Verbatim
+// reuse of leave_request_attachment — employment_id is denormalized from the request so RLS uses
+// can_see_employment(employment_id) directly (same subject + manager + admin rule as resignation_request,
+// no per-row subquery). One-to-many: a resignation may carry several files.
+export const resignationRequestAttachment = pgTable(
+  'resignation_request_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    resignationRequestId: uuid('resignation_request_id')
+      .notNull()
+      .references(() => resignationRequest.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('resignation_request_attachment_request_idx').on(t.resignationRequestId)],
 );
 
 // Automated Probation / Contract / Internship Review Workflow (0110). Shape/RLS mirror resignation_request.

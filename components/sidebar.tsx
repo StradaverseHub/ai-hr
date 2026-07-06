@@ -12,6 +12,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock,
+  FileUp,
   HandCoins,
   Hourglass,
   Sparkles,
@@ -36,11 +37,47 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NavCollapsibleGroup, type CollapsibleChild } from '@/components/nav-collapsible-group';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
 type Item = { href: string; labelKey: string; icon: LucideIcon; tour?: string };
-type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Item[] };
+// A collapsible parent node (b3dc0f78): one level of nesting only. Each child carries its own
+// visibility flag so filtering is per-child (the new capability vs. today's whole-group gating).
+type ChildItem = Item & { adminOnly?: boolean; managerUp?: boolean };
+type CollapsibleGroupItem = {
+  collapsible: true;
+  labelKey: string;
+  icon: LucideIcon;
+  /** Cookie key that persists this node's open/closed choice (SSR-read in the layout). */
+  cookieKey: string;
+  children: ChildItem[];
+};
+type Row = Item | CollapsibleGroupItem;
+const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
+type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
+
+// Consolidated Attendance node (b3dc0f78). Groups the previously-scattered attendance rows —
+// Records (was in the top group), Policy/Allowance/Clocking Location/Time-off-in-lieu (were in
+// the admin group), Roster (was in the manage group) and Import — under one collapsible parent
+// with per-child role visibility. Reserved (do not create): an "Overtime Configuration" child is
+// owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
+const ATTENDANCE_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  labelKey: 'attendance',
+  icon: Clock,
+  cookieKey: 'nav_attendance_open',
+  children: [
+    { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
+    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
+    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
+    { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
+    { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
+    { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
+    // e776d17d reserves the "Overtime Configuration" child slot here.
+    { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass, adminOnly: true },
+  ],
+};
 
 const GROUPS: Group[] = [
   {
@@ -50,7 +87,7 @@ const GROUPS: Group[] = [
       { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
-      { href: '/attendance', labelKey: 'attendance', icon: Clock },
+      ATTENDANCE_NODE,
       { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
@@ -61,7 +98,6 @@ const GROUPS: Group[] = [
     managerUp: true,
     items: [
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals' },
-      { href: '/roster', labelKey: 'roster', icon: CalendarRange },
       { href: '/performance', labelKey: 'performance', icon: Target },
     ],
   },
@@ -75,10 +111,6 @@ const GROUPS: Group[] = [
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
       { href: '/admin/leave-approval', labelKey: 'leaveApproval', icon: Workflow },
       { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays },
-      { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock },
-      { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins },
-      { href: '/admin/locations', labelKey: 'locations', icon: MapPin },
-      { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass },
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
@@ -95,20 +127,27 @@ const isActive = (pathname: string, href: string) =>
 
 /** Detached rail that floats on the canvas. Collapses to an icon-only strip; expands
  *  to icon + label. The choice persists via the `rail_collapsed` cookie (read SSR-side
- *  in the layout, so there's no flash and no hydration mismatch). */
+ *  in the layout, so there's no flash and no hydration mismatch). Collapsible sub-groups
+ *  (b3dc0f78) persist their own open/closed state the same way, via `openGroups`. */
 export function Sidebar({
   isAdmin,
   canApprove = false,
   defaultCollapsed,
+  openGroups = {},
 }: {
   isAdmin: boolean;
   /** Manager-and-up: shows the Approvals inbox. */
   canApprove?: boolean;
   defaultCollapsed: boolean;
+  /** SSR-read open state per collapsible-group cookie key (e.g. `nav_attendance_open`). */
+  openGroups?: Record<string, boolean>;
 }) {
   const pathname = usePathname();
   const t = useTranslations('nav');
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  // Per-child visibility for collapsible nodes (the new capability vs. whole-group gating).
+  const canSeeChild = (c: ChildItem) =>
+    c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true;
   const groups = GROUPS.filter((g) =>
     g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true,
   );
@@ -165,6 +204,24 @@ export function Sidebar({
                 )
               ))}
             {group.items.map((item) => {
+              if (isCollapsible(item)) {
+                const children = item.children.filter(canSeeChild);
+                // Hide the whole parent if the viewer can see none of its children.
+                if (children.length === 0) return null;
+                return (
+                  <NavCollapsibleGroup
+                    key={item.labelKey}
+                    labelKey={item.labelKey}
+                    icon={item.icon}
+                    items={children as CollapsibleChild[]}
+                    defaultOpen={openGroups[item.cookieKey] ?? false}
+                    collapsed={collapsed}
+                    isActive={(href) => isActive(pathname, href)}
+                    cookieKey={item.cookieKey}
+                    rowBase={rowBase}
+                  />
+                );
+              }
               const active = isActive(pathname, item.href);
               const Icon = item.icon;
               const label = t(item.labelKey);

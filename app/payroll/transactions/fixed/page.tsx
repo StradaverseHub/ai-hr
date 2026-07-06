@@ -3,8 +3,14 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
-import { createFixedTransactionAction } from './actions';
+import {
+  createFixedTransactionAction,
+  updateFixedTransactionAction,
+  endFixedTransactionAction,
+  archiveFixedTransactionAction,
+} from './actions';
 
 /**
  * Fixed Transaction (feedback b7fc8583) — a SELF-CONTAINED screen. Pick an employee (mandatory, via
@@ -41,7 +47,7 @@ export default async function FixedTransactionPage({
 
   const today = new Date().toISOString().slice(0, 10);
   // Friendly error keys thrown by the action → localised; anything else is a raw message.
-  const errorKeys = new Set(['dateError', 'currencyUnsupported', 'amountError', 'required', 'outOfScope']);
+  const errorKeys = new Set(['dateError', 'currencyUnsupported', 'amountError', 'required', 'outOfScope', 'notFound']);
   const errorMessage = error && errorKeys.has(error) ? t(`fixed.${error}`) : error;
 
   return (
@@ -156,6 +162,7 @@ export default async function FixedTransactionPage({
                     <th className="px-4 py-2 font-medium">{t('fixed.startDate')}</th>
                     <th className="px-4 py-2 font-medium">{t('fixed.endDate')}</th>
                     <th className="px-4 py-2 font-medium">{t('fixed.status')}</th>
+                    <th className="px-4 py-2 text-right font-medium">{t('fixed.actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -181,12 +188,101 @@ export default async function FixedTransactionPage({
                             {ended ? t('fixed.statusEnded') : t('fixed.statusActive')}
                           </Badge>
                         </td>
+                        <td className="px-4 py-2.5">
+                          {/* Full lifecycle maintenance (feedback 1e2704f2): Edit (versions the value from a
+                              new effective date), Stop (end-date it — keeps paying through, then drops from
+                              payroll), Remove (void — excluded from payroll and hidden). Mirrors the proven
+                              Individual page pattern. */}
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <details className="group">
+                              <summary className="cursor-pointer list-none rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted">
+                                {t('fixed.edit')}
+                              </summary>
+                              <form
+                                action={updateFixedTransactionAction}
+                                className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/30 p-3 text-left"
+                              >
+                                <input type="hidden" name="employmentId" value={selected!} />
+                                <input type="hidden" name="id" value={r.id} />
+                                <label className="text-[10px] uppercase text-muted-foreground">
+                                  {t('fixed.amount')}
+                                  <input name="amount" type="number" min="0.01" step="0.01" defaultValue={r.amount} className={`${inputCls} text-right`} />
+                                </label>
+                                <label className="text-[10px] uppercase text-muted-foreground">
+                                  {t('fixed.payrollCycle')}
+                                  <select name="runType" defaultValue={r.runType ?? ''} className={inputCls}>
+                                    <option value="">—</option>
+                                    {FIXED_TRANSACTION_CYCLES.map((c) => (
+                                      <option key={c} value={c}>
+                                        {t(`individual.cycle.${c}`)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="text-[10px] uppercase text-muted-foreground">
+                                  {t('fixed.startDate')}
+                                  <input name="effectiveFrom" type="date" defaultValue={r.validFrom} className={inputCls} />
+                                </label>
+                                <label className="text-[10px] uppercase text-muted-foreground">
+                                  {t('fixed.endDate')}
+                                  <input name="effectiveTo" type="date" defaultValue={r.validTo ?? ''} className={inputCls} />
+                                </label>
+                                <label className="col-span-2 text-[10px] uppercase text-muted-foreground">
+                                  {t('fixed.remarks')}
+                                  <input name="remarks" type="text" defaultValue={r.remarks ?? ''} className={inputCls} />
+                                </label>
+                                <p className="col-span-2 text-[10px] text-muted-foreground">{t('fixed.editHint')}</p>
+                                <div className="col-span-2 flex justify-end">
+                                  <Button type="submit" size="sm">
+                                    {t('fixed.save')}
+                                  </Button>
+                                </div>
+                              </form>
+                            </details>
+                            {!ended && (
+                              <details className="group">
+                                <summary className="cursor-pointer list-none rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted">
+                                  {t('fixed.stop')}
+                                </summary>
+                                <form
+                                  action={endFixedTransactionAction}
+                                  className="mt-2 grid gap-2 rounded-md border border-border bg-muted/30 p-3 text-left"
+                                >
+                                  <input type="hidden" name="employmentId" value={selected!} />
+                                  <input type="hidden" name="id" value={r.id} />
+                                  <label className="text-[10px] uppercase text-muted-foreground">
+                                    {t('fixed.stopDate')}
+                                    <input name="effectiveTo" type="date" required min={r.validFrom} defaultValue={today} className={inputCls} />
+                                  </label>
+                                  <p className="text-[10px] text-muted-foreground">{t('fixed.stopHint')}</p>
+                                  <div className="flex justify-end">
+                                    <Button type="submit" size="sm" variant="secondary">
+                                      {t('fixed.stopConfirm')}
+                                    </Button>
+                                  </div>
+                                </form>
+                              </details>
+                            )}
+                            <form action={archiveFixedTransactionAction}>
+                              <input type="hidden" name="employmentId" value={selected!} />
+                              <input type="hidden" name="id" value={r.id} />
+                              <ConfirmSubmit
+                                size="sm"
+                                title={t('fixed.deleteTitle')}
+                                description={t('fixed.deleteBody')}
+                                confirmLabel={t('fixed.delete')}
+                              >
+                                {t('fixed.delete')}
+                              </ConfirmSubmit>
+                            </form>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
                   {existing.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                         {t('fixed.noTransactions')}
                       </td>
                     </tr>

@@ -573,7 +573,26 @@ export default async function ApprovalsPage({
                       </Link>
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.lastWorkingDay}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.reason ?? '—'}</td>
+                    <td className="px-4 py-2.5 text-muted-foreground">
+                      {r.reason ?? '—'}
+                      {/* #42cff598: one "View document" link per attached supporting document (RLS-scoped). */}
+                      {r.documents.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {r.documents.map((d) => (
+                            <a
+                              key={d.id}
+                              href={`/me/resignation/attachment/${d.id}?inline=1`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary underline-offset-2 hover:underline"
+                              title={d.fileName}
+                            >
+                              {t('viewDocument')}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-2.5">
                       <DecideButtons
                         action={decideResignationAction}

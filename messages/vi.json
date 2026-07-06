@@ -114,7 +114,10 @@
     "payrollCycleConfig": "Chu kỳ trả lương",
     "personnelAdmin": "Nhân sự (quản trị)",
     "securityPermission": "Bảo mật & quyền hạn",
-    "attendanceAllowance": "Phụ cấp chuyên cần"
+    "attendanceAllowance": "Phụ cấp chuyên cần",
+    "attendanceRecords": "Hồ sơ chấm công",
+    "clockingLocation": "Địa điểm chấm công",
+    "attendanceImport": "Nhập dữ liệu chấm công"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -1047,7 +1050,9 @@
     "travelFromLabel": "Từ",
     "travelToLabel": "Đến",
     "travelRemarksPlaceholder": "Nơi và lý do bạn làm việc bên ngoài",
-    "requestTravelButton": "Gửi yêu cầu công tác"
+    "requestTravelButton": "Gửi yêu cầu công tác",
+    "resignationDocumentLabel": "Tài liệu hỗ trợ",
+    "resignationDocumentHint": "Tùy chọn. Đính kèm đơn xin nghỉ việc hoặc các tệp hỗ trợ của bạn (PDF, JPG hoặc PNG, tối đa 10 MB mỗi tệp). Bạn có thể đính kèm nhiều tệp."
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -1557,7 +1562,9 @@
       "cancelEdit": "Hủy",
       "lastEdited": "Ghi đè gần nhất: {version} · hiệu lực {effectiveFrom}",
       "otRestDayExcessMultiplier": "Hệ số OT vượt giờ ngày nghỉ (× theo giờ)",
-      "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)"
+      "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)",
+      "secCeilings": "Mức trần đóng góp",
+      "ceilingsNote": "Hệ số tăng ca được cấu hình trong mô-đun Chấm công (Chính sách chấm công → Hệ số tăng ca), không phải tại đây."
     },
     "batch": {
       "back": "Bảng lương",
@@ -1712,7 +1719,19 @@
         "open": "Mở trình chỉnh sửa",
         "colEmployee": "Nhân viên",
         "colCompany": "Công ty",
-        "manage": "Quản lý"
+        "manage": "Quản lý",
+        "actions": "Hành động",
+        "edit": "Sửa",
+        "save": "Lưu",
+        "editHint": "Lưu sẽ ghi nhận giá trị mới từ ngày hiệu lực trở đi và giữ lại lịch sử trước đó.",
+        "stop": "Dừng",
+        "stopDate": "Ngày trả cuối cùng",
+        "stopHint": "Khoản này tiếp tục được trả đến ngày này, sau đó dừng ở các kỳ lương tiếp theo.",
+        "stopConfirm": "Dừng từ ngày",
+        "deleteTitle": "Xóa giao dịch cố định này?",
+        "deleteBody": "Thao tác này xóa khoản khỏi danh sách và loại khỏi mọi phép tính lương. Không thể hoàn tác.",
+        "delete": "Xóa",
+        "notFound": "Giao dịch cố định đó không còn tồn tại."
       },
       "individual": {
         "title": "Giao dịch Riêng lẻ",
@@ -2355,7 +2374,14 @@
         "terminatedEmployeeWarning": "Nhân viên đã nghỉ việc",
         "notAuthorizedError": "Không có quyền cho công ty của nhân viên này",
         "toilNotSupportedError": "Không hỗ trợ nhập TOIL — dùng công cụ cấp TOIL"
-      }
+      },
+      "expirySectionTitle": "Hết hạn nghỉ phép",
+      "expiryValueLabel": "Hết hạn nghỉ phép",
+      "expiryValuePlaceholder": "Không hết hạn",
+      "expiryUnitLabel": "Đơn vị",
+      "expiryUnitMonths": "Tháng",
+      "expiryUnitDays": "Ngày",
+      "expirySectionHelp": "Những ngày chưa dùng của loại nghỉ phép này sẽ hết hạn sau khoảng thời gian này kể từ khi mỗi phần được tích lũy, và bị loại khỏi số dư. Để trống số nếu không hết hạn. Những ngày đã hết hạn vẫn hiển thị trong báo cáo nghỉ phép. Không áp dụng cho Nghỉ phép năm, vốn dùng cơ chế hết hạn chuyển tiếp."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -2624,7 +2650,19 @@
       "otApprovalRequested": "Dùng số giờ nhân viên yêu cầu",
       "otApprovalSystem": "Dùng số giờ hệ thống tính",
       "otApprovalSmaller": "Dùng giá trị nhỏ hơn",
-      "otApprovalCalcHint": "Khi một yêu cầu tăng ca được duyệt, thiết lập này quyết định con số nào trở thành giờ tăng ca đã duyệt."
+      "otApprovalCalcHint": "Khi một yêu cầu tăng ca được duyệt, thiết lập này quyết định con số nào trở thành giờ tăng ca đã duyệt.",
+      "otRatesTitle": "Hệ số tăng ca",
+      "otRatesIntro": "Hệ số tăng ca (mức trần tiền lương hưởng và các hệ số vượt giờ) được quản lý tại đây, cùng với giờ làm việc và ca. Tính lương vẫn dùng cùng giá trị; chỉ màn hình chỉnh sửa được chuyển ra khỏi cấu hình theo luật của Bảng lương.",
+      "otWageCeiling": "Mức trần tiền lương hưởng tăng ca (RM/tháng)",
+      "otRestDayExcessMultiplier": "Hệ số OT vượt giờ ngày nghỉ (× theo giờ)",
+      "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)",
+      "otWageCeilingLegalNote": "Mức trần tiền lương RM4.000 là ngưỡng đủ điều kiện tăng ca theo Điều 60A Đạo luật Việc làm — một ngưỡng pháp lý, không phải hệ số vận hành tự do. Chỉ thay đổi khi luật thay đổi.",
+      "otMultipliersNote": "Mức 1.5× ngày làm việc và lương ngày cơ bản (½/1 ngày cho ngày nghỉ, 2 ngày cho ngày lễ) do Đạo luật Việc làm quy định cố định. Hệ số vượt giờ của ngày nghỉ và ngày lễ mặc định theo luật là 2× / 3× và có thể điều chỉnh tại đây.",
+      "otEffectiveFrom": "Hiệu lực từ",
+      "otVersion": "Phiên bản",
+      "otNotes": "Ghi chú",
+      "otPublish": "Công bố hệ số OT",
+      "otCancel": "Hủy"
     },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",

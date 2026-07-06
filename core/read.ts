@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import {
+  AGED_FORFEIT_REASON,
   earnedCycleStart,
   isEarnedMethod,
   isLeaveEligible,
@@ -371,6 +372,10 @@ export function listLeaveTypes(
         // Configurable backdated-leave restriction (0133): feeds the admin panel's "Backdating limit (days)"
         // input (MUST be projected here or the input renders empty on every reload — "my setting didn't save").
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        // Leave Type Expiry Field (fec49317): the age-from-earning expiry pair — feeds the admin panel's
+        // "Leave expiry" sub-form (MUST be projected or the inputs render empty on every reload).
+        expiryValue: leaveType.expiryValue,
+        expiryUnit: leaveType.expiryUnit,
         // Partial Leave Approval (ADR-0068): feeds the admin panel's per-date toggle (MUST be projected or the
         // checkbox renders unchecked on every reload). counting is already selected above — the panel needs it
         // to grey out the toggle for calendar-counted types where the feature can never fire.
@@ -1163,6 +1168,13 @@ export function leaveEntitlementBreakdown(
           // accrual aggregates above exclude `adjustment`, so these are surfaced separately to reconcile the
           // breakdown with `balance`. Negative adjustments (boundary forfeits) are accounted via `forfeited`.
           otherAdjustments: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and ${leaveLedger.days} > 0 and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // Leave Type Expiry Field (fec49317): aged-expiry forfeits within the current cycle. These are a
+          // NEW class of negative adjustment (reason = AGED_FORFEIT_REASON, non-ANNUAL types only) that
+          // resolveCarryBreakdown below does NOT see (its carryMax is 0 for non-ANNUAL). Aggregated here as a
+          // positive magnitude and folded into `forfeited` so the displayed breakdown still reconciles with
+          // `balance` (component sum = balance) and expired days remain visible in reports. otherAdjustments
+          // above is positive-only, so it never picks these up.
+          agedForfeited: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and ${leaveLedger.reason} = ${AGED_FORFEIT_REASON} and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
           // Signed balance as at asOf (the headline number this view explains).
           balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
           // Signed balance strictly before the cycle start = what carried into the cycle.
@@ -1229,7 +1241,7 @@ export function leaveEntitlementBreakdown(
     // Delegates to the shared helper (core/leave.ts#resolveCarryBreakdown) so this view can never diverge
     // from carryForwardReport (core/analytics.ts) — byte-identical output to the pre-extraction inline
     // arithmetic (existing test suite is the regression gate).
-    const { carried, unconsumedCarry: carryForwardRemaining, forfeited } = resolveCarryBreakdown({
+    const { carried, unconsumedCarry: carryForwardRemaining, forfeited: carryForfeited } = resolveCarryBreakdown({
       cycleStart,
       carryMax,
       expiry,
@@ -1238,6 +1250,11 @@ export function leaveEntitlementBreakdown(
       currentBalance: balance,
       asOf,
     });
+    // Leave Type Expiry Field (fec49317): fold the aged-expiry lapse into the single `forfeited` figure. For
+    // ANNUAL, agedForfeited is always 0 (the sweep excludes ANNUAL), so this is a no-op there and the carry
+    // forfeit stands alone. For non-ANNUAL, carryForfeited is 0 (carryMax forced to 0 above) and this surfaces
+    // the aged lapse — keeping `entitlement + carried + otherAdjustments − taken − forfeited = balance`.
+    const forfeited = Math.round((carryForfeited + num(agg?.agedForfeited)) * 100) / 100;
 
     const i18n = type.i18n as Record<string, { name: string }> | null;
     return {

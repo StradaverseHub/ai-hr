@@ -46,6 +46,15 @@ export async function setStatutoryComponentAction(formData: FormData) {
   const pack = packFor('MY');
   if (!pack) redirect(`${BASE}?error=${encodeURIComponent('No localization pack for MY.')}`);
 
+  // The overtime rate slice can now be edited from the Attendance Policy screen (feedback e776d17d:
+  // overtime is an attendance/working-hours rule, not a statutory contribution). The write still goes
+  // through this single action + setComponentOverrideMY path so kernel resolution, provenance and the
+  // statutory.component.updated event stay identical; only the redirect/revalidate target moves. An
+  // optional returnTo lets the attendance card bounce the admin back to /admin/attendance instead of the
+  // payroll BASE. Allow-list to same-origin app paths so it can't be turned into an open redirect.
+  const returnToRaw = String(formData.get('returnTo') ?? '').trim();
+  const returnTo = /^\/[A-Za-z0-9/_-]*$/.test(returnToRaw) ? returnToRaw : BASE;
+
   const body = String(formData.get('body') ?? '') as StatutoryBody;
   const version = String(formData.get('version') ?? '').trim();
   const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
@@ -91,10 +100,10 @@ export async function setStatutoryComponentAction(formData: FormData) {
     await pack!.statutoryConfig.setComponent(s, { body, version, effectiveFrom, data, notes });
   } catch (e) {
     const msg = e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
-    redirect(`${BASE}?error=${encodeURIComponent(msg)}`);
+    redirect(`${returnTo}?error=${encodeURIComponent(msg)}`);
   }
-  revalidatePath(BASE);
-  redirect(`${BASE}?toast=${encodeURIComponent('Per-body override published')}`);
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?toast=${encodeURIComponent('Per-body override published')}`);
 }
 
 /** Archive a per-body override so the overlay skips it (admin). */

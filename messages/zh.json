@@ -114,7 +114,10 @@
     "payrollCycleConfig": "薪资周期",
     "personnelAdmin": "员工（管理）",
     "securityPermission": "安全与权限",
-    "attendanceAllowance": "出勤津贴"
+    "attendanceAllowance": "出勤津贴",
+    "attendanceRecords": "考勤记录",
+    "clockingLocation": "打卡地点",
+    "attendanceImport": "考勤导入"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -1047,7 +1050,9 @@
     "travelFromLabel": "起始",
     "travelToLabel": "结束",
     "travelRemarksPlaceholder": "外勤地点及原因",
-    "requestTravelButton": "提交出差申请"
+    "requestTravelButton": "提交出差申请",
+    "resignationDocumentLabel": "证明文件",
+    "resignationDocumentHint": "可选。附上您的辞职信或相关文件（PDF、JPG 或 PNG，每个最大 10 MB）。可附上多个文件。"
   },
   "approvals": {
     "title": "审批",
@@ -1557,7 +1562,9 @@
       "cancelEdit": "取消",
       "lastEdited": "最近覆盖：{version} · 生效 {effectiveFrom}",
       "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
-      "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）"
+      "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）",
+      "secCeilings": "缴费上限",
+      "ceilingsNote": "加班费率在考勤模块中配置（考勤政策 → 加班费率），而非此处。"
     },
     "batch": {
       "back": "薪资",
@@ -1712,7 +1719,19 @@
         "open": "打开编辑器",
         "colEmployee": "员工",
         "colCompany": "公司",
-        "manage": "管理"
+        "manage": "管理",
+        "actions": "操作",
+        "edit": "编辑",
+        "save": "保存",
+        "editHint": "保存后将从生效日期起记录新数值，并保留之前的历史记录。",
+        "stop": "停止",
+        "stopDate": "最后发放日期",
+        "stopHint": "该项目将持续发放至此日期，之后的薪资将不再发放。",
+        "stopConfirm": "从该日期起停止",
+        "deleteTitle": "移除此固定交易？",
+        "deleteBody": "此操作将从列表中移除该项目，并将其从所有薪资计算中排除，且无法撤销。",
+        "delete": "移除",
+        "notFound": "该固定交易已不存在。"
       },
       "individual": {
         "title": "个别交易",
@@ -2355,7 +2374,14 @@
         "terminatedEmployeeWarning": "已离职员工",
         "notAuthorizedError": "无权操作此员工所属公司",
         "toilNotSupportedError": "不支持 TOIL 导入 — 请使用 TOIL 授予工具"
-      }
+      },
+      "expirySectionTitle": "假期到期",
+      "expiryValueLabel": "假期到期",
+      "expiryValuePlaceholder": "不过期",
+      "expiryUnitLabel": "单位",
+      "expiryUnitMonths": "月",
+      "expiryUnitDays": "天",
+      "expirySectionHelp": "此假期类型未使用的天数将在每部分累积后经过此时长到期，并从余额中扣除。留空表示不过期。已过期的天数仍会显示在假期报表中。不适用于年假，年假改用结转到期规则。"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -2624,7 +2650,19 @@
       "otApprovalRequested": "采用员工申报的时数",
       "otApprovalSystem": "采用系统计算的时数",
       "otApprovalSmaller": "采用较小的一方",
-      "otApprovalCalcHint": "当加班申请获批时，此设置决定哪个数字成为已批准的加班。"
+      "otApprovalCalcHint": "当加班申请获批时，此设置决定哪个数字成为已批准的加班。",
+      "otRatesTitle": "加班费率",
+      "otRatesIntro": "加班费率（资格薪资上限与超时倍率）在此管理，与工作时间和班次并列。薪资计算仍使用相同数值；只是编辑界面从薪资法定配置移至此处。",
+      "otWageCeiling": "加班资格薪资上限（RM/月）",
+      "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
+      "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）",
+      "otWageCeilingLegalNote": "RM4,000 薪资上限是《雇佣法令》第 60A 条的加班资格门槛——属法定限额，而非可自由设定的运营费率。仅在法律变更时才更改。",
+      "otMultipliersNote": "1.5× 工作日费率及基础日薪（休息日 ½/1 天、公共假期 2 天）由《雇佣法令》固定。休息日与公共假期的超时费率默认为法定的 2× / 3×，可在此处调整。",
+      "otEffectiveFrom": "生效日期",
+      "otVersion": "版本",
+      "otNotes": "备注",
+      "otPublish": "发布加班费率",
+      "otCancel": "取消"
     },
     "toilPolicy": {
       "pageTitle": "调休",
