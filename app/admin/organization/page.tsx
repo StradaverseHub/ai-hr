@@ -3,9 +3,10 @@ import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies } from '@/core/read';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
-import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { CompanyPanel, type PanelBankProfile } from '@/components/company-panel';
 import { OrganizationList } from '@/components/organization-list';
+import { CompaniesCardHeader } from '@/components/add-company';
 import {
   archiveCompanyAction,
   createCompanyAction,
@@ -104,7 +105,11 @@ export default async function OrganizationPage({
       </Card>
 
       <Card data-tour="people-org-companies">
-        <SectionHeader title={t('companies')} count={scoped.length} />
+        <CompaniesCardHeader
+          title={t('companies')}
+          count={scoped.length}
+          createAction={createCompanyAction}
+        />
         {scoped.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
         ) : (
@@ -136,18 +141,6 @@ export default async function OrganizationPage({
             }))}
           />
         )}
-        <form
-          action={createCompanyAction}
-          data-tour="people-org-add"
-          className="grid grid-cols-1 gap-3 border-t border-border p-4 sm:grid-cols-4"
-        >
-          <input name="legalName" required placeholder={t('legalName')} className={`${inputCls} sm:col-span-2`} />
-          <input name="country" defaultValue="MY" placeholder={t('country')} pattern="[A-Za-z]{2}" maxLength={2} title={t('countryHint')} className={`${inputCls} uppercase`} />
-          <input name="currency" defaultValue="MYR" placeholder={t('currency')} pattern="[A-Za-z]{3}" maxLength={3} title={t('currencyHint')} className={`${inputCls} uppercase`} />
-          <div className="sm:col-span-4">
-            <button className={btnPrimary}>{t('addCompany')}</button>
-          </div>
-        </form>
       </Card>
     </div>
   );

@@ -1,34 +1,38 @@
-import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
+import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listLeavePolicies, listAdHocLeaveGrants } from '@/core/admin';
+import { listLeavePolicies } from '@/core/admin';
 import type { ServiceBand } from '@/core/leave-compute';
-import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { entitlement } from '@/localization/my/leave';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
-import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import { LeaveRulePreview } from '@/components/leave-rule-preview';
-import { getEncashmentPolicies } from '@/core/leave-encashment';
 import {
   archiveLeaveTypeAction,
   createLeavePolicyAction,
   createLeaveTypeAction,
   deleteLeavePolicyAction,
   deleteLeaveTypeAction,
-  openLeaveYearAction,
-  runEarnedAccrualAction,
-  setCompanyLeaveCycleAction,
-  setLeaveHalfDayFullDeductionAction,
-  setLeaveEncashmentPolicyAction,
-  createJobGradeAction,
-  archiveJobGradeAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
 } from '../actions';
 
-export default async function LeaveConfigPage({
+/**
+ * Leave Settings — Leave Types tab (0d147b78 — Leave Settings Reorganization).
+ *
+ * Feature 0d147b78 re-slices the former single, top-to-bottom Leave Settings page into a tabbed IA
+ * that mirrors the Payroll module (`<LeaveTabs />` + real sub-routes). This route is the FIRST tab:
+ * the effective-rules overview + live preview, the leave-type list (identity, eligibility, durations,
+ * supporting-document, payroll-impact, backdating, expiry AND per-type entitlement policies all live
+ * inside `LeaveTypePanel`), and the add-type form. The company-level cards (leave year, accrual cycle,
+ * grades, half-day deduction, encashment, import, festive grant, approval chain) moved to their own
+ * tabs — see `entitlements/`, `application-rules/`, `payroll/`, `approval/`, `audit/`.
+ *
+ * No schema/service/action change: every `<form action={…}>` keeps pointing at its existing server
+ * action (behaviour #6/#7/#8 hold by construction — this is pure IA/JSX movement).
+ */
+export default async function LeaveTypesPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string }>;
@@ -36,44 +40,19 @@ export default async function LeaveConfigPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, encashmentPolicies] = await Promise.all([
+  const [types, policies, companies, grades] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listLeavePolicies(s),
     listCompanies(s),
     listJobGrades(s),
-    listAdHocLeaveGrants(s),
-    getEncashmentPolicies(s),
   ]);
-  const encashmentByCompany = new Map(encashmentPolicies.map((p) => [p.companyId, p]));
   const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
-  // ADR-0066: companies for the per-policy scope select + the festive-grant card (reuse the page's load).
-  // IMPORTANT: companyOptions (used by the per-policy scope select) stays the FULL list — policy writes are
-  // separately RLS-gated and must not be narrowed here.
+  // ADR-0066: companies for the per-policy scope select. IMPORTANT: companyOptions stays the FULL
+  // list — policy writes are separately RLS-gated and must not be narrowed here.
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
-  // Re-plan round 5: the festive-grant company picker only offers companies this admin actually administers,
-  // so "Select all" always succeeds for a company-scoped admin (previously the picker offered every company,
-  // which made Select all silently fail the pre-flight for a scoped admin). hasGrantFor is the exact same
-  // predicate grantAdHocLeave's authority gate uses, so anything selectable here is guaranteed to pass it.
-  const effectiveGrants = withEffectiveGrants(s);
-  const canGroupWide = isGroupAdmin(effectiveGrants);
-  const festiveCompanies = canGroupWide
-    ? companyOptions
-    : companyOptions.filter((c) => hasGrantFor(effectiveGrants, 'hr_admin', c.id));
-  // ADR-0066: festive-grant inputs — active leave types + name lookups for the recent-grants list.
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
-  const companyNameById = new Map(companies.map((c) => [c.id, c.name]));
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
   const typeCodeById = new Map(types.map((t) => [t.id, t.code]));
-  const recentGrants: FestiveGrantRow[] = adHocGrants.map((g) => ({
-    occurredAt: g.occurredAt.toISOString(),
-    companyName: g.companyId ? (companyNameById.get(g.companyId) ?? null) : null,
-    leaveTypeName: g.leaveTypeId ? (typeNameById.get(g.leaveTypeId) ?? null) : null,
-    days: g.days,
-    count: g.count,
-    reason: g.reason,
-    effectiveOn: g.effectiveOn,
-  }));
-  const todayIso = new Date().toISOString().slice(0, 10);
 
   // Statutory floor display (MY pack): sample the three service bands. 6 (not 5)
   // catches the top band on both boundary conventions (annual ≤5 vs sick <5).
@@ -155,19 +134,10 @@ export default async function LeaveConfigPage({
     .map((p) => ({ leaveTypeId: p.leaveTypeId, gradeId: p.gradeId, companyId: p.companyId, accrual: p.accrual }));
   const previewCompanies = companies.map((c) => ({ id: c.id, name: c.name, country: c.country }));
 
-  const nextYear = new Date().getUTCFullYear() + 1;
-
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <PageHeader
-        title={t('pageTitle')}
-        description={t('pageDescription')}
-        actions={
-          <Button asChild>
-            <Link href="/admin/leave/import">{t('importAction')}</Link>
-          </Button>
-        }
-      />
+      <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <LeaveTabs active="types" />
       <ErrorBanner message={error} />
 
       {/* Leave Entitlement Rules Engine — consolidated view: every effective rule, the resolution order in
@@ -304,214 +274,6 @@ export default async function LeaveConfigPage({
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
           {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
         </p>
-      </Card>
-
-      <Card>
-        <SectionHeader title={t('leaveYearTitle')} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">
-          {t.rich('leaveYearHelp', {
-            strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
-          })}
-        </p>
-        <form action={openLeaveYearAction} className="flex flex-wrap items-end gap-3 p-4">
-          <Field label={t('yearLabel')}>
-            <input
-              name="year"
-              type="number"
-              min="2020"
-              max="2100"
-              required
-              defaultValue={nextYear}
-              className={`${inputCls} w-28`}
-            />
-          </Field>
-          <button className={btnPrimary}>{t('openLeaveYear')}</button>
-        </form>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
-          <p className="max-w-md text-xs text-muted-foreground">{t('earnedAccrualHelp')}</p>
-          <form action={runEarnedAccrualAction}>
-            <Button type="submit" variant="outline" size="sm">
-              {t('runEarnedAccrual')}
-            </Button>
-          </form>
-        </div>
-      </Card>
-
-      {/* ADR-0040 2D-2: per-company earned-accrual cycle (calendar vs hire anniversary). */}
-      <Card>
-        <SectionHeader title={t('leaveCycleTitle')} count={companies.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('leaveCycleHelp')}</p>
-        <ul className="divide-y divide-border">
-          {companies.map((c) => (
-            <li key={c.id} className="px-4 py-3">
-              <form
-                action={setCompanyLeaveCycleAction}
-                className="flex flex-wrap items-center justify-between gap-3"
-              >
-                <input type="hidden" name="companyId" value={c.id} />
-                <span className="min-w-0 truncate text-sm font-medium text-foreground">{c.name}</span>
-                <div className="flex items-center gap-2">
-                  <select name="cycle" defaultValue={c.leaveCycle ?? 'calendar'} className={`${inputCls} w-44`}>
-                    <option value="calendar">{t('cycleCalendar')}</option>
-                    <option value="anniversary">{t('cycleAnniversary')}</option>
-                  </select>
-                  <Button type="submit" variant="outline" size="sm">
-                    {t('save')}
-                  </Button>
-                </div>
-              </form>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      {/* Feedback request 31474452: per-company half-day leave-deduction toggle. */}
-      <Card>
-        <SectionHeader title={t('halfDayDeductionTitle')} count={companies.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('halfDayDeductionHelp')}</p>
-        <p className="px-4 pb-1 text-xs text-muted-foreground">{t('halfDayDeductionFrozenNote')}</p>
-        <ul className="divide-y divide-border">
-          {companies.map((c) => (
-            <li key={c.id} className="px-4 py-3">
-              <form
-                action={setLeaveHalfDayFullDeductionAction}
-                className="flex flex-wrap items-center justify-between gap-3"
-              >
-                <input type="hidden" name="companyId" value={c.id} />
-                <div className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-foreground">{c.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {c.leaveHalfDayFullDeduction ? t('halfDayDeductionOn') : t('halfDayDeductionOff')}
-                  </span>
-                </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="enabled"
-                    defaultChecked={!!c.leaveHalfDayFullDeduction}
-                    className="size-4 rounded"
-                  />
-                  {t('halfDayDeductionToggleLabel')}
-                </label>
-                <Button type="submit" variant="outline" size="sm">
-                  {t('save')}
-                </Button>
-              </form>
-            </li>
-          ))}
-        </ul>
-      </Card>
-
-      {/* ADR-0041 2E: the grade catalog (seniority bands). Grade-scoped leave policies reference these. */}
-      <Card>
-        <SectionHeader title={t('gradesTitle')} count={grades.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('gradesHelp')}</p>
-        <ul className="divide-y divide-border">
-          {grades.length === 0 && (
-            <li className="px-4 py-4 text-center text-xs text-muted-foreground">{t('gradesEmpty')}</li>
-          )}
-          {grades.map((g) => (
-            <li key={g.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="truncate text-sm font-medium text-foreground">{g.name}</span>
-                <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                  {g.code}
-                </span>
-                <span className="text-xs text-muted-foreground">{t('gradeRank', { rank: g.rank })}</span>
-              </div>
-              <form action={archiveJobGradeAction}>
-                <input type="hidden" name="id" value={g.id} />
-                <input type="hidden" name="archived" value="true" />
-                <ConfirmSubmit
-                  size="sm"
-                  variant="ghost"
-                  className="text-destructive hover:text-destructive"
-                  title={t('archiveGradeConfirmTitle')}
-                  description={t('archiveGradeConfirmDescription')}
-                  confirmLabel={t('archiveConfirmLabel')}
-                >
-                  {t('archive')}
-                </ConfirmSubmit>
-              </form>
-            </li>
-          ))}
-        </ul>
-        <form action={createJobGradeAction} className="flex flex-wrap items-end gap-2 border-t border-border p-4">
-          <Field label={t('gradeCodeLabel')}>
-            <input name="code" required placeholder="EXEC" className={`${inputCls} w-28 uppercase`} />
-          </Field>
-          <Field label={t('gradeNameLabel')}>
-            <input name="name" required placeholder={t('gradeNamePlaceholder')} className={inputCls} />
-          </Field>
-          <Field label={t('gradeRankLabel')}>
-            <input name="rank" type="number" min="0" defaultValue="0" className={`${inputCls} w-20`} />
-          </Field>
-          <Button type="submit" size="sm">
-            {t('addGrade')}
-          </Button>
-        </form>
-      </Card>
-
-      {/* ADR-0069: Leave Encashment Policy — one row per company. Eligible leave (Annual only) and the
-          rounding rule are fixed text (per the request), not editable controls. */}
-      <Card data-tour="leave-encashment">
-        <SectionHeader title={t('encashmentSectionTitle')} count={companies.length} />
-        <p className="px-4 pt-3 text-xs text-muted-foreground">{t('encashmentHelp')}</p>
-        <ul className="divide-y divide-border">
-          {companies.map((c) => {
-            const pol = encashmentByCompany.get(c.id);
-            return (
-              <li key={c.id} className="px-4 py-3">
-                <form action={setLeaveEncashmentPolicyAction} className="flex flex-wrap items-center gap-4">
-                  <input type="hidden" name="companyId" value={c.id} />
-                  <span className="min-w-[10rem] flex-1 truncate text-sm font-medium text-foreground">
-                    {c.name}
-                  </span>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <input type="checkbox" name="enabled" defaultChecked={pol?.enabled ?? false} className="size-3.5" />
-                    {t('encashmentEnabled')}
-                  </label>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <input type="checkbox" name="autoFreeze" defaultChecked={pol?.autoFreeze ?? true} className="size-3.5" />
-                    {t('encashmentAutoFreeze')}
-                  </label>
-                  <Button type="submit" size="sm" variant="secondary">
-                    {t('encashmentSave')}
-                  </Button>
-                </form>
-              </li>
-            );
-          })}
-        </ul>
-        <div className="grid gap-1 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          <p>{t('encashmentEligibleTypesFixed')}</p>
-          <p>{t('encashmentRoundingFixed')}</p>
-        </div>
-      </Card>
-
-      {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical
-          leave from a paste-CSV. Reached from here (like attendance/import and people/import), no new
-          top-level sidebar item. */}
-      <Card>
-        <SectionHeader title={t('importTitle')} />
-        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <p className="max-w-md text-xs text-muted-foreground">{t('importHelp')}</p>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/admin/leave/import">{t('importLink')}</Link>
-          </Button>
-        </div>
-      </Card>
-
-      {/* ADR-0066: festive / one-off leave grant — hand N extra days to everyone in a company + leave type. */}
-      <Card>
-        <SectionHeader title={t('festiveTitle')} />
-        <FestiveGrantCard
-          companies={festiveCompanies}
-          canGroupWide={canGroupWide}
-          leaveTypes={activeTypeOptions}
-          recent={recentGrants}
-          defaultDate={todayIso}
-        />
       </Card>
     </div>
   );

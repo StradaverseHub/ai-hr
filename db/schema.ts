@@ -1990,6 +1990,24 @@ export const employmentReview = pgTable(
 // row per (person, year) wins; the editable draft is UPDATEd in place; a submitted row is immutable and a
 // correction is a NEW submitted row. RLS scopes to app.can_see_person (self + admin) for read AND write.
 export const tp1StatusEnum = pgEnum('tp1_status', ['draft', 'submitted']);
+
+// Per-category TP1 breakdown (a2f1fa24), mirroring the LHDN paper TP1 sections. Every category is an
+// OPTIONAL non-negative RM amount (empty = 0); `remarks` is optional free text. The canonical starter set
+// (ADR-00XX) — extensible via this JSONB shape without a migration. `tp1_amount` is the server-computed
+// round2 sum of the numeric categories; the kernel consumes only that sum, never these fields.
+export const TP1_CATEGORY_KEYS = [
+  'individual',
+  'spouse',
+  'children',
+  'parent',
+  'medicalInsurance',
+  'lifestyle',
+  'education',
+  'other',
+] as const;
+export type Tp1CategoryKey = (typeof TP1_CATEGORY_KEYS)[number];
+export type Tp1Categories = Partial<Record<Tp1CategoryKey, number>> & { remarks?: string | null };
+
 export const tp1Relief = pgTable(
   'tp1_relief',
   {
@@ -2000,8 +2018,15 @@ export const tp1Relief = pgTable(
       .references(() => person.id),
     assessmentYear: integer('assessment_year').notNull(),
     status: tp1StatusEnum('status').notNull().default('draft'),
-    // The employee's single declared annual optional-relief total (LHDN TP1). All the kernel consumes.
+    // The employee's single declared annual optional-relief total (LHDN TP1). All the kernel consumes:
+    // `tp1_amount` STAYS the authoritative, server-computed SUM of `categories` when a breakdown exists,
+    // so the PCB kernel input (LP) is unchanged (ADR-00XX extends ADR-0050).
     tp1Amount: numeric('tp1_amount', { precision: 12, scale: 2 }).notNull().default('0.00'),
+    // OPTIONAL per-category breakdown mirroring the paper LHDN TP1 form (a2f1fa24). NULL on legacy rows
+    // (scalar-only) — they keep working unchanged. The kernel never reads this; it reads `tp1_amount`.
+    // JSONB extension point: new categories can be added without a migration. PDPA Layer-0 (ADR-0030) —
+    // the amounts live ONLY on this RLS-protected row, never copied into the tp1.* event payloads.
+    categories: jsonb('categories').$type<Tp1Categories | null>(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

@@ -1,10 +1,54 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/utils';
 import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
+
+type TabKey = 'general' | 'payroll' | 'system' | 'access' | 'other';
+
+/** One tab trigger — mirrors the payroll-tabs styling (border-b, active = border-primary text-primary). */
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      role="tab"
+      aria-selected={active}
+      className={cn(
+        '-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors',
+        active
+          ? 'border-primary font-medium text-primary'
+          : 'border-transparent text-muted-foreground hover:text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A short explainer + a link out to the real home of a config area we deliberately do NOT duplicate here. */
+function CrossLinkTab({ text, href, action }: { text: string; href: string; action: string }) {
+  return (
+    <div className="space-y-3 rounded-lg bg-background p-4">
+      <p className="text-sm text-muted-foreground">{text}</p>
+      <Link href={href} className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline">
+        {action}
+        <span aria-hidden>→</span>
+      </Link>
+    </div>
+  );
+}
 
 type Action = (fd: FormData) => void | Promise<void>;
 
@@ -113,6 +157,7 @@ export function CompanyPanel({
 }) {
   const t = useTranslations('admin.organization');
   const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<TabKey>('general');
   const c = company;
   const isMY = c.country === 'MY';
   // Readiness for the monthly filings: the three agency identifiers reports key on.
@@ -156,7 +201,28 @@ export function CompanyPanel({
       </div>
 
       {expanded && (
-        <div className="space-y-4 border-t border-border/60 bg-muted/20 px-4 py-4">
+        <div className="border-t border-border/60 bg-muted/20 px-4 py-4">
+          {/* Tab bar — groups the company detail sections so the panel reads as tabs, not one long scroll. */}
+          <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-border">
+            <TabButton active={tab === 'general'} onClick={() => setTab('general')}>
+              {t('tabGeneral')}
+            </TabButton>
+            <TabButton active={tab === 'payroll'} onClick={() => setTab('payroll')}>
+              {t('tabPayroll')}
+            </TabButton>
+            <TabButton active={tab === 'system'} onClick={() => setTab('system')}>
+              {t('tabSystemConfig')}
+            </TabButton>
+            <TabButton active={tab === 'access'} onClick={() => setTab('access')}>
+              {t('tabAccessUsers')}
+            </TabButton>
+            <TabButton active={tab === 'other'} onClick={() => setTab('other')}>
+              {t('tabOther')}
+            </TabButton>
+          </div>
+
+          {/* General: company details, group parent, logo, archive/delete */}
+          <div className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>
           {/* Company details + group parent */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <form action={actions.updateCompany} className="space-y-2.5 rounded-lg bg-background p-3">
@@ -272,7 +338,11 @@ export function CompanyPanel({
             </div>
             <p className="text-xs text-muted-foreground">{c.hasLogo ? t('logoHint') : `${t('logoNone')} · ${t('logoHint')}`}</p>
           </div>
+          </div>
+          {/* end General tab */}
 
+          {/* Payroll: statutory identity + bank disbursement profiles + payroll-cycle cross-link */}
+          <div className={cn('space-y-4', tab === 'payroll' ? '' : 'hidden')}>
           {/* Statutory identity — country-pack section (ADR-0008) */}
           {isMY ? (
             <form action={actions.setStatutory} className="space-y-2.5 rounded-lg bg-background p-3">
@@ -395,6 +465,38 @@ export function CompanyPanel({
               <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
             </div>
           )}
+          {/* Payroll-cycle settings live on their own admin page — cross-link, don't duplicate. */}
+          <CrossLinkTab
+            text={t('payrollCycleCrossLink')}
+            href="/admin/payroll-cycle"
+            action={t('payrollCycleCrossLinkAction')}
+          />
+          </div>
+          {/* end Payroll tab */}
+
+          {/* System config: departments/positions/cost-centres/business-units moved to Settings → System
+              labels (owned by sibling item d356dec8). Cross-link, don't re-introduce here. */}
+          <div className={cn(tab === 'system' ? '' : 'hidden')}>
+            <CrossLinkTab
+              text={t('systemConfigCrossLink')}
+              href="/admin/settings/system-labels"
+              action={t('systemConfigCrossLinkAction')}
+            />
+          </div>
+
+          {/* Access & users: assigned users + RBAC live on the Users admin page. Cross-link, don't duplicate. */}
+          <div className={cn(tab === 'access' ? '' : 'hidden')}>
+            <CrossLinkTab
+              text={t('accessUsersCrossLink')}
+              href="/admin/users"
+              action={t('accessUsersCrossLinkAction')}
+            />
+          </div>
+
+          {/* Other: reserved placeholder so future company settings slot in without a redesign. */}
+          <div className={cn(tab === 'other' ? '' : 'hidden')}>
+            <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">{t('otherTabNote')}</p>
+          </div>
         </div>
       )}
     </li>

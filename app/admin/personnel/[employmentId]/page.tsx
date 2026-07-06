@@ -46,6 +46,7 @@ import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
+import { PersonnelTabs } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
@@ -178,25 +179,22 @@ export default async function EmployeePage({
     }
   };
 
-  return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader
-        back={back}
-        title={emp.name}
-        description={t('headerDescription', {
-          code: emp.employeeCode ?? '—',
-          email: emp.email,
-          company: emp.company,
-          hiredOn: emp.hiredOn,
-        })}
-        actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
-      />
+  // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
+  // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
+  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'documents' | 'others'; label: string }[] = [
+    { key: 'profile', label: t('tabs.profile') },
+    { key: 'family', label: t('tabs.family') },
+    { key: 'job', label: t('tabs.job') },
+    { key: 'payroll', label: t('tabs.payroll') },
+    { key: 'documents', label: t('tabs.documents') },
+    { key: 'others', label: t('tabs.others') },
+  ];
 
-      <ErrorBanner message={error} />
-
-      {admin && (
-        <Card>
-          <SectionHeader title={t('personalDetails')} />
+  // ── PROFILE ────────────────────────────────────────────────────────────────
+  // Personal details (name, email, phone, holiday calendar, grade) + gender/marital compliance fields.
+  const profilePanel = admin ? (
+    <Card id="section-personal-details">
+      <SectionHeader title={t('personalDetails')} />
           <form
             action={setPersonAction}
             className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4"
@@ -277,12 +275,15 @@ export default async function EmployeePage({
               <button className={btnPrimary}>{t('saveComplianceFields')}</button>
             </div>
           </form>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      {admin && componentCatalog.length > 0 && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
+  // ── PAYROLL ────────────────────────────────────────────────────────────────
+  // Pay components, CP38, leave encashment, payroll policy assignment, leave balance, compensation,
+  // and the Malaysia statutory profile (salary / bank / tax). All admin-only.
+  const payComponentsCard = admin && componentCatalog.length > 0 ? (
+    <Card id="section-pay-components" className="overflow-hidden">
+      <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
           {payComps.length > 0 && (
             <table className="w-full text-sm">
               <thead>
@@ -359,12 +360,12 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('payComponentSave')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      {admin && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
+  const cp38Card = admin ? (
+    <Card id="section-cp38" className="overflow-hidden">
+      <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
           {cp38Error === 'processed' && (
             <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
               {t('cp38ProcessedError')}
@@ -457,15 +458,15 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('cp38Add')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('cp38Hint')}</p>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      {/* ADR-0069 — Leave Encashment: admin-only card, shown once a resignation-approval freeze has
-          happened for this employment. Raw balance, auto figure, effective (override) figure, status,
-          calculated-as-of, and the post-LWD hint; Unfreeze/Adjust actions (mandatory reason, re-locks). */}
-      {admin && encashmentSnapshot && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('encashmentTitle')} />
+  // ADR-0069 — Leave Encashment: admin-only card, shown once a resignation-approval freeze has
+  // happened for this employment. Raw balance, auto figure, effective (override) figure, status,
+  // calculated-as-of, and the post-LWD hint; Unfreeze/Adjust actions (mandatory reason, re-locks).
+  const encashmentCard = admin && encashmentSnapshot ? (
+    <Card id="section-encashment" className="overflow-hidden">
+      <SectionHeader title={t('encashmentTitle')} />
           {encashmentError && (
             <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
               {encashmentError}
@@ -535,15 +536,16 @@ export default async function EmployeePage({
             </form>
           </div>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('encashmentHint')}</p>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      {/* Personnel — Family & Dependents (phase 1). Per-PERSON benefits/insurance register: name +
-          relationship + DOB + optional beneficiary flag. Admin-maintained (RLS is_admin write); does NOT
-          feed the tax num_children figure and is distinct from the emergency contact. */}
-      {admin && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('family.title')} count={dependents.length} />
+  // ── FAMILY ─────────────────────────────────────────────────────────────────
+  // Personnel — Family & Dependents (phase 1). Per-PERSON benefits/insurance register: name +
+  // relationship + DOB + optional beneficiary flag. Admin-maintained (RLS is_admin write); does NOT
+  // feed the tax num_children figure and is distinct from the emergency contact.
+  const familyPanel = admin ? (
+    <Card id="section-family" className="overflow-hidden">
+      <SectionHeader title={t('family.title')} count={dependents.length} />
           <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             {t('family.note')}
           </p>
@@ -659,14 +661,14 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{t('family.add')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{t('family.hint')}</p>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      {/* 2.1 Payroll Policy — assign the named pay-processing template applied to this employee. Admin-only;
-          payroll uses it automatically on the next run. Null = monthly default. */}
-      {admin && !emp.terminatedOn && (
-        <Card>
-          <SectionHeader title={tp('assignTitle')} />
+  // 2.1 Payroll Policy — assign the named pay-processing template applied to this employee. Admin-only;
+  // payroll uses it automatically on the next run. Null = monthly default.
+  const payrollPolicyCard = admin && !emp.terminatedOn ? (
+    <Card id="section-payroll-policy">
+      <SectionHeader title={tp('assignTitle')} />
           <form action={assignPolicyAction} className="flex flex-wrap items-end gap-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <Field label={tp('assignLabel')}>
@@ -683,14 +685,15 @@ export default async function EmployeePage({
             <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
           )}
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tp('assignHint')}</p>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      {/* ADR-0070 — Clocking Location & Geofencing. Admin-only, mirrors the payroll-policy card. Multi-select
-          of the company's active clocking sites; geofencing toggle + radius (required when enabling). */}
-      {admin && !emp.terminatedOn && (
-        <Card>
-          <SectionHeader title={tc('cardTitle')} />
+  // ── OTHERS ─────────────────────────────────────────────────────────────────
+  // ADR-0070 — Clocking Location & Geofencing. Admin-only, mirrors the payroll-policy card. Multi-select
+  // of the company's active clocking sites; geofencing toggle + radius (required when enabling).
+  const clockingCard = admin && !emp.terminatedOn ? (
+    <Card id="section-clocking-location">
+      <SectionHeader title={tc('cardTitle')} />
           <form action={setEmployeeClockingLocationsAction} className="space-y-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <Field label={tc('assignedLocations')}>
@@ -729,11 +732,12 @@ export default async function EmployeePage({
             <button className={btnPrimary}>{tc('save')}</button>
           </form>
           <p className="px-4 pb-4 text-xs text-muted-foreground">{tc('hint')}</p>
-        </Card>
-      )}
+    </Card>
+  ) : null;
 
-      <Card>
-        <SectionHeader title={t('leaveBalance')} />
+  const leaveBalanceCard = (
+    <Card id="section-leave-balance">
+      <SectionHeader title={t('leaveBalance')} />
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
           {balances.map((b) => (
             <div key={b.leaveTypeId} className="p-4">
@@ -765,10 +769,11 @@ export default async function EmployeePage({
           ))}
           {balances.length === 0 && <div className="p-4 text-sm text-muted-foreground">{t('noLeaveRecords')}</div>}
         </div>
-      </Card>
+    </Card>
+  );
 
-      {admin && (
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  const compAndStatutoryCards = admin ? (
+    <div id="section-compensation" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <SectionHeader title={t('compensation')} />
           <div className="p-4">
@@ -966,11 +971,52 @@ export default async function EmployeePage({
             </div>
           </form>
         </Card>
-      </div>
-      )}
+    </div>
+  ) : null;
 
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('assignmentHistory')} count={history.length} />
+  // ── DOCUMENTS ──────────────────────────────────────────────────────────────
+  // v1 is intentionally thin: there is no general upload-and-store capability yet. We surface the
+  // identification/statutory identifiers that qualify as "documents" today (read-only — the editable
+  // source of truth stays on the Payroll statutory form, so no server action is forked here), plus a
+  // count of the CP38 LHDN instalment records. A true file-attachment store is a separate enhancement.
+  const documentsPanel = admin ? (
+    <Card id="section-documents">
+      <SectionHeader title={t('documents.title')} />
+      <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        {t('documents.note')}
+      </p>
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2">
+        <div className="flex justify-between gap-4 border-b border-border pb-2">
+          <dt className="text-muted-foreground">{t('icNumber')}</dt>
+          <dd className="font-mono">{statutory?.icNumber || '—'}</dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-border pb-2">
+          <dt className="text-muted-foreground">{t('taxNumber')}</dt>
+          <dd className="font-mono">{statutory?.taxNumber || '—'}</dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-border pb-2">
+          <dt className="text-muted-foreground">{t('epfNumber')}</dt>
+          <dd className="font-mono">{statutory?.epfNumber || '—'}</dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-border pb-2">
+          <dt className="text-muted-foreground">{t('socsoNumber')}</dt>
+          <dd className="font-mono">{statutory?.socsoNumber || '—'}</dd>
+        </div>
+        <div className="flex justify-between gap-4 border-b border-border pb-2">
+          <dt className="text-muted-foreground">{t('documents.cp38Records')}</dt>
+          <dd className="tabular-nums">{cp38Records.length}</dd>
+        </div>
+      </dl>
+      <p className="px-4 pb-4 text-xs text-muted-foreground">{t('documents.hint')}</p>
+    </Card>
+  ) : null;
+
+  // ── JOB ────────────────────────────────────────────────────────────────────
+  // Assignment (position/department) history, reporting lines, approval delegations, location, and
+  // the transfer/terminate controls. Assignment history is not admin-gated (visible to any viewer).
+  const assignmentHistoryCard = (
+    <Card id="section-assignment-history" className="overflow-hidden">
+      <SectionHeader title={t('assignmentHistory')} count={history.length} />
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
@@ -995,29 +1041,31 @@ export default async function EmployeePage({
             ))}
           </tbody>
         </table>
-      </Card>
+    </Card>
+  );
 
-      {admin && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={t('changeHistory')} count={changeHistory.length} />
-          <AuditTable rows={changeHistory} nowMs={Date.now()} />
-        </Card>
-      )}
+  const changeHistoryCard = admin ? (
+    <Card id="section-change-history" className="overflow-hidden">
+      <SectionHeader title={t('changeHistory')} count={changeHistory.length} />
+      <AuditTable rows={changeHistory} nowMs={Date.now()} />
+    </Card>
+  ) : null;
 
-      {admin && (
-        <Card className="border-rose-200 dark:border-rose-500/30">
-          <SectionHeader title={t('dataPrivacyTitle')} />
-          <div className="space-y-2 p-4">
-            <p className="text-sm text-muted-foreground">{t('dataPrivacyNote')}</p>
-            <Link href={`/admin/privacy?subject=${emp.employmentId}`} className={btnPrimary}>
-              {t('dataPrivacyLink')}
-            </Link>
-          </div>
-        </Card>
-      )}
+  const dataPrivacyCard = admin ? (
+    <Card id="section-data-privacy" className="border-rose-200 dark:border-rose-500/30">
+      <SectionHeader title={t('dataPrivacyTitle')} />
+      <div className="space-y-2 p-4">
+        <p className="text-sm text-muted-foreground">{t('dataPrivacyNote')}</p>
+        <Link href={`/admin/privacy?subject=${emp.employmentId}`} className={btnPrimary}>
+          {t('dataPrivacyLink')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
 
-      <Card>
-        <SectionHeader title={t('reportingLines')} />
+  const reportingLinesCard = (
+    <Card id="section-reporting-lines">
+      <SectionHeader title={t('reportingLines')} />
         <div className="grid grid-cols-1 divide-border sm:grid-cols-2 sm:divide-x">
           <div className="p-4">
             <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('reportsTo')}</div>
@@ -1101,13 +1149,15 @@ export default async function EmployeePage({
             </div>
           </form>
         )}
-      </Card>
+    </Card>
+  );
 
-      {/* Hierarchy Management (ADR-0052): approval delegations. When this employee (a reporting-line
-          holder) is away, they assign a stand-in who can approve on their behalf for a window. This is
-          approver-routing only — the delegate gains NO visibility of the delegator's reports. */}
-      <Card>
-        <SectionHeader title={t('delegationsTitle')} />
+  // Hierarchy Management (ADR-0052): approval delegations. When this employee (a reporting-line
+  // holder) is away, they assign a stand-in who can approve on their behalf for a window. This is
+  // approver-routing only — the delegate gains NO visibility of the delegator's reports.
+  const delegationsCard = (
+    <Card id="section-delegations">
+      <SectionHeader title={t('delegationsTitle')} />
         <div className="p-4">
           {delegations.length === 0 ? (
             <div className="text-sm text-muted-foreground">{t('delegationsEmpty')}</div>
@@ -1162,40 +1212,41 @@ export default async function EmployeePage({
             </div>
           </form>
         )}
-      </Card>
+    </Card>
+  );
 
-      {admin && (
-        <Card>
-          <SectionHeader title={t('locationTitle')} />
-          <div className="px-4 pt-3 text-sm text-muted-foreground">
-            {t('locationCurrent', { location: emp.locationName ? `${emp.locationName} (${emp.locationCode})` : t('locationNone') })}
-          </div>
-          {!emp.terminatedOn && (
-            <form action={setLocationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
-              <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label={t('locationSelect')}>
-                <select name="locationId" defaultValue={emp.locationId ?? ''} className={inputCls}>
-                  <option value="">{t('locationNone')}</option>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name} ({l.code}){l.state ? ` · ${l.state}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('effectiveDate')}>
-                <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
-              </Field>
-              <div>
-                <button className={btnPrimary}>{t('setLocation')}</button>
-              </div>
-            </form>
-          )}
-        </Card>
-      )}
-
+  const locationCard = admin ? (
+    <Card id="section-location">
+      <SectionHeader title={t('locationTitle')} />
+      <div className="px-4 pt-3 text-sm text-muted-foreground">
+        {t('locationCurrent', { location: emp.locationName ? `${emp.locationName} (${emp.locationCode})` : t('locationNone') })}
+      </div>
       {!emp.terminatedOn && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <form action={setLocationAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <Field label={t('locationSelect')}>
+            <select name="locationId" defaultValue={emp.locationId ?? ''} className={inputCls}>
+              <option value="">{t('locationNone')}</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name} ({l.code}){l.state ? ` · ${l.state}` : ''}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('effectiveDate')}>
+            <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+          </Field>
+          <div>
+            <button className={btnPrimary}>{t('setLocation')}</button>
+          </div>
+        </form>
+      )}
+    </Card>
+  ) : null;
+
+  const transferTerminateCards = !emp.terminatedOn ? (
+    <div id="section-transfer-terminate" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <Card>
             <SectionHeader title={t('transferTitle')} />
             <form action={transferAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-2">
@@ -1251,36 +1302,95 @@ export default async function EmployeePage({
               </div>
             </form>
           </Card>
-        </div>
-      )}
+    </div>
+  ) : null;
 
-      <Card className="overflow-hidden">
-        <SectionHeader title={t('leaveRequests')} count={requests.length} />
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-border">
-            {requests.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-2.5 text-foreground">{r.leaveType}</td>
-                <td className="px-4 py-2.5 text-muted-foreground">
-                  {r.startDate} → {r.endDate}
-                </td>
-                <td className="px-4 py-2.5 tabular-nums">{t('daysCount', { days: Number(r.days) })}</td>
-                <td className="px-4 py-2.5">
-                  <LeaveStatus status={r.status} label={t(`leaveStatus.${r.status}`)} />
-                </td>
-              </tr>
-            ))}
-            {requests.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveRequests')}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+  const leaveRequestsCard = (
+    <Card id="section-leave-requests" className="overflow-hidden">
+      <SectionHeader title={t('leaveRequests')} count={requests.length} />
+      <table className="w-full text-sm">
+        <tbody className="divide-y divide-border">
+          {requests.map((r) => (
+            <tr key={r.id}>
+              <td className="px-4 py-2.5 text-foreground">{r.leaveType}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">
+                {r.startDate} → {r.endDate}
+              </td>
+              <td className="px-4 py-2.5 tabular-nums">{t('daysCount', { days: Number(r.days) })}</td>
+              <td className="px-4 py-2.5">
+                <LeaveStatus status={r.status} label={t(`leaveStatus.${r.status}`)} />
+              </td>
+            </tr>
+          ))}
+          {requests.length === 0 && (
+            <tr>
+              <td className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveRequests')}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
 
-      {/* Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated. */}
-      {!emp.terminatedOn && admin && <ReviewSection s={s} employmentId={employmentId} />}
+  // Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated.
+  const reviewCard = !emp.terminatedOn && admin ? <ReviewSection s={s} employmentId={employmentId} /> : null;
+
+  // Distribute the pre-built section cards into the six tab panels (mapping per approved plan). Each
+  // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,
+  // only where they render. Falsy entries (admin-gated / state-gated nulls) collapse to nothing.
+  const panels = {
+    // Single-card tabs pass the node directly so a null (defensive; requireAdmin guarantees non-null
+    // here) falls through to the shell's empty-state rather than rendering a blank fragment.
+    profile: profilePanel,
+    family: familyPanel,
+    job: (
+      <>
+        {assignmentHistoryCard}
+        {reportingLinesCard}
+        {delegationsCard}
+        {locationCard}
+        {transferTerminateCards}
+      </>
+    ),
+    payroll: (
+      <>
+        {payComponentsCard}
+        {cp38Card}
+        {encashmentCard}
+        {payrollPolicyCard}
+        {leaveBalanceCard}
+        {compAndStatutoryCards}
+      </>
+    ),
+    documents: documentsPanel,
+    others: (
+      <>
+        {clockingCard}
+        {changeHistoryCard}
+        {dataPrivacyCard}
+        {leaveRequestsCard}
+        {reviewCard}
+      </>
+    ),
+  };
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader
+        back={back}
+        title={emp.name}
+        description={t('headerDescription', {
+          code: emp.employeeCode ?? '—',
+          email: emp.email,
+          company: emp.company,
+          hiredOn: emp.hiredOn,
+        })}
+        actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
+      />
+
+      <ErrorBanner message={error} />
+
+      <PersonnelTabs tabs={tabs} panels={panels} emptyLabel={t('tabs.empty')} />
     </div>
   );
 }

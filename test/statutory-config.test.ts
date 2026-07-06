@@ -98,6 +98,37 @@ describe('ADR-0019 — validation', () => {
     ];
     expect(validateStatutoryRuleset(bad).some((e) => /ascend/.test(e))).toBe(true);
   });
+
+  // EPF Third-Schedule band tables are now admin-editable (feedback 99e13860). The bands are OPTIONAL —
+  // an older override omitting them falls back to the built-in verified tables — but any present table
+  // must ascend by upper bound and carry non-negative RM amounts.
+  it('accepts the default EPF Part A / Part E band tables', () => {
+    // The verified default carries both tables; it must still validate clean (covered above, asserted
+    // explicitly here so a regression in the new EPF band checks is unambiguous).
+    expect(validateStatutoryRuleset(DEFAULT_MY_STATUTORY).filter((e) => /EPF Part/.test(e))).toEqual([]);
+  });
+
+  it('accepts an EPF override that omits the band tables (built-in fallback)', () => {
+    const ok = clone(DEFAULT_MY_STATUTORY);
+    delete (ok.epf as { partA?: unknown }).partA;
+    delete (ok.epf as { partE?: unknown }).partE;
+    expect(validateStatutoryRuleset(ok)).toEqual([]);
+  });
+
+  it('rejects non-monotonic EPF Part A bands', () => {
+    const bad = clone(DEFAULT_MY_STATUTORY);
+    bad.epf.partA = [
+      { upTo: 5000, employer: 650, employee: 550 },
+      { upTo: 100, employer: 13, employee: 11 }, // out of order
+    ];
+    expect(validateStatutoryRuleset(bad).some((e) => /EPF Part A bands must ascend/.test(e))).toBe(true);
+  });
+
+  it('rejects a negative EPF Part E amount', () => {
+    const bad = clone(DEFAULT_MY_STATUTORY);
+    bad.epf.partE = [{ upTo: 5000, employer: -1, employee: 0 }];
+    expect(validateStatutoryRuleset(bad).some((e) => /EPF Part E amounts must be/.test(e))).toBe(true);
+  });
 });
 
 describe('ADR-0019 — DB-backed loader (real postgres jsonb)', () => {

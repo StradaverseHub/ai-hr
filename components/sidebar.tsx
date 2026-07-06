@@ -33,7 +33,6 @@ import {
   UserRound,
   Users,
   Wallet,
-  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -108,8 +107,9 @@ const GROUPS: Group[] = [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
       { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags },
+      // 0d147b78: Leave config is now a tabbed surface; the former standalone "Approval chain" entry
+      // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
-      { href: '/admin/leave-approval', labelKey: 'leaveApproval', icon: Workflow },
       { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays },
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },

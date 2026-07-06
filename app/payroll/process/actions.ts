@@ -3,15 +3,22 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
+import { scopedAdmin } from '@/lib/scope';
 import { createAdditionalRun, createBatch, updateBatchScope } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
+import { encodeRunGroupResult, runMultiCompanyPayroll } from '@/core/payroll-run-group';
 
-/** Step 2 population (plan §2) — fetched by the client once company + period are chosen. */
-export async function fetchPayrollRunEmployees(companyId: string, payPeriod: string): Promise<PayrollRunEmployeeRow[]> {
+/** Step 2 population (plan §2) — fetched by the client once company(ies) + period are chosen. Accepts one
+ *  or more company ids so the multi-company run's Step-2 list spans every selected company (3653d14b). */
+export async function fetchPayrollRunEmployees(
+  companyIds: string | string[],
+  payPeriod: string,
+): Promise<PayrollRunEmployeeRow[]> {
   const s = await getSession();
-  if (!companyId || !/^\d{4}-\d{2}$/.test(payPeriod)) return [];
-  return listEmployeesForPayrollRun(s, companyId, payPeriod);
+  const ids = (Array.isArray(companyIds) ? companyIds : [companyIds]).filter(Boolean);
+  if (ids.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return [];
+  return listEmployeesForPayrollRun(s, ids, payPeriod);
 }
 
 /**
@@ -112,4 +119,56 @@ export async function resumeRunAction(formData: FormData) {
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
   redirect(`/payroll/${batchId}?from=process`);
+}
+
+/**
+ * Payroll Process wizard — MULTI-COMPANY run (feedback 3653d14b, Phase 1). Called from Step 2's confirm
+ * button when the admin selected one, several, or ALL companies in Step 1. Composes the existing per-company
+ * primitives via `runMultiCompanyPayroll` (NO kernel change) and lands on the new Step-3 result page.
+ *
+ * "All my companies" is resolved to the admin's ACTIVE company-context scope here (scopedAdmin → scopeIds:
+ * allowedCompanies ∩ the company_scope cookie) — matching the UI's scoped list and never wider — and every
+ * explicit id is re-intersected against allowedCompanies inside the orchestrator (hazard 1). The per-company
+ * failure handling (hazard 2 — one company failing never aborts the run) lives there too.
+ */
+export async function runMultiCompanyAction(formData: FormData) {
+  // scopedAdmin() redirects non-admins and returns the session + the active company scope (the same set the
+  // page's multi-select is bounded to). Using it here keeps "all" consistent between the UI and the run.
+  const { s, scopeIds } = await scopedAdmin();
+  const payPeriod = String(formData.get('payPeriod'));
+  const payrollCycleId = String(formData.get('payrollCycleId') || '');
+  const paymentDate = String(formData.get('paymentDate') || '');
+  const selectAll = String(formData.get('selectAll')) === 'true';
+  const submittedCompanyIds = formData.getAll('companyIds').map(String).filter(Boolean);
+  const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+
+  if (!/^\d{4}-\d{2}$/.test(payPeriod)) {
+    redirect(`/payroll/process?error=${encodeURIComponent('Select a valid payroll month.')}`);
+  }
+
+  // "All my companies" resolves to the admin's ACTIVE scope server-side (the client list is only a hint); an
+  // explicit selection is re-intersected against allowedCompanies inside the orchestrator, so both paths are
+  // bounded to what this administrator may run.
+  const companyIds = selectAll ? scopeIds : submittedCompanyIds;
+  if (companyIds.length === 0) {
+    redirect(`/payroll/process?error=${encodeURIComponent('Select at least one company to process.')}`);
+  }
+
+  let encoded: string;
+  try {
+    const result = await runMultiCompanyPayroll(s, {
+      companyIds,
+      payPeriod,
+      payrollCycleId,
+      paymentDate,
+      employmentIds,
+    });
+    encoded = encodeRunGroupResult(result);
+  } catch (e) {
+    // A whole-run failure (e.g. an invalid session) is rare — per-company failures are caught inside the
+    // orchestrator and reported as rows. Surface anything that escapes as a Step-1 error banner.
+    redirect(`/payroll/process?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/payroll');
+  redirect(`/payroll/process/result?r=${encoded}`);
 }

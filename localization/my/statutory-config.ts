@@ -309,6 +309,22 @@ export function validateStatutoryRuleset(data: StatutoryRuleset): string[] {
     if (!inUnit(epf.employerRateLow)) errs.push('EPF employer rate (low band) must be between 0 and 1.');
     if (!inUnit(epf.employerRateHigh)) errs.push('EPF employer rate (high band) must be between 0 and 1.');
     if (!nonNeg(epf.employerThreshold)) errs.push('EPF employer threshold must be ≥ 0.');
+    // EPF Third-Schedule band tables (Part A / Part E) are now admin-editable (feedback 99e13860). They
+    // are OPTIONAL — an override omitting them falls back to the verified built-ins — but any PRESENT
+    // table must ascend by upper bound and carry non-negative contribution AMOUNTS (RM, not rates). This
+    // reuses the same monotonic/non-neg checks the SOCSO/EIS band tables use just below.
+    for (const [name, bands] of [
+      ['Part A', epf.partA],
+      ['Part E', epf.partE],
+    ] as const) {
+      if (bands == null) continue; // absent ⇒ built-in fallback, nothing to validate
+      if (!Array.isArray(bands) || bands.length === 0) errs.push(`EPF ${name} bands are empty.`);
+      else {
+        if (!bandsMonotonic(bands)) errs.push(`EPF ${name} bands must ascend by upper bound.`);
+        if (bands.some((b: ContribBand) => !nonNeg(b.employer) || !nonNeg(b.employee)))
+          errs.push(`EPF ${name} amounts must be ≥ 0.`);
+      }
+    }
   }
 
   if (!nonNeg(data.contribCeiling)) errs.push('Contribution ceiling must be ≥ 0.');
@@ -536,6 +552,10 @@ function changedFields(before: StatutoryRuleset, after: StatutoryRuleset): strin
     ['pcb.reliefs.epfReliefCap', before.pcb?.reliefs?.epfReliefCap, after.pcb?.reliefs?.epfReliefCap],
   ];
   for (const [name, a, b] of scalars) if (a !== b) changed.push(name);
+  // EPF Third-Schedule band tables are now admin-editable (feedback 99e13860); surface a table edit in the
+  // audit's changed-field list the same way PCB/SOCSO/EIS band edits are surfaced.
+  if (JSON.stringify(before.epf?.partA) !== JSON.stringify(after.epf?.partA)) changed.push('epf.partA');
+  if (JSON.stringify(before.epf?.partE) !== JSON.stringify(after.epf?.partE)) changed.push('epf.partE');
   if (JSON.stringify(before.pcb?.bands) !== JSON.stringify(after.pcb?.bands)) changed.push('pcb.bands');
   if (JSON.stringify(before.socso?.category1) !== JSON.stringify(after.socso?.category1))
     changed.push('socso.category1');

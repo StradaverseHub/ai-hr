@@ -503,7 +503,22 @@
         "hint": "启用地理围栏后，除非员工位于已分配地点的半径范围内，否则将阻止签到/签退。关闭时，仍会记录位置以供审计。"
       },
       "directorySubtitle": "员工通讯录档案",
-      "viewFullRecord": "查看完整记录"
+      "viewFullRecord": "查看完整记录",
+      "tabs": {
+        "profile": "个人资料",
+        "family": "家庭",
+        "job": "职务",
+        "payroll": "薪酬",
+        "documents": "文件",
+        "others": "其他",
+        "empty": "此处暂无内容。"
+      },
+      "documents": {
+        "title": "身份与文件",
+        "note": "已登记的法定标识。文件上传与存储（身份证扫描件、已签合同）将在后续版本中提供；请在“薪酬”标签页编辑这些值。",
+        "cp38Records": "CP38 分期记录",
+        "hint": "此为只读摘要。这些字段的可编辑来源位于“薪酬”标签页（法定）。"
+      }
     },
     "import": {
       "title": "导入员工",
@@ -1564,7 +1579,28 @@
       "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
       "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）",
       "secCeilings": "缴费上限",
-      "ceilingsNote": "加班费率在考勤模块中配置（考勤政策 → 加班费率），而非此处。"
+      "ceilingsNote": "加班费率在考勤模块中配置（考勤政策 → 加班费率），而非此处。",
+      "bandsEditWarning": "已核实的 PERKESO 缴费表 — 仅在已知的法定变更时才编辑。工资区间必须递增且不得有断层，金额为固定的令吉数值，而非百分比。若编辑有误，可将此版本归档以恢复内置缴费表。",
+      "socsoCat1": "第 1 类 — 工伤 + 残疾（60 岁以下）",
+      "socsoCat2": "第 2 类 — 仅工伤（60 岁及以上／外籍，雇主承担）",
+      "colWageFrom": "起（RM）",
+      "colWageTo": "至（RM）",
+      "colEmployerRm": "雇主（RM）",
+      "colEmployeeRm": "雇员（RM）",
+      "colSkbbkRm": "SKBBK（RM）",
+      "addTier": "新增税级",
+      "removeTier": "移除",
+      "removeTierAria": "移除税级",
+      "epfPartA": "第三附表 — A 部分（公民／永久居民，60 岁以下）",
+      "epfPartE": "第三附表 — E 部分（公民，60 岁至 75 岁以下）",
+      "epfBandsNote": "金额为每个薪资档的令吉数额，向上进位至下一令吉。最后一行（“及以上”）为超出附表上限后按精确百分比计算的部分。将某行的“薪资上限”留空即可将其设为无上限的顶档。",
+      "epfPartENote": "长者递减附表：雇员 0%、雇主 4%。适用于 60 岁至 75 岁以下的马来西亚公民；75 岁起无强制缴费。",
+      "colEpfUpTo": "薪资上限（RM）",
+      "colEpfEmployee": "雇员（RM）",
+      "colEpfEmployer": "雇主（RM）",
+      "addBand": "添加档次",
+      "removeBand": "移除档次",
+      "colActions": "操作"
     },
     "batch": {
       "back": "薪资",
@@ -1983,7 +2019,51 @@
       "leaverTag": "月中离职",
       "leaverFilterWarning": "此状态筛选将排除 {n} 名月中离职的员工——他们的最终薪资将被悄悄跳过。",
       "compLessWarning": "{n} 名员工没有有效的薪酬记录，将不会收到工资单。",
-      "noCyclesConfigured": "此公司尚未配置薪资周期"
+      "noCyclesConfigured": "此公司尚未配置薪资周期",
+      "companies": "公司",
+      "allMyCompanies": "我的所有公司",
+      "alreadyProcessedTag": "已处理",
+      "transactionsPrerequisiteNote": "运行前请在“交易”页面录入所有薪资交易（津贴、扣款、加班、报销、调整）。此流程仅选择范围并执行计算。",
+      "resultTitle": "薪资处理结果",
+      "resultSubtitle": "多公司薪资运行的摘要与状态。",
+      "resultExpired": "此结果已不可用——请开始新的薪资运行以查看最新结果。",
+      "resultBackToProcess": "返回薪资处理",
+      "overallStatusLabel": "总体状态",
+      "resultForPeriod": "薪资周期 {period}",
+      "totalCompanies": "已处理公司总数",
+      "companiesSplit": "{ok} 成功 · {failed} 失败",
+      "totalEmployeesSelected": "已选择员工总数",
+      "totalEmployeesSucceeded": "成功处理",
+      "totalEmployeesFailed": "处理失败",
+      "startedAt": "开始于",
+      "endedAt": "结束于",
+      "perCompanyTitle": "各公司结果",
+      "colCompany": "公司",
+      "colSelected": "已选择",
+      "colSucceeded": "成功",
+      "colStatus": "状态",
+      "colDetail": "详情",
+      "companySucceeded": "成功",
+      "companyFailed": "失败",
+      "viewBatch": "查看运行",
+      "failedEmployeesTitle": "无法处理的员工",
+      "colEmployeeId": "员工编号",
+      "colEmployeeName": "员工姓名",
+      "colFailureReason": "失败原因",
+      "employeeFailed": "失败",
+      "overall": {
+        "succeeded": "成功",
+        "partial": "部分成功",
+        "failed": "失败"
+      },
+      "reason": {
+        "PERIOD_ALREADY_PROCESSED": "本月已处理",
+        "NO_PAYROLL_CONFIG": "缺少薪资配置",
+        "NOT_AUTHORIZED": "您无权访问此公司",
+        "INVALID_CYCLE": "此公司没有有效的薪资周期",
+        "SYSTEM_VALIDATION_ERROR": "系统验证错误",
+        "MISSING_SALARY": "缺少薪资信息"
+      }
     }
   },
   "admin": {
@@ -2105,7 +2185,20 @@
       "logoInvalidType": "仅允许 PNG 或 JPG 图片",
       "logoTooLarge": "徽标超过 2 MB",
       "searchCompanies": "按名称或注册号搜索公司",
-      "noMatches": "没有符合搜索条件的公司"
+      "noMatches": "没有符合搜索条件的公司",
+      "addNewCompany": "添加新公司",
+      "tabGeneral": "一般",
+      "tabPayroll": "薪资",
+      "tabSystemConfig": "系统配置",
+      "tabAccessUsers": "访问与用户",
+      "tabOther": "其他",
+      "payrollCycleCrossLink": "薪资周期设置在“薪资周期”页面配置。",
+      "payrollCycleCrossLinkAction": "打开薪资周期",
+      "systemConfigCrossLink": "部门、职位、成本中心和业务单位在“设置 → 系统标签”下管理。",
+      "systemConfigCrossLinkAction": "打开系统标签",
+      "accessUsersCrossLink": "分配的用户和基于角色的访问权限在“用户”页面管理。",
+      "accessUsersCrossLinkAction": "打开用户",
+      "otherTabNote": "预留用于未来的公司设置。"
     },
     "systemLabels": {
       "pageTitle": "系统标签",
@@ -2114,7 +2207,20 @@
       "noCompaniesInScope": "范围内没有公司。",
       "countSummary": "{dept} 部门 · {pos} 职位 · {cc} 成本中心 · {bu} 业务单元",
       "fieldDescription": "描述",
-      "descriptionPlaceholder": "简短备注（可选）"
+      "descriptionPlaceholder": "简短备注（可选）",
+      "assignedCompanies": "已指派公司",
+      "assignmentSingle": "单一公司",
+      "assignmentMultiple": "多家公司",
+      "assignmentAll": "所有公司（全局）",
+      "assign": "指派",
+      "unassign": "取消指派",
+      "makeGlobal": "设为全局",
+      "clearGlobal": "取消全局",
+      "bulkActivate": "启用",
+      "bulkDeactivate": "停用",
+      "copyToCompanies": "复制到公司",
+      "cannotUnassignInUse": "无法取消指派：仍有公司在使用此标签。请先重新指派其员工。",
+      "globalGroupAdminOnly": "只有集团管理员才能将标签设为全局。"
     },
     "leave": {
       "pageTitle": "休假配置",
@@ -2381,7 +2487,8 @@
       "expiryUnitLabel": "单位",
       "expiryUnitMonths": "月",
       "expiryUnitDays": "天",
-      "expirySectionHelp": "此假期类型未使用的天数将在每部分累积后经过此时长到期，并从余额中扣除。留空表示不过期。已过期的天数仍会显示在假期报表中。不适用于年假，年假改用结转到期规则。"
+      "expirySectionHelp": "此假期类型未使用的天数将在每部分累积后经过此时长到期，并从余额中扣除。留空表示不过期。已过期的天数仍会显示在假期报表中。不适用于年假，年假改用结转到期规则。",
+      "auditHelp": "假期类型、额度、结转、审批流程和薪资集成变更的只读历史记录。"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -2738,6 +2845,14 @@
       "deleteConfirmDescription": "永久删除“{name}”？此操作无法撤销。仅当没有员工被分配且没有考勤记录引用该地点时才能删除。",
       "clockingInUse": "无法删除：已被 {count} 条记录引用。请改为归档。",
       "clockingNote": "只有当地点没有员工分配且没有考勤历史记录时才能删除，否则请改为归档。"
+    },
+    "leaveTabs": {
+      "types": "假期类型",
+      "entitlements": "假期额度",
+      "applicationRules": "申请规则",
+      "approval": "审批流程",
+      "payroll": "薪资相关",
+      "audit": "审计"
     }
   },
   "topbar": {
@@ -3582,7 +3697,49 @@
     "historicalSubmitted": "本课税年度已提交。",
     "historicalDraft": "本课税年度已保存为草稿。",
     "historicalNone": "本课税年度未作任何申报。",
-    "historyNote": "以往的提交会被保留并显示在您的记录历史中。过往课税年度以只读方式显示。"
+    "historyNote": "以往的提交会被保留并显示在您的记录历史中。过往课税年度以只读方式显示。",
+    "employeeSection": "员工资料",
+    "employeeName": "员工姓名",
+    "employeeNumber": "员工编号",
+    "company": "公司",
+    "totalLabel": "年度 TP1 减免总额",
+    "totalNote": "当您保存或提交时，系统会根据上面的各类别自动计算您的年度总额。",
+    "remarksLabel": "备注",
+    "remarksPlaceholder": "给人力资源部的任何备注或声明（可选）。",
+    "categories": {
+      "individual": {
+        "label": "个人及受抚养亲属（RM）",
+        "help": "标准个人减免及受抚养亲属。法定上限 RM 9,000。"
+      },
+      "spouse": {
+        "label": "配偶／赡养费（RM）",
+        "help": "未就业配偶或赡养费的减免。法定上限 RM 4,000。"
+      },
+      "children": {
+        "label": "子女（RM）",
+        "help": "该年度合格子女减免的总额。"
+      },
+      "parent": {
+        "label": "父母（RM）",
+        "help": "为您父母支付的医疗、护理或体检费用。"
+      },
+      "medicalInsurance": {
+        "label": "医疗／保险（RM）",
+        "help": "人寿及医疗保险、公积金以及经核准的医疗费用。"
+      },
+      "lifestyle": {
+        "label": "生活方式（RM）",
+        "help": "书籍、电脑、体育器材、网络及类似的生活方式支出。"
+      },
+      "education": {
+        "label": "教育费用（RM）",
+        "help": "为您本人支付的经核准课程或学费。"
+      },
+      "other": {
+        "label": "其他减免（RM）",
+        "help": "上面未列出的任何其他 TP1 减免类别。"
+      }
+    }
   },
   "payRule": {
     "sectionTitle": "如何计算？",
