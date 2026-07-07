@@ -21,6 +21,7 @@
  *      the run; its throw is mapped to a reason code and the loop continues to the next company.
  */
 import { withTenant, type SessionContext } from '../db/client';
+import { randomUUID } from 'node:crypto';
 import { actorOf, appendEvent } from '../db/events';
 import { createAdditionalRun, createBatch, generatePayslips } from './payroll';
 import { getActivePayrollCycle, listPayrollCycles } from './payroll-cycle';
@@ -247,11 +248,13 @@ export async function runMultiCompanyPayroll(
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-run-group',
       // Phase 1 has no persisted run-group row (see plan §"Run-group record"); the durable record is this
-      // event. Key it by "<period>:<startedAt>" so the run is addressable in the audit log without a table.
-      aggregateId: `${input.payPeriod}:${startedAt}`,
+      // event. domain_event.aggregate_id is UUID-typed, so mint a synthetic id for the virtual run-group and
+      // carry the human-addressable "<period>:<startedAt>" key in the payload as `runKey`.
+      aggregateId: randomUUID(),
       eventType: 'payroll-run-group.completed',
       actor: actorOf(ctx),
       payload: {
+        runKey: `${input.payPeriod}:${startedAt}`,
         payPeriod: input.payPeriod,
         companyIds: requested,
         startedAt,
