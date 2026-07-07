@@ -1213,7 +1213,7 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
     expect(await ledgerBalance(employmentId, b.annualLeaveTypeId)).toBe(8); // EA floor 8 wins over 3
   });
 
-  it('editing a policy changes later grants; removing it falls back to the floor', async () => {
+  it('editing a policy changes later grants AND recalculates already-granted employees (feedback 49809272)', async () => {
     const b = await seedBase();
     const a = adminCtx(b);
     const { id: policyId } = await createLeavePolicy(a, {
@@ -1224,16 +1224,19 @@ describe('Leave policy resolution — grant = max(statutory floor, company polic
     const pre = await hire(a, b, 'PreEdit', { annual: true });
     expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20);
 
-    // Correct in place → a *later* hire grants on the new value (the earlier grant is history).
-    await updateLeavePolicy(a, { id: policyId, annualDays: 10, validFrom: '2026-01-01' });
+    // Correct in place → a *later* hire grants on the new value, AND the earlier grant is re-projected:
+    // a compensating adjustment moves the already-granted employee to the corrected number (feedback
+    // 49809272 — this replaces the old "the earlier grant is history" behaviour).
+    await updateLeavePolicy(a, { id: policyId, annualDays: 10, validFrom: '2026-01-01', asOf: '2026-06-30' });
     const mid = await hire(a, b, 'PostEdit', { annual: true });
     expect(await ledgerBalance(mid.employmentId, b.annualLeaveTypeId)).toBe(10); // max(floor 8, policy 10)
-    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(20); // untouched
+    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(10); // recalculated 20 → 10
 
-    // Remove → the floor applies again.
+    // Remove → the floor applies again (no recalc on delete: past grants stay untouched).
     await deleteLeavePolicy(a, { id: policyId });
     const post = await hire(a, b, 'PostDelete', { annual: true });
     expect(await ledgerBalance(post.employmentId, b.annualLeaveTypeId)).toBe(8); // floor only
+    expect(await ledgerBalance(pre.employmentId, b.annualLeaveTypeId)).toBe(10); // delete leaves history alone
   });
 });
 

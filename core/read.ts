@@ -4,6 +4,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   AGED_FORFEIT_REASON,
+  POLICY_RECALC_REASON_PREFIX,
   earnedCycleStart,
   isEarnedMethod,
   isLeaveEligible,
@@ -907,6 +908,8 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,
         payrollPolicyStatus: payrollPolicy.status,
+        // ec4cbf63: the employee's DEFAULT shift (null = company default schedule) — profile assignment.
+        defaultShiftId: employment.defaultShiftId,
         // ADR-0054: the location on the employee's CURRENT open assignment (null = none).
         locationId: location.id,
         locationCode: location.code,
@@ -1181,8 +1184,11 @@ export function leaveEntitlementBreakdown(
           cycleAccrual: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual','in_lieu_accrual') and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
           // ADR-0066: positive `adjustment` credits within the current cycle (festive / one-off grants). The
           // accrual aggregates above exclude `adjustment`, so these are surfaced separately to reconcile the
-          // breakdown with `balance`. Negative adjustments (boundary forfeits) are accounted via `forfeited`.
-          otherAdjustments: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and ${leaveLedger.days} > 0 and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // breakdown with `balance`. Negative adjustments (boundary forfeits) are accounted via `forfeited` —
+          // EXCEPT the policy-correction recalc rows (feedback 49809272, reason `sys:policy_recalc:*`), which
+          // are signed ± and belong here in BOTH directions so a downward correction still reconciles
+          // (component sum = balance); the reason filter is additive — no other row carries that prefix.
+          otherAdjustments: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and (${leaveLedger.days} > 0 or ${leaveLedger.reason} like ${`${POLICY_RECALC_REASON_PREFIX}:%`}) and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
           // Leave Type Expiry Field (fec49317): aged-expiry forfeits within the current cycle. These are a
           // NEW class of negative adjustment (reason = AGED_FORFEIT_REASON, non-ANNUAL types only) that
           // resolveCarryBreakdown below does NOT see (its carryMax is 0 for non-ANNUAL). Aggregated here as a

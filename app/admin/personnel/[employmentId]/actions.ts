@@ -6,9 +6,11 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
+import { assignDefaultShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
-import { setReviewEndDate, startReview, type ReviewType } from '@/core/employment-review';
+import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
+import { buildReviewLetterPdf } from '@/lib/review-letter-build';
 import { setPersonComplianceFields } from '@/core/profile';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
@@ -39,6 +41,61 @@ export async function startReviewAction(formData: FormData) {
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(`/admin/personnel/${employmentId}?toast=Review started`);
+}
+
+/** 6522d26a — derive a TRUSTWORTHY mime type from the file's leading bytes (fail-closed: unknown → null).
+ *  Same rationale as the claims action: the service allowlist checks what the file IS, not what the
+ *  browser claimed. */
+function sniffMime(bytes: Buffer): string | null {
+  if (bytes.length >= 4 && bytes.toString('ascii', 0, 4) === '%PDF') return 'application/pdf';
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+  return null;
+}
+
+/** 6522d26a Fn 5 — HR uploads the final SIGNED review letter against a completed review. The service is
+ *  admin-only, validates mime/size, and appends `employment-review.document-uploaded` with the session
+ *  user as actor (actorOf(s) — the real user, never SYSTEM, threads through requireAdmin's session). */
+export async function uploadReviewDocumentAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    const file = formData.get('document');
+    if (!(file instanceof File) || file.size === 0) throw new Error('Choose a file to upload.');
+    const content = Buffer.from(await file.arrayBuffer());
+    const mimeType = sniffMime(content);
+    if (!mimeType) throw new Error('Only PDF, JPG, or PNG files are allowed');
+    await uploadReviewDocument(s, { reviewId, kind: 'signed_letter', fileName: file.name, mimeType, content });
+  } catch (e) {
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Document uploaded`);
+}
+
+/** 6522d26a Fn 5 — persist the system-generated outcome letter to the review record (kind system_letter,
+ *  at most one per review). Renders via the SAME builder as the download route, so the stored bytes match
+ *  what HR previews. */
+export async function saveReviewLetterAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const reviewId = String(formData.get('reviewId'));
+  try {
+    const letter = await buildReviewLetterPdf(s, reviewId);
+    if (!letter) throw new Error('Review not found (or not completed).');
+    await uploadReviewDocument(s, {
+      reviewId,
+      kind: 'system_letter',
+      fileName: letter.fileName,
+      mimeType: 'application/pdf',
+      content: Buffer.from(letter.bytes),
+    });
+  } catch (e) {
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Letter saved`);
 }
 
 export async function setEmploymentComponentAction(formData: FormData) {
@@ -113,6 +170,24 @@ export async function setLocationAction(formData: FormData) {
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+}
+
+/** ec4cbf63 — assign (or clear, when shiftId is empty) the employee's DEFAULT shift. Mirrors the payroll-
+ *  policy assignPolicyAction shape: admin-gated, real actor via the session, localized toast on success and
+ *  the raw service message via ?error= on failure. The engine uses the default shift on any date without a
+ *  dated roster row (roster row → default shift → company policy). */
+export async function setDefaultShiftAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const rawShift = String(formData.get('shiftId') ?? '').trim();
+  try {
+    await assignDefaultShift(s, { employmentId, shiftId: rawShift || null });
+  } catch (e) {
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  const t = await getTranslations('people.detail');
+  redirect(`/admin/personnel/${employmentId}?toast=${encodeURIComponent(t('defaultShiftAssigned'))}`);
 }
 
 export async function terminateAction(formData: FormData) {
@@ -289,6 +364,11 @@ export async function setStatutoryAction(formData: FormData) {
   const pack = packFor('MY');
   try {
     if (!pack) throw new Error('No localization pack for MY');
+    // Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260): this form no
+    // longer carries zakat fields, but the setter is a FULL overwrite of the statutory row — so read
+    // the current election and pass it through unchanged. Without this, every Personnel statutory
+    // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
+    const current = await pack.statutory.get(s, personId);
     await pack.statutory.set(s, {
       personId,
       icNumber: String(formData.get('icNumber')),
@@ -318,18 +398,19 @@ export async function setStatutoryAction(formData: FormData) {
       tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
       tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
       tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
-      // 1.2.4 Zakat election. Percent is entered as a % and stored as a decimal (÷100). The setter
-      // validates state/method and nulls the off-method amount; null/empty fields ⇒ no election.
-      zakatActive: formData.get('zakatActive') === 'on',
-      zakatState: (formData.get('zakatState') as string) || null,
-      zakatMethod: (() => {
-        const m = String(formData.get('zakatMethod') ?? '');
-        return m === 'percent_of_pcb' || m === 'fixed' ? m : null;
-      })(),
-      zakatPercent: formData.get('zakatPercent') ? Number(formData.get('zakatPercent')) / 100 : null,
-      zakatFixed: formData.get('zakatFixed') ? Number(formData.get('zakatFixed')) : null,
-      zakatEffectiveFrom: (formData.get('zakatEffectiveFrom') as string) || null,
-      zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
+      // tp3ZakatPaid is never on this form (it comes from payroll-history import) — pass the stored
+      // value through so a statutory save doesn't silently null an imported zakat opening balance.
+      tp3ZakatPaid: current?.tp3ZakatPaid != null ? Number(current.tp3ZakatPaid) : null,
+      // Zakat election pass-through (owned by Payroll > Transactions > Zakat since 58755260): the
+      // stored decimal percent goes back in as-is (it is already ÷100), so the election round-trips
+      // bit-for-bit through the full-overwrite setter.
+      zakatActive: current?.zakatActive ?? false,
+      zakatState: current?.zakatState ?? null,
+      zakatMethod: current?.zakatMethod ?? null,
+      zakatPercent: current?.zakatPercent != null ? Number(current.zakatPercent) : null,
+      zakatFixed: current?.zakatFixed != null ? Number(current.zakatFixed) : null,
+      zakatEffectiveFrom: current?.zakatEffectiveFrom ?? null,
+      zakatEffectiveTo: current?.zakatEffectiveTo ?? null,
     });
   } catch (e) {
     redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);

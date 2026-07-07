@@ -119,8 +119,12 @@ export default async function PayrollConfigPage({
                   <Field label={t('probationMonths')}>
                     <input type="number" name="probationMonths" min={1} defaultValue={cfg?.probationMonths ?? ''} placeholder="3" className={inputCls} />
                   </Field>
+                  <Field label={t('reviewReminderDays')}>
+                    <input name="reviewReminderDays" defaultValue={cfg?.reviewReminderDays?.join(', ') ?? ''} placeholder="30, 14, 7" className={inputCls} />
+                  </Field>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('probationMonthsHint')}</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('reviewReminderDaysHint')}</p>
               </div>
 
               <button className={btnPrimary}>{t('save')}</button>

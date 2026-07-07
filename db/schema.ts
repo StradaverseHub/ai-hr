@@ -563,6 +563,14 @@ export const employment = pgTable(
     payrollPolicyId: uuid('payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id, {
       onDelete: 'set null',
     }),
+    // Configurable Multi-Shift (ec4cbf63): the shift this employee NORMALLY works, set once on the profile.
+    // scheduleFor resolves roster row → THIS default shift (its weekly_pattern decides working vs rest) →
+    // flat company policy; a dated roster row always wins, so /roster stays the exceptions surface. Null =
+    // company default schedule (today's behaviour). ON DELETE SET NULL mirrors payroll_policy_id: deleting
+    // a shift never errors an FK, the employee just falls back to the company policy.
+    defaultShiftId: uuid('default_shift_id').references((): AnyPgColumn => shift.id, {
+      onDelete: 'set null',
+    }),
     terminatedOn: date('terminated_on'),
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
@@ -1321,6 +1329,10 @@ export const companyPayrollConfig = pgTable(
     // Configurable default probation length in months (migration 0136). Null = legacy/default 3. Applied to
     // a full_time hire's default probation end date; still editable per hire. Any positive integer.
     probationMonths: integer('probation_months'),
+    // 6522d26a — configurable review-reminder cadence (days BEFORE the review end date at which the
+    // reminder sweep nudges the manager + HR). Null/empty ⇒ default [30, 14, 7], resolved at sweep time
+    // (core/employment-review.ts resolveReminderDays). Stored sorted-desc, deduped, each 1–365.
+    reviewReminderDays: integer('review_reminder_days').array(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -2036,6 +2048,57 @@ export const employmentReview = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('employment_review_employment_idx').on(t.employmentId, t.status)],
+);
+
+// 6522d26a — reminder-cadence dedup ledger: one row per (review, offset_days) reminder actually
+// considered/sent, so the daily sweep never re-notifies the same offset (unique index is the hard gate;
+// the service pre-checks). employment_id is denormalized from the review for direct can_see_employment
+// RLS (read: subject + admin-line manager + admins; write: is_admin only — the SYSTEM sweep runs with a
+// group-wide hr_admin grant).
+export const employmentReviewReminder = pgTable(
+  'employment_review_reminder',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => employmentReview.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    offsetDays: integer('offset_days').notNull(),
+    sentOn: date('sent_on').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('employment_review_reminder_uq').on(t.reviewId, t.offsetDays)],
+);
+
+// 6522d26a — probation/contract/internship letter document store. Persists the system-generated outcome
+// letter (kind system_letter) and HR's uploaded final SIGNED copy (kind signed_letter), linked to the
+// completed employment_review. Shape mirrors claim_attachment / resignation_request_attachment (bytea
+// side-table, employment_id denormalized for RLS). Read = can_see_employment (so the SUBJECT can view +
+// download their own letters from ESS — Fn 6); write = is_admin only (HR uploads; the subject must not).
+export const reviewDocumentKindEnum = pgEnum('review_document_kind', ['system_letter', 'signed_letter']);
+export const reviewDocument = pgTable(
+  'review_document',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    reviewId: uuid('review_id')
+      .notNull()
+      .references(() => employmentReview.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    kind: reviewDocumentKindEnum('kind').notNull(),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('review_document_review_idx').on(t.reviewId)],
 );
 
 // ADR-0050 (#1.1.3): yearly self-service TP1 personal tax relief. Keyed by `person_id` (TP1 is the

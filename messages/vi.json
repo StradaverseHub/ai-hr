@@ -64,7 +64,7 @@
     "dateRange": "Khoảng ngày",
     "generated": "Đã tạo lịch cho {employees} nhân viên — {working} mục ngày làm việc và {rest} mục ngày nghỉ.",
     "generateHint": "Điền mọi ngày trong khoảng theo mẫu tuần của ca: mục ca vào ngày làm việc và ngày nghỉ rõ ràng cho các ngày còn lại, để chính sách công ty không âm thầm ghi đè mẫu. Chạy lại sẽ ghi đè các ngày đó.",
-    "manageShiftsHint": "Lịch ca được quản lý trong Chính sách chấm công.",
+    "manageShiftsHint": "Lịch ca được quản lý trong Chính sách chấm công; ca thường lệ của nhân viên được đặt trong hồ sơ dưới dạng Ca mặc định. Dùng lịch trực cho các ngoại lệ theo ngày.",
     "manageShiftsLink": "Quản lý lịch ca"
   },
   "common": {
@@ -239,7 +239,12 @@
       "provisionalEndHint": "Kết thúc thử việc cho toàn thời gian (mặc định +3 tháng); nếu không là ngày kết thúc hợp đồng hoặc thực tập. Để trống nếu không có.",
       "businessUnit": "Đơn vị kinh doanh",
       "businessUnitNone": "— Không có —",
-      "colCode": "Mã"
+      "colCode": "Mã",
+      "filter": "Lọc",
+      "applyFilters": "Áp dụng bộ lọc",
+      "clearAllFilters": "Xóa tất cả",
+      "activeFilters": "{count, plural, one {# bộ lọc} other {# bộ lọc}}",
+      "removeFilter": "Xóa bộ lọc {label}"
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -430,19 +435,6 @@
       "cp38RefPlaceholder": "vd. CP38/2026/00123",
       "cp38RemarksPlaceholder": "Ghi chú tùy chọn",
       "cp38Open": "Không có ngày kết thúc",
-      "zakat": {
-        "title": "Zakat (qua lương)",
-        "active": "Khấu trừ zakat qua lương",
-        "state": "Cơ quan zakat (bang)",
-        "method": "Phương thức",
-        "methodPercentOfPcb": "Phần trăm của PCB/MTD",
-        "methodFixed": "Số tiền cố định",
-        "percent": "Phần trăm (%)",
-        "fixed": "Số tiền cố định (RM)",
-        "effectiveFrom": "Hiệu lực từ",
-        "effectiveTo": "Hiệu lực đến",
-        "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ."
-      },
       "family": {
         "title": "Gia đình & Người phụ thuộc",
         "note": "Chỉ dùng cho hồ sơ phúc lợi và bảo hiểm. Thông tin này không ảnh hưởng đến lương hay số con để tính thuế, và tách biệt với người liên hệ khẩn cấp.",
@@ -518,7 +510,15 @@
         "note": "Các mã định danh theo luật đã ghi nhận. Tải lên và lưu trữ tệp (bản quét giấy tờ tùy thân, hợp đồng đã ký) sẽ có trong bản phát hành sau; chỉnh sửa các giá trị này ở tab Lương.",
         "cp38Records": "Bản ghi trả góp CP38",
         "hint": "Đây là bản tóm tắt chỉ đọc. Nguồn có thể chỉnh sửa cho các trường này nằm trong tab Lương (Theo luật)."
-      }
+      },
+      "zakatMoved": "Thiết lập zakat (qua lương) đã chuyển sang Lương → Giao dịch → Zakat.",
+      "zakatMovedLink": "Mở màn hình zakat",
+      "defaultShiftTitle": "Ca mặc định",
+      "defaultShiftLabel": "Ca",
+      "defaultShiftNone": "Không — dùng lịch mặc định của công ty",
+      "defaultShiftSave": "Lưu",
+      "defaultShiftHint": "Ca mà nhân viên này thường làm việc. Dùng cho bất kỳ ngày nào không có mục lịch trực cụ thể — ngày có lịch trực sẽ ghi đè ca này; giờ làm thêm được tính theo giờ của ca này.",
+      "defaultShiftAssigned": "Đã lưu ca mặc định"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -789,7 +789,9 @@
       "noCheckout": "Chưa chấm ra",
       "srcRoster": "Ca đã xếp",
       "srcRest": "Ngày nghỉ",
-      "srcPolicy": "Chính sách công ty"
+      "srcPolicy": "Chính sách công ty",
+      "srcDefaultShift": "Ca mặc định",
+      "srcDefaultShiftRest": "Ngày nghỉ của ca mặc định"
     },
     "importPunches": "Nhập chấm công",
     "colLocation": "Địa điểm",
@@ -1711,7 +1713,15 @@
       "encashmentFrozenAsOfTitle": "Đã khóa vào ngày {date}",
       "colCode": "Mã",
       "transferAllowance": "Chuyển phụ cấp",
-      "allowanceGateWarning": "Thành phần lương định kiểu đang tắt — việc chuyển sẽ được ghi nhận nhưng không vào phiếu lương cho đến khi được bật."
+      "allowanceGateWarning": "Thành phần lương định kiểu đang tắt — việc chuyển sẽ được ghi nhận nhưng không vào phiếu lương cho đến khi được bật.",
+      "resetPayroll": "Đặt lại lương",
+      "resetTitle": "Đặt lại quy trình tính lương",
+      "resetDescription": "Bạn có chắc muốn đặt lại quy trình tính lương này không? Toàn bộ kết quả tính lương của đợt chạy này sẽ bị xóa và quy trình sẽ trở về trạng thái Nháp. Thao tác này chỉ nên được thực hiện bởi người dùng được ủy quyền.",
+      "resetConfirm": "Đặt lại lương",
+      "resetDone": "Đã đặt lại quy trình tính lương về Nháp",
+      "resetOnlyProcessed": "Chỉ có thể đặt lại quy trình tính lương ở trạng thái Đã xử lý.",
+      "resetAdminOnly": "Chỉ quản trị viên mới có thể đặt lại quy trình tính lương.",
+      "lockedNote": "Quy trình tính lương này đã bị khóa — phiếu lương đã được tạo. Để chỉnh sửa, quản trị viên phải đặt lại về Nháp."
     },
     "transactions": {
       "title": "Giao dịch",
@@ -1890,14 +1900,40 @@
       },
       "zakat": {
         "title": "Zakat",
-        "subtitle": "Zakat trả qua lương theo nhân viên cho đợt nháp.",
+        "subtitle": "Thiết lập zakat theo từng nhân viên, cùng ghi đè một lần cho một kỳ lương.",
         "pickBatch": "Đợt nháp",
         "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
         "employee": "Nhân viên",
         "amount": "Zakat",
         "save": "Lưu",
         "saved": "Đã lưu.",
-        "empty": "Không có nhân viên trong đợt này."
+        "empty": "Không có nhân viên trong đợt này.",
+        "election": {
+          "title": "Thiết lập zakat (qua lương)",
+          "subtitle": "Khoản khấu trừ zakat cố định của nhân viên — bang, phương thức, mức và thời gian hiệu lực. Được áp dụng trong mỗi kỳ lương thường.",
+          "pickEmployee": "Nhân viên",
+          "noEmployees": "Không có nhân viên trong phạm vi công ty hiện tại.",
+          "name": "Họ tên",
+          "employeeNo": "Mã nhân viên",
+          "company": "Công ty",
+          "noProfile": "Nhân viên này chưa có hồ sơ pháp định Malaysia. Hãy lưu số IC trong hồ sơ nhân sự trước.",
+          "openPersonnel": "Mở hồ sơ nhân sự",
+          "save": "Lưu thiết lập",
+          "active": "Khấu trừ zakat qua lương",
+          "state": "Cơ quan zakat (bang)",
+          "method": "Phương thức",
+          "methodPercentOfPcb": "Phần trăm của PCB/MTD",
+          "methodFixed": "Số tiền cố định",
+          "percent": "Phần trăm (%)",
+          "fixed": "Số tiền cố định (RM)",
+          "effectiveFrom": "Hiệu lực từ",
+          "effectiveTo": "Hiệu lực đến",
+          "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ."
+        },
+        "override": {
+          "title": "Ghi đè một lần (theo kỳ lương)",
+          "subtitle": "Số tiền RM nhập tay chỉ cho một đợt nháp — sẽ ghi đè thiết lập cố định cho kỳ đó."
+        }
       },
       "view": {
         "title": "Xem giao dịch",
@@ -2538,7 +2574,10 @@
       "advanceNoticeSectionTitle": "Thông báo trước",
       "minAdvanceDaysLabel": "Số ngày báo trước tối thiểu",
       "advanceNoticeSectionHelp": "Nhân viên phải nộp đơn xin loại nghỉ phép này trước ngày bắt đầu bao nhiêu ngày. Để trống nếu không yêu cầu. Quản trị viên HR không bao giờ bị chặn bởi quy tắc này.",
-      "advanceCustomMessageHelp": "Hiển thị cho nhân viên khi loại nghỉ phép này được nộp mà không đủ thời gian báo trước. Tối đa 500 ký tự. Để trống để giữ thông báo tiêu chuẩn. Chỉ áp dụng cho loại nghỉ phép này."
+      "advanceCustomMessageHelp": "Hiển thị cho nhân viên khi loại nghỉ phép này được nộp mà không đủ thời gian báo trước. Tối đa 500 ký tự. Để trống để giữ thông báo tiêu chuẩn. Chỉ áp dụng cho loại nghỉ phép này.",
+      "recalcToast": "Đã sửa quyền nghỉ — tính lại cho {count} nhân viên (tổng cộng {delta} ngày).",
+      "recalcNoneToast": "Đã sửa chính sách. Không có số dư nhân viên nào thay đổi.",
+      "recalcInPlaceHint": "Chỉnh sửa tại đây sẽ sửa quyền nghỉ hiện tại và tự động ghi có lại cho các nhân viên bị ảnh hưởng. Để thay đổi quyền nghỉ từ một ngày trong tương lai, hãy thêm phiên bản mới."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -2766,7 +2805,7 @@
       "daySun": "CN",
       "save": "Lưu chính sách",
       "lateHint": "Chấm vào sau “trễ sau” bị đánh dấu trễ; chấm ra trước “nửa ngày trước” tính là nửa ngày.",
-      "rosterNote": "Lịch ca đặt ở trên được phân cho nhân viên trên màn hình Lịch trực. Nhân viên có phân công lịch trực sẽ dùng ca theo lịch; người không có sẽ dùng lịch mặc định này.",
+      "rosterNote": "Ca làm việc thường lệ của nhân viên được đặt làm Ca mặc định trong hồ sơ của họ (Nhân sự → thẻ Công việc); màn hình Lịch trực dành cho các ngoại lệ theo ngày. Ngày có phân công lịch trực sẽ được ưu tiên hơn ca mặc định; nhân viên không có cả hai sẽ dùng lịch mặc định này.",
       "dayTypeHint": "Cả ngày = ngày làm việc bình thường. Nửa ngày = ngày làm việc ngắn hơn (ví dụ Thứ Bảy 9:00–12:00) — nghỉ phép vào ngày này sẽ trừ 0.5 ngày theo mặc định, hoặc 1.0 ngày nếu bật cài đặt trừ lương nửa ngày. Nghỉ = không phải ngày làm việc.",
       "dayTypeFull": "Cả ngày",
       "dayTypeHalf": "Nửa ngày",
@@ -2819,7 +2858,8 @@
       "otVersion": "Phiên bản",
       "otNotes": "Ghi chú",
       "otPublish": "Công bố hệ số OT",
-      "otCancel": "Hủy"
+      "otCancel": "Hủy",
+      "colCompany": "Công ty"
     },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",
@@ -3520,7 +3560,9 @@
     "save": "Lưu",
     "hiringTitle": "Mặc định tuyển dụng",
     "probationMonths": "Thời gian thử việc mặc định (tháng)",
-    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển."
+    "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
+    "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
+    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",
@@ -3913,8 +3955,21 @@
       "managerEvaluatedTitle": "Đánh giá sẵn sàng để quyết định",
       "managerEvaluatedBody": "Đánh giá của quản lý đã sẵn sàng — ghi quyết định của HR.",
       "decidedTitle": "Đánh giá của bạn đã hoàn tất",
-      "decidedBody": "Đánh giá của bạn đã được hoàn tất."
-    }
+      "decidedBody": "Đánh giá của bạn đã được hoàn tất.",
+      "reminderTitle": "Nhắc nhở đánh giá",
+      "reminderBody": "Một đánh giá đang chờ xử lý — ngày kết thúc thời hạn đang đến gần.",
+      "issueLetterTitle": "Phát hành thư đánh giá",
+      "issueLetterBody": "Một đánh giá đã được quyết định — hãy tạo thư kết quả và tải lên bản sao đã ký."
+    },
+    "documents": "Tài liệu",
+    "download": "Tải xuống",
+    "upload": "Tải lên",
+    "documentKind": {
+      "system_letter": "Thư hệ thống",
+      "signed_letter": "Thư đã ký"
+    },
+    "saveLetterToRecord": "Lưu thư vào hồ sơ",
+    "uploadSignedLetter": "Tải lên thư đã ký"
   },
   "loans": {
     "title": "Khoản vay",

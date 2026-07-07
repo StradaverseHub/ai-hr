@@ -28,6 +28,9 @@ const ALL_TABLES = [
   // 0110 — leaking review rows across tests would make the partial-unique index throw spuriously
   // (order-dependent false-green/false-red). Must be truncated between tests.
   'employment_review',
+  // 6522d26a — reminder dedup rows + letter documents: a leaked (review, offset) row would trip the
+  // unique index (or make a reminder-sweep test see a phantom "already sent") across test files.
+  'employment_review_reminder', 'review_document',
   // ADR-0069 — leave encashment: leaking a frozen snapshot across tests would make the partial unique
   // index (employment_id, leave_type_id) WHERE status='frozen' throw spuriously.
   'leave_encashment_policy', 'leave_encashment_snapshot',

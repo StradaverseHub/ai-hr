@@ -1,0 +1,374 @@
+/**
+ * Configurable Earned Leave Entitlement Rules — policy-correction recalculation (feedback 49809272).
+ *
+ * updateLeavePolicy (the "correct in place / fix a mis-typed value" path) must FLOW THROUGH to
+ * employees already granted this cycle: reprojectEntitlementForPolicy posts one compensating
+ * `adjustment` (reason `sys:policy_recalc:<policyId>`) per affected employment for the delta between
+ * the corrected current-cycle entitlement and what the ledger already holds, plus one
+ * `leave.entitlement.recalculated` DomainEvent per row (real actor).
+ *
+ * Invariants under test:
+ *  (1) upward + downward corrections move the balance by the delta (upfront method);
+ *  (2) idempotency — an identical re-save posts nothing (delta 0), a no-entitlement edit skips entirely;
+ *  (3) earned method re-projects elapsed periods only, and the accrual cron never double-grants the
+ *      delta (its `already` sum sees the recalc adjustments);
+ *  (4) scope — company-/grade-scoped corrections touch only their cohort;
+ *  (5) closed prior years are never rewritten (current cycle only);
+ *  (6) a forward-dated NEW version (createLeavePolicy) triggers no recalculation (effective-date logic);
+ *  (7) EA-FLOOR — a below-floor correction claws back only down TO max(floor, policy), never below;
+ *  (8) Balance/Ledger/Breakdown consistency — leaveEntitlementBreakdown reconciles in both directions.
+ */
+import { and, eq, like } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import * as schema from '../db/schema';
+import { hireEmployee } from '../core/org';
+import { createCompany, createDepartment, createJobGrade, createLeavePolicy, updateLeavePolicy } from '../core/admin';
+import { accrueEarnedLeave, openLeaveYear, POLICY_RECALC_REASON_PREFIX } from '../core/leave';
+import { leaveEntitlementBreakdown } from '../core/read';
+import { adminCtx, closeAll, ledgerBalance, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+
+let b: Base;
+const uniqEmail = () => `recalc_${randomUUID().slice(0, 8)}@t.local`;
+const ASOF = '2026-06-30';
+
+beforeAll(async () => {
+  await migrateTestDb();
+});
+beforeEach(async () => {
+  await resetDb();
+  b = await seedBase();
+});
+afterAll(async () => {
+  await closeAll();
+});
+
+const annualBalance = (employmentId: string) => ledgerBalance(employmentId, b.annualLeaveTypeId);
+
+const policy = (
+  annualDays: number,
+  opts?: { companyId?: string | null; gradeId?: string | null; method?: string; validFrom?: string },
+) =>
+  createLeavePolicy(adminCtx(b), {
+    leaveTypeId: b.annualLeaveTypeId,
+    annualDays,
+    companyId: opts?.companyId ?? null,
+    gradeId: opts?.gradeId ?? null,
+    method: opts?.method,
+    validFrom: opts?.validFrom ?? '2026-01-01',
+  });
+
+// Hire on 1 Jan so ANNUAL grants in full (no mid-year pro-ration) → balance IS the entitlement.
+const hireIn = (
+  companyId: string,
+  departmentId: string,
+  opts?: { gradeId?: string | null; hiredOn?: string },
+) =>
+  hireEmployee(adminCtx(b), {
+    person: { fullName: 'Emp', primaryEmail: uniqEmail() },
+    companyId,
+    departmentId,
+    employmentType: 'full_time',
+    hiredOn: opts?.hiredOn ?? '2026-01-01',
+    gradeId: opts?.gradeId ?? null,
+    grantLeaveTypes: [{ id: b.annualLeaveTypeId, code: 'ANNUAL' }],
+  });
+
+/** All policy-recalc adjustment rows for one employment (owner read — bypasses RLS for assertions). */
+const recalcRows = (employmentId: string) =>
+  owner.db
+    .select({
+      days: schema.leaveLedger.days,
+      effectiveOn: schema.leaveLedger.effectiveOn,
+      reason: schema.leaveLedger.reason,
+      entryType: schema.leaveLedger.entryType,
+    })
+    .from(schema.leaveLedger)
+    .where(
+      and(
+        eq(schema.leaveLedger.employmentId, employmentId),
+        like(schema.leaveLedger.reason, `${POLICY_RECALC_REASON_PREFIX}:%`),
+      ),
+    );
+
+/** All leave.entitlement.recalculated events for the tenant, oldest first. */
+const recalcEvents = async () => {
+  const rows = await owner.db
+    .select({
+      payload: schema.domainEvent.payload,
+      actorType: schema.domainEvent.actorType,
+      actorId: schema.domainEvent.actorId,
+      subjectEmploymentId: schema.domainEvent.subjectEmploymentId,
+      aggregateType: schema.domainEvent.aggregateType,
+      seq: schema.domainEvent.sequence,
+    })
+    .from(schema.domainEvent)
+    .where(
+      and(
+        eq(schema.domainEvent.tenantId, b.tenantId),
+        eq(schema.domainEvent.eventType, 'leave.entitlement.recalculated'),
+      ),
+    );
+  return rows.sort((a, z) => Number(a.seq) - Number(z.seq));
+};
+
+describe('49809272 — upfront correction (up / down / floor)', () => {
+  it('upward correction 12 → 14 posts +2, balance 14, one event with the real actor + payload', async () => {
+    const { id } = await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    expect(await annualBalance(emp.employmentId)).toBe(12);
+
+    const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
+    expect(res).toEqual({ affected: 1, totalDelta: 2 });
+    expect(await annualBalance(emp.employmentId)).toBe(14);
+
+    const rows = await recalcRows(emp.employmentId);
+    expect(rows.length).toBe(1);
+    expect(Number(rows[0].days)).toBe(2);
+    expect(rows[0].entryType).toBe('adjustment');
+    expect(rows[0].effectiveOn).toBe(ASOF); // inside the current cycle window — prior years untouched
+    expect(rows[0].reason).toBe(`${POLICY_RECALC_REASON_PREFIX}:${id}`);
+
+    const events = await recalcEvents();
+    expect(events.length).toBe(1);
+    expect(events[0].actorType).toBe('user'); // the HR admin, not SYSTEM
+    expect(events[0].actorId).toBe(b.adminUserId);
+    expect(events[0].subjectEmploymentId).toBe(emp.employmentId);
+    expect(events[0].aggregateType).toBe('leave-ledger');
+    const payload = events[0].payload as Record<string, unknown>;
+    expect(payload.policyId).toBe(id);
+    expect(payload.leaveTypeId).toBe(b.annualLeaveTypeId);
+    expect(payload.employmentId).toBe(emp.employmentId);
+    expect(payload.before).toBe(12);
+    expect(payload.after).toBe(14);
+    expect(payload.delta).toBe(2);
+    expect(payload.cycleStart).toBe('2026-01-01');
+  });
+
+  it('downward correction 14 → 12 posts −2 and the balance drops', async () => {
+    const { id } = await policy(14);
+    const emp = await hireIn(b.companyId, b.deptA);
+    expect(await annualBalance(emp.employmentId)).toBe(14);
+
+    const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 12, validFrom: '2026-01-01', asOf: ASOF });
+    expect(res).toEqual({ affected: 1, totalDelta: -2 });
+    expect(await annualBalance(emp.employmentId)).toBe(12);
+    const events = await recalcEvents();
+    expect((events[0].payload as Record<string, unknown>).delta).toBe(-2);
+  });
+
+  it('EA-FLOOR invariant: correcting 12 → 6 claws back only to the floor (8), never below', async () => {
+    const { id } = await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 6, validFrom: '2026-01-01', asOf: ASOF });
+    // entitlement = max(EA floor 8 for <2y service, policy 6) = 8 ⇒ delta −4, NOT −6.
+    expect(res.totalDelta).toBe(-4);
+    expect(await annualBalance(emp.employmentId)).toBe(8);
+  });
+
+  it('the enriched leave-policy.updated event carries the recalc summary', async () => {
+    const { id } = await policy(12);
+    await hireIn(b.companyId, b.deptA);
+    await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
+    const [ev] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(
+        and(
+          eq(schema.domainEvent.tenantId, b.tenantId),
+          eq(schema.domainEvent.aggregateId, id),
+          eq(schema.domainEvent.eventType, 'leave-policy.updated'),
+        ),
+      );
+    expect((ev.payload as { recalc?: unknown }).recalc).toEqual({ affected: 1, totalDelta: 2 });
+  });
+});
+
+describe('49809272 — idempotency + no-op edits', () => {
+  it('re-saving the identical correction posts nothing (delta already 0)', async () => {
+    const { id } = await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    const first = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
+    expect(first.affected).toBe(1);
+    const second = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
+    expect(second).toEqual({ affected: 0, totalDelta: 0 });
+    expect(await annualBalance(emp.employmentId)).toBe(14); // not 16
+    expect((await recalcRows(emp.employmentId)).length).toBe(1); // one compensating row, not two
+  });
+
+  it('an entitlement-neutral edit (carry-forward cap only) posts no adjustment and no recalc event', async () => {
+    const { id } = await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id,
+      annualDays: 12,
+      carryForwardMax: 5, // carry rule changes; days/method/bands/scope do not
+      validFrom: '2026-01-01',
+      asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 0, totalDelta: 0 });
+    expect(await annualBalance(emp.employmentId)).toBe(12);
+    expect((await recalcRows(emp.employmentId)).length).toBe(0);
+    expect((await recalcEvents()).length).toBe(0);
+  });
+});
+
+describe('49809272 — earned (monthly accrual) method', () => {
+  it('mid-cycle rate correction tops up elapsed periods only, and the cron never double-grants', async () => {
+    const { id } = await policy(12, { method: 'earned_monthly' }); // 1 day / month
+    const emp = await hireIn(b.companyId, b.deptA); // earned: hire grant skipped, cron accrues
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-05-31' }); // 5 periods × 1 = 5
+    expect(await annualBalance(emp.employmentId)).toBe(5);
+
+    // Raise 12 → 16.8 (1.4/period). Expected-to-date at May = 7 ⇒ +2 adjustment; NO future periods.
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id,
+      annualDays: 16.8,
+      method: 'earned_monthly',
+      validFrom: '2026-01-01',
+      asOf: '2026-05-31',
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: 2 });
+    expect(await annualBalance(emp.employmentId)).toBe(7);
+
+    // Idempotent against the CRON too: an immediate re-run must see the recalc credit in its
+    // `already` sum and grant nothing (this is the accrueEarnedLeave widening under test).
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-05-31' });
+    expect(await annualBalance(emp.employmentId)).toBe(7);
+
+    // Next month the cron tops up exactly one more corrected period: 16.8/12 × 6 = 8.4.
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-06-30' });
+    expect(await annualBalance(emp.employmentId)).toBe(8.4);
+  });
+
+  it('an earned employee with NOTHING materialized this cycle is skipped (the cron grants correctly later)', async () => {
+    const { id } = await policy(12, { method: 'earned_monthly' });
+    const emp = await hireIn(b.companyId, b.deptA); // no cron run yet ⇒ no accrual rows
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id,
+      annualDays: 16.8,
+      method: 'earned_monthly',
+      validFrom: '2026-01-01',
+      asOf: '2026-05-31',
+    });
+    expect(res).toEqual({ affected: 0, totalDelta: 0 }); // nothing to correct — nothing was granted
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-05-31' });
+    expect(await annualBalance(emp.employmentId)).toBe(7); // cron grants at the corrected rate, once
+  });
+});
+
+describe('49809272 — scope filters', () => {
+  it('a company-scoped correction only re-credits that company; the other company is untouched', async () => {
+    const a = adminCtx(b);
+    const { id: coB } = await createCompany(a, { legalName: 'Sub B Sdn Bhd' });
+    const deptB = (await createDepartment(a, { companyId: coB, name: 'B-Ops' })).id;
+    const { id: polA } = await policy(12, { companyId: b.companyId });
+    await policy(14, { companyId: coB });
+    const empA = await hireIn(b.companyId, b.deptA);
+    const empB = await hireIn(coB, deptB);
+    expect(await annualBalance(empA.employmentId)).toBe(12);
+    expect(await annualBalance(empB.employmentId)).toBe(14);
+
+    const res = await updateLeavePolicy(a, {
+      id: polA,
+      annualDays: 13,
+      companyId: b.companyId,
+      validFrom: '2026-01-01',
+      asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: 1 });
+    expect(await annualBalance(empA.employmentId)).toBe(13);
+    expect(await annualBalance(empB.employmentId)).toBe(14); // other company untouched
+  });
+
+  it('a grade-scoped correction only re-credits that grade', async () => {
+    const a = adminCtx(b);
+    const exec = await createJobGrade(a, { code: 'EXEC', name: 'Executive' });
+    await policy(12); // all-grades default
+    const { id: polExec } = await policy(15, { gradeId: exec.id });
+    const empExec = await hireIn(b.companyId, b.deptA, { gradeId: exec.id });
+    const empStaff = await hireIn(b.companyId, b.deptA);
+    expect(await annualBalance(empExec.employmentId)).toBe(15);
+    expect(await annualBalance(empStaff.employmentId)).toBe(12);
+
+    const res = await updateLeavePolicy(a, {
+      id: polExec,
+      annualDays: 18,
+      gradeId: exec.id,
+      validFrom: '2026-01-01',
+      asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 1, totalDelta: 3 });
+    expect(await annualBalance(empExec.employmentId)).toBe(18);
+    expect(await annualBalance(empStaff.employmentId)).toBe(12); // other grade untouched
+  });
+});
+
+describe('49809272 — effective-date model preserved', () => {
+  it('closed prior years are never rewritten — only the current cycle moves', async () => {
+    const { id } = await policy(12, { validFrom: '2025-01-01' });
+    const emp = await hireIn(b.companyId, b.deptA, { hiredOn: '2025-01-01' }); // 2025 grant: 12
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // 2025 forfeited (carry 0), 2026 grant: 12
+    expect(await annualBalance(emp.employmentId)).toBe(12);
+    const priorRows = () =>
+      owner.db
+        .select({ id: schema.leaveLedger.id })
+        .from(schema.leaveLedger)
+        .where(and(eq(schema.leaveLedger.employmentId, emp.employmentId), eq(schema.leaveLedger.effectiveOn, '2025-01-01')));
+    const priorBefore = (await priorRows()).length;
+
+    const res = await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2025-01-01', asOf: ASOF });
+    // Only the OPEN 2026 cycle re-projects (+2 on its 12); the closed 2025 grant stays exactly as posted.
+    expect(res).toEqual({ affected: 1, totalDelta: 2 });
+    expect(await annualBalance(emp.employmentId)).toBe(14);
+    expect((await priorRows()).length).toBe(priorBefore);
+    const rows = await recalcRows(emp.employmentId);
+    expect(rows.length).toBe(1);
+    expect(rows[0].effectiveOn).toBe(ASOF); // dated inside the current cycle, not backdated
+  });
+
+  it('a forward-dated NEW version (createLeavePolicy) posts NO recalculation', async () => {
+    await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    expect(await annualBalance(emp.employmentId)).toBe(12);
+    await policy(20, { validFrom: '2027-01-01' }); // genuinely new version, applies from its own date
+    expect(await annualBalance(emp.employmentId)).toBe(12); // unchanged now
+    expect((await recalcEvents()).length).toBe(0);
+  });
+
+  it('correcting a FUTURE-dated version in place recalculates nothing today', async () => {
+    await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    const future = await policy(20, { validFrom: '2027-01-01' });
+    const res = await updateLeavePolicy(adminCtx(b), {
+      id: future.id,
+      annualDays: 22,
+      validFrom: '2027-01-01',
+      asOf: ASOF,
+    });
+    expect(res).toEqual({ affected: 0, totalDelta: 0 });
+    expect(await annualBalance(emp.employmentId)).toBe(12);
+  });
+});
+
+describe('49809272 — Balance / Ledger / Breakdown consistency', () => {
+  it('after an upward correction the breakdown reconciles (otherAdjustments carries the credit)', async () => {
+    const { id } = await policy(12);
+    const emp = await hireIn(b.companyId, b.deptA);
+    await updateLeavePolicy(adminCtx(b), { id, annualDays: 14, validFrom: '2026-01-01', asOf: ASOF });
+    const view = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
+    expect(view?.currentYearEntitlement).toBe(12); // the original accrual rows
+    expect(view?.otherAdjustments).toBe(2); // the recalc credit
+    expect(view?.totalAvailable).toBe(14); // = balance (no pending) — Balance & Ledger agree
+  });
+
+  it('after a downward correction the breakdown still reconciles (signed recalc row surfaces)', async () => {
+    const { id } = await policy(14);
+    const emp = await hireIn(b.companyId, b.deptA);
+    await updateLeavePolicy(adminCtx(b), { id, annualDays: 12, validFrom: '2026-01-01', asOf: ASOF });
+    const view = await leaveEntitlementBreakdown(adminCtx(b), emp.employmentId, b.annualLeaveTypeId, '2026-12-31');
+    expect(view?.currentYearEntitlement).toBe(14);
+    expect(view?.otherAdjustments).toBe(-2); // negative recalc row included by reason (feedback 49809272)
+    expect(view?.totalAvailable).toBe(12);
+  });
+});

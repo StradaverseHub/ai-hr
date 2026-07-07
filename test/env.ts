@@ -21,3 +21,4 @@ delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
 delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
 delete process.env.GROUP_PCB_COORDINATION_ENABLED;
 delete process.env.AUDIT_HASH_CHAIN_ENABLED; // ADR-0030 Layer 2 gate; the hash-chain test opts in per-run
+delete process.env.PAYROLL_RESET_ENABLED; // a03b2d9b Payroll Reset gate; payroll-reset.test.ts opts in per-test

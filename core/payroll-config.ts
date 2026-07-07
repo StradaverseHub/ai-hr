@@ -27,6 +27,20 @@ const cleanProbation = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
+// 6522d26a — review reminder cadence: comma-separated days (or an array) → trunc, keep 1–365, dedupe,
+// sort DESC. Blank / nothing valid → null (= default [30,14,7], resolved at sweep time). Capped at 10
+// offsets so a typo can't schedule a reminder storm.
+const cleanReminderDays = (v: unknown): number[] | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const parts = Array.isArray(v) ? v : String(v).split(/[,\s]+/);
+  const clean = [
+    ...new Set(parts.map((d) => Math.trunc(Number(d))).filter((d) => Number.isFinite(d) && d >= 1 && d <= 365)),
+  ]
+    .sort((a, b) => b - a)
+    .slice(0, 10);
+  return clean.length ? clean : null;
+};
+
 export type PayrollConfigInput = {
   companyId: string;
   cutOffDay?: number | string | null;
@@ -39,6 +53,8 @@ export type PayrollConfigInput = {
   attendanceCutOffDay?: number | string | null;
   // Configurable default probation length (months). Null = default 3.
   probationMonths?: number | string | null;
+  // 6522d26a — review reminder cadence (days before the review end date). Null = default [30,14,7].
+  reviewReminderDays?: number[] | string | null;
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
@@ -51,6 +67,7 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     unpaidLeaveCutOffDay: cleanDay(p.unpaidLeaveCutOffDay),
     attendanceCutOffDay: cleanDay(p.attendanceCutOffDay),
     probationMonths: cleanProbation(p.probationMonths),
+    reviewReminderDays: cleanReminderDays(p.reviewReminderDays),
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx

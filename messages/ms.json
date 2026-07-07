@@ -64,7 +64,7 @@
     "dateRange": "Julat tarikh",
     "generated": "Jadual dijana untuk {employees} pekerja — {working} catatan hari bekerja dan {rest} catatan hari rehat.",
     "generateHint": "Mengisi setiap tarikh dalam julat mengikut corak mingguan syif: catatan syif pada hari bekerja dan hari rehat yang jelas pada hari selebihnya, supaya polisi syarikat tidak menimpa corak itu secara senyap. Jana semula akan menulis ganti tarikh yang sama.",
-    "manageShiftsHint": "Jadual syif diurus dalam Dasar Kehadiran.",
+    "manageShiftsHint": "Jadual syif diurus dalam Dasar Kehadiran; syif biasa seseorang ditetapkan pada profil mereka sebagai Syif lalai. Gunakan roster untuk pengecualian tarikh tertentu.",
     "manageShiftsLink": "Urus jadual syif"
   },
   "common": {
@@ -239,7 +239,12 @@
       "provisionalEndHint": "Tamat percubaan untuk sepenuh masa (lalai +3 bulan); jika tidak, tamat kontrak atau latihan. Biarkan kosong jika tiada.",
       "businessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
-      "colCode": "Kod"
+      "colCode": "Kod",
+      "filter": "Tapis",
+      "applyFilters": "Guna penapis",
+      "clearAllFilters": "Kosongkan semua",
+      "activeFilters": "{count, plural, one {# tapisan} other {# tapisan}}",
+      "removeFilter": "Buang tapisan {label}"
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -430,19 +435,6 @@
       "cp38RefPlaceholder": "cth. CP38/2026/00123",
       "cp38RemarksPlaceholder": "Catatan pilihan",
       "cp38Open": "Tiada tarikh tamat",
-      "zakat": {
-        "title": "Zakat (melalui gaji)",
-        "active": "Potong zakat melalui gaji",
-        "state": "Pihak berkuasa zakat (negeri)",
-        "method": "Kaedah",
-        "methodPercentOfPcb": "Peratus daripada PCB/MTD",
-        "methodFixed": "Jumlah tetap",
-        "percent": "Peratus (%)",
-        "fixed": "Jumlah tetap (RM)",
-        "effectiveFrom": "Berkuat kuasa dari",
-        "effectiveTo": "Berkuat kuasa hingga",
-        "nonResidentHint": "Peratus PCB menghasilkan RM0 bagi bukan pemastautin dan pendapatan di bawah ambang — guna Jumlah Tetap jika potongan diperlukan."
-      },
       "family": {
         "title": "Keluarga & Tanggungan",
         "note": "Untuk rekod faedah dan insurans sahaja. Ini tidak menjejaskan gaji atau bilangan anak untuk cukai, dan berasingan daripada hubungan kecemasan.",
@@ -518,7 +510,15 @@
         "note": "Pengecam statutori dalam rekod. Muat naik dan simpan fail (imbasan kad pengenalan, kontrak yang ditandatangani) akan disediakan dalam keluaran akan datang; sunting nilai ini pada tab Gaji.",
         "cp38Records": "Rekod ansuran CP38",
         "hint": "Ini ringkasan baca sahaja. Sumber boleh sunting untuk medan ini terletak di bawah tab Gaji (Statutori)."
-      }
+      },
+      "zakatMoved": "Pilihan zakat (melalui gaji) telah dipindahkan ke Gaji → Transaksi → Zakat.",
+      "zakatMovedLink": "Buka skrin zakat",
+      "defaultShiftTitle": "Syif lalai",
+      "defaultShiftLabel": "Syif",
+      "defaultShiftNone": "Tiada — jadual lalai syarikat",
+      "defaultShiftSave": "Simpan",
+      "defaultShiftHint": "Syif yang biasa dikerjakan oleh pekerja ini. Digunakan pada mana-mana hari tanpa entri roster khusus — hari yang diroster mengatasinya; kerja lebih masa diukur berdasarkan waktu syif ini.",
+      "defaultShiftAssigned": "Syif lalai disimpan"
     },
     "import": {
       "title": "Import pekerja",
@@ -789,7 +789,9 @@
       "noCheckout": "Tiada daftar keluar",
       "srcRoster": "Syif berjadual",
       "srcRest": "Hari rehat",
-      "srcPolicy": "Dasar syarikat"
+      "srcPolicy": "Dasar syarikat",
+      "srcDefaultShift": "Syif lalai",
+      "srcDefaultShiftRest": "Hari rehat syif lalai"
     },
     "importPunches": "Import perakam",
     "colLocation": "Lokasi",
@@ -1711,7 +1713,15 @@
       "encashmentFrozenAsOfTitle": "Dibekukan setakat {date}",
       "colCode": "Kod",
       "transferAllowance": "Pindahkan elaun",
-      "allowanceGateWarning": "Komponen gaji bertaip dimatikan — pemindahan akan direkodkan tetapi tidak akan sampai ke slip gaji sehingga ia diaktifkan."
+      "allowanceGateWarning": "Komponen gaji bertaip dimatikan — pemindahan akan direkodkan tetapi tidak akan sampai ke slip gaji sehingga ia diaktifkan.",
+      "resetPayroll": "Set semula gaji",
+      "resetTitle": "Set Semula Proses Gaji",
+      "resetDescription": "Adakah anda pasti mahu set semula proses gaji ini? Semua hasil pengiraan gaji untuk larian ini akan dipadamkan dan proses akan kembali ke status Draf. Tindakan ini hanya boleh dilakukan oleh pengguna yang diberi kuasa.",
+      "resetConfirm": "Set Semula Gaji",
+      "resetDone": "Proses gaji diset semula ke Draf",
+      "resetOnlyProcessed": "Hanya proses gaji yang berstatus Diproses boleh diset semula.",
+      "resetAdminOnly": "Hanya pentadbir boleh set semula proses gaji.",
+      "lockedNote": "Proses gaji ini dikunci — slip gaji telah dijana. Untuk membuat pindaan, pentadbir perlu set semula proses ini ke Draf."
     },
     "transactions": {
       "title": "Transaksi",
@@ -1890,14 +1900,40 @@
       },
       "zakat": {
         "title": "Zakat",
-        "subtitle": "Zakat dibayar melalui gaji bagi setiap pekerja untuk kelompok draf.",
+        "subtitle": "Pilihan zakat bagi setiap pekerja, serta penggantian sekali sahaja untuk sesuatu kitaran gaji.",
         "pickBatch": "Kelompok draf",
         "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
         "employee": "Pekerja",
         "amount": "Zakat",
         "save": "Simpan",
         "saved": "Disimpan.",
-        "empty": "Tiada pekerja dalam kelompok ini."
+        "empty": "Tiada pekerja dalam kelompok ini.",
+        "election": {
+          "title": "Pilihan zakat (melalui gaji)",
+          "subtitle": "Potongan zakat tetap pekerja — negeri, kaedah, kadar dan tempoh kuat kuasa. Gaji menerapkannya pada setiap kitaran biasa.",
+          "pickEmployee": "Pekerja",
+          "noEmployees": "Tiada pekerja dalam skop syarikat semasa.",
+          "name": "Nama",
+          "employeeNo": "No. pekerja",
+          "company": "Syarikat",
+          "noProfile": "Pekerja ini belum mempunyai profil berkanun Malaysia. Simpan nombor KP pada rekod personel dahulu.",
+          "openPersonnel": "Buka rekod personel",
+          "save": "Simpan pilihan",
+          "active": "Potong zakat melalui gaji",
+          "state": "Pihak berkuasa zakat (negeri)",
+          "method": "Kaedah",
+          "methodPercentOfPcb": "Peratus daripada PCB/MTD",
+          "methodFixed": "Jumlah tetap",
+          "percent": "Peratus (%)",
+          "fixed": "Jumlah tetap (RM)",
+          "effectiveFrom": "Berkuat kuasa dari",
+          "effectiveTo": "Berkuat kuasa hingga",
+          "nonResidentHint": "Peratus PCB menghasilkan RM0 bagi bukan pemastautin dan pendapatan di bawah ambang — guna Jumlah Tetap jika potongan diperlukan."
+        },
+        "override": {
+          "title": "Penggantian sekali sahaja (setiap kitaran gaji)",
+          "subtitle": "Jumlah RM manual untuk satu kelompok draf sahaja — ia mengatasi pilihan tetap bagi kitaran itu."
+        }
       },
       "view": {
         "title": "Paparan Transaksi",
@@ -2538,7 +2574,10 @@
       "advanceNoticeSectionTitle": "Notis awal",
       "minAdvanceDaysLabel": "Hari notis awal minimum",
       "advanceNoticeSectionHelp": "Berapa hari sebelum tarikh mula pekerja mesti menghantar permohonan jenis cuti ini. Biarkan kosong untuk tiada syarat. Pentadbir HR tidak sekali-kali disekat oleh peraturan ini.",
-      "advanceCustomMessageHelp": "Dipaparkan kepada pekerja apabila jenis cuti ini dihantar dengan notis awal yang tidak mencukupi. Sehingga 500 aksara. Biarkan kosong untuk mengekalkan mesej standard. Hanya terpakai untuk jenis cuti ini."
+      "advanceCustomMessageHelp": "Dipaparkan kepada pekerja apabila jenis cuti ini dihantar dengan notis awal yang tidak mencukupi. Sehingga 500 aksara. Biarkan kosong untuk mengekalkan mesej standard. Hanya terpakai untuk jenis cuti ini.",
+      "recalcToast": "Kelayakan diperbetulkan — {count} pekerja dikira semula ({delta} hari kesemuanya).",
+      "recalcNoneToast": "Polisi diperbetulkan. Tiada baki pekerja yang berubah.",
+      "recalcInPlaceHint": "Suntingan di sini membetulkan kelayakan semasa dan mengkreditkan semula pekerja yang terjejas secara automatik. Untuk menukar kelayakan mulai tarikh hadapan, tambah versi baharu."
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -2766,7 +2805,7 @@
       "daySun": "Ahd",
       "save": "Simpan dasar",
       "lateHint": "Daftar masuk selepas “lewat selepas” ditanda lewat; daftar keluar sebelum “setengah hari sebelum” ialah setengah hari.",
-      "rosterNote": "Jadual syif yang ditetapkan di atas diberikan kepada pekerja pada skrin Roster. Pekerja yang mempunyai tugasan roster menggunakan syif roster mereka; yang tiada kembali kepada jadual lalai ini.",
+      "rosterNote": "Syif biasa seseorang ditetapkan sebagai Syif lalai pada profil mereka (Kakitangan → tab Kerja); skrin Roster adalah untuk pengecualian tarikh tertentu. Hari yang diroster mengatasi syif lalai; pekerja tanpa kedua-duanya kembali kepada jadual lalai ini.",
       "dayTypeHint": "Penuh = hari bekerja biasa. Separuh = hari bekerja yang lebih pendek (cth. Sabtu 9:00–12:00) — cuti yang diambil pada hari ini menolak 0.5 hari secara lalai, atau 1.0 hari jika tetapan potongan separuh hari dihidupkan. Rehat = bukan hari bekerja.",
       "dayTypeFull": "Penuh",
       "dayTypeHalf": "Separuh",
@@ -2819,7 +2858,8 @@
       "otVersion": "Versi",
       "otNotes": "Nota",
       "otPublish": "Terbitkan kadar OT",
-      "otCancel": "Batal"
+      "otCancel": "Batal",
+      "colCompany": "Syarikat"
     },
     "toilPolicy": {
       "pageTitle": "Cuti ganti",
@@ -3520,7 +3560,9 @@
     "save": "Simpan",
     "hiringTitle": "Tetapan lalai pengambilan",
     "probationMonths": "Tempoh percubaan lalai (bulan)",
-    "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan."
+    "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
+    "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
+    "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
   },
   "payrollPolicy": {
     "title": "Dasar gaji",
@@ -3913,8 +3955,21 @@
       "managerEvaluatedTitle": "Penilaian sedia untuk keputusan",
       "managerEvaluatedBody": "Penilaian pengurus sedia — rekod keputusan HR.",
       "decidedTitle": "Penilaian anda selesai",
-      "decidedBody": "Penilaian anda telah dimuktamadkan."
-    }
+      "decidedBody": "Penilaian anda telah dimuktamadkan.",
+      "reminderTitle": "Peringatan penilaian",
+      "reminderBody": "Satu penilaian menunggu tindakan — tarikh tamat tempoh semakin hampir.",
+      "issueLetterTitle": "Keluarkan surat penilaian",
+      "issueLetterBody": "Satu penilaian telah diputuskan — jana surat keputusan dan muat naik salinan yang ditandatangani."
+    },
+    "documents": "Dokumen",
+    "download": "Muat turun",
+    "upload": "Muat naik",
+    "documentKind": {
+      "system_letter": "Surat sistem",
+      "signed_letter": "Surat ditandatangani"
+    },
+    "saveLetterToRecord": "Simpan surat ke rekod",
+    "uploadSignedLetter": "Muat naik surat yang ditandatangani"
   },
   "loans": {
     "title": "Pinjaman",

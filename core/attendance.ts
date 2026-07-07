@@ -295,11 +295,16 @@ type ResolvedSchedule = {
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
   normalMinutesOverride: number | null;
   crossesMidnight: boolean;
-  source: 'policy' | 'roster-shift' | 'roster-rest';
+  // ec4cbf63: 'default-shift' / 'default-shift-rest' = resolved from employment.default_shift_id (no roster
+  // row for the date). Diagnostic only — nothing downstream branches on source for pay except the hourly
+  // clamp (payableHoursForCycle), which resolves roster/default-shift itself.
+  source: 'policy' | 'roster-shift' | 'roster-rest' | 'default-shift' | 'default-shift-rest';
 };
 
-/** Resolve the schedule for one employee+date: holiday (calendar) > rostered shift/rest-day > company
- *  policy. No roster row ⇒ the policy branch, which reproduces the pre-Phase-C engine exactly. */
+/** Resolve the schedule for one employee+date: rostered shift > holiday (calendar) > rostered rest-day >
+ *  DEFAULT shift (employment.default_shift_id, ec4cbf63 — its weekly_pattern decides working vs rest) >
+ *  company policy. No roster row and no default shift ⇒ the policy branch, which reproduces the
+ *  pre-Phase-C engine exactly. */
 async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<ResolvedSchedule> {
   const pol = await policyFor(tx, employmentId);
   const grace = Math.max(0, toMinutes(pol.lateAfter) - toMinutes(pol.workStart)); // 15m by default
@@ -348,8 +353,54 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       source: 'roster-shift',
     };
   }
+  // A rostered REST day: the calendar-holiday class still wins (premium 3× beats rest-day 2×) — unchanged
+  // ordering from before the default-shift step below.
+  if (ra?.isRestDay) {
+    if (isHoliday) return policyBranch('holiday');
+    return { ...policyBranch('rest_day'), source: 'roster-rest' };
+  }
+
+  // ec4cbf63 — NO roster row: the employee's DEFAULT shift (profile assignment) resolves next, BEFORE the
+  // flat company policy. Its weekly_pattern decides working vs rest day (a shift with no pattern has no
+  // working days — deliberate: pattern-less shifts predate Phase 2 and cannot drive scheduling). The shift
+  // is honoured even if archived AFTER assignment, exactly like a dated roster row pointing at an archived
+  // shift; only NEW assignments of archived shifts are blocked (core/roster.ts assignDefaultShift).
+  const [ds] = await tx
+    .select({
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      crosses: shift.crossesMidnight,
+      override: shift.normalMinutesOverride,
+      pattern: shift.weeklyPattern,
+    })
+    .from(employment)
+    .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  if (ds) {
+    if (ds.pattern?.includes(isoWeekday(date))) {
+      // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
+      // holiday day-type overlay (the default shift's hours still define the schedule on a holiday).
+      const sched = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk);
+      return {
+        dayType: isHoliday ? 'holiday' : 'workday',
+        lateAfter: addGrace(ds.start, grace),
+        halfDayBefore: fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
+        scheduledMinutes: sched,
+        breakMinutes: ds.brk,
+        normalMinutesOverride: ds.override ?? null,
+        crossesMidnight: ds.crosses,
+        source: 'default-shift',
+      };
+    }
+    // The default shift's own rest day wins over the flat company working-days list (matching how a
+    // rostered rest day wins) — but a calendar holiday still classifies at the holiday premium.
+    if (isHoliday) return policyBranch('holiday');
+    return { ...policyBranch('rest_day'), source: 'default-shift-rest' };
+  }
+
   if (isHoliday) return policyBranch('holiday');
-  if (ra?.isRestDay) return { ...policyBranch('rest_day'), source: 'roster-rest' };
   // No roster for this employee+date ⇒ company policy (working-days → workday/rest_day). A Half-day marker
   // (D2) counts as a WORKING day here — only leave.ts's deduction math distinguishes Full vs Half.
   return policyBranch(
@@ -404,9 +455,13 @@ function deriveAttendance(
 //       – Rest day with a rostered shift is impossible (the shift-xor-rest DB invariant); a rostered REST day
 //         (source:'roster-rest') has scheduledMinutes via the policy branch but is NOT an assigned shift → 0
 //         payable when ON.
-//       – No roster row (source:'policy', the company-default working-day schedule) is NOT an assigned shift →
-//         0 payable when ON. "Within the assigned shift" is read as roster-only: a day the employee was not
-//         rostered onto a shift contributes nothing under the toggle.
+//       – No roster row but a DEFAULT shift (employment.default_shift_id, ec4cbf63) whose weekly_pattern
+//         includes the day: the default shift IS the assigned shift → payable = min(worked, its net scheduled
+//         minutes) — mirroring scheduleFor's roster → default-shift → policy order so batch and single-day
+//         resolution can't diverge. A pattern REST day of the default shift is not an assigned shift → 0.
+//       – No roster row and no default shift (source:'policy', the company-default working-day schedule) is
+//         NOT an assigned shift → 0 payable when ON: a day the employee was not assigned onto any shift
+//         contributes nothing under the toggle.
 //       – Cross-midnight shift (e.g. 22:00→06:00): scheduleFor/scheduledMinutes are cross-midnight aware; the
 //         worked minutes already live on the shift's start-date attendance row (the punch importer keys a night
 //         shift to its start date). We clamp per attendance-date row against THAT date's resolved schedule —
@@ -464,14 +519,39 @@ export async function payableHoursForCycle(
     );
   // scheduledMinutes-within-shift per date, ONLY for an actual rostered shift (rest-day rosters → none).
   const schedByDate = new Map<string, number>();
+  const rosteredDates = new Set<string>(); // ANY roster row (shift or rest) — a roster row always wins
   for (const r of ras) {
+    rosteredDates.add(r.shiftDate);
     if (r.isRestDay || !r.start || !r.end) continue; // a rostered rest day is not an assigned shift
     schedByDate.set(r.shiftDate, Math.max(0, shiftSpan(r.start, r.end, r.crosses!) - r.brk!));
   }
 
+  // ec4cbf63 — the employee's DEFAULT shift (profile assignment) IS an assigned shift: on a day with NO
+  // roster row whose ISO weekday is in the default shift's weekly_pattern, the clamp ceiling is the default
+  // shift's net scheduled minutes — the SAME resolution order scheduleFor applies (roster → default shift →
+  // nothing), so batch payable-hours and single-day derivation can't diverge. A rostered rest day still
+  // contributes 0 (the roster row wins), and a pattern rest day is not an assigned shift.
+  const [ds] = await tx
+    .select({
+      start: shift.startTime,
+      end: shift.endTime,
+      brk: shift.breakMinutes,
+      crosses: shift.crossesMidnight,
+      pattern: shift.weeklyPattern,
+    })
+    .from(employment)
+    .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  const dsNet = ds ? netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk) : null;
+
   let payableMinutes = 0;
   for (const row of rows) {
-    const scheduled = schedByDate.get(row.date);
+    const scheduled =
+      schedByDate.get(row.date) ??
+      (!rosteredDates.has(row.date) && dsNet != null && ds!.pattern?.includes(isoWeekday(row.date))
+        ? dsNet
+        : undefined);
     if (scheduled === undefined) continue; // no assigned shift that day → 0 payable when ON
     payableMinutes += Math.min(row.workedMinutes ?? 0, scheduled);
   }

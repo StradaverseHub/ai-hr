@@ -5,10 +5,10 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { Card, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
-import { reviewProfile, type ReviewType } from '@/core/employment-review';
+import { reviewDocumentsFor, reviewProfile, type ReviewType } from '@/core/employment-review';
 import { reviewsFor } from '@/core/employment-review';
 import type { SessionContext } from '@/db/client';
-import { setReviewEndDateAction, startReviewAction } from './actions';
+import { saveReviewLetterAction, setReviewEndDateAction, startReviewAction, uploadReviewDocumentAction } from './actions';
 
 const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
 
@@ -17,6 +17,14 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
   const profile = await reviewProfile(s, employmentId);
   if (!profile) return null;
   const history = await reviewsFor(s, employmentId);
+  // 6522d26a Fn 5 — stored letter documents, grouped per review (one read for the whole history).
+  const documents = await reviewDocumentsFor(s, employmentId);
+  const docsByReview = new Map<string, typeof documents>();
+  for (const d of documents) {
+    const list = docsByReview.get(d.reviewId) ?? [];
+    list.push(d);
+    docsByReview.set(d.reviewId, list);
+  }
 
   const typeLabel = (rt: ReviewType) => t(`reviewType.${rt}` as 'reviewType.probation');
 
@@ -73,22 +81,76 @@ export async function ReviewSection({ s, employmentId }: { s: SessionContext; em
 
         {history.length > 0 && (
           <ul className="divide-y divide-border border-t border-border pt-2 text-xs">
-            {history.map((r) => (
-              <li key={r.id} className="flex items-center justify-between py-1.5">
-                <span>
-                  {typeLabel(r.reviewType)} · {t(`stage.${r.status}` as 'stage.completed')}
-                  {r.decision ? ` · ${t(`decision.${r.decision}` as 'decision.confirm')}` : ''}
-                </span>
-                {r.status === 'completed' && (
-                  <a
-                    href={`/admin/personnel/${employmentId}/review/${r.id}/letter`}
-                    className="text-primary underline-offset-2 hover:underline"
-                  >
-                    {t('downloadLetter')}
-                  </a>
-                )}
-              </li>
-            ))}
+            {history.map((r) => {
+              const docs = docsByReview.get(r.id) ?? [];
+              const hasSystemLetter = docs.some((d) => d.kind === 'system_letter');
+              return (
+                <li key={r.id} className="py-1.5">
+                  <div className="flex items-center justify-between">
+                    <span>
+                      {typeLabel(r.reviewType)} · {t(`stage.${r.status}` as 'stage.completed')}
+                      {r.decision ? ` · ${t(`decision.${r.decision}` as 'decision.confirm')}` : ''}
+                    </span>
+                    {r.status === 'completed' && (
+                      <a
+                        href={`/admin/personnel/${employmentId}/review/${r.id}/letter`}
+                        className="text-primary underline-offset-2 hover:underline"
+                      >
+                        {t('downloadLetter')}
+                      </a>
+                    )}
+                  </div>
+                  {r.status === 'completed' && (
+                    // 6522d26a Fn 5 — the letter document store: persisted system letter + HR-uploaded
+                    // signed copy. What lands here is what the employee sees in ESS (Fn 6).
+                    <div className="mt-1.5 space-y-1.5 rounded-md border border-border bg-muted/20 px-2.5 py-2">
+                      <div className="font-medium text-muted-foreground">{t('documents')}</div>
+                      {docs.length > 0 && (
+                        <ul className="space-y-0.5">
+                          {docs.map((d) => (
+                            <li key={d.id} className="flex items-center justify-between gap-2">
+                              <span className="truncate">
+                                {t(`documentKind.${d.kind}` as 'documentKind.signed_letter')} · {d.fileName}
+                              </span>
+                              <a
+                                href={`/admin/personnel/${employmentId}/review/${r.id}/document/${d.id}`}
+                                className="shrink-0 text-primary underline-offset-2 hover:underline"
+                              >
+                                {t('download')}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                        {!hasSystemLetter && (
+                          <form action={saveReviewLetterAction}>
+                            <input type="hidden" name="employmentId" value={employmentId} />
+                            <input type="hidden" name="reviewId" value={r.id} />
+                            <button className="text-primary underline-offset-2 hover:underline">{t('saveLetterToRecord')}</button>
+                          </form>
+                        )}
+                        <form action={uploadReviewDocumentAction} className="flex flex-wrap items-center gap-2">
+                          <input type="hidden" name="employmentId" value={employmentId} />
+                          <input type="hidden" name="reviewId" value={r.id} />
+                          <label className="text-muted-foreground">
+                            {t('uploadSignedLetter')}
+                            <input
+                              type="file"
+                              name="document"
+                              accept="application/pdf,image/jpeg,image/png"
+                              required
+                              className="ml-1.5 max-w-48 text-xs file:mr-1.5 file:rounded file:border file:border-border file:bg-muted/40 file:px-1.5 file:py-0.5"
+                            />
+                          </label>
+                          <button className="text-primary underline-offset-2 hover:underline">{t('upload')}</button>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
