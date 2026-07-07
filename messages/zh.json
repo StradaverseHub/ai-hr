@@ -667,7 +667,8 @@
       "cancelDateInvalid": "{date} 不是此休假中可取消的工作日。",
       "cancellationPeriodClosed": "{date} 属于已关闭的薪资期间，无法再取消。",
       "noLeaveDaysInRange": "此申请没有请假日 — 日期为空或全部落在周末/公共假期。请选择至少包含一个工作日的日期范围。",
-      "balanceFrozenForEncashment": "此假期余额因离职申请已获批而被冻结以供折现，无法更改。如您认为这是错误，请联系人力资源部门。"
+      "balanceFrozenForEncashment": "此假期余额因离职申请已获批而被冻结以供折现，无法更改。如您认为这是错误，请联系人力资源部门。",
+      "advanceNoticeRequired": "{typeName}必须至少在休假开始日期前 {days} 天提交。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -1188,7 +1189,9 @@
       "employmentType_full_time": "全职",
       "employmentType_part_time": "兼职",
       "employmentType_contract": "合同",
-      "employmentType_intern": "实习"
+      "employmentType_intern": "实习",
+      "chipAddPlaceholder": "添加…",
+      "chipRemoveLabel": "移除{value}"
     },
     "cycle": {
       "back": "绩效",
@@ -1380,7 +1383,13 @@
       "filteredEmpty": "此发薪周期暂无薪资流程。",
       "newRun": "创建薪资运行周期",
       "colPaymentDate": "付款日期",
-      "paymentDateLegacyNote": "在此版本之前创建的运行显示系统默认日期（28日）。"
+      "paymentDateLegacyNote": "在此版本之前创建的运行显示系统默认日期（28日）。",
+      "colActions": "操作",
+      "deleteDraft": "删除",
+      "deleteDraftTitle": "删除薪资流程",
+      "deleteDraftBody": "确定要删除此薪资流程吗？此操作无法撤销。",
+      "deleteDraftNotDraft": "只能删除草稿状态的薪资流程。",
+      "toastDeleted": "薪资流程草稿已删除"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -1724,7 +1733,13 @@
         "zakatCta": "编辑天课",
         "loansTitle": "贷款",
         "loansDesc": "员工贷款分期 — 每个薪资周期自动扣除。",
-        "loansCta": "打开贷款"
+        "loansCta": "打开贷款",
+        "importHistoryTitle": "导入薪资历史",
+        "importHistoryDesc": "批量导入历史薪资记录，用于数据迁移。",
+        "importHistoryCta": "打开导入",
+        "viewTitle": "交易查询",
+        "viewDesc": "跨员工的只读查询——固定交易、个人交易及已处理的薪资历史。",
+        "viewCta": "打开查询"
       },
       "fixed": {
         "title": "固定交易",
@@ -1883,6 +1898,36 @@
         "save": "保存",
         "saved": "已保存。",
         "empty": "此批次中没有员工。"
+      },
+      "view": {
+        "title": "交易查询",
+        "subtitle": "集中式只读薪资交易查询。",
+        "readOnly": "仅供查询——此处无法新增或修改记录。",
+        "tabs": {
+          "fixed": "固定",
+          "individual": "个人",
+          "history": "历史"
+        },
+        "filters": {
+          "company": "公司",
+          "employee": "员工",
+          "payItem": "薪资项目",
+          "status": "状态",
+          "year": "年份",
+          "month": "月份",
+          "cycle": "薪资周期",
+          "apply": "套用筛选",
+          "all": "全部"
+        },
+        "fixed": {
+          "empty": "没有符合所选筛选条件的固定交易。"
+        },
+        "individual": {
+          "empty": "没有符合所选筛选条件的个人交易。"
+        },
+        "history": {
+          "empty": "没有符合所选筛选条件的已处理薪资结果。"
+        }
       }
     },
     "setup": {
@@ -1937,7 +1982,7 @@
     "historyImport": {
       "title": "导入薪资历史",
       "description": "从 CSV 批量加载预先计算的历史薪资（总额、EPF/SOCSO/EIS/PCB、净额）以进行数据迁移。请先验证，再导入。",
-      "backLabel": "薪资",
+      "backLabel": "交易",
       "noCompanies": "导入薪资历史前请先创建公司。",
       "targetCompany": "目标公司",
       "csvData": "CSV 数据",
@@ -2063,7 +2108,8 @@
         "INVALID_CYCLE": "此公司没有有效的薪资周期",
         "SYSTEM_VALIDATION_ERROR": "系统验证错误",
         "MISSING_SALARY": "缺少薪资信息"
-      }
+      },
+      "resumeStep1Note": "您正在查看薪资流程草稿。此草稿的公司、薪资月份和薪资周期已固定——请继续查看或修改员工选择。如需更改月份或公司，请在薪资流程列表中删除此草稿并创建新的薪资运行。"
     }
   },
   "admin": {
@@ -2488,7 +2534,11 @@
       "expiryUnitMonths": "月",
       "expiryUnitDays": "天",
       "expirySectionHelp": "此假期类型未使用的天数将在每部分累积后经过此时长到期，并从余额中扣除。留空表示不过期。已过期的天数仍会显示在假期报表中。不适用于年假，年假改用结转到期规则。",
-      "auditHelp": "假期类型、额度、结转、审批流程和薪资集成变更的只读历史记录。"
+      "auditHelp": "假期类型、额度、结转、审批流程和薪资集成变更的只读历史记录。",
+      "advanceNoticeSectionTitle": "提前申请",
+      "minAdvanceDaysLabel": "最少提前天数",
+      "advanceNoticeSectionHelp": "员工必须在开始日期前多少天提交此假期类型的申请。留空表示无要求。HR 管理员不受此规则限制。",
+      "advanceCustomMessageHelp": "当此假期类型因提前申请天数不足被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。"
     },
     "holidays": {
       "pageTitle": "公共假期",

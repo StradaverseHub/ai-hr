@@ -13,6 +13,7 @@ import {
   isEmergencyReasonCategory,
   todayInKualaLumpur,
   LeaveBackdatingNotAllowedError,
+  LeaveAdvanceNoticeRequiredError,
   LeaveDocumentRequiredError,
   LeaveRemarkRequiredError,
   LeaveDocumentTypeError,
@@ -172,6 +173,10 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // re-localize or interpolate an admin-authored free-text string). Absent ⇒ the built-in localized default.
   if (e instanceof LeaveBackdatingNotAllowedError)
     return e.customMessage ?? t('backdatingNotAllowed', { typeName: name, days: e.limitDays });
+  // Minimum advance-notice rule (0159): same custom-message-verbatim-else-localized-default contract as the
+  // backdating branch above.
+  if (e instanceof LeaveAdvanceNoticeRequiredError)
+    return e.customMessage ?? t('advanceNoticeRequired', { typeName: name, days: e.minDays });
   if (e instanceof LeaveDocumentTypeError) {
     const labels: Record<string, string> = { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG' };
     return t('fileTypeNotAllowed', { allowed: e.allowed.map((m) => labels[m] ?? m).join(', ') });

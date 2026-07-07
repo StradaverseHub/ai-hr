@@ -849,6 +849,13 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const backdatingFields = touchBackdating
     ? { backdatingLimitDays: backdatingRaw === '' ? null : Number(backdatingRaw) }
     : {};
+  // Minimum advance-notice rule (0159): its own sub-form posts `minAdvance=1` (marker), mirroring the
+  // backdating tri-state guard above. Empty input ⇒ null (clears the requirement); a number sets it.
+  const touchMinAdvance = fd.get('minAdvance') === '1';
+  const minAdvanceRaw = String(fd.get('minAdvanceDays') ?? '').trim();
+  const minAdvanceFields = touchMinAdvance
+    ? { minAdvanceDays: minAdvanceRaw === '' ? null : Number(minAdvanceRaw) }
+    : {};
   // Leave Type Expiry Field (fec49317): its own sub-form posts `expiry=1` (marker) so any other save leaves
   // expiry_value / expiry_unit untouched (same tri-state guard). A blank value clears the pair (both null ⇒
   // no expiry); a number + unit configures age-from-earning expiry. The service normalizes/validates and
@@ -868,13 +875,20 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // "block not shown at all" ⇒ leave column.
   const touchPartial = fd.get('partialApproval') === '1';
   const partialFields = touchPartial ? { perDateApproval: fd.get('perDateApproval') === 'on' } : {};
-  // Custom validation messages (custom-messages migration): the "Custom system message" textarea lives in the
-  // SAME sub-form as the backdating limit, so it is read/forwarded only when `backdating=1` — one sub-form,
-  // one atomic save. The service trims + treats blank as "not configured" (removes the key), so a blank box
-  // round-trips to the built-in default. Only the backdatingLimitDays key is authored here (the only rule).
-  const customMessageFields = touchBackdating
-    ? { customMessages: { backdatingLimitDays: String(fd.get('customMessageBackdating') ?? '').trim() } }
-    : {};
+  // Custom validation messages (custom-messages migration): each rule's "Custom system message" textarea
+  // lives in the SAME sub-form as its rule config (backdating ⇒ `backdating=1`; min-advance ⇒ `minAdvance=1`),
+  // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
+  // service trims + treats blank as "not configured" (removes the key) and MERGES the forwarded keys onto
+  // what is stored (read-then-patch-then-write), so saving one rule's message never clobbers the other's.
+  const customMessageFields =
+    touchBackdating || touchMinAdvance
+      ? {
+          customMessages: {
+            ...(touchBackdating ? { backdatingLimitDays: String(fd.get('customMessageBackdating') ?? '').trim() } : {}),
+            ...(touchMinAdvance ? { minAdvanceDays: String(fd.get('customMessageMinAdvance') ?? '').trim() } : {}),
+          },
+        }
+      : {};
   try {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
@@ -884,6 +898,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...docFields,
       ...payrollFields,
       ...backdatingFields,
+      ...minAdvanceFields,
       ...expiryFields,
       ...partialFields,
       ...customMessageFields,

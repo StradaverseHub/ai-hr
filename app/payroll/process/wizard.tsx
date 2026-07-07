@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
 import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction } from './actions';
+import { wizardInitialStep } from './selection-logic';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 
@@ -14,10 +15,11 @@ const STEPS = [
   { key: 'selection', titleKey: 'stepSelection' },
 ] as const;
 
-/** A DRAFT batch being resumed (the "who's in this run" step, formerly bypassed for drafts). Carries the
- *  fixed identity of the existing batch — company/period/cycle are NOT editable mid-resume; only the
- *  employee selection is. Off-cycle/bonus/adjustment drafts resume too, so cycle/paymentDate/remarks
- *  carry through unchanged, not defaulted back to 'regular'. */
+/** A DRAFT batch being resumed. Carries the fixed identity of the existing batch — company/period/cycle
+ *  are NOT editable mid-resume (Step 1 shows them READ-ONLY for review, feedback 4f00d8f0; to change
+ *  them, delete the draft and create a new run); only the employee selection is editable.
+ *  Off-cycle/bonus/adjustment drafts resume too, so cycle/paymentDate/remarks carry through unchanged,
+ *  not defaulted back to 'regular'. */
 export type ResumeBatch = {
   id: string;
   companyId: string;
@@ -61,17 +63,19 @@ export function Wizard({
   cyclesByCompany: Record<string, CycleOption[]>;
   thisMonth: string;
   multiCycle: boolean;
-  /** When set, the wizard opens in RESUME mode: Step 2 (Employee Selection) directly, Step 1 disabled,
-   *  company/period/cycle fixed to the existing draft, selection pre-seeded from the persisted scope. */
+  /** When set, the wizard opens in RESUME mode: Step 1 shows the draft's fixed identity READ-ONLY for
+   *  review (feedback 4f00d8f0), then Step 2 (Employee Selection) with the selection pre-seeded from the
+   *  persisted scope. */
   resumeBatch?: ResumeBatch;
 }) {
   const t = useTranslations('payroll.process');
   const isResume = !!resumeBatch;
-  // In resume mode we land straight on Step 2 (Employee Selection) with the batch identity fixed. The
-  // selection is seeded from the persisted scope: an explicit scope ⇒ filtersTouched=true + selected set;
-  // an empty/absent scope ⇒ filtersTouched=false so the whole-company default applies (step-selection.tsx).
+  // Resume mode ALSO opens on Step 1 — a read-only review of the draft's period/company/cycle (feedback
+  // 4f00d8f0: "return the user to Step 1 … to review") — with the batch identity fixed. The selection is
+  // seeded from the persisted scope: an explicit scope ⇒ filtersTouched=true + selected set; an
+  // empty/absent scope ⇒ filtersTouched=false so the whole-company default applies (step-selection.tsx).
   const seededEmploymentIds = resumeBatch?.scope?.employmentIds ?? [];
-  const [step, setStep] = useState(isResume ? 1 : 0);
+  const [step, setStep] = useState(wizardInitialStep(isResume));
   // Multi-company (3653d14b): a fresh run selects ONE, SEVERAL, or ALL companies. In resume mode the batch's
   // single company is fixed, so the array holds exactly that one id. `companyIds[0]` is the "primary" company
   // that drives the cycle catalog, per-company masters, and the payment-date default (all per-company today).
@@ -210,7 +214,41 @@ export function Wizard({
       </div>
 
       <div className="p-4">
-        {step === 0 && (
+        {/* Resume mode Step 1 (feedback 4f00d8f0): the draft's identity shown READ-ONLY for review — the
+            reporter's flow lands here first ("return the user to Step 1 … to review"), then continues to
+            Employee Selection. Changing period/company on an existing draft is deliberately not offered
+            (delete the draft from the listing and create a new run instead — see resumeStep1Note). */}
+        {step === 0 && isResume && resumeBatch && (
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">{t('resumeStep1Note')}</p>
+            <dl className="grid grid-cols-1 gap-3 rounded-lg border border-border p-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('company')}</dt>
+                <dd className="mt-0.5 text-sm font-medium">
+                  {companies.find((c) => c.id === resumeBatch.companyId)?.name ?? '—'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('payPeriod')}</dt>
+                <dd className="mt-0.5 text-sm font-medium tabular-nums">{resumeBatch.payPeriod}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('cycleLabel')}</dt>
+                <dd className="mt-0.5 text-sm font-medium">
+                  {/* Same runType-label + remarks pattern as the listing's Payroll Cycle column, so wizard
+                      cycles stored under the generic 'off_cycle' bucket display distinctly. */}
+                  {t(`runType.${resumeBatch.cycle}`)}
+                  {resumeBatch.remarks ? ` — ${resumeBatch.remarks}` : ''}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('paymentDate')}</dt>
+                <dd className="mt-0.5 text-sm font-medium tabular-nums">{resumeBatch.paymentDate || '—'}</dd>
+              </div>
+            </dl>
+          </div>
+        )}
+        {step === 0 && !isResume && (
           <StepPeriod
             companies={companies}
             companyIds={companyIds}
@@ -248,13 +286,15 @@ export function Wizard({
       </div>
 
       <div className="flex items-center justify-between border-t border-border px-4 py-3">
-        {/* Resume mode: company/period/cycle are fixed to the existing draft, so Back to Step 1 is disabled
-            (same disabled-idiom as the fresh-run step===0 case) — the admin only edits the selection. */}
-        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0 || isResume}>
+        {/* Back is enabled from Step 2 in BOTH modes now that resume has a real (read-only) Step 1 to go
+            back to (feedback 4f00d8f0). */}
+        <Button type="button" variant="secondary" onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
           {t('back')}
         </Button>
         {step < STEPS.length - 1 ? (
-          <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={!step1Valid}>
+          // Resume mode's Step-1 gate is the resume-valid check (seeded company + period) — the cycle is
+          // fixed on the persisted draft and never re-posted, so it must not block Continue.
+          <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={isResume ? !step2Valid : !step1Valid}>
             {t('continue')}
           </Button>
         ) : (

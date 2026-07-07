@@ -6,12 +6,15 @@
  * the submit button, WITHOUT a debounced/live counter and without navigating away. The form still submits
  * to createCycleAction (a normal server action) for creation.
  *
- * The eligibility rule fields (Company / Status / Employment Type multi-selects, min service months,
- * hired-before) map 1:1 onto EligibilityRules via parseEligibilityRules in actions.ts.
+ * The eligibility rule fields (Company / Status / Employment Type chip pickers, min service months,
+ * hired-before) map 1:1 onto EligibilityRules via parseEligibilityRules in actions.ts. The chip pickers
+ * post one hidden input per selected value, so formData.getAll(...) sees the same shape as the native
+ * <select multiple> they replaced (1a6ed9e6 contest: selections clearly displayed and removable).
  */
 import { useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from '@/components/ui';
+import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { createCycleAction, previewEligibilityAction } from './actions';
 
 const STATUS_OPTS = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'] as const;
@@ -97,31 +100,28 @@ export function NewCycleForm({
         <p className="mb-3 text-xs text-muted-foreground">{te('fieldEligibility')}</p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label={te('fieldCompany')}>
-            <select name="eligibilityCompanyId" multiple className={`${inputCls} h-28`}>
-              {companies.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <ChipMultiSelect
+              name="eligibilityCompanyId"
+              options={companies.map((c) => ({ value: c.id, label: c.name }))}
+              addPlaceholder={te('chipAddPlaceholder')}
+              removeLabelFor={(label) => te('chipRemoveLabel', { value: label })}
+            />
           </Field>
           <Field label={te('fieldStatus')}>
-            <select name="eligibilityStatus" multiple className={`${inputCls} h-28`}>
-              {STATUS_OPTS.map((v) => (
-                <option key={v} value={v}>
-                  {te(`status_${v}`)}
-                </option>
-              ))}
-            </select>
+            <ChipMultiSelect
+              name="eligibilityStatus"
+              options={STATUS_OPTS.map((v) => ({ value: v, label: te(`status_${v}`) }))}
+              addPlaceholder={te('chipAddPlaceholder')}
+              removeLabelFor={(label) => te('chipRemoveLabel', { value: label })}
+            />
           </Field>
           <Field label={te('fieldEmploymentType')}>
-            <select name="eligibilityEmploymentType" multiple className={`${inputCls} h-28`}>
-              {EMP_TYPE_OPTS.map((v) => (
-                <option key={v} value={v}>
-                  {te(`employmentType_${v}`)}
-                </option>
-              ))}
-            </select>
+            <ChipMultiSelect
+              name="eligibilityEmploymentType"
+              options={EMP_TYPE_OPTS.map((v) => ({ value: v, label: te(`employmentType_${v}`) }))}
+              addPlaceholder={te('chipAddPlaceholder')}
+              removeLabelFor={(label) => te('chipRemoveLabel', { value: label })}
+            />
           </Field>
           <div className="space-y-4">
             <Field label={te('fieldMinService')}>

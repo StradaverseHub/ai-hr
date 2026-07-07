@@ -1639,11 +1639,12 @@ const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at
 /**
  * Custom validation messages (custom-messages migration): the fixed allow-list of rule keys an admin may
  * author an override message for. Keyed by the same camelCase field name as the rule's config column, so
- * the "which rule → which message" mapping is self-evident. Only the backdating rule exists today; a future
- * validation rule adds its config-field name here (and the LeaveType schema comment). Each message is
- * capped at CUSTOM_MESSAGE_MAX_LEN characters (enforced in the service, not the DB).
+ * the "which rule → which message" mapping is self-evident. Two rules exist today — the backdating limit
+ * (0133) and the minimum advance-notice rule (0159); a future validation rule adds its config-field name
+ * here (and the LeaveType schema comment). Each message is capped at CUSTOM_MESSAGE_MAX_LEN characters
+ * (enforced in the service, not the DB).
  */
-const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays'] as const;
+const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays'] as const;
 const CUSTOM_MESSAGE_MAX_LEN = 500;
 
 export async function updateLeaveType(
@@ -1665,6 +1666,11 @@ export async function updateLeaveType(
     // OWN tri-state (undefined = leave column), NOT nested under touchDoc — it is a request-validation rule,
     // not a document setting, so a doc-only save must not touch it and the audit diff must label it correctly.
     backdatingLimitDays?: number | null;
+    // Minimum advance-notice rule (0159): how many days BEFORE its start date a leave of this type must be
+    // submitted. OWN tri-state (undefined = leave column), mirroring backdatingLimitDays above — it is a
+    // request-validation rule with its own sub-form, so an unrelated save must not touch it and the audit
+    // diff must label it correctly.
+    minAdvanceDays?: number | null;
     // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry, stored as a (value, unit) pair.
     // OWN tri-state — both keys are undefined (block not rendered) ⇒ columns untouched; both present ⇒ set;
     // an explicit clear posts value=null unit=null (its own sub-form marks the pair as touched). value must
@@ -1706,6 +1712,9 @@ export async function updateLeaveType(
   // doc-only save carries no backdating marker, so nesting it under touchDoc would drop it from the set and
   // mislabel the audit diff.
   const touchBackdating = p.backdatingLimitDays !== undefined;
+  // Minimum advance-notice rule (0159): its OWN tri-state, mirroring touchBackdating above — a save from any
+  // other sub-form omits minAdvanceDays, so min_advance_days stays untouched (no silent reset).
+  const touchMinAdvance = p.minAdvanceDays !== undefined;
   // Leave Type Expiry Field (fec49317): its OWN tri-state — the pair is touched when EITHER key is present
   // (its sub-form always posts both together). Both null ⇒ clear (no expiry); both set ⇒ configure.
   const touchExpiry = p.expiryValue !== undefined || p.expiryUnit !== undefined;
@@ -1721,6 +1730,9 @@ export async function updateLeaveType(
   }
   if (p.backdatingLimitDays != null && (!Number.isInteger(p.backdatingLimitDays) || p.backdatingLimitDays < 0)) {
     throw new Error('“Backdating limit (days)” must be a whole number ≥ 0.');
+  }
+  if (p.minAdvanceDays != null && (!Number.isInteger(p.minAdvanceDays) || p.minAdvanceDays < 0)) {
+    throw new Error('“Minimum advance days” must be a whole number ≥ 0.');
   }
   // Leave Type Expiry Field (fec49317): normalize + validate the (value, unit) pair. Both null = clear (no
   // expiry). A partial pair (one set, the other empty) is a user error — reject it so a half-configured
@@ -1777,6 +1789,8 @@ export async function updateLeaveType(
   };
   // Configurable backdated-leave restriction (0133): its own set fragment, merged alongside docSet.
   const backdatingSet = touchBackdating ? { backdatingLimitDays: p.backdatingLimitDays } : {};
+  // Minimum advance-notice rule (0159): its own set fragment, mirroring backdatingSet.
+  const minAdvanceSet = touchMinAdvance ? { minAdvanceDays: p.minAdvanceDays } : {};
   // Leave Type Expiry Field (fec49317): its own set fragment (the normalized pair, or both null to clear).
   const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
@@ -1796,6 +1810,7 @@ export async function updateLeaveType(
         hrRemarkRequired: leaveType.hrRemarkRequired,
         sendToPayroll: leaveType.sendToPayroll,
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        minAdvanceDays: leaveType.minAdvanceDays,
         expiryValue: leaveType.expiryValue,
         expiryUnit: leaveType.expiryUnit,
         perDateApproval: leaveType.perDateApproval,
@@ -1832,6 +1847,7 @@ export async function updateLeaveType(
         ...(touchDurations ? { durations: nextDurations } : {}),
         ...docSet,
         ...backdatingSet,
+        ...minAdvanceSet,
         ...expirySet,
         ...partialSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
@@ -1861,6 +1877,7 @@ export async function updateLeaveType(
             : {}),
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
+          ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
@@ -1882,6 +1899,9 @@ export async function updateLeaveType(
           ...(touchPayroll ? { sendToPayroll: p.sendToPayroll ?? before?.sendToPayroll ?? null } : {}),
           ...(touchBackdating
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
+            : {}),
+          ...(touchMinAdvance
+            ? { minAdvanceDays: p.minAdvanceDays !== undefined ? p.minAdvanceDays : (before?.minAdvanceDays ?? null) }
             : {}),
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),

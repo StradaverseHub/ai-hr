@@ -230,6 +230,7 @@ export default async function LeaveTypesPage({
               employeeRemarkRequired={t.employeeRemarkRequired}
               hrRemarkRequired={t.hrRemarkRequired}
               backdatingLimitDays={t.backdatingLimitDays ?? null}
+              minAdvanceDays={t.minAdvanceDays ?? null}
               expiryValue={t.expiryValue ?? null}
               expiryUnit={t.expiryUnit ?? null}
               customMessages={(t.customMessages as Record<string, string> | null) ?? null}

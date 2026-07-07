@@ -87,6 +87,33 @@ export default async function PayrollTransactionsPage() {
             {t('hub.loansCta')}
           </Link>
         </Card>
+
+        {/* Transaction View (feedback a4a05174) — centralized READ-ONLY inquiry across employees. */}
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.viewTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.viewDesc')}</p>
+          <Link
+            href="/payroll/transactions/view"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.viewCta')}
+          </Link>
+        </Card>
+
+        {/* Feedback 8bf6dfa1: relocated entry point for the (fully built, requireAdmin-gated)
+            payroll history import — moved here from the /payroll list header so admin data
+            migration sits with the other data-maintenance tools. Unconditional like Loans:
+            history import writes its own records, unrelated to TYPED_PAY_COMPONENTS_ENABLED. */}
+        <Card className="flex flex-col p-5">
+          <h2 className="text-base font-semibold">{t('hub.importHistoryTitle')}</h2>
+          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.importHistoryDesc')}</p>
+          <Link
+            href="/payroll/history-import"
+            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            {t('hub.importHistoryCta')}
+          </Link>
+        </Card>
       </div>
     </div>
   );

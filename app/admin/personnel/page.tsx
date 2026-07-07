@@ -14,6 +14,7 @@ import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
+import { HIRE_ORG_FILTER_SCRIPT } from '@/lib/hire-form-filter';
 import { decideProfileChangeAction, hireAction } from './actions';
 
 /** Render a pay-affecting change bundle as human-readable "field → value" pairs. */
@@ -331,7 +332,7 @@ export default async function PeoplePage({
               </legend>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label={t('company')}>
-                  <select name="companyId" required className={inputCls}>
+                  <select name="companyId" id="hire-company" required className={inputCls}>
                     {companies.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -349,29 +350,35 @@ export default async function PeoplePage({
                   >
                     <option value="">{t('businessUnitNone')}</option>
                     {businessUnits.map((bu) => (
-                      <option key={bu.id} value={bu.id}>
+                      <option key={bu.id} value={bu.id} data-company={bu.companyId}>
                         {bu.code} — {bu.name}
                       </option>
                     ))}
                   </select>
                 </Field>
                 <Field label={t('department')}>
-                  {/* Each department option carries its BU id (empty = unassigned). A tiny inline script
-                      narrows this list to the chosen BU's departments; unassigned (NULL-BU) departments
-                      stay visible under every BU choice (the day-one common case). */}
+                  {/* Each department option carries its company id and its BU id (empty = unassigned).
+                      A tiny inline script narrows this list to the chosen Company's departments and,
+                      within that, to the chosen BU's; unassigned (NULL-BU) departments stay visible
+                      under every BU choice (the day-one common case). */}
                   <select name="departmentId" id="hire-department" required className={inputCls}>
                     {departments.map((d) => (
-                      <option key={d.id} value={d.id} data-business-unit={d.businessUnitId ?? ''}>
+                      <option
+                        key={d.id}
+                        value={d.id}
+                        data-company={d.companyId}
+                        data-business-unit={d.businessUnitId ?? ''}
+                      >
                         {d.name}
                       </option>
                     ))}
                   </select>
                 </Field>
                 <Field label={t('position')}>
-                  <select name="positionId" className={inputCls}>
+                  <select name="positionId" id="hire-position" className={inputCls}>
                     <option value="">{t('positionNone')}</option>
                     {positions.map((pos) => (
-                      <option key={pos.id} value={pos.id}>
+                      <option key={pos.id} value={pos.id} data-company={pos.companyId}>
                         {pos.title}
                       </option>
                     ))}
@@ -399,10 +406,10 @@ export default async function PeoplePage({
                   </select>
                 </Field>
                 <Field label={t('costCenter')}>
-                  <select name="costCenterId" className={inputCls}>
+                  <select name="costCenterId" id="hire-cost-center" className={inputCls}>
                     <option value="">{t('costCenterNone')}</option>
                     {costCenters.map((cc) => (
-                      <option key={cc.id} value={cc.id}>
+                      <option key={cc.id} value={cc.id} data-company={cc.companyId}>
                         {cc.code} — {cc.name}
                       </option>
                     ))}
@@ -441,30 +448,16 @@ export default async function PeoplePage({
 
             <Button type="submit">{t('hire')}</Button>
           </form>
-          {/* Department-by-BU cascading filter (no React client island): show departments whose BU matches
-              the chosen Business Unit, always keeping unassigned (empty-BU) departments visible. Reset the
-              department selection when its option becomes hidden. Pure DOM, ~server-rendered-safe. */}
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `(function(){
-  var bu=document.getElementById('hire-business-unit');
-  var dept=document.getElementById('hire-department');
-  if(!bu||!dept)return;
-  function apply(){
-    var v=bu.value;var firstVisible=null;
-    for(var i=0;i<dept.options.length;i++){
-      var o=dept.options[i];var b=o.getAttribute('data-business-unit')||'';
-      var show=!v||b===''||b===v;
-      o.hidden=!show;o.disabled=!show;
-      if(show&&firstVisible===null)firstVisible=o;
-    }
-    var cur=dept.options[dept.selectedIndex];
-    if(!cur||cur.hidden){dept.value=firstVisible?firstVisible.value:'';}
-  }
-  bu.addEventListener('change',apply);apply();
-})();`,
-            }}
-          />
+          {/* Org-picker cascading filter (no React client island): the chosen Company narrows the
+              Business Unit / Department / Position / Cost Centre lists to that company's options, and
+              the chosen Business Unit further narrows Departments (unassigned, empty-BU departments
+              stay visible under every BU). Selections that become hidden self-heal — required selects
+              fall back to the first visible option, optional ones to their "None" placeholder. The
+              Reporting Manager (cross-company allowed by design, core/org.ts) and Job Grade
+              (tenant-wide) selects are deliberately NOT filtered. Pure DOM, server-rendered-safe;
+              visibility rule shared with test/hire-form-filter.test.ts via lib/hire-form-filter.ts.
+              The server-side CrossCompanyError guard in core/org.ts remains the final backstop. */}
+          <script dangerouslySetInnerHTML={{ __html: HIRE_ORG_FILTER_SCRIPT }} />
         </details>
       </Card>
     </div>

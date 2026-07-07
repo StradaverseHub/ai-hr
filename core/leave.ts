@@ -301,6 +301,32 @@ export class LeaveBackdatingNotAllowedError extends Error {
   }
 }
 
+// Minimum advance-notice rule (0159 / feedback 0b0fb6c3): a non-HR request submitted with less notice than
+// the leave type's minAdvanceDays requires ("Annual Leave must be submitted at least 7 days before the leave
+// start date"). Carries STRUCTURED fields (typeName, minDays) so the action layer can re-localize via
+// getTranslations('leave.errors') before redirecting with ?error=. HR admins (isAdmin) bypass this in
+// requestLeave (the override path, stamped for audit), so this only throws for ordinary employees. Mirrors
+// LeaveBackdatingNotAllowedError above end-to-end.
+export class LeaveAdvanceNoticeRequiredError extends Error {
+  readonly typeName?: string;
+  readonly minDays: number;
+  // Custom validation messages (0147): when the leave type has an admin-authored customMessages.minAdvanceDays
+  // override, it is passed here and used VERBATIM as the Error message instead of the interpolated default.
+  // The action-layer localizer (localizeLeaveError) detects a present customMessage and renders it as-is —
+  // it does NOT re-localize or interpolate an admin-authored string. Absent ⇒ the built-in localized default.
+  readonly customMessage?: string;
+  constructor(minDays: number, typeName?: string, customMessage?: string) {
+    super(
+      customMessage ??
+        `${typeName ?? 'This leave type'} must be submitted at least ${minDays} day(s) before the leave start date.`,
+    );
+    this.name = 'LeaveAdvanceNoticeRequiredError';
+    this.typeName = typeName;
+    this.minDays = minDays;
+    this.customMessage = customMessage;
+  }
+}
+
 // R5 Build #3 (backdating diagnose-first): a request that resolves to zero leave days — the range is empty
 // (end before start) or every day in it is a non-working day (weekend/holiday) for a working_days type. This
 // fires for admins AND ordinary employees, and is a common outcome of a BACKDATED single-day request that
@@ -449,6 +475,18 @@ export function todayInKualaLumpur(now: Date = new Date()): string {
 export function exceedsBackdatingLimit(startDate: string, today: string, limitDays: number | null): boolean {
   if (limitDays == null) return false;
   return daysBetween(startDate, today) > limitDays;
+}
+
+/** Minimum advance-notice rule (0159). True when `startDate` arrives with fewer than `minDays` days of
+ *  notice from `today` (both ISO yyyy-mm-dd). minDays null ⇒ never blocked (existing behaviour). Exactly
+ *  minDays of notice is allowed ("at least N days before"). daysBetween(today, start) is positive for a
+ *  future start and NEGATIVE for a backdated one, so a backdated request always lacks notice — consistent
+ *  with "must be submitted at least N days before the start date" (the separate backdating gate may fire
+ *  first; both are checked before any write). minDays 0 ⇒ only past start dates lack notice (start must be
+ *  today or later). Pure + `today`-injectable for deterministic tests, mirroring exceedsBackdatingLimit. */
+export function lacksMinAdvanceNotice(startDate: string, today: string, minDays: number | null): boolean {
+  if (minDays == null) return false;
+  return daysBetween(today, startDate) < minDays;
 }
 
 /** Subtract whole calendar months from an ISO date, clamping the day to the target month's length. */
@@ -715,6 +753,12 @@ async function insertLeaveRequest(
     // bypassing a configured control must be captured). null/absent ⇒ normal in-window request; payload
     // unchanged so existing assertions stay green.
     backdatingAudit?: { daysBackdated: number; backdatingLimitDays: number | null } | null;
+    // Minimum advance-notice rule (0159): set only when an HR admin SUCCESSFULLY overrode the rule (the
+    // request lacks the type's required notice but isAdmin let it through). Stamps the override onto the
+    // submitted event payload for the audit trail (CLAUDE.md substrate discipline: an admin bypassing a
+    // configured control must be captured). null/absent ⇒ normal in-notice request; payload unchanged so
+    // existing assertions stay green. Mirrors backdatingAudit above.
+    minAdvanceAudit?: { daysInAdvance: number; minAdvanceDays: number | null } | null;
   },
 ): Promise<{ id: string }> {
   const [row] = await tx
@@ -775,6 +819,16 @@ async function insertLeaveRequest(
             backdatedOverride: true,
             daysBackdated: v.backdatingAudit.daysBackdated,
             backdatingLimitDays: v.backdatingAudit.backdatingLimitDays,
+          }
+        : {}),
+      // Minimum advance-notice rule (0159): when an HR admin overrode the type's required notice, stamp it so
+      // an auditor can see this was a short-notice override (vs an in-notice request). Only present on the
+      // override path — the normal-path payload is byte-identical to before. Mirrors backdatedOverride above.
+      ...(v.minAdvanceAudit
+        ? {
+            advanceNoticeOverride: true,
+            daysInAdvance: v.minAdvanceAudit.daysInAdvance,
+            minAdvanceDays: v.minAdvanceAudit.minAdvanceDays,
           }
         : {}),
     },
@@ -848,6 +902,8 @@ export async function requestLeave(
         durations: leaveType.durations,
         perDateApproval: leaveType.perDateApproval,
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        // Minimum advance-notice rule (0159): required days of notice before the start date.
+        minAdvanceDays: leaveType.minAdvanceDays,
         // Custom validation messages (custom-messages migration): the admin-authored override map, keyed by
         // rule config field. Passed through the typed error so the localizer shows it verbatim.
         customMessages: leaveType.customMessages,
@@ -892,6 +948,22 @@ export async function requestLeave(
       // absent ⇒ the built-in localized default. A future rule follows the same look-up-then-pass-through
       // pattern (customMessages[ruleKey]) plus a branch in the action-layer localizer.
       throw new LeaveBackdatingNotAllowedError(limit!, lt?.name, lt?.customMessages?.backdatingLimitDays || undefined);
+    }
+
+    // Minimum advance-notice rule (0159 / feedback 0b0fb6c3). Non-HR users are blocked when the request's
+    // start date arrives with fewer than the type's minAdvanceDays days of notice ("Annual Leave must be
+    // submitted at least 7 days before the leave start date"); HR admins (isAdmin) bypass for exceptional
+    // cases (the override path, stamped onto the submitted event below). Judged against the same tenant-
+    // local (MYT) `today` as the backdating gate and fails fast BEFORE any write. Emergency Leave already
+    // returned above — it exists precisely for short-notice absence (the reporter's custom message points
+    // employees to it) and the field is hidden for EL in the admin UI.
+    const minAdvance = lt?.minAdvanceDays ?? null;
+    const advanceOverride = isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, minAdvance);
+    if (!isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, minAdvance)) {
+      // Custom validation messages (0147): pass the admin-authored override for THIS rule (keyed by its
+      // config field name) through the typed error so the localizer renders it verbatim; absent ⇒ the
+      // built-in localized default. Same look-up-then-pass-through pattern as the backdating gate above.
+      throw new LeaveAdvanceNoticeRequiredError(minAdvance!, lt?.name, lt?.customMessages?.minAdvanceDays || undefined);
     }
 
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
@@ -1123,6 +1195,11 @@ export async function requestLeave(
       // an HR admin actually bypassed the type's limit (computed at the guard above).
       backdatingAudit: backdatedOverride
         ? { daysBackdated: daysBetween(p.startDate, today), backdatingLimitDays: limit }
+        : null,
+      // Minimum advance-notice rule (0159): stamp the override onto the submitted event only when an HR admin
+      // actually bypassed the type's required notice (computed at the guard above).
+      minAdvanceAudit: advanceOverride
+        ? { daysInAdvance: daysBetween(today, p.startDate), minAdvanceDays: minAdvance }
         : null,
     });
 

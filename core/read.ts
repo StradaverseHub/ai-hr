@@ -382,6 +382,9 @@ export function listLeaveTypes(
         // Configurable backdated-leave restriction (0133): feeds the admin panel's "Backdating limit (days)"
         // input (MUST be projected here or the input renders empty on every reload — "my setting didn't save").
         backdatingLimitDays: leaveType.backdatingLimitDays,
+        // Minimum advance-notice rule (0159): feeds the admin panel's "Minimum advance days" input (same
+        // MUST-be-projected reason as backdatingLimitDays above).
+        minAdvanceDays: leaveType.minAdvanceDays,
         // Leave Type Expiry Field (fec49317): the age-from-earning expiry pair — feeds the admin panel's
         // "Leave expiry" sub-form (MUST be projected or the inputs render empty on every reload).
         expiryValue: leaveType.expiryValue,
@@ -437,6 +440,8 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // Configurable backdated-leave restriction (0133): projected so the panel projection (which feeds
           // off this select too) carries the value — same reason as listLeaveTypes above.
           backdatingLimitDays: leaveType.backdatingLimitDays,
+          // Minimum advance-notice rule (0159): projected alongside backdatingLimitDays for the same reason.
+          minAdvanceDays: leaveType.minAdvanceDays,
           eligibility: leaveType.eligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
