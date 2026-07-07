@@ -59,8 +59,10 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // Consolidated Attendance node (b3dc0f78). Groups the previously-scattered attendance rows —
 // Records (was in the top group), Policy/Allowance/Clocking Location/Time-off-in-lieu (were in
 // the admin group), Roster (was in the manage group) and Import — under one collapsible parent
-// with per-child role visibility. Reserved (do not create): an "Overtime Configuration" child is
-// owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
+// with per-child role visibility. Holidays moved here from the admin group per 5cb199b3, which
+// confirmed the relocation b3dc0f78 had deferred as contested (ticket order: Holidays → Policy
+// → Allowance → Locations → TOIL). Reserved (do not create): an "Overtime Configuration" child
+// is owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
 const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'attendance',
@@ -70,6 +72,7 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
     { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
+    { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
@@ -110,7 +113,7 @@ const GROUPS: Group[] = [
       // 0d147b78: Leave config is now a tabbed surface; the former standalone "Approval chain" entry
       // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },
-      { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays },
+      // Holidays lives under the Attendance node above (5cb199b3), not in the flat admin list.
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },

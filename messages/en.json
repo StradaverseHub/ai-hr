@@ -667,7 +667,8 @@
       "cancelDateInvalid": "{date} is not a cancellable working day in this leave.",
       "cancellationPeriodClosed": "{date} falls in a closed payroll period and can no longer be cancelled.",
       "noLeaveDaysInRange": "This request has no leave days — the dates are empty or fall entirely on weekends/public holidays. Pick a range that includes at least one working day.",
-      "balanceFrozenForEncashment": "This leave balance is frozen for encashment following an approved resignation and cannot be changed. Contact HR if you believe this is a mistake."
+      "balanceFrozenForEncashment": "This leave balance is frozen for encashment following an approved resignation and cannot be changed. Contact HR if you believe this is a mistake.",
+      "advanceNoticeRequired": "{typeName} must be submitted at least {days} day(s) before the leave start date."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -1188,7 +1189,9 @@
       "employmentType_full_time": "Full-time",
       "employmentType_part_time": "Part-time",
       "employmentType_contract": "Contract",
-      "employmentType_intern": "Intern"
+      "employmentType_intern": "Intern",
+      "chipAddPlaceholder": "Add…",
+      "chipRemoveLabel": "Remove {value}"
     },
     "cycle": {
       "back": "Performance",
@@ -1380,7 +1383,13 @@
       "filteredEmpty": "No payroll processes for this pay period.",
       "newRun": "Create Payroll Run Cycle",
       "colPaymentDate": "Payment date",
-      "paymentDateLegacyNote": "Runs created before this release show the system default date (the 28th)."
+      "paymentDateLegacyNote": "Runs created before this release show the system default date (the 28th).",
+      "colActions": "Actions",
+      "deleteDraft": "Delete",
+      "deleteDraftTitle": "Delete Payroll Process",
+      "deleteDraftBody": "Are you sure you want to delete this payroll process? This action cannot be undone.",
+      "deleteDraftNotDraft": "Only a draft payroll process can be deleted.",
+      "toastDeleted": "Draft payroll process deleted"
     },
     "batch": {
       "back": "Payroll",
@@ -1724,7 +1733,13 @@
         "zakatCta": "Edit zakat",
         "loansTitle": "Loans",
         "loansDesc": "Employee loan instalments — auto-deducted each payroll cycle.",
-        "loansCta": "Open loans"
+        "loansCta": "Open loans",
+        "importHistoryTitle": "Import payroll history",
+        "importHistoryDesc": "Bulk import of historical payroll records for data migration.",
+        "importHistoryCta": "Open import",
+        "viewTitle": "Transaction View",
+        "viewDesc": "Read-only inquiry across employees — fixed, individual and processed payroll history.",
+        "viewCta": "Open inquiry"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -1883,6 +1898,36 @@
         "save": "Save",
         "saved": "Saved.",
         "empty": "No employees in this batch."
+      },
+      "view": {
+        "title": "Transaction View",
+        "subtitle": "Centralized read-only inquiry of payroll transactions.",
+        "readOnly": "Inquiry only — records cannot be created or changed here.",
+        "tabs": {
+          "fixed": "Fixed",
+          "individual": "Individual",
+          "history": "History"
+        },
+        "filters": {
+          "company": "Company",
+          "employee": "Employee",
+          "payItem": "Pay item",
+          "status": "Status",
+          "year": "Year",
+          "month": "Month",
+          "cycle": "Payroll cycle",
+          "apply": "Apply filters",
+          "all": "All"
+        },
+        "fixed": {
+          "empty": "No fixed transactions match the selected filters."
+        },
+        "individual": {
+          "empty": "No individual transactions match the selected filters."
+        },
+        "history": {
+          "empty": "No processed payroll results match the selected filters."
+        }
       }
     },
     "setup": {
@@ -1937,7 +1982,7 @@
     "historyImport": {
       "title": "Import payroll history",
       "description": "Bulk-load pre-computed historical payroll (gross, EPF/SOCSO/EIS/PCB, net) from a CSV for data migration. Validate first, then import.",
-      "backLabel": "Payroll",
+      "backLabel": "Transactions",
       "noCompanies": "Create a company before importing payroll history.",
       "targetCompany": "Target company",
       "csvData": "CSV data",
@@ -2063,7 +2108,8 @@
         "INVALID_CYCLE": "No valid payroll cycle for this company",
         "SYSTEM_VALIDATION_ERROR": "System validation error",
         "MISSING_SALARY": "Missing salary information"
-      }
+      },
+      "resumeStep1Note": "You are reviewing a draft payroll process. Its company, pay period and payroll cycle are fixed — continue to review or amend the employee selection. To change the period or company, delete this draft from the Payroll Process listing and create a new run."
     }
   },
   "admin": {
@@ -2488,7 +2534,11 @@
       "expiryUnitMonths": "Months",
       "expiryUnitDays": "Days",
       "expirySectionHelp": "Unused days of this leave type expire this long after each portion is earned, and drop out of the balance. Leave the number blank for no expiry. Expired days still appear in leave reports. Not available for Annual leave, which uses carry-forward expiry instead.",
-      "auditHelp": "Read-only history of changes to leave types, entitlements, carry-forward, approval workflow, and payroll integration."
+      "auditHelp": "Read-only history of changes to leave types, entitlements, carry-forward, approval workflow, and payroll integration.",
+      "advanceNoticeSectionTitle": "Advance notice",
+      "minAdvanceDaysLabel": "Minimum advance days",
+      "advanceNoticeSectionHelp": "How many days before the start date an employee must submit this leave type. Leave blank for no requirement. HR admins are never blocked by this rule.",
+      "advanceCustomMessageHelp": "Shown to the employee when this leave type is submitted with too little advance notice. Up to 500 characters. Leave blank to keep the standard message. Applies to this leave type only."
     },
     "holidays": {
       "pageTitle": "Public holidays",

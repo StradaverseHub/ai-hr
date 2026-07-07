@@ -2,9 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import {
+  BatchNotDraftError,
   closeBatch,
+  deleteDraftBatch,
   generatePayslips,
   prefillFixedZakat,
   prefillOvertimeFromAttendance,
@@ -211,6 +214,27 @@ export async function transferAllowancesAction(formData: FormData) {
       (ineligible ? ` (${ineligible} did not qualify)` : '') +
       (reversed ? `; removed ${reversed} previously-transferred row${reversed === 1 ? '' : 's'} that no longer qualify` : '');
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(note)}`);
+}
+
+/**
+ * Payroll Process listing (feedback 4f00d8f0) — delete a DRAFT batch after the ConfirmSubmit dialog.
+ * Draft-only enforcement, RLS scoping, cascade teardown and DomainEvents live in deleteDraftBatch (the
+ * service); the session carries the real actor into actorOf(ctx). ToastFromQuery renders the raw query
+ * string, so the toast/error text is localised HERE (same convention as admin/payroll-cycle/actions.ts).
+ */
+export async function deleteDraftBatchAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const t = await getTranslations('payroll.list');
+  try {
+    await deleteDraftBatch(s, { batchId });
+  } catch (e) {
+    // BatchNotDraftError's raw message is generation-phrased — map it to the delete-specific copy.
+    const msg = e instanceof BatchNotDraftError ? t('deleteDraftNotDraft') : (e as Error).message;
+    redirect(`/payroll?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath('/payroll');
+  redirect(`/payroll?toast=${encodeURIComponent(t('toastDeleted'))}`);
 }
 
 export async function closeAction(formData: FormData) {

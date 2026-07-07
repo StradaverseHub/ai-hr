@@ -1,0 +1,22 @@
+-- Minimum Advance Days rule for leave types (feedback 0b0fb6c3 "Custom Validation Messages for Leave
+-- Configuration", Scenario 1 — the custom-message CAPABILITY shipped in 0147, but the advance-notice rule
+-- it describes did not exist yet).
+--
+-- Adds a per-leave-type setting requiring a leave request to be submitted at least N days BEFORE its start
+-- date. min_advance_days = null ⇒ no requirement (existing behaviour; nothing breaks for current types). A
+-- value N means the request needs at least N days of notice (exactly N is allowed); a shorter-notice — or
+-- backdated — request is rejected in core/leave.ts requestLeave with a typed, localized
+-- LeaveAdvanceNoticeRequiredError BEFORE any write. HR admins (isAdmin) bypass the rule (override path) and
+-- the override is stamped onto the created leave-request DomainEvent payload for audit. Emergency Leave is
+-- exempt (it decomposes before the gate — it exists precisely for short-notice absence; the field is hidden
+-- for EL in the admin UI).
+--
+-- Mirrors the 0133 backdating_limit_days nullable-integer column end-to-end; edited on the same Leave
+-- configuration admin screen via its OWN tri-state sub-form. Admins may attach a per-type custom block
+-- message through the EXISTING leave_type.custom_messages JSONB (0147) under the new `minAdvanceDays` rule
+-- key — no second column needed (the 0147 extension point working as designed). "today" is judged in the
+-- tenant's local (Asia/Kuala_Lumpur) calendar, supplied by the action layer.
+--
+-- No RLS change: leave_type already has tenant-read + admin-write policies; a new column inherits the
+-- table's row-level policies (same as 0133 / 0147).
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS min_advance_days integer;

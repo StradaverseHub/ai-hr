@@ -22,8 +22,9 @@ export default async function PayrollHistoryImportPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
+      {/* Feedback 8bf6dfa1: entry point relocated to the Transactions hub — back follows it. */}
       <PageHeader
-        back={{ href: '/payroll', label: t('backLabel') }}
+        back={{ href: '/payroll/transactions', label: t('backLabel') }}
         title={t('title')}
         description={t('description')}
       />

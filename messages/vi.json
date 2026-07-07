@@ -667,7 +667,8 @@
       "cancelDateInvalid": "{date} không phải là ngày làm việc có thể hủy trong kỳ nghỉ này.",
       "cancellationPeriodClosed": "{date} thuộc kỳ lương đã đóng và không thể hủy nữa.",
       "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc.",
-      "balanceFrozenForEncashment": "Số dư phép này đã bị khóa để quy đổi sau khi đơn nghỉ việc được phê duyệt và không thể thay đổi. Vui lòng liên hệ bộ phận Nhân sự nếu bạn cho rằng đây là nhầm lẫn."
+      "balanceFrozenForEncashment": "Số dư phép này đã bị khóa để quy đổi sau khi đơn nghỉ việc được phê duyệt và không thể thay đổi. Vui lòng liên hệ bộ phận Nhân sự nếu bạn cho rằng đây là nhầm lẫn.",
+      "advanceNoticeRequired": "{typeName} phải được nộp ít nhất {days} ngày trước ngày bắt đầu nghỉ phép."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -1188,7 +1189,9 @@
       "employmentType_full_time": "Toàn thời gian",
       "employmentType_part_time": "Bán thời gian",
       "employmentType_contract": "Hợp đồng",
-      "employmentType_intern": "Thực tập"
+      "employmentType_intern": "Thực tập",
+      "chipAddPlaceholder": "Thêm…",
+      "chipRemoveLabel": "Gỡ {value}"
     },
     "cycle": {
       "back": "Đánh giá hiệu suất",
@@ -1380,7 +1383,13 @@
       "filteredEmpty": "Không có quy trình tính lương nào cho kỳ lương này.",
       "newRun": "Tạo chu kỳ chạy lương",
       "colPaymentDate": "Ngày thanh toán",
-      "paymentDateLegacyNote": "Các đợt được tạo trước bản phát hành này hiển thị ngày mặc định của hệ thống (ngày 28)."
+      "paymentDateLegacyNote": "Các đợt được tạo trước bản phát hành này hiển thị ngày mặc định của hệ thống (ngày 28).",
+      "colActions": "Thao tác",
+      "deleteDraft": "Xóa",
+      "deleteDraftTitle": "Xóa quy trình tính lương",
+      "deleteDraftBody": "Bạn có chắc chắn muốn xóa quy trình tính lương này không? Hành động này không thể hoàn tác.",
+      "deleteDraftNotDraft": "Chỉ có thể xóa quy trình tính lương ở trạng thái nháp.",
+      "toastDeleted": "Đã xóa bản nháp quy trình tính lương"
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -1724,7 +1733,13 @@
         "zakatCta": "Sửa zakat",
         "loansTitle": "Khoản vay",
         "loansDesc": "Khoản trả góp vay của nhân viên — tự động khấu trừ mỗi kỳ lương.",
-        "loansCta": "Mở khoản vay"
+        "loansCta": "Mở khoản vay",
+        "importHistoryTitle": "Nhập lịch sử bảng lương",
+        "importHistoryDesc": "Nhập hàng loạt hồ sơ lương trước đây phục vụ di chuyển dữ liệu.",
+        "importHistoryCta": "Mở nhập dữ liệu",
+        "viewTitle": "Xem giao dịch",
+        "viewDesc": "Tra cứu chỉ đọc trên toàn bộ nhân viên — giao dịch cố định, cá nhân và lịch sử lương đã xử lý.",
+        "viewCta": "Mở tra cứu"
       },
       "fixed": {
         "title": "Giao dịch cố định",
@@ -1883,6 +1898,36 @@
         "save": "Lưu",
         "saved": "Đã lưu.",
         "empty": "Không có nhân viên trong đợt này."
+      },
+      "view": {
+        "title": "Xem giao dịch",
+        "subtitle": "Tra cứu tập trung, chỉ đọc các giao dịch lương.",
+        "readOnly": "Chỉ tra cứu — không thể tạo hoặc thay đổi bản ghi tại đây.",
+        "tabs": {
+          "fixed": "Cố định",
+          "individual": "Cá nhân",
+          "history": "Lịch sử"
+        },
+        "filters": {
+          "company": "Công ty",
+          "employee": "Nhân viên",
+          "payItem": "Khoản lương",
+          "status": "Trạng thái",
+          "year": "Năm",
+          "month": "Tháng",
+          "cycle": "Chu kỳ lương",
+          "apply": "Áp dụng bộ lọc",
+          "all": "Tất cả"
+        },
+        "fixed": {
+          "empty": "Không có giao dịch cố định nào khớp với bộ lọc đã chọn."
+        },
+        "individual": {
+          "empty": "Không có giao dịch cá nhân nào khớp với bộ lọc đã chọn."
+        },
+        "history": {
+          "empty": "Không có kết quả lương đã xử lý nào khớp với bộ lọc đã chọn."
+        }
       }
     },
     "setup": {
@@ -1937,7 +1982,7 @@
     "historyImport": {
       "title": "Nhập lịch sử bảng lương",
       "description": "Tải hàng loạt bảng lương lịch sử đã tính sẵn (tổng, EPF/SOCSO/EIS/PCB, thực nhận) từ CSV để di chuyển dữ liệu. Xác thực trước, sau đó nhập.",
-      "backLabel": "Bảng lương",
+      "backLabel": "Giao dịch",
       "noCompanies": "Tạo một công ty trước khi nhập lịch sử bảng lương.",
       "targetCompany": "Công ty đích",
       "csvData": "Dữ liệu CSV",
@@ -2063,7 +2108,8 @@
         "INVALID_CYCLE": "Không có chu kỳ lương hợp lệ cho công ty này",
         "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
         "MISSING_SALARY": "Thiếu thông tin lương"
-      }
+      },
+      "resumeStep1Note": "Bạn đang xem lại bản nháp quy trình tính lương. Công ty, tháng lương và chu kỳ lương của bản nháp này đã được cố định — hãy tiếp tục để xem lại hoặc điều chỉnh danh sách nhân viên. Để thay đổi tháng hoặc công ty, hãy xóa bản nháp này khỏi danh sách Quy trình tính lương và tạo một lần chạy mới."
     }
   },
   "admin": {
@@ -2488,7 +2534,11 @@
       "expiryUnitMonths": "Tháng",
       "expiryUnitDays": "Ngày",
       "expirySectionHelp": "Những ngày chưa dùng của loại nghỉ phép này sẽ hết hạn sau khoảng thời gian này kể từ khi mỗi phần được tích lũy, và bị loại khỏi số dư. Để trống số nếu không hết hạn. Những ngày đã hết hạn vẫn hiển thị trong báo cáo nghỉ phép. Không áp dụng cho Nghỉ phép năm, vốn dùng cơ chế hết hạn chuyển tiếp.",
-      "auditHelp": "Lịch sử chỉ đọc về thay đổi loại nghỉ phép, quyền lợi, chuyển tiếp, quy trình phê duyệt và tích hợp bảng lương."
+      "auditHelp": "Lịch sử chỉ đọc về thay đổi loại nghỉ phép, quyền lợi, chuyển tiếp, quy trình phê duyệt và tích hợp bảng lương.",
+      "advanceNoticeSectionTitle": "Thông báo trước",
+      "minAdvanceDaysLabel": "Số ngày báo trước tối thiểu",
+      "advanceNoticeSectionHelp": "Nhân viên phải nộp đơn xin loại nghỉ phép này trước ngày bắt đầu bao nhiêu ngày. Để trống nếu không yêu cầu. Quản trị viên HR không bao giờ bị chặn bởi quy tắc này.",
+      "advanceCustomMessageHelp": "Hiển thị cho nhân viên khi loại nghỉ phép này được nộp mà không đủ thời gian báo trước. Tối đa 500 ký tự. Để trống để giữ thông báo tiêu chuẩn. Chỉ áp dụng cho loại nghỉ phép này."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

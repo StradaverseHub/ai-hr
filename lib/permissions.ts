@@ -225,6 +225,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/transactions/fixed',
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
+      // R13 a4a05174: centralized read-only Transaction View (scopedAdmin, same guard as the hub).
+      '/payroll/transactions/view',
       '/payroll/transactions/zakat',
     ],
   },

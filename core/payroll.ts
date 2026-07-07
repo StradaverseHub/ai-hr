@@ -28,6 +28,7 @@ import {
   leaveType,
   payPeriod,
   payrollBatch,
+  payrollIndividualTxn,
   payrollInput,
   payslip,
   person,
@@ -603,6 +604,173 @@ export async function updateBatchScope(
       payload: { before: prevScope, after: nextScope, removedEmploymentIds },
     });
     return { ok: true, removedEmploymentIds };
+  });
+}
+
+/**
+ * Tear down a DRAFT batch's child rows inside the caller's transaction (feedback 4f00d8f0 — draft
+ * delete). This is the batch-wide generalisation of the per-removed-employee cleanup updateBatchScope
+ * performs:
+ *   1. Loan instalments still RESERVED to this batch are RELEASED back to 'scheduled' (reservedBatchId
+ *      cleared) so no reservation is stranded against a loan balance — one
+ *      `loan.instalment.reservation-released` event per row, same as the scope-removal path. APPLIED
+ *      loan state (`appliedBatchId` / status='applied') is deliberately untouched: it only exists on a
+ *      processed batch, which every draft-only caller refuses; unwinding it is the processed→draft
+ *      Reset's mechanic (sibling feedback a03b2d9b).
+ *   2. Draft-stage child rows are deleted: payroll_input, payroll_individual_txn,
+ *      payroll_batch_component, and — defensively — payslip (expected empty for a draft, since
+ *      generation flips the batch off 'draft'; deleting-if-any keeps the teardown total).
+ *   3. Claims stamped onto this batch are DETACHED (payroll_batch_id → null), not deleted — the claim
+ *      is an approved business record that must survive and become re-queueable; one
+ *      `claim-request.unqueued-from-payroll` event per claim (mirrors claim-request.queued-for-payroll).
+ *
+ * Shared seam: deleteDraftBatch calls this before removing the batch row, and the processed→draft
+ * Reset (a03b2d9b) can reuse it for its final draft-cleanup step. Events are appended HERE so no
+ * caller can perform the teardown silently (substrate discipline).
+ */
+export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId: string) {
+  const releasedRepayments = await tx
+    .update(loanRepayment)
+    .set({ status: 'scheduled', reservedBatchId: null })
+    .where(and(eq(loanRepayment.reservedBatchId, batchId), eq(loanRepayment.status, 'reserved')))
+    .returning({ id: loanRepayment.id, loanId: loanRepayment.loanId, employmentId: loanRepayment.employmentId });
+  for (const r of releasedRepayments) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'loan-repayment',
+      aggregateId: r.id,
+      eventType: 'loan.instalment.reservation-released',
+      actor: actorOf(ctx),
+      subjectEmploymentId: r.employmentId,
+      payload: { batchId, loanId: r.loanId, reason: 'draft-batch-teardown' },
+    });
+  }
+
+  const inputs = await tx.delete(payrollInput).where(eq(payrollInput.batchId, batchId)).returning({ id: payrollInput.id });
+  const individualTxns = await tx
+    .delete(payrollIndividualTxn)
+    .where(eq(payrollIndividualTxn.batchId, batchId))
+    .returning({ id: payrollIndividualTxn.id });
+  const components = await tx
+    .delete(payrollBatchComponent)
+    .where(eq(payrollBatchComponent.batchId, batchId))
+    .returning({ id: payrollBatchComponent.id });
+  const payslips = await tx.delete(payslip).where(eq(payslip.batchId, batchId)).returning({ id: payslip.id });
+  // Note: the child-row deletes above are covered by the batch-level teardown/deleted event the caller
+  // appends (their per-row history lives on their own aggregates' earlier events); only the two rows with
+  // cross-aggregate state (loan reservation, claim link) get per-row events here.
+
+  const detachedClaims = await tx
+    .update(claimRequest)
+    .set({ payrollBatchId: null })
+    .where(eq(claimRequest.payrollBatchId, batchId))
+    .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+  for (const c of detachedClaims) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-request',
+      aggregateId: c.id,
+      eventType: 'claim-request.unqueued-from-payroll',
+      actor: actorOf(ctx),
+      subjectEmploymentId: c.employmentId,
+      payload: { batchId, reason: 'draft-batch-teardown' },
+    });
+  }
+
+  return {
+    releasedLoanRepaymentIds: releasedRepayments.map((r) => r.id),
+    detachedClaimIds: detachedClaims.map((c) => c.id),
+    deletedChildCounts: {
+      inputs: inputs.length,
+      individualTxns: individualTxns.length,
+      components: components.length,
+      payslips: payslips.length,
+    },
+  };
+}
+
+/**
+ * Payroll Process listing (feedback 4f00d8f0) — permanently DELETE a DRAFT batch and all its draft-stage
+ * child data. DRAFT-ONLY: any other status throws BatchNotDraftError — this is the hard seam that keeps
+ * processed/closed runs undeletable from the listing; reversing a PROCESSED run back to draft is the
+ * Reset/Zeroize mechanic (sibling feedback a03b2d9b), never this method. The DB additionally freezes
+ * 'closed' batches via the 0011 immutability trigger.
+ *
+ * The status read and every destructive write share ONE transaction (same double-submit rationale as
+ * updateBatchScope). RLS scopes the batch lookup — a batch outside this admin's payroll scope resolves
+ * to no row ("batch not found"), so a company-scoped admin can never delete another company's draft.
+ *
+ * Orphan-parent tidy-up: when the deleted run was the LAST batch under its pay_period AND the period is
+ * still 'open', the period row is deleted too (createBatch's find-or-reuse already anticipates a period
+ * surviving a draft delete, so leaving it would also be safe — removing it just avoids stray open
+ * months). A closed period is never touched.
+ */
+export async function deleteDraftBatch(ctx: SessionContext, p: { batchId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        payPeriodId: payrollBatch.payPeriodId,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'draft') throw new BatchNotDraftError();
+
+    const teardown = await teardownDraftChildren(tx, ctx, p.batchId);
+
+    await tx.delete(payrollBatch).where(eq(payrollBatch.id, p.batchId));
+
+    // Orphan-parent cleanup: delete the pay_period only when NO sibling run still references it and it
+    // is still 'open' (guard: never delete a closed statutory month — the 0067 trigger also enforces it).
+    const [sibling] = await tx
+      .select({ id: payrollBatch.id })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.payPeriodId, batch.payPeriodId))
+      .limit(1);
+    let payPeriodDeleted = false;
+    if (!sibling) {
+      const deletedPeriods = await tx
+        .delete(payPeriod)
+        .where(and(eq(payPeriod.id, batch.payPeriodId), eq(payPeriod.status, 'open')))
+        .returning({ id: payPeriod.id });
+      if (deletedPeriods.length > 0) {
+        payPeriodDeleted = true;
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'pay-period',
+          aggregateId: batch.payPeriodId,
+          eventType: 'pay-period.deleted',
+          actor: actorOf(ctx),
+          payload: { companyId: batch.companyId, period: batch.payPeriod, reason: 'last-run-deleted' },
+        });
+      }
+    }
+
+    // The event log is the durable audit trail for a hard delete — record WHAT was removed (child
+    // counts, released reservations, detached claims), not just that it happened.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.deleted',
+      actor: actorOf(ctx),
+      payload: {
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        payPeriodId: batch.payPeriodId,
+        runType: batch.runType,
+        runSeq: batch.runSeq,
+        payPeriodDeleted,
+        ...teardown,
+      },
+    });
+    return { id: p.batchId };
   });
 }
 

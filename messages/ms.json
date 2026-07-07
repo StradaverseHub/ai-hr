@@ -667,7 +667,8 @@
       "cancelDateInvalid": "{date} bukan hari bekerja yang boleh dibatalkan dalam cuti ini.",
       "cancellationPeriodClosed": "{date} berada dalam tempoh gaji yang telah ditutup dan tidak boleh dibatalkan lagi.",
       "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja.",
-      "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan."
+      "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan.",
+      "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -1188,7 +1189,9 @@
       "employmentType_full_time": "Sepenuh masa",
       "employmentType_part_time": "Separuh masa",
       "employmentType_contract": "Kontrak",
-      "employmentType_intern": "Pelatih"
+      "employmentType_intern": "Pelatih",
+      "chipAddPlaceholder": "Tambah…",
+      "chipRemoveLabel": "Buang {value}"
     },
     "cycle": {
       "back": "Prestasi",
@@ -1380,7 +1383,13 @@
       "filteredEmpty": "Tiada proses gaji untuk tempoh gaji ini.",
       "newRun": "Cipta Kitaran Larian Gaji",
       "colPaymentDate": "Tarikh bayaran",
-      "paymentDateLegacyNote": "Larian yang dicipta sebelum keluaran ini memaparkan tarikh lalai sistem (28hb)."
+      "paymentDateLegacyNote": "Larian yang dicipta sebelum keluaran ini memaparkan tarikh lalai sistem (28hb).",
+      "colActions": "Tindakan",
+      "deleteDraft": "Padam",
+      "deleteDraftTitle": "Padam Proses Gaji",
+      "deleteDraftBody": "Anda pasti mahu memadam proses gaji ini? Tindakan ini tidak boleh dibuat asal.",
+      "deleteDraftNotDraft": "Hanya proses gaji berstatus draf boleh dipadam.",
+      "toastDeleted": "Draf proses gaji telah dipadam"
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -1724,7 +1733,13 @@
         "zakatCta": "Edit zakat",
         "loansTitle": "Pinjaman",
         "loansDesc": "Ansuran pinjaman pekerja — ditolak automatik setiap kitaran gaji.",
-        "loansCta": "Buka pinjaman"
+        "loansCta": "Buka pinjaman",
+        "importHistoryTitle": "Import sejarah gaji",
+        "importHistoryDesc": "Import pukal rekod gaji terdahulu untuk migrasi data.",
+        "importHistoryCta": "Buka import",
+        "viewTitle": "Paparan Transaksi",
+        "viewDesc": "Semakan baca sahaja merentas pekerja — transaksi tetap, individu dan sejarah gaji yang diproses.",
+        "viewCta": "Buka semakan"
       },
       "fixed": {
         "title": "Transaksi Tetap",
@@ -1883,6 +1898,36 @@
         "save": "Simpan",
         "saved": "Disimpan.",
         "empty": "Tiada pekerja dalam kelompok ini."
+      },
+      "view": {
+        "title": "Paparan Transaksi",
+        "subtitle": "Semakan berpusat baca sahaja untuk transaksi gaji.",
+        "readOnly": "Semakan sahaja — rekod tidak boleh dicipta atau diubah di sini.",
+        "tabs": {
+          "fixed": "Tetap",
+          "individual": "Individu",
+          "history": "Sejarah"
+        },
+        "filters": {
+          "company": "Syarikat",
+          "employee": "Pekerja",
+          "payItem": "Item gaji",
+          "status": "Status",
+          "year": "Tahun",
+          "month": "Bulan",
+          "cycle": "Kitaran gaji",
+          "apply": "Guna penapis",
+          "all": "Semua"
+        },
+        "fixed": {
+          "empty": "Tiada transaksi tetap yang sepadan dengan penapis dipilih."
+        },
+        "individual": {
+          "empty": "Tiada transaksi individu yang sepadan dengan penapis dipilih."
+        },
+        "history": {
+          "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih."
+        }
       }
     },
     "setup": {
@@ -1937,7 +1982,7 @@
     "historyImport": {
       "title": "Import sejarah gaji",
       "description": "Muat naik pukal gaji sejarah pra-kira (kasar, KWSP/PERKESO/SIP/PCB, bersih) daripada CSV untuk migrasi data. Sahkan dahulu, kemudian import.",
-      "backLabel": "Gaji",
+      "backLabel": "Transaksi",
       "noCompanies": "Cipta syarikat sebelum mengimport sejarah gaji.",
       "targetCompany": "Syarikat sasaran",
       "csvData": "Data CSV",
@@ -2063,7 +2108,8 @@
         "INVALID_CYCLE": "Tiada kitaran gaji sah untuk syarikat ini",
         "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
         "MISSING_SALARY": "Maklumat gaji tiada"
-      }
+      },
+      "resumeStep1Note": "Anda sedang menyemak draf proses gaji. Syarikat, bulan gaji dan kitaran gaji adalah tetap untuk draf ini — teruskan untuk menyemak atau meminda pemilihan pekerja. Untuk menukar bulan atau syarikat, padam draf ini daripada senarai Proses Gaji dan cipta larian baharu."
     }
   },
   "admin": {
@@ -2488,7 +2534,11 @@
       "expiryUnitMonths": "Bulan",
       "expiryUnitDays": "Hari",
       "expirySectionHelp": "Hari yang tidak digunakan bagi jenis cuti ini akan luput selepas tempoh ini dari setiap bahagian diperoleh, dan digugurkan daripada baki. Biarkan nombor kosong untuk tiada luput. Hari yang luput masih dipaparkan dalam laporan cuti. Tidak tersedia untuk Cuti Tahunan, yang menggunakan luput bawa ke hadapan.",
-      "auditHelp": "Sejarah baca sahaja bagi perubahan jenis cuti, kelayakan, bawa ke hadapan, aliran kelulusan dan integrasi gaji."
+      "auditHelp": "Sejarah baca sahaja bagi perubahan jenis cuti, kelayakan, bawa ke hadapan, aliran kelulusan dan integrasi gaji.",
+      "advanceNoticeSectionTitle": "Notis awal",
+      "minAdvanceDaysLabel": "Hari notis awal minimum",
+      "advanceNoticeSectionHelp": "Berapa hari sebelum tarikh mula pekerja mesti menghantar permohonan jenis cuti ini. Biarkan kosong untuk tiada syarat. Pentadbir HR tidak sekali-kali disekat oleh peraturan ini.",
+      "advanceCustomMessageHelp": "Dipaparkan kepada pekerja apabila jenis cuti ini dihantar dengan notis awal yang tidak mencukupi. Sehingga 500 aksara. Biarkan kosong untuk mengekalkan mesej standard. Hanya terpakai untuk jenis cuti ini."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

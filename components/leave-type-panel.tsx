@@ -279,6 +279,7 @@ export function LeaveTypePanel({
   employeeRemarkRequired,
   hrRemarkRequired,
   backdatingLimitDays,
+  minAdvanceDays,
   expiryValue,
   expiryUnit,
   customMessages,
@@ -317,14 +318,18 @@ export function LeaveTypePanel({
   /** Configurable backdated-leave restriction (0133): how many days back a leave of this type may be applied;
    *  null = no limit. Threaded so the sub-form round-trips. Field hidden for Emergency Leave (code === 'EMERGENCY'). */
   backdatingLimitDays: number | null;
+  /** Minimum advance-notice rule (0159): how many days before its start date a leave of this type must be
+   *  submitted; null = no requirement. Threaded so the sub-form round-trips. Field hidden for Emergency Leave
+   *  (code === 'EMERGENCY' — EL exists precisely for short-notice absence and is never guarded). */
+  minAdvanceDays: number | null;
   /** Leave Type Expiry Field (fec49317): age-from-earning expiry pair — after this many months/days from the
    *  date each portion is earned, unused days lapse. Both null = no expiry. Threaded so the sub-form
    *  round-trips. Hidden for Annual (owned by the per-policy carry-forward expiry engine). */
   expiryValue: number | null;
   expiryUnit: string | null;
   /** Custom validation messages (custom-messages migration): admin-authored override text keyed by rule config
-   *  field (currently only `backdatingLimitDays`). Threaded so the "Custom system message" textarea round-trips.
-   *  null / absent key = show the built-in localized default. */
+   *  field (`backdatingLimitDays` | `minAdvanceDays`). Threaded so each rule's "Custom system message"
+   *  textarea round-trips. null / absent key = show the built-in localized default. */
   customMessages: Record<string, string> | null;
   /** Whether this type is paid — drives the read-only "Affects payroll deduction" display (derived = !paid). */
   paid: boolean;
@@ -792,6 +797,51 @@ export function LeaveTypePanel({
                 </Button>
               </form>
               <p className="text-xs text-muted-foreground">{t('backdatingSectionHelp')}</p>
+            </div>
+          )}
+
+          {/* Minimum advance-notice rule (0159 / feedback 0b0fb6c3). Its own sub-form (own tri-state) posts
+              `minAdvance=1`, mirroring the backdating block above. Hidden for Emergency Leave — EL exists
+              precisely for short-notice absence and is never guarded (it decomposes before the gate), so
+              showing the field would let HR set a value that is silently ignored (the EL config-trap). */}
+          {code !== 'EMERGENCY' && (
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">{t('advanceNoticeSectionTitle')}</span>
+              <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the min_advance_days column (tri-state guard) */}
+                <input type="hidden" name="minAdvance" value="1" />
+                <Field label={t('minAdvanceDaysLabel')}>
+                  <input
+                    name="minAdvanceDays"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={minAdvanceDays ?? ''}
+                    className={`${inputCls} w-24`}
+                  />
+                </Field>
+                {/* Custom validation messages (0147): optional HR-authored override for the advance-notice
+                    block message. Lives in the SAME form as the rule so it saves atomically with
+                    `minAdvance=1`. Blank = keep the built-in localized default. */}
+                <Field label={t('customMessageLabel')}>
+                  <textarea
+                    name="customMessageMinAdvance"
+                    maxLength={500}
+                    rows={2}
+                    defaultValue={customMessages?.minAdvanceDays ?? ''}
+                    placeholder={t('customMessagePlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground">{t('advanceCustomMessageHelp')}</p>
+                <Button type="submit" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              <p className="text-xs text-muted-foreground">{t('advanceNoticeSectionHelp')}</p>
             </div>
           )}
 

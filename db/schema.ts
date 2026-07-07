@@ -710,6 +710,17 @@ export const leaveType = pgTable('leave_type', {
   // the document config. Intentionally not enforced for Emergency Leave (inherently retroactive; field hidden
   // in the admin UI for EL).
   backdatingLimitDays: integer('backdating_limit_days'),
+  // Minimum advance-notice rule (0159 / feedback 0b0fb6c3): how many days BEFORE its start date a leave of
+  // this type must be submitted ("Annual Leave must be submitted at least 7 days before the leave start
+  // date"). null ⇒ no requirement (existing behaviour). Enforced in requestLeave against the tenant-local
+  // (Asia/Kuala_Lumpur) "today"; exactly N days of notice is allowed; a backdated start always lacks notice
+  // (the backdating rule above may fire first). HR admins (isAdmin) bypass it (override path, stamped onto
+  // the submitted event for audit). Mirrors backdatingLimitDays (nullable integer; OWN tri-state in
+  // updateLeaveType). Intentionally not enforced for Emergency Leave (it exists precisely for short-notice
+  // absence — the reporter's scenario points employees to it; field hidden in the admin UI for EL). Admins
+  // may attach a per-type custom block message via customMessages.minAdvanceDays (the 0147 JSONB extension
+  // point below — no second column).
+  minAdvanceDays: integer('min_advance_days'),
   // Leave Type Expiry Field (fec49317): OPTIONAL age-from-earning expiry for this leave type. Each accrual
   // portion lapses `expiry_value` `expiry_unit` (months | days) after the date it was earned (its ledger
   // effective_on); the expireAgedLeave sweep (core/leave.ts) posts a negative `adjustment` per due batch,
