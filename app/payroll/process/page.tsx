@@ -98,7 +98,11 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
         <ErrorBanner message={resumeError} />
       ) : (
         <Wizard
-          companies={companies.map((c) => ({ id: c.id, name: c.name }))}
+          // 3653d14b: the company MULTI-select is bounded to the admin's ACTIVE scope (scopeIds) — the same
+          // set the per-company masters + cycle catalogs are loaded for. "All my companies" therefore means
+          // "all companies I'm scoped to", and the server re-resolves it against allowedCompanies as a
+          // backstop so the run can never widen beyond the admin's grants.
+          companies={companies.filter((c) => scopeIds.includes(c.id)).map((c) => ({ id: c.id, name: c.name }))}
           departments={departments.map((d) => ({ id: d.id, name: d.name, companyId: d.companyId, businessUnitId: d.businessUnitId }))}
           businessUnits={businessUnits.map((b) => ({ id: b.id, name: b.name, companyId: b.companyId }))}
           positions={positions.map((p) => ({ id: p.id, name: p.title, companyId: p.companyId }))}

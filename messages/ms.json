@@ -503,7 +503,22 @@
         "hint": "Apabila geopagar dikuatkuasakan, daftar masuk/keluar akan disekat melainkan pekerja berada dalam jejari lokasi yang ditetapkan. Apabila dimatikan, lokasi masih direkodkan untuk audit."
       },
       "directorySubtitle": "Profil direktori kakitangan",
-      "viewFullRecord": "Lihat rekod penuh"
+      "viewFullRecord": "Lihat rekod penuh",
+      "tabs": {
+        "profile": "Profil",
+        "family": "Keluarga",
+        "job": "Jawatan",
+        "payroll": "Gaji",
+        "documents": "Dokumen",
+        "others": "Lain-lain",
+        "empty": "Tiada apa-apa untuk dipaparkan di sini."
+      },
+      "documents": {
+        "title": "Pengenalan & dokumen",
+        "note": "Pengecam statutori dalam rekod. Muat naik dan simpan fail (imbasan kad pengenalan, kontrak yang ditandatangani) akan disediakan dalam keluaran akan datang; sunting nilai ini pada tab Gaji.",
+        "cp38Records": "Rekod ansuran CP38",
+        "hint": "Ini ringkasan baca sahaja. Sumber boleh sunting untuk medan ini terletak di bawah tab Gaji (Statutori)."
+      }
     },
     "import": {
       "title": "Import pekerja",
@@ -1564,7 +1579,28 @@
       "otRestDayExcessMultiplier": "Kadar lebihan OT hari rehat (× sejam)",
       "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)",
       "secCeilings": "Siling caruman",
-      "ceilingsNote": "Kadar kerja lebih masa dikonfigurasikan di bawah modul Kehadiran (Dasar kehadiran → Kadar kerja lebih masa), bukan di sini."
+      "ceilingsNote": "Kadar kerja lebih masa dikonfigurasikan di bawah modul Kehadiran (Dasar kehadiran → Kadar kerja lebih masa), bukan di sini.",
+      "bandsEditWarning": "Jadual PERKESO yang disahkan — sunting hanya untuk perubahan berkanun yang diketahui. Julat gaji mesti menaik tanpa jurang, dan amaun ialah nilai ringgit tetap, bukan peratusan. Suntingan salah boleh dikembalikan dengan mengarkibkan versi ini untuk memulihkan jadual terbina dalam.",
+      "socsoCat1": "Kategori 1 — kecederaan + keilatan (bawah 60)",
+      "socsoCat2": "Kategori 2 — kecederaan sahaja (umur 60+ / warga asing, majikan sahaja)",
+      "colWageFrom": "Dari (RM)",
+      "colWageTo": "Hingga (RM)",
+      "colEmployerRm": "Majikan (RM)",
+      "colEmployeeRm": "Pekerja (RM)",
+      "colSkbbkRm": "SKBBK (RM)",
+      "addTier": "Tambah jalur",
+      "removeTier": "Buang",
+      "removeTierAria": "Buang jalur",
+      "epfPartA": "Jadual Ketiga — Bahagian A (warganegara / PR, bawah 60)",
+      "epfPartE": "Jadual Ketiga — Bahagian E (warganegara 60 hingga bawah 75)",
+      "epfBandsNote": "Amaun dalam ringgit bagi setiap jalur upah, dibundarkan ke atas ke ringgit berikutnya. Baris terakhir (\"dan ke atas\") ialah ekor peratusan tepat melebihi had jadual. Biarkan \"Upah hingga\" kosong untuk menjadikannya jalur teratas terbuka.",
+      "epfPartENote": "Jadual warga emas terkurang: pekerja 0%, majikan 4%. Terpakai untuk warganegara Malaysia berumur 60 hingga bawah 75; tiada caruman wajib dari umur 75.",
+      "colEpfUpTo": "Upah hingga (RM)",
+      "colEpfEmployee": "Pekerja (RM)",
+      "colEpfEmployer": "Majikan (RM)",
+      "addBand": "Tambah jalur",
+      "removeBand": "Buang jalur",
+      "colActions": "Tindakan"
     },
     "batch": {
       "back": "Gaji",
@@ -1983,7 +2019,51 @@
       "leaverTag": "berhenti pertengahan bulan",
       "leaverFilterWarning": "Penapis status ini akan mengecualikan {n} pekerja yang berhenti pertengahan bulan — gaji akhir mereka akan terlepas tanpa amaran.",
       "compLessWarning": "{n} pekerja tiada rekod pampasan aktif dan tidak akan menerima slip gaji.",
-      "noCyclesConfigured": "Tiada kitaran gaji dikonfigurasi untuk syarikat ini"
+      "noCyclesConfigured": "Tiada kitaran gaji dikonfigurasi untuk syarikat ini",
+      "companies": "Syarikat",
+      "allMyCompanies": "Semua syarikat saya",
+      "alreadyProcessedTag": "telah diproses",
+      "transactionsPrerequisiteNote": "Masukkan semua transaksi gaji (elaun, potongan, kerja lebih masa, tuntutan, pelarasan) pada skrin Transaksi sebelum menjalankan. Proses ini hanya memilih skop dan menjalankan pengiraan.",
+      "resultTitle": "Keputusan Pemprosesan Gaji",
+      "resultSubtitle": "Ringkasan dan status larian gaji pelbagai syarikat.",
+      "resultExpired": "Keputusan ini tidak lagi tersedia — mulakan larian gaji baharu untuk melihat keputusan terkini.",
+      "resultBackToProcess": "Kembali ke Proses Gaji",
+      "overallStatusLabel": "Status keseluruhan",
+      "resultForPeriod": "Tempoh gaji {period}",
+      "totalCompanies": "Jumlah syarikat diproses",
+      "companiesSplit": "{ok} berjaya · {failed} gagal",
+      "totalEmployeesSelected": "Jumlah pekerja dipilih",
+      "totalEmployeesSucceeded": "Berjaya diproses",
+      "totalEmployeesFailed": "Gagal diproses",
+      "startedAt": "Bermula pada",
+      "endedAt": "Tamat pada",
+      "perCompanyTitle": "Hasil setiap syarikat",
+      "colCompany": "Syarikat",
+      "colSelected": "Dipilih",
+      "colSucceeded": "Berjaya",
+      "colStatus": "Status",
+      "colDetail": "Butiran",
+      "companySucceeded": "Berjaya",
+      "companyFailed": "Gagal",
+      "viewBatch": "Lihat larian",
+      "failedEmployeesTitle": "Pekerja yang tidak dapat diproses",
+      "colEmployeeId": "ID Pekerja",
+      "colEmployeeName": "Nama Pekerja",
+      "colFailureReason": "Sebab Kegagalan",
+      "employeeFailed": "Gagal",
+      "overall": {
+        "succeeded": "Berjaya",
+        "partial": "Sebahagian berjaya",
+        "failed": "Gagal"
+      },
+      "reason": {
+        "PERIOD_ALREADY_PROCESSED": "Sudah diproses untuk bulan ini",
+        "NO_PAYROLL_CONFIG": "Konfigurasi gaji tiada",
+        "NOT_AUTHORIZED": "Anda tiada akses kepada syarikat ini",
+        "INVALID_CYCLE": "Tiada kitaran gaji sah untuk syarikat ini",
+        "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
+        "MISSING_SALARY": "Maklumat gaji tiada"
+      }
     }
   },
   "admin": {
@@ -2105,7 +2185,20 @@
       "logoInvalidType": "Hanya imej PNG atau JPG dibenarkan",
       "logoTooLarge": "Logo melebihi 2 MB",
       "searchCompanies": "Cari syarikat mengikut nama atau nombor pendaftaran",
-      "noMatches": "Tiada syarikat sepadan dengan carian anda"
+      "noMatches": "Tiada syarikat sepadan dengan carian anda",
+      "addNewCompany": "Tambah syarikat baharu",
+      "tabGeneral": "Umum",
+      "tabPayroll": "Gaji",
+      "tabSystemConfig": "Konfigurasi sistem",
+      "tabAccessUsers": "Akses & pengguna",
+      "tabOther": "Lain-lain",
+      "payrollCycleCrossLink": "Tetapan kitaran gaji dikonfigurasi di halaman Kitaran gaji.",
+      "payrollCycleCrossLinkAction": "Buka kitaran gaji",
+      "systemConfigCrossLink": "Jabatan, jawatan, pusat kos dan unit perniagaan diuruskan di bawah Tetapan → Label sistem.",
+      "systemConfigCrossLinkAction": "Buka label sistem",
+      "accessUsersCrossLink": "Pengguna yang ditugaskan dan akses berasaskan peranan diuruskan di halaman Pengguna.",
+      "accessUsersCrossLinkAction": "Buka pengguna",
+      "otherTabNote": "Disimpan untuk tetapan syarikat akan datang."
     },
     "systemLabels": {
       "pageTitle": "Label Sistem",
@@ -2114,7 +2207,20 @@
       "noCompaniesInScope": "Tiada syarikat dalam skop.",
       "countSummary": "{dept} jbtn · {pos} jwtn · {cc} pk · {bu} up",
       "fieldDescription": "Keterangan",
-      "descriptionPlaceholder": "Nota ringkas (pilihan)"
+      "descriptionPlaceholder": "Nota ringkas (pilihan)",
+      "assignedCompanies": "Syarikat ditetapkan",
+      "assignmentSingle": "Satu syarikat",
+      "assignmentMultiple": "Beberapa syarikat",
+      "assignmentAll": "Semua syarikat (global)",
+      "assign": "Tetapkan",
+      "unassign": "Nyahtetapkan",
+      "makeGlobal": "Jadikan global",
+      "clearGlobal": "Buang global",
+      "bulkActivate": "Aktifkan",
+      "bulkDeactivate": "Nyahaktifkan",
+      "copyToCompanies": "Salin ke syarikat",
+      "cannotUnassignInUse": "Tidak boleh dinyahtetapkan: sebuah syarikat masih menggunakan label ini. Tetapkan semula pekerjanya dahulu.",
+      "globalGroupAdminOnly": "Hanya pentadbir kumpulan boleh menjadikan label global."
     },
     "leave": {
       "pageTitle": "Konfigurasi cuti",
@@ -2381,7 +2487,8 @@
       "expiryUnitLabel": "Unit",
       "expiryUnitMonths": "Bulan",
       "expiryUnitDays": "Hari",
-      "expirySectionHelp": "Hari yang tidak digunakan bagi jenis cuti ini akan luput selepas tempoh ini dari setiap bahagian diperoleh, dan digugurkan daripada baki. Biarkan nombor kosong untuk tiada luput. Hari yang luput masih dipaparkan dalam laporan cuti. Tidak tersedia untuk Cuti Tahunan, yang menggunakan luput bawa ke hadapan."
+      "expirySectionHelp": "Hari yang tidak digunakan bagi jenis cuti ini akan luput selepas tempoh ini dari setiap bahagian diperoleh, dan digugurkan daripada baki. Biarkan nombor kosong untuk tiada luput. Hari yang luput masih dipaparkan dalam laporan cuti. Tidak tersedia untuk Cuti Tahunan, yang menggunakan luput bawa ke hadapan.",
+      "auditHelp": "Sejarah baca sahaja bagi perubahan jenis cuti, kelayakan, bawa ke hadapan, aliran kelulusan dan integrasi gaji."
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -2738,6 +2845,14 @@
       "deleteConfirmDescription": "Padam “{name}” secara kekal? Tindakan ini tidak boleh dibatalkan. Hanya boleh dilakukan apabila tiada pekerja ditetapkan dan tiada rekod kehadiran merujuknya.",
       "clockingInUse": "Tidak boleh dipadam: dirujuk oleh {count} rekod. Sila arkibkan sahaja.",
       "clockingNote": "Pemadaman hanya boleh dilakukan apabila lokasi tiada penetapan pekerja dan tiada sejarah kehadiran. Jika tidak, arkibkan sahaja."
+    },
+    "leaveTabs": {
+      "types": "Jenis Cuti",
+      "entitlements": "Kelayakan",
+      "applicationRules": "Peraturan Permohonan",
+      "approval": "Aliran Kelulusan",
+      "payroll": "Berkaitan Gaji",
+      "audit": "Audit"
     }
   },
   "topbar": {
@@ -3582,7 +3697,49 @@
     "historicalSubmitted": "Dihantar bagi tahun taksiran ini.",
     "historicalDraft": "Disimpan sebagai draf bagi tahun taksiran ini.",
     "historicalNone": "Tiada pengisytiharan dibuat bagi tahun taksiran ini.",
-    "historyNote": "Penghantaran terdahulu disimpan dan kelihatan dalam sejarah rekod anda. Tahun taksiran lepas dipaparkan sebagai baca sahaja."
+    "historyNote": "Penghantaran terdahulu disimpan dan kelihatan dalam sejarah rekod anda. Tahun taksiran lepas dipaparkan sebagai baca sahaja.",
+    "employeeSection": "Maklumat pekerja",
+    "employeeName": "Nama pekerja",
+    "employeeNumber": "Nombor pekerja",
+    "company": "Syarikat",
+    "totalLabel": "Jumlah pelepasan TP1 tahunan",
+    "totalNote": "Jumlah tahunan anda dikira secara automatik daripada kategori di atas apabila anda simpan atau hantar.",
+    "remarksLabel": "Catatan",
+    "remarksPlaceholder": "Sebarang nota atau pengisytiharan untuk HR (pilihan).",
+    "categories": {
+      "individual": {
+        "label": "Individu dan saudara tanggungan (RM)",
+        "help": "Pelepasan individu standard dan saudara tanggungan. Had berkanun RM 9,000."
+      },
+      "spouse": {
+        "label": "Pasangan / nafkah (RM)",
+        "help": "Pelepasan bagi pasangan yang tidak bekerja atau bayaran nafkah. Had berkanun RM 4,000."
+      },
+      "children": {
+        "label": "Anak (RM)",
+        "help": "Jumlah pelepasan anak layak bagi tahun tersebut."
+      },
+      "parent": {
+        "label": "Ibu bapa (RM)",
+        "help": "Perbelanjaan perubatan, penjagaan atau pemeriksaan bagi ibu bapa anda."
+      },
+      "medicalInsurance": {
+        "label": "Perubatan / insurans (RM)",
+        "help": "Insurans nyawa dan perubatan, KWSP, serta perbelanjaan perubatan yang diluluskan."
+      },
+      "lifestyle": {
+        "label": "Gaya hidup (RM)",
+        "help": "Buku, komputer, peralatan sukan, internet dan perbelanjaan gaya hidup yang serupa."
+      },
+      "education": {
+        "label": "Yuran pendidikan (RM)",
+        "help": "Yuran kursus atau pengajian yang diluluskan untuk diri anda."
+      },
+      "other": {
+        "label": "Pelepasan lain (RM)",
+        "help": "Mana-mana kategori pelepasan TP1 lain yang tidak disenaraikan di atas."
+      }
+    }
   },
   "payRule": {
     "sectionTitle": "Bagaimana ia dikira?",

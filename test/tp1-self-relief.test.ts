@@ -347,4 +347,171 @@ describe('ADR-0050 — TP1 self-relief', () => {
         .values({ tenantId: ctx.tenantId, personId: otherPersonId, assessmentYear: YEAR, status: 'draft', tp1Amount: '1.00' });
     });
   }
+
+  // ── a2f1fa24 — structured per-category breakdown (PDF→interactive form conversion) ──
+  //
+  // The declaration now carries a per-category breakdown mirroring the paper LHDN TP1. The invariant that
+  // MUST hold: `tp1Amount` stays the server-computed round2 SUM of the categories (the ONLY value PCB sees),
+  // so the monthly MTD math is byte-identical whether the same total arrived as a scalar or a breakdown.
+  describe('per-category breakdown', () => {
+    // C.1 — the roll-up: tp1Amount is the sum of the categories, categories are persisted + returned.
+    it('rolls the categories into tp1Amount and returns the breakdown', async () => {
+      const e = await hire('Cat', 'cat@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      await submitTp1(ctx, {
+        assessmentYear: YEAR,
+        categories: { individual: 9000, spouse: 0, children: 4000, medicalInsurance: 1200.5, lifestyle: 2500 },
+      });
+      const latest = await getTp1(ctx, { assessmentYear: YEAR });
+      expect(latest?.tp1Amount).toBe(16700.5); // 9000 + 4000 + 1200.5 + 2500
+      expect(latest?.categories?.individual).toBe(9000);
+      expect(latest?.categories?.medicalInsurance).toBe(1200.5);
+      // Unsupplied categories default to 0 (empty = 0, per the plan).
+      expect(latest?.categories?.parent).toBe(0);
+      expect(latest?.categories?.education).toBe(0);
+    });
+
+    // C.2 — the client total is never trusted: only the categories drive tp1Amount.
+    it('ignores any client-sent total and computes tp1Amount from categories', async () => {
+      const e = await hire('Trust', 'trust@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      // A hostile/stale tp1Amount is present but categories win.
+      await submitTp1(ctx, { assessmentYear: YEAR, tp1Amount: 999999, categories: { individual: 500, lifestyle: 300 } });
+      expect((await getTp1(ctx, { assessmentYear: YEAR }))?.tp1Amount).toBe(800);
+    });
+
+    // C.3 — a remarks note is stored on the row (free text), rounding is 2dp.
+    it('stores remarks and rounds each category to 2dp', async () => {
+      const e = await hire('Rem', 'rem@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      await submitTp1(ctx, { assessmentYear: YEAR, categories: { lifestyle: 100.005, remarks: '  claims Q4  ' } });
+      const latest = await getTp1(ctx, { assessmentYear: YEAR });
+      expect(latest?.categories?.remarks).toBe('claims Q4'); // trimmed
+      expect(latest?.tp1Amount).toBe(100.01); // round2
+    });
+
+    // C.4 — per-category non-negative validation.
+    it('rejects a negative category amount', async () => {
+      const e = await hire('Neg', 'neg@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      await expect(
+        submitTp1(ctx, { assessmentYear: YEAR, categories: { lifestyle: -1 } }),
+      ).rejects.toThrow(TaxReliefError);
+    });
+
+    // C.5 — sourced cap enforcement (individual RM9000, spouse RM4000). Categories WITHOUT a sourced cap
+    // (medical/lifestyle/parent/education/other) are non-negative-only — a large value is accepted.
+    it('enforces the sourced individual/spouse caps but not the unsourced ones', async () => {
+      const e = await hire('Cap', 'cap@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      await expect(
+        submitTp1(ctx, { assessmentYear: YEAR, categories: { individual: 9001 } }),
+      ).rejects.toThrow(TaxReliefError);
+      await expect(
+        submitTp1(ctx, { assessmentYear: YEAR, categories: { spouse: 4001 } }),
+      ).rejects.toThrow(TaxReliefError);
+      // No sourced cap on lifestyle yet (ADR-0008) → a large value is allowed.
+      await expect(
+        submitTp1(ctx, { assessmentYear: YEAR, categories: { lifestyle: 50000 } }),
+      ).resolves.toBeTruthy();
+    });
+
+    // C.6 — draft edit-in-place then submit-creates-new-row STILL holds with categories (history kept).
+    it('keeps the append-only shape with categories (draft in place, submit appends)', async () => {
+      const e = await hire('Hist', 'hist@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      await saveTp1Draft(ctx, { assessmentYear: YEAR, categories: { individual: 100 } });
+      await saveTp1Draft(ctx, { assessmentYear: YEAR, categories: { individual: 200, lifestyle: 50 } });
+      const drafts = await owner.db
+        .select()
+        .from(schema.tp1Relief)
+        .where(and(eq(schema.tp1Relief.personId, e.personId), eq(schema.tp1Relief.status, 'draft')));
+      expect(drafts).toHaveLength(1); // updated in place
+      expect(Number(drafts[0].tp1Amount)).toBe(250);
+      await submitTp1(ctx, { assessmentYear: YEAR, categories: { individual: 300 } });
+      const submitted = await owner.db
+        .select()
+        .from(schema.tp1Relief)
+        .where(and(eq(schema.tp1Relief.personId, e.personId), eq(schema.tp1Relief.status, 'submitted')));
+      expect(submitted).toHaveLength(1);
+      expect((await getTp1(ctx, { assessmentYear: YEAR }))?.status).toBe('submitted');
+    });
+
+    // C.7 — BYTE-STABILITY (the don't-break-PCB gate): a submitted breakdown whose SUM equals a scalar
+    // declaration must produce the IDENTICAL fed tp1_deduction, lp, and pcb. Categories never reach the
+    // kernel — only the sum does — so the MTD is unchanged. Routed through submitTp1 (only 'submitted' rows
+    // feed the prefill). Two identical employees in ONE Jan batch: A declares via categories summing to
+    // 3000, B keys the same 3000 manually; A.pcb must equal B.pcb to the cent.
+    it('a category breakdown that sums to X yields the identical PCB as scalar X', async () => {
+      const a = adminCtx(base);
+      const A = await hire('CatFeedA', 'catfeeda@acme.test');
+      const B = await hire('CatFeedB', 'catfeedb@acme.test');
+      let ic = 13001;
+      for (const e of [A, B]) {
+        await setCompensation(a, { employmentId: e.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
+        await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `9002020${ic++}` });
+      }
+      // A declares a breakdown summing to exactly 3000 (the golden case's TP1).
+      const ctxA = await employeeCtx(A.personId);
+      await submitTp1(ctxA, { assessmentYear: YEAR, categories: { individual: 1500, medicalInsurance: 1000, lifestyle: 500 } });
+      expect((await getTp1(ctxA, { assessmentYear: YEAR }))?.tp1Amount).toBe(3000);
+
+      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
+      const r = await prefillTp1FromSelfRelief(a, { batchId });
+      expect(r.applied).toBe(1);
+      expect(Number((await inputRow(batchId, A.employmentId)).tp1Deduction)).toBe(3000); // ∑LP=0 in Jan
+
+      // B keys the SAME total manually.
+      await setPayrollInput(a, { batchId, employmentId: B.employmentId, overtimeAmount: 0, tp1Deduction: 3000 });
+      await generatePayslips(a, { batchId });
+
+      const statA = await slipStat(batchId, A.employmentId);
+      const statB = await slipStat(batchId, B.employmentId);
+      expect(Number(statA.lp)).toBe(3000);
+      expect(Number(statA.pcb)).toBe(Number(statB.pcb)); // byte-identical MTD — categories never reach PCB
+    });
+
+    // C.8 — BACKWARD COMPATIBILITY: a legacy scalar-only row (categories NULL) still reads and still
+    // prefills into PCB exactly as before. Proven by inserting a raw scalar row (no categories) and feeding it.
+    it('a legacy scalar-only row (categories NULL) still reads and prefills', async () => {
+      const a = adminCtx(base);
+      const subject = await hire('Legacy', 'legacy@acme.test');
+      await setCompensation(a, { employmentId: subject.employmentId, basicSalary: 8000, effectiveFrom: '2026-01-01' });
+      await setStatutoryProfileMY(a, { personId: subject.personId, icNumber: '900303013099' });
+      // Raw insert of a submitted row WITHOUT categories (mimics a pre-a2f1fa24 row).
+      await owner.db.insert(schema.tp1Relief).values({
+        tenantId: base.tenantId,
+        personId: subject.personId,
+        assessmentYear: YEAR,
+        status: 'submitted',
+        tp1Amount: '2000.00',
+        submittedAt: new Date(),
+      });
+      const ctx = await employeeCtx(subject.personId);
+      const latest = await getTp1(ctx, { assessmentYear: YEAR });
+      expect(latest?.tp1Amount).toBe(2000);
+      expect(latest?.categories).toBeNull(); // legacy row → no breakdown, reads fine
+
+      const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: `${YEAR}-01` });
+      await prefillTp1FromSelfRelief(a, { batchId });
+      expect(Number((await inputRow(batchId, subject.employmentId)).tp1Deduction)).toBe(2000);
+    });
+
+    // C.9 — event coverage + PDPA Layer-0 with categories: the tp1.* events land and the category amounts
+    // are ABSENT from the persisted event payloads (only field names are logged).
+    it('logs tp1.submitted with categories field name but NO cleartext category amount', async () => {
+      const e = await hire('CatPdpa', 'catpdpa@acme.test');
+      const ctx = await employeeCtx(e.personId);
+      const { id } = await submitTp1(ctx, { assessmentYear: YEAR, categories: { lifestyle: 7654, individual: 3210 } });
+      expect(await eventTypesFor(base.tenantId, id)).toContain('tp1.submitted');
+      const events = await owner.db
+        .select({ payload: schema.domainEvent.payload })
+        .from(schema.domainEvent)
+        .where(eq(schema.domainEvent.tenantId, base.tenantId));
+      const blob = JSON.stringify(events.map((r) => r.payload));
+      expect(blob).toContain('categories'); // the field NAME is logged
+      expect(blob).not.toContain('7654'); // but never the amounts
+      expect(blob).not.toContain('3210');
+    });
+  });
 });

@@ -10,7 +10,9 @@ import {
   type LeaveApprovalRuleInput,
 } from '@/core/leave-approval-policy';
 
-const PAGE = '/admin/leave-approval';
+// 0d147b78: the approval editor now lives on the Approval Workflow tab of Leave Settings; post-action
+// redirects land there (the old /admin/leave-approval route 308-redirects here too).
+const PAGE = '/admin/leave/approval';
 
 type EmploymentType = 'full_time' | 'part_time' | 'contract' | 'intern';
 

@@ -23,11 +23,14 @@ export type CycleRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
  *  value submitted to the wizard; `runType` drives the same gating the hardcoded list used to. */
 export type CycleOption = { id: string; name: string; runType: CycleRunType; remarks: string | null };
 
-/** Step 1 (3c) — company, month/year, cycle (DB-driven), payment date; existing-runs panel for resume. */
+/** Step 1 (3c / 3653d14b) — company MULTI-select ("one, several, or all"), month/year, cycle (DB-driven),
+ *  payment date; per-company existing-runs indicators so already-processed companies are visible up front. */
 export function StepPeriod({
   companies,
-  companyId,
-  onCompanyId,
+  companyIds,
+  onCompanyIds,
+  selectAll,
+  onSelectAll,
   payPeriod,
   onPayPeriod,
   cycleId,
@@ -40,8 +43,10 @@ export function StepPeriod({
   existingRuns,
 }: {
   companies: Company[];
-  companyId: string;
-  onCompanyId: (v: string) => void;
+  companyIds: string[];
+  onCompanyIds: (v: string[]) => void;
+  selectAll: boolean;
+  onSelectAll: (v: boolean) => void;
   payPeriod: string;
   onPayPeriod: (v: string) => void;
   cycleId: string;
@@ -54,7 +59,12 @@ export function StepPeriod({
   existingRuns: ExistingRun[];
 }) {
   const t = useTranslations('payroll.process');
-  const runsForPeriod = existingRuns.filter((r) => r.companyId === companyId && r.payPeriod === payPeriod);
+  const selectedSet = new Set(companyIds);
+  // The "primary" company (first selected) still drives the cycle-availability gating below — Phase 1 uses a
+  // single shared cycle across the selected companies (plan §"Step 1"), so the regular-exists check keys off
+  // the primary company; per-company already-processed state is surfaced in the per-company list instead.
+  const primaryId = companyIds[0] ?? '';
+  const runsForPeriod = existingRuns.filter((r) => r.companyId === primaryId && r.payPeriod === payPeriod);
   const regularExists = runsForPeriod.some((r) => r.runType === 'regular');
   const regularRun = runsForPeriod.find((r) => r.runType === 'regular');
 
@@ -72,17 +82,61 @@ export function StepPeriod({
     disabled: c.runType === 'regular' ? regularExists : !regularExists,
   }));
 
+  // Whether a REGULAR run already exists for a given company this period — surfaced per row so the admin
+  // sees the "already processed" companies BEFORE running (pre-empting PERIOD_ALREADY_PROCESSED failures).
+  const regularExistsFor = (id: string) =>
+    existingRuns.some((r) => r.companyId === id && r.payPeriod === payPeriod && r.runType === 'regular');
+
+  const toggleCompany = (id: string) => {
+    // A manual company toggle turns OFF "all" (the selection is no longer necessarily the full list) and
+    // add/removes the id. Empty selection is allowed mid-edit; the submit gate requires at least one.
+    onSelectAll(false);
+    const next = new Set(companyIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onCompanyIds([...next]);
+  };
+
+  const toggleAll = (checked: boolean) => {
+    onSelectAll(checked);
+    // "All my companies" is bounded to the provided (already scoped) list — never wider. The server
+    // re-resolves "all" to the admin's grants, so this is a convenience mirror of the scoped set.
+    onCompanyIds(checked ? companies.map((c) => c.id) : []);
+  };
+
   return (
     <div className="space-y-4">
-      <Field label={t('company')}>
-        <select value={companyId} onChange={(e) => onCompanyId(e.target.value)} className={inputCls}>
-          <option value="">{t('selectCompany')}</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+      <Field label={t('companies')}>
+        <div className="space-y-1.5 rounded-lg border border-border p-2">
+          <label className="flex items-center gap-1.5 border-b border-border pb-1.5 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={selectAll || (companies.length > 0 && companyIds.length === companies.length)}
+              onChange={(e) => toggleAll(e.target.checked)}
+              className="size-4 rounded"
+            />
+            {t('allMyCompanies')}
+          </label>
+          <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
+            {companies.map((c) => {
+              const already = regularExistsFor(c.id);
+              return (
+                <label key={c.id} className="flex items-center gap-1.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(c.id)}
+                    onChange={() => toggleCompany(c.id)}
+                    className="size-4 rounded"
+                  />
+                  <span>{c.name}</span>
+                  {already && (
+                    <span className="text-xs text-amber-700 dark:text-amber-400">({t('alreadyProcessedTag')})</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        </div>
       </Field>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -147,7 +201,10 @@ export function StepPeriod({
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground">{t('consolidationNote')}</p>
+      {/* 3653d14b: payroll transactions (allowances, deductions, overtime, claims, adjustments) are a
+          PREREQUISITE keyed in on the separate Transactions screen — this workflow only scopes the run and
+          executes the calculation. State the boundary so the admin knows transactions must already be done. */}
+      <p className="text-xs text-muted-foreground">{t('transactionsPrerequisiteNote')}</p>
     </div>
   );
 }

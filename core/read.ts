@@ -272,6 +272,9 @@ export type PayrollRunEmployeeRow = {
   name: string;
   employeeCode: string | null;
   companyId: string;
+  /** Company legal name — carried so the multi-company Step-2 list can show a Company column when the run
+   *  spans more than one company (single-company runs simply don't render the column). */
+  company: string;
   departmentId: string | null;
   businessUnitId: string | null;
   positionId: string | null;
@@ -296,10 +299,15 @@ export type PayrollRunEmployeeRow = {
  */
 export function listEmployeesForPayrollRun(
   ctx: SessionContext,
-  companyId: string,
+  companyIds: string | string[],
   payPeriod: string,
 ): Promise<PayrollRunEmployeeRow[]> {
+  // Multi-company (feedback 3653d14b): the wizard now scopes a run across one, several, or all of the
+  // admin's companies. Accept a single id (legacy callers) or an array; an empty array short-circuits to
+  // no rows. Each company id is still RLS-scoped by withTenant — this widens the preview, never the grant.
+  const ids = Array.isArray(companyIds) ? companyIds : [companyIds];
   return withTenant(ctx, async (tx) => {
+    if (ids.length === 0) return [];
     const [year, month1] = payPeriod.split('-').map(Number);
     const periodStart = `${payPeriod}-01`;
     const periodEnd = `${payPeriod}-${String(daysInMonth(year, month1)).padStart(2, '0')}`;
@@ -319,6 +327,7 @@ export function listEmployeesForPayrollRun(
         name: person.fullName,
         employeeCode: employment.employeeCode,
         companyId: employment.companyId,
+        company: company.legalName,
         departmentId: assignment.departmentId,
         businessUnitId: department.businessUnitId,
         positionId: assignment.positionId,
@@ -332,17 +341,18 @@ export function listEmployeesForPayrollRun(
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
       .leftJoin(assignment, currentAssignment)
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(compensation, currentComp)
       .where(
         and(
-          eq(employment.companyId, companyId),
+          inArray(employment.companyId, ids),
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
         ),
       )
-      .orderBy(person.fullName);
+      .orderBy(company.legalName, person.fullName);
     return rows as PayrollRunEmployeeRow[];
   });
 }
@@ -1807,6 +1817,9 @@ export type AuditRow = {
 
 export type AuditFilters = {
   aggregateType?: string;
+  /** Restrict to a fixed SET of aggregate types (e.g. the leave module's aggregates for the leave
+   *  Audit tab). Applied alongside `aggregateType` — pass one or the other, not both. */
+  aggregateTypes?: string[];
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
   from?: string; // ISO date (inclusive)
@@ -1838,6 +1851,9 @@ export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<
       .where(
         and(
           f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
+          f.aggregateTypes && f.aggregateTypes.length
+            ? inArray(domainEvent.aggregateType, f.aggregateTypes)
+            : undefined,
           f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
           f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
           f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,

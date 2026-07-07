@@ -293,32 +293,48 @@ export async function myRequestProfileChange(formData: FormData) {
   redirect('/me?toast=Change+requested+for+approval');
 }
 
-// ── Self Personal Tax Relief (ADR-0050, #1.1.3) — yearly TP1 self-service ──
+// ── Self Personal Tax Relief (ADR-0050, #1.1.3; per-category breakdown a2f1fa24) — yearly TP1 ──
+
+// Read the structured per-category breakdown from the form. The category inputs are named `cat_<key>`
+// (one number per LHDN TP1 section) plus a `remarks` textarea. The server recomputes the total — the
+// client's total is never trusted. Falls back to a bare `tp1Amount` when no category field is present
+// (backward compatibility for any legacy scalar form).
+function readTp1Input(formData: FormData): { assessmentYear: number; categories?: Record<string, unknown>; tp1Amount?: number } {
+  const assessmentYear = Number(formData.get('assessmentYear'));
+  const keys = ['individual', 'spouse', 'children', 'parent', 'medicalInsurance', 'lifestyle', 'education', 'other'] as const;
+  const hasCategories = keys.some((k) => formData.get(`cat_${k}`) != null);
+  if (hasCategories) {
+    const categories: Record<string, unknown> = {};
+    for (const k of keys) categories[k] = Number(formData.get(`cat_${k}`) ?? 0);
+    const remarks = formData.get('remarks');
+    if (remarks != null) categories.remarks = String(remarks);
+    return { assessmentYear, categories };
+  }
+  return { assessmentYear, tp1Amount: Number(formData.get('tp1Amount')) };
+}
 
 export async function mySaveTp1Draft(formData: FormData) {
   const { s } = await resolveMe();
-  const assessmentYear = Number(formData.get('assessmentYear'));
-  const tp1Amount = Number(formData.get('tp1Amount'));
+  const input = readTp1Input(formData);
   try {
-    await saveTp1Draft(s, { assessmentYear, tp1Amount });
+    await saveTp1Draft(s, input);
   } catch (e) {
-    redirect(`/me/tax-relief?year=${assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me/tax-relief?year=${input.assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/me/tax-relief');
-  redirect(`/me/tax-relief?year=${assessmentYear}&toast=Draft+saved`);
+  redirect(`/me/tax-relief?year=${input.assessmentYear}&toast=Draft+saved`);
 }
 
 export async function mySubmitTp1(formData: FormData) {
   const { s } = await resolveMe();
-  const assessmentYear = Number(formData.get('assessmentYear'));
-  const tp1Amount = Number(formData.get('tp1Amount'));
+  const input = readTp1Input(formData);
   try {
-    await submitTp1(s, { assessmentYear, tp1Amount });
+    await submitTp1(s, input);
   } catch (e) {
-    redirect(`/me/tax-relief?year=${assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`/me/tax-relief?year=${input.assessmentYear}&error=${encodeURIComponent((e as Error).message)}`);
   }
   revalidatePath('/me/tax-relief');
-  redirect(`/me/tax-relief?year=${assessmentYear}&toast=TP1+submitted`);
+  redirect(`/me/tax-relief?year=${input.assessmentYear}&toast=TP1+submitted`);
 }
 
 // ── Resignation (ADR-0042, #29) — employee-initiated, HR-approved offboarding ──

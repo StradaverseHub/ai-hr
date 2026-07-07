@@ -503,7 +503,22 @@
         "hint": "When geofencing is enforced, clock-in/out is blocked unless the employee is within the radius of an assigned site. When off, location is still captured for audit."
       },
       "directorySubtitle": "Staff directory profile",
-      "viewFullRecord": "View full record"
+      "viewFullRecord": "View full record",
+      "tabs": {
+        "profile": "Profile",
+        "family": "Family",
+        "job": "Job",
+        "payroll": "Payroll",
+        "documents": "Documents",
+        "others": "Others",
+        "empty": "Nothing to show here."
+      },
+      "documents": {
+        "title": "Identification & documents",
+        "note": "Statutory identifiers on record. Uploading and storing files (ID scans, signed contracts) is coming in a later release; edit these values on the Payroll tab.",
+        "cp38Records": "CP38 instalment records",
+        "hint": "This is a read-only summary. The editable source of truth for these fields lives under the Payroll tab (Statutory)."
+      }
     },
     "import": {
       "title": "Import employees",
@@ -1666,7 +1681,28 @@
       "otRestDayExcessMultiplier": "Rest-day OT excess rate (× hourly)",
       "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)",
       "secCeilings": "Contribution ceilings",
-      "ceilingsNote": "Overtime rates are configured under the Attendance module (Attendance policy → Overtime rates), not here."
+      "ceilingsNote": "Overtime rates are configured under the Attendance module (Attendance policy → Overtime rates), not here.",
+      "bandsEditWarning": "Verified PERKESO schedule — edit only for a known statutory change. Wage ranges must ascend without gaps, and amounts are fixed ringgit values, not percentages. A bad edit can be reverted by archiving this version to restore the built-in schedule.",
+      "socsoCat1": "Category 1 — injury + invalidity (under 60)",
+      "socsoCat2": "Category 2 — injury only (age 60+ / foreign, employer only)",
+      "colWageFrom": "From (RM)",
+      "colWageTo": "To (RM)",
+      "colEmployerRm": "Employer (RM)",
+      "colEmployeeRm": "Employee (RM)",
+      "colSkbbkRm": "SKBBK (RM)",
+      "addTier": "Add tier",
+      "removeTier": "Remove",
+      "removeTierAria": "Remove tier",
+      "epfPartA": "Third Schedule — Part A (citizen / PR, under 60)",
+      "epfPartE": "Third Schedule — Part E (citizen 60 to under 75)",
+      "epfBandsNote": "Amounts are ringgit per wage band, rounded up to the next ringgit. The last row (\"and above\") is the exact-percentage tail beyond the schedule cap. Leave a row's \"Wage to\" empty to make it the open-ended top band.",
+      "epfPartENote": "Reduced senior schedule: employee 0%, employer 4%. Applies to Malaysian citizens aged 60 to under 75; no mandatory contribution from age 75.",
+      "colEpfUpTo": "Wage to (RM)",
+      "colEpfEmployee": "Employee (RM)",
+      "colEpfEmployer": "Employer (RM)",
+      "addBand": "Add band",
+      "removeBand": "Remove band",
+      "colActions": "Actions"
     },
     "transactions": {
       "title": "Transactions",
@@ -1983,7 +2019,51 @@
       "leaverTag": "left mid-month",
       "leaverFilterWarning": "This status filter would exclude {n} employee(s) who left partway through the month — their final pay would be silently skipped.",
       "compLessWarning": "{n} employee(s) have no active compensation record and will not receive a payslip.",
-      "noCyclesConfigured": "No payroll cycles configured for this company"
+      "noCyclesConfigured": "No payroll cycles configured for this company",
+      "companies": "Companies",
+      "allMyCompanies": "All my companies",
+      "alreadyProcessedTag": "already processed",
+      "transactionsPrerequisiteNote": "Key in all payroll transactions (allowances, deductions, overtime, claims, adjustments) on the Transactions screen before running. This process only selects the scope and runs the calculation.",
+      "resultTitle": "Payroll Processing Result",
+      "resultSubtitle": "Summary and status of the multi-company payroll run.",
+      "resultExpired": "This result is no longer available — start a new payroll run to see fresh results.",
+      "resultBackToProcess": "Back to Payroll Process",
+      "overallStatusLabel": "Overall status",
+      "resultForPeriod": "Pay period {period}",
+      "totalCompanies": "Total companies processed",
+      "companiesSplit": "{ok} succeeded · {failed} failed",
+      "totalEmployeesSelected": "Total employees selected",
+      "totalEmployeesSucceeded": "Successfully processed",
+      "totalEmployeesFailed": "Failed to process",
+      "startedAt": "Started at",
+      "endedAt": "Ended at",
+      "perCompanyTitle": "Per-company outcome",
+      "colCompany": "Company",
+      "colSelected": "Selected",
+      "colSucceeded": "Succeeded",
+      "colStatus": "Status",
+      "colDetail": "Detail",
+      "companySucceeded": "Succeeded",
+      "companyFailed": "Failed",
+      "viewBatch": "View run",
+      "failedEmployeesTitle": "Employees that could not be processed",
+      "colEmployeeId": "Employee ID",
+      "colEmployeeName": "Employee Name",
+      "colFailureReason": "Failure Reason",
+      "employeeFailed": "Failed",
+      "overall": {
+        "succeeded": "Succeeded",
+        "partial": "Partially succeeded",
+        "failed": "Failed"
+      },
+      "reason": {
+        "PERIOD_ALREADY_PROCESSED": "Already processed for this month",
+        "NO_PAYROLL_CONFIG": "Payroll configuration missing",
+        "NOT_AUTHORIZED": "You do not have access to this company",
+        "INVALID_CYCLE": "No valid payroll cycle for this company",
+        "SYSTEM_VALIDATION_ERROR": "System validation error",
+        "MISSING_SALARY": "Missing salary information"
+      }
     }
   },
   "admin": {
@@ -2105,7 +2185,20 @@
       "logoInvalidType": "Only PNG or JPG images are allowed",
       "logoTooLarge": "Logo exceeds 2 MB",
       "searchCompanies": "Search companies by name or registration number",
-      "noMatches": "No companies match your search"
+      "noMatches": "No companies match your search",
+      "addNewCompany": "Add new company",
+      "tabGeneral": "General",
+      "tabPayroll": "Payroll",
+      "tabSystemConfig": "System config",
+      "tabAccessUsers": "Access & users",
+      "tabOther": "Other",
+      "payrollCycleCrossLink": "Payroll cycle settings are configured on the Payroll cycle page.",
+      "payrollCycleCrossLinkAction": "Open payroll cycle",
+      "systemConfigCrossLink": "Departments, positions, cost centres and business units are managed under Settings → System labels.",
+      "systemConfigCrossLinkAction": "Open system labels",
+      "accessUsersCrossLink": "Assigned users and role-based access are managed on the Users page.",
+      "accessUsersCrossLinkAction": "Open users",
+      "otherTabNote": "Reserved for future company settings."
     },
     "systemLabels": {
       "pageTitle": "System Labels",
@@ -2114,7 +2207,20 @@
       "noCompaniesInScope": "No companies in scope.",
       "countSummary": "{dept} dept · {pos} pos · {cc} cc · {bu} bu",
       "fieldDescription": "Description",
-      "descriptionPlaceholder": "Short note (optional)"
+      "descriptionPlaceholder": "Short note (optional)",
+      "assignedCompanies": "Assigned companies",
+      "assignmentSingle": "Single company",
+      "assignmentMultiple": "Multiple companies",
+      "assignmentAll": "All companies (global)",
+      "assign": "Assign",
+      "unassign": "Unassign",
+      "makeGlobal": "Make global",
+      "clearGlobal": "Remove global",
+      "bulkActivate": "Activate",
+      "bulkDeactivate": "Deactivate",
+      "copyToCompanies": "Copy to companies",
+      "cannotUnassignInUse": "Cannot unassign: a company still uses this label. Reassign its employees first.",
+      "globalGroupAdminOnly": "Only a group admin can make a label global."
     },
     "leave": {
       "pageTitle": "Leave configuration",
@@ -2381,7 +2487,8 @@
       "expiryUnitLabel": "Unit",
       "expiryUnitMonths": "Months",
       "expiryUnitDays": "Days",
-      "expirySectionHelp": "Unused days of this leave type expire this long after each portion is earned, and drop out of the balance. Leave the number blank for no expiry. Expired days still appear in leave reports. Not available for Annual leave, which uses carry-forward expiry instead."
+      "expirySectionHelp": "Unused days of this leave type expire this long after each portion is earned, and drop out of the balance. Leave the number blank for no expiry. Expired days still appear in leave reports. Not available for Annual leave, which uses carry-forward expiry instead.",
+      "auditHelp": "Read-only history of changes to leave types, entitlements, carry-forward, approval workflow, and payroll integration."
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -2738,6 +2845,14 @@
       "deleteConfirmDescription": "Delete “{name}” permanently? This cannot be undone. Only possible when no employee is assigned and no attendance record references it.",
       "clockingInUse": "Cannot delete: referenced by {count} record(s). Archive it instead.",
       "clockingNote": "Deleting is only possible when a site has no employee assignments and no attendance history. Otherwise, archive it."
+    },
+    "leaveTabs": {
+      "types": "Leave Types",
+      "entitlements": "Entitlements",
+      "applicationRules": "Application Rules",
+      "approval": "Approval Workflow",
+      "payroll": "Payroll Related",
+      "audit": "Audit"
     }
   },
   "topbar": {
@@ -3582,7 +3697,49 @@
     "historicalSubmitted": "Submitted for this assessment year.",
     "historicalDraft": "Saved as a draft for this assessment year.",
     "historicalNone": "No declaration was made for this assessment year.",
-    "historyNote": "Previous submissions are kept and visible in your record history. Past assessment years are shown read-only."
+    "historyNote": "Previous submissions are kept and visible in your record history. Past assessment years are shown read-only.",
+    "employeeSection": "Employee details",
+    "employeeName": "Employee name",
+    "employeeNumber": "Employee number",
+    "company": "Company",
+    "totalLabel": "Total annual TP1 relief",
+    "totalNote": "Your annual total is calculated automatically from the categories above when you save or submit.",
+    "remarksLabel": "Remarks",
+    "remarksPlaceholder": "Any notes or declaration for HR (optional).",
+    "categories": {
+      "individual": {
+        "label": "Individual and dependent relatives (RM)",
+        "help": "Standard individual relief and dependent relatives. Statutory cap RM 9,000."
+      },
+      "spouse": {
+        "label": "Spouse / alimony (RM)",
+        "help": "Relief for a non-working spouse or alimony payments. Statutory cap RM 4,000."
+      },
+      "children": {
+        "label": "Children (RM)",
+        "help": "Total qualifying-child relief for the year."
+      },
+      "parent": {
+        "label": "Parents (RM)",
+        "help": "Medical, care or examination expenses for your parents."
+      },
+      "medicalInsurance": {
+        "label": "Medical / insurance (RM)",
+        "help": "Life and medical insurance, EPF, and approved medical expenses."
+      },
+      "lifestyle": {
+        "label": "Lifestyle (RM)",
+        "help": "Books, computers, sports equipment, internet and similar lifestyle expenses."
+      },
+      "education": {
+        "label": "Education fees (RM)",
+        "help": "Approved course or tuition fees for yourself."
+      },
+      "other": {
+        "label": "Other reliefs (RM)",
+        "help": "Any other TP1 relief category not listed above."
+      }
+    }
   },
   "payRule": {
     "sectionTitle": "How is this calculated?",

@@ -168,6 +168,11 @@ export const company = pgTable(
     // today for every existing customer until an admin both marks a day Half AND turns this on. Full working
     // days are never affected either way.
     leaveHalfDayFullDeduction: boolean('leave_half_day_full_deduction').notNull().default(false),
+    // Shared System Labels (ADR-0073, feedback d356dec8): OFF-by-default flag gating the multi-company
+    // system-labels resolver. With it false, labelsForCompany() returns ORIGIN-only rows — byte-identical
+    // to today. Only when an admin flips it on does a label shared into this company (via the junction or
+    // is_global) become visible here. A per-company toggle so rollout is staged, never big-bang.
+    sharedSystemLabels: boolean('shared_system_labels').notNull().default(false),
     // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
     parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -396,6 +401,9 @@ export const position = pgTable(
     // System Labels (migration 0145): optional admin note. Nullable, mirrors job_family; shown only on
     // the System Labels admin CRUD screen, not in the shared hire-form/People read paths.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master — resolves to every company in
+    // the tenant without writing N junction rows. Only a group admin may set it (RLS gates the write).
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -417,6 +425,8 @@ export const businessUnit = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -438,6 +448,8 @@ export const department = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -456,10 +468,41 @@ export const costCenter = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('cost_center_company_idx').on(t.companyId)],
+);
+
+// Shared System Labels junction (ADR-0073, feedback d356dec8) — gives an org label (department / position /
+// cost_center / business_unit) ADDITIONAL companies that may use it, ON TOP OF its origin company_id (which
+// is never touched). `label_kind` + `label_id` is a polymorphic key into one of the four tables; there is no
+// DB FK on label_id (it spans four tables) — the service validates it. Uniqueness on
+// (tenant_id, label_kind, label_id, company_id). "All Companies" is the is_global flag on the label row, NOT
+// N rows here, so adding a company later needs no backfill. Backfilled 1:1 with each existing label's origin,
+// so pre-flag behaviour is identical to today.
+export const LABEL_KINDS = ['department', 'position', 'cost_center', 'business_unit'] as const;
+export type LabelKind = (typeof LABEL_KINDS)[number];
+
+export const labelCompanyAssignment = pgTable(
+  'label_company_assignment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    labelKind: text('label_kind').notNull(),
+    labelId: uuid('label_id').notNull(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('label_company_assignment_uq').on(t.tenantId, t.labelKind, t.labelId, t.companyId),
+    index('label_company_assignment_company_idx').on(t.companyId, t.labelKind),
+    index('label_company_assignment_label_idx').on(t.labelKind, t.labelId),
+  ],
 );
 
 // Termination classification (Wave 4A) — powers the Terminations + Turnover analytics breakdown.
@@ -1990,6 +2033,24 @@ export const employmentReview = pgTable(
 // row per (person, year) wins; the editable draft is UPDATEd in place; a submitted row is immutable and a
 // correction is a NEW submitted row. RLS scopes to app.can_see_person (self + admin) for read AND write.
 export const tp1StatusEnum = pgEnum('tp1_status', ['draft', 'submitted']);
+
+// Per-category TP1 breakdown (a2f1fa24), mirroring the LHDN paper TP1 sections. Every category is an
+// OPTIONAL non-negative RM amount (empty = 0); `remarks` is optional free text. The canonical starter set
+// (ADR-00XX) — extensible via this JSONB shape without a migration. `tp1_amount` is the server-computed
+// round2 sum of the numeric categories; the kernel consumes only that sum, never these fields.
+export const TP1_CATEGORY_KEYS = [
+  'individual',
+  'spouse',
+  'children',
+  'parent',
+  'medicalInsurance',
+  'lifestyle',
+  'education',
+  'other',
+] as const;
+export type Tp1CategoryKey = (typeof TP1_CATEGORY_KEYS)[number];
+export type Tp1Categories = Partial<Record<Tp1CategoryKey, number>> & { remarks?: string | null };
+
 export const tp1Relief = pgTable(
   'tp1_relief',
   {
@@ -2000,8 +2061,15 @@ export const tp1Relief = pgTable(
       .references(() => person.id),
     assessmentYear: integer('assessment_year').notNull(),
     status: tp1StatusEnum('status').notNull().default('draft'),
-    // The employee's single declared annual optional-relief total (LHDN TP1). All the kernel consumes.
+    // The employee's single declared annual optional-relief total (LHDN TP1). All the kernel consumes:
+    // `tp1_amount` STAYS the authoritative, server-computed SUM of `categories` when a breakdown exists,
+    // so the PCB kernel input (LP) is unchanged (ADR-00XX extends ADR-0050).
     tp1Amount: numeric('tp1_amount', { precision: 12, scale: 2 }).notNull().default('0.00'),
+    // OPTIONAL per-category breakdown mirroring the paper LHDN TP1 form (a2f1fa24). NULL on legacy rows
+    // (scalar-only) — they keep working unchanged. The kernel never reads this; it reads `tp1_amount`.
+    // JSONB extension point: new categories can be added without a migration. PDPA Layer-0 (ADR-0030) —
+    // the amounts live ONLY on this RLS-protected row, never copied into the tp1.* event payloads.
+    categories: jsonb('categories').$type<Tp1Categories | null>(),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

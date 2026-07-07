@@ -40,6 +40,9 @@ const ALL_TABLES = [
   'app_invitation',
   // ADR-0072 — attendance allowance policy (a leaked row would trip the partial-unique code index).
   'attendance_allowance_policy',
+  // ADR-0073 — shared system labels junction: a leaked (label_id, company_id) row would trip the unique
+  // index (or make a resolver test see a phantom shared label) across test files.
+  'label_company_assignment',
 ];
 
 export async function migrateTestDb() {

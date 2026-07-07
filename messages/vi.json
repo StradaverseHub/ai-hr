@@ -503,7 +503,22 @@
         "hint": "Khi ranh giới địa lý được áp dụng, việc chấm công vào/ra sẽ bị chặn trừ khi nhân viên nằm trong bán kính của địa điểm được gán. Khi tắt, vị trí vẫn được ghi lại để kiểm toán."
       },
       "directorySubtitle": "Hồ sơ danh bạ nhân viên",
-      "viewFullRecord": "Xem hồ sơ đầy đủ"
+      "viewFullRecord": "Xem hồ sơ đầy đủ",
+      "tabs": {
+        "profile": "Hồ sơ",
+        "family": "Gia đình",
+        "job": "Công việc",
+        "payroll": "Lương",
+        "documents": "Tài liệu",
+        "others": "Khác",
+        "empty": "Không có gì để hiển thị ở đây."
+      },
+      "documents": {
+        "title": "Nhận dạng & tài liệu",
+        "note": "Các mã định danh theo luật đã ghi nhận. Tải lên và lưu trữ tệp (bản quét giấy tờ tùy thân, hợp đồng đã ký) sẽ có trong bản phát hành sau; chỉnh sửa các giá trị này ở tab Lương.",
+        "cp38Records": "Bản ghi trả góp CP38",
+        "hint": "Đây là bản tóm tắt chỉ đọc. Nguồn có thể chỉnh sửa cho các trường này nằm trong tab Lương (Theo luật)."
+      }
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1564,7 +1579,28 @@
       "otRestDayExcessMultiplier": "Hệ số OT vượt giờ ngày nghỉ (× theo giờ)",
       "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)",
       "secCeilings": "Mức trần đóng góp",
-      "ceilingsNote": "Hệ số tăng ca được cấu hình trong mô-đun Chấm công (Chính sách chấm công → Hệ số tăng ca), không phải tại đây."
+      "ceilingsNote": "Hệ số tăng ca được cấu hình trong mô-đun Chấm công (Chính sách chấm công → Hệ số tăng ca), không phải tại đây.",
+      "bandsEditWarning": "Biểu PERKESO đã xác minh — chỉ chỉnh sửa khi có thay đổi luật định đã biết. Các khoảng lương phải tăng dần không có khoảng trống, và số tiền là giá trị ringgit cố định, không phải phần trăm. Một chỉnh sửa sai có thể hoàn nguyên bằng cách lưu trữ phiên bản này để khôi phục biểu tích hợp sẵn.",
+      "socsoCat1": "Loại 1 — thương tật + mất khả năng (dưới 60)",
+      "socsoCat2": "Loại 2 — chỉ thương tật (60 tuổi trở lên / người nước ngoài, chỉ chủ lao động)",
+      "colWageFrom": "Từ (RM)",
+      "colWageTo": "Đến (RM)",
+      "colEmployerRm": "Chủ lao động (RM)",
+      "colEmployeeRm": "Người lao động (RM)",
+      "colSkbbkRm": "SKBBK (RM)",
+      "addTier": "Thêm bậc",
+      "removeTier": "Xóa",
+      "removeTierAria": "Xóa bậc",
+      "epfPartA": "Biểu thứ Ba — Phần A (công dân / thường trú nhân, dưới 60)",
+      "epfPartE": "Biểu thứ Ba — Phần E (công dân, 60 đến dưới 75)",
+      "epfBandsNote": "Số tiền tính bằng ringgit cho mỗi bậc lương, làm tròn lên ringgit kế tiếp. Dòng cuối (\"trở lên\") là phần tính theo tỷ lệ phần trăm chính xác vượt mức trần của biểu. Để trống \"Lương đến\" của một dòng để đặt dòng đó thành bậc trên cùng không giới hạn.",
+      "epfPartENote": "Biểu giảm cho người cao tuổi: người lao động 0%, chủ lao động 4%. Áp dụng cho công dân Malaysia từ 60 đến dưới 75 tuổi; không đóng góp bắt buộc từ 75 tuổi.",
+      "colEpfUpTo": "Lương đến (RM)",
+      "colEpfEmployee": "Người lao động (RM)",
+      "colEpfEmployer": "Chủ lao động (RM)",
+      "addBand": "Thêm bậc",
+      "removeBand": "Xóa bậc",
+      "colActions": "Thao tác"
     },
     "batch": {
       "back": "Bảng lương",
@@ -1983,7 +2019,51 @@
       "leaverTag": "nghỉ việc giữa tháng",
       "leaverFilterWarning": "Bộ lọc trạng thái này sẽ loại trừ {n} nhân viên đã nghỉ việc giữa tháng — lương cuối cùng của họ sẽ bị bỏ sót mà không có cảnh báo.",
       "compLessWarning": "{n} nhân viên không có hồ sơ lương đang hoạt động và sẽ không nhận được phiếu lương.",
-      "noCyclesConfigured": "Chưa cấu hình chu kỳ trả lương cho công ty này"
+      "noCyclesConfigured": "Chưa cấu hình chu kỳ trả lương cho công ty này",
+      "companies": "Công ty",
+      "allMyCompanies": "Tất cả công ty của tôi",
+      "alreadyProcessedTag": "đã xử lý",
+      "transactionsPrerequisiteNote": "Nhập tất cả giao dịch lương (phụ cấp, khấu trừ, làm thêm giờ, yêu cầu bồi hoàn, điều chỉnh) trên màn hình Giao dịch trước khi chạy. Quy trình này chỉ chọn phạm vi và chạy tính toán.",
+      "resultTitle": "Kết quả Xử lý Lương",
+      "resultSubtitle": "Tóm tắt và trạng thái của đợt chạy lương nhiều công ty.",
+      "resultExpired": "Kết quả này không còn khả dụng — bắt đầu một đợt chạy lương mới để xem kết quả mới.",
+      "resultBackToProcess": "Quay lại Quy trình Lương",
+      "overallStatusLabel": "Trạng thái tổng thể",
+      "resultForPeriod": "Kỳ lương {period}",
+      "totalCompanies": "Tổng số công ty đã xử lý",
+      "companiesSplit": "{ok} thành công · {failed} thất bại",
+      "totalEmployeesSelected": "Tổng số nhân viên đã chọn",
+      "totalEmployeesSucceeded": "Xử lý thành công",
+      "totalEmployeesFailed": "Xử lý thất bại",
+      "startedAt": "Bắt đầu lúc",
+      "endedAt": "Kết thúc lúc",
+      "perCompanyTitle": "Kết quả theo công ty",
+      "colCompany": "Công ty",
+      "colSelected": "Đã chọn",
+      "colSucceeded": "Thành công",
+      "colStatus": "Trạng thái",
+      "colDetail": "Chi tiết",
+      "companySucceeded": "Thành công",
+      "companyFailed": "Thất bại",
+      "viewBatch": "Xem đợt chạy",
+      "failedEmployeesTitle": "Nhân viên không thể xử lý",
+      "colEmployeeId": "Mã Nhân viên",
+      "colEmployeeName": "Tên Nhân viên",
+      "colFailureReason": "Lý do Thất bại",
+      "employeeFailed": "Thất bại",
+      "overall": {
+        "succeeded": "Thành công",
+        "partial": "Thành công một phần",
+        "failed": "Thất bại"
+      },
+      "reason": {
+        "PERIOD_ALREADY_PROCESSED": "Đã xử lý cho tháng này",
+        "NO_PAYROLL_CONFIG": "Thiếu cấu hình lương",
+        "NOT_AUTHORIZED": "Bạn không có quyền truy cập công ty này",
+        "INVALID_CYCLE": "Không có chu kỳ lương hợp lệ cho công ty này",
+        "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
+        "MISSING_SALARY": "Thiếu thông tin lương"
+      }
     }
   },
   "admin": {
@@ -2105,7 +2185,20 @@
       "logoInvalidType": "Chỉ cho phép ảnh PNG hoặc JPG",
       "logoTooLarge": "Logo vượt quá 2 MB",
       "searchCompanies": "Tìm công ty theo tên hoặc số đăng ký",
-      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn"
+      "noMatches": "Không có công ty nào khớp với tìm kiếm của bạn",
+      "addNewCompany": "Thêm công ty mới",
+      "tabGeneral": "Chung",
+      "tabPayroll": "Bảng lương",
+      "tabSystemConfig": "Cấu hình hệ thống",
+      "tabAccessUsers": "Truy cập & người dùng",
+      "tabOther": "Khác",
+      "payrollCycleCrossLink": "Cài đặt chu kỳ trả lương được cấu hình trên trang Chu kỳ trả lương.",
+      "payrollCycleCrossLinkAction": "Mở chu kỳ trả lương",
+      "systemConfigCrossLink": "Phòng ban, chức vụ, trung tâm chi phí và đơn vị kinh doanh được quản lý trong Cài đặt → Nhãn hệ thống.",
+      "systemConfigCrossLinkAction": "Mở nhãn hệ thống",
+      "accessUsersCrossLink": "Người dùng được phân công và quyền truy cập theo vai trò được quản lý trên trang Người dùng.",
+      "accessUsersCrossLinkAction": "Mở người dùng",
+      "otherTabNote": "Dành riêng cho các cài đặt công ty trong tương lai."
     },
     "systemLabels": {
       "pageTitle": "Nhãn hệ thống",
@@ -2114,7 +2207,20 @@
       "noCompaniesInScope": "Không có công ty trong phạm vi.",
       "countSummary": "{dept} pb · {pos} cv · {cc} ttcp · {bu} đvkd",
       "fieldDescription": "Mô tả",
-      "descriptionPlaceholder": "Ghi chú ngắn (tùy chọn)"
+      "descriptionPlaceholder": "Ghi chú ngắn (tùy chọn)",
+      "assignedCompanies": "Công ty được gán",
+      "assignmentSingle": "Một công ty",
+      "assignmentMultiple": "Nhiều công ty",
+      "assignmentAll": "Tất cả công ty (toàn cục)",
+      "assign": "Gán",
+      "unassign": "Bỏ gán",
+      "makeGlobal": "Đặt toàn cục",
+      "clearGlobal": "Bỏ toàn cục",
+      "bulkActivate": "Kích hoạt",
+      "bulkDeactivate": "Vô hiệu hóa",
+      "copyToCompanies": "Sao chép sang công ty",
+      "cannotUnassignInUse": "Không thể bỏ gán: một công ty vẫn đang dùng nhãn này. Hãy gán lại nhân viên của công ty đó trước.",
+      "globalGroupAdminOnly": "Chỉ quản trị viên tập đoàn mới có thể đặt nhãn toàn cục."
     },
     "leave": {
       "pageTitle": "Cấu hình nghỉ phép",
@@ -2381,7 +2487,8 @@
       "expiryUnitLabel": "Đơn vị",
       "expiryUnitMonths": "Tháng",
       "expiryUnitDays": "Ngày",
-      "expirySectionHelp": "Những ngày chưa dùng của loại nghỉ phép này sẽ hết hạn sau khoảng thời gian này kể từ khi mỗi phần được tích lũy, và bị loại khỏi số dư. Để trống số nếu không hết hạn. Những ngày đã hết hạn vẫn hiển thị trong báo cáo nghỉ phép. Không áp dụng cho Nghỉ phép năm, vốn dùng cơ chế hết hạn chuyển tiếp."
+      "expirySectionHelp": "Những ngày chưa dùng của loại nghỉ phép này sẽ hết hạn sau khoảng thời gian này kể từ khi mỗi phần được tích lũy, và bị loại khỏi số dư. Để trống số nếu không hết hạn. Những ngày đã hết hạn vẫn hiển thị trong báo cáo nghỉ phép. Không áp dụng cho Nghỉ phép năm, vốn dùng cơ chế hết hạn chuyển tiếp.",
+      "auditHelp": "Lịch sử chỉ đọc về thay đổi loại nghỉ phép, quyền lợi, chuyển tiếp, quy trình phê duyệt và tích hợp bảng lương."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -2738,6 +2845,14 @@
       "deleteConfirmDescription": "Xóa vĩnh viễn “{name}”? Hành động này không thể hoàn tác. Chỉ có thể thực hiện khi không có nhân viên nào được gán và không có bản ghi chấm công nào tham chiếu đến địa điểm này.",
       "clockingInUse": "Không thể xóa: được tham chiếu bởi {count} bản ghi. Hãy lưu trữ thay vào đó.",
       "clockingNote": "Chỉ có thể xóa khi địa điểm không có nhân viên được gán và không có lịch sử chấm công. Nếu không, hãy lưu trữ địa điểm đó."
+    },
+    "leaveTabs": {
+      "types": "Loại nghỉ phép",
+      "entitlements": "Quyền lợi",
+      "applicationRules": "Quy tắc nộp đơn",
+      "approval": "Quy trình phê duyệt",
+      "payroll": "Liên quan bảng lương",
+      "audit": "Kiểm toán"
     }
   },
   "topbar": {
@@ -3582,7 +3697,49 @@
     "historicalSubmitted": "Đã gửi cho năm tính thuế này.",
     "historicalDraft": "Đã lưu dưới dạng bản nháp cho năm tính thuế này.",
     "historicalNone": "Không có khai báo nào cho năm tính thuế này.",
-    "historyNote": "Các lần gửi trước được lưu lại và hiển thị trong lịch sử hồ sơ của bạn. Các năm tính thuế trước được hiển thị ở chế độ chỉ đọc."
+    "historyNote": "Các lần gửi trước được lưu lại và hiển thị trong lịch sử hồ sơ của bạn. Các năm tính thuế trước được hiển thị ở chế độ chỉ đọc.",
+    "employeeSection": "Thông tin nhân viên",
+    "employeeName": "Tên nhân viên",
+    "employeeNumber": "Mã nhân viên",
+    "company": "Công ty",
+    "totalLabel": "Tổng giảm trừ TP1 hằng năm",
+    "totalNote": "Tổng hằng năm của bạn được tính tự động từ các hạng mục ở trên khi bạn lưu hoặc gửi.",
+    "remarksLabel": "Ghi chú",
+    "remarksPlaceholder": "Bất kỳ ghi chú hoặc khai báo nào cho bộ phận Nhân sự (tùy chọn).",
+    "categories": {
+      "individual": {
+        "label": "Cá nhân và người phụ thuộc (RM)",
+        "help": "Giảm trừ cá nhân tiêu chuẩn và người thân phụ thuộc. Mức trần theo luật RM 9.000."
+      },
+      "spouse": {
+        "label": "Vợ/chồng / cấp dưỡng (RM)",
+        "help": "Giảm trừ cho vợ/chồng không đi làm hoặc khoản cấp dưỡng. Mức trần theo luật RM 4.000."
+      },
+      "children": {
+        "label": "Con cái (RM)",
+        "help": "Tổng giảm trừ cho con đủ điều kiện trong năm."
+      },
+      "parent": {
+        "label": "Cha mẹ (RM)",
+        "help": "Chi phí y tế, chăm sóc hoặc khám sức khỏe cho cha mẹ của bạn."
+      },
+      "medicalInsurance": {
+        "label": "Y tế / bảo hiểm (RM)",
+        "help": "Bảo hiểm nhân thọ và y tế, EPF, và các chi phí y tế được phê duyệt."
+      },
+      "lifestyle": {
+        "label": "Lối sống (RM)",
+        "help": "Sách, máy tính, dụng cụ thể thao, internet và các chi phí lối sống tương tự."
+      },
+      "education": {
+        "label": "Học phí (RM)",
+        "help": "Học phí khóa học hoặc đào tạo được phê duyệt cho bản thân bạn."
+      },
+      "other": {
+        "label": "Giảm trừ khác (RM)",
+        "help": "Bất kỳ hạng mục giảm trừ TP1 nào khác không được liệt kê ở trên."
+      }
+    }
   },
   "payRule": {
     "sectionTitle": "Tính như thế nào?",

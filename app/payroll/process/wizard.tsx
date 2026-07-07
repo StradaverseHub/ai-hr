@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Card } from '@/components/ui';
-import { createRunAction, fetchPayrollRunEmployees, resumeRunAction } from './actions';
+import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction } from './actions';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
 
@@ -72,7 +72,14 @@ export function Wizard({
   // an empty/absent scope ⇒ filtersTouched=false so the whole-company default applies (step-selection.tsx).
   const seededEmploymentIds = resumeBatch?.scope?.employmentIds ?? [];
   const [step, setStep] = useState(isResume ? 1 : 0);
-  const [companyId, setCompanyId] = useState(resumeBatch?.companyId ?? '');
+  // Multi-company (3653d14b): a fresh run selects ONE, SEVERAL, or ALL companies. In resume mode the batch's
+  // single company is fixed, so the array holds exactly that one id. `companyIds[0]` is the "primary" company
+  // that drives the cycle catalog, per-company masters, and the payment-date default (all per-company today).
+  const [companyIds, setCompanyIds] = useState<string[]>(resumeBatch ? [resumeBatch.companyId] : []);
+  // "All my companies" — bounded to the scoped `companies` list the page passed in (never wider). When on,
+  // the selection tracks the full provided list and the server re-resolves "all" to the admin's grants.
+  const [selectAll, setSelectAll] = useState(false);
+  const companyId = companyIds[0] ?? '';
   const [payPeriod, setPayPeriod] = useState(resumeBatch?.payPeriod ?? thisMonth);
   // ADR-0069: the cycle is now a per-company payroll_cycle row referenced by id (not a fixed enum). A fresh
   // run picks one in Step 1; a resumed draft has its cycle fixed on the persisted batch and never re-posts
@@ -109,30 +116,41 @@ export function Wizard({
     }
   }, [cycleOptions, cycleId]);
 
-  // Reset per-company/period state so a changed Step-1 selection can never leak a stale Step-2 pick. In
-  // resume mode the company/period are FIXED (Step 1 is disabled), so this reset would clobber the seeded
-  // selection on the first render — skip it entirely when resuming.
+  // A stable key for the SET of selected companies, so the reset/fetch effects fire when the multi-select
+  // changes (an array reference alone would not be a reliable dependency). Order-independent.
+  const companyKey = useMemo(() => [...companyIds].sort().join(','), [companyIds]);
+
+  // Reset per-company/period state so a changed Step-1 selection can never leak a stale Step-2 pick. Keys
+  // off the whole company SET now (multi-company). In resume mode the company/period are FIXED (Step 1 is
+  // disabled), so this reset would clobber the seeded selection on the first render — skip when resuming.
   useEffect(() => {
     if (isResume) return;
     setSelected(new Set());
     setFiltersTouched(false);
     setEmployees([]);
-  }, [companyId, payPeriod, isResume]);
+  }, [companyKey, payPeriod, isResume]);
 
   useEffect(() => {
-    if (!companyId || !/^\d{4}-\d{2}$/.test(payPeriod)) return;
+    if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return;
     setLoadingEmployees(true);
-    fetchPayrollRunEmployees(companyId, payPeriod)
+    fetchPayrollRunEmployees(companyIds, payPeriod)
       .then(setEmployees)
       .finally(() => setLoadingEmployees(false));
-  }, [companyId, payPeriod]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- companyKey is the stable dependency for the set
+  }, [companyKey, payPeriod]);
 
-  const companyDepartments = useMemo(() => departments.filter((d) => d.companyId === companyId), [departments, companyId]);
-  const companyBusinessUnits = useMemo(() => businessUnits.filter((b) => b.companyId === companyId), [businessUnits, companyId]);
-  const companyPositions = useMemo(() => positions.filter((p) => p.companyId === companyId), [positions, companyId]);
-  const companyCostCenters = useMemo(() => costCenters.filter((c) => c.companyId === companyId), [costCenters, companyId]);
+  // Step-2 filter catalogs span the WHOLE selected company set (multi-company): a filter dropdown must offer
+  // every selected company's departments / BUs / positions / cost centres, not just the primary company's.
+  const companySet = useMemo(() => new Set(companyIds), [companyIds]);
+  const companyDepartments = useMemo(() => departments.filter((d) => companySet.has(d.companyId)), [departments, companySet]);
+  const companyBusinessUnits = useMemo(() => businessUnits.filter((b) => companySet.has(b.companyId)), [businessUnits, companySet]);
+  const companyPositions = useMemo(() => positions.filter((p) => companySet.has(p.companyId)), [positions, companySet]);
+  const companyCostCenters = useMemo(() => costCenters.filter((c) => companySet.has(c.companyId)), [costCenters, companySet]);
 
-  const step1Valid = !!companyId && /^\d{4}-\d{2}$/.test(payPeriod) && !!cycleId;
+  // Step 1 valid: AT LEAST ONE company (multi-company), a valid month, and a cycle. Multi-company Phase 1
+  // uses a single shared cycle across the selected companies (plan §"Step 1"); the primary company's cycle
+  // catalog drives the picker (regular is the common month-end case).
+  const step1Valid = companyIds.length > 0 && /^\d{4}-\d{2}$/.test(payPeriod) && !!cycleId;
   // Step 2 never blocks on a selection (empty/no-filter ⇒ whole company). In resume mode the cycle is fixed
   // on the persisted draft and never re-posted, so the submit gate must NOT require a fresh cycleId — only a
   // valid (seeded) company + period. A fresh run still requires step1Valid (which includes the cycle).
@@ -154,7 +172,11 @@ export function Wizard({
       });
       return;
     }
-    fd.set('companyId', companyId);
+    // Fresh run (single, several, or all companies) — the Payroll Process is now a TERMINAL action that
+    // runs the calculation across every selected company and lands on the Step-3 result page (3653d14b).
+    // "All my companies" is re-resolved to the admin's grants server-side; explicit ids are re-intersected.
+    for (const id of companyIds) fd.append('companyIds', id);
+    fd.set('selectAll', String(selectAll));
     fd.set('payPeriod', payPeriod);
     // ADR-0069: submit the chosen cycle's id — the server resolves runType/remarks from the row (it does
     // not trust any client-submitted runType/remarks, same defensive pattern as employmentIds).
@@ -164,7 +186,7 @@ export function Wizard({
       for (const id of selected) fd.append('employmentIds', id);
     }
     startTransition(() => {
-      createRunAction(fd);
+      runMultiCompanyAction(fd);
     });
   };
 
@@ -191,8 +213,10 @@ export function Wizard({
         {step === 0 && (
           <StepPeriod
             companies={companies}
-            companyId={companyId}
-            onCompanyId={setCompanyId}
+            companyIds={companyIds}
+            onCompanyIds={setCompanyIds}
+            selectAll={selectAll}
+            onSelectAll={setSelectAll}
             payPeriod={payPeriod}
             onPayPeriod={setPayPeriod}
             cycleId={cycleId}
@@ -209,6 +233,7 @@ export function Wizard({
           <StepSelection
             employees={employees}
             loading={loadingEmployees}
+            multiCompany={companyIds.length > 1}
             businessUnits={companyBusinessUnits}
             departments={companyDepartments}
             positions={companyPositions}

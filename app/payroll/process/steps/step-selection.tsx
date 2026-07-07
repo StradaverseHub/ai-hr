@@ -14,6 +14,7 @@ export type PayrollRunEmployeeRow = {
   name: string;
   employeeCode: string | null;
   companyId: string;
+  company: string;
   departmentId: string | null;
   businessUnitId: string | null;
   positionId: string | null;
@@ -32,6 +33,7 @@ export type PayrollRunEmployeeRow = {
 export function StepSelection({
   employees,
   loading,
+  multiCompany = false,
   businessUnits,
   departments,
   positions,
@@ -44,6 +46,9 @@ export function StepSelection({
 }: {
   employees: PayrollRunEmployeeRow[];
   loading: boolean;
+  /** 3653d14b: when the run spans more than one company, show a Company column so the admin can tell whose
+   *  employees they are picking. Single-company runs omit the column (no visual change from before). */
+  multiCompany?: boolean;
   businessUnits: Master[];
   departments: (Master & { businessUnitId: string | null })[];
   positions: Master[];
@@ -226,6 +231,9 @@ export function StepSelection({
                 />
                 <EmployeeCode code={e.employeeCode} />
                 {e.name}
+                {multiCompany && (
+                  <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">{e.company}</span>
+                )}
                 {e.terminatedOn && (
                   <span className="text-xs text-amber-600 dark:text-amber-400">({t('leaverTag')})</span>
                 )}
