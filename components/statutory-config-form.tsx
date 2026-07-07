@@ -9,6 +9,7 @@ import {
   MY_EPF_THIRD_SCHEDULE_PART_A,
   MY_EPF_THIRD_SCHEDULE_PART_E,
   type ContribBand,
+  type SocsoBand,
   type StatutoryRuleset,
 } from '@/localization/my/statutory-tables';
 
@@ -23,10 +24,16 @@ const toPct = (n: number): string => String(Math.round(n * 1e6) / 1e4);
 /** number → editable string, treating null/Infinity as the open-ended top band (empty cell). */
 const upToStr = (n: number | null | undefined): string =>
   n == null || !Number.isFinite(n) ? '' : String(n);
+/** upTo cell → number | null (blank ⇒ null, the open-ended top band). */
+const upToOf = (x: string): number | null => (x.trim() === '' ? null : num(x));
 
 type BandRow = { upTo: string; M: string; R: string; bCat13: string; bCat2: string };
 /** An EPF Third-Schedule band row: Wage-To ceiling + the two contribution AMOUNTS (RM, not %). */
 type EpfBandRow = { upTo: string; employee: string; employer: string };
+/** A SOCSO band row: Wage-To ceiling + employer/employee/skbbk AMOUNTS (RM, not %). */
+type SocsoBandRow = { upTo: string; employer: string; employee: string; skbbk: string };
+/** An EIS/plain contribution band row: Wage-To ceiling + employer/employee AMOUNTS (RM, not %). */
+type EisBandRow = { upTo: string; employer: string; employee: string };
 
 type FormState = {
   epfEmployeeRate: string;
@@ -44,6 +51,12 @@ type FormState = {
   reliefPerChild: string;
   reliefEpfCap: string;
   pcbBands: BandRow[];
+  // SOCSO/EIS RM-amount bands (feedback ee6e1292). Amounts, NOT percentages; SOCSO carries the extra
+  // `skbbk` employee leg. Edited as strings and parsed back in assemble() with the amount parser `num`,
+  // never the `rate`/`toPct` percent helpers — running an amount through those would corrupt the schedule.
+  socsoCat1: SocsoBandRow[];
+  socsoCat2: SocsoBandRow[];
+  eisBands: EisBandRow[];
 };
 
 const toEpfRows = (bands: ContribBand[]): EpfBandRow[] =>
@@ -53,7 +66,21 @@ const toEpfRows = (bands: ContribBand[]): EpfBandRow[] =>
     employer: String(b.employer),
   }));
 
-function initState(r: StatutoryRuleset): FormState {
+/** A stored SOCSO band → the grid's string row (employer/employee/skbbk as RM amounts). */
+const socsoRow = (b: SocsoBand): SocsoBandRow => ({
+  upTo: upToStr(b.upTo),
+  employer: String(b.employer),
+  employee: String(b.employee),
+  skbbk: String(b.skbbk),
+});
+/** A stored EIS/plain contribution band → the grid's string row (employer/employee as RM amounts). */
+const eisRow = (b: ContribBand): EisBandRow => ({
+  upTo: upToStr(b.upTo),
+  employer: String(b.employer),
+  employee: String(b.employee),
+});
+
+export function initState(r: StatutoryRuleset): FormState {
   return {
     epfEmployeeRate: toPct(r.epf.employeeRate),
     epfEmployerRateLow: toPct(r.epf.employerRateLow),
@@ -75,6 +102,9 @@ function initState(r: StatutoryRuleset): FormState {
       bCat13: String(b.bCat13),
       bCat2: String(b.bCat2),
     })),
+    socsoCat1: r.socso.category1.map(socsoRow),
+    socsoCat2: r.socso.category2.map(socsoRow),
+    eisBands: r.eis.bands.map(eisRow),
   };
 }
 
@@ -95,14 +125,30 @@ const fromEpfRows = (rows: EpfBandRow[], base?: ContribBand[]): ContribBand[] =>
     return { upTo, employee, employer };
   });
 
+/** A grid string row → a stored SOCSO band. `skbbk` MUST survive the round-trip (eff 1 Jun 2026). */
+const toSocsoBand = (r: SocsoBandRow): SocsoBand => ({
+  upTo: upToOf(r.upTo) as number, // top band null narrows below; SocsoBand.upTo is number in the type
+  employer: num(r.employer),
+  employee: num(r.employee),
+  skbbk: num(r.skbbk),
+});
+/** A grid string row → a stored EIS/plain band. */
+const toContribBand = (r: EisBandRow): ContribBand => ({
+  upTo: upToOf(r.upTo) as number,
+  employer: num(r.employer),
+  employee: num(r.employee),
+});
+
 /**
  * Merge the edited figures back over the active ruleset. Critically, `...base.epf` is spread FIRST so
  * every EPF field the form does NOT edit — scheduleMax, seniorEmployerRate, nonCitizen* — survives the
  * round-trip; the edited scalars AND the edited Part A / Part E band tables are then overlaid. (Before
  * feedback 99e13860 this rebuilt epf from scratch with no spread, silently dropping partA/partE and the
  * non-citizen rates on every save — invisible only because the calculator fell back to built-ins.)
+ * The SOCSO/EIS band ARRAYS are likewise written from the edited grid state (feedback ee6e1292), with the
+ * cross-check rates + verifiedUpTo carried through from base via the per-slice spreads.
  */
-function assemble(s: FormState, base: StatutoryRuleset): unknown {
+export function assemble(s: FormState, base: StatutoryRuleset): unknown {
   return {
     ...base,
     epf: {
@@ -115,6 +161,19 @@ function assemble(s: FormState, base: StatutoryRuleset): unknown {
       partE: fromEpfRows(s.epfPartE, base.epf.partE ?? MY_EPF_THIRD_SCHEDULE_PART_E),
     },
     contribCeiling: num(s.contribCeiling),
+    // SOCSO — write the edited Cat 1 / Cat 2 band arrays; keep the cross-check rates + verifiedUpTo from
+    // base. Each row round-trips employer / employee / skbbk as RM AMOUNTS (never percentages). An
+    // untouched form reproduces base.socso.category1/category2 byte-identically (see the round-trip test).
+    socso: {
+      ...base.socso,
+      category1: s.socsoCat1.map(toSocsoBand),
+      category2: s.socsoCat2.map(toSocsoBand),
+    },
+    // EIS — write the edited band array; keep the cross-check rates from base.
+    eis: {
+      ...base.eis,
+      bands: s.eisBands.map(toContribBand),
+    },
     // OT is no longer edited from this advanced editor (feedback e776d17d) — it is managed on the
     // Attendance Policy screen. Carry the whole existing ot slice through unchanged (wageCeiling +
     // both excess multipliers) so a raw-editor save never drops overtime data. `...base` above already
@@ -203,6 +262,38 @@ export function StatutoryConfigForm({
     { label: t('colEpfUpTo'), key: 'upTo', widthCls: 'w-28', isCeiling: true },
     { label: t('colEpfEmployee'), key: 'employee', widthCls: 'w-24' },
     { label: t('colEpfEmployer'), key: 'employer', widthCls: 'w-24' },
+  ];
+
+  // SOCSO/EIS band-grid row editors (feedback ee6e1292). These drive the SAME generic BandGridEditor as
+  // EPF, adapted to the granular onCell/onAddRow/onRemoveRow API. The `upTo` column is marked `isCeiling`
+  // so the grid derives the read-only "From" column (prev ceiling + 0.01) that these amount tables show.
+  // New tiers append at the end (unlike EPF, these schedules have a finite verified top band, so there is
+  // no open-ended row to insert before).
+  const blankSocso: SocsoBandRow = { upTo: '', employer: '', employee: '', skbbk: '' };
+  const blankEis: EisBandRow = { upTo: '', employer: '', employee: '' };
+  const setSocsoCell =
+    (field: 'socsoCat1' | 'socsoCat2') => (i: number, k: keyof SocsoBandRow, v: string) =>
+      setS((p) => ({ ...p, [field]: p[field].map((b, j) => (j === i ? { ...b, [k]: v } : b)) }));
+  const addSocsoRow = (field: 'socsoCat1' | 'socsoCat2') => () =>
+    setS((p) => ({ ...p, [field]: [...p[field], { ...blankSocso }] }));
+  const removeSocsoRow = (field: 'socsoCat1' | 'socsoCat2') => (i: number) =>
+    setS((p) => ({ ...p, [field]: p[field].filter((_, j) => j !== i) }));
+  const setEisCell = (i: number, k: keyof EisBandRow, v: string) =>
+    setS((p) => ({ ...p, eisBands: p.eisBands.map((b, j) => (j === i ? { ...b, [k]: v } : b)) }));
+  const addEisRow = () => setS((p) => ({ ...p, eisBands: [...p.eisBands, { ...blankEis }] }));
+  const removeEisRow = (i: number) =>
+    setS((p) => ({ ...p, eisBands: p.eisBands.filter((_, j) => j !== i) }));
+
+  const socsoCols: BandColumn<SocsoBandRow>[] = [
+    { label: t('colWageTo'), key: 'upTo', widthCls: 'w-28', isCeiling: true },
+    { label: t('colEmployerRm'), key: 'employer', widthCls: 'w-24' },
+    { label: t('colEmployeeRm'), key: 'employee', widthCls: 'w-24' },
+    { label: t('colSkbbkRm'), key: 'skbbk', widthCls: 'w-24' },
+  ];
+  const eisCols: BandColumn<EisBandRow>[] = [
+    { label: t('colWageTo'), key: 'upTo', widthCls: 'w-28', isCeiling: true },
+    { label: t('colEmployerRm'), key: 'employer', widthCls: 'w-24' },
+    { label: t('colEmployeeRm'), key: 'employee', widthCls: 'w-24' },
   ];
 
   const today = new Date().toISOString().slice(0, 10);
@@ -339,13 +430,70 @@ export function StatutoryConfigForm({
         </div>
       </Card>
 
-      {/* SOCSO / EIS — carried through unchanged (sibling feedback ee6e1292 makes these editable via the
-          same BandGridEditor component this EPF grid now uses). */}
-      <Card className="p-4 text-sm text-muted-foreground">
-        <h2 className="mb-1 text-sm font-semibold text-foreground">
-          {t('secSocso')} · {t('secEis')}
-        </h2>
-        <p>{t('bandsReadOnly', { count: ruleset.socso.category1.length })}</p>
+      {/* SOCSO / EIS — editable RM-amount band grids (feedback ee6e1292), now driven by the SAME generic
+          BandGridEditor as EPF/PCB. These are the officially verified PERKESO schedules; the warning below
+          makes the edit-with-care contract explicit and the code default remains the authoritative floor
+          (an archived/empty override restores the built-in). The grids opt into the derived read-only
+          "From" column via `fromHeader`. */}
+      <Card className="p-4">
+        <h2 className="mb-1 text-sm font-semibold">{t('secSocso')}</h2>
+        <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          {t('bandsEditWarning')}
+        </p>
+
+        <h3 className="mb-2 mt-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('socsoCat1')}
+        </h3>
+        <BandGridEditor<SocsoBandRow>
+          columns={socsoCols}
+          rows={s.socsoCat1}
+          onCell={setSocsoCell('socsoCat1')}
+          onAddRow={addSocsoRow('socsoCat1')}
+          onRemoveRow={removeSocsoRow('socsoCat1')}
+          inputCls={inputCls}
+          fromHeader={t('colWageFrom')}
+          topBandLabel={t('topBand')}
+          addRowLabel={t('addTier')}
+          removeRowLabel={t('removeTier')}
+          actionsHeader={t('removeTierAria')}
+        />
+
+        <h3 className="mb-2 mt-5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('socsoCat2')}
+        </h3>
+        <BandGridEditor<SocsoBandRow>
+          columns={socsoCols}
+          rows={s.socsoCat2}
+          onCell={setSocsoCell('socsoCat2')}
+          onAddRow={addSocsoRow('socsoCat2')}
+          onRemoveRow={removeSocsoRow('socsoCat2')}
+          inputCls={inputCls}
+          fromHeader={t('colWageFrom')}
+          topBandLabel={t('topBand')}
+          addRowLabel={t('addTier')}
+          removeRowLabel={t('removeTier')}
+          actionsHeader={t('removeTierAria')}
+        />
+      </Card>
+
+      <Card className="p-4">
+        <h2 className="mb-1 text-sm font-semibold">{t('secEis')}</h2>
+        <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          {t('bandsEditWarning')}
+        </p>
+        <BandGridEditor<EisBandRow>
+          columns={eisCols}
+          rows={s.eisBands}
+          onCell={setEisCell}
+          onAddRow={addEisRow}
+          onRemoveRow={removeEisRow}
+          inputCls={inputCls}
+          fromHeader={t('colWageFrom')}
+          topBandLabel={t('topBand')}
+          addRowLabel={t('addTier')}
+          removeRowLabel={t('removeTier')}
+          actionsHeader={t('removeTierAria')}
+        />
       </Card>
 
       <div className="flex items-center justify-end gap-2">

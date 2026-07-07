@@ -168,6 +168,11 @@ export const company = pgTable(
     // today for every existing customer until an admin both marks a day Half AND turns this on. Full working
     // days are never affected either way.
     leaveHalfDayFullDeduction: boolean('leave_half_day_full_deduction').notNull().default(false),
+    // Shared System Labels (ADR-0073, feedback d356dec8): OFF-by-default flag gating the multi-company
+    // system-labels resolver. With it false, labelsForCompany() returns ORIGIN-only rows — byte-identical
+    // to today. Only when an admin flips it on does a label shared into this company (via the junction or
+    // is_global) become visible here. A per-company toggle so rollout is staged, never big-bang.
+    sharedSystemLabels: boolean('shared_system_labels').notNull().default(false),
     // Self-referential group tree (ADR-0009). NULL = a group root. Cycle-guarded on write.
     parentCompanyId: uuid('parent_company_id').references((): AnyPgColumn => company.id),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -396,6 +401,9 @@ export const position = pgTable(
     // System Labels (migration 0145): optional admin note. Nullable, mirrors job_family; shown only on
     // the System Labels admin CRUD screen, not in the shared hire-form/People read paths.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master — resolves to every company in
+    // the tenant without writing N junction rows. Only a group admin may set it (RLS gates the write).
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -417,6 +425,8 @@ export const businessUnit = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -438,6 +448,8 @@ export const department = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -456,10 +468,41 @@ export const costCenter = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
+    isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [index('cost_center_company_idx').on(t.companyId)],
+);
+
+// Shared System Labels junction (ADR-0073, feedback d356dec8) — gives an org label (department / position /
+// cost_center / business_unit) ADDITIONAL companies that may use it, ON TOP OF its origin company_id (which
+// is never touched). `label_kind` + `label_id` is a polymorphic key into one of the four tables; there is no
+// DB FK on label_id (it spans four tables) — the service validates it. Uniqueness on
+// (tenant_id, label_kind, label_id, company_id). "All Companies" is the is_global flag on the label row, NOT
+// N rows here, so adding a company later needs no backfill. Backfilled 1:1 with each existing label's origin,
+// so pre-flag behaviour is identical to today.
+export const LABEL_KINDS = ['department', 'position', 'cost_center', 'business_unit'] as const;
+export type LabelKind = (typeof LABEL_KINDS)[number];
+
+export const labelCompanyAssignment = pgTable(
+  'label_company_assignment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    labelKind: text('label_kind').notNull(),
+    labelId: uuid('label_id').notNull(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('label_company_assignment_uq').on(t.tenantId, t.labelKind, t.labelId, t.companyId),
+    index('label_company_assignment_company_idx').on(t.companyId, t.labelKind),
+    index('label_company_assignment_label_idx').on(t.labelKind, t.labelId),
+  ],
 );
 
 // Termination classification (Wave 4A) — powers the Terminations + Turnover analytics breakdown.

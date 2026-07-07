@@ -1817,6 +1817,9 @@ export type AuditRow = {
 
 export type AuditFilters = {
   aggregateType?: string;
+  /** Restrict to a fixed SET of aggregate types (e.g. the leave module's aggregates for the leave
+   *  Audit tab). Applied alongside `aggregateType` — pass one or the other, not both. */
+  aggregateTypes?: string[];
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
   from?: string; // ISO date (inclusive)
@@ -1848,6 +1851,9 @@ export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<
       .where(
         and(
           f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
+          f.aggregateTypes && f.aggregateTypes.length
+            ? inArray(domainEvent.aggregateType, f.aggregateTypes)
+            : undefined,
           f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
           f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
           f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
