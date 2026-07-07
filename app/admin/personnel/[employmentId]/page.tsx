@@ -41,6 +41,8 @@ import { listDependents, DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS } from '@/co
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
+import { listShifts } from '@/core/roster';
+import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
@@ -147,6 +149,12 @@ export default async function EmployeePage({
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
+  // ec4cbf63 — Default shift picker options: THIS employee's company's shifts. Loaded WITH archived rows so
+  // a currently-assigned-but-later-archived shift still renders as the selected option (instead of silently
+  // showing "None"), then filtered to live shifts + the assigned one. New assignments of archived shifts
+  // are rejected by the service.
+  const companyShifts = admin && !emp.terminatedOn ? await listShifts(s, emp.companyId, { includeArchived: true }) : [];
+  const assignableShifts = companyShifts.filter((sh) => !sh.archivedAt || sh.id === emp.defaultShiftId);
   // ADR-0070 — Clocking Location & Geofencing: THIS employee's company's active clocking sites (the
   // multi-select options) + their current assignment (admin-only, mirrors the payroll-policy card).
   const clockingLocations = admin ? await listClockingLocations(s, [emp.companyId]) : [];
@@ -688,6 +696,31 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
+  // ec4cbf63 — Default shift: the shift this person NORMALLY works, set once here instead of painting every
+  // date on /roster. The attendance/OT engine uses it on any date WITHOUT a dated roster row (roster row →
+  // default shift → company policy), so /roster remains the surface for date-specific exceptions. Admin-only,
+  // mirrors the payroll-policy assignment card; lives in the Job tab (it describes how the person works).
+  const defaultShiftCard = admin && !emp.terminatedOn ? (
+    <Card id="section-default-shift">
+      <SectionHeader title={t('defaultShiftTitle')} />
+          <form action={setDefaultShiftAction} className="flex flex-wrap items-end gap-3 p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <Field label={t('defaultShiftLabel')}>
+              <select name="shiftId" defaultValue={emp.defaultShiftId ?? ''} className={inputCls}>
+                <option value="">{t('defaultShiftNone')}</option>
+                {assignableShifts.map((sh) => (
+                  <option key={sh.id} value={sh.id}>
+                    {`${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button className={btnPrimary}>{t('defaultShiftSave')}</button>
+          </form>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('defaultShiftHint')}</p>
+    </Card>
+  ) : null;
+
   // ── OTHERS ─────────────────────────────────────────────────────────────────
   // ADR-0070 — Clocking Location & Geofencing. Admin-only, mirrors the payroll-policy card. Multi-select
   // of the company's active clocking sites; geofencing toggle + radius (required when enabling).
@@ -918,53 +951,18 @@ export default async function EmployeePage({
               <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
             </Field>
 
-            {/* 1.2.4 Zakat election. Percent shows as a %, stored as a decimal; both amount inputs render
-                and the setter keeps only the one for the chosen method. Effective dates are display-only. */}
-            <div className="sm:col-span-2 border-t border-border pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t('zakat.title')}
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm sm:col-span-2">
-              <input type="checkbox" name="zakatActive" defaultChecked={statutory?.zakatActive ?? false} className="size-4 rounded" />
-              {t('zakat.active')}
-            </label>
-            <Field label={t('zakat.state')}>
-              <select name="zakatState" defaultValue={statutory?.zakatState ?? ''} className={inputCls}>
-                <option value="">—</option>
-                {MY_STATES.map((st) => (
-                  <option key={st} value={st}>{st}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('zakat.method')}>
-              <select name="zakatMethod" defaultValue={statutory?.zakatMethod ?? ''} className={inputCls}>
-                <option value="">—</option>
-                <option value="percent_of_pcb">{t('zakat.methodPercentOfPcb')}</option>
-                <option value="fixed">{t('zakat.methodFixed')}</option>
-              </select>
-            </Field>
-            <Field label={t('zakat.percent')}>
-              <input
-                name="zakatPercent"
-                type="number"
-                min="0"
-                step="0.01"
-                defaultValue={statutory?.zakatPercent ? (Number(statutory.zakatPercent) * 100).toString() : ''}
-                placeholder="2.5"
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t('zakat.fixed')}>
-              <input name="zakatFixed" type="number" min="0" step="0.01" defaultValue={statutory?.zakatFixed ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('zakat.effectiveFrom')}>
-              <input name="zakatEffectiveFrom" type="date" defaultValue={statutory?.zakatEffectiveFrom ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('zakat.effectiveTo')}>
-              <input name="zakatEffectiveTo" type="date" defaultValue={statutory?.zakatEffectiveTo ?? ''} className={inputCls} />
-            </Field>
-            <p className="sm:col-span-2 text-xs text-muted-foreground">{t('zakat.nonResidentHint')}</p>
+            {/* Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260 — Module
+                Separation Rule): Personnel no longer edits it. The pointer below keeps admins oriented;
+                setStatutoryAction passes the current election through unchanged so this form can't wipe it. */}
+            <p className="sm:col-span-2 border-t border-border pt-3 text-xs text-muted-foreground">
+              {t('zakatMoved')}{' '}
+              <Link
+                href="/payroll/transactions/zakat"
+                className="font-medium text-primary underline-offset-2 hover:underline"
+              >
+                {t('zakatMovedLink')}
+              </Link>
+            </p>
 
             <div className="flex items-end justify-end sm:col-span-2">
               <button className={btnPrimary}>{t('saveStatutory')}</button>
@@ -1349,6 +1347,7 @@ export default async function EmployeePage({
         {reportingLinesCard}
         {delegationsCard}
         {locationCard}
+        {defaultShiftCard}
         {transferTerminateCards}
       </>
     ),

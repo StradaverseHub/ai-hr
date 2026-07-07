@@ -34,6 +34,7 @@ import {
   person,
   rosterAssignment,
   shift,
+  statutoryReport,
   tp1Relief,
 } from '../db/schema';
 import { setPayrollBatchComponent } from './pay-components';
@@ -56,6 +57,15 @@ export class BatchNotDraftError extends Error {
   constructor() {
     super('Payslips can only be generated for a draft batch');
     this.name = 'BatchNotDraftError';
+  }
+}
+
+/** Payroll Reset (feedback a03b2d9b): the batch is not in the one state a reset is defined for.
+ *  Draft = nothing to reset; Closed = permanently immutable (0011 trigger is the DB backstop). */
+export class BatchNotResettableError extends Error {
+  constructor() {
+    super('Only a processed payroll process can be reset');
+    this.name = 'BatchNotResettableError';
   }
 }
 
@@ -2388,6 +2398,230 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
         payload: {},
       });
     }
+  });
+}
+
+/**
+ * Payroll Reset / Zeroization (feedback a03b2d9b) — revert a PROCESSED run to DRAFT by reversing
+ * exactly what generatePayslips did:
+ *   1. loan-ledger advance is unwound (outstanding restored, instalments_paid decremented, the
+ *      applied repayment back to 'reserved' on this batch, an apply-time shortfall re-schedule row
+ *      removed, an auto-settled loan reopened);
+ *   2. claims this batch marked paid go back to 'approved' (paidAt/payoutRef cleared) and STAY
+ *      queued on the batch (payroll_batch_id kept) so the re-run re-picks them;
+ *   3. the payslips are deleted and the batch's derived results (totals, employee_count) cleared;
+ *   4. status returns to 'draft'.
+ * The admin's keyed DRAFT inputs (payroll_input, payroll_individual_txn, payroll_batch_component)
+ * are deliberately PRESERVED — the approved plan's "return to Draft so they can amend and
+ * reprocess" semantics — so an unchanged reset → regenerate is byte-identical. That is also why
+ * teardownDraftChildren is NOT called here: it is the draft-DELETE cascade, which wipes the keyed
+ * inputs and detaches claims; a reset keeps both. (generatePayslips never touches those tables, so
+ * reversing it must not either.)
+ *
+ * Safety vs 0011_payroll_immutability.sql: the triggers freeze 'closed' batches/payslips ONLY —
+ * 'processed' is deliberately not trigger-frozen, which is what makes this reset DB-legal. The
+ * status guard below refuses anything but 'processed'; a closed batch stays permanently immutable
+ * (the trigger is the hard backstop even if this app-level guard were ever bypassed). The parent
+ * pay_period needs no work: it only closes when ALL runs close, so a processed run's period is
+ * still 'open'.
+ *
+ * Event sourcing: history is never deleted — the earlier payroll-batch.processed /
+ * claim-request.paid / loan.instalment.applied events stay; this appends reversal events so the
+ * log reads processed → reset → (re)processed. Statutory-report artefacts already recorded for
+ * this company+period are counted into the reset payload for audit visibility (the approved plan
+ * gates reset on batch status only — recorded reports are append-only artefacts, reproducible
+ * after the corrected re-run).
+ */
+export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: string; reason?: string }) {
+  // Ships dark behind a flag (approved plan): enable per environment after review.
+  if (process.env.PAYROLL_RESET_ENABLED !== 'true') {
+    throw new Error('Payroll reset is not enabled.');
+  }
+  // Reset is destructive and ADMIN-only (reporter req. #5: "Payroll Administrator or System
+  // Administrator") — a payroll_partner may run payroll but must NOT reset it. Capability check
+  // here as defence in depth under the page/action gates; RLS scopes WHICH batches resolve at all
+  // (a company-scoped admin sees another company's batch as "batch not found").
+  const callerRoles = [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)];
+  if (!callerRoles.some((r) => r === 'hr_admin' || r === 'super_admin')) {
+    throw new Error('Only an administrator can reset a payroll process');
+  }
+  const toC = (v: unknown) => Math.round(Number(v) * 100);
+  const fromC = (c: number) => (c / 100).toFixed(2);
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        payPeriodId: payrollBatch.payPeriodId,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    if (batch.status !== 'processed') throw new BatchNotResettableError();
+
+    // ── 1. Unwind the loan-ledger advance (mirror-image of applyLoansForBatch, ADR-0060) ──
+    const appliedReps = await tx
+      .select()
+      .from(loanRepayment)
+      .where(and(eq(loanRepayment.appliedBatchId, p.batchId), eq(loanRepayment.status, 'applied')));
+    let loansReopened = 0;
+    for (const rep of appliedReps) {
+      const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, rep.loanId)).limit(1);
+      if (!loan) continue;
+      const appliedCents = toC(rep.appliedAmount);
+      const dueCents = toC(rep.dueAmount);
+
+      // Apply-time shortfall: when the net≥0 clamp funded less than the reserved due, apply inserted a
+      // 'scheduled' remainder row. Remove it and restore the full due on the reservation; if it can no
+      // longer be found (amended / re-reserved by a later cycle since processing), fall back to
+      // restoring only the actually-recovered amount so the schedule still sums to outstanding exactly.
+      let restoredDue = rep.dueAmount;
+      if (appliedCents < dueCents) {
+        const shortfall = fromC(dueCents - appliedCents);
+        const [sfRow] = await tx
+          .select({ id: loanRepayment.id })
+          .from(loanRepayment)
+          .where(
+            and(
+              eq(loanRepayment.loanId, rep.loanId),
+              eq(loanRepayment.status, 'scheduled'),
+              eq(loanRepayment.dueAmount, shortfall),
+            ),
+          )
+          .orderBy(desc(loanRepayment.sequenceNo))
+          .limit(1);
+        if (sfRow) {
+          await tx.delete(loanRepayment).where(eq(loanRepayment.id, sfRow.id));
+        } else {
+          restoredDue = fromC(appliedCents);
+        }
+      }
+
+      // Back to the exact pre-generation state: RESERVED on this batch (reserved_batch_id was never
+      // cleared by apply), applied fields zeroed. If another batch reserved a row for this loan since
+      // processing, the one-reserved-per-loan partial unique forbids a second reservation — release to
+      // 'scheduled' instead (the next prefill converges).
+      const [otherReserved] = await tx
+        .select({ id: loanRepayment.id })
+        .from(loanRepayment)
+        .where(and(eq(loanRepayment.loanId, rep.loanId), eq(loanRepayment.status, 'reserved')))
+        .limit(1);
+      await tx
+        .update(loanRepayment)
+        .set({
+          ...(otherReserved ? { status: 'scheduled', reservedBatchId: null } : { status: 'reserved' }),
+          dueAmount: restoredDue,
+          appliedBatchId: null,
+          appliedAmount: '0',
+          appliedAt: null,
+        })
+        .where(eq(loanRepayment.id, rep.id));
+
+      // Restore the single authoritative ledger; reopen a loan this apply auto-settled. (A loan
+      // manually settled AFTER processing also reopens here — the event trail tells that story.)
+      const reopen = loan.status === 'settled' && appliedCents > 0;
+      await tx
+        .update(employeeLoan)
+        .set({
+          outstandingBalance: fromC(toC(loan.outstandingBalance) + appliedCents),
+          instalmentsPaid: Math.max(0, loan.instalmentsPaid - (appliedCents > 0 ? 1 : 0)),
+          ...(reopen ? { status: 'active' as const } : {}),
+          updatedAt: sql`now()`,
+        })
+        .where(eq(employeeLoan.id, loan.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'loan-repayment',
+        aggregateId: rep.id,
+        eventType: 'loan.instalment.reversed',
+        actor: actorOf(ctx),
+        subjectEmploymentId: rep.employmentId,
+        payload: { batchId: p.batchId, loanId: rep.loanId, reason: 'payroll-reset' },
+      });
+      if (reopen) {
+        loansReopened += 1;
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'employee-loan',
+          aggregateId: loan.id,
+          eventType: 'loan.reopened',
+          actor: actorOf(ctx),
+          subjectEmploymentId: loan.employmentId,
+          payload: { batchId: p.batchId, reason: 'payroll-reset' },
+        });
+      }
+    }
+
+    // ── 2. Un-mark the claims THIS batch paid (mirror-image of the generate-time paid block) ──
+    // They go back to 'approved' but STAY stamped on the batch, exactly the pre-generation queued
+    // state, so the corrected re-run re-picks them. (Claims the generation UNLINKED — out-of-scope
+    // employments — already have payroll_batch_id null and need no reversal.)
+    const revertedClaims = await tx
+      .update(claimRequest)
+      .set({ status: 'approved', paidAt: null, payoutRef: null })
+      .where(and(eq(claimRequest.payrollBatchId, p.batchId), eq(claimRequest.status, 'paid')))
+      .returning({ id: claimRequest.id, employmentId: claimRequest.employmentId });
+    for (const c of revertedClaims) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'claim-request',
+        aggregateId: c.id,
+        eventType: 'claim-request.payment-reversed',
+        actor: actorOf(ctx),
+        subjectEmploymentId: c.employmentId,
+        payload: { batchId: p.batchId, reason: 'payroll-reset' },
+      });
+    }
+
+    // ── 3. Clear the calculation results; 4. back to draft ──
+    // (Per-payslip history lives on the earlier processed-batch events; the batch-level reset event
+    // below records the count — same convention as teardownDraftChildren's child deletes.)
+    const clearedSlips = await tx.delete(payslip).where(eq(payslip.batchId, p.batchId)).returning({ id: payslip.id });
+    await tx
+      .update(payrollBatch)
+      .set({ status: 'draft', totals: null, employeeCount: 0 })
+      .where(eq(payrollBatch.id, p.batchId));
+
+    // Audit visibility (not a gate): statutory-report artefacts already recorded for this
+    // company+month — the resetting admin's cue that agency files may need regenerating.
+    const statReports = await tx
+      .select({ id: statutoryReport.id })
+      .from(statutoryReport)
+      .where(and(eq(statutoryReport.companyId, batch.companyId), eq(statutoryReport.periodKey, batch.payPeriod)));
+
+    // ONE batch-level reset event summarising every reversal (reporter req. #5: who / when /
+    // period / company / optional reason — actor + occurredAt + this payload).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.reset',
+      actor: actorOf(ctx),
+      payload: {
+        fromStatus: 'processed',
+        toStatus: 'draft',
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        payPeriodId: batch.payPeriodId,
+        runType: batch.runType,
+        runSeq: batch.runSeq,
+        reason: p.reason ?? null,
+        payslipsCleared: clearedSlips.length,
+        loanInstalmentsReversed: appliedReps.length,
+        loansReopened,
+        claimsReverted: revertedClaims.length,
+        statutoryReportsForPeriod: statReports.length,
+      },
+    });
+    return {
+      payslipsCleared: clearedSlips.length,
+      loanInstalmentsReversed: appliedReps.length,
+      claimsReverted: revertedClaims.length,
+    };
   });
 }
 

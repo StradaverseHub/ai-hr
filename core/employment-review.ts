@@ -17,11 +17,14 @@ import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
   company,
+  companyPayrollConfig,
   employment,
   employmentReview,
+  employmentReviewReminder,
   employmentTypeEnum,
   person,
   resignationRequest,
+  reviewDocument,
 } from '../db/schema';
 
 type EmploymentType = (typeof employmentTypeEnum.enumValues)[number];
@@ -657,5 +660,268 @@ export async function sweepDueReviews(
       }
     }
     return { opened };
+  });
+}
+
+// ─── Reminder cadence sweep (6522d26a Fn 2) ─────────────────────────────────────────────────────────
+
+/** Default reminder cadence: days BEFORE the review end date at which the sweep nudges manager + HR.
+ *  Overridable per company via company_payroll_config.review_reminder_days. */
+export const DEFAULT_REVIEW_REMINDER_DAYS = [30, 14, 7] as const;
+
+/** Normalize a configured cadence: null/empty ⇒ default; else trunc → keep 1–365 → dedupe → sort desc.
+ *  Pure, exported for the config form + tests. */
+export function resolveReminderDays(days: readonly (number | string)[] | null | undefined): number[] {
+  const src = days && days.length ? days : DEFAULT_REVIEW_REMINDER_DAYS;
+  const clean = [
+    ...new Set(src.map((d) => Math.trunc(Number(d))).filter((d) => Number.isFinite(d) && d >= 1 && d <= 365)),
+  ];
+  return clean.length ? clean.sort((a, b) => b - a) : [...DEFAULT_REVIEW_REMINDER_DAYS];
+}
+
+/** Pure UTC string date math: isoDate − days (no Date-TZ drift). */
+export function subtractDays(isoDate: string, days: number): string {
+  const t = Date.UTC(Number(isoDate.slice(0, 4)), Number(isoDate.slice(5, 7)) - 1, Number(isoDate.slice(8, 10)));
+  return new Date(t - days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * Reminder sweep (the deferred ADR-0034 34-4 producer, 6522d26a Fn 2). For every OPEN review
+ * (pending_manager | pending_hr), fire a reminder when `today` enters a configured offset window
+ * (`end_date − offsetDays <= today`) that hasn't fired yet. Each (review, offset) fires AT MOST ONCE —
+ * a row in employment_review_reminder is the idempotency ledger (unique index is the hard gate).
+ *
+ * Catch-up coalescing: if several offsets are in-window on one run (sweep was down, or the review opened
+ * late), ALL of them get dedup rows but only the MOST URGENT (smallest offset) appends the
+ * `employment-review.reminder-due` event — one nudge, not a burst. The extra rows are pure dedup markers
+ * (plumbing — deliberate substrate skip, documented here).
+ *
+ * Recipients (manager + HR admins) are resolved by the notification registry off the review row, keeping
+ * this service recipient-agnostic. Excludes leavers (terminated / open resignation), mirroring
+ * sweepDueReviews. Reminders key off end_date (the probation due date the reporter means), independent of
+ * the 1-month auto-open lead — the auto-open fires the review, reminders chase the pending decision.
+ */
+export async function sweepReviewReminders(
+  ctx: SessionContext,
+  opts: { today?: string } = {},
+): Promise<{ reminders: number }> {
+  const today = opts.today ?? new Date().toISOString().slice(0, 10);
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        reviewId: employmentReview.id,
+        employmentId: employmentReview.employmentId,
+        reviewType: employmentReview.reviewType,
+        endDate: employmentReview.endDate,
+        terminatedOn: employment.terminatedOn,
+        reminderDays: companyPayrollConfig.reviewReminderDays,
+      })
+      .from(employmentReview)
+      .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
+      .leftJoin(companyPayrollConfig, eq(companyPayrollConfig.companyId, employment.companyId))
+      .where(or(eq(employmentReview.status, 'pending_manager'), eq(employmentReview.status, 'pending_hr')));
+
+    let reminders = 0;
+    for (const r of rows) {
+      if (r.terminatedOn != null) continue; // leaver — already terminated
+      // Leaver with an open resignation — on their way out (mirrors sweepDueReviews).
+      const [resign] = await tx
+        .select({ id: resignationRequest.id })
+        .from(resignationRequest)
+        .where(and(eq(resignationRequest.employmentId, r.employmentId), eq(resignationRequest.status, 'pending')))
+        .limit(1);
+      if (resign) continue;
+
+      // Offsets whose window has arrived (end_date − offset <= today) and that haven't fired.
+      const offsets = resolveReminderDays(r.reminderDays);
+      const eligible: number[] = [];
+      for (const offsetDays of offsets) {
+        if (subtractDays(r.endDate, offsetDays) > today) continue; // window not reached yet
+        const [sent] = await tx
+          .select({ id: employmentReviewReminder.id })
+          .from(employmentReviewReminder)
+          .where(
+            and(
+              eq(employmentReviewReminder.reviewId, r.reviewId),
+              eq(employmentReviewReminder.offsetDays, offsetDays),
+            ),
+          )
+          .limit(1);
+        if (!sent) eligible.push(offsetDays);
+      }
+      if (eligible.length === 0) continue;
+
+      const fireOffset = Math.min(...eligible); // most urgent
+      let fired = false;
+      for (const offsetDays of eligible) {
+        try {
+          await tx.insert(employmentReviewReminder).values({
+            tenantId: ctx.tenantId,
+            reviewId: r.reviewId,
+            employmentId: r.employmentId,
+            offsetDays,
+            sentOn: today,
+          });
+        } catch (e) {
+          // Concurrent sweep raced past the pre-check — the unique index makes this (review, offset) a no-op.
+          if (/employment_review_reminder_uq|duplicate key/i.test((e as Error).message)) continue;
+          throw e;
+        }
+        if (offsetDays !== fireOffset) continue; // superseded catch-up offset: dedup row only (plumbing skip)
+        // SUBSTRATE: the reminder itself — the notification registry projects this to manager + HR.
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'employment-review',
+          aggregateId: r.reviewId,
+          eventType: 'employment-review.reminder-due',
+          actor: actorOf(ctx),
+          subjectEmploymentId: r.employmentId,
+          payload: { reviewType: r.reviewType, offsetDays, dueOn: r.endDate },
+        });
+        fired = true;
+      }
+      if (fired) reminders += 1;
+    }
+
+    // One summary event per run that did work (per-item events above are the fan-out source; the summary
+    // is the cron audit line, mirroring leave.aged.swept). Zero-work runs append nothing — deliberate,
+    // the sweep is daily and an empty run is not a state change.
+    if (reminders > 0) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'employment-review-reminder-sweep',
+        aggregateId: ctx.tenantId, // tenant-level virtual aggregate (UUID-typed; mirrors leave.aged.swept)
+        eventType: 'employment-review.reminders.swept',
+        actor: actorOf(ctx),
+        payload: { today, reminders },
+      });
+    }
+    return { reminders };
+  });
+}
+
+// ─── Letter document management (6522d26a Fn 5 + Fn 6) ─────────────────────────────────────────────
+
+export type ReviewDocumentKind = 'system_letter' | 'signed_letter';
+
+/** MIME allowlist for review letters (fail-closed, mirrors ALLOWED_RECEIPT_MIME): PDF / JPG / PNG.
+ *  Callers sniff magic bytes BEFORE calling the service, so this checks the sniffed value. */
+export const ALLOWED_REVIEW_DOC_MIME = ['application/pdf', 'image/jpeg', 'image/png'] as const;
+const REVIEW_DOC_MAX_BYTES = 10 * 1024 * 1024;
+
+function assertValidReviewDocument(mimeType: string, content: Buffer): void {
+  if (content.byteLength === 0) throw new ReviewError('Empty file');
+  if (content.byteLength > REVIEW_DOC_MAX_BYTES) throw new ReviewError('File exceeds 10 MB');
+  if (!(ALLOWED_REVIEW_DOC_MIME as readonly string[]).includes(mimeType)) {
+    throw new ReviewError('Only PDF, JPG, or PNG files are allowed');
+  }
+}
+
+/**
+ * Store a probation-letter document against a COMPLETED review (admin-only — RLS also enforces
+ * is_admin on write; the subject can read but never write). kind 'system_letter' = the persisted
+ * system-generated letter (at most one per review — the canonical record); 'signed_letter' = HR's
+ * uploaded final signed copy (several allowed, e.g. a re-signed correction).
+ */
+export async function uploadReviewDocument(
+  ctx: SessionContext,
+  p: { reviewId: string; kind: ReviewDocumentKind; fileName: string; mimeType: string; content: Buffer },
+): Promise<{ id: string }> {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new ReviewError('Only an admin can manage review documents.');
+  }
+  assertValidReviewDocument(p.mimeType, p.content);
+  return withTenant(ctx, async (tx) => {
+    const [rev] = await tx
+      .select({ id: employmentReview.id, employmentId: employmentReview.employmentId, status: employmentReview.status })
+      .from(employmentReview)
+      .where(eq(employmentReview.id, p.reviewId))
+      .limit(1);
+    if (!rev) throw new ReviewError('Review not found (or not visible).');
+    if (rev.status !== 'completed') throw new ReviewError('Documents can only be added once the review is completed.');
+    if (p.kind === 'system_letter') {
+      const [existing] = await tx
+        .select({ id: reviewDocument.id })
+        .from(reviewDocument)
+        .where(and(eq(reviewDocument.reviewId, rev.id), eq(reviewDocument.kind, 'system_letter')))
+        .limit(1);
+      if (existing) throw new ReviewError('The letter is already saved to this review.');
+    }
+    const [row] = await tx
+      .insert(reviewDocument)
+      .values({
+        tenantId: ctx.tenantId,
+        reviewId: rev.id,
+        employmentId: rev.employmentId,
+        kind: p.kind,
+        content: p.content,
+        fileName: p.fileName,
+        mimeType: p.mimeType,
+        sizeBytes: p.content.byteLength,
+        uploadedByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: reviewDocument.id });
+    // SUBSTRATE: a new state-changing write — the DomainEvent is mandatory. File bytes stay out of the payload.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-review',
+      aggregateId: rev.id,
+      eventType: 'employment-review.document-uploaded',
+      actor: actorOf(ctx),
+      subjectEmploymentId: rev.employmentId,
+      payload: { kind: p.kind, fileName: p.fileName, sizeBytes: p.content.byteLength },
+    });
+    return { id: row.id };
+  });
+}
+
+export type ReviewDocumentMeta = {
+  id: string;
+  reviewId: string;
+  kind: ReviewDocumentKind;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+};
+
+/** All review documents for one employment (metadata only, no content) — the profile section AND the
+ *  ESS /me card share this read; RLS scopes it (subject sees own, manager their line, admin all). */
+export function reviewDocumentsFor(ctx: SessionContext, employmentId: string): Promise<ReviewDocumentMeta[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: reviewDocument.id,
+        reviewId: reviewDocument.reviewId,
+        kind: reviewDocument.kind,
+        fileName: reviewDocument.fileName,
+        mimeType: reviewDocument.mimeType,
+        sizeBytes: reviewDocument.sizeBytes,
+        createdAt: reviewDocument.createdAt,
+      })
+      .from(reviewDocument)
+      .where(eq(reviewDocument.employmentId, employmentId))
+      .orderBy(desc(reviewDocument.createdAt)),
+  ) as Promise<ReviewDocumentMeta[]>;
+}
+
+/** One document's bytes for the download routes. RLS-gated: foreign/invisible id → null → 404. Read-only — no event. */
+export function getReviewDocument(
+  ctx: SessionContext,
+  documentId: string,
+): Promise<{ content: Buffer; fileName: string; mimeType: string; reviewId: string } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        content: reviewDocument.content,
+        fileName: reviewDocument.fileName,
+        mimeType: reviewDocument.mimeType,
+        reviewId: reviewDocument.reviewId,
+      })
+      .from(reviewDocument)
+      .where(eq(reviewDocument.id, documentId))
+      .limit(1);
+    return row ? { content: row.content as Buffer, fileName: row.fileName, mimeType: row.mimeType, reviewId: row.reviewId } : null;
   });
 }

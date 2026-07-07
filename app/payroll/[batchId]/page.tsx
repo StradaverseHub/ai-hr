@@ -6,7 +6,8 @@ import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
 import { listAllowancePolicies } from '@/core/read';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, transferAllowancesAction } from '../actions';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, resetAction, transferAllowancesAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
 
@@ -44,6 +45,9 @@ export default async function BatchPage({
   const periodDays = new Date(pYear, pMonth, 0).getDate(); // calendar days in the pay period
   // Bulk component import (1D) is only meaningful when the kernel reads typed components.
   const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
+  // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
+  const resetOn = process.env.PAYROLL_RESET_ENABLED === 'true';
   // Payroll Process wizard: this draft is presented as "Step 3 of 3" when it arrived straight from the
   // wizard's terminal create action. A compact one-shot holiday-warning code list rides the query string
   // ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch is the
@@ -94,11 +98,35 @@ export default async function BatchPage({
                 </Button>
               </form>
             )}
+            {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED-only — never draft (nothing to reset;
+                delete-draft is 4f00d8f0's flow) and never closed (permanently immutable). The
+                ConfirmSubmit dialog carries the reporter's confirmation copy; processed-only and
+                admin-only are re-enforced server-side. */}
+            {batch.status === 'processed' && resetOn && (
+              <form action={resetAction}>
+                <input type="hidden" name="batchId" value={batch.id} />
+                <ConfirmSubmit
+                  title={t('resetTitle')}
+                  description={t('resetDescription')}
+                  confirmLabel={t('resetConfirm')}
+                >
+                  {t('resetPayroll')}
+                </ConfirmSubmit>
+              </form>
+            )}
           </div>
         }
       />
 
       <ErrorBanner message={error} />
+
+      {/* Reporter req. #1/#2 made explicit (a03b2d9b): a processed run is LOCKED — amendments don't
+          silently reprocess; corrections go through the controlled Reset. */}
+      {batch.status === 'processed' && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400">
+          🔒 {t('lockedNote')}
+        </div>
+      )}
 
       {batch.status === 'draft' && (
         <Card className="overflow-hidden">

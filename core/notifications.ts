@@ -53,15 +53,19 @@ type EventRef = { aggregateId: string; subjectEmploymentId: string | null };
 type Spec = {
   kind: string;
   category: string;
-  render: (payload: Record<string, unknown> | null) => Rendered;
+  /** `ev` is optional context (6522d26a) — most renders are payload-only; a spec may use the event ref
+   *  for a recipient-specific deep-link (e.g. the HR issue-letter task links to the subject's profile). */
+  render: (payload: Record<string, unknown> | null, ev: EventRef) => Rendered;
   /** Fan-out resolver. When present, recipients come from here (e.g. every employee in a closed payroll
    *  batch) instead of the event's single subjectEmploymentId. */
   recipients?: (tx: Tx, ev: EventRef) => Promise<string[]>;
 };
 
-// eventType → notification. Recipient is always the event's subjectEmploymentId (so these only need the
-// payload to render). Keep titles/bodies short; deep-link into the app where the full, gated detail lives.
-const REGISTRY: Record<string, Spec> = {
+// eventType → notification (or SEVERAL — 6522d26a: one event may fan out to different audiences with
+// different bodies, e.g. employment-review.decided → subject "complete" + HR "issue the letter").
+// Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
+// app where the full, gated detail lives.
+const REGISTRY: Record<string, Spec | Spec[]> = {
   'leave-request.approved': {
     kind: 'leave.approved',
     category: 'leave',
@@ -188,12 +192,60 @@ const REGISTRY: Record<string, Spec> = {
       return hrAdminsForCompany(tx, rev.employmentId);
     },
   },
-  'employment-review.decided': {
-    kind: 'review.decided',
+  'employment-review.decided': [
+    {
+      kind: 'review.decided',
+      category: 'review',
+      // Default subject path (no resolver) — notify the subject only. The decision itself is gated behind
+      // the /me review surface; the body says only that the review is complete.
+      render: () => ({ severity: 'info', title: 'Your review is complete', body: 'Your review has been finalized.', linkPath: '/me' }),
+    },
+    {
+      // 6522d26a Fn 5.2 — the follow-up "issue letter" HR task: same event, HR fan-out, deep-link to the
+      // subject's profile review section where the save/upload affordances live. The notification IS the
+      // task (a dedicated task table is deliberately out of scope).
+      kind: 'review.issue-letter',
+      category: 'review',
+      render: (_p, ev) => ({
+        severity: 'action',
+        title: 'Issue review letter',
+        body: 'A review was decided — generate the outcome letter and upload the signed copy.',
+        linkPath: ev.subjectEmploymentId ? `/admin/personnel/${ev.subjectEmploymentId}` : '/approvals',
+      }),
+      recipients: async (tx, ev) => {
+        const [rev] = await tx
+          .select({ employmentId: employmentReview.employmentId })
+          .from(employmentReview)
+          .where(eq(employmentReview.id, ev.aggregateId))
+          .limit(1);
+        if (!rev) return [];
+        return hrAdminsForCompany(tx, rev.employmentId);
+      },
+    },
+  ],
+  // 6522d26a Fn 2 — configurable reminder cadence: the sweep appends one reminder-due per (review,
+  // offset window); recipients = assigned manager + the company's HR admins (clone of .started).
+  'employment-review.reminder-due': {
+    kind: 'review.reminder',
     category: 'review',
-    // Default subject path (no resolver) — notify the subject only. The decision itself is gated behind
-    // the /me review surface; the body says only that the review is complete.
-    render: () => ({ severity: 'info', title: 'Your review is complete', body: 'Your review has been finalized.', linkPath: '/me' }),
+    render: (p) => ({
+      severity: 'action',
+      title: 'Review reminder',
+      body: `A ${p?.reviewType ?? ''} review is awaiting action — the period ends on ${p?.dueOn ?? ''}.`.replace('  ', ' '),
+      linkPath: '/approvals',
+    }),
+    recipients: async (tx, ev) => {
+      const [rev] = await tx
+        .select({ managerEmploymentId: employmentReview.managerEmploymentId, employmentId: employmentReview.employmentId })
+        .from(employmentReview)
+        .where(eq(employmentReview.id, ev.aggregateId))
+        .limit(1);
+      if (!rev) return [];
+      const hr = await hrAdminsForCompany(tx, rev.employmentId);
+      const out = [...hr];
+      if (rev.managerEmploymentId) out.unshift(rev.managerEmploymentId);
+      return [...new Set(out)];
+    },
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
   'payroll-batch.closed': {
@@ -237,28 +289,31 @@ export async function dispatchNotifications(ctx: SessionContext, opts: { limit?:
 
     let created = 0;
     for (const ev of rows) {
-      const spec = REGISTRY[ev.eventType];
-      if (!spec) continue;
-      // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
-      const recipients = spec.recipients
-        ? await spec.recipients(tx, { aggregateId: ev.aggregateId, subjectEmploymentId: ev.subjectEmploymentId })
-        : ev.subjectEmploymentId
-          ? [ev.subjectEmploymentId]
-          : [];
-      if (recipients.length === 0) continue;
-      const r = spec.render((ev.payload as Record<string, unknown> | null) ?? null);
-      for (const recipient of recipients) {
-        await tx.insert(notification).values({
-          tenantId: ctx.tenantId,
-          recipientEmploymentId: recipient,
-          kind: spec.kind,
-          title: r.title,
-          body: r.body,
-          linkPath: r.linkPath,
-          severity: r.severity,
-          sourceEventId: ev.id,
-        });
-        created += 1;
+      const entry = REGISTRY[ev.eventType];
+      if (!entry) continue;
+      const evRef: EventRef = { aggregateId: ev.aggregateId, subjectEmploymentId: ev.subjectEmploymentId };
+      for (const spec of Array.isArray(entry) ? entry : [entry]) {
+        // Recipients: a fan-out resolver (e.g. all payslips in a batch), else the event's single subject.
+        const recipients = spec.recipients
+          ? await spec.recipients(tx, evRef)
+          : ev.subjectEmploymentId
+            ? [ev.subjectEmploymentId]
+            : [];
+        if (recipients.length === 0) continue;
+        const r = spec.render((ev.payload as Record<string, unknown> | null) ?? null, evRef);
+        for (const recipient of recipients) {
+          await tx.insert(notification).values({
+            tenantId: ctx.tenantId,
+            recipientEmploymentId: recipient,
+            kind: spec.kind,
+            title: r.title,
+            body: r.body,
+            linkPath: r.linkPath,
+            severity: r.severity,
+            sourceEventId: ev.id,
+          });
+          created += 1;
+        }
       }
     }
 

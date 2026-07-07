@@ -64,7 +64,7 @@
     "dateRange": "日期范围",
     "generated": "已为 {employees} 名员工生成排班——{working} 条工作日记录和 {rest} 条休息日记录。",
     "generateHint": "按班次的每周模式填满范围内的每一天：工作日写入班次记录，其余日期写入明确的休息日，公司政策不会悄悄覆盖该模式。重复生成会覆盖相同日期。",
-    "manageShiftsHint": "班次排班在考勤政策中管理。",
+    "manageShiftsHint": "班次排班在考勤政策中管理；员工的常规班次在其个人档案中设置为默认班次。特定日期的例外请使用排班表。",
     "manageShiftsLink": "管理班次排班"
   },
   "common": {
@@ -239,7 +239,12 @@
       "provisionalEndHint": "全职为试用期结束（默认 +3 个月）；否则为合同或实习结束日期。如无则留空。",
       "businessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
-      "colCode": "编号"
+      "colCode": "编号",
+      "filter": "筛选",
+      "applyFilters": "应用筛选",
+      "clearAllFilters": "全部清除",
+      "activeFilters": "{count, plural, one {# 个筛选} other {# 个筛选}}",
+      "removeFilter": "移除{label}筛选"
     },
     "detail": {
       "backToPeople": "员工",
@@ -430,19 +435,6 @@
       "cp38RefPlaceholder": "例如 CP38/2026/00123",
       "cp38RemarksPlaceholder": "可选备注",
       "cp38Open": "无结束日期",
-      "zakat": {
-        "title": "天课（薪资扣除）",
-        "active": "通过薪资扣除天课",
-        "state": "天课机构（州属）",
-        "method": "方式",
-        "methodPercentOfPcb": "PCB/MTD 的百分比",
-        "methodFixed": "固定金额",
-        "percent": "百分比 (%)",
-        "fixed": "固定金额 (RM)",
-        "effectiveFrom": "生效日期",
-        "effectiveTo": "失效日期",
-        "nonResidentHint": "对非居民及低于门槛的收入者，PCB 百分比计算结果为 RM0 — 如需扣除请使用固定金额。"
-      },
       "family": {
         "title": "家庭与受扶养人",
         "note": "仅用于福利和保险记录。这些不会影响薪资或税务子女人数，且与紧急联系人分开。",
@@ -518,7 +510,15 @@
         "note": "已登记的法定标识。文件上传与存储（身份证扫描件、已签合同）将在后续版本中提供；请在“薪酬”标签页编辑这些值。",
         "cp38Records": "CP38 分期记录",
         "hint": "此为只读摘要。这些字段的可编辑来源位于“薪酬”标签页（法定）。"
-      }
+      },
+      "zakatMoved": "天课（薪资扣除）设置已迁移至薪资 → 交易 → 天课。",
+      "zakatMovedLink": "打开天课页面",
+      "defaultShiftTitle": "默认班次",
+      "defaultShiftLabel": "班次",
+      "defaultShiftNone": "无 — 使用公司默认排班",
+      "defaultShiftSave": "保存",
+      "defaultShiftHint": "该员工通常工作的班次。用于没有特定排班记录的日期 — 排班表可按日期覆盖此班次；加班按该班次的工时计算。",
+      "defaultShiftAssigned": "默认班次已保存"
     },
     "import": {
       "title": "导入员工",
@@ -789,7 +789,9 @@
       "noCheckout": "无下班打卡",
       "srcRoster": "排班班次",
       "srcRest": "休息日",
-      "srcPolicy": "公司政策"
+      "srcPolicy": "公司政策",
+      "srcDefaultShift": "默认班次",
+      "srcDefaultShiftRest": "默认班次休息日"
     },
     "importPunches": "导入打卡",
     "colLocation": "地点",
@@ -1711,7 +1713,15 @@
       "encashmentFrozenAsOfTitle": "于 {date} 冻结",
       "colCode": "编号",
       "transferAllowance": "转入津贴",
-      "allowanceGateWarning": "类型化薪资组件已关闭——转入将被记录，但在启用之前不会进入工资单。"
+      "allowanceGateWarning": "类型化薪资组件已关闭——转入将被记录，但在启用之前不会进入工资单。",
+      "resetPayroll": "重置薪资",
+      "resetTitle": "重置薪资流程",
+      "resetDescription": "确定要重置此薪资流程吗？本次运行的所有薪资计算结果将被清除，流程将恢复为草稿状态。此操作仅限获授权的用户执行。",
+      "resetConfirm": "重置薪资",
+      "resetDone": "薪资流程已重置为草稿",
+      "resetOnlyProcessed": "只有已处理状态的薪资流程才能重置。",
+      "resetAdminOnly": "只有管理员才能重置薪资流程。",
+      "lockedNote": "此薪资流程已锁定——工资单已生成。如需修改，须由管理员将其重置为草稿。"
     },
     "transactions": {
       "title": "交易",
@@ -1890,14 +1900,40 @@
       },
       "zakat": {
         "title": "天课",
-        "subtitle": "草稿批次中每位员工通过薪资缴纳的天课。",
+        "subtitle": "每位员工的天课设置，以及针对单个发薪批次的一次性覆盖。",
         "pickBatch": "草稿批次",
         "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
         "employee": "员工",
         "amount": "天课",
         "save": "保存",
         "saved": "已保存。",
-        "empty": "此批次中没有员工。"
+        "empty": "此批次中没有员工。",
+        "election": {
+          "title": "天课设置（薪资扣除）",
+          "subtitle": "员工的长期天课扣除设置——州属、方式、比率及生效期间。每次常规发薪都会应用。",
+          "pickEmployee": "员工",
+          "noEmployees": "当前公司范围内没有员工。",
+          "name": "姓名",
+          "employeeNo": "员工编号",
+          "company": "公司",
+          "noProfile": "该员工尚无马来西亚法定资料。请先在人事记录中保存身份证号码。",
+          "openPersonnel": "打开人事记录",
+          "save": "保存设置",
+          "active": "通过薪资扣除天课",
+          "state": "天课机构（州属）",
+          "method": "方式",
+          "methodPercentOfPcb": "PCB/MTD 的百分比",
+          "methodFixed": "固定金额",
+          "percent": "百分比 (%)",
+          "fixed": "固定金额 (RM)",
+          "effectiveFrom": "生效日期",
+          "effectiveTo": "失效日期",
+          "nonResidentHint": "对非居民及低于门槛的收入者，PCB 百分比计算结果为 RM0 — 如需扣除请使用固定金额。"
+        },
+        "override": {
+          "title": "一次性覆盖（按发薪批次）",
+          "subtitle": "仅适用于单个草稿批次的手动 RM 金额——该批次将覆盖长期设置。"
+        }
       },
       "view": {
         "title": "交易查询",
@@ -2538,7 +2574,10 @@
       "advanceNoticeSectionTitle": "提前申请",
       "minAdvanceDaysLabel": "最少提前天数",
       "advanceNoticeSectionHelp": "员工必须在开始日期前多少天提交此假期类型的申请。留空表示无要求。HR 管理员不受此规则限制。",
-      "advanceCustomMessageHelp": "当此假期类型因提前申请天数不足被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。"
+      "advanceCustomMessageHelp": "当此假期类型因提前申请天数不足被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。",
+      "recalcToast": "已更正应享额度——已为 {count} 名员工重新计算（共 {delta} 天）。",
+      "recalcNoneToast": "政策已更正。没有员工余额发生变化。",
+      "recalcInPlaceHint": "在此编辑会更正当前应享额度，并自动为受影响的员工重新入账。若要从未来某日起更改额度，请改为新增一个版本。"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -2766,7 +2805,7 @@
       "daySun": "日",
       "save": "保存政策",
       "lateHint": "在“迟到时间”之后打卡标记为迟到；在“半天界限”之前下班记为半天。",
-      "rosterNote": "上方设置的班次排班会在排班表页面分配给员工。已分配排班的员工使用其排班班次；未分配的员工回退到此默认排班。",
+      "rosterNote": "员工的常规班次在其个人档案中设置为默认班次（人事 → 工作标签页）；排班表页面用于特定日期的例外安排。已排班的日期优先于默认班次；两者都没有的员工回退到此默认排班。",
       "dayTypeHint": "全天 = 正常工作日。半天 = 较短的工作日（例如周六 9:00–12:00）— 在该日请假默认扣除 0.5 天，若开启半天扣除设置则扣除 1.0 天。休息 = 非工作日。",
       "dayTypeFull": "全天",
       "dayTypeHalf": "半天",
@@ -2819,7 +2858,8 @@
       "otVersion": "版本",
       "otNotes": "备注",
       "otPublish": "发布加班费率",
-      "otCancel": "取消"
+      "otCancel": "取消",
+      "colCompany": "公司"
     },
     "toilPolicy": {
       "pageTitle": "调休",
@@ -3520,7 +3560,9 @@
     "save": "保存",
     "hiringTitle": "入职默认设置",
     "probationMonths": "默认试用期（月）",
-    "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。"
+    "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
+    "reviewReminderDays": "评估提醒（结束日期前天数）",
+    "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
   },
   "payrollPolicy": {
     "title": "薪资政策",
@@ -3913,8 +3955,21 @@
       "managerEvaluatedTitle": "评估可供决定",
       "managerEvaluatedBody": "经理评估已就绪——记录人力资源决定。",
       "decidedTitle": "您的评估已完成",
-      "decidedBody": "您的评估已定案。"
-    }
+      "decidedBody": "您的评估已定案。",
+      "reminderTitle": "评估提醒",
+      "reminderBody": "有一项评估待处理——期限结束日期临近。",
+      "issueLetterTitle": "签发评估信函",
+      "issueLetterBody": "一项评估已作出决定——请生成结果信函并上传已签署副本。"
+    },
+    "documents": "文档",
+    "download": "下载",
+    "upload": "上传",
+    "documentKind": {
+      "system_letter": "系统信函",
+      "signed_letter": "已签署信函"
+    },
+    "saveLetterToRecord": "将信函存入记录",
+    "uploadSignedLetter": "上传已签署信函"
   },
   "loans": {
     "title": "贷款",

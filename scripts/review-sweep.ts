@@ -9,7 +9,7 @@
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
 import { createDb } from '../db/client';
 import { tenant } from '../db/schema';
-import { sweepDueReviews } from '../core/employment-review';
+import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { dispatchNotifications } from '../core/notifications';
 
 async function main() {
@@ -24,6 +24,7 @@ async function main() {
   console.log(`review:sweep — ${tenants.length} tenant(s), today ${today}`);
 
   let totalOpened = 0;
+  let totalReminders = 0;
   let failures = 0;
   for (const t of tenants) {
     try {
@@ -31,17 +32,22 @@ async function main() {
       // hr_admin role authorizes the writes and lets the sweep see every tenant employment.
       const ctx = { tenantId: t.id, roles: ['hr_admin'] };
       const { opened } = await sweepDueReviews(ctx, { today });
-      // Project the new started events into manager + HR notifications now (gated by NOTIFICATIONS_ENABLED).
+      // 6522d26a Fn 2 — chase still-open reviews at the configured cadence (default 30/14/7 days before
+      // the end date). Idempotent per (review, offset); runs AFTER the opener so a just-opened review is
+      // eligible on the same day when already inside a window.
+      const { reminders } = await sweepReviewReminders(ctx, { today });
+      // Project the new started/reminder events into manager + HR notifications now (gated by NOTIFICATIONS_ENABLED).
       await dispatchNotifications(ctx);
       totalOpened += opened;
-      console.log(`  ✓ ${t.name} (${t.id}): ${opened} review(s) opened`);
+      totalReminders += reminders;
+      console.log(`  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s)`);
     } catch (e) {
       failures += 1;
       console.error(`  ✗ ${t.name} (${t.id}): ${(e as Error).message}`);
     }
   }
   console.log(
-    `review:sweep done — ${totalOpened} review(s) opened across ${tenants.length} tenant(s), ${failures} failure(s).`,
+    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s) across ${tenants.length} tenant(s), ${failures} failure(s).`,
   );
   await owner.client.end();
   process.exit(failures > 0 ? 1 : 0);

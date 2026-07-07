@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
+import { isAdmin } from '@/lib/authz';
 import {
   BatchNotDraftError,
+  BatchNotResettableError,
   closeBatch,
   deleteDraftBatch,
   generatePayslips,
@@ -13,6 +15,7 @@ import {
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
+  resetProcessedBatch,
   setPayrollInput,
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
@@ -235,6 +238,34 @@ export async function deleteDraftBatchAction(formData: FormData) {
   }
   revalidatePath('/payroll');
   redirect(`/payroll?toast=${encodeURIComponent(t('toastDeleted'))}`);
+}
+
+/**
+ * Payroll Reset / Zeroization (feedback a03b2d9b) — revert a PROCESSED run to DRAFT after the
+ * ConfirmSubmit dialog. Explicit RBAC here (not just the pages' admin gates) because server actions
+ * are callable from any surface: reset is ADMIN-only — a payroll_partner passes the payroll pages
+ * but must not reset. The service re-asserts the role, enforces processed-only (closed is
+ * permanently immutable), reverses the loan/claim side-effects and appends the audited
+ * payroll-batch.reset event with the session's real actor. Toast/error copy localised here
+ * (ToastFromQuery renders the raw query string — same convention as deleteDraftBatchAction).
+ */
+export async function resetAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const reason = String(formData.get('reason') ?? '').trim();
+  const t = await getTranslations('payroll.batch');
+  if (!isAdmin(s)) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('resetAdminOnly'))}`);
+  }
+  try {
+    await resetProcessedBatch(s, { batchId, reason: reason || undefined });
+  } catch (e) {
+    const msg = e instanceof BatchNotResettableError ? t('resetOnlyProcessed') : (e as Error).message;
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  revalidatePath('/payroll');
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('resetDone'))}`);
 }
 
 export async function closeAction(formData: FormData) {

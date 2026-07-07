@@ -1,0 +1,88 @@
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+import { requireAdmin } from '@/lib/authz';
+import {
+  getStatutoryProfileMY,
+  setStatutoryProfileMY,
+  type ZakatMethod,
+} from '@/localization/my/statutory';
+
+/**
+ * Zakat election relocation (feedback 58755260). The durable per-employee zakat election (state,
+ * method, %-of-PCB or fixed RM, effective dates) is now edited HERE — Payroll > Transactions > Zakat —
+ * in an employee-first flow; the Personnel > Statutory (MY) form no longer carries zakat fields.
+ *
+ * This action delegates to the EXISTING setStatutoryProfileMY setter, which validates the election
+ * (InvalidZakatSetupError) and appends the existing statutory.my.updated/created domain event with the
+ * zakat fields in the payload — so no new event type and no extra append here (substrate discipline:
+ * the write is fully covered inside the setter).
+ *
+ * setStatutoryProfileMY is a FULL overwrite of the statutory row, so we read the current profile and
+ * pass every non-zakat field through unchanged (numeric columns come back as strings; the setter
+ * re-normalises). Only the 7 zakat fields come from the form.
+ */
+export async function saveZakatElectionAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  // Preserve the batch-override section's selection across the redirect (both sections share the page).
+  const batchId = String(formData.get('batchId') ?? '');
+  const back = (extra: string) =>
+    `/payroll/transactions/zakat?employmentId=${encodeURIComponent(employmentId)}${
+      batchId ? `&batchId=${encodeURIComponent(batchId)}` : ''
+    }&${extra}`;
+  try {
+    const current = await getStatutoryProfileMY(s, personId);
+    // The election lives on the MY statutory row; without one (no IC yet) there is nothing to attach it
+    // to. The page hides the form in that state, so this guard only fires for stale/forged submissions.
+    if (!current)
+      throw new Error(
+        'No Malaysian statutory profile for this employee yet — save the IC number on the personnel record first.',
+      );
+    const num = (v: string | null): number | null =>
+      v == null || Number.isNaN(Number(v)) ? null : Number(v);
+    await setStatutoryProfileMY(s, {
+      personId,
+      // Read-modify-write pass-through: every non-zakat field is preserved verbatim so an
+      // election-only save can never clobber IC/EPF/SOCSO/tax/TP3/bank data.
+      icNumber: current.icNumber,
+      epfNumber: current.epfNumber ?? undefined,
+      socsoNumber: current.socsoNumber ?? undefined,
+      taxNumber: current.taxNumber ?? undefined,
+      taxCategory: current.taxCategory,
+      numChildren: current.numChildren,
+      eisEligible: current.eisEligible,
+      isResident: current.isResident,
+      epfCitizenship: current.epfCitizenship,
+      epfMode: current.epfMode,
+      epfEmployeeRate: num(current.epfEmployeeRate),
+      epfEmployerRate: num(current.epfEmployerRate),
+      bankName: current.bankName ?? undefined,
+      bankAccountNo: current.bankAccountNo ?? undefined,
+      tp3Year: current.tp3Year,
+      tp3NetRemuneration: num(current.tp3NetRemuneration),
+      tp3EpfClaimed: num(current.tp3EpfClaimed),
+      tp3PcbPaid: num(current.tp3PcbPaid),
+      tp3ZakatPaid: num(current.tp3ZakatPaid),
+      // The 7 zakat fields from the form. Coercion mirrors the retired Personnel block: the percent is
+      // entered as a % and stored as a decimal (÷100); empty → null; the setter validates the method and
+      // nulls the off-method amount.
+      zakatActive: formData.get('zakatActive') === 'on',
+      zakatState: (formData.get('zakatState') as string) || null,
+      zakatMethod: (() => {
+        const m = String(formData.get('zakatMethod') ?? '');
+        return m === 'percent_of_pcb' || m === 'fixed' ? (m as ZakatMethod) : null;
+      })(),
+      zakatPercent: formData.get('zakatPercent') ? Number(formData.get('zakatPercent')) / 100 : null,
+      zakatFixed: formData.get('zakatFixed') ? Number(formData.get('zakatFixed')) : null,
+      zakatEffectiveFrom: (formData.get('zakatEffectiveFrom') as string) || null,
+      zakatEffectiveTo: (formData.get('zakatEffectiveTo') as string) || null,
+    });
+  } catch (e) {
+    redirect(back(`error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath('/payroll/transactions/zakat');
+  redirect(back('toast=saved'));
+}

@@ -68,7 +68,15 @@ export function PunchImport() {
 
   const shown = committed ?? preview;
   const sourceLabel = (s: PunchImportResult['preview'][number]['source']) =>
-    s === 'roster-shift' ? t('srcRoster') : s === 'roster-rest' ? t('srcRest') : t('srcPolicy');
+    s === 'roster-shift'
+      ? t('srcRoster')
+      : s === 'roster-rest'
+        ? t('srcRest')
+        : s === 'default-shift'
+          ? t('srcDefaultShift')
+          : s === 'default-shift-rest'
+            ? t('srcDefaultShiftRest')
+            : t('srcPolicy');
 
   return (
     <div className="space-y-6">

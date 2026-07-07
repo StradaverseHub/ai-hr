@@ -14,6 +14,7 @@ import { computeProvisionalEndOn, resolveProbationMonths } from '@/core/org';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
+import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { HIRE_ORG_FILTER_SCRIPT } from '@/lib/hire-form-filter';
 import { decideProfileChangeAction, hireAction } from './actions';
 
@@ -119,6 +120,68 @@ export default async function PeoplePage({
     { value: 'intern', labelKey: 'employmentIntern' },
   ] as const;
 
+  // Consolidated filter panel (feedback 3542ed4a): same GET params (?q=&company=&dept=&status=&type=),
+  // same query path — only the presentation moved from an inline row into a top-right panel + chips.
+  // All strings resolved here so the client island stays free of dynamic t() keys. The onboarding
+  // tour's "people-search" anchor now points at the Filter button (the search input lives inside it).
+  const filterFields: FilterField[] = [
+    {
+      kind: 'search',
+      name: 'q',
+      label: t('search'),
+      placeholder: t('searchPlaceholder'),
+      ariaLabel: t('searchAriaLabel'),
+      removeAriaLabel: t('removeFilter', { label: t('search') }),
+    },
+    {
+      kind: 'select',
+      name: 'company',
+      label: t('company'),
+      ariaLabel: t('filterCompany'),
+      allLabel: t('allCompanies'),
+      options: companies.map((c) => ({ value: c.id, label: c.name })),
+      removeAriaLabel: t('removeFilter', { label: t('company') }),
+    },
+    {
+      kind: 'select',
+      name: 'dept',
+      label: t('department'),
+      ariaLabel: t('filterDepartment'),
+      allLabel: t('allDepartments'),
+      options: departments.map((d) => ({ value: d.id, label: d.name })),
+      removeAriaLabel: t('removeFilter', { label: t('department') }),
+    },
+    {
+      kind: 'select',
+      name: 'status',
+      label: t('colStatus'),
+      ariaLabel: t('filterStatus'),
+      allLabel: t('allStatuses'),
+      options: [
+        { value: 'active', label: t('statusActive') },
+        { value: 'terminated', label: t('statusTerminated') },
+      ],
+      removeAriaLabel: t('removeFilter', { label: t('colStatus') }),
+    },
+    {
+      kind: 'select',
+      name: 'type',
+      label: t('employmentType'),
+      ariaLabel: t('filterType'),
+      allLabel: t('allTypes'),
+      options: EMPLOYMENT_TYPES.map((et) => ({ value: et.value, label: t(et.labelKey) })),
+      removeAriaLabel: t('removeFilter', { label: t('employmentType') }),
+    },
+  ];
+  const filterValues = { q, company, dept, status, type };
+  const activeFilterCount = [q, company, dept, status, type].filter(Boolean).length;
+  const filterLabels = {
+    filter: t('filter'),
+    apply: t('applyFilters'),
+    clearAll: t('clearAllFilters'),
+    activeCount: t('activeFilters', { count: activeFilterCount }),
+  };
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -137,8 +200,22 @@ export default async function PeoplePage({
                 {t('importCsv')}
               </Link>
             )}
+            <FilterPanel
+              action="/admin/personnel"
+              fields={filterFields}
+              values={filterValues}
+              labels={filterLabels}
+              dataTour="people-search"
+            />
           </div>
         }
+      />
+
+      <FilterChips
+        action="/admin/personnel"
+        fields={filterFields}
+        values={filterValues}
+        labels={filterLabels}
       />
 
       {error && (
@@ -186,54 +263,6 @@ export default async function PeoplePage({
           </p>
         </Card>
       )}
-
-      <form method="get" className="flex flex-wrap items-center gap-2">
-        <input
-          name="q"
-          defaultValue={q ?? ''}
-          placeholder={t('searchPlaceholder')}
-          data-tour="people-search"
-          className={`${inputCls} max-w-xs`}
-          aria-label={t('searchAriaLabel')}
-        />
-        <select name="company" defaultValue={company ?? ''} aria-label={t('filterCompany')} className={`${inputCls} w-auto`}>
-          <option value="">{t('allCompanies')}</option>
-          {companies.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select name="dept" defaultValue={dept ?? ''} aria-label={t('filterDepartment')} className={`${inputCls} w-auto`}>
-          <option value="">{t('allDepartments')}</option>
-          {departments.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-            </option>
-          ))}
-        </select>
-        <select name="status" defaultValue={status ?? ''} aria-label={t('filterStatus')} className={`${inputCls} w-auto`}>
-          <option value="">{t('allStatuses')}</option>
-          <option value="active">{t('statusActive')}</option>
-          <option value="terminated">{t('statusTerminated')}</option>
-        </select>
-        <select name="type" defaultValue={type ?? ''} aria-label={t('filterType')} className={`${inputCls} w-auto`}>
-          <option value="">{t('allTypes')}</option>
-          {EMPLOYMENT_TYPES.map((et) => (
-            <option key={et.value} value={et.value}>
-              {t(et.labelKey)}
-            </option>
-          ))}
-        </select>
-        <Button type="submit" variant="secondary" size="sm">
-          {t('search')}
-        </Button>
-        {hasFilters && (
-          <Link href="/admin/personnel" className="text-sm text-muted-foreground hover:text-foreground">
-            {t('clear')}
-          </Link>
-        )}
-      </form>
 
       <Card className="overflow-hidden" data-tour="people-table">
         <table className="w-full text-sm">

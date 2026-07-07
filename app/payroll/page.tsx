@@ -6,7 +6,7 @@ import { Button, Card, ErrorBanner, PageHeader, SectionHeader } from '@/componen
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { PeriodSwitcher } from '@/components/period-switcher';
-import { deleteDraftBatchAction } from './actions';
+import { deleteDraftBatchAction, resetAction } from './actions';
 import { resumeHref } from './process/selection-logic';
 
 const STATUS_STYLE: Record<string, string> = {
@@ -22,6 +22,9 @@ export default async function PayrollPage({
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.list');
+  // Payroll Reset (a03b2d9b) shares the batch-detail namespace so the confirm copy is written once.
+  const tb = await getTranslations('payroll.batch');
+  const resetOn = process.env.PAYROLL_RESET_ENABLED === 'true';
   const sp = await searchParams;
   const { error } = sp;
   const period = sp.period || '';
@@ -124,6 +127,23 @@ export default async function PayrollPage({
                           confirmLabel={t('deleteDraft')}
                         >
                           {t('deleteDraft')}
+                        </ConfirmSubmit>
+                      </form>
+                    )}
+                    {/* Reset / Zeroize (feedback a03b2d9b): PROCESSED rows only — a processed run is
+                        locked; the controlled reset returns it to Draft (payslips cleared, loan/claim
+                        side-effects reversed, audited). Closed rows render nothing: permanently
+                        immutable. Admin-only + processed-only re-enforced server-side. */}
+                    {b.status === 'processed' && resetOn && (
+                      <form action={resetAction}>
+                        <input type="hidden" name="batchId" value={b.id} />
+                        <ConfirmSubmit
+                          size="sm"
+                          title={tb('resetTitle')}
+                          description={tb('resetDescription')}
+                          confirmLabel={tb('resetConfirm')}
+                        >
+                          {tb('resetPayroll')}
                         </ConfirmSubmit>
                       </form>
                     )}

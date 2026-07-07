@@ -341,6 +341,64 @@ export function listShifts(ctx: SessionContext, companyId: string, opts?: { incl
   });
 }
 
+// ── Per-employee default shift (ec4cbf63 rev-6: "assigned to the staff in their profile") ──────────
+
+export class ShiftCompanyMismatchError extends Error {
+  constructor(message = 'A shift can only be assigned as default within its own company') {
+    super(message);
+    this.name = 'ShiftCompanyMismatchError';
+  }
+}
+
+export class ArchivedShiftError extends Error {
+  constructor(message = 'An archived shift cannot be assigned as a default shift') {
+    super(message);
+    this.name = 'ArchivedShiftError';
+  }
+}
+
+/** Assign (or clear, when shiftId is null) the DEFAULT shift on an employment — the shift the person
+ *  normally works. The attendance engine (core/attendance.ts scheduleFor) uses it on any date WITHOUT a
+ *  dated roster row: roster row → default shift → flat company policy. Mirrors payroll-policy assignPolicy:
+ *  validates the shift belongs to the SAME company as the employment (RLS won't catch a same-tenant
+ *  cross-company mis-assignment) and rejects assigning an ARCHIVED shift (an already-assigned shift that is
+ *  archived later keeps resolving — same as a dated roster row pointing at an archived shift). */
+export async function assignDefaultShift(
+  ctx: SessionContext,
+  p: { employmentId: string; shiftId: string | null },
+): Promise<{ id: string }> {
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ id: employment.id, companyId: employment.companyId, before: employment.defaultShiftId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new Error('Employment not found');
+    if (p.shiftId != null) {
+      const [sh] = await tx
+        .select({ id: shift.id, companyId: shift.companyId, archivedAt: shift.archivedAt })
+        .from(shift)
+        .where(eq(shift.id, p.shiftId))
+        .limit(1);
+      if (!sh) throw new Error('Shift not found');
+      if (sh.companyId !== emp.companyId) throw new ShiftCompanyMismatchError();
+      if (sh.archivedAt) throw new ArchivedShiftError();
+    }
+    await tx.update(employment).set({ defaultShiftId: p.shiftId }).where(eq(employment.id, p.employmentId));
+    // SUBSTRATE: state change on employment → append the DomainEvent after the write succeeds.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.default-shift.assigned',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: emp.before, after: p.shiftId },
+    });
+    return { id: p.employmentId };
+  });
+}
+
 // ── Roster assignments ──────────────────────────────────────────────
 
 /** Assign (or re-assign) a shift to an employee on a date. Upsert: one assignment per (employee, date). */

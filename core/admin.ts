@@ -11,6 +11,9 @@ import {
   isValidMonthDay,
   isWellFormedBands,
   LEAVE_DURATION_TYPES,
+  reprojectEntitlementForPolicy,
+  todayInKualaLumpur,
+  type AccrualConfig,
   type LeaveDurationType,
   type LeaveEligibility,
   type ServiceBand,
@@ -678,7 +681,13 @@ export async function createLeavePolicy(
 }
 
 /** Correct an existing entitlement in place (same effective date) — for fixing a mis-typed
- *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this. */
+ *  value. A change *going forward* is a new dated policy via createLeavePolicy, not this.
+ *
+ *  Feedback 49809272: an in-place correction now FLOWS THROUGH to already-granted balances — when the
+ *  corrected values move the entitlement (days / method / bands / scope), every affected employee's
+ *  CURRENT cycle is re-projected and a compensating ledger `adjustment` posted for the delta, in this
+ *  same transaction (see reprojectEntitlementForPolicy in core/leave.ts for the invariants). Returns
+ *  `{ affected, totalDelta }` so the action can tell the admin the blast radius. */
 export async function updateLeavePolicy(
   ctx: SessionContext,
   p: {
@@ -705,8 +714,12 @@ export async function updateLeavePolicy(
      *  (validated). */
     serviceBands?: ServiceBand[] | null;
     validFrom: string;
+    /** Feedback 49809272: tenant-local (MYT) "today" anchoring the recalculation's current cycle. The
+     *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
+     *  when omitted — the requestLeave precedent for clock reads in core. */
+    asOf?: string;
   },
-) {
+): Promise<{ affected: number; totalDelta: number }> {
   return withTenant(ctx, async (tx) => {
     // Step 4: a prior SELECT of the current row — needed both to preserve the existing accrual bands
     // (tri-state below) and to know whether gradeId/companyId/validFrom are actually CHANGING, so the
@@ -719,6 +732,7 @@ export async function updateLeavePolicy(
         gradeId: leavePolicy.gradeId,
         companyId: leavePolicy.companyId,
         validFrom: leavePolicy.validFrom,
+        validTo: leavePolicy.validTo,
         accrual: leavePolicy.accrual,
       })
       .from(leavePolicy)
@@ -759,22 +773,36 @@ export async function updateLeavePolicy(
       }
     }
 
+    const accrual = {
+      annualDays: p.annualDays,
+      carryForwardMax,
+      method: p.method || 'grant_on_hire_prorated',
+      ...expiry,
+      ...carryFlags,
+      ...bandsAccrual,
+    };
     await tx
       .update(leavePolicy)
       .set({
         gradeId,
         companyId,
-        accrual: {
-          annualDays: p.annualDays,
-          carryForwardMax,
-          method: p.method || 'grant_on_hire_prorated',
-          ...expiry,
-          ...carryFlags,
-          ...bandsAccrual,
-        },
+        accrual,
         validFrom: p.validFrom,
       })
       .where(eq(leavePolicy.id, p.id));
+    // Feedback 49809272 — flow the correction through to already-granted balances, in this same
+    // transaction (policy rewrite + compensating ledger rows + events commit or roll back together).
+    const recalc = await reprojectEntitlementForPolicy(tx, ctx, {
+      policyId: p.id,
+      leaveTypeId: current.leaveTypeId,
+      before: current.accrual as AccrualConfig | null,
+      after: accrual,
+      beforeScope: { gradeId: current.gradeId, companyId: current.companyId },
+      afterScope: { gradeId, companyId },
+      validFrom: p.validFrom,
+      validTo: current.validTo,
+      asOf: p.asOf ?? todayInKualaLumpur(),
+    });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'leave-policy',
@@ -789,8 +817,12 @@ export async function updateLeavePolicy(
         ...expiry,
         ...carryFlags,
         ...bandsAccrual,
+        // Feedback 49809272: the correction's blast radius — this event is the recalc SUMMARY (the
+        // per-employee `leave.entitlement.recalculated` events are the per-row audit).
+        recalc,
       },
     });
+    return recalc;
   });
 }
 

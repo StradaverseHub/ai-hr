@@ -52,6 +52,7 @@ import {
   accrueEarnedLeave,
   grantAdHocLeave,
   grantAdHocLeaveMulti,
+  todayInKualaLumpur,
   type LeaveDurationType,
   type ServiceBand,
 } from '@/core/leave';
@@ -386,8 +387,14 @@ export async function createLeavePolicyAction(formData: FormData) {
 
 export async function updateLeavePolicyAction(formData: FormData) {
   const s = await getSession();
+  // Feedback 49809272: an in-place correction re-projects affected employees' CURRENT cycle and posts
+  // compensating ledger adjustments. The action anchors "today" in tenant-local MYT (the requestLeave
+  // convention) and surfaces the blast radius as a toast (ToastFromQuery renders the raw string, so the
+  // text is localised HERE, not a code).
+  const t = await getTranslations('admin.leave');
+  let recalc = { affected: 0, totalDelta: 0 };
   try {
-    await updateLeavePolicy(s, {
+    recalc = await updateLeavePolicy(s, {
       id: String(formData.get('id')),
       annualDays: Number(formData.get('annualDays')),
       carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
@@ -402,11 +409,18 @@ export async function updateLeavePolicyAction(formData: FormData) {
       companyId: String(formData.get('companyId') || '') || null,
       serviceBands: serviceBandsField(formData),
       validFrom: String(formData.get('validFrom')),
+      asOf: todayInKualaLumpur(),
     });
   } catch (e) {
     fail(LEAVE, e);
   }
-  ok(LEAVE);
+  revalidatePath(LEAVE);
+  const delta = `${recalc.totalDelta > 0 ? '+' : ''}${recalc.totalDelta}`;
+  redirect(
+    `${LEAVE}?toast=${encodeURIComponent(
+      recalc.affected > 0 ? t('recalcToast', { count: recalc.affected, delta }) : t('recalcNoneToast'),
+    )}`,
+  );
 }
 
 /** ADR-0066 (re-plan round 5): festive / one-off leave grant. Returns the affected-employee count for the

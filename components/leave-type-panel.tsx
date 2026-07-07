@@ -899,6 +899,9 @@ export function LeaveTypePanel({
                   className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3"
                 >
                   <input type="hidden" name="id" value={p.id} />
+                  {/* Feedback 49809272: editing IN PLACE recalculates affected employees' current-cycle
+                      balances automatically — tell the admin before they save. */}
+                  <p className="w-full text-[11px] text-muted-foreground">{t('recalcInPlaceHint')}</p>
                   <Field label={t('daysPerYearLabel')}>
                     <input
                       name="annualDays"
