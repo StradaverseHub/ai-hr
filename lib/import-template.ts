@@ -64,13 +64,13 @@ export const employeeTemplate: TemplateSpec = {
   // Order matches columns above (required ∪ optional). Departments are Finance / Operations only.
   sampleRows: [
     [
-      'TMPL0001', // employee_code (HR-supplied; not in the demo seed so a raw download→upload round-trips)
       'Aisyah Binti Rahman', // full_name
       'aisyah.template@example.com', // email
       'Finance', // department
       '2026-01-06', // hired_on
       '770214086521', // ic_number (valid 12-digit MyKad; not in the demo seed)
       '5000', // basic_salary
+      'TMPL0001', // employee_code (optional, HR-suppliable; not in the demo seed so a raw download→upload round-trips)
       '+60 12-345 6789', // phone
       'Executive', // position
       'CC1', // cost_center
@@ -88,13 +88,13 @@ export const employeeTemplate: TemplateSpec = {
       'MALAYSIAN', // epf_citizenship
     ],
     [
-      'TMPL0002', // employee_code
       'Daniel Tan Wei Ming', // full_name
       'daniel.template@example.com', // email
       'Operations', // department
       '2026-02-03', // hired_on
       '880901105533', // ic_number
       '4200', // basic_salary
+      'TMPL0002', // employee_code (optional)
       '', // phone
       '', // position
       '', // cost_center

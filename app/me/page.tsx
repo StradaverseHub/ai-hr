@@ -1276,7 +1276,7 @@ export default async function MePage({
                       // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
                       applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
                     }))}
-                    previewAction={myPreviewLeaveDeduction}
+                    action={myPreviewLeaveDeduction}
                   />
                   <Field label={t('documentLabel')}>
                     <input

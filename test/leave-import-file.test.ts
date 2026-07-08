@@ -25,7 +25,9 @@ function aoaToXlsxBuffer(aoa: unknown[][], sheetName = 'Sheet1'): ArrayBuffer {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  const u8 = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as Uint8Array;
+  // XLSX.write(type:'array') returns an ArrayBuffer; normalise via Uint8Array so this helper is
+  // robust either way, then hand back a tight ArrayBuffer copy (as File.arrayBuffer() would give).
+  const u8 = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
   return u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
 }
 
@@ -79,7 +81,7 @@ describe('leave import — spreadsheet → CSV', () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws1, 'First');
     XLSX.utils.book_append_sheet(wb, ws2, 'Second');
-    const u8 = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as Uint8Array;
+    const u8 = new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
     const buf = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength) as ArrayBuffer;
     const csv = await workbookToCsvText(buf);
     const { records } = parseCsvRecords(csv);

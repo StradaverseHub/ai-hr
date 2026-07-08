@@ -2,7 +2,7 @@
  * ec4cbf63 rev-6 — per-employee DEFAULT shift ("assigned to the staff in their profile").
  *
  * Service (core/roster.ts assignDefaultShift):
- *  - happy path persists employment.default_shift_id and emits employment.default-shift.assigned with
+ *  - happy path persists employment.default_shift_id and emits employment.shift-arrangement.assigned with
  *    { before, after }; null clears the assignment (and emits with the reverse payload)
  *  - a cross-company shift is rejected (ShiftCompanyMismatchError — same-tenant, so RLS can't catch it)
  *  - an archived shift is rejected (ArchivedShiftError)
@@ -100,26 +100,28 @@ beforeEach(async () => {
 });
 
 describe('assignDefaultShift — service + substrate', () => {
-  it('assigns, emits employment.default-shift.assigned with { before, after }, and null clears', async () => {
+  it('assigns, emits employment.shift-arrangement.assigned with { before, after }, and null clears', async () => {
     const a = adminCtx(b);
     const s = await longShift();
 
     await assignDefaultShift(a, { employmentId: empId, shiftId: s.id });
     expect(await storedDefaultShift(empId)).toBe(s.id);
     expect(await eventTypesFor(b.tenantId, empId)).toEqual(
-      expect.arrayContaining(['employment.default-shift.assigned']),
+      expect.arrayContaining(['employment.shift-arrangement.assigned']),
     );
-    expect(await latestEventPayload(b.tenantId, empId, 'employment.default-shift.assigned')).toMatchObject({
-      before: null,
-      after: s.id,
+    // 3e8350db: the payload now records the full arrangement transition — { shiftType, defaultShiftId }
+    // objects on both sides (legacy assignDefaultShift maps set → fixed, clear → roster).
+    expect(await latestEventPayload(b.tenantId, empId, 'employment.shift-arrangement.assigned')).toMatchObject({
+      before: { defaultShiftId: null, shiftType: 'roster' },
+      after: { defaultShiftId: s.id, shiftType: 'fixed' },
     });
 
     // Clearing is the same write path — the event payload records the reverse transition.
     await assignDefaultShift(a, { employmentId: empId, shiftId: null });
     expect(await storedDefaultShift(empId)).toBeNull();
-    expect(await latestEventPayload(b.tenantId, empId, 'employment.default-shift.assigned')).toMatchObject({
-      before: s.id,
-      after: null,
+    expect(await latestEventPayload(b.tenantId, empId, 'employment.shift-arrangement.assigned')).toMatchObject({
+      before: { defaultShiftId: s.id, shiftType: 'fixed' },
+      after: { defaultShiftId: null, shiftType: 'roster' },
     });
   });
 

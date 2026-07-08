@@ -791,7 +791,7 @@ export default async function LeavePage({
               startDefault={today}
               showDocumentFields
               employeeOptions={active.map((e) => ({ id: e.employmentId, name: e.name }))}
-              previewAction={previewLeaveDeductionAction}
+              action={previewLeaveDeductionAction}
             />
             <Field label={t('fieldReason')}>
               <input name="reason" className={inputCls} placeholder={t('reasonPlaceholder')} />

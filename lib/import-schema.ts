@@ -27,10 +27,14 @@ export type ImportResult = {
   skipped: number;
 };
 
-/** Columns the importer recognises. Required ones must be present and non-empty per row. */
+/** Columns the importer recognises. Required ones must be present and non-empty per row.
+ *  employee_code is OPTIONAL (38668d9b gives HR the ABILITY to key in an Employee ID, not an
+ *  obligation): when the column is absent or a cell is blank, hireEmployee auto-generates the
+ *  next code; when supplied it is validated (format + file/tenant uniqueness). */
 export const IMPORT_COLUMNS = {
-  required: ['employee_code', 'full_name', 'email', 'department', 'hired_on', 'ic_number', 'basic_salary'],
+  required: ['full_name', 'email', 'department', 'hired_on', 'ic_number', 'basic_salary'],
   optional: [
+    'employee_code',
     'phone',
     'position',
     'cost_center',

@@ -313,7 +313,9 @@ describe('Payroll Reset — resetProcessedBatch (DB)', () => {
       grants: [{ role: 'payroll_partner', companyId: base.companyId }],
     };
 
-    await expect(resetProcessedBatch(partner, { batchId })).rejects.toThrow(/administrator/);
+    // 9bc442bc: denial now comes from the granular payroll-permission gate ("You do not have the
+    // 'payroll.rollback' payroll permission.") — same admin-only semantics, new message.
+    await expect(resetProcessedBatch(partner, { batchId })).rejects.toThrow(/'payroll\.rollback' payroll permission/);
     expect((await batchRow(batchId)).status).toBe('processed');
     expect(await eventTypesFor(base.tenantId, batchId)).not.toContain('payroll-batch.reset');
   });

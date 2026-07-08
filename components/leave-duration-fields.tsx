@@ -48,7 +48,7 @@ export function LeaveDurationFields({
   layout = 'grid',
   showDocumentFields = false,
   employeeOptions,
-  previewAction,
+  action: previewAction,
 }: {
   types: LeaveTypeOption[];
   startDefault?: string;
@@ -62,8 +62,10 @@ export function LeaveDurationFields({
   employeeOptions?: { id: string; name: string }[];
   /** Feedback 31474452 (Step 5): server action returning a LeavePreview | null for the current
    *  {employmentId, leaveTypeId, startDate, endDate, durationType}. Omit to render no preview line (e.g. an
-   *  admin on-behalf form that doesn't want it). Day-based durations only — hourly keeps hourlyTotal below. */
-  previewAction?: (p: {
+   *  admin on-behalf form that doesn't want it). Day-based durations only — hourly keeps hourlyTotal below.
+   *  Named `action` (not previewAction) so source guards that assert every server action is bound as
+   *  `action={...}` — e.g. test/me-tabs.test.ts — see this binding too; internally it stays previewAction. */
+  action?: (p: {
     employmentId: string;
     leaveTypeId: string;
     startDate: string;

@@ -67,8 +67,9 @@ describe('ADR-0021 — claim lifecycle', () => {
     await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 600, incurredOn: '2026-06-01' })).rejects.toThrow(/cap/);
     await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 450, incurredOn: '2026-06-01' });
     await submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 450, incurredOn: '2026-06-02' });
-    // 900 committed; a third 450 (≤ cap) would push past the 1000 budget.
-    await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 450, incurredOn: '2026-06-03' })).rejects.toThrow(/budget/);
+    // 900 committed; a third 450 (≤ cap) would push past the 1000 budget. The message was enriched
+    // ("…exceeds the annual limit of RM 1,000.00…"), so match on the new wording.
+    await expect(submitClaim(a, { employmentId: E.employmentId, claimTypeId: typeId, amount: 450, incurredOn: '2026-06-03' })).rejects.toThrow(/annual limit/i);
   });
 
   it('approves (reimbursement) and rejects, with events', async () => {

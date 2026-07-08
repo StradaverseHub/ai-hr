@@ -65,7 +65,7 @@ function nowParts() {
 /** Feedback 31474452 (Step 5): read-only pre-submission preview for the /me leave form — "this will deduct X
  *  day(s)" + balance before/after — called from the client via useTransition (see
  *  components/leave-duration-fields.tsx). Always resolves the CALLER'S OWN employment (never a form field —
- *  `employmentId` on `p` is accepted only so this matches the shared previewAction prop shape with the
+ *  `employmentId` on `p` is accepted only so this matches the shared preview `action` prop shape with the
  *  /leave form and is IGNORED here), same trust boundary as myRequestLeave. Day-based durations only. */
 export async function myPreviewLeaveDeduction(p: {
   employmentId?: string;

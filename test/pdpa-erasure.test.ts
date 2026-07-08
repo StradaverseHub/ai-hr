@@ -62,7 +62,32 @@ describe('erasePersonPii — PDPA retention guard (ADR-0030, #159)', () => {
     const ctx = adminCtx(b);
     const { personId, employmentId } = await makeSubject({ terminatedOn: null });
     const r = await erasePersonPii(ctx, { subjectEmploymentId: employmentId, scope: 'all', reason: 'subject request', requestRef: 'DPO-1' });
-    expect(r.erased.sort()).toEqual(['address', 'emergencyContactName', 'emergencyContactPhone', 'phone']);
+    // b4682879 widened the PII registry: structured address + extra contact fields (contact scope), name
+    // parts + s.40 demographics + the profile photo (identity scope) — all erasable immediately.
+    expect(r.erased.sort()).toEqual([
+      'address',
+      'addressLine1',
+      'addressLine2',
+      'addressLine3',
+      'city',
+      'country',
+      'emergencyContactAddress',
+      'emergencyContactName',
+      'emergencyContactPhone',
+      'emergencyContactPhone2',
+      'emergencyContactRelationship',
+      'firstName',
+      'lastName',
+      'nationality',
+      'personalEmail',
+      'phone',
+      'postcode',
+      'preferredName',
+      'profilePhoto',
+      'race',
+      'religion',
+      'state',
+    ]);
     expect(r.withheld.map((w) => w.field).sort()).toEqual(['bankAccountNo', 'bankName', 'dateOfBirth', 'epfNumber', 'socsoNumber', 'taxNumber']);
     expect(r.withheld.every((w) => /retention/i.test(w.reason))).toBe(true);
 

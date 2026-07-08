@@ -1605,6 +1605,9 @@ describe('ESS — payslip detail (ADR-0012 Phase 2)', () => {
     await setStatutoryProfileMY(a, { personId: E.personId, icNumber: '900101010010' });
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: '2026-05' });
     await generatePayslips(a, { batchId });
+    // f3148da1: ESS payslip reads are release-gated — a processed-but-never-released batch is invisible
+    // to the employee. Close the batch (NULL release config ⇒ releasedAt = closedAt) before reading.
+    await closeBatch(a, { batchId });
     const [slip] = await owner.db
       .select({ id: schema.payslip.id })
       .from(schema.payslip)

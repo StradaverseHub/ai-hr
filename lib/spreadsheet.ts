@@ -44,16 +44,21 @@ function toIsoDate(d: Date): string {
  * (parseCsvRecords → analyze → commit) is byte-identical. Throws 'EMPTY_SHEET' when the first sheet
  * has no rows so the caller can surface a clear i18n message.
  */
-export async function workbookToCsvText(buf: ArrayBuffer): Promise<string> {
+export async function workbookToCsvText(buf: ArrayBuffer | Uint8Array): Promise<string> {
   const XLSX = await import('xlsx');
+  // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
+  // callers handing us File.arrayBuffer() output OR raw bytes (and to SheetJS's own type drift).
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   // cellDates → real Date objects for date-formatted cells; we ISO-format them below so a spreadsheet
   // date lands as the engine's YYYY-MM-DD (DATE_RE) instead of an Excel serial number or locale string.
-  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: true });
   const firstName = wb.SheetNames[0];
   if (!firstName) throw new Error('EMPTY_SHEET');
   const ws = wb.Sheets[firstName];
-  // header:1 → array-of-arrays (no header inference); raw:false → formatted strings for non-date cells.
-  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, blankrows: false });
+  // header:1 → array-of-arrays (no header inference); raw:true → raw cell values, so a date cell stays
+  // the Date instance cellDates produced (raw:false would substitute the FORMATTED text, e.g. "1/1/26",
+  // which fails the engine's DATE_RE). Non-date cells are strings/numbers and are String()-ed below.
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false });
   const rows = (aoa as Cell[][]).map((row) =>
     row.map((cell) => (cell instanceof Date ? toIsoDate(cell) : cell)),
   );
@@ -74,6 +79,7 @@ export async function buildXlsx(header: string[], rows: string[][]): Promise<Uin
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Leave Import');
-  // type:'array' → ArrayBuffer/Uint8Array bytes, safe to wrap in a browser Blob for download.
-  return XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as Uint8Array;
+  // type:'array' → SheetJS returns an ArrayBuffer (despite older typings suggesting Uint8Array);
+  // wrap it so callers always get real bytes, safe for a browser Blob or Buffer.from().
+  return new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
 }

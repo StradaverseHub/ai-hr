@@ -45,7 +45,7 @@ type ResolvedRow = {
     costCenterId?: string;
     employmentType: 'full_time' | 'part_time' | 'contract' | 'intern';
     hiredOn: string;
-    employeeCode: string;
+    employeeCode?: string; // optional — blank/absent falls through to hireEmployee's auto counter
     grantLeaveTypes: { id: string; code: string }[];
   };
   statutory: {
@@ -121,15 +121,16 @@ async function analyze(
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
 
-    // Employee ID (feedback 38668d9b): HR-supplied, required, alphanumeric + dash max 9, unique in the
-    // file and across the tenant. The normalized (uppercased) value is what gets stored + hired with.
+    // Employee ID (feedback 38668d9b): HR MAY supply one — the feature is manual-entry ABILITY, not an
+    // obligation. Blank or absent → hireEmployee auto-generates via nextEmployeeCode, exactly like a
+    // hand hire without an ID. When supplied: alphanumeric + dash max 9, unique in the file and across
+    // the tenant; the normalized (uppercased) value is what gets stored + hired with.
     const codeRaw = norm(rec.employee_code);
     const codeNorm = normalizeEmployeeCode(codeRaw);
-    if (!codeRaw) errors.push('Missing employee_code');
-    else if (!isValidEmployeeCode(codeRaw))
+    if (codeRaw && !isValidEmployeeCode(codeRaw))
       errors.push(`Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`);
-    else if (seenCodes.has(codeNorm)) errors.push('Duplicate employee_code in this file');
-    else if (existingCodes.has(codeNorm)) errors.push(`Employee ID "${codeNorm}" is already in use`);
+    else if (codeRaw && seenCodes.has(codeNorm)) errors.push('Duplicate employee_code in this file');
+    else if (codeRaw && existingCodes.has(codeNorm)) errors.push(`Employee ID "${codeNorm}" is already in use`);
     if (codeRaw && isValidEmployeeCode(codeRaw)) seenCodes.add(codeNorm);
 
     if (!fullName) errors.push('Missing full_name');
@@ -249,7 +250,8 @@ async function analyze(
         costCenterId,
         employmentType,
         hiredOn,
-        employeeCode: codeNorm,
+        // Blank → undefined so hireEmployee falls through to the nextEmployeeCode auto-counter.
+        employeeCode: codeNorm || undefined,
         grantLeaveTypes: grants,
       },
       statutory: {
