@@ -19,9 +19,15 @@ import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
+import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
-import { requestLeaveAction, requestLeaveCancellationAction, previewLeaveDeductionAction } from './actions';
+import {
+  requestLeaveAction,
+  requestLeaveCancellationAction,
+  adminCancelLeaveAction,
+  previewLeaveDeductionAction,
+} from './actions';
 
 const REQ_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -459,6 +465,13 @@ export default async function LeavePage({
         </div>
       )}
 
+      {/* HR Admin Leave Cancellation (feedback 22e68ff0): success banner after an on-behalf cancellation. */}
+      {sp.toast === 'adminCancelled' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+          {t('adminCancelledToast')}
+        </div>
+      )}
+
       {sp.warnHoliday && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
           {t('errors.holidaysIncomplete', {
@@ -679,6 +692,25 @@ export default async function LeavePage({
                         // working dates (holiday-aware, strictly after MYT today); when none remain the button
                         // renders disabled with a reason rather than a silent dash.
                         const isOwn = session.personId != null && r.personId === session.personId;
+                        // HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0). An admin
+                        // viewing SOMEONE ELSE's pending/approved leave gets an immediate "Cancel leave" button
+                        // (no approval workflow). An approved REPLACEMENT (TOIL) leave is excluded — its register
+                        // consume has no ledger inverse (matches the service gate). The self-ban mirrors the
+                        // service: the admin's OWN leave falls through to the normal employee give-back flow.
+                        if (
+                          admin &&
+                          !isOwn &&
+                          (r.status === 'pending' || r.status === 'approved') &&
+                          !(r.status === 'approved' && r.typeCode === 'REPLACEMENT')
+                        ) {
+                          return (
+                            <AdminCancelLeaveDialog
+                              leaveRequestId={r.id}
+                              back="/leave"
+                              submitAction={adminCancelLeaveAction}
+                            />
+                          );
+                        }
                         const cancellableShape =
                           r.status === 'approved' &&
                           r.durationType === 'full_day' &&

@@ -612,6 +612,13 @@
     "cancelDialogDismiss": "Close",
     "cancelReasonNothingLeft": "No dates left to cancel on this leave.",
     "cancelPillAffordanceLabel": "Cancel dates from this leave",
+    "adminCancelButton": "Cancel leave",
+    "adminCancelDialogTitle": "Cancel leave on behalf of employee",
+    "adminCancelDialogDescription": "Are you sure you want to cancel this leave on behalf of the employee? The balance will be restored and the employee will be notified. This takes effect immediately with no approval required.",
+    "adminCancelReasonPlaceholder": "Reason (optional)",
+    "adminCancelConfirmLabel": "Confirm cancellation",
+    "adminCancelledToast": "Leave cancelled — the balance has been restored and the employee has been notified.",
+    "adminCancelPillAffordanceLabel": "Cancel this leave on behalf of the employee",
     "fieldDurationType": "Duration",
     "duration": {
       "full_day": "Full day",

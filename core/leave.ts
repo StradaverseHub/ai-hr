@@ -2691,6 +2691,164 @@ export async function decideLeaveCancellation(
   });
 }
 
+/**
+ * HR-initiated cancellation of an employee's WHOLE leave request, on their behalf (feedback 22e68ff0).
+ *
+ * Unlike the employee-driven partial give-back (requestLeaveCancellation → decideLeaveCancellation), this is
+ * an immediate, no-approval-workflow HR power: an HR admin cancels a PENDING or APPROVED leave for another
+ * employee for operational/payroll/audit reasons. It flips the request to 'cancelled', restores the entitlement
+ * balance (by reversing the net ledger debit), supersedes any open give-back on the same leave, and appends a
+ * distinct `leave-request.admin-cancelled` event carrying the REAL HR actor (the audit must show HR did it,
+ * not the employee) plus the display fields the employee notification needs.
+ *
+ * Deliberately NOT `assertCanDecide` (which admits managers) — immediate on-behalf cancellation is HR-only.
+ * A manager keeps the existing decide paths. Company scope is free: the row is loaded under RLS, so a
+ * company-scoped hr_admin can't see (⇒ can't cancel) another company's request.
+ */
+export async function adminCancelLeave(
+  ctx: SessionContext,
+  p: { leaveRequestId: string; reason?: string; cancelledByEmploymentId?: string },
+): Promise<{ previousStatus: 'pending' | 'approved'; restoredDays: number }> {
+  return withTenant(ctx, async (tx) => {
+    // HR-only. isAdmin() = hr_admin OR super_admin; a manager (or any other role) is refused here.
+    if (!isAdmin(ctx)) {
+      throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee');
+    }
+    const isSuper = ctx.roles?.includes('super_admin') ?? false;
+
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+
+    // Self-ban: an HR admin's own leave goes through the normal employee flow, not this on-behalf power
+    // (mirrors assertCanDecide's self-approval ban). super_admin keeps the sole-admin escape hatch.
+    if (!isSuper) {
+      const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+      if (ctx.personId && ctx.personId === subjectPersonId) {
+        throw new LeaveCancellationNotAllowedError('an HR administrator cannot cancel their own leave here');
+      }
+    }
+
+    // Status gate: only pending | approved are cancellable. Already-cancelled / rejected → refuse, naming the
+    // current status (localizeLeaveError maps the typed error to the localized cancellationNotAllowed message).
+    if (req.status !== 'pending' && req.status !== 'approved') {
+      throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`);
+    }
+    const previousStatus = req.status as 'pending' | 'approved';
+
+    const [lt] = await tx
+      .select({ code: leaveType.code, name: leaveType.name })
+      .from(leaveType)
+      .where(eq(leaveType.id, req.leaveTypeId))
+      .limit(1);
+
+    // An APPROVED REPLACEMENT (time-off-in-lieu) leave already consumed the toil_accrual register at approval,
+    // and there is no inverse of consumeReplacementLeaveTx — restoring it via the ledger would reintroduce the
+    // ghost-credit bug. A PENDING replacement never consumed the register, so it cancels cleanly.
+    if (previousStatus === 'approved' && lt?.code === 'REPLACEMENT') {
+      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
+    }
+
+    // Closed-payroll gate: never retroactively alter a period whose payslip was finalised. For each DISTINCT
+    // month spanned by the leave, reject if that employee's batch is closed. (HR may cancel past/started leave —
+    // the admin override vs. the employee's future-only rule — but never a finalised payroll month.)
+    const months = [...new Set(eachDate(req.startDate, req.endDate).map((d) => d.slice(0, 7)))];
+    for (const m of months) {
+      if (await cancelDatePeriodClosed(tx, req.employmentId, `${m}-01`)) {
+        throw new LeaveCancellationPeriodClosedError(`${m}-01`);
+      }
+    }
+
+    // ── Effect ──────────────────────────────────────────────────────────────────────────────────────────
+    // 1) Restore the balance by reversing the NET ledger debit sourced to this request. Net-sum (not req.days)
+    //    is robust to per-date partial approvals, survivors of a prior cancellation split (whose rows net to
+    //    the survivor's current debit), half-day/hourly fractions, and unpaid types that never debited (net 0
+    //    ⇒ nothing to reverse). Pending leave has no debit ⇒ net 0 ⇒ restoredDays 0.
+    const [netRow] = await tx
+      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+      .from(leaveLedger)
+      .where(eq(leaveLedger.sourceRequestId, req.id));
+    const net = Number(netRow?.net ?? 0);
+    let restoredDays = 0;
+    if (net < 0) {
+      restoredDays = round2(-net);
+      await tx.insert(leaveLedger).values({
+        tenantId: ctx.tenantId,
+        employmentId: req.employmentId,
+        leaveTypeId: req.leaveTypeId,
+        entryType: 'debit',
+        days: restoredDays.toFixed(2), // positive = reversal of the original negative debit
+        sourceRequestId: req.id,
+        effectiveOn: req.startDate, // same cycle/carry window as the original debit
+      });
+    }
+
+    // 2) Flip the request to cancelled. decidedByEmploymentId/decidedAt are left untouched (they record the
+    //    ORIGINAL approval decision; the cancellation's who/when lives in the event below).
+    await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
+
+    // 3) Supersede any open employee give-back on this leave, so no dangling pending card sits in /approvals
+    //    (decideLeaveCancellation would then error on it). The column CHECK is pending|approved|rejected, so a
+    //    superseded row becomes 'rejected' with HR as decider, plus a per-row rejected event.
+    const openGiveBacks = await tx
+      .select({ id: leaveCancellationRequest.id })
+      .from(leaveCancellationRequest)
+      .where(
+        and(
+          eq(leaveCancellationRequest.leaveRequestId, req.id),
+          eq(leaveCancellationRequest.status, 'pending'),
+        ),
+      );
+    if (openGiveBacks.length > 0) {
+      await tx
+        .update(leaveCancellationRequest)
+        .set({ status: 'rejected', decidedByEmploymentId: p.cancelledByEmploymentId ?? null, decidedAt: sql`now()` })
+        .where(
+          and(
+            eq(leaveCancellationRequest.leaveRequestId, req.id),
+            eq(leaveCancellationRequest.status, 'pending'),
+          ),
+        );
+      for (const gb of openGiveBacks) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'leave-cancellation-request',
+          aggregateId: gb.id,
+          eventType: 'leave-cancellation.rejected',
+          actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
+          payload: { leaveRequestId: req.id, supersededByAdminCancellation: true },
+        });
+      }
+    }
+
+    // 4) Substrate discipline — the audit trail for this HR action. A DISTINCT event type (not the split
+    //    machinery's leave-request.cancelled) so the notification registry keys the employee notice without
+    //    also firing on a manager approving an employee's own give-back. Payload carries the display fields
+    //    (type/dates) the notification renderer needs (renderers are payload-only) + the full audit facts.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-request',
+      aggregateId: req.id,
+      eventType: 'leave-request.admin-cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: {
+        previousStatus,
+        newStatus: 'cancelled',
+        restoredDays,
+        reason: p.reason?.trim() || null,
+        cancelledByEmploymentId: p.cancelledByEmploymentId ?? null,
+        leaveTypeCode: lt?.code ?? null,
+        leaveTypeName: lt?.name ?? null,
+        startDate: req.startDate,
+        endDate: req.endDate,
+      },
+    });
+
+    return { previousStatus, restoredDays };
+  });
+}
+
 // ───────────────────── Leave-year boundary (STATUTORY-SOURCES §5) ─────────────────────
 
 /** Types granted as standing yearly entitlements; situational types are claimed per event. */

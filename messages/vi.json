@@ -612,6 +612,13 @@
     "cancelDialogDismiss": "Đóng",
     "cancelReasonNothingLeft": "Không còn ngày nào để hủy trong đơn nghỉ phép này.",
     "cancelPillAffordanceLabel": "Hủy ngày từ đơn nghỉ này",
+    "adminCancelButton": "Hủy nghỉ phép",
+    "adminCancelDialogTitle": "Hủy nghỉ phép thay cho nhân viên",
+    "adminCancelDialogDescription": "Bạn có chắc muốn hủy đơn nghỉ này thay cho nhân viên không? Số dư sẽ được khôi phục và nhân viên sẽ được thông báo. Việc này có hiệu lực ngay lập tức mà không cần phê duyệt.",
+    "adminCancelReasonPlaceholder": "Lý do (tùy chọn)",
+    "adminCancelConfirmLabel": "Xác nhận hủy",
+    "adminCancelledToast": "Đã hủy nghỉ phép — số dư đã được khôi phục và nhân viên đã được thông báo.",
+    "adminCancelPillAffordanceLabel": "Hủy đơn nghỉ này thay cho nhân viên",
     "fieldDurationType": "Thời lượng",
     "duration": {
       "full_day": "Cả ngày",

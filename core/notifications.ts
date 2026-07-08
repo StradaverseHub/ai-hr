@@ -89,6 +89,19 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     category: 'leave',
     render: () => ({ severity: 'warning', title: 'Leave not approved', body: 'Your leave request was rejected.', linkPath: '/me' }),
   },
+  // HR cancelled a leave on the employee's behalf (feedback 22e68ff0). Default recipient = the event's
+  // subjectEmploymentId (the affected employee) — no fan-out resolver. The payload carries the display facts
+  // (type + dates) the ticket wants in the notice. English-only strings, matching every other registry entry.
+  'leave-request.admin-cancelled': {
+    kind: 'leave.admin-cancelled',
+    category: 'leave',
+    render: (p) => ({
+      severity: 'warning',
+      title: 'Leave cancelled by HR',
+      body: `Your ${p?.leaveTypeName ?? 'leave'} (${p?.startDate ?? ''} → ${p?.endDate ?? ''}) has been cancelled by an HR administrator.`,
+      linkPath: '/me',
+    }),
+  },
   'toil.accrued': {
     kind: 'toil.accrued',
     category: 'toil',

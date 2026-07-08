@@ -612,6 +612,13 @@
     "cancelDialogDismiss": "Tutup",
     "cancelReasonNothingLeft": "Tiada tarikh yang boleh dibatalkan pada cuti ini.",
     "cancelPillAffordanceLabel": "Batal tarikh daripada cuti ini",
+    "adminCancelButton": "Batal cuti",
+    "adminCancelDialogTitle": "Batal cuti bagi pihak pekerja",
+    "adminCancelDialogDescription": "Adakah anda pasti mahu membatalkan cuti ini bagi pihak pekerja? Baki akan dipulihkan dan pekerja akan dimaklumkan. Ia berkuat kuasa serta-merta tanpa memerlukan kelulusan.",
+    "adminCancelReasonPlaceholder": "Sebab (pilihan)",
+    "adminCancelConfirmLabel": "Sahkan pembatalan",
+    "adminCancelledToast": "Cuti dibatalkan — baki telah dipulihkan dan pekerja telah dimaklumkan.",
+    "adminCancelPillAffordanceLabel": "Batalkan cuti ini bagi pihak pekerja",
     "fieldDurationType": "Tempoh",
     "duration": {
       "full_day": "Sehari penuh",

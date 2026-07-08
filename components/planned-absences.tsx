@@ -61,6 +61,10 @@ export async function PlannedAbsences({
   // Both optional — when either is absent the calendar simply renders no cancel affordance (read-only mode).
   viewerPersonId,
   cancelAction,
+  // HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0): when the viewer is an HR admin,
+  // adminCancelAction is the SAME action the Leave page posts. Both optional — absent ⇒ no admin affordance.
+  viewerIsAdmin,
+  adminCancelAction,
 }: {
   rows: Row[];
   from: string;
@@ -69,6 +73,8 @@ export async function PlannedAbsences({
   controls?: ReactNode;
   viewerPersonId?: string | null;
   cancelAction?: (fd: FormData) => void | Promise<void>;
+  viewerIsAdmin?: boolean;
+  adminCancelAction?: (fd: FormData) => void | Promise<void>;
 }) {
   const t = await getTranslations('components.plannedAbsences');
   const tLeave = await getTranslations('leave');
@@ -118,6 +124,17 @@ export async function PlannedAbsences({
     !l.pendingCancellationId &&
     (l.candidateCancelDates?.length ?? 0) > 0;
 
+  // HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0): an HR admin may cancel ANOTHER
+  // employee's pending/approved leave immediately from the calendar. Mirrors the Leave-page gate (page.tsx):
+  // admin viewer, not the viewer's OWN person (self-ban — own leave uses the give-back flow), pending|approved,
+  // and NOT an approved REPLACEMENT (no TOIL-register inverse). The service re-validates authoritatively.
+  const canOfferAdminCancel = !!adminCancelAction && !!viewerIsAdmin;
+  const adminCancelEligible = (personId: string, l: Leave): boolean =>
+    canOfferAdminCancel &&
+    (viewerPersonId == null || personId !== viewerPersonId) &&
+    (l.status === 'pending' || l.status === 'approved') &&
+    !(l.status === 'approved' && l.typeCode === 'REPLACEMENT');
+
   // Translate per-pill titles + status labels server-side so the client grid stays i18n-free.
   const gridRows: GridRow[] = rows.map((emp) => ({
     id: emp.id,
@@ -137,6 +154,8 @@ export async function PlannedAbsences({
       // Cancel affordance: only the fields the client grid needs to render CancelDatesDialog for THIS pill.
       cancelEligible: cancelEligible(emp.id, l),
       candidateCancelDates: cancelEligible(emp.id, l) ? (l.candidateCancelDates ?? []) : [],
+      // HR Admin Leave Cancellation (feedback 22e68ff0): whether an HR admin can immediately cancel THIS pill.
+      adminCancelEligible: adminCancelEligible(emp.id, l),
     })),
   }));
 
@@ -177,6 +196,8 @@ export async function PlannedAbsences({
           showLessLabel={t('showLess')}
           cancelAction={cancelAction}
           cancelPillLabel={tLeave('cancelPillAffordanceLabel')}
+          adminCancelAction={adminCancelAction}
+          adminCancelPillLabel={tLeave('adminCancelPillAffordanceLabel')}
         />
       )}
     </Card>

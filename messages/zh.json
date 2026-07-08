@@ -612,6 +612,13 @@
     "cancelDialogDismiss": "关闭",
     "cancelReasonNothingLeft": "此假期没有可取消的日期。",
     "cancelPillAffordanceLabel": "从此假期取消日期",
+    "adminCancelButton": "取消休假",
+    "adminCancelDialogTitle": "代员工取消休假",
+    "adminCancelDialogDescription": "您确定要代该员工取消此休假吗？余额将被恢复，并会通知该员工。此操作立即生效，无需审批。",
+    "adminCancelReasonPlaceholder": "原因（可选）",
+    "adminCancelConfirmLabel": "确认取消",
+    "adminCancelledToast": "休假已取消——余额已恢复，并已通知该员工。",
+    "adminCancelPillAffordanceLabel": "代该员工取消此休假",
     "fieldDurationType": "时长",
     "duration": {
       "full_day": "全天",

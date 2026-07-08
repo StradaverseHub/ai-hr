@@ -612,6 +612,13 @@
     "cancelDialogDismiss": "மூடு",
     "cancelReasonNothingLeft": "இந்த விடுப்பில் ரத்துசெய்ய தேதிகள் எதுவும் இல்லை.",
     "cancelPillAffordanceLabel": "இந்த விடுப்பிலிருந்து தேதிகளை ரத்துசெய்",
+    "adminCancelButton": "விடுப்பை ரத்துசெய்",
+    "adminCancelDialogTitle": "பணியாளர் சார்பாக விடுப்பை ரத்துசெய்",
+    "adminCancelDialogDescription": "பணியாளர் சார்பாக இந்த விடுப்பை ரத்துசெய்ய விரும்புகிறீர்களா? இருப்பு மீட்டமைக்கப்படும், பணியாளருக்கு அறிவிக்கப்படும். இது எந்த ஒப்புதலும் தேவையின்றி உடனடியாக நடைமுறைக்கு வரும்.",
+    "adminCancelReasonPlaceholder": "காரணம் (விருப்பம்)",
+    "adminCancelConfirmLabel": "ரத்துசெய்தலை உறுதிப்படுத்து",
+    "adminCancelledToast": "விடுப்பு ரத்துசெய்யப்பட்டது — இருப்பு மீட்டமைக்கப்பட்டது, பணியாளருக்கு அறிவிக்கப்பட்டது.",
+    "adminCancelPillAffordanceLabel": "பணியாளர் சார்பாக இந்த விடுப்பை ரத்துசெய்",
     "fieldDurationType": "கால அளவு",
     "duration": {
       "full_day": "முழு நாள்",
