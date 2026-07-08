@@ -4035,7 +4035,7 @@
     "catalogTitle": "Kitaran",
     "seedDefaults": "Tambah kitaran lalai",
     "colName": "Nama",
-    "colRunType": "Gelagat pemprosesan",
+    "colRunType": "Jenis larian",
     "colRemarks": "Catatan",
     "colSort": "Susunan",
     "colStatus": "Status",
@@ -4055,7 +4055,7 @@
     "cancelEdit": "Batal",
     "namePlaceholder": "cth. Bonus Akhir Tahun",
     "remarksPlaceholder": "Label pilihan (cth. Gaji Pendahuluan)",
-    "runTypeHelp": "Gelagat pemprosesan menentukan peraturan gaji yang dikenakan (cth. potongan pinjaman dan OT hanya dikenakan pada larian Biasa). Ini adalah tetap — hanya nama dan senarai boleh dikonfigurasi.",
+    "runTypeHelp": "Jenis larian menentukan peraturan gaji yang dikenakan (cth. potongan pinjaman dan OT hanya pada larian Biasa) dan adalah tetap. Gunakan Gelagat pemprosesan untuk mencatat, dalam perkataan anda sendiri, tujuan kitaran ini.",
     "runType": {
       "regular": "Biasa",
       "off_cycle": "Luar Kitaran",
@@ -4071,13 +4071,20 @@
     "toast": {
       "seeded": "Kitaran lalai ditambah",
       "saved": "Kitaran disimpan",
-      "deleted": "Kitaran dipadam"
+      "deleted": "Kitaran dipadam",
+      "copied": "{created} disalin, {skipped} dilangkau."
     },
     "errors": {
       "duplicateName": "Kitaran dengan nama ini sudah wujud untuk syarikat ini.",
       "regularConflict": "Syarikat ini sudah mempunyai kitaran Biasa yang aktif. Hanya satu dibenarkan.",
       "inUse": "Kitaran ini digunakan dalam {refs} larian gaji — nyahaktifkan sebaliknya daripada memadam."
-    }
+    },
+    "colBehaviour": "Gelagat pemprosesan",
+    "behaviourPlaceholder": "Terangkan, dalam perkataan anda sendiri, tujuan kitaran ini (rujukan perniagaan).",
+    "copy": "Salin ke syarikat",
+    "copyTitle": "Salin “{name}” ke syarikat lain",
+    "copyDescription": "Pilih syarikat untuk menyalin kitaran ini. Syarikat yang sudah mempunyai kitaran dengan nama ini — atau kitaran Biasa yang aktif, semasa menyalin kitaran Biasa — akan dilangkau.",
+    "copyConfirm": "Salin kitaran"
   },
   "auth": {
     "logout": "Log keluar",

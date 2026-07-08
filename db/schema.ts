@@ -2215,7 +2215,11 @@ export const payrollCycle = pgTable(
     // The fixed behavioural run type this cycle maps to (NOT the label). The kernel gates on this.
     runType: payrollRunTypeEnum('run_type').notNull(),
     // Free-text label an off_cycle preset carries (e.g. 'Advance Salary'). Null for straight-through cycles.
+    // LOAD-BEARING: snapshotted onto the batch and used to narrow the delete-guard — do NOT reuse as a note.
     remarks: text('remarks'),
+    // Free-text Processing Behaviour note (R17 1f6b536b). Pure documentation / business reference for
+    // payroll administrators — it does NOT drive payroll math (run_type does). Nullable.
+    description: text('description'),
     // Dropdown ordering (ascending). Ties broken by name in the read layer.
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

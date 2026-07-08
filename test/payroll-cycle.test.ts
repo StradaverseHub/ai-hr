@@ -18,6 +18,7 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
 import {
   DEFAULT_PAYROLL_CYCLES,
+  copyPayrollCycleToCompanies,
   deletePayrollCycle,
   getActivePayrollCycle,
   listPayrollCycles,
@@ -262,6 +263,122 @@ describe('payroll cycle master (ADR-0069)', () => {
     expect((await listPayrollCycles(adminA, b.companyId)).map((c) => c.id)).toContain(id);
     await upsertPayrollCycle(adminA, { id, companyId: b.companyId, name: 'GrantCycle2', runType: 'bonus' });
     expect((await listPayrollCycles(adminA, b.companyId)).find((c) => c.id === id)?.name).toBe('GrantCycle2');
+  });
+
+  it('description (Processing Behaviour note) round-trips create → list → update; updated event carries before/after', async () => {
+    const a = adminCtx(b);
+    const { id } = await upsertPayrollCycle(a, {
+      companyId: b.companyId,
+      name: 'Noted',
+      runType: 'bonus',
+      description: 'Paid after board approval.',
+    });
+    expect((await listPayrollCycles(a, b.companyId)).find((c) => c.id === id)?.description).toBe('Paid after board approval.');
+    expect((await getActivePayrollCycle(a, id, b.companyId))?.description).toBe('Paid after board approval.');
+
+    await upsertPayrollCycle(a, { id, companyId: b.companyId, name: 'Noted', runType: 'bonus', description: 'Paid twice a year.' });
+    expect((await listPayrollCycles(a, b.companyId)).find((c) => c.id === id)?.description).toBe('Paid twice a year.');
+
+    // Clearing to empty normalises to null.
+    await upsertPayrollCycle(a, { id, companyId: b.companyId, name: 'Noted', runType: 'bonus', description: '   ' });
+    expect((await listPayrollCycles(a, b.companyId)).find((c) => c.id === id)?.description).toBeNull();
+
+    // The .updated event payload carries description in before/after.
+    const [ev] = await owner.db
+      .select()
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, id), eq(schema.domainEvent.eventType, 'payroll-cycle.updated')))
+      .orderBy(schema.domainEvent.sequence);
+    const payload = ev.payload as { before: { description: string | null }; after: { description: string | null } };
+    expect(payload.after).toHaveProperty('description');
+    expect(payload.before).toHaveProperty('description');
+  });
+
+  it('copy-to-companies clones the definition into target companies; source untouched', async () => {
+    const a = adminCtx(b);
+    const { id: coB } = await createCompany(a, { legalName: 'Copy Target B Sdn Bhd' });
+    const { id: coC } = await createCompany(a, { legalName: 'Copy Target C Sdn Bhd' });
+    const { id: src } = await upsertPayrollCycle(a, {
+      companyId: b.companyId,
+      name: 'Shared Bonus',
+      runType: 'bonus',
+      remarks: 'lbl',
+      description: 'Group-wide bonus run.',
+      sortOrder: 7,
+    });
+
+    const { results } = await copyPayrollCycleToCompanies(a, { id: src, companyIds: [coB, coC] });
+    expect(results.every((r) => r.outcome === 'created')).toBe(true);
+
+    for (const co of [coB, coC]) {
+      const clone = (await listPayrollCycles(a, co)).find((c) => c.name === 'Shared Bonus');
+      expect(clone).toBeTruthy();
+      expect(clone?.runType).toBe('bonus');
+      expect(clone?.remarks).toBe('lbl');
+      expect(clone?.description).toBe('Group-wide bonus run.');
+      expect(clone?.sortOrder).toBe(7);
+      expect(clone?.companyId).toBe(co);
+    }
+    // Source company's row is unchanged and NOT duplicated.
+    expect((await listPayrollCycles(a, b.companyId)).filter((c) => c.name === 'Shared Bonus')).toHaveLength(1);
+  });
+
+  it('copy skips a live duplicate name and a regular-conflict target; other targets still succeed', async () => {
+    const a = adminCtx(b);
+    const { id: dupCo } = await createCompany(a, { legalName: 'Dup Co Sdn Bhd' });
+    const { id: regCo } = await createCompany(a, { legalName: 'Reg Co Sdn Bhd' });
+    const { id: freeCo } = await createCompany(a, { legalName: 'Free Co Sdn Bhd' });
+
+    // Regular source cycle to copy.
+    const { id: src } = await upsertPayrollCycle(a, { companyId: b.companyId, name: 'Monthly', runType: 'regular' });
+    // dupCo already has a LIVE cycle with the same name.
+    await upsertPayrollCycle(a, { companyId: dupCo, name: 'Monthly', runType: 'off_cycle' });
+    // regCo already has an active regular cycle under a different name.
+    await upsertPayrollCycle(a, { companyId: regCo, name: 'Payroll', runType: 'regular' });
+
+    const { results } = await copyPayrollCycleToCompanies(a, { id: src, companyIds: [dupCo, regCo, freeCo] });
+    const by = Object.fromEntries(results.map((r) => [r.companyId, r.outcome]));
+    expect(by[dupCo]).toBe('skipped_duplicate');
+    expect(by[regCo]).toBe('skipped_regular_conflict');
+    expect(by[freeCo]).toBe('created');
+    // freeCo got the clone.
+    expect((await listPayrollCycles(a, freeCo)).some((c) => c.name === 'Monthly' && c.runType === 'regular')).toBe(true);
+  });
+
+  it('copy appends one payroll-cycle.created per clone (with copiedFromCycleId) and one .copied summary on the source', async () => {
+    const a = adminCtx(b);
+    const { id: coB } = await createCompany(a, { legalName: 'Ev Copy B Sdn Bhd' });
+    const { id: src } = await upsertPayrollCycle(a, { companyId: b.companyId, name: 'EvCopy', runType: 'bonus' });
+    const { results } = await copyPayrollCycleToCompanies(a, { id: src, companyIds: [coB] });
+    const cloneId = results.find((r) => r.outcome === 'created')?.id!;
+
+    // The clone carries a created event with provenance.
+    const [created] = await owner.db
+      .select()
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, cloneId), eq(schema.domainEvent.eventType, 'payroll-cycle.created')));
+    expect((created.payload as { copiedFromCycleId?: string }).copiedFromCycleId).toBe(src);
+
+    // The source carries a single .copied summary event listing the target/outcome.
+    const [copied] = await owner.db
+      .select()
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.aggregateId, src), eq(schema.domainEvent.eventType, 'payroll-cycle.copied')));
+    const targets = (copied.payload as { targets: { companyId: string; outcome: string }[] }).targets;
+    expect(targets).toEqual([{ companyId: coB, outcome: 'created', newCycleId: cloneId }]);
+  });
+
+  it('RLS: an admin without can_admin_payroll_for on a target company cannot copy into it (insert fails closed)', async () => {
+    const adminA = await adminFor(b.companyId);
+    // A company the admin does NOT administer (created via owner so no grant to adminA).
+    const [coX] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: b.tenantId, legalName: 'Unadministered Co Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const { id: src } = await upsertPayrollCycle(adminA, { companyId: b.companyId, name: 'RlsCopy', runType: 'bonus' });
+    await expect(copyPayrollCycleToCompanies(adminA, { id: src, companyIds: [coX.id] })).rejects.toThrow();
+    // Nothing was written into the un-administered company.
+    expect(await owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.companyId, coX.id))).toHaveLength(0);
   });
 
   it('wizard flag-filter: with MULTI_CYCLE off, only regular-mapped cycles are exposed even when non-regular are active', async () => {

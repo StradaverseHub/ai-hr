@@ -21,7 +21,7 @@ export type CycleRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
 
 /** ADR-0069: a configurable cycle option, sourced from the payroll_cycle catalog. `id` is the selected
  *  value submitted to the wizard; `runType` drives the same gating the hardcoded list used to. */
-export type CycleOption = { id: string; name: string; runType: CycleRunType; remarks: string | null };
+export type CycleOption = { id: string; name: string; runType: CycleRunType; remarks: string | null; description: string | null };
 
 /** Step 1 (3c / 3653d14b) — company MULTI-select ("one, several, or all"), month/year, cycle (DB-driven),
  *  payment date; per-company existing-runs indicators so already-processed companies are visible up front. */
@@ -158,6 +158,11 @@ export function StepPeriod({
               </option>
             ))}
           </select>
+          {/* The selected cycle's free-text Processing Behaviour note — business reference for the admin. */}
+          {(() => {
+            const note = cycleOptions.find((c) => c.id === cycleId)?.description;
+            return note ? <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{note}</p> : null;
+          })()}
         </Field>
         <Field label={t('paymentDate')}>
           <input

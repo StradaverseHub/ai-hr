@@ -4035,7 +4035,7 @@
     "catalogTitle": "周期",
     "seedDefaults": "添加默认周期",
     "colName": "名称",
-    "colRunType": "处理行为",
+    "colRunType": "运行类型",
     "colRemarks": "备注",
     "colSort": "顺序",
     "colStatus": "状态",
@@ -4055,7 +4055,7 @@
     "cancelEdit": "取消",
     "namePlaceholder": "例如：年终奖金",
     "remarksPlaceholder": "可选标签（例如：预支工资）",
-    "runTypeHelp": "处理行为决定所应用的薪资规则（例如贷款扣款和加班仅在常规批次中生效）。此项固定不变——仅名称和列表可配置。",
+    "runTypeHelp": "运行类型决定所应用的薪资规则（例如贷款扣款和加班仅适用于常规运行），且为固定值。请使用“处理行为”以自己的话说明此周期的用途。",
     "runType": {
       "regular": "常规",
       "off_cycle": "非常规",
@@ -4071,13 +4071,20 @@
     "toast": {
       "seeded": "已添加默认周期",
       "saved": "周期已保存",
-      "deleted": "周期已删除"
+      "deleted": "周期已删除",
+      "copied": "已复制 {created} 个，跳过 {skipped} 个。"
     },
     "errors": {
       "duplicateName": "此公司已存在同名周期。",
       "regularConflict": "此公司已有一个启用的常规周期。仅允许一个。",
       "inUse": "此周期已用于 {refs} 个薪资批次——请停用而非删除。"
-    }
+    },
+    "colBehaviour": "处理行为",
+    "behaviourPlaceholder": "用您自己的话描述此周期的用途（业务参考）。",
+    "copy": "复制到公司",
+    "copyTitle": "将“{name}”复制到其他公司",
+    "copyDescription": "选择要复制此周期的公司。若某公司已有同名周期，或在复制常规周期时已存在启用的常规周期，则会被跳过。",
+    "copyConfirm": "复制周期"
   },
   "auth": {
     "logout": "退出登录",

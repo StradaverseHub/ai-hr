@@ -4035,7 +4035,7 @@
     "catalogTitle": "Cycles",
     "seedDefaults": "Add default cycles",
     "colName": "Name",
-    "colRunType": "Processing behaviour",
+    "colRunType": "Run type",
     "colRemarks": "Remarks",
     "colSort": "Order",
     "colStatus": "Status",
@@ -4055,7 +4055,7 @@
     "cancelEdit": "Cancel",
     "namePlaceholder": "e.g. Year-End Bonus",
     "remarksPlaceholder": "Optional label (e.g. Advance Salary)",
-    "runTypeHelp": "The processing behaviour determines the payroll rules applied (e.g. loan deductions and OT only apply on a Regular run). This is fixed — only the name and list are configurable.",
+    "runTypeHelp": "The run type determines the payroll rules applied (e.g. loan deductions and OT only apply on a Regular run) and is fixed. Use Processing behaviour to note, in your own words, what this cycle is for.",
     "runType": {
       "regular": "Regular",
       "off_cycle": "Off-cycle",
@@ -4071,13 +4071,20 @@
     "toast": {
       "seeded": "Default cycles added",
       "saved": "Cycle saved",
-      "deleted": "Cycle deleted"
+      "deleted": "Cycle deleted",
+      "copied": "{created} copied, {skipped} skipped."
     },
     "errors": {
       "duplicateName": "A cycle with this name already exists for this company.",
       "regularConflict": "This company already has an active Regular cycle. Only one is allowed.",
       "inUse": "This cycle is used in {refs} payroll run(s) — deactivate it instead of deleting."
-    }
+    },
+    "colBehaviour": "Processing behaviour",
+    "behaviourPlaceholder": "Describe, in your own words, what this cycle is for (business reference).",
+    "copy": "Copy to companies",
+    "copyTitle": "Copy “{name}” to other companies",
+    "copyDescription": "Select the companies to copy this cycle into. A company that already has a cycle with this name — or an active Regular cycle, when copying a Regular cycle — is skipped.",
+    "copyConfirm": "Copy cycle"
   },
   "auth": {
     "logout": "Log out",

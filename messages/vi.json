@@ -4035,7 +4035,7 @@
     "catalogTitle": "Chu kỳ",
     "seedDefaults": "Thêm chu kỳ mặc định",
     "colName": "Tên",
-    "colRunType": "Hành vi xử lý",
+    "colRunType": "Loại kỳ chạy",
     "colRemarks": "Ghi chú",
     "colSort": "Thứ tự",
     "colStatus": "Trạng thái",
@@ -4055,7 +4055,7 @@
     "cancelEdit": "Hủy",
     "namePlaceholder": "vd. Thưởng cuối năm",
     "remarksPlaceholder": "Nhãn tùy chọn (vd. Tạm ứng lương)",
-    "runTypeHelp": "Hành vi xử lý quyết định quy tắc lương được áp dụng (vd. khấu trừ khoản vay và OT chỉ áp dụng cho đợt Thường). Đây là cố định — chỉ tên và danh sách có thể cấu hình.",
+    "runTypeHelp": "Loại kỳ chạy quyết định các quy tắc lương được áp dụng (ví dụ khấu trừ khoản vay và OT chỉ áp dụng cho kỳ chạy Thường) và là cố định. Dùng Hành vi xử lý để ghi chú bằng lời của bạn mục đích của chu kỳ này.",
     "runType": {
       "regular": "Thường",
       "off_cycle": "Ngoài chu kỳ",
@@ -4071,13 +4071,20 @@
     "toast": {
       "seeded": "Đã thêm chu kỳ mặc định",
       "saved": "Đã lưu chu kỳ",
-      "deleted": "Đã xóa chu kỳ"
+      "deleted": "Đã xóa chu kỳ",
+      "copied": "Đã sao chép {created}, bỏ qua {skipped}."
     },
     "errors": {
       "duplicateName": "Đã có chu kỳ với tên này cho công ty này.",
       "regularConflict": "Công ty này đã có một chu kỳ Thường đang hoạt động. Chỉ cho phép một chu kỳ.",
       "inUse": "Chu kỳ này được dùng trong {refs} đợt trả lương — hãy vô hiệu hóa thay vì xóa."
-    }
+    },
+    "colBehaviour": "Hành vi xử lý",
+    "behaviourPlaceholder": "Mô tả bằng lời của bạn mục đích của chu kỳ này (tham chiếu nghiệp vụ).",
+    "copy": "Sao chép sang công ty",
+    "copyTitle": "Sao chép “{name}” sang các công ty khác",
+    "copyDescription": "Chọn các công ty để sao chép chu kỳ này. Công ty đã có chu kỳ trùng tên — hoặc đã có chu kỳ Thường đang hoạt động khi sao chép chu kỳ Thường — sẽ bị bỏ qua.",
+    "copyConfirm": "Sao chép chu kỳ"
   },
   "auth": {
     "logout": "Đăng xuất",
