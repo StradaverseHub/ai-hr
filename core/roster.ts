@@ -457,6 +457,7 @@ export async function duplicateShift(
             lateGraceMinutes: src.lateGraceMinutes,
             earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
             differential: src.differential,
+            otRule: src.otRule,
             archivedAt: null,
           })
           .returning({ id: shift.id });

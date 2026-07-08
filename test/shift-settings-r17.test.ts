@@ -157,12 +157,15 @@ describe('R17 centralized authoring — multi-company create + copy-to-company',
       breakMinutes: 45,
       lateGraceMinutes: 10,
       earlyLeaveGraceMinutes: 20,
+      otRule: { eligible: true, dailyCapMinutes: 30 },
     });
     const dup = await duplicateShift(a, { shiftId: src.id, targetCompanyIds: [c2] });
     expect(dup.ids).toHaveLength(1);
     const target = await listShifts(a, c2);
     expect(target).toHaveLength(1);
     expect(target[0]).toMatchObject({ code: 'NIGHT', lateGraceMinutes: 10, earlyLeaveGraceMinutes: 20 });
+    // Duplicate must preserve the per-shift OT rule (not persist NULL).
+    expect(target[0].otRule).toEqual({ eligible: true, dailyCapMinutes: 30 });
     // Source company still has just its own row (the copy landed in c2).
     expect(await listShifts(a, b.companyId)).toHaveLength(1);
   });
