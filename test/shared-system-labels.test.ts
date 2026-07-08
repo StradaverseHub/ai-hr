@@ -31,12 +31,20 @@ import {
   type Base,
 } from './harness';
 import { type SessionContext } from '../db/client';
-import { createDepartment, createCostCenter } from '../core/admin';
+import {
+  createDepartment,
+  createCostCenter,
+  bulkSaveLabels,
+  setCompanySharedLabels,
+  LabelBulkError,
+} from '../core/admin';
+import { listDepartments } from '../core/read';
 import {
   assignLabelToCompanies,
   unassignLabelFromCompanies,
   setLabelGlobal,
   labelIdsForCompany,
+  labelIdsForCompanies,
   companiesForLabel,
   LabelInUseError,
 } from '../core/system-labels';
@@ -252,5 +260,106 @@ describe('Shared System Labels — is_global write-gate (group-admin only)', () 
     // The flag stayed false.
     const [row] = await owner.db.select().from(schema.department).where(eq(schema.department.id, id));
     expect(row.isGlobal).toBe(false);
+  });
+});
+
+describe('Shared System Labels — Build 1: consumers read through the resolver (62de487d)', () => {
+  it('flag ON ⇒ a shared department surfaces in listDepartments for the target company', async () => {
+    const a = adminCtx(b);
+    const coB = await secondCompany();
+    const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Resolver Dept' });
+    await assignLabelToCompanies(a, { kind: 'department', labelId: id, companyIds: [coB] });
+
+    // Flag OFF everywhere → coB list must NOT contain the shared dept (byte-identical to today).
+    await setSharedFlag(coB, false);
+    const off = await listDepartments(a, { companyIds: [coB] });
+    expect(off.map((d) => d.id)).not.toContain(id);
+
+    // Flag ON for coB → it now appears in coB's dropdown list.
+    await setSharedFlag(coB, true);
+    const on = await listDepartments(a, { companyIds: [coB] });
+    expect(on.map((d) => d.id)).toContain(id);
+  });
+
+  it('flag ON ⇒ a GLOBAL department surfaces in listDepartments for every opted-in company', async () => {
+    const a = adminCtx(b); // group admin
+    const coB = await secondCompany();
+    const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Global Dept L' });
+    await setLabelGlobal(a, { kind: 'department', labelId: id, isGlobal: true });
+    await setSharedFlag(coB, true);
+    const on = await listDepartments(a, { companyIds: [coB] });
+    expect(on.map((d) => d.id)).toContain(id);
+  });
+
+  it('labelIdsForCompanies batches origin ∪ shared-in across a company set', async () => {
+    const a = adminCtx(b);
+    const coB = await secondCompany();
+    const { id } = await createDepartment(a, { companyId: b.companyId, name: 'Batched Dept' });
+    await assignLabelToCompanies(a, { kind: 'department', labelId: id, companyIds: [coB] });
+    await setSharedFlag(coB, true);
+    const ids = await labelIdsForCompanies(a, 'department', [b.companyId, coB]);
+    expect(ids).toContain(id);
+  });
+});
+
+describe('Shared System Labels — Build 2: bulkSaveLabels + company flag (62de487d)', () => {
+  it('creates + updates commit atomically, each with its own DomainEvent', async () => {
+    const a = adminCtx(b);
+    const existing = await createDepartment(a, { companyId: b.companyId, name: 'Bulk Existing' });
+    const res = await bulkSaveLabels(a, 'department', {
+      creates: [{ key: 'n1', companyId: b.companyId, name: 'Bulk New A' }],
+      updates: [{ key: 'u1', id: existing.id, name: 'Bulk Existing Renamed' }],
+    });
+    expect(res.created).toBe(1);
+    expect(res.updated).toBe(1);
+    expect(await eventTypesFor(b.tenantId, existing.id)).toContain('department.updated');
+    const [renamed] = await owner.db
+      .select()
+      .from(schema.department)
+      .where(eq(schema.department.id, existing.id));
+    expect(renamed.name).toBe('Bulk Existing Renamed');
+  });
+
+  it('one invalid row aborts the WHOLE save (atomic rollback) and returns row-indexed errors', async () => {
+    const a = adminCtx(b);
+    await createCostCenter(a, { companyId: b.companyId, code: 'DUPCC', name: 'Existing CC' });
+    // Two creates: one valid, one that duplicates DUPCC → the whole transaction must roll back.
+    await expect(
+      bulkSaveLabels(a, 'cost_center', {
+        creates: [
+          { key: 'ok', companyId: b.companyId, code: 'FRESHCC', name: 'Fresh' },
+          { key: 'bad', companyId: b.companyId, code: 'DUPCC', name: 'Clash' },
+        ],
+        updates: [],
+      }),
+    ).rejects.toBeInstanceOf(LabelBulkError);
+    // Nothing was created — the valid row rolled back too.
+    const rows = await owner.db
+      .select()
+      .from(schema.costCenter)
+      .where(and(eq(schema.costCenter.tenantId, b.tenantId), eq(schema.costCenter.code, 'FRESHCC')));
+    expect(rows.length).toBe(0);
+  });
+
+  it('missing mandatory field is reported as a row error (no partial save)', async () => {
+    const a = adminCtx(b);
+    try {
+      await bulkSaveLabels(a, 'department', {
+        creates: [{ key: 'blank', companyId: b.companyId, name: '   ' }],
+        updates: [],
+      });
+      throw new Error('expected LabelBulkError');
+    } catch (e) {
+      expect(e).toBeInstanceOf(LabelBulkError);
+      expect((e as LabelBulkError).rowErrors[0]?.key).toBe('blank');
+    }
+  });
+
+  it('setCompanySharedLabels flips the flag and appends a company event', async () => {
+    const a = adminCtx(b);
+    await setCompanySharedLabels(a, { companyId: b.companyId, enabled: true });
+    const [co] = await owner.db.select().from(schema.company).where(eq(schema.company.id, b.companyId));
+    expect(co.sharedSystemLabels).toBe(true);
+    expect(await eventTypesFor(b.tenantId, b.companyId)).toContain('company.shared-labels.enabled');
   });
 });

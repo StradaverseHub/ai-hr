@@ -124,7 +124,15 @@
     "attendanceAllowance": "Elaun kehadiran",
     "attendanceRecords": "Rekod",
     "clockingLocation": "Lokasi merekod masa",
-    "attendanceImport": "Import"
+    "attendanceImport": "Import",
+    "mobilePreview": "Pratonton Apl Mudah Alih",
+    "reports": "Laporan",
+    "reportMaster": "Induk",
+    "reportAttendance": "Kehadiran",
+    "reportLeave": "Cuti",
+    "reportPayroll": "Gaji",
+    "reportClaim": "Tuntutan",
+    "reportPerformance": "Prestasi"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -2330,7 +2338,61 @@
       "bulkDeactivate": "Nyahaktifkan",
       "copyToCompanies": "Salin ke syarikat",
       "cannotUnassignInUse": "Tidak boleh dinyahtetapkan: sebuah syarikat masih menggunakan label ini. Tetapkan semula pekerjanya dahulu.",
-      "globalGroupAdminOnly": "Hanya pentadbir kumpulan boleh menjadikan label global."
+      "globalGroupAdminOnly": "Hanya pentadbir kumpulan boleh menjadikan label global.",
+      "saved": "Disimpan — {created} ditambah, {updated} dikemas kini.",
+      "saveFailed": "Tidak dapat disimpan. Sila betulkan baris yang ditanda.",
+      "categories": "Kategori",
+      "category": {
+        "department": "Jabatan",
+        "position": "Jawatan",
+        "cost_center": "Pusat Kos",
+        "business_unit": "Unit Perniagaan"
+      },
+      "sharingSettings": "Tetapan perkongsian",
+      "sharedLabelsToggle": "Kongsi label merentas syarikat",
+      "sharedLabelsToggleHint": "Apabila hidup, syarikat ini juga melihat label global dan label yang dikongsi kepadanya.",
+      "searchPlaceholder": "Cari label…",
+      "filterActive": "Aktif",
+      "filterArchived": "Diarkib",
+      "filterAllStatus": "Semua status",
+      "filterAllScope": "Semua skop",
+      "scopeGlobal": "Global",
+      "scopeCompanySpecific": "Khusus syarikat",
+      "scopeOwn": "Syarikat sendiri",
+      "scopeCompaniesN": "{n} syarikat",
+      "addToCompany": "Tambah ke syarikat",
+      "addRow": "Tambah baris",
+      "copyToCompaniesSelected": "Salin ke syarikat",
+      "exportCsv": "Eksport CSV",
+      "saveAll": "Simpan",
+      "discard": "Buang",
+      "unsavedChanges": "Anda mempunyai perubahan yang belum disimpan.",
+      "col": {
+        "name": "Nama",
+        "description": "Penerangan",
+        "title": "Jawatan",
+        "jobFamily": "Keluarga kerja",
+        "code": "Kod",
+        "businessUnit": "Unit perniagaan",
+        "scope": "Skop",
+        "status": "Status",
+        "lastUpdated": "Kemas kini terakhir",
+        "actions": "Tindakan"
+      },
+      "noRows": "Tiada label sepadan dengan penapis anda.",
+      "businessUnitNone": "— Tiada —",
+      "saveFirst": "Simpan dahulu",
+      "statusActive": "Aktif",
+      "statusArchived": "Diarkib",
+      "systemActor": "Sistem",
+      "duplicateRow": "Salin baris",
+      "deleteRow": "Padam baris",
+      "unarchive": "Pulihkan",
+      "archive": "Arkib",
+      "pasteHint": "Petua: tampal baris terus dari hamparan untuk menambah secara pukal.",
+      "cancel": "Batal",
+      "apply": "Guna",
+      "origin": "asal"
     },
     "leave": {
       "pageTitle": "Konfigurasi cuti",
@@ -2767,7 +2829,32 @@
       "itemNameLabel": "Nama item",
       "itemArchiveConfirmTitle": "Arkibkan item tuntutan?",
       "itemArchiveConfirmDescription": "Ia tidak lagi boleh dipilih untuk tuntutan baharu. Tuntutan sedia ada mengekalkannya.",
-      "itemArchiveConfirmLabel": "Arkib"
+      "itemArchiveConfirmLabel": "Arkib",
+      "descriptionLabel": "Penerangan",
+      "maxReceiptAgeLabel": "Umur maksimum resit (hari)",
+      "maxReceiptAgeHint": "45 (lalai)",
+      "itemCount": "{count} item",
+      "delete": "Padam",
+      "deleteConfirmTitle": "Padam jenis tuntutan?",
+      "deleteConfirmDescription": "Ini memadam jenis tuntutan serta sub-kategori dan hadnya secara kekal. Hanya boleh jika tiada tuntutan pernah menggunakannya — jika tidak, arkibkan sebaliknya.",
+      "deleteConfirmLabel": "Padam",
+      "limitsTitle": "Had Tuntutan",
+      "limitsSubtitle": "Konfigurasi kelayakan dan had tuntutan mengikut Gred Jawatan — menggunakan semula gred yang diselenggara untuk Cuti.",
+      "limitsMovedHint": "Had tuntutan (mengikut Gred Jawatan) dikonfigurasi pada tab Had Tuntutan.",
+      "gradeLabel": "Gred Jawatan",
+      "allGrades": "Semua gred (lalai)",
+      "claimTypeLabel": "Jenis Tuntutan",
+      "monthlyLimitLabel": "Had bulanan",
+      "lifetimeLimitLabel": "Had seumur hidup",
+      "maxClaimsPerYearLabel": "Tuntutan / tahun",
+      "unlimitedToggle": "Tanpa had (tiada had untuk gred ini)",
+      "approvalRequiredLabel": "Kelulusan diperlukan",
+      "approvalAlwaysYes": "Ya",
+      "saveLimit": "Simpan had",
+      "noLimitRows": "Tiada had tuntutan dikonfigurasi lagi.",
+      "unlimitedBadge": "Tanpa had",
+      "newLimitTitle": "Tetapkan had tuntutan",
+      "newLimitHint": "Pilih gred dan jenis tuntutan, kemudian tetapkan had. Menyimpan merekod versi baharu berkuat kuasa."
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",
@@ -2988,6 +3075,11 @@
       "approval": "Aliran Kelulusan",
       "payroll": "Berkaitan Gaji",
       "audit": "Audit"
+    },
+    "claimsTabs": {
+      "types": "Jenis Tuntutan",
+      "limits": "Had Tuntutan",
+      "reimbursements": "Bayaran Balik"
     }
   },
   "topbar": {
@@ -3401,7 +3493,16 @@
     "distanceLabel": "Jarak (km)",
     "computedAmount": "Jumlah dikira",
     "attachmentHint": "PDF/JPG/PNG, maks 10MB",
-    "remarksLabel": "Catatan"
+    "remarksLabel": "Catatan",
+    "balanceTitle": "Baki anda",
+    "annualLimit": "Had tahunan",
+    "alreadyClaimed": "Sudah dituntut",
+    "remainingBalance": "Baki berbaki",
+    "balanceAfter": "Baki selepas tuntutan ini",
+    "monthlyRemaining": "Baki bulan ini",
+    "perClaimCap": "Had setiap tuntutan",
+    "claimsLeftThisYear": "Tuntutan berbaki tahun ini",
+    "unlimitedBadge": "Tiada had"
   },
   "analytics": {
     "title": "Analitik HR",
@@ -4248,6 +4349,222 @@
       "saved": "Polisi disimpan",
       "statusChanged": "Status polisi dikemas kini",
       "archived": "Polisi diarkibkan"
+    }
+  },
+  "mobilePreview": {
+    "title": "Pratonton UI/UX Apl Mudah Alih",
+    "subtitle": "Pratonton visual apl mudah alih akan datang — ketik skrin dalam bingkai telefon.",
+    "previewOnly": "Pratonton reka bentuk sahaja. Skrin ini mensimulasikan apl mudah alih masa depan; data yang dipaparkan adalah ilustrasi.",
+    "back": "Kembali",
+    "resetToHome": "Kembali ke laman utama",
+    "feature": {
+      "attendance": "Kehadiran",
+      "leave": "Cuti",
+      "claim": "Tuntutan",
+      "payroll": "Gaji",
+      "performance": "Prestasi",
+      "setting": "Tetapan"
+    },
+    "home": {
+      "greeting": "Selamat pagi"
+    },
+    "attendance": {
+      "statusIn": "Telah masuk",
+      "statusOut": "Belum masuk",
+      "clockIn": "Daftar Masuk",
+      "clockOut": "Daftar Keluar",
+      "hint": "Lokasi disahkan"
+    },
+    "leave": {
+      "balance": "Baki Cuti",
+      "calendar": "Kalendar Cuti",
+      "application": "Permohonan Cuti"
+    },
+    "leaveBalance": {
+      "annual": "Cuti Tahunan",
+      "sick": "Cuti Sakit",
+      "unpaid": "Cuti Tanpa Gaji",
+      "daysUnit": "hari"
+    },
+    "leaveCalendar": {
+      "legend": "Cuti diluluskan"
+    },
+    "leaveApp": {
+      "type": "Jenis cuti",
+      "from": "Dari",
+      "to": "Hingga",
+      "reason": "Sebab",
+      "submit": "Hantar permohonan"
+    },
+    "claim": {
+      "application": "Permohonan Tuntutan"
+    },
+    "claimApp": {
+      "type": "Jenis tuntutan",
+      "amount": "Jumlah",
+      "receipt": "Resit",
+      "attach": "Lampirkan resit",
+      "submit": "Hantar tuntutan"
+    },
+    "payroll": {
+      "latest": "Gaji bersih terkini",
+      "viewPayslip": "Lihat slip gaji",
+      "history": "Sejarah slip gaji"
+    },
+    "payslip": {
+      "title": "Slip Gaji",
+      "earnings": "Pendapatan",
+      "deductions": "Potongan",
+      "net": "Gaji bersih",
+      "basic": "Gaji pokok",
+      "allowance": "Elaun",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "Akan Datang",
+      "body": "Ciri ini akan tersedia dalam keluaran masa depan."
+    }
+  },
+  "reports": {
+    "title": "Laporan",
+    "subtitle": "Semua laporan di satu tempat — buka laporan sedia ada atau bina sendiri.",
+    "category": {
+      "master": "Induk",
+      "attendance": "Kehadiran",
+      "leave": "Cuti",
+      "payroll": "Gaji",
+      "claim": "Tuntutan",
+      "performance": "Prestasi"
+    },
+    "categoryDesc": {
+      "master": "Data induk pekerja, bilangan kakitangan dan demografi.",
+      "attendance": "Kerja lebih masa, jam dan rekod kehadiran.",
+      "leave": "Baki dan penggunaan cuti.",
+      "payroll": "Gaji diproses, fail berkanun dan agensi.",
+      "claim": "Jenis tuntutan dan polisi bayaran balik.",
+      "performance": "Kitaran dan penilaian prestasi."
+    },
+    "predefined": {
+      "analytics": "Analitik HR & data induk",
+      "otReport": "Laporan kerja lebih masa",
+      "attendanceRecords": "Rekod kehadiran",
+      "leaveAnalytics": "Analitik cuti",
+      "payrollReports": "Laporan berkanun & agensi",
+      "payrollView": "Paparan transaksi gaji",
+      "claims": "Tuntutan",
+      "performance": "Prestasi"
+    },
+    "builtInReports": "Laporan sedia ada",
+    "customReports": "Laporan tersuai",
+    "newReport": "Laporan baharu",
+    "noCustomReports": "Tiada laporan tersuai lagi.",
+    "noDataset": "Laporan tersuai untuk kategori ini akan datang.",
+    "shared": "Dikongsi",
+    "favourite": "Tambah ke kegemaran",
+    "unfavourite": "Buang dari kegemaran",
+    "share": "Kongsi",
+    "unshare": "Berhenti kongsi",
+    "duplicate": "Salin",
+    "delete": "Padam",
+    "deleteConfirm": "Padam laporan ini?",
+    "exportCsv": "Eksport CSV",
+    "exportXlsx": "Eksport Excel",
+    "exportPdf": "Eksport PDF",
+    "exportDocx": "Eksport Word",
+    "exportHint": "Eksport:",
+    "backToReports": "Kembali ke Laporan",
+    "reportName": "Nama laporan",
+    "availableFields": "Medan tersedia",
+    "searchFields": "Cari medan…",
+    "selectedColumns": "Reka bentuk laporan",
+    "noColumns": "Seret medan ke sini atau guna butang + untuk menambah lajur.",
+    "properties": "Sifat laporan",
+    "dataset": "Sumber data",
+    "orientation": "Orientasi",
+    "portrait": "Potret",
+    "landscape": "Lanskap",
+    "sortBy": "Susun ikut",
+    "groupBy": "Kumpul ikut",
+    "none": "Tiada",
+    "ascending": "Menaik",
+    "descending": "Menurun",
+    "filters": "Penapis",
+    "shareToggle": "Kongsi dengan pentadbir lain",
+    "summaryRow": "Jumlah ringkasan",
+    "moveUp": "Naik",
+    "moveDown": "Turun",
+    "remove": "Buang",
+    "add": "Tambah",
+    "preview": "Pratonton",
+    "refreshPreview": "Muat semula pratonton",
+    "noPreview": "Jalankan pratonton untuk melihat baris pertama.",
+    "previewNote": "Pratonton menunjukkan 25 baris pertama sahaja.",
+    "save": "Simpan laporan",
+    "saving": "Menyimpan…",
+    "dragHint": "Seret untuk menyusun semula",
+    "builder": {
+      "newTitle": "Laporan tersuai baharu",
+      "editTitle": "Edit laporan",
+      "subtitle": "Pilih medan anda, atur susun atur, dan biar AI merekanya untuk anda."
+    },
+    "ai": {
+      "title": "Pereka Laporan AI",
+      "describe": "Terangkan laporan yang anda mahu dan AI akan menyusunnya untuk semakan anda.",
+      "placeholder": "cth. jam OT bulanan ikut jabatan dengan jumlah",
+      "generate": "Jana susun atur",
+      "generating": "Menjana…",
+      "notConfigured": "AI belum dikonfigur — minta pentadbir menyambung penyedia dalam tetapan AI.",
+      "invalid": "AI tidak dapat membina laporan sah daripada permintaan itu — cuba ubah ayat.",
+      "applied": "Susun atur AI digunakan"
+    },
+    "reportSubtitle": "Subtajuk",
+    "reportDescription": "Penerangan",
+    "companyLogo": "Logo syarikat",
+    "companyLogoHint": "Tanda teks atau data: URL imej",
+    "paperSize": "Saiz kertas",
+    "margins": "Margin",
+    "marginNarrow": "Sempit",
+    "marginNormal": "Biasa",
+    "marginWide": "Lebar",
+    "dateFormat": "Format tarikh",
+    "numberFormat": "Format nombor",
+    "pageBreakOn": "Pemisah halaman pada",
+    "header": "Pengepala",
+    "footer": "Pengaki",
+    "watermark": "Tera air",
+    "alignment": "Jajaran",
+    "alignLeft": "Kiri",
+    "alignCenter": "Tengah",
+    "alignRight": "Kanan",
+    "width": "Lebar",
+    "freeze": "Bekukan",
+    "pagesApprox": "Halaman (anggaran)",
+    "averagesRow": "Purata",
+    "permissions": "Kebenaran laporan",
+    "permissionsHint": "Setiap kata kerja dikuatkuasakan mengikut peranan: Lihat dan Eksport mengawal menjalankan laporan, Cipta mengawal pendua, serta Sunting, Padam, Kongsi dan Urus templat. Biarkan kosong untuk pentadbir sahaja; Super Admin sentiasa mempunyai akses.",
+    "role": "Peranan",
+    "recommendations": "Cadangan pintar",
+    "suggestedColumns": "Lajur dicadangkan",
+    "bestFormat": "Format eksport terbaik",
+    "saveAsTemplate": "Simpan sebagai templat",
+    "permVerb": {
+      "view": "Lihat",
+      "create": "Cipta",
+      "edit": "Sunting",
+      "delete": "Padam",
+      "export": "Eksport",
+      "share": "Kongsi",
+      "manageTemplates": "Urus templat"
+    },
+    "permRole": {
+      "employee": "Pekerja",
+      "manager": "Pengurus",
+      "hr_admin": "Pentadbir HR",
+      "super_admin": "Pentadbir Super",
+      "payroll_partner": "Rakan Gaji",
+      "performance_comp_partner": "Rakan Prestasi/Pampasan"
     }
   }
 }

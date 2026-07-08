@@ -124,7 +124,15 @@
     "attendanceAllowance": "เบี้ยขยันการเข้างาน",
     "attendanceRecords": "บันทึก",
     "clockingLocation": "สถานที่ลงเวลา",
-    "attendanceImport": "นำเข้า"
+    "attendanceImport": "นำเข้า",
+    "mobilePreview": "ตัวอย่างแอปมือถือ",
+    "reports": "รายงาน",
+    "reportMaster": "ข้อมูลหลัก",
+    "reportAttendance": "การเข้างาน",
+    "reportLeave": "การลา",
+    "reportPayroll": "เงินเดือน",
+    "reportClaim": "การเบิก",
+    "reportPerformance": "ผลงาน"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -2330,7 +2338,61 @@
       "bulkDeactivate": "ปิดใช้งาน",
       "copyToCompanies": "คัดลอกไปยังบริษัท",
       "cannotUnassignInUse": "ไม่สามารถยกเลิกการกำหนดได้: ยังมีบริษัทที่ใช้ป้ายนี้อยู่ โปรดกำหนดพนักงานใหม่ก่อน",
-      "globalGroupAdminOnly": "เฉพาะผู้ดูแลกลุ่มเท่านั้นที่สามารถตั้งป้ายเป็นส่วนกลางได้"
+      "globalGroupAdminOnly": "เฉพาะผู้ดูแลกลุ่มเท่านั้นที่สามารถตั้งป้ายเป็นส่วนกลางได้",
+      "saved": "บันทึกแล้ว — เพิ่ม {created} รายการ, อัปเดต {updated} รายการ",
+      "saveFailed": "ไม่สามารถบันทึกได้ กรุณาแก้ไขแถวที่ไฮไลต์",
+      "categories": "หมวดหมู่",
+      "category": {
+        "department": "แผนก",
+        "position": "ตำแหน่ง",
+        "cost_center": "ศูนย์ต้นทุน",
+        "business_unit": "หน่วยธุรกิจ"
+      },
+      "sharingSettings": "การตั้งค่าการแชร์",
+      "sharedLabelsToggle": "แชร์ป้ายกำกับข้ามบริษัท",
+      "sharedLabelsToggleHint": "เมื่อเปิด บริษัทนี้จะเห็นป้ายกำกับส่วนกลางและป้ายกำกับที่แชร์ให้ด้วย",
+      "searchPlaceholder": "ค้นหาป้ายกำกับ…",
+      "filterActive": "ใช้งาน",
+      "filterArchived": "เก็บถาวร",
+      "filterAllStatus": "ทุกสถานะ",
+      "filterAllScope": "ทุกขอบเขต",
+      "scopeGlobal": "ส่วนกลาง",
+      "scopeCompanySpecific": "เฉพาะบริษัท",
+      "scopeOwn": "บริษัทของตน",
+      "scopeCompaniesN": "{n} บริษัท",
+      "addToCompany": "เพิ่มไปยังบริษัท",
+      "addRow": "เพิ่มแถว",
+      "copyToCompaniesSelected": "คัดลอกไปยังบริษัท",
+      "exportCsv": "ส่งออก CSV",
+      "saveAll": "บันทึก",
+      "discard": "ยกเลิก",
+      "unsavedChanges": "คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก",
+      "col": {
+        "name": "ชื่อ",
+        "description": "คำอธิบาย",
+        "title": "ตำแหน่ง",
+        "jobFamily": "กลุ่มงาน",
+        "code": "รหัส",
+        "businessUnit": "หน่วยธุรกิจ",
+        "scope": "ขอบเขต",
+        "status": "สถานะ",
+        "lastUpdated": "อัปเดตล่าสุด",
+        "actions": "การดำเนินการ"
+      },
+      "noRows": "ไม่มีป้ายกำกับที่ตรงกับตัวกรอง",
+      "businessUnitNone": "— ไม่มี —",
+      "saveFirst": "บันทึกก่อน",
+      "statusActive": "ใช้งาน",
+      "statusArchived": "เก็บถาวร",
+      "systemActor": "ระบบ",
+      "duplicateRow": "ทำซ้ำแถว",
+      "deleteRow": "ลบแถว",
+      "unarchive": "กู้คืน",
+      "archive": "เก็บถาวร",
+      "pasteHint": "เคล็ดลับ: วางแถวจากสเปรดชีตโดยตรงเพื่อเพิ่มจำนวนมาก",
+      "cancel": "ยกเลิก",
+      "apply": "ใช้",
+      "origin": "ต้นทาง"
     },
     "leave": {
       "pageTitle": "ตั้งค่าการลา",
@@ -2767,7 +2829,32 @@
       "itemNameLabel": "ชื่อรายการ",
       "itemArchiveConfirmTitle": "เก็บรายการเบิกเข้าคลังหรือไม่?",
       "itemArchiveConfirmDescription": "จะไม่สามารถเลือกในการเบิกใหม่ได้อีก รายการเบิกเดิมยังคงไว้",
-      "itemArchiveConfirmLabel": "เก็บเข้าคลัง"
+      "itemArchiveConfirmLabel": "เก็บเข้าคลัง",
+      "descriptionLabel": "คำอธิบาย",
+      "maxReceiptAgeLabel": "อายุใบเสร็จสูงสุด (วัน)",
+      "maxReceiptAgeHint": "45 (ค่าเริ่มต้น)",
+      "itemCount": "{count} รายการ",
+      "delete": "ลบ",
+      "deleteConfirmTitle": "ลบประเภทการเบิก?",
+      "deleteConfirmDescription": "การดำเนินการนี้จะลบประเภทการเบิกพร้อมหมวดหมู่ย่อยและวงเงินอย่างถาวร ทำได้เฉพาะเมื่อไม่เคยมีการเบิกใช้ประเภทนี้เท่านั้น — มิฉะนั้นให้เก็บถาวรแทน",
+      "deleteConfirmLabel": "ลบ",
+      "limitsTitle": "วงเงินการเบิก",
+      "limitsSubtitle": "กำหนดสิทธิ์และวงเงินการเบิกตามระดับตำแหน่ง — โดยใช้ระดับที่ดูแลไว้สำหรับการลา",
+      "limitsMovedHint": "วงเงินการเบิก (ตามระดับตำแหน่ง) กำหนดในแท็บวงเงินการเบิก",
+      "gradeLabel": "ระดับตำแหน่ง",
+      "allGrades": "ทุกระดับ (ค่าเริ่มต้น)",
+      "claimTypeLabel": "ประเภทการเบิก",
+      "monthlyLimitLabel": "วงเงินรายเดือน",
+      "lifetimeLimitLabel": "วงเงินตลอดชีพ",
+      "maxClaimsPerYearLabel": "จำนวนครั้ง/ปี",
+      "unlimitedToggle": "ไม่จำกัด (ไม่มีวงเงินสำหรับระดับนี้)",
+      "approvalRequiredLabel": "ต้องอนุมัติ",
+      "approvalAlwaysYes": "ใช่",
+      "saveLimit": "บันทึกวงเงิน",
+      "noLimitRows": "ยังไม่ได้กำหนดวงเงินการเบิก",
+      "unlimitedBadge": "ไม่จำกัด",
+      "newLimitTitle": "ตั้งค่าวงเงินการเบิก",
+      "newLimitHint": "เลือกระดับและประเภทการเบิก จากนั้นตั้งวงเงิน การบันทึกจะสร้างเวอร์ชันที่มีผลใหม่"
     },
     "reimbursements": {
       "back": "ตั้งค่า Claims",
@@ -2988,6 +3075,11 @@
       "approval": "ขั้นตอนการอนุมัติ",
       "payroll": "เกี่ยวข้องกับเงินเดือน",
       "audit": "การตรวจสอบ"
+    },
+    "claimsTabs": {
+      "types": "ประเภทการเบิก",
+      "limits": "วงเงินการเบิก",
+      "reimbursements": "การจ่ายคืน"
     }
   },
   "topbar": {
@@ -3401,7 +3493,16 @@
     "distanceLabel": "ระยะทาง (กม.)",
     "computedAmount": "จำนวนที่คำนวณได้",
     "attachmentHint": "PDF/JPG/PNG สูงสุด 10MB",
-    "remarksLabel": "หมายเหตุ"
+    "remarksLabel": "หมายเหตุ",
+    "balanceTitle": "ยอดคงเหลือของคุณ",
+    "annualLimit": "วงเงินต่อปี",
+    "alreadyClaimed": "เบิกไปแล้ว",
+    "remainingBalance": "ยอดคงเหลือ",
+    "balanceAfter": "ยอดคงเหลือหลังการเบิกนี้",
+    "monthlyRemaining": "คงเหลือเดือนนี้",
+    "perClaimCap": "วงเงินต่อครั้ง",
+    "claimsLeftThisYear": "จำนวนครั้งคงเหลือปีนี้",
+    "unlimitedBadge": "ไม่จำกัด"
   },
   "analytics": {
     "title": "การวิเคราะห์ HR",
@@ -4248,6 +4349,222 @@
       "saved": "บันทึกนโยบายแล้ว",
       "statusChanged": "อัปเดตสถานะนโยบายแล้ว",
       "archived": "เก็บนโยบายถาวรแล้ว"
+    }
+  },
+  "mobilePreview": {
+    "title": "ตัวอย่าง UI/UX แอปมือถือ",
+    "subtitle": "ตัวอย่างภาพของแอปมือถือที่กำลังจะมา — แตะดูหน้าจอต่าง ๆ ภายในกรอบโทรศัพท์",
+    "previewOnly": "เป็นเพียงตัวอย่างการออกแบบ หน้าจอเหล่านี้จำลองแอปมือถือในอนาคต ข้อมูลที่แสดงเป็นเพียงตัวอย่าง",
+    "back": "ย้อนกลับ",
+    "resetToHome": "กลับสู่หน้าหลัก",
+    "feature": {
+      "attendance": "การลงเวลา",
+      "leave": "การลา",
+      "claim": "การเบิก",
+      "payroll": "เงินเดือน",
+      "performance": "ผลงาน",
+      "setting": "ตั้งค่า"
+    },
+    "home": {
+      "greeting": "สวัสดีตอนเช้า"
+    },
+    "attendance": {
+      "statusIn": "ลงเวลาเข้าแล้ว",
+      "statusOut": "ยังไม่ลงเวลาเข้า",
+      "clockIn": "ลงเวลาเข้า",
+      "clockOut": "ลงเวลาออก",
+      "hint": "ยืนยันตำแหน่งแล้ว"
+    },
+    "leave": {
+      "balance": "ยอดวันลาคงเหลือ",
+      "calendar": "ปฏิทินการลา",
+      "application": "ใบลา"
+    },
+    "leaveBalance": {
+      "annual": "ลาพักร้อน",
+      "sick": "ลาป่วย",
+      "unpaid": "ลาไม่รับค่าจ้าง",
+      "daysUnit": "วัน"
+    },
+    "leaveCalendar": {
+      "legend": "การลาที่อนุมัติแล้ว"
+    },
+    "leaveApp": {
+      "type": "ประเภทการลา",
+      "from": "ตั้งแต่",
+      "to": "ถึง",
+      "reason": "เหตุผล",
+      "submit": "ส่งใบลา"
+    },
+    "claim": {
+      "application": "ใบเบิก"
+    },
+    "claimApp": {
+      "type": "ประเภทการเบิก",
+      "amount": "จำนวนเงิน",
+      "receipt": "ใบเสร็จ",
+      "attach": "แนบใบเสร็จ",
+      "submit": "ส่งการเบิก"
+    },
+    "payroll": {
+      "latest": "เงินสุทธิล่าสุด",
+      "viewPayslip": "ดูสลิปเงินเดือน",
+      "history": "ประวัติสลิปเงินเดือน"
+    },
+    "payslip": {
+      "title": "สลิปเงินเดือน",
+      "earnings": "รายได้",
+      "deductions": "รายการหัก",
+      "net": "เงินสุทธิ",
+      "basic": "เงินเดือนพื้นฐาน",
+      "allowance": "เบี้ยเลี้ยง",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "เร็ว ๆ นี้",
+      "body": "ฟีเจอร์นี้จะพร้อมใช้งานในรุ่นถัดไป"
+    }
+  },
+  "reports": {
+    "title": "รายงาน",
+    "subtitle": "ทุกรายงานในที่เดียว — เปิดรายงานสำเร็จรูปหรือสร้างเอง",
+    "category": {
+      "master": "ข้อมูลหลัก",
+      "attendance": "การเข้างาน",
+      "leave": "การลา",
+      "payroll": "เงินเดือน",
+      "claim": "การเบิก",
+      "performance": "ผลงาน"
+    },
+    "categoryDesc": {
+      "master": "ข้อมูลหลักพนักงาน จำนวนพนักงาน และประชากรศาสตร์",
+      "attendance": "ล่วงเวลา ชั่วโมง และบันทึกการเข้างาน",
+      "leave": "ยอดคงเหลือและการใช้วันลา",
+      "payroll": "เงินเดือนที่ประมวลผลแล้ว ไฟล์ตามกฎหมายและหน่วยงาน",
+      "claim": "ประเภทการเบิกและนโยบายการคืนเงิน",
+      "performance": "รอบและการประเมินผลงาน"
+    },
+    "predefined": {
+      "analytics": "การวิเคราะห์ HR และข้อมูลหลัก",
+      "otReport": "รายงานล่วงเวลา",
+      "attendanceRecords": "บันทึกการเข้างาน",
+      "leaveAnalytics": "การวิเคราะห์การลา",
+      "payrollReports": "รายงานตามกฎหมายและหน่วยงาน",
+      "payrollView": "มุมมองรายการเงินเดือน",
+      "claims": "การเบิก",
+      "performance": "ผลงาน"
+    },
+    "builtInReports": "รายงานสำเร็จรูป",
+    "customReports": "รายงานที่กำหนดเอง",
+    "newReport": "รายงานใหม่",
+    "noCustomReports": "ยังไม่มีรายงานที่กำหนดเอง",
+    "noDataset": "รายงานที่กำหนดเองสำหรับหมวดนี้กำลังจะมา",
+    "shared": "แชร์แล้ว",
+    "favourite": "เพิ่มในรายการโปรด",
+    "unfavourite": "นำออกจากรายการโปรด",
+    "share": "แชร์",
+    "unshare": "หยุดแชร์",
+    "duplicate": "ทำสำเนา",
+    "delete": "ลบ",
+    "deleteConfirm": "ลบรายงานนี้หรือไม่?",
+    "exportCsv": "ส่งออก CSV",
+    "exportXlsx": "ส่งออก Excel",
+    "exportPdf": "ส่งออก PDF",
+    "exportDocx": "ส่งออก Word",
+    "exportHint": "ส่งออก:",
+    "backToReports": "กลับไปที่รายงาน",
+    "reportName": "ชื่อรายงาน",
+    "availableFields": "ฟิลด์ที่ใช้ได้",
+    "searchFields": "ค้นหาฟิลด์…",
+    "selectedColumns": "ออกแบบรายงาน",
+    "noColumns": "ลากฟิลด์มาที่นี่หรือใช้ปุ่ม + เพื่อเพิ่มคอลัมน์",
+    "properties": "คุณสมบัติรายงาน",
+    "dataset": "แหล่งข้อมูล",
+    "orientation": "การวางแนว",
+    "portrait": "แนวตั้ง",
+    "landscape": "แนวนอน",
+    "sortBy": "เรียงตาม",
+    "groupBy": "จัดกลุ่มตาม",
+    "none": "ไม่มี",
+    "ascending": "จากน้อยไปมาก",
+    "descending": "จากมากไปน้อย",
+    "filters": "ตัวกรอง",
+    "shareToggle": "แชร์กับผู้ดูแลระบบคนอื่น",
+    "summaryRow": "ยอดรวมสรุป",
+    "moveUp": "เลื่อนขึ้น",
+    "moveDown": "เลื่อนลง",
+    "remove": "นำออก",
+    "add": "เพิ่ม",
+    "preview": "ตัวอย่าง",
+    "refreshPreview": "รีเฟรชตัวอย่าง",
+    "noPreview": "เรียกใช้ตัวอย่างเพื่อดูแถวแรก",
+    "previewNote": "ตัวอย่างแสดงเฉพาะ 25 แถวแรกเท่านั้น",
+    "save": "บันทึกรายงาน",
+    "saving": "กำลังบันทึก…",
+    "dragHint": "ลากเพื่อจัดเรียงใหม่",
+    "builder": {
+      "newTitle": "รายงานที่กำหนดเองใหม่",
+      "editTitle": "แก้ไขรายงาน",
+      "subtitle": "เลือกฟิลด์ จัดวางเลย์เอาต์ และให้ AI ออกแบบให้คุณ"
+    },
+    "ai": {
+      "title": "ตัวออกแบบรายงาน AI",
+      "describe": "อธิบายรายงานที่คุณต้องการ แล้ว AI จะจัดวางให้คุณตรวจสอบ",
+      "placeholder": "เช่น ชั่วโมง OT รายเดือนตามแผนกพร้อมยอดรวม",
+      "generate": "สร้างเลย์เอาต์",
+      "generating": "กำลังสร้าง…",
+      "notConfigured": "ยังไม่ได้ตั้งค่า AI — โปรดให้ผู้ดูแลระบบเชื่อมต่อผู้ให้บริการในการตั้งค่า AI",
+      "invalid": "AI ไม่สามารถสร้างรายงานที่ถูกต้องจากคำขอนั้นได้ — ลองเรียบเรียงใหม่",
+      "applied": "ใช้เลย์เอาต์ AI แล้ว"
+    },
+    "reportSubtitle": "คำบรรยายรอง",
+    "reportDescription": "คำอธิบาย",
+    "companyLogo": "โลโก้บริษัท",
+    "companyLogoHint": "เครื่องหมายข้อความหรือ data: URL รูปภาพ",
+    "paperSize": "ขนาดกระดาษ",
+    "margins": "ระยะขอบ",
+    "marginNarrow": "แคบ",
+    "marginNormal": "ปกติ",
+    "marginWide": "กว้าง",
+    "dateFormat": "รูปแบบวันที่",
+    "numberFormat": "รูปแบบตัวเลข",
+    "pageBreakOn": "แบ่งหน้าตาม",
+    "header": "ส่วนหัว",
+    "footer": "ส่วนท้าย",
+    "watermark": "ลายน้ำ",
+    "alignment": "การจัดแนว",
+    "alignLeft": "ชิดซ้าย",
+    "alignCenter": "กึ่งกลาง",
+    "alignRight": "ชิดขวา",
+    "width": "ความกว้าง",
+    "freeze": "ตรึง",
+    "pagesApprox": "จำนวนหน้า (โดยประมาณ)",
+    "averagesRow": "ค่าเฉลี่ย",
+    "permissions": "สิทธิ์รายงาน",
+    "permissionsHint": "ทุกสิทธิ์ถูกบังคับใช้ตามบทบาท: ดูและส่งออกควบคุมการรันรายงาน สร้างควบคุมการทำสำเนา รวมถึงแก้ไข ลบ แชร์ และจัดการเทมเพลต เว้นว่างไว้เพื่อจำกัดเฉพาะผู้ดูแลระบบ Super Admin เข้าถึงได้เสมอ",
+    "role": "บทบาท",
+    "recommendations": "คำแนะนำอัจฉริยะ",
+    "suggestedColumns": "คอลัมน์ที่แนะนำ",
+    "bestFormat": "รูปแบบส่งออกที่ดีที่สุด",
+    "saveAsTemplate": "บันทึกเป็นเทมเพลต",
+    "permVerb": {
+      "view": "ดู",
+      "create": "สร้าง",
+      "edit": "แก้ไข",
+      "delete": "ลบ",
+      "export": "ส่งออก",
+      "share": "แชร์",
+      "manageTemplates": "จัดการเทมเพลต"
+    },
+    "permRole": {
+      "employee": "พนักงาน",
+      "manager": "ผู้จัดการ",
+      "hr_admin": "ผู้ดูแล HR",
+      "super_admin": "ผู้ดูแลระบบสูงสุด",
+      "payroll_partner": "พันธมิตรบัญชีเงินเดือน",
+      "performance_comp_partner": "พันธมิตรผลงาน/ค่าตอบแทน"
     }
   }
 }

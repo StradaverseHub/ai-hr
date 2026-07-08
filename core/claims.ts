@@ -15,6 +15,7 @@ import {
   company,
   employeeStatutoryMy,
   employment,
+  jobGrade,
   payrollBatch,
   payrollInput,
   person,
@@ -41,11 +42,19 @@ export const dateMinusDays = (yyyyMmDd: string, days: number): string =>
 /** Receipt date window: not in the future, and not more than this many days back (≈1.5 months per ticket). */
 export const RECEIPT_BACKDATE_DAYS = 45;
 
+/** RM money for a user-facing error/message (2dp). */
+const rmMsg = (n: number): string => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
+
 export type ClaimItemRow = { id: string; code: string; name: string };
 
 export type ClaimPolicyRow = {
   annualBudget: number | null;
   perClaimCap: number | null;
+  monthlyLimit: number | null;
+  lifetimeLimit: number | null;
+  maxClaimsPerYear: number | null;
+  /** Which grade this resolved row is scoped to (null = the all-grades default). (ccbd0508) */
+  gradeId: string | null;
   rateConfig: ClaimRateConfig | null;
   validFrom: string;
 };
@@ -54,16 +63,42 @@ export type ClaimTypeRow = {
   id: string;
   code: string;
   name: string;
+  description: string | null;
   defaultTaxable: boolean;
   requiresReceipt: boolean;
+  maxReceiptAgeDays: number | null;
   archivedAt: string | null;
   policy: ClaimPolicyRow | null;
   items: ClaimItemRow[];
 };
 
-/** The active policy (latest effective version ≤ asOf) for a claim type, or null. Pure read in the caller tx. */
-export async function getActiveClaimPolicy(tx: Tx, claimTypeId: string, asOf: string): Promise<ClaimPolicyRow | null> {
-  const [row] = await tx
+type RawPolicy = typeof claimPolicy.$inferSelect;
+const toPolicyRow = (row: RawPolicy): ClaimPolicyRow => ({
+  annualBudget: num(row.annualBudget),
+  perClaimCap: num(row.perClaimCap),
+  monthlyLimit: num(row.monthlyLimit),
+  lifetimeLimit: num(row.lifetimeLimit),
+  maxClaimsPerYear: row.maxClaimsPerYear ?? null,
+  gradeId: row.gradeId ?? null,
+  rateConfig: row.rateConfig ?? null,
+  validFrom: row.validFrom,
+});
+
+/**
+ * The active policy for a claim type resolved for the employee's job grade, or null. Pure read in the
+ * caller tx. Grade tiering (ccbd0508): a policy row whose grade_id matches the employee's grade wins over
+ * the null-grade default (mirrors leave_policy's resolveGradePolicy). Within the winning grade tier the
+ * latest effective version ≤ asOf is chosen (append-only CLOSE+INSERT versioning). `gradeId = null` (the
+ * default) resolves exactly as the pre-ccbd0508 code did, so ungraded employees and legacy null-grade
+ * policies are byte-identical.
+ */
+export async function getActiveClaimPolicy(
+  tx: Tx,
+  claimTypeId: string,
+  asOf: string,
+  gradeId: string | null = null,
+): Promise<ClaimPolicyRow | null> {
+  const rows = await tx
     .select()
     .from(claimPolicy)
     .where(
@@ -73,11 +108,11 @@ export async function getActiveClaimPolicy(tx: Tx, claimTypeId: string, asOf: st
         or(isNull(claimPolicy.validTo), sql`${claimPolicy.validTo} > ${asOf}`),
       ),
     )
-    .orderBy(desc(claimPolicy.validFrom))
-    .limit(1);
-  return row
-    ? { annualBudget: num(row.annualBudget), perClaimCap: num(row.perClaimCap), rateConfig: row.rateConfig ?? null, validFrom: row.validFrom }
-    : null;
+    .orderBy(desc(claimPolicy.validFrom));
+  // latest-validFrom-first, so [0] of any subset is that tier's active version.
+  const graded = gradeId ? rows.filter((r) => r.gradeId === gradeId) : [];
+  const chosen = graded.length > 0 ? graded[0] : rows.find((r) => r.gradeId == null);
+  return chosen ? toPolicyRow(chosen) : null;
 }
 
 /** Non-archived items for a claim type (code asc), in the caller tx. */
@@ -104,9 +139,13 @@ export async function listClaimTypes(ctx: SessionContext, p?: { asOf?: string })
         id: t.id,
         code: t.code,
         name: t.name,
+        description: t.description ?? null,
         defaultTaxable: t.defaultTaxable,
         requiresReceipt: t.requiresReceipt,
+        maxReceiptAgeDays: t.maxReceiptAgeDays ?? null,
         archivedAt: t.archivedAt ? t.archivedAt.toISOString() : null,
+        // The admin Claim Types tab resolves the null-grade default only; per-grade limits live on the
+        // Claim Limits tab (listClaimLimits) and the employee form resolves for the claimant's own grade.
         policy: await getActiveClaimPolicy(tx, t.id, asOf),
         items: await activeItemsFor(tx, t.id),
       })),
@@ -119,17 +158,140 @@ export async function listClaimItems(ctx: SessionContext, p: { claimTypeId: stri
   return withTenant(ctx, (tx) => activeItemsFor(tx, p.claimTypeId));
 }
 
+// ─────────────────────────────── Claim Limits (ccbd0508 — per Job-Grade × Claim Type) ───────────────────────────────
+
+export type ClaimLimitRow = {
+  claimTypeId: string;
+  typeCode: string;
+  typeName: string;
+  gradeId: string | null;
+  gradeName: string | null;
+  gradeRank: number | null;
+  annualBudget: number | null;
+  perClaimCap: number | null;
+  monthlyLimit: number | null;
+  lifetimeLimit: number | null;
+  maxClaimsPerYear: number | null;
+  rateConfig: ClaimRateConfig | null;
+  validFrom: string;
+};
+
+/**
+ * Every non-archived claim type × its ACTIVE limit rows across grades (the Claim Limits admin tab). One row
+ * per (type, grade) — the latest effective version ≤ asOf — joined to the job_grade name/rank. gradeId null =
+ * the all-grades default row. Read-only (no events).
+ */
+export async function listClaimLimits(ctx: SessionContext, p?: { asOf?: string }): Promise<ClaimLimitRow[]> {
+  const asOf = p?.asOf ?? today();
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        claimTypeId: claimType.id,
+        typeCode: claimType.code,
+        typeName: claimType.name,
+        gradeId: claimPolicy.gradeId,
+        gradeName: jobGrade.name,
+        gradeRank: jobGrade.rank,
+        annualBudget: claimPolicy.annualBudget,
+        perClaimCap: claimPolicy.perClaimCap,
+        monthlyLimit: claimPolicy.monthlyLimit,
+        lifetimeLimit: claimPolicy.lifetimeLimit,
+        maxClaimsPerYear: claimPolicy.maxClaimsPerYear,
+        rateConfig: claimPolicy.rateConfig,
+        validFrom: claimPolicy.validFrom,
+      })
+      .from(claimPolicy)
+      .innerJoin(claimType, eq(claimType.id, claimPolicy.claimTypeId))
+      .leftJoin(jobGrade, eq(jobGrade.id, claimPolicy.gradeId))
+      .where(
+        and(
+          isNull(claimType.archivedAt),
+          lte(claimPolicy.validFrom, asOf),
+          or(isNull(claimPolicy.validTo), sql`${claimPolicy.validTo} > ${asOf}`),
+        ),
+      )
+      .orderBy(claimType.code, desc(claimPolicy.validFrom));
+    // Keep only the latest active version per (type, grade).
+    const seen = new Set<string>();
+    const out: ClaimLimitRow[] = [];
+    for (const r of rows) {
+      const key = `${r.claimTypeId}:${r.gradeId ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        claimTypeId: r.claimTypeId,
+        typeCode: r.typeCode,
+        typeName: r.typeName,
+        gradeId: r.gradeId ?? null,
+        gradeName: r.gradeName ?? null,
+        gradeRank: r.gradeRank ?? null,
+        annualBudget: num(r.annualBudget),
+        perClaimCap: num(r.perClaimCap),
+        monthlyLimit: num(r.monthlyLimit),
+        lifetimeLimit: num(r.lifetimeLimit),
+        maxClaimsPerYear: r.maxClaimsPerYear ?? null,
+        rateConfig: r.rateConfig ?? null,
+        validFrom: r.validFrom,
+      });
+    }
+    return out;
+  });
+}
+
+export type ClaimBalanceRow = {
+  claimTypeId: string;
+  typeCode: string;
+  typeName: string;
+  /** null across the board ⇒ no limit configured for this employee's grade (unlimited). */
+  annualLimit: number | null;
+  usedThisYear: number;
+  remainingThisYear: number | null;
+  monthlyLimit: number | null;
+  usedThisMonth: number;
+  remainingThisMonth: number | null;
+  perClaimCap: number | null;
+  lifetimeLimit: number | null;
+  usedLifetime: number;
+  claimsUsedThisYear: number;
+  maxClaimsPerYear: number | null;
+};
+
+
+/** Normalize the optional per-type receipt-age window: null (use global default) or a positive integer. */
+const receiptAgeOrNull = (v: number | null | undefined): number | null => {
+  if (v == null) return null;
+  if (!Number.isInteger(v) || v <= 0) throw new Error('Maximum receipt age must be a positive whole number of days');
+  return v;
+};
+
 export async function createClaimType(
   ctx: SessionContext,
-  p: { code: string; name: string; defaultTaxable: boolean; requiresReceipt: boolean },
+  p: {
+    code: string;
+    name: string;
+    defaultTaxable: boolean;
+    requiresReceipt: boolean;
+    description?: string | null;
+    maxReceiptAgeDays?: number | null;
+  },
 ): Promise<{ id: string }> {
   const code = p.code.trim().toUpperCase();
   if (!code) throw new Error('Claim type code is required');
   if (!p.name.trim()) throw new Error('Claim type name is required');
+  const description = p.description?.trim() || null;
+  const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(claimType)
-      .values({ tenantId: ctx.tenantId, code, name: p.name.trim(), defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt })
+      .values({
+        tenantId: ctx.tenantId,
+        code,
+        name: p.name.trim(),
+        description,
+        defaultTaxable: p.defaultTaxable,
+        requiresReceipt: p.requiresReceipt,
+        maxReceiptAgeDays,
+      })
       .returning({ id: claimType.id });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -137,7 +299,7 @@ export async function createClaimType(
       aggregateId: row.id,
       eventType: 'claim-type.created',
       actor: actorOf(ctx),
-      payload: { code, name: p.name.trim(), defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt },
+      payload: { code, name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays },
     });
     return { id: row.id };
   });
@@ -145,12 +307,21 @@ export async function createClaimType(
 
 export async function updateClaimType(
   ctx: SessionContext,
-  p: { id: string; name: string; defaultTaxable: boolean; requiresReceipt: boolean },
+  p: {
+    id: string;
+    name: string;
+    defaultTaxable: boolean;
+    requiresReceipt: boolean;
+    description?: string | null;
+    maxReceiptAgeDays?: number | null;
+  },
 ): Promise<void> {
+  const description = p.description?.trim() || null;
+  const maxReceiptAgeDays = receiptAgeOrNull(p.maxReceiptAgeDays);
   await withTenant(ctx, async (tx) => {
     const [row] = await tx
       .update(claimType)
-      .set({ name: p.name.trim(), defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt })
+      .set({ name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays })
       .where(eq(claimType.id, p.id))
       .returning({ id: claimType.id });
     if (!row) return;
@@ -160,7 +331,37 @@ export async function updateClaimType(
       aggregateId: p.id,
       eventType: 'claim-type.updated',
       actor: actorOf(ctx),
-      payload: { name: p.name.trim(), defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt },
+      payload: { name: p.name.trim(), description, defaultTaxable: p.defaultTaxable, requiresReceipt: p.requiresReceipt, maxReceiptAgeDays },
+    });
+  });
+}
+
+/**
+ * Hard-delete a claim type — ONLY when it has never been used (zero claim_request rows in ANY status).
+ * Cascade-deletes its claim_item sub-categories and claim_policy limit versions in the same tx. A type that
+ * has claim history must be Archived instead (soft-delete), so money records are never orphaned. (ccbd0508)
+ */
+export async function deleteClaimType(ctx: SessionContext, id: string): Promise<void> {
+  await withTenant(ctx, async (tx) => {
+    const [ct] = await tx.select({ id: claimType.id, code: claimType.code }).from(claimType).where(eq(claimType.id, id)).limit(1);
+    if (!ct) return;
+    const [used] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(claimRequest)
+      .where(eq(claimRequest.claimTypeId, id));
+    if (Number(used?.n ?? 0) > 0) {
+      throw new Error('This claim type has claims and cannot be deleted — archive it instead.');
+    }
+    const items = await tx.delete(claimItem).where(eq(claimItem.claimTypeId, id)).returning({ id: claimItem.id });
+    const policies = await tx.delete(claimPolicy).where(eq(claimPolicy.claimTypeId, id)).returning({ id: claimPolicy.id });
+    await tx.delete(claimType).where(eq(claimType.id, id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'claim-type',
+      aggregateId: id,
+      eventType: 'claim-type.deleted',
+      actor: actorOf(ctx),
+      payload: { code: ct.code, hadItems: items.length, hadPolicies: policies.length },
     });
   });
 }
@@ -272,25 +473,48 @@ export async function setClaimPolicy(
     perClaimCap: number | null;
     effectiveFrom: string;
     rateConfig?: ClaimRateConfig | null;
+    /** null (or absent) = the all-grades default row; a grade id = a per-grade limit. (ccbd0508) */
+    gradeId?: string | null;
+    monthlyLimit?: number | null;
+    lifetimeLimit?: number | null;
+    maxClaimsPerYear?: number | null;
   },
 ): Promise<{ id: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveFrom)) throw new Error('effectiveFrom must be YYYY-MM-DD');
   if (p.annualBudget != null && p.annualBudget < 0) throw new Error('Annual budget must be ≥ 0');
   if (p.perClaimCap != null && p.perClaimCap < 0) throw new Error('Per-claim cap must be ≥ 0');
+  if (p.monthlyLimit != null && p.monthlyLimit < 0) throw new Error('Monthly limit must be ≥ 0');
+  if (p.lifetimeLimit != null && p.lifetimeLimit < 0) throw new Error('Lifetime limit must be ≥ 0');
+  const maxClaimsPerYear = p.maxClaimsPerYear ?? null;
+  if (maxClaimsPerYear != null && (!Number.isInteger(maxClaimsPerYear) || maxClaimsPerYear < 0)) {
+    throw new Error('Number of claims allowed must be a whole number ≥ 0');
+  }
   if (p.rateConfig != null) assertValidRateConfig(p.rateConfig);
+  const gradeId = p.gradeId ?? null;
   return withTenant(ctx, async (tx) => {
-    // Close any currently-open policy for this type (half-open validity).
+    // Close the currently-open policy version for THIS (type, grade) only (half-open validity) — a
+    // null-safe grade compare so changing the Executive-Medical limit never closes the Manager-Medical row.
     await tx
       .update(claimPolicy)
       .set({ validTo: p.effectiveFrom })
-      .where(and(eq(claimPolicy.claimTypeId, p.claimTypeId), isNull(claimPolicy.validTo)));
+      .where(
+        and(
+          eq(claimPolicy.claimTypeId, p.claimTypeId),
+          isNull(claimPolicy.validTo),
+          gradeId == null ? isNull(claimPolicy.gradeId) : eq(claimPolicy.gradeId, gradeId),
+        ),
+      );
     const [row] = await tx
       .insert(claimPolicy)
       .values({
         tenantId: ctx.tenantId,
         claimTypeId: p.claimTypeId,
+        gradeId,
         annualBudget: p.annualBudget == null ? null : p.annualBudget.toFixed(2),
         perClaimCap: p.perClaimCap == null ? null : p.perClaimCap.toFixed(2),
+        monthlyLimit: p.monthlyLimit == null ? null : p.monthlyLimit.toFixed(2),
+        lifetimeLimit: p.lifetimeLimit == null ? null : p.lifetimeLimit.toFixed(2),
+        maxClaimsPerYear,
         rateConfig: p.rateConfig ?? null,
         validFrom: p.effectiveFrom,
       })
@@ -301,8 +525,18 @@ export async function setClaimPolicy(
       aggregateId: row.id,
       eventType: 'claim-policy.set',
       actor: actorOf(ctx),
-      // rateConfig is a RATE (not a claim amount) — safe to log (ADR-0030).
-      payload: { claimTypeId: p.claimTypeId, annualBudget: p.annualBudget, perClaimCap: p.perClaimCap, effectiveFrom: p.effectiveFrom, rateConfig: p.rateConfig ?? null },
+      // limits + rateConfig are RATES/config (not a claim amount) — safe to log (ADR-0030).
+      payload: {
+        claimTypeId: p.claimTypeId,
+        gradeId,
+        annualBudget: p.annualBudget,
+        perClaimCap: p.perClaimCap,
+        monthlyLimit: p.monthlyLimit ?? null,
+        lifetimeLimit: p.lifetimeLimit ?? null,
+        maxClaimsPerYear,
+        effectiveFrom: p.effectiveFrom,
+        rateConfig: p.rateConfig ?? null,
+      },
     });
     return { id: row.id };
   });
@@ -330,6 +564,69 @@ export function computeClaimAmount(
   return p.enteredAmount ?? 0;
 }
 
+export type EmployeeClaimType = {
+  id: string;
+  code: string;
+  name: string;
+  requiresReceipt: boolean;
+  rateConfig: ClaimRateConfig | null;
+  /** Per-type receipt-backdate window in days (the per-type override, or the global default). */
+  maxReceiptAgeDays: number;
+  items: ClaimItemRow[];
+  balance: ClaimBalanceRow;
+};
+
+/**
+ * Everything the employee claim form needs, resolved for THIS employee's job grade (ccbd0508): per claim
+ * type — its grade-resolved rate config + receipt window + dependent items + the live balance panel data
+ * (annual/monthly limits, used, remaining). One read so a graded employee never sees another grade's rate.
+ */
+export async function getEmployeeClaimTypes(ctx: SessionContext, employmentId: string): Promise<EmployeeClaimType[]> {
+  const asOf = today();
+  const usedStatuses: ClaimStatus[] = ['pending', 'approved', 'paid'];
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, employmentId)).limit(1);
+    const gradeId = emp?.gradeId ?? null;
+    const types = await tx.select().from(claimType).where(isNull(claimType.archivedAt)).orderBy(claimType.code);
+    return Promise.all(
+      types.map(async (t) => {
+        const policy = await getActiveClaimPolicy(tx, t.id, asOf, gradeId);
+        const items = await activeItemsFor(tx, t.id);
+        const usedThisYear = await claimedInScope(tx, employmentId, t.id, 'year', asOf, usedStatuses);
+        const usedThisMonth = await claimedInScope(tx, employmentId, t.id, 'month', asOf, usedStatuses);
+        const usedLifetime = policy?.lifetimeLimit != null ? await claimedInScope(tx, employmentId, t.id, 'lifetime', asOf, usedStatuses) : 0;
+        const claimsUsedThisYear = await claimCountInScope(tx, employmentId, t.id, 'year', asOf, usedStatuses);
+        const balance: ClaimBalanceRow = {
+          claimTypeId: t.id,
+          typeCode: t.code,
+          typeName: t.name,
+          annualLimit: policy?.annualBudget ?? null,
+          usedThisYear,
+          remainingThisYear: policy?.annualBudget == null ? null : Math.max(0, policy.annualBudget - usedThisYear),
+          monthlyLimit: policy?.monthlyLimit ?? null,
+          usedThisMonth,
+          remainingThisMonth: policy?.monthlyLimit == null ? null : Math.max(0, policy.monthlyLimit - usedThisMonth),
+          perClaimCap: policy?.perClaimCap ?? null,
+          lifetimeLimit: policy?.lifetimeLimit ?? null,
+          usedLifetime,
+          claimsUsedThisYear,
+          maxClaimsPerYear: policy?.maxClaimsPerYear ?? null,
+        };
+        return {
+          id: t.id,
+          code: t.code,
+          name: t.name,
+          requiresReceipt: t.requiresReceipt,
+          rateConfig: policy?.rateConfig ?? null,
+          maxReceiptAgeDays: t.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS,
+          items,
+          balance,
+        };
+      }),
+    );
+  });
+}
+
 // ─────────────────────────────── Lifecycle (ADR-0021 §2) ───────────────────────────────
 // submit → pending → (approve | reject) ; approved → paid ; pending → cancelled. The service enforces the
 // state machine + the self-approval ban (assertCanDecide) on top of the RLS visibility scope.
@@ -343,26 +640,60 @@ export class ClaimError extends Error {
 
 const yearOf = (d: string): number => Number(d.slice(0, 4));
 
-/** Sum of a claim type's amounts for an employment in a calendar year (by incurred_on), over the given
- *  statuses — used for budget enforcement. */
-async function claimedInYear(
+type ClaimStatus = 'pending' | 'approved' | 'paid';
+/** Period scope for a limit check, resolved off the claim's incurred_on date (YYYY-MM-DD):
+ *   'year'     → same calendar year   ·   'month' → same calendar month   ·   'lifetime' → all-time. */
+type LimitScope = 'year' | 'month' | 'lifetime';
+
+const scopeCond = (scope: LimitScope, incurredOn: string) => {
+  if (scope === 'year') return sql`extract(year from ${claimRequest.incurredOn}) = ${yearOf(incurredOn)}`;
+  if (scope === 'month') return sql`to_char(${claimRequest.incurredOn}, 'YYYY-MM') = ${incurredOn.slice(0, 7)}`;
+  return sql`true`; // lifetime — no period filter
+};
+
+/** Sum of a claim type's amounts for an employment within a period scope (by incurred_on), over the given
+ *  statuses — used for budget/monthly/lifetime enforcement. */
+async function claimedInScope(
   tx: Tx,
   employmentId: string,
   claimTypeId: string,
-  year: number,
-  statuses: ('pending' | 'approved' | 'paid')[],
+  scope: LimitScope,
+  incurredOn: string,
+  statuses: ClaimStatus[],
   excludeId?: string,
 ): Promise<number> {
   const conds = [
     eq(claimRequest.employmentId, employmentId),
     eq(claimRequest.claimTypeId, claimTypeId),
-    sql`extract(year from ${claimRequest.incurredOn}) = ${year}`,
+    scopeCond(scope, incurredOn),
     inArray(claimRequest.status, statuses),
   ];
   if (excludeId) conds.push(sql`${claimRequest.id} <> ${excludeId}`);
   const [row] = await tx.select({ s: sql<string>`coalesce(sum(${claimRequest.amount}), 0)` }).from(claimRequest).where(and(...conds));
   return Number(row?.s ?? 0);
 }
+
+/** Count of a claim type's claims for an employment within a period scope — used for the claims-per-year cap. */
+async function claimCountInScope(
+  tx: Tx,
+  employmentId: string,
+  claimTypeId: string,
+  scope: LimitScope,
+  incurredOn: string,
+  statuses: ClaimStatus[],
+  excludeId?: string,
+): Promise<number> {
+  const conds = [
+    eq(claimRequest.employmentId, employmentId),
+    eq(claimRequest.claimTypeId, claimTypeId),
+    scopeCond(scope, incurredOn),
+    inArray(claimRequest.status, statuses),
+  ];
+  if (excludeId) conds.push(sql`${claimRequest.id} <> ${excludeId}`);
+  const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(claimRequest).where(and(...conds));
+  return Number(row?.n ?? 0);
+}
+
 
 /** Submit a claim (employee, for their own employment — RLS enforces). Resolves the per-type rate config,
  *  validates the dependent item + receipt-date window, DERIVES the authoritative amount, then enforces the
@@ -382,10 +713,13 @@ type SubmitClaimInput = {
  *  write (see submitClaimWithAttachment). The date-format guard runs before the tx opens in the public
  *  wrappers; everything that touches the DB lives here so a downstream failure rolls the claim back too. */
 async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): Promise<{ id: string }> {
-  // 2. Load the type + active policy (now also carries rateConfig).
+  // 2. Load the type + the claimant's grade + the grade-resolved active policy (also carries rateConfig).
   const [ct] = await tx.select().from(claimType).where(and(eq(claimType.id, p.claimTypeId), isNull(claimType.archivedAt))).limit(1);
   if (!ct) throw new ClaimError('Unknown or archived claim type');
-  const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn);
+  const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, p.employmentId)).limit(1);
+  const gradeId = emp?.gradeId ?? null;
+  const policy = await getActiveClaimPolicy(tx, p.claimTypeId, p.incurredOn, gradeId);
+  const committed: ClaimStatus[] = ['pending', 'approved', 'paid'];
 
   // 3. Item validation (D5): if the type has ≥1 live item, an item is required and must belong to the type.
   const items = await activeItemsFor(tx, p.claimTypeId);
@@ -396,12 +730,13 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
     claimItemId = p.claimItemId;
   }
 
-  // 4. Receipt-date window: not in the future, and not more than 45 days (≈1.5 months per ticket) back.
-  //    Compared as UTC date strings off the same helper the client picker uses (no UTC+8 off-by-one).
+  // 4. Receipt-date window: not in the future, and not more than the per-type window (or the global default)
+  //    back. Compared as UTC date strings off the same helper the client picker uses (no UTC+8 off-by-one).
+  const backdateDays = ct.maxReceiptAgeDays ?? RECEIPT_BACKDATE_DAYS;
   const todayUtc = today();
   if (p.incurredOn > todayUtc) throw new ClaimError('Receipt date cannot be in the future');
-  if (p.incurredOn < dateMinusDays(todayUtc, RECEIPT_BACKDATE_DAYS)) {
-    throw new ClaimError(`Receipt date cannot be more than ${RECEIPT_BACKDATE_DAYS} days ago`);
+  if (p.incurredOn < dateMinusDays(todayUtc, backdateDays)) {
+    throw new ClaimError(`Receipt date cannot be more than ${backdateDays} days ago`);
   }
 
   // 5. Derive the authoritative amount from the rate config BEFORE the value guards.
@@ -410,20 +745,47 @@ async function insertClaimTx(tx: Tx, ctx: SessionContext, p: SubmitClaimInput): 
   if (!(amount > 0)) throw new ClaimError('Amount must be greater than zero');
   if (policy?.perClaimCap != null && amount > policy.perClaimCap) {
     throw new ClaimError(
-      `This claim's amount (RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}) exceeds the ` +
-        `per-claim cap for this claim type (RM ${policy.perClaimCap.toLocaleString('en-MY')}). Reduce the ` +
-        `amount, split it across multiple claims if appropriate, or ask an admin to review the cap.`,
+      `This claim's amount (${rmMsg(amount)}) exceeds the per-claim cap for this claim type ` +
+        `(${rmMsg(policy.perClaimCap)}). Reduce the amount, split it across multiple claims if appropriate, ` +
+        `or ask an admin to review the cap.`,
     );
   }
   if (policy?.annualBudget != null) {
-    const committed = await claimedInYear(tx, p.employmentId, p.claimTypeId, yearOf(p.incurredOn), ['pending', 'approved', 'paid']);
-    if (committed + amount > policy.annualBudget) {
-      const remaining = Math.max(0, policy.annualBudget - committed);
+    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed);
+    if (used + amount > policy.annualBudget) {
+      const remaining = Math.max(0, policy.annualBudget - used);
       throw new ClaimError(
-        `This claim (RM ${amount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}) would bring your total ` +
-          `for this claim type this year to RM ${(committed + amount).toLocaleString('en-MY', { minimumFractionDigits: 2 })}, ` +
-          `which exceeds the annual budget of RM ${policy.annualBudget.toLocaleString('en-MY')}. You have RM ` +
-          `${remaining.toLocaleString('en-MY', { minimumFractionDigits: 2 })} remaining this year for this claim type.`,
+        `This claim (${rmMsg(amount)}) would bring your total for this claim type this year to ` +
+          `${rmMsg(used + amount)}, which exceeds the annual limit of ${rmMsg(policy.annualBudget)}. You have ` +
+          `${rmMsg(remaining)} remaining this year for this claim type.`,
+      );
+    }
+  }
+  if (policy?.monthlyLimit != null) {
+    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'month', p.incurredOn, committed);
+    if (used + amount > policy.monthlyLimit) {
+      const remaining = Math.max(0, policy.monthlyLimit - used);
+      throw new ClaimError(
+        `This claim (${rmMsg(amount)}) would exceed the monthly limit of ${rmMsg(policy.monthlyLimit)} for this ` +
+          `claim type. You have ${rmMsg(remaining)} remaining this month for this claim type.`,
+      );
+    }
+  }
+  if (policy?.lifetimeLimit != null) {
+    const used = await claimedInScope(tx, p.employmentId, p.claimTypeId, 'lifetime', p.incurredOn, committed);
+    if (used + amount > policy.lifetimeLimit) {
+      const remaining = Math.max(0, policy.lifetimeLimit - used);
+      throw new ClaimError(
+        `This claim (${rmMsg(amount)}) would exceed the lifetime limit of ${rmMsg(policy.lifetimeLimit)} for this ` +
+          `claim type. You have ${rmMsg(remaining)} remaining for this claim type.`,
+      );
+    }
+  }
+  if (policy?.maxClaimsPerYear != null) {
+    const count = await claimCountInScope(tx, p.employmentId, p.claimTypeId, 'year', p.incurredOn, committed);
+    if (count + 1 > policy.maxClaimsPerYear) {
+      throw new ClaimError(
+        `You have reached the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year for this claim type.`,
       );
     }
   }
@@ -512,11 +874,32 @@ export async function decideClaim(
 
     if (p.decision === 'approve') {
       const taxable = p.taxable ?? claim.taxable;
-      const policy = await getActiveClaimPolicy(tx, claim.claimTypeId, claim.incurredOn);
+      const [emp] = await tx.select({ gradeId: employment.gradeId }).from(employment).where(eq(employment.id, claim.employmentId)).limit(1);
+      const policy = await getActiveClaimPolicy(tx, claim.claimTypeId, claim.incurredOn, emp?.gradeId ?? null);
+      const amount = Number(claim.amount);
+      const settled: ClaimStatus[] = ['approved', 'paid'];
       if (policy?.annualBudget != null) {
-        const others = await claimedInYear(tx, claim.employmentId, claim.claimTypeId, yearOf(claim.incurredOn), ['approved', 'paid'], claim.id);
-        if (others + Number(claim.amount) > policy.annualBudget) {
-          throw new ClaimError(`Approving this would exceed the annual budget (RM ${policy.annualBudget.toLocaleString('en-MY')})`);
+        const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'year', claim.incurredOn, settled, claim.id);
+        if (others + amount > policy.annualBudget) {
+          throw new ClaimError(`Approving this would exceed the annual limit (${rmMsg(policy.annualBudget)})`);
+        }
+      }
+      if (policy?.monthlyLimit != null) {
+        const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'month', claim.incurredOn, settled, claim.id);
+        if (others + amount > policy.monthlyLimit) {
+          throw new ClaimError(`Approving this would exceed the monthly limit (${rmMsg(policy.monthlyLimit)})`);
+        }
+      }
+      if (policy?.lifetimeLimit != null) {
+        const others = await claimedInScope(tx, claim.employmentId, claim.claimTypeId, 'lifetime', claim.incurredOn, settled, claim.id);
+        if (others + amount > policy.lifetimeLimit) {
+          throw new ClaimError(`Approving this would exceed the lifetime limit (${rmMsg(policy.lifetimeLimit)})`);
+        }
+      }
+      if (policy?.maxClaimsPerYear != null) {
+        const others = await claimCountInScope(tx, claim.employmentId, claim.claimTypeId, 'year', claim.incurredOn, settled, claim.id);
+        if (others + 1 > policy.maxClaimsPerYear) {
+          throw new ClaimError(`Approving this would exceed the maximum of ${policy.maxClaimsPerYear} claim(s) allowed this year`);
         }
       }
       await tx

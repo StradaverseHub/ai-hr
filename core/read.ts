@@ -49,6 +49,7 @@ import {
 } from '../db/schema';
 import { daysInMonth } from './payroll';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
+import { visibleLabelIdsCondition } from './system-labels';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -229,6 +230,8 @@ export function listCompanies(ctx: SessionContext, opts: { includeArchived?: boo
         registrationNo: company.registrationNo,
         leaveCycle: company.leaveCycle,
         leaveHalfDayFullDeduction: company.leaveHalfDayFullDeduction,
+        // Shared System Labels flag (62de487d) — the grid shows/toggles per-company sharing.
+        sharedSystemLabels: company.sharedSystemLabels,
         archivedAt: company.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.company_id = company.id) or exists (select 1 from employment e where e.company_id = company.id) or exists (select 1 from company c where c.parent_company_id = company.id)`,
         // hasLogo: EXISTS against the company_logo side table (NEVER the bytes — the blob is a different
@@ -261,7 +264,12 @@ export function listDepartments(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(department.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(department.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (feedback 62de487d): filter by the resolver — origin ∪ shared-in ∪ global
+          // for companies whose shared_system_labels flag is ON — instead of raw origin company_id. With the
+          // flag OFF everywhere this collapses to inArray(company_id, companyIds): unchanged behaviour.
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(department, 'department', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(department.name),

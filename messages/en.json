@@ -124,7 +124,15 @@
     "attendanceAllowance": "Attendance allowance",
     "attendanceRecords": "Records",
     "clockingLocation": "Clocking location",
-    "attendanceImport": "Import"
+    "attendanceImport": "Import",
+    "mobilePreview": "Mobile App Preview",
+    "reports": "Reports",
+    "reportMaster": "Master",
+    "reportAttendance": "Attendance",
+    "reportLeave": "Leave",
+    "reportPayroll": "Payroll",
+    "reportClaim": "Claim",
+    "reportPerformance": "Performance"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -2330,7 +2338,61 @@
       "bulkDeactivate": "Deactivate",
       "copyToCompanies": "Copy to companies",
       "cannotUnassignInUse": "Cannot unassign: a company still uses this label. Reassign its employees first.",
-      "globalGroupAdminOnly": "Only a group admin can make a label global."
+      "globalGroupAdminOnly": "Only a group admin can make a label global.",
+      "saved": "Saved — {created} added, {updated} updated.",
+      "saveFailed": "Could not save. Please fix the highlighted rows.",
+      "categories": "Categories",
+      "category": {
+        "department": "Departments",
+        "position": "Positions",
+        "cost_center": "Cost Centres",
+        "business_unit": "Business Units"
+      },
+      "sharingSettings": "Sharing settings",
+      "sharedLabelsToggle": "Share labels across companies",
+      "sharedLabelsToggleHint": "When on, this company also sees global labels and labels shared into it.",
+      "searchPlaceholder": "Search labels…",
+      "filterActive": "Active",
+      "filterArchived": "Archived",
+      "filterAllStatus": "All statuses",
+      "filterAllScope": "All scopes",
+      "scopeGlobal": "Global",
+      "scopeCompanySpecific": "Company-specific",
+      "scopeOwn": "Own company",
+      "scopeCompaniesN": "{n} companies",
+      "addToCompany": "Add to company",
+      "addRow": "Add row",
+      "copyToCompaniesSelected": "Copy to companies",
+      "exportCsv": "Export CSV",
+      "saveAll": "Save",
+      "discard": "Discard",
+      "unsavedChanges": "You have unsaved changes.",
+      "col": {
+        "name": "Name",
+        "description": "Description",
+        "title": "Title",
+        "jobFamily": "Job family",
+        "code": "Code",
+        "businessUnit": "Business unit",
+        "scope": "Scope",
+        "status": "Status",
+        "lastUpdated": "Last updated",
+        "actions": "Actions"
+      },
+      "noRows": "No labels match your filters.",
+      "businessUnitNone": "— None —",
+      "saveFirst": "Save first",
+      "statusActive": "Active",
+      "statusArchived": "Archived",
+      "systemActor": "System",
+      "duplicateRow": "Duplicate row",
+      "deleteRow": "Delete row",
+      "unarchive": "Restore",
+      "archive": "Archive",
+      "pasteHint": "Tip: paste rows straight from a spreadsheet to add them in bulk.",
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "origin": "origin"
     },
     "leave": {
       "pageTitle": "Leave configuration",
@@ -2767,7 +2829,32 @@
       "itemNameLabel": "Item name",
       "itemArchiveConfirmTitle": "Archive claim item?",
       "itemArchiveConfirmDescription": "It will no longer be selectable on new claims. Existing claims keep it.",
-      "itemArchiveConfirmLabel": "Archive"
+      "itemArchiveConfirmLabel": "Archive",
+      "descriptionLabel": "Description",
+      "maxReceiptAgeLabel": "Max receipt age (days)",
+      "maxReceiptAgeHint": "45 (default)",
+      "itemCount": "{count} items",
+      "delete": "Delete",
+      "deleteConfirmTitle": "Delete claim type?",
+      "deleteConfirmDescription": "This permanently deletes the claim type and its sub-categories and limits. Only possible when no claims have ever used it — otherwise archive it instead.",
+      "deleteConfirmLabel": "Delete",
+      "limitsTitle": "Claim Limits",
+      "limitsSubtitle": "Configure claim eligibility and limits per Job Grade — reusing the grades already maintained for Leave.",
+      "limitsMovedHint": "Claim limits (per Job Grade) are configured on the Claim Limits tab.",
+      "gradeLabel": "Job Grade",
+      "allGrades": "All grades (default)",
+      "claimTypeLabel": "Claim Type",
+      "monthlyLimitLabel": "Monthly limit",
+      "lifetimeLimitLabel": "Lifetime limit",
+      "maxClaimsPerYearLabel": "Claims / year",
+      "unlimitedToggle": "Unlimited (no limits for this grade)",
+      "approvalRequiredLabel": "Approval required",
+      "approvalAlwaysYes": "Yes",
+      "saveLimit": "Save limit",
+      "noLimitRows": "No claim limits configured yet.",
+      "unlimitedBadge": "Unlimited",
+      "newLimitTitle": "Set a claim limit",
+      "newLimitHint": "Choose a grade and claim type, then set the limits. Saving records a new effective-dated version."
     },
     "reimbursements": {
       "back": "Claims configuration",
@@ -2988,6 +3075,11 @@
       "approval": "Approval Workflow",
       "payroll": "Payroll Related",
       "audit": "Audit"
+    },
+    "claimsTabs": {
+      "types": "Claim Types",
+      "limits": "Claim Limits",
+      "reimbursements": "Reimbursements"
     }
   },
   "topbar": {
@@ -3401,7 +3493,16 @@
     "distanceLabel": "Distance (km)",
     "computedAmount": "Computed amount",
     "attachmentHint": "PDF/JPG/PNG, max 10MB",
-    "remarksLabel": "Remarks"
+    "remarksLabel": "Remarks",
+    "balanceTitle": "Your balance",
+    "annualLimit": "Annual limit",
+    "alreadyClaimed": "Already claimed",
+    "remainingBalance": "Remaining balance",
+    "balanceAfter": "Balance after this claim",
+    "monthlyRemaining": "Remaining this month",
+    "perClaimCap": "Per-claim cap",
+    "claimsLeftThisYear": "Claims left this year",
+    "unlimitedBadge": "No limit"
   },
   "analytics": {
     "title": "HR analytics",
@@ -4248,6 +4349,222 @@
       "saved": "Policy saved",
       "statusChanged": "Policy status updated",
       "archived": "Policy archived"
+    }
+  },
+  "mobilePreview": {
+    "title": "Mobile App UI/UX Preview",
+    "subtitle": "A visual preview of the upcoming mobile app — tap through the screens inside the phone frame.",
+    "previewOnly": "Design preview only. These screens simulate the future mobile app; the data shown is illustrative.",
+    "back": "Back",
+    "resetToHome": "Back to home",
+    "feature": {
+      "attendance": "Attendance",
+      "leave": "Leave",
+      "claim": "Claim",
+      "payroll": "Payroll",
+      "performance": "Performance",
+      "setting": "Setting"
+    },
+    "home": {
+      "greeting": "Good morning"
+    },
+    "attendance": {
+      "statusIn": "Clocked in",
+      "statusOut": "Not clocked in",
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "hint": "Location verified"
+    },
+    "leave": {
+      "balance": "Leave Balance",
+      "calendar": "Leave Calendar",
+      "application": "Leave Application"
+    },
+    "leaveBalance": {
+      "annual": "Annual Leave",
+      "sick": "Sick Leave",
+      "unpaid": "Unpaid Leave",
+      "daysUnit": "days"
+    },
+    "leaveCalendar": {
+      "legend": "Approved leave"
+    },
+    "leaveApp": {
+      "type": "Leave type",
+      "from": "From",
+      "to": "To",
+      "reason": "Reason",
+      "submit": "Submit application"
+    },
+    "claim": {
+      "application": "Claim Application"
+    },
+    "claimApp": {
+      "type": "Claim type",
+      "amount": "Amount",
+      "receipt": "Receipt",
+      "attach": "Attach receipt",
+      "submit": "Submit claim"
+    },
+    "payroll": {
+      "latest": "Latest net pay",
+      "viewPayslip": "View payslip",
+      "history": "Payslip history"
+    },
+    "payslip": {
+      "title": "Payslip",
+      "earnings": "Earnings",
+      "deductions": "Deductions",
+      "net": "Net pay",
+      "basic": "Basic salary",
+      "allowance": "Allowance",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "Coming Soon",
+      "body": "This feature will be available in a future release."
+    }
+  },
+  "reports": {
+    "title": "Reports",
+    "subtitle": "Every report in one place — open a predefined report or build your own.",
+    "category": {
+      "master": "Master",
+      "attendance": "Attendance",
+      "leave": "Leave",
+      "payroll": "Payroll",
+      "claim": "Claim",
+      "performance": "Performance"
+    },
+    "categoryDesc": {
+      "master": "Employee master data, headcount and demographics.",
+      "attendance": "Overtime, hours and attendance records.",
+      "leave": "Leave balances and utilisation.",
+      "payroll": "Processed payroll, statutory and agency files.",
+      "claim": "Claim types and reimbursement policy.",
+      "performance": "Performance cycles and reviews."
+    },
+    "predefined": {
+      "analytics": "HR analytics & master data",
+      "otReport": "Overtime report",
+      "attendanceRecords": "Attendance records",
+      "leaveAnalytics": "Leave analytics",
+      "payrollReports": "Statutory & agency reports",
+      "payrollView": "Payroll transaction view",
+      "claims": "Claims",
+      "performance": "Performance"
+    },
+    "builtInReports": "Predefined reports",
+    "customReports": "Custom reports",
+    "newReport": "New report",
+    "noCustomReports": "No custom reports yet.",
+    "noDataset": "Custom reports for this category are coming soon.",
+    "shared": "Shared",
+    "favourite": "Add to favourites",
+    "unfavourite": "Remove from favourites",
+    "share": "Share",
+    "unshare": "Stop sharing",
+    "duplicate": "Duplicate",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this report?",
+    "exportCsv": "Export CSV",
+    "exportXlsx": "Export Excel",
+    "exportPdf": "Export PDF",
+    "exportDocx": "Export Word",
+    "exportHint": "Export:",
+    "backToReports": "Back to Reports",
+    "reportName": "Report name",
+    "availableFields": "Available fields",
+    "searchFields": "Search fields…",
+    "selectedColumns": "Report design",
+    "noColumns": "Drag fields here or use the + button to add columns.",
+    "properties": "Report properties",
+    "dataset": "Data source",
+    "orientation": "Orientation",
+    "portrait": "Portrait",
+    "landscape": "Landscape",
+    "sortBy": "Sort by",
+    "groupBy": "Group by",
+    "none": "None",
+    "ascending": "Ascending",
+    "descending": "Descending",
+    "filters": "Filters",
+    "shareToggle": "Share with other administrators",
+    "summaryRow": "Summary totals",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "add": "Add",
+    "preview": "Preview",
+    "refreshPreview": "Refresh preview",
+    "noPreview": "Run a preview to see the first rows.",
+    "previewNote": "Preview shows the first 25 rows only.",
+    "save": "Save report",
+    "saving": "Saving…",
+    "dragHint": "Drag to reorder",
+    "builder": {
+      "newTitle": "New custom report",
+      "editTitle": "Edit report",
+      "subtitle": "Pick your fields, arrange the layout, and let AI design it for you."
+    },
+    "ai": {
+      "title": "AI Report Designer",
+      "describe": "Describe the report you want and AI will lay it out for you to review.",
+      "placeholder": "e.g. monthly OT hours by department with totals",
+      "generate": "Generate layout",
+      "generating": "Generating…",
+      "notConfigured": "AI is not configured — ask an administrator to connect a provider in AI settings.",
+      "invalid": "AI could not build a valid report from that request — try rephrasing.",
+      "applied": "AI layout applied"
+    },
+    "reportSubtitle": "Subtitle",
+    "reportDescription": "Description",
+    "companyLogo": "Company logo",
+    "companyLogoHint": "Text mark or data: image URL",
+    "paperSize": "Paper size",
+    "margins": "Margins",
+    "marginNarrow": "Narrow",
+    "marginNormal": "Normal",
+    "marginWide": "Wide",
+    "dateFormat": "Date format",
+    "numberFormat": "Number format",
+    "pageBreakOn": "Page break on",
+    "header": "Header",
+    "footer": "Footer",
+    "watermark": "Watermark",
+    "alignment": "Align",
+    "alignLeft": "Left",
+    "alignCenter": "Center",
+    "alignRight": "Right",
+    "width": "Width",
+    "freeze": "Freeze",
+    "pagesApprox": "Pages (approx.)",
+    "averagesRow": "Averages",
+    "permissions": "Report permissions",
+    "permissionsHint": "Every verb is enforced per role: View and Export gate running the report, Create gates duplicating it, plus Edit, Delete, Share and Manage templates. Leave empty for admin-only; Super Admin always has access.",
+    "role": "Role",
+    "recommendations": "Smart recommendations",
+    "suggestedColumns": "Suggested columns",
+    "bestFormat": "Best export format",
+    "saveAsTemplate": "Save as template",
+    "permVerb": {
+      "view": "View",
+      "create": "Create",
+      "edit": "Edit",
+      "delete": "Delete",
+      "export": "Export",
+      "share": "Share",
+      "manageTemplates": "Manage templates"
+    },
+    "permRole": {
+      "employee": "Employee",
+      "manager": "Manager",
+      "hr_admin": "HR Admin",
+      "super_admin": "Super Admin",
+      "payroll_partner": "Payroll Partner",
+      "performance_comp_partner": "Perf/Comp Partner"
     }
   }
 }

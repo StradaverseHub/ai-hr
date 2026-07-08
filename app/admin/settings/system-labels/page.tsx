@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
+import { isGroupAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import {
   listBusinessUnitsForLabels,
@@ -7,24 +8,16 @@ import {
   listDepartmentsForLabels,
   listPositionsForLabels,
 } from '@/core/admin';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
-import { SystemLabelsPanel, type LabelRow } from '@/components/system-labels-panel';
+import { listLabelAssignments } from '@/core/system-labels';
+import { Card, ErrorBanner, PageHeader } from '@/components/ui';
+import { SystemLabelsGrid, type GridKind, type GridRecord } from '@/components/system-labels-grid';
 import {
-  archiveBusinessUnitAction,
-  archiveCostCenterAction,
-  archiveDepartmentAction,
-  archivePositionAction,
-  createBusinessUnitAction,
-  createCostCenterAction,
-  createDepartmentAction,
-  createPositionAction,
-  deleteCostCenterAction,
-  deleteDepartmentAction,
-  deletePositionAction,
-  updateBusinessUnitAction,
-  updateCostCenterAction,
-  updateDepartmentAction,
-  updatePositionAction,
+  assignLabelCompaniesAction,
+  copyLabelsToCompaniesAction,
+  saveLabelsGridAction,
+  setCompanySharedLabelsAction,
+  setLabelGlobalAction,
+  unassignLabelCompaniesAction,
 } from '../actions';
 
 export default async function SystemLabelsPage({
@@ -35,130 +28,114 @@ export default async function SystemLabelsPage({
   const { s, scopeIds } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
-  const to = await getTranslations('admin.organization');
 
-  const [companies, departments, positions, costCenters, businessUnits] = await Promise.all([
-    listCompanies(s, { includeArchived: true }),
-    listDepartmentsForLabels(s),
-    listPositionsForLabels(s),
-    listCostCentersForLabels(s),
-    listBusinessUnitsForLabels(s),
-  ]);
+  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign] =
+    await Promise.all([
+      listCompanies(s, { includeArchived: true }),
+      listDepartmentsForLabels(s),
+      listPositionsForLabels(s),
+      listCostCentersForLabels(s),
+      listBusinessUnitsForLabels(s),
+      listLabelAssignments(s, 'department'),
+      listLabelAssignments(s, 'position'),
+      listLabelAssignments(s, 'cost_center'),
+      listLabelAssignments(s, 'business_unit'),
+    ]);
 
-  const scoped = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
+  const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
+  const scopedIdSet = new Set(scopedCompanies.map((c) => c.id));
 
-  // Business Unit options for the Department edit-row + add-form dropdowns: this company's ACTIVE BUs + None.
-  const buOptions = (companyId: string) => [
-    { value: '', label: to('businessUnitNone') },
-    ...businessUnits
-      .filter((bu) => bu.companyId === companyId && !bu.archivedAt)
-      .map((bu) => ({ value: bu.id, label: `${bu.code} — ${bu.name}` })),
-  ];
+  // Assignment map: labelId → [companyId, …]. The origin company is always included so the Scope cell can
+  // pre-check it (the origin is implicitly assigned; the backfill in 0157 wrote a self-assignment too).
+  const assignMap = (rows: { labelId: string; companyId: string }[]) => {
+    const m = new Map<string, string[]>();
+    for (const r of rows) {
+      const list = m.get(r.labelId) ?? [];
+      list.push(r.companyId);
+      m.set(r.labelId, list);
+    }
+    return m;
+  };
+  const deptMap = assignMap(deptAssign);
+  const posMap = assignMap(posAssign);
+  const ccMap = assignMap(ccAssign);
+  const buMap = assignMap(buAssign);
 
-  const deptRows = (companyId: string): LabelRow[] =>
-    departments
-      .filter((d) => d.companyId === companyId)
-      .map((d) => ({
-        id: d.id,
-        display: d.name,
-        sub: d.description,
-        fields: [
-          { name: 'name', label: to('fieldName'), value: d.name },
-          { name: 'businessUnitId', label: to('fieldBusinessUnit'), value: d.businessUnitId ?? '', options: buOptions(companyId) },
-          { name: 'description', label: t('fieldDescription'), value: d.description ?? '', wide: true },
-        ],
-        inUse: d.inUse,
-        archived: !!d.archivedAt,
-      }));
-  const posRows = (companyId: string): LabelRow[] =>
-    positions
-      .filter((p) => p.companyId === companyId)
-      .map((p) => ({
-        id: p.id,
-        display: p.title,
-        sub: p.description ?? p.jobFamily,
-        fields: [
-          { name: 'title', label: to('fieldTitle'), value: p.title },
-          { name: 'jobFamily', label: to('fieldJobFamily'), value: p.jobFamily ?? '' },
-          { name: 'description', label: t('fieldDescription'), value: p.description ?? '', wide: true },
-        ],
-        inUse: p.inUse,
-        archived: !!p.archivedAt,
-      }));
-  const ccRows = (companyId: string): LabelRow[] =>
-    costCenters
-      .filter((c) => c.companyId === companyId)
-      .map((c) => ({
-        id: c.id,
-        display: c.code,
-        sub: c.description ?? c.name,
-        fields: [
-          { name: 'code', label: to('fieldCode'), value: c.code },
-          { name: 'name', label: to('fieldName'), value: c.name },
-          { name: 'description', label: t('fieldDescription'), value: c.description ?? '', wide: true },
-        ],
-        inUse: c.inUse,
-        archived: !!c.archivedAt,
-      }));
-  const buRows = (companyId: string): LabelRow[] =>
-    businessUnits
-      .filter((bu) => bu.companyId === companyId)
-      .map((bu) => ({
-        id: bu.id,
-        display: bu.code,
-        sub: bu.description ?? bu.name,
-        fields: [
-          { name: 'code', label: to('fieldCode'), value: bu.code },
-          { name: 'name', label: to('fieldName'), value: bu.name },
-          { name: 'description', label: t('fieldDescription'), value: bu.description ?? '', wide: true },
-        ],
-        inUse: bu.inUse,
-        archived: !!bu.archivedAt,
-      }));
+  const norm = (
+    r: {
+      id: string;
+      companyId: string;
+      code?: string;
+      name?: string;
+      title?: string;
+      jobFamily?: string | null;
+      businessUnitId?: string | null;
+      description?: string | null;
+      isGlobal: boolean;
+      archivedAt: Date | null;
+      inUse: boolean;
+      createdAt: Date | null;
+      lastUpdatedAt: string | null;
+      lastUpdatedBy: string | null;
+    },
+    map: Map<string, string[]>,
+  ): GridRecord => ({
+    id: r.id,
+    companyId: r.companyId,
+    code: r.code ?? '',
+    name: r.name ?? '',
+    title: r.title ?? '',
+    jobFamily: r.jobFamily ?? '',
+    businessUnitId: r.businessUnitId ?? null,
+    description: r.description ?? '',
+    isGlobal: r.isGlobal,
+    archived: !!r.archivedAt,
+    inUse: r.inUse,
+    assignedCompanyIds: Array.from(new Set([r.companyId, ...(map.get(r.id) ?? [])])),
+    createdAt: r.createdAt ? r.createdAt.toISOString() : null,
+    lastUpdatedAt: r.lastUpdatedAt,
+    lastUpdatedBy: r.lastUpdatedBy,
+  });
+
+  const inScope = <T extends { companyId: string }>(rows: T[]) => rows.filter((r) => scopedIdSet.has(r.companyId));
+
+  const data: Record<GridKind, GridRecord[]> = {
+    department: inScope(departments).map((r) => norm(r, deptMap)),
+    position: inScope(positions).map((r) => norm(r, posMap)),
+    cost_center: inScope(costCenters).map((r) => norm(r, ccMap)),
+    business_unit: inScope(businessUnits).map((r) => norm(r, buMap)),
+  };
+
+  // Active business units per company, for the department BU-link select.
+  const buByCompany: Record<string, { id: string; label: string }[]> = {};
+  for (const bu of businessUnits) {
+    if (bu.archivedAt) continue;
+    (buByCompany[bu.companyId] ??= []).push({ id: bu.id, label: `${bu.code} — ${bu.name}` });
+  }
+
+  const gridCompanies = scopedCompanies.map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels }));
 
   const actions = {
-    createDepartment: createDepartmentAction,
-    updateDepartment: updateDepartmentAction,
-    archiveDepartment: archiveDepartmentAction,
-    deleteDepartment: deleteDepartmentAction,
-    createPosition: createPositionAction,
-    updatePosition: updatePositionAction,
-    archivePosition: archivePositionAction,
-    deletePosition: deletePositionAction,
-    createCostCenter: createCostCenterAction,
-    updateCostCenter: updateCostCenterAction,
-    archiveCostCenter: archiveCostCenterAction,
-    deleteCostCenter: deleteCostCenterAction,
-    createBusinessUnit: createBusinessUnitAction,
-    updateBusinessUnit: updateBusinessUnitAction,
-    archiveBusinessUnit: archiveBusinessUnitAction,
+    save: saveLabelsGridAction,
+    setGlobal: setLabelGlobalAction,
+    assign: assignLabelCompaniesAction,
+    unassign: unassignLabelCompaniesAction,
+    copyToCompanies: copyLabelsToCompaniesAction,
+    setCompanyShared: setCompanySharedLabelsAction,
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <ErrorBanner message={error} />
 
-      <Card data-tour="system-labels-companies">
-        <SectionHeader title={t('companies')} count={scoped.length} />
-        <ul className="divide-y divide-border">
-          {scoped.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</li>
-          )}
-          {scoped.map((c) => (
-            <SystemLabelsPanel
-              key={c.id}
-              company={{ id: c.id, name: c.name, country: c.country, archivedAt: c.archivedAt }}
-              departments={deptRows(c.id)}
-              positions={posRows(c.id)}
-              costCenters={ccRows(c.id)}
-              businessUnits={buRows(c.id)}
-              buOptions={buOptions(c.id)}
-              actions={actions}
-            />
-          ))}
-        </ul>
-      </Card>
+      {gridCompanies.length === 0 ? (
+        <Card>
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
+        </Card>
+      ) : (
+        <SystemLabelsGrid data={data} companies={gridCompanies} buByCompany={buByCompany} isGroupAdmin={isGroupAdmin(s)} actions={actions} />
+      )}
     </div>
   );
 }

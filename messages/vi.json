@@ -124,7 +124,15 @@
     "attendanceAllowance": "Phụ cấp chuyên cần",
     "attendanceRecords": "Hồ sơ",
     "clockingLocation": "Địa điểm chấm công",
-    "attendanceImport": "Nhập"
+    "attendanceImport": "Nhập",
+    "mobilePreview": "Xem trước ứng dụng di động",
+    "reports": "Báo cáo",
+    "reportMaster": "Dữ liệu gốc",
+    "reportAttendance": "Chấm công",
+    "reportLeave": "Nghỉ phép",
+    "reportPayroll": "Bảng lương",
+    "reportClaim": "Yêu cầu chi",
+    "reportPerformance": "Hiệu suất"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -2330,7 +2338,61 @@
       "bulkDeactivate": "Vô hiệu hóa",
       "copyToCompanies": "Sao chép sang công ty",
       "cannotUnassignInUse": "Không thể bỏ gán: một công ty vẫn đang dùng nhãn này. Hãy gán lại nhân viên của công ty đó trước.",
-      "globalGroupAdminOnly": "Chỉ quản trị viên tập đoàn mới có thể đặt nhãn toàn cục."
+      "globalGroupAdminOnly": "Chỉ quản trị viên tập đoàn mới có thể đặt nhãn toàn cục.",
+      "saved": "Đã lưu — thêm {created}, cập nhật {updated}.",
+      "saveFailed": "Không thể lưu. Vui lòng sửa các hàng được đánh dấu.",
+      "categories": "Danh mục",
+      "category": {
+        "department": "Phòng ban",
+        "position": "Chức vụ",
+        "cost_center": "Trung tâm chi phí",
+        "business_unit": "Đơn vị kinh doanh"
+      },
+      "sharingSettings": "Cài đặt chia sẻ",
+      "sharedLabelsToggle": "Chia sẻ nhãn giữa các công ty",
+      "sharedLabelsToggleHint": "Khi bật, công ty này cũng thấy các nhãn toàn cục và nhãn được chia sẻ cho nó.",
+      "searchPlaceholder": "Tìm nhãn…",
+      "filterActive": "Đang dùng",
+      "filterArchived": "Đã lưu trữ",
+      "filterAllStatus": "Tất cả trạng thái",
+      "filterAllScope": "Tất cả phạm vi",
+      "scopeGlobal": "Toàn cục",
+      "scopeCompanySpecific": "Riêng công ty",
+      "scopeOwn": "Công ty của mình",
+      "scopeCompaniesN": "{n} công ty",
+      "addToCompany": "Thêm vào công ty",
+      "addRow": "Thêm hàng",
+      "copyToCompaniesSelected": "Sao chép sang công ty",
+      "exportCsv": "Xuất CSV",
+      "saveAll": "Lưu",
+      "discard": "Hủy bỏ",
+      "unsavedChanges": "Bạn có thay đổi chưa lưu.",
+      "col": {
+        "name": "Tên",
+        "description": "Mô tả",
+        "title": "Chức danh",
+        "jobFamily": "Nhóm công việc",
+        "code": "Mã",
+        "businessUnit": "Đơn vị kinh doanh",
+        "scope": "Phạm vi",
+        "status": "Trạng thái",
+        "lastUpdated": "Cập nhật lần cuối",
+        "actions": "Thao tác"
+      },
+      "noRows": "Không có nhãn nào khớp bộ lọc.",
+      "businessUnitNone": "— Không —",
+      "saveFirst": "Lưu trước",
+      "statusActive": "Đang dùng",
+      "statusArchived": "Đã lưu trữ",
+      "systemActor": "Hệ thống",
+      "duplicateRow": "Nhân đôi hàng",
+      "deleteRow": "Xóa hàng",
+      "unarchive": "Khôi phục",
+      "archive": "Lưu trữ",
+      "pasteHint": "Mẹo: dán hàng trực tiếp từ bảng tính để thêm hàng loạt.",
+      "cancel": "Hủy",
+      "apply": "Áp dụng",
+      "origin": "gốc"
     },
     "leave": {
       "pageTitle": "Cấu hình nghỉ phép",
@@ -2767,7 +2829,32 @@
       "itemNameLabel": "Tên hạng mục",
       "itemArchiveConfirmTitle": "Lưu trữ hạng mục yêu cầu?",
       "itemArchiveConfirmDescription": "Sẽ không thể chọn cho yêu cầu mới. Các yêu cầu hiện có vẫn giữ nó.",
-      "itemArchiveConfirmLabel": "Lưu trữ"
+      "itemArchiveConfirmLabel": "Lưu trữ",
+      "descriptionLabel": "Mô tả",
+      "maxReceiptAgeLabel": "Tuổi hóa đơn tối đa (ngày)",
+      "maxReceiptAgeHint": "45 (mặc định)",
+      "itemCount": "{count} mục",
+      "delete": "Xóa",
+      "deleteConfirmTitle": "Xóa loại yêu cầu?",
+      "deleteConfirmDescription": "Thao tác này xóa vĩnh viễn loại yêu cầu cùng các danh mục con và hạn mức. Chỉ có thể thực hiện khi chưa từng có yêu cầu nào sử dụng — nếu không hãy lưu trữ thay thế.",
+      "deleteConfirmLabel": "Xóa",
+      "limitsTitle": "Hạn mức yêu cầu",
+      "limitsSubtitle": "Cấu hình điều kiện và hạn mức yêu cầu theo Bậc công việc — tái sử dụng các bậc đã duy trì cho Nghỉ phép.",
+      "limitsMovedHint": "Hạn mức yêu cầu (theo Bậc công việc) được cấu hình trong tab Hạn mức yêu cầu.",
+      "gradeLabel": "Bậc công việc",
+      "allGrades": "Tất cả các bậc (mặc định)",
+      "claimTypeLabel": "Loại yêu cầu",
+      "monthlyLimitLabel": "Hạn mức hàng tháng",
+      "lifetimeLimitLabel": "Hạn mức trọn đời",
+      "maxClaimsPerYearLabel": "Số yêu cầu / năm",
+      "unlimitedToggle": "Không giới hạn (không có hạn mức cho bậc này)",
+      "approvalRequiredLabel": "Cần phê duyệt",
+      "approvalAlwaysYes": "Có",
+      "saveLimit": "Lưu hạn mức",
+      "noLimitRows": "Chưa cấu hình hạn mức yêu cầu nào.",
+      "unlimitedBadge": "Không giới hạn",
+      "newLimitTitle": "Đặt hạn mức yêu cầu",
+      "newLimitHint": "Chọn bậc và loại yêu cầu, rồi đặt hạn mức. Việc lưu sẽ ghi lại một phiên bản có hiệu lực mới."
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",
@@ -2988,6 +3075,11 @@
       "approval": "Quy trình phê duyệt",
       "payroll": "Liên quan bảng lương",
       "audit": "Kiểm toán"
+    },
+    "claimsTabs": {
+      "types": "Loại yêu cầu",
+      "limits": "Hạn mức yêu cầu",
+      "reimbursements": "Hoàn trả"
     }
   },
   "topbar": {
@@ -3401,7 +3493,16 @@
     "distanceLabel": "Quãng đường (km)",
     "computedAmount": "Số tiền tính toán",
     "attachmentHint": "PDF/JPG/PNG, tối đa 10MB",
-    "remarksLabel": "Ghi chú"
+    "remarksLabel": "Ghi chú",
+    "balanceTitle": "Số dư của bạn",
+    "annualLimit": "Hạn mức hàng năm",
+    "alreadyClaimed": "Đã yêu cầu",
+    "remainingBalance": "Số dư còn lại",
+    "balanceAfter": "Số dư sau yêu cầu này",
+    "monthlyRemaining": "Còn lại tháng này",
+    "perClaimCap": "Hạn mức mỗi yêu cầu",
+    "claimsLeftThisYear": "Số yêu cầu còn lại năm nay",
+    "unlimitedBadge": "Không giới hạn"
   },
   "analytics": {
     "title": "Phân tích nhân sự",
@@ -4248,6 +4349,222 @@
       "saved": "Đã lưu chính sách",
       "statusChanged": "Đã cập nhật trạng thái chính sách",
       "archived": "Đã lưu trữ chính sách"
+    }
+  },
+  "mobilePreview": {
+    "title": "Xem trước UI/UX ứng dụng di động",
+    "subtitle": "Bản xem trước trực quan của ứng dụng di động sắp ra mắt — chạm để xem các màn hình trong khung điện thoại.",
+    "previewOnly": "Chỉ là bản xem trước thiết kế. Các màn hình này mô phỏng ứng dụng di động trong tương lai; dữ liệu hiển thị chỉ mang tính minh họa.",
+    "back": "Quay lại",
+    "resetToHome": "Về trang chủ",
+    "feature": {
+      "attendance": "Chấm công",
+      "leave": "Nghỉ phép",
+      "claim": "Yêu cầu hoàn tiền",
+      "payroll": "Lương",
+      "performance": "Hiệu suất",
+      "setting": "Cài đặt"
+    },
+    "home": {
+      "greeting": "Chào buổi sáng"
+    },
+    "attendance": {
+      "statusIn": "Đã chấm công vào",
+      "statusOut": "Chưa chấm công vào",
+      "clockIn": "Chấm công vào",
+      "clockOut": "Chấm công ra",
+      "hint": "Đã xác minh vị trí"
+    },
+    "leave": {
+      "balance": "Số ngày phép còn lại",
+      "calendar": "Lịch nghỉ phép",
+      "application": "Đơn xin nghỉ phép"
+    },
+    "leaveBalance": {
+      "annual": "Nghỉ phép năm",
+      "sick": "Nghỉ ốm",
+      "unpaid": "Nghỉ không lương",
+      "daysUnit": "ngày"
+    },
+    "leaveCalendar": {
+      "legend": "Nghỉ phép đã duyệt"
+    },
+    "leaveApp": {
+      "type": "Loại nghỉ phép",
+      "from": "Từ",
+      "to": "Đến",
+      "reason": "Lý do",
+      "submit": "Gửi đơn"
+    },
+    "claim": {
+      "application": "Yêu cầu hoàn tiền"
+    },
+    "claimApp": {
+      "type": "Loại yêu cầu",
+      "amount": "Số tiền",
+      "receipt": "Biên lai",
+      "attach": "Đính kèm biên lai",
+      "submit": "Gửi yêu cầu"
+    },
+    "payroll": {
+      "latest": "Lương thực nhận gần nhất",
+      "viewPayslip": "Xem phiếu lương",
+      "history": "Lịch sử phiếu lương"
+    },
+    "payslip": {
+      "title": "Phiếu lương",
+      "earnings": "Thu nhập",
+      "deductions": "Khoản khấu trừ",
+      "net": "Lương thực nhận",
+      "basic": "Lương cơ bản",
+      "allowance": "Phụ cấp",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "Sắp ra mắt",
+      "body": "Tính năng này sẽ có trong bản phát hành sau."
+    }
+  },
+  "reports": {
+    "title": "Báo cáo",
+    "subtitle": "Mọi báo cáo ở một nơi — mở báo cáo có sẵn hoặc tự tạo.",
+    "category": {
+      "master": "Dữ liệu gốc",
+      "attendance": "Chấm công",
+      "leave": "Nghỉ phép",
+      "payroll": "Bảng lương",
+      "claim": "Yêu cầu chi",
+      "performance": "Hiệu suất"
+    },
+    "categoryDesc": {
+      "master": "Dữ liệu gốc nhân viên, số lượng và nhân khẩu học.",
+      "attendance": "Tăng ca, giờ làm và hồ sơ chấm công.",
+      "leave": "Số dư và mức sử dụng phép.",
+      "payroll": "Bảng lương đã xử lý, tệp luật định và cơ quan.",
+      "claim": "Loại yêu cầu chi và chính sách hoàn tiền.",
+      "performance": "Chu kỳ và đánh giá hiệu suất."
+    },
+    "predefined": {
+      "analytics": "Phân tích HR & dữ liệu gốc",
+      "otReport": "Báo cáo tăng ca",
+      "attendanceRecords": "Hồ sơ chấm công",
+      "leaveAnalytics": "Phân tích nghỉ phép",
+      "payrollReports": "Báo cáo luật định & cơ quan",
+      "payrollView": "Xem giao dịch lương",
+      "claims": "Yêu cầu chi",
+      "performance": "Hiệu suất"
+    },
+    "builtInReports": "Báo cáo có sẵn",
+    "customReports": "Báo cáo tùy chỉnh",
+    "newReport": "Báo cáo mới",
+    "noCustomReports": "Chưa có báo cáo tùy chỉnh.",
+    "noDataset": "Báo cáo tùy chỉnh cho danh mục này sắp ra mắt.",
+    "shared": "Đã chia sẻ",
+    "favourite": "Thêm vào yêu thích",
+    "unfavourite": "Bỏ khỏi yêu thích",
+    "share": "Chia sẻ",
+    "unshare": "Ngừng chia sẻ",
+    "duplicate": "Nhân bản",
+    "delete": "Xóa",
+    "deleteConfirm": "Xóa báo cáo này?",
+    "exportCsv": "Xuất CSV",
+    "exportXlsx": "Xuất Excel",
+    "exportPdf": "Xuất PDF",
+    "exportDocx": "Xuất Word",
+    "exportHint": "Xuất:",
+    "backToReports": "Quay lại Báo cáo",
+    "reportName": "Tên báo cáo",
+    "availableFields": "Trường có sẵn",
+    "searchFields": "Tìm trường…",
+    "selectedColumns": "Thiết kế báo cáo",
+    "noColumns": "Kéo trường vào đây hoặc dùng nút + để thêm cột.",
+    "properties": "Thuộc tính báo cáo",
+    "dataset": "Nguồn dữ liệu",
+    "orientation": "Hướng",
+    "portrait": "Dọc",
+    "landscape": "Ngang",
+    "sortBy": "Sắp xếp theo",
+    "groupBy": "Nhóm theo",
+    "none": "Không",
+    "ascending": "Tăng dần",
+    "descending": "Giảm dần",
+    "filters": "Bộ lọc",
+    "shareToggle": "Chia sẻ với quản trị viên khác",
+    "summaryRow": "Tổng tóm tắt",
+    "moveUp": "Lên",
+    "moveDown": "Xuống",
+    "remove": "Bỏ",
+    "add": "Thêm",
+    "preview": "Xem trước",
+    "refreshPreview": "Làm mới xem trước",
+    "noPreview": "Chạy xem trước để thấy các hàng đầu.",
+    "previewNote": "Xem trước chỉ hiển thị 25 hàng đầu.",
+    "save": "Lưu báo cáo",
+    "saving": "Đang lưu…",
+    "dragHint": "Kéo để sắp xếp lại",
+    "builder": {
+      "newTitle": "Báo cáo tùy chỉnh mới",
+      "editTitle": "Chỉnh sửa báo cáo",
+      "subtitle": "Chọn trường, sắp xếp bố cục và để AI thiết kế cho bạn."
+    },
+    "ai": {
+      "title": "Trình thiết kế báo cáo AI",
+      "describe": "Mô tả báo cáo bạn muốn và AI sẽ dựng bố cục để bạn xem lại.",
+      "placeholder": "ví dụ: giờ OT hàng tháng theo phòng ban kèm tổng",
+      "generate": "Tạo bố cục",
+      "generating": "Đang tạo…",
+      "notConfigured": "AI chưa được cấu hình — hãy nhờ quản trị viên kết nối nhà cung cấp trong cài đặt AI.",
+      "invalid": "AI không thể tạo báo cáo hợp lệ từ yêu cầu đó — hãy thử diễn đạt lại.",
+      "applied": "Đã áp dụng bố cục AI"
+    },
+    "reportSubtitle": "Phụ đề",
+    "reportDescription": "Mô tả",
+    "companyLogo": "Logo công ty",
+    "companyLogoHint": "Nhãn văn bản hoặc data: URL hình ảnh",
+    "paperSize": "Khổ giấy",
+    "margins": "Lề",
+    "marginNarrow": "Hẹp",
+    "marginNormal": "Bình thường",
+    "marginWide": "Rộng",
+    "dateFormat": "Định dạng ngày",
+    "numberFormat": "Định dạng số",
+    "pageBreakOn": "Ngắt trang theo",
+    "header": "Đầu trang",
+    "footer": "Chân trang",
+    "watermark": "Hình mờ",
+    "alignment": "Căn chỉnh",
+    "alignLeft": "Trái",
+    "alignCenter": "Giữa",
+    "alignRight": "Phải",
+    "width": "Chiều rộng",
+    "freeze": "Cố định",
+    "pagesApprox": "Số trang (ước tính)",
+    "averagesRow": "Trung bình",
+    "permissions": "Quyền báo cáo",
+    "permissionsHint": "Mỗi quyền được thực thi theo vai trò: Xem và Xuất kiểm soát việc chạy báo cáo, Tạo kiểm soát việc nhân bản, cùng với Sửa, Xóa, Chia sẻ và Quản lý mẫu. Để trống nếu chỉ dành cho quản trị viên; Super Admin luôn có quyền truy cập.",
+    "role": "Vai trò",
+    "recommendations": "Đề xuất thông minh",
+    "suggestedColumns": "Cột đề xuất",
+    "bestFormat": "Định dạng xuất tốt nhất",
+    "saveAsTemplate": "Lưu làm mẫu",
+    "permVerb": {
+      "view": "Xem",
+      "create": "Tạo",
+      "edit": "Sửa",
+      "delete": "Xóa",
+      "export": "Xuất",
+      "share": "Chia sẻ",
+      "manageTemplates": "Quản lý mẫu"
+    },
+    "permRole": {
+      "employee": "Nhân viên",
+      "manager": "Quản lý",
+      "hr_admin": "Quản trị HR",
+      "super_admin": "Quản trị viên cấp cao",
+      "payroll_partner": "Đối tác Lương",
+      "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng"
     }
   }
 }

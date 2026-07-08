@@ -15,7 +15,7 @@
  * SUBSTRATE: every write appends a DomainEvent (ADR-0006). These are company/tenant-level events with no
  * single employee subject, so subjectEmploymentId is left undefined (admin-only reads — correct, fail-closed).
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -169,6 +169,85 @@ export function labelIdsForCompany(ctx: SessionContext, kind: string, companyId:
   });
 }
 
+/**
+ * The SQL predicate a consumer's list-read ANDs in to filter a label table to the rows a company set
+ * MAY use — the resolver expressed as one WHERE fragment so a consumer stays a single query (no extra
+ * round-trip). Union of:
+ *   • origin      — `company_id IN (companyIds)`  (always; a label is visible in its own company)
+ *   • shared-in   — assigned into a companyId whose `shared_system_labels` flag is ON (junction)
+ *   • global      — `is_global = true` AND at least one companyId has the flag ON
+ *
+ * With the flag OFF for every company in the set, the shared-in and global branches are empty, so the
+ * predicate collapses to `company_id IN (companyIds)` — byte-identical to the pre-share behaviour. This
+ * is why turning the resolver on for a consumer changes nothing until an admin flips a company's flag.
+ */
+export function visibleLabelIdsCondition(
+  table: typeof department | typeof position | typeof costCenter | typeof businessUnit,
+  labelKind: LabelKind,
+  companyIds: string[],
+): SQL {
+  const ids = sql.join(
+    companyIds.map((c) => sql`${c}`),
+    sql`, `,
+  );
+  return sql`(
+    ${table.companyId} in (${ids})
+    or ${table.id} in (
+      select lca.label_id from label_company_assignment lca
+      join company co on co.id = lca.company_id
+      where lca.label_kind = ${labelKind}
+        and lca.company_id in (${ids})
+        and co.shared_system_labels = true
+    )
+    or (${table.isGlobal} = true and exists (
+      select 1 from company co2 where co2.id in (${ids}) and co2.shared_system_labels = true
+    ))
+  )`;
+}
+
+/**
+ * Batched read variant of `labelIdsForCompany`: the ids of `kind` any of `companyIds` may use.
+ * Read-only — no DomainEvent (SUBSTRATE: reads never append). Used by tests and by consumers that
+ * want the resolved id set rather than the inline SQL predicate.
+ */
+export function labelIdsForCompanies(ctx: SessionContext, kind: string, companyIds: string[]): Promise<string[]> {
+  assertKind(kind);
+  const table = KIND_TABLE[kind];
+  const ids = Array.from(new Set(companyIds.filter(Boolean)));
+  return withTenant(ctx, async (tx) => {
+    if (ids.length === 0) return [];
+    const rows = await tx
+      .select({ id: table.id })
+      .from(table)
+      .where(and(eq(table.tenantId, ctx.tenantId), visibleLabelIdsCondition(table, kind, ids)));
+    return Array.from(new Set(rows.map((r) => r.id)));
+  });
+}
+
+/**
+ * Guard used by cross-company write paths (hire / transfer): true if `labelId` of `kind` is one this
+ * company MAY use under the resolver (origin, shared-in with the flag on, or global with the flag on).
+ * Replaces the old strict `label.company_id === company_id` check so a shared label is accepted only
+ * where the resolver would surface it — flag OFF keeps the exact old strictness (origin-only).
+ */
+export async function labelUsableByCompany(
+  tx: Tx,
+  tenantId: string,
+  kind: LabelKind,
+  labelId: string,
+  companyId: string,
+): Promise<boolean> {
+  const table = KIND_TABLE[kind];
+  const [row] = await tx
+    .select({ id: table.id })
+    .from(table)
+    .where(
+      and(eq(table.tenantId, tenantId), eq(table.id, labelId), visibleLabelIdsCondition(table, kind, [companyId])),
+    )
+    .limit(1);
+  return !!row;
+}
+
 /** True if any company in `removing` still USES `labelId` via an employee assignment (or, for a BU, via a
  *  department that itself is still in use). The data-integrity guard for unassign/global-off. */
 async function labelInUseByCompanies(
@@ -210,6 +289,20 @@ async function labelInUseByCompanies(
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Batch read for the grid: every (labelId → companyId) assignment of a kind in the tenant. Read-only,
+ * no event. The grid pairs this with each row's origin company + is_global to render the Scope cell.
+ */
+export function listLabelAssignments(ctx: SessionContext, kind: string): Promise<{ labelId: string; companyId: string }[]> {
+  assertKind(kind);
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ labelId: labelCompanyAssignment.labelId, companyId: labelCompanyAssignment.companyId })
+      .from(labelCompanyAssignment)
+      .where(and(eq(labelCompanyAssignment.tenantId, ctx.tenantId), eq(labelCompanyAssignment.labelKind, kind))),
+  );
 }
 
 /**

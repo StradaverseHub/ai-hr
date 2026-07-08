@@ -2990,6 +2990,77 @@ export const aiProviderConfig = pgTable(
   (t) => [uniqueIndex('ai_provider_config_tenant_provider_uq').on(t.tenantId, t.provider)],
 );
 
+// ─────────────────────── Custom Report Builder (ADR-0074, c440b365) ───────────────────────
+// A user-defined report: a name + a chosen dataset from the CLOSED registry (core/report-registry.ts)
+// + a declarative `spec` (columns / filters / sort / grouping / layout properties). No free-form SQL —
+// the spec only names dataset/field ids the registry exposes, and every underlying read enforces
+// tenant RLS + company scope. RLS + grants live in migration 0163.
+export type CustomReportSpec = {
+  datasetId: string;
+  columns: string[];
+  filters?: Record<string, string | number | null>;
+  sort?: { field: string; dir: 'asc' | 'desc' } | null;
+  groupBy?: string | null;
+  // Layout / presentation properties (AI-designer output + manual overrides). Non-structural: they only
+  // affect how the report is rendered/exported, never which rows/columns are read.
+  layout?: {
+    title?: string | null;
+    subtitle?: string | null;
+    description?: string | null;
+    orientation?: 'portrait' | 'landscape';
+    paperSize?: 'A4' | 'A3' | 'Letter' | 'Legal';
+    margins?: 'narrow' | 'normal' | 'wide';
+    header?: string | null;
+    footer?: string | null;
+    dateFormat?: 'iso' | 'dmy' | 'mdy' | 'long';
+    numberFormat?: 'plain' | 'grouped';
+    pageBreakOn?: string | null; // field id whose value change starts a new page (grouped print)
+    watermark?: string | null;
+    companyLogo?: string | null; // data-URI image OR a short text mark rendered top-right
+    align?: Record<string, 'left' | 'center' | 'right'>; // per-field alignment override (AI designer fills this)
+    widths?: Record<string, number>; // per-field relative column-width weight (1 = default)
+    freeze?: string[]; // field ids to freeze (kept as the leading, non-scrolling columns)
+    summary?: string[]; // field ids to total in a summary row
+    averages?: string[]; // field ids to average in a second summary row
+    // Per-report role→verb grid (Create/Edit/Delete/Export/Share/View/ManageTemplates). Layered ON TOP of
+    // the coarse admin route-guard and enforced per verb in core/custom-reports.ts: view/export on the run
+    // paths, create on save/duplicate, edit on update, delete on delete, share on setShared and
+    // manageTemplates on save-as-template. super_admin always passes; empty/absent grid ⇒ admin-only
+    // (today's behaviour, the route guard alone).
+    permissions?: Record<string, string[]>;
+  } | null;
+};
+
+/** The seven report permission verbs the reporter enumerated (role-based report access grid). */
+export const REPORT_PERMISSION_VERBS = [
+  'view',
+  'create',
+  'edit',
+  'delete',
+  'export',
+  'share',
+  'manageTemplates',
+] as const;
+export type ReportPermissionVerb = (typeof REPORT_PERMISSION_VERBS)[number];
+
+export const customReport = pgTable(
+  'custom_report',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    category: text('category').notNull(),
+    datasetId: text('dataset_id').notNull(),
+    spec: jsonb('spec').$type<CustomReportSpec>().notNull(),
+    isFavourite: boolean('is_favourite').notNull().default(false),
+    shared: boolean('shared').notNull().default(false),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('custom_report_tenant_category_idx').on(t.tenantId, t.category)],
+);
+
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
 // A tenant-shared repository of documents. Two content kinds in one table: 'article' = Markdown
 // authored/edited in-app; 'file' = an uploaded binary (bytes in `content`). The seeded module user
@@ -3193,9 +3264,13 @@ export const claimType = pgTable(
     tenantId: tenantId(),
     code: text('code').notNull(), // e.g. 'MEDICAL', 'TRAVEL', 'MEALS'
     name: text('name').notNull(),
+    /** Free-text description of the claim category (ccbd0508 — claim-type basic info). */
+    description: text('description'),
     /** Seeds each new claim's `taxable`; the approver confirms/overrides per claim (flat tax, ADR-0021). */
     defaultTaxable: boolean('default_taxable').notNull().default(false),
     requiresReceipt: boolean('requires_receipt').notNull().default(true),
+    /** Per-type receipt-backdate window (days). NULL ⇒ the global RECEIPT_BACKDATE_DAYS default. (ccbd0508) */
+    maxReceiptAgeDays: integer('max_receipt_age_days'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -3237,10 +3312,22 @@ export const claimPolicy = pgTable(
     claimTypeId: uuid('claim_type_id')
       .notNull()
       .references(() => claimType.id),
+    /**
+     * Job-grade dimension (ccbd0508). NULL ⇒ applies to ALL grades (the default row); a grade-matched row
+     * wins over the null-grade default at resolution time (mirrors leave_policy's grade tiering). Reuses the
+     * same job_grade master maintained for Leave — no duplicate grade setup.
+     */
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
     /** NULL = unlimited. Annual cap on approved claims of this type per employee. */
     annualBudget: numeric('annual_budget', { precision: 12, scale: 2 }),
     /** NULL = no cap. Max amount of a single claim. */
     perClaimCap: numeric('per_claim_cap', { precision: 12, scale: 2 }),
+    /** NULL = no monthly cap. Max total (pending+approved+paid) of this type per calendar month. (ccbd0508) */
+    monthlyLimit: numeric('monthly_limit', { precision: 12, scale: 2 }),
+    /** NULL = no lifetime cap. Max total of this type ever (all-time). (ccbd0508) */
+    lifetimeLimit: numeric('lifetime_limit', { precision: 12, scale: 2 }),
+    /** NULL = no count cap. Max number of claims of this type per calendar year. (ccbd0508) */
+    maxClaimsPerYear: integer('max_claims_per_year'),
     /**
      * Per-type rate/calculation config (discriminated union; nullable/absent ⇒ default 'receipt').
      *   { kind: 'receipt' }                                — amount entered by the employee (current behaviour).
@@ -3253,7 +3340,10 @@ export const claimPolicy = pgTable(
     validTo: date('valid_to'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom)],
+  (t) => [
+    index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom),
+    index('claim_policy_type_grade_idx').on(t.claimTypeId, t.gradeId, t.validFrom),
+  ],
 );
 
 export type ClaimRateConfig =

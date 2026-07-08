@@ -109,6 +109,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/attendance'],
     hasScopeNote: true,
   },
+  // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so
+  // every role reaches the showcase; it fetches no data, so there is no scope note.
+  {
+    screenKey: 'mobilePreview',
+    href: '/mobile-preview',
+    labelKey: 'nav.mobilePreview',
+    guard: 'scopedSession',
+    routes: ['/mobile-preview'],
+  },
   // ── Manage screens (scopedSession, but nav-shown to managers up; visibility follows reporting lines) ──
   {
     screenKey: 'approvals',
@@ -203,7 +212,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/claims',
     labelKey: 'nav.claimsConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/claims', '/admin/claims/reimbursements'],
+    // ccbd0508: Claim config split into route-based tabs — Types (/admin/claims), Limits (per Job-Grade),
+    // Reimbursements. All requireAdmin (the same guard the single page used before).
+    routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements'],
   },
   { screenKey: 'loans', href: '/admin/loans', labelKey: 'admin.users.screen.loans', guard: 'requireAdmin', routes: ['/admin/loans'] },
   // ── Payroll (scopedAdmin/requireAdmin → hr_admin + super_admin; partners are redirected today) ──
@@ -265,6 +276,8 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
   { screenKey: 'aiConfig', href: '/admin/ai', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
+  // Reports hub + custom report builder (c440b365). scopedAdmin — every report surface is admin-gated.
+  { screenKey: 'reports', href: '/reports', labelKey: 'nav.reports', guard: 'scopedAdmin', routes: ['/reports', '/reports/builder/[id]'] },
 ] as const;
 
 /**
