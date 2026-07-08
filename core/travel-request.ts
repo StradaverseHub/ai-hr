@@ -130,6 +130,7 @@ export function listTravelRequests(
         employmentId: travelRequest.employmentId,
         personId: employment.personId,
         employee: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         travelFrom: travelRequest.travelFrom,
         travelTo: travelRequest.travelTo,
         remarks: travelRequest.remarks,

@@ -12,6 +12,17 @@ type RateConfig =
   | { kind: 'mileage_flat'; ratePerKm: number }
   | { kind: 'fixed_allowance'; amount: number };
 
+export type ClaimBalance = {
+  annualLimit: number | null;
+  usedThisYear: number;
+  remainingThisYear: number | null;
+  monthlyLimit: number | null;
+  remainingThisMonth: number | null;
+  perClaimCap: number | null;
+  claimsUsedThisYear: number;
+  maxClaimsPerYear: number | null;
+};
+
 export type ClaimFormType = {
   id: string;
   code: string;
@@ -19,6 +30,9 @@ export type ClaimFormType = {
   requiresReceipt: boolean;
   rateConfig: RateConfig | null;
   items: { id: string; code: string; name: string }[];
+  /** Earliest receipt date allowed for THIS type (per-type receipt-age window). */
+  minDate: string;
+  balance: ClaimBalance;
 };
 
 const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`;
@@ -27,17 +41,17 @@ const rm = (n: number) => `RM ${n.toLocaleString('en-MY', { minimumFractionDigit
  * Claim submission form (extracted to a client component for the Type→Item dependency + the conditional
  * amount/distance field). The Receipt-Date min/max are computed from a UTC-date helper identical to the
  * server's (core/claims.ts) so the boundary the user sees matches the server check at a UTC+8 midnight.
+ * ccbd0508: a live balance panel (annual limit / already claimed / remaining / balance-after) shows the
+ * grade-resolved entitlement before submit, so the employee never learns of a limit only via a rejection.
  */
 export function ClaimForm({
   types,
   submitAction,
   todayUtc,
-  minDate,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
   todayUtc: string;
-  minDate: string;
 }) {
   const t = useTranslations('claims');
   const [typeId, setTypeId] = useState(types[0]?.id ?? '');
@@ -62,6 +76,16 @@ export function ClaimForm({
   const fixedAmount = selected?.rateConfig?.kind === 'fixed_allowance' ? selected.rateConfig.amount : 0;
   const kmNum = Number(km);
   const computedMileage = ratePerKm > 0 && kmNum > 0 ? ratePerKm * kmNum : 0;
+
+  // The amount THIS claim will book, by rate kind — drives the "balance after" line.
+  const currentAmount = kind === 'mileage_flat' ? computedMileage : kind === 'fixed_allowance' ? fixedAmount : Number(amount) || 0;
+  const bal = selected?.balance;
+  const minDate = selected?.minDate ?? todayUtc;
+  const hasLimit =
+    !!bal &&
+    (bal.annualLimit != null || bal.monthlyLimit != null || bal.perClaimCap != null || bal.maxClaimsPerYear != null);
+  const afterYear = bal?.remainingThisYear == null ? null : bal.remainingThisYear - currentAmount;
+  const afterMonth = bal?.remainingThisMonth == null ? null : bal.remainingThisMonth - currentAmount;
 
   return (
     <form action={formAction} className="grid gap-4 sm:grid-cols-2">
@@ -93,6 +117,38 @@ export function ClaimForm({
           ))}
         </select>
       </Field>
+
+      {/* Balance panel (ccbd0508) — grade-resolved entitlement transparency before submit. */}
+      {bal && (
+        <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs sm:col-span-2">
+          <div className="mb-1.5 font-semibold text-foreground">{t('balanceTitle')}</div>
+          {hasLimit ? (
+            <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+              {bal.annualLimit != null && (
+                <>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('annualLimit')}</span><span className="tabular-nums">{rm(bal.annualLimit)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('alreadyClaimed')}</span><span className="tabular-nums">{rm(bal.usedThisYear)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted-foreground">{t('remainingBalance')}</span><span className="tabular-nums">{rm(bal.remainingThisYear ?? 0)}</span></div>
+                  {afterYear != null && (
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('balanceAfter')}</span><span className={`tabular-nums font-medium ${afterYear < 0 ? 'text-destructive' : 'text-foreground'}`}>{rm(afterYear)}</span></div>
+                  )}
+                </>
+              )}
+              {bal.monthlyLimit != null && afterMonth != null && (
+                <div className="flex justify-between"><span className="text-muted-foreground">{t('monthlyRemaining')}</span><span className={`tabular-nums ${afterMonth < 0 ? 'text-destructive' : 'text-foreground'}`}>{rm(bal.remainingThisMonth ?? 0)}</span></div>
+              )}
+              {bal.perClaimCap != null && (
+                <div className="flex justify-between"><span className="text-muted-foreground">{t('perClaimCap')}</span><span className="tabular-nums">{rm(bal.perClaimCap)}</span></div>
+              )}
+              {bal.maxClaimsPerYear != null && (
+                <div className="flex justify-between"><span className="text-muted-foreground">{t('claimsLeftThisYear')}</span><span className="tabular-nums">{Math.max(0, bal.maxClaimsPerYear - bal.claimsUsedThisYear)} / {bal.maxClaimsPerYear}</span></div>
+              )}
+            </div>
+          ) : (
+            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">{t('unlimitedBadge')}</span>
+          )}
+        </div>
+      )}
 
       {/* Claim Item (dependent, mandatory only when the selected type has items) — side-by-side, 2-column. */}
       {items.length > 0 ? (

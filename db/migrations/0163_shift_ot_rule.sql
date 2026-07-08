@@ -1,0 +1,11 @@
+-- R17 3e8350db (gap-fix) — per-shift "OT Rules" template field.
+--
+-- shift.ot_rule (JSONB) is the reporter's per-shift "OT Rules". It shapes the shift's WORKDAY overtime
+-- accrual ONLY: { "eligible": bool, "minMinutes"?: int, "dailyCapMinutes"?: int }. It deliberately carries
+-- NO multiplier — the 1.5×/2×/3× rates and the RM4,000 wage ceiling are statutory (EA 1955 s.60A) and stay
+-- company-level (#overtime-rates), so a shift can never pay OT below the law. NULL ⇒ legacy behaviour
+-- (eligible, no minimum, no cap), so existing shifts are byte-identical. No RLS change (column on the
+-- already-policed shift row).
+--
+-- Idempotent (IF NOT EXISTS); integration may renumber this file.
+ALTER TABLE "shift" ADD COLUMN IF NOT EXISTS "ot_rule" jsonb;

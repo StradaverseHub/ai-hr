@@ -6,7 +6,16 @@
 import { eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { companyPayrollConfig } from '../db/schema';
+import { companyPayrollConfig, payrollPolicy, type PayslipRelease } from '../db/schema';
+import { cleanPayslipRelease } from './payroll-policy-config';
+
+/** Thrown when the chosen company-default payroll policy is not a valid (same-company, active) policy. */
+export class InvalidDefaultPolicyError extends Error {
+  constructor(message = 'The chosen default payroll policy must be an active policy in this company') {
+    super(message);
+    this.name = 'InvalidDefaultPolicyError';
+  }
+}
 
 export const PAYMENT_BASES = ['monthly', 'daily', 'hourly', 'other'] as const;
 export type PaymentBasis = (typeof PAYMENT_BASES)[number];
@@ -55,9 +64,15 @@ export type PayrollConfigInput = {
   probationMonths?: number | string | null;
   // 6522d26a — review reminder cadence (days before the review end date). Null = default [30,14,7].
   reviewReminderDays?: number[] | string | null;
+  // Step 1 (f3148da1) — the company-default payroll policy id, or null to clear. '' / undefined ⇒ clear.
+  defaultPayrollPolicyId?: string | null;
+  // Step 6 (f3148da1) — payslip release config (or null = immediate). Cleaned via cleanPayslipRelease.
+  payslipRelease?: PayslipRelease | null;
 };
 
 export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInput) {
+  const rawDefaultPolicy = (p.defaultPayrollPolicyId ?? '').trim() || null;
+  const payslipRelease = cleanPayslipRelease(p.payslipRelease);
   const values = {
     cutOffDay: cleanDay(p.cutOffDay),
     payDay: cleanDay(p.payDay),
@@ -68,8 +83,20 @@ export async function setPayrollConfig(ctx: SessionContext, p: PayrollConfigInpu
     attendanceCutOffDay: cleanDay(p.attendanceCutOffDay),
     probationMonths: cleanProbation(p.probationMonths),
     reviewReminderDays: cleanReminderDays(p.reviewReminderDays),
+    defaultPayrollPolicyId: rawDefaultPolicy,
+    payslipRelease,
   };
   return withTenant(ctx, async (tx) => {
+    // Step 1 — the chosen default policy MUST be an active policy in THIS company (RLS is tenant-wide, so a
+    // same-tenant cross-company or inactive policy would otherwise slip through). Validate before the write.
+    if (rawDefaultPolicy) {
+      const [pol] = await tx
+        .select({ companyId: payrollPolicy.companyId, status: payrollPolicy.status })
+        .from(payrollPolicy)
+        .where(eq(payrollPolicy.id, rawDefaultPolicy))
+        .limit(1);
+      if (!pol || pol.companyId !== p.companyId || pol.status !== 'active') throw new InvalidDefaultPolicyError();
+    }
     const [existing] = await tx
       .select({ id: companyPayrollConfig.id })
       .from(companyPayrollConfig)

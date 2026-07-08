@@ -282,8 +282,9 @@ export default async function CyclePage({
                   <li key={r.reviewId} className="px-4 py-3">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                       <div className="text-sm">
+                        {/* Employee ID left-of-name (feedback 38668d9b) */}
+                        {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                         <span className="font-medium">{r.employee}</span>
-                        {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                         <div className="text-xs text-muted-foreground">
                           {r.recommendedMeritPct != null && (
                             <>{t('meritOn', { pct: r.recommendedMeritPct, basic: rm(r.currentBasic) })} </>

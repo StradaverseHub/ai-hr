@@ -3,8 +3,7 @@
 import { useState } from 'react';
 import { Badge, Button, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-
-const KIND_OPTIONS = ['direct_manager', 'hr_admin'] as const;
+import { StepListEditor } from './step-list-editor';
 
 type Option = { id: string; label: string };
 export type RuleRow = {
@@ -42,11 +41,17 @@ export type RuleBuilderLabels = {
   chain: string;
   empty: string;
   manager: string;
+  departmentHead: string;
+  businessUnitHead: string;
   hr: string;
+  hrManager: string;
+  payroll: string;
+  customRole: string;
   add: string;
   moveUp: string;
   moveDown: string;
   remove: string;
+  dragToReorder: string;
   save: string;
   cancel: string;
   noRules: string;
@@ -55,6 +60,9 @@ export type RuleBuilderLabels = {
   partTime: string;
   contract: string;
   intern: string;
+  // 4ec5a940 — optional "why the change was made" note surfaced in the audit trail.
+  reason: string;
+  reasonPlaceholder: string;
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
@@ -214,15 +222,6 @@ function RuleForm({
   onCancel: () => void;
 }) {
   const [levels, setLevels] = useState<string[]>(rule?.levels ?? ['direct_manager', 'hr_admin']);
-  const [addKind, setAddKind] = useState<string>('hr_admin');
-
-  const move = (i: number, dir: -1 | 1) => {
-    const j = i + dir;
-    if (j < 0 || j >= levels.length) return;
-    const next = [...levels];
-    [next[i], next[j]] = [next[j], next[i]];
-    setLevels(next);
-  };
 
   const Select = ({ name, label, opts, initial }: { name: string; label: string; opts: Option[]; initial: string | null }) => (
     <label className="block space-y-1 text-sm">
@@ -288,42 +287,13 @@ function RuleForm({
         </label>
       </div>
 
-      <div className="space-y-2">
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{labels.chain}</div>
-        {levels.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{labels.empty}</p>
-        ) : (
-          <ol className="space-y-2">
-            {levels.map((k, i) => (
-              <li key={i} className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                <span className="w-5 shrink-0 text-center text-xs tabular-nums text-muted-foreground">{i + 1}</span>
-                <span className="flex-1 font-medium">{kindLabel(k)}</span>
-                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} aria-label={labels.moveUp} className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30">
-                  ↑
-                </button>
-                <button type="button" onClick={() => move(i, 1)} disabled={i === levels.length - 1} aria-label={labels.moveDown} className="rounded px-1.5 py-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30">
-                  ↓
-                </button>
-                <button type="button" onClick={() => setLevels(levels.filter((_, idx) => idx !== i))} className="rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-                  {labels.remove}
-                </button>
-              </li>
-            ))}
-          </ol>
-        )}
-        <div className="flex items-center gap-2">
-          <select value={addKind} onChange={(e) => setAddKind(e.target.value)} className={inputCls}>
-            {KIND_OPTIONS.map((k) => (
-              <option key={k} value={k}>
-                {kindLabel(k)}
-              </option>
-            ))}
-          </select>
-          <Button type="button" variant="outline" size="sm" onClick={() => setLevels([...levels, addKind])}>
-            {labels.add}
-          </Button>
-        </div>
-      </div>
+      <StepListEditor levels={levels} setLevels={setLevels} labels={labels} />
+
+      {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
+      <label className="block space-y-1 text-sm">
+        <span className="text-xs font-medium text-muted-foreground">{labels.reason}</span>
+        <input name="reason" type="text" maxLength={500} placeholder={labels.reasonPlaceholder} className={inputCls} />
+      </label>
 
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={levels.length === 0}>

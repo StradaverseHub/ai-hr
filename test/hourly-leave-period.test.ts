@@ -18,7 +18,7 @@ import {
   requestLeave,
   type LeaveDurationType,
 } from '../core/leave';
-import { listLeaveRequests } from '../core/read';
+import { listLeaveRequests, plannedAbsences } from '../core/read';
 import {
   adminCtx,
   closeAll,
@@ -267,6 +267,44 @@ describe('0129 — read round-trip (the seconds bug, end-to-end)', () => {
     // …but the display-boundary slice(0, 5) normalizes it to HH:MM.
     const rendered = `${r!.fromTime!.slice(0, 5)}–${r!.toTime!.slice(0, 5)}`;
     expect(rendered).toBe('09:00–11:00');
+  });
+});
+
+describe('c238010b — dashboard calendar exposes the hourly window', () => {
+  it('plannedAbsences returns fromTime/toTime on an hourly row and null on a full-day row', async () => {
+    const hourlyType = await leaveType({ durations: ALL });
+    const fullType = await leaveType({ durations: null });
+    await grant(hourlyType);
+    await grant(fullType);
+    await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: hourlyType,
+      startDate: '2026-07-06',
+      endDate: '2026-07-06',
+      durationType: 'hourly',
+      fromTime: '09:00',
+      toTime: '11:00',
+    });
+    await requestLeave(adminCtx(b), {
+      employmentId,
+      leaveTypeId: fullType,
+      startDate: '2026-07-08',
+      endDate: '2026-07-08',
+      durationType: 'full_day',
+    });
+
+    const rows = await plannedAbsences(adminCtx(b), undefined, { from: '2026-07-01', to: '2026-07-31' });
+    const leaves = rows.flatMap((r) => r.leaves);
+    const hourly = leaves.find((l) => l.durationType === 'hourly');
+    const full = leaves.find((l) => l.durationType === 'full_day');
+    expect(hourly).toBeTruthy();
+    expect(hourly!.fromTime).toBe('09:00:00');
+    expect(hourly!.toTime).toBe('11:00:00');
+    // A .slice(0, 5) at the display boundary renders the tooltip window as HH:MM.
+    expect(`${hourly!.fromTime!.slice(0, 5)}–${hourly!.toTime!.slice(0, 5)}`).toBe('09:00–11:00');
+    expect(full).toBeTruthy();
+    expect(full!.fromTime).toBeNull();
+    expect(full!.toTime).toBeNull();
   });
 });
 

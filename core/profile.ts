@@ -48,7 +48,13 @@ function sanitizeProposed(raw: ProfileChangeProposed): ProfileChangeProposed {
   if (raw.numChildren !== undefined && Number.isFinite(Number(raw.numChildren))) {
     out.numChildren = Math.max(0, Math.floor(Number(raw.numChildren)));
   }
-  if (raw.dateOfBirth !== undefined) out.dateOfBirth = clean(raw.dateOfBirth);
+  if (raw.dateOfBirth !== undefined) {
+    // Accept a clear (null / '') or a well-formed ISO date only; a malformed value is dropped (never
+    // written) so a bad DOB can't reach the age-band statutory math (EPF/SOCSO, core/payroll.ts).
+    const d = clean(raw.dateOfBirth);
+    out.dateOfBirth = d === null ? null : /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : undefined;
+    if (out.dateOfBirth === undefined) delete out.dateOfBirth;
+  }
   if (raw.gender !== undefined) out.gender = oneOf(raw.gender, GENDERS);
   if (raw.maritalStatus !== undefined) out.maritalStatus = oneOf(raw.maritalStatus, MARITAL_STATUSES);
   return out;
@@ -70,6 +76,18 @@ export function myProfile(ctx: SessionContext) {
         maritalStatus: person.maritalStatus,
         emergencyContactName: person.emergencyContactName,
         emergencyContactPhone: person.emergencyContactPhone,
+        // b4682879 — structured home address + extended emergency contact (self-maintained on /me).
+        personalEmail: person.personalEmail,
+        addressLine1: person.addressLine1,
+        addressLine2: person.addressLine2,
+        addressLine3: person.addressLine3,
+        postcode: person.postcode,
+        city: person.city,
+        state: person.state,
+        country: person.country,
+        emergencyContactRelationship: person.emergencyContactRelationship,
+        emergencyContactPhone2: person.emergencyContactPhone2,
+        emergencyContactAddress: person.emergencyContactAddress,
       })
       .from(person)
       .where(eq(person.id, ctx.personId))
@@ -95,9 +113,21 @@ export async function updateOwnContact(
   ctx: SessionContext,
   p: {
     phone?: string | null;
-    address?: string | null;
+    // b4682879 — the legacy single-line `address` is retired from the UI in favour of the structured
+    // fields below; it is intentionally NOT accepted here any more (the column is retained for history).
+    personalEmail?: string | null;
+    addressLine1?: string | null;
+    addressLine2?: string | null;
+    addressLine3?: string | null;
+    postcode?: string | null;
+    city?: string | null;
+    state?: string | null;
+    country?: string | null;
     emergencyContactName?: string | null;
+    emergencyContactRelationship?: string | null;
     emergencyContactPhone?: string | null;
+    emergencyContactPhone2?: string | null;
+    emergencyContactAddress?: string | null;
   },
 ) {
   const personId = ctx.personId;
@@ -107,9 +137,19 @@ export async function updateOwnContact(
       .update(person)
       .set({
         phone: clean(p.phone),
-        address: clean(p.address),
+        personalEmail: clean(p.personalEmail),
+        addressLine1: clean(p.addressLine1),
+        addressLine2: clean(p.addressLine2),
+        addressLine3: clean(p.addressLine3),
+        postcode: clean(p.postcode),
+        city: clean(p.city),
+        state: clean(p.state),
+        country: clean(p.country),
         emergencyContactName: clean(p.emergencyContactName),
+        emergencyContactRelationship: clean(p.emergencyContactRelationship),
         emergencyContactPhone: clean(p.emergencyContactPhone),
+        emergencyContactPhone2: clean(p.emergencyContactPhone2),
+        emergencyContactAddress: clean(p.emergencyContactAddress),
       })
       .where(eq(person.id, personId));
     await appendEvent(tx, {
@@ -267,21 +307,24 @@ export async function decideProfileChange(
  */
 export async function setPersonComplianceFields(
   ctx: SessionContext,
-  p: { employmentId: string; gender?: string | null; maritalStatus?: string | null },
+  p: { employmentId: string; gender?: string | null; maritalStatus?: string | null; dateOfBirth?: string | null },
 ) {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can set gender / marital status.');
   }
-  // Reuse the module-private sanitiser (whitelist → null on unrecognised). Only include a field in
-  // the write set when the caller provided it (undefined = leave as-is; explicit null = clear).
+  // Reuse the module-private sanitiser (whitelist → null on unrecognised; DOB validated to ISO shape).
+  // Only include a field in the write set when the caller provided it (undefined = leave as-is; explicit
+  // null = clear). b4682879 adds date of birth to this compliance-gated setter (it drives EPF age bands).
   const proposed = sanitizeProposed({
     ...(p.gender !== undefined ? { gender: p.gender } : {}),
     ...(p.maritalStatus !== undefined ? { maritalStatus: p.maritalStatus } : {}),
+    ...(p.dateOfBirth !== undefined ? { dateOfBirth: p.dateOfBirth } : {}),
   });
   const personSet: Record<string, string | null> = {};
   if (proposed.gender !== undefined) personSet.gender = proposed.gender;
   if (proposed.maritalStatus !== undefined) personSet.maritalStatus = proposed.maritalStatus;
+  if (proposed.dateOfBirth !== undefined) personSet.dateOfBirth = proposed.dateOfBirth;
   if (Object.keys(personSet).length === 0) throw new Error('Nothing to change.');
 
   return withTenant(ctx, async (tx) => {
@@ -295,7 +338,7 @@ export async function setPersonComplianceFields(
     const personId = emp.personId;
 
     const [before] = await tx
-      .select({ gender: person.gender, maritalStatus: person.maritalStatus })
+      .select({ gender: person.gender, maritalStatus: person.maritalStatus, dateOfBirth: person.dateOfBirth })
       .from(person)
       .where(eq(person.id, personId))
       .limit(1);

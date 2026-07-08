@@ -3,6 +3,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { employeeLabel } from '@/lib/employee-code';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import {
@@ -75,8 +76,8 @@ export default async function FixedTransactionPage({
               <option value="">—</option>
               {employees.map((e) => (
                 <option key={e.employmentId} value={e.employmentId}>
-                  {e.name}
-                  {e.employeeCode ? ` (${e.employeeCode})` : ''} · {e.company}
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  {employeeLabel(e.employeeCode, e.name)} · {e.company}
                 </option>
               ))}
             </select>

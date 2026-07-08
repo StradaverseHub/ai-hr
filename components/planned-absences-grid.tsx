@@ -5,6 +5,8 @@ import { CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
+import { EmployeeName } from '@/components/ui';
+import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 
 const MS_DAY = 86_400_000;
 const ms = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
@@ -36,16 +38,20 @@ export type GridLeave = {
   title: string;
   /** ADR-0048: short badge for non-full-day leave ("½ AM" / "2h"); null for full-day. */
   durationBadge?: string | null;
-  /** ADR-0048: true for half/hourly leave — drawn as a partial (half-height, hatched) pill. */
-  partial?: boolean;
+  /** Leave Calendar Blocked View (c238010b): how to fill the cell — full solid, left 50% (AM), right 50%
+   *  (PM), or border-only outline (hourly). Defaults to 'full' when absent. */
+  durationVariant?: 'full' | 'am' | 'pm' | 'hourly';
   /** ADR-0065 (calendar cancel entry point): true when the viewer can give back dates on THIS pill. Gated
    *  server-side (own + approved + full_day + plain/split + no-pending + ≥1 candidate). */
   cancelEligible?: boolean;
   /** ADR-0065: the exact cancellable working dates (strictly-after-today, holiday-aware) for this pill's
    *  underlying leave request — seeded into the reused CancelDatesDialog checkboxes. */
   candidateCancelDates?: string[];
+  /** feedback 22e68ff0: true when the viewer is an HR admin who may immediately cancel THIS pill's leave on
+   *  behalf of the employee (gated server-side: admin + not own + pending|approved + not approved-REPLACEMENT). */
+  adminCancelEligible?: boolean;
 };
-export type GridRow = { id: string; name: string; role: string | null; leaves: GridLeave[] };
+export type GridRow = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
 
 /** Default number of employee rows shown before the "show all" affordance kicks in. */
@@ -70,6 +76,10 @@ export function PlannedAbsencesGrid({
   // absent the grid is read-only and no cancel affordance renders on any pill.
   cancelAction,
   cancelPillLabel,
+  // feedback 22e68ff0: the SAME on-behalf HR-cancel action the Leave page posts. Optional — absent ⇒ no admin
+  // affordance renders on any pill.
+  adminCancelAction,
+  adminCancelPillLabel,
 }: {
   rows: GridRow[];
   dayArr: GridDay[];
@@ -81,6 +91,8 @@ export function PlannedAbsencesGrid({
   showLessLabel: string;
   cancelAction?: (fd: FormData) => void | Promise<void>;
   cancelPillLabel?: string;
+  adminCancelAction?: (fd: FormData) => void | Promise<void>;
+  adminCancelPillLabel?: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const lastIdx = days - 1;
@@ -131,7 +143,8 @@ export function PlannedAbsencesGrid({
                   {initials(emp.name)}
                 </span>
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-medium leading-tight">{emp.name}</div>
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  <EmployeeName code={emp.employeeCode} name={emp.name} className="truncate text-[13px] font-medium leading-tight" />
                   {emp.role && <div className="truncate text-xs text-muted-foreground">{emp.role}</div>}
                 </div>
               </div>
@@ -155,17 +168,26 @@ export function PlannedAbsencesGrid({
                 const cs = Math.max(dayIndex(l.startDate, fromMs), 0);
                 const ce = Math.min(dayIndex(l.endDate, fromMs), lastIdx);
                 if (ce < 0 || cs > lastIdx) return null;
-                const { chip, Icon } = styleFor(l.typeCode);
+                const { chip, bg, text, Icon } = styleFor(l.typeCode);
                 const pending = l.status === 'pending';
                 const span = ce - cs + 1;
                 const StatusIcon = pending ? Clock : CheckCircle2;
-                // ADR-0048: a half/hourly leave covers only part of the day — draw it as a partial pill
-                // (shorter, hatched overlay, duration badge) so it never reads as a full day on the grid.
-                const partial = !!l.partial;
+                // Leave Calendar Blocked View (c238010b): the fill pattern for this pill.
+                //  full   → solid chip across the whole cell (unchanged).
+                //  am/pm  → transparent pill with a colored 50% fill layer pinned left/right + a colored outline.
+                //  hourly → border-only: no fill, a thicker colored outline (reporter's "colored border" style).
+                // The half-fill sits under the icon/label/badge via `isolate` + a `-z-10` layer, so no per-child
+                // z-index is needed and content stays legible on the unfilled half.
+                const variant = l.durationVariant ?? 'full';
+                const isFull = variant === 'full';
                 // ADR-0065 (calendar cancel entry point): render the reused CancelDatesDialog on an eligible
                 // pill, triggered by a compact XCircle icon-button appended inside the pill. Gated + candidate
                 // dates resolved server-side; the dialog + action are the SAME ones the Leave page uses.
                 const showCancel = !!cancelAction && !!l.cancelEligible;
+                // feedback 22e68ff0: an HR admin can immediately cancel this pill on the employee's behalf. Same
+                // compact XCircle trigger convention as the employee give-back, but opens AdminCancelLeaveDialog
+                // (confirmation + optional reason) and posts the on-behalf action with back="/".
+                const showAdminCancel = !!adminCancelAction && !!l.adminCancelEligible;
                 return (
                   <div
                     key={l.id}
@@ -173,17 +195,28 @@ export function PlannedAbsencesGrid({
                       gridColumn: `${cs + 2} / ${ce + 3}`,
                       gridRow: r + 2,
                       ...FLOAT,
-                      ...(partial ? HATCH : {}),
                     }}
                     className={cn(
-                      'z-10 flex items-center gap-1.5 self-stretch overflow-hidden rounded-full px-2.5 text-xs font-medium',
-                      chip,
-                      pending && 'ring-1 ring-inset ring-black/10 dark:ring-white/15',
-                      // Partial pill: inset top/bottom so it visibly occupies less than a full tile.
-                      partial ? 'my-2' : 'my-1',
+                      'relative isolate z-10 my-1 flex items-center gap-1.5 self-stretch overflow-hidden rounded-full px-2.5 text-xs font-medium',
+                      isFull && chip,
+                      // Pending's extra ring only on solid full-day pills — partial variants already carry a
+                      // colored outline, so stacking a second ring there would read muddy.
+                      isFull && pending && 'ring-1 ring-inset ring-black/10 dark:ring-white/15',
+                      (variant === 'am' || variant === 'pm') &&
+                        cn(text, 'bg-transparent ring-1 ring-inset ring-current/40'),
+                      variant === 'hourly' && cn(text, 'bg-transparent ring-2 ring-inset ring-current/60'),
                     )}
                     title={l.title}
                   >
+                    {variant === 'am' && (
+                      <span aria-hidden className={cn('absolute inset-y-0 left-0 -z-10 w-1/2 rounded-l-full', bg)} />
+                    )}
+                    {variant === 'pm' && (
+                      <span
+                        aria-hidden
+                        className={cn('absolute inset-y-0 right-0 -z-10 w-1/2 rounded-r-full', bg)}
+                      />
+                    )}
                     <Icon className="size-3.5 shrink-0" />
                     <span className="flex-1 truncate">{l.typeName.replace(/\s*leave$/i, '')}</span>
                     {l.durationBadge && (
@@ -191,7 +224,7 @@ export function PlannedAbsencesGrid({
                         {l.durationBadge}
                       </span>
                     )}
-                    {!partial &&
+                    {isFull &&
                       (span >= 4 ? (
                         <span className="shrink-0 rounded-full bg-black/[0.07] px-1.5 py-0.5 text-[10px] font-semibold capitalize dark:bg-white/15">
                           {l.statusLabel}
@@ -209,6 +242,23 @@ export function PlannedAbsencesGrid({
                             type="button"
                             aria-label={cancelPillLabel}
                             title={cancelPillLabel}
+                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                          >
+                            <XCircle className="size-3.5" />
+                          </button>
+                        }
+                      />
+                    )}
+                    {showAdminCancel && (
+                      <AdminCancelLeaveDialog
+                        leaveRequestId={l.id}
+                        back="/"
+                        submitAction={adminCancelAction!}
+                        trigger={
+                          <button
+                            type="button"
+                            aria-label={adminCancelPillLabel}
+                            title={adminCancelPillLabel}
                             className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
                           >
                             <XCircle className="size-3.5" />

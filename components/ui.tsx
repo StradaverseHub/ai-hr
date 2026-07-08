@@ -134,3 +134,28 @@ export function EmployeeCode({ code, className }: { code?: string | null; classN
   if (!code) return null;
   return <span className={cn('font-mono text-xs text-muted-foreground', className)}>{code}</span>;
 }
+
+/**
+ * Employee ID + name in the ONE consistent order used everywhere (feedback 38668d9b): the ID reads
+ * FIRST, on the LEFT of the name. Use this anywhere a staff name is shown inline (cards, rows, headers).
+ * When there is no code it renders just the name, so callers can pass a nullable code directly.
+ * `codeClassName` tunes the ID chip (e.g. spacing); `className` styles the whole inline group.
+ */
+export function EmployeeName({
+  code,
+  name,
+  className,
+  codeClassName,
+}: {
+  code?: string | null;
+  name: string;
+  className?: string;
+  codeClassName?: string;
+}) {
+  return (
+    <span className={cn('inline-flex items-baseline gap-1.5', className)}>
+      <EmployeeCode code={code} className={codeClassName} />
+      <span>{name}</span>
+    </span>
+  );
+}

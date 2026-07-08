@@ -109,6 +109,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/attendance'],
     hasScopeNote: true,
   },
+  // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so
+  // every role reaches the showcase; it fetches no data, so there is no scope note.
+  {
+    screenKey: 'mobilePreview',
+    href: '/mobile-preview',
+    labelKey: 'nav.mobilePreview',
+    guard: 'scopedSession',
+    routes: ['/mobile-preview'],
+  },
   // ── Manage screens (scopedSession, but nav-shown to managers up; visibility follows reporting lines) ──
   {
     screenKey: 'approvals',
@@ -203,7 +212,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/claims',
     labelKey: 'nav.claimsConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/claims', '/admin/claims/reimbursements'],
+    // ccbd0508: Claim config split into route-based tabs — Types (/admin/claims), Limits (per Job-Grade),
+    // Reimbursements. All requireAdmin (the same guard the single page used before).
+    routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements'],
   },
   { screenKey: 'loans', href: '/admin/loans', labelKey: 'admin.users.screen.loans', guard: 'requireAdmin', routes: ['/admin/loans'] },
   // ── Payroll (scopedAdmin/requireAdmin → hr_admin + super_admin; partners are redirected today) ──
@@ -216,17 +227,25 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll',
       '/payroll/[batchId]',
       '/payroll/configuration',
+      // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
+      // each a real sub-route under the same scopedAdmin guard as the index.
+      '/payroll/configuration/epf',
+      '/payroll/configuration/socso',
+      '/payroll/configuration/eis',
+      '/payroll/configuration/pcb',
+      '/payroll/configuration/hrdf',
       '/payroll/history-import',
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',
       '/payroll/setup',
+      // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
+      // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
+      '/payroll/transaction-view',
       '/payroll/transactions',
       '/payroll/transactions/fixed',
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
-      // R13 a4a05174: centralized read-only Transaction View (scopedAdmin, same guard as the hub).
-      '/payroll/transactions/view',
       '/payroll/transactions/zakat',
     ],
   },
@@ -259,12 +278,22 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     routes: ['/admin/pay-components'],
   },
+  {
+    // Granular payroll permission overrides (feedback 9bc442bc) — configurable per company/tenant RBAC.
+    screenKey: 'payrollPermissions',
+    href: '/admin/payroll-permissions',
+    labelKey: 'admin.users.screen.payrollPermissions',
+    guard: 'requireAdmin',
+    routes: ['/admin/payroll-permissions'],
+  },
   // ── Analytics / audit / governance (requireAdmin/scopedAdmin) ──
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },
   { screenKey: 'auditTrail', href: '/admin/audit', labelKey: 'nav.auditTrail', guard: 'requireAdmin', routes: ['/admin/audit'] },
   { screenKey: 'dataPrivacy', href: '/admin/privacy', labelKey: 'nav.dataPrivacy', guard: 'requireAdmin', routes: ['/admin/privacy'] },
   { screenKey: 'aiConfig', href: '/admin/ai', labelKey: 'nav.aiConfig', guard: 'requireAdmin', routes: ['/admin/ai'] },
   { screenKey: 'usersRoles', href: '/admin/users', labelKey: 'nav.usersRoles', guard: 'requireAdmin', routes: ['/admin/users'] },
+  // Reports hub + custom report builder (c440b365). scopedAdmin — every report surface is admin-gated.
+  { screenKey: 'reports', href: '/reports', labelKey: 'nav.reports', guard: 'scopedAdmin', routes: ['/reports', '/reports/builder/[id]'] },
 ] as const;
 
 /**

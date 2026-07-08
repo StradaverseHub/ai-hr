@@ -42,4 +42,21 @@ describe('SOCSO/EIS band grid round-trip', () => {
     expect(top.employer).toBe(104.15);
     expect(top.employee).toBe(29.75);
   });
+
+  // Per-body sub-menu redesign (31646c85): the config form now renders a SUBSET of body sections on each
+  // body tab (sections={['epf','ceilings']} on the EPF tab, etc.), but form state is always seeded from the
+  // FULL ruleset and the hidden payload is always the FULL assemble(...) output — so unrendered sections
+  // round-trip byte-identically by construction. Pin the EPF slice at the FORM layer here: the scalar-merge
+  // test (statutory-component-epf-merge) pins it only at the scalar-action layer.
+  it('preserves the EPF Third Schedule Part A / Part E through the form round-trip', () => {
+    expect(out.epf.partA).toEqual(DEFAULT_MY_STATUTORY.epf.partA);
+    expect(out.epf.partE).toEqual(DEFAULT_MY_STATUTORY.epf.partE);
+  });
+
+  it('preserves EPF fields the form never renders (scheduleMax / senior / non-citizen rates)', () => {
+    expect(out.epf.scheduleMax).toBe(DEFAULT_MY_STATUTORY.epf.scheduleMax);
+    expect(out.epf.seniorEmployerRate).toBe(DEFAULT_MY_STATUTORY.epf.seniorEmployerRate);
+    expect(out.epf.nonCitizenEmployeeRate).toBe(DEFAULT_MY_STATUTORY.epf.nonCitizenEmployeeRate);
+    expect(out.epf.nonCitizenEmployerRate).toBe(DEFAULT_MY_STATUTORY.epf.nonCitizenEmployerRate);
+  });
 });

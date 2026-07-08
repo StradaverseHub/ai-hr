@@ -88,17 +88,9 @@ export default async function PayrollTransactionsPage() {
           </Link>
         </Card>
 
-        {/* Transaction View (feedback a4a05174) — centralized READ-ONLY inquiry across employees. */}
-        <Card className="flex flex-col p-5">
-          <h2 className="text-base font-semibold">{t('hub.viewTitle')}</h2>
-          <p className="mt-1 flex-1 text-sm text-muted-foreground">{t('hub.viewDesc')}</p>
-          <Link
-            href="/payroll/transactions/view"
-            className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            {t('hub.viewCta')}
-          </Link>
-        </Card>
+        {/* Transaction View (feedback a4a05174) was surfaced here as a card; feedback 59178702
+            promoted it to a standalone top-level Payroll tab (/payroll/transaction-view), so the
+            sub-function entry point under Transactions is intentionally removed. */}
 
         {/* Feedback 8bf6dfa1: relocated entry point for the (fully built, requireAdmin-gated)
             payroll history import — moved here from the /payroll list header so admin data

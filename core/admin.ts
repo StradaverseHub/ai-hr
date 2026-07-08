@@ -3,10 +3,11 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, getTableName, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
+import { visibleLabelIdsCondition } from './system-labels';
 import {
   isValidMonthDay,
   isWellFormedBands,
@@ -85,6 +86,21 @@ function cleanName(v: string | undefined, label: string): string {
   const s = (v ?? '').replace(/\s+/g, ' ').trim();
   if (!s) throw new Error(`${label} is required`);
   return s;
+}
+
+/** 4ec5a940 — the reporter's "Why the change was made" audit column. An OPTIONAL free-text note the admin
+ *  may attach to a leave-config change; it is recorded on the DomainEvent payload only (never persisted to
+ *  the aggregate row) and rendered by `describePayload`'s `reason` branch. Returns `undefined` for a
+ *  blank/whitespace value so the payload key is simply omitted (no empty `reason:` line in the audit UI).
+ *  Capped at 500 chars — long enough for a real justification, short enough to keep rows scannable. It is
+ *  tenant free-text, not personal/financial data, so it is PDPA-safe to store in cleartext (ADR-0030
+ *  Layer-0) — the key name also never collides with the banned-key guard. */
+export const REASON_MAX_LEN = 500;
+export function normalizeReason(v: string | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  if (!s) return undefined;
+  return s.length > REASON_MAX_LEN ? s.slice(0, REASON_MAX_LEN) : s;
 }
 
 /**
@@ -206,6 +222,24 @@ async function resolveDepartmentBusinessUnitId(
     .where(eq(businessUnit.id, id))
     .limit(1);
   if (!bu || bu.companyId !== companyId) throw new CrossCompanyError('business-unit');
+  return id;
+}
+
+/** 6fadb036 — validate an org-head employment (department / business-unit head) belongs to the SAME company
+ *  as the unit it heads (same-company guard, ADR-0071 §i). Blank ⇒ null (clears the head). */
+async function resolveHeadEmploymentId(
+  tx: Tx,
+  headEmploymentId: string | null | undefined,
+  companyId: string,
+): Promise<string | null> {
+  const id = (headEmploymentId ?? '').trim();
+  if (!id) return null;
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, id))
+    .limit(1);
+  if (!emp || emp.companyId !== companyId) throw new CrossCompanyError('employment');
   return id;
 }
 
@@ -343,7 +377,9 @@ export async function createBusinessUnit(
 
 export async function createLeaveType(
   ctx: SessionContext,
-  p: { code: string; name: string; paid?: boolean },
+  // Leave Type master page (feedback 097de541): the add-type form now carries an optional description and a
+  // create-time active/inactive status (default active). Code + name stay required.
+  p: { code: string; name: string; paid?: boolean; description?: string | null; active?: boolean },
 ) {
   // The code is the semantic key the statutory floor / standing grants / carry-forward match on
   // (exact, uppercase). Normalize hard so 'annual' can never silently miss the EA floor.
@@ -352,10 +388,32 @@ export async function createLeaveType(
     throw new Error('Leave-type code must be letters, digits or underscores (e.g. ANNUAL)');
   }
   const name = cleanName(p.name, 'Leave-type name');
+  // Leave Type master page (feedback 097de541): trim the optional description; empty ⇒ null (never store "").
+  const description = typeof p.description === 'string' && p.description.trim() !== '' ? p.description.trim() : null;
+  // Create-time status. active=false ⇒ insert already archived (mirrors archiveLeaveType semantics). Note the
+  // code-unique index is PARTIAL on archived_at IS NULL, so an inactive-created type does not hold the code —
+  // same trade-off as archiving an existing type; acceptable.
+  const active = p.active !== false;
   return withTenant(ctx, async (tx) => {
+    // Name uniqueness (feedback 097de541): case-insensitive, ACTIVE types only (mirrors the partial code
+    // index which only guards archived_at IS NULL). Enforced in the service — not a DB index — because
+    // existing tenant data may already hold duplicate names. Gives the friendly warning the ticket asks for.
+    const [dupe] = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(and(isNull(leaveType.archivedAt), sql`lower(${leaveType.name}) = lower(${name})`))
+      .limit(1);
+    if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
     const [row] = await tx
       .insert(leaveType)
-      .values({ tenantId: ctx.tenantId, code, name, paid: p.paid ?? true })
+      .values({
+        tenantId: ctx.tenantId,
+        code,
+        name,
+        description,
+        paid: p.paid ?? true,
+        ...(active ? {} : { archivedAt: sql`now()` }),
+      })
       .returning({ id: leaveType.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A leave type with code “${code}” already exists.`);
@@ -367,7 +425,7 @@ export async function createLeaveType(
       aggregateId: row.id,
       eventType: 'leave-type.created',
       actor: actorOf(ctx),
-      payload: { code, name },
+      payload: { code, name, paid: p.paid ?? true, description, active },
     });
     return row;
   });
@@ -407,11 +465,21 @@ export async function createJobGrade(
 
 export async function updateJobGrade(
   ctx: SessionContext,
-  p: { id: string; name: string; rank?: number },
+  // 4ec5a940 — optional `reason` for the change (free-text from the config form), recorded on the audit
+  // event payload only (never persisted to the aggregate row).
+  p: { id: string; name: string; rank?: number; reason?: string | null },
 ) {
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
+  const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
+    // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
+    // events that predate this change keep their new-values-only payload; the log is append-only).
+    const [prev] = await tx
+      .select({ name: jobGrade.name, rank: jobGrade.rank })
+      .from(jobGrade)
+      .where(eq(jobGrade.id, p.id))
+      .limit(1);
     await tx.update(jobGrade).set({ name, rank }).where(eq(jobGrade.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -419,7 +487,11 @@ export async function updateJobGrade(
       aggregateId: p.id,
       eventType: 'job-grade.updated',
       actor: actorOf(ctx),
-      payload: { name, rank },
+      payload: {
+        before: prev ? { name: prev.name, rank: prev.rank } : null,
+        after: { name, rank },
+        ...(reason ? { reason } : {}),
+      },
     });
   });
 }
@@ -524,6 +596,23 @@ function validateServiceBands(bands: ServiceBand[]): void {
     }
     if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
       throw new Error('Service bands: days must be zero or a positive number.');
+    }
+    // Feedback 9d8cf621 — per-range entitlement columns (all optional; absent/null = "no override"). The
+    // runtime resolver is separately defensive, but reject a genuinely bad value at write time so HR gets a
+    // clear message instead of a silently-ignored override.
+    if (b.carryForwardDays != null && (typeof b.carryForwardDays !== 'number' || !Number.isFinite(b.carryForwardDays) || b.carryForwardDays < 0)) {
+      throw new Error('Service bands: carry-forward days must be zero or a positive number.');
+    }
+    if (b.maxBalanceDays != null && (typeof b.maxBalanceDays !== 'number' || !Number.isFinite(b.maxBalanceDays) || b.maxBalanceDays < 0)) {
+      throw new Error('Service bands: maximum balance days must be zero or a positive number.');
+    }
+    const hasMonth = b.carryForwardExpiryMonth != null;
+    const hasDay = b.carryForwardExpiryDay != null;
+    if (hasMonth !== hasDay) {
+      throw new Error('Service bands: carry-forward expiry needs both a month and a day, or neither.');
+    }
+    if (hasMonth && hasDay && !isValidMonthDay(Number(b.carryForwardExpiryMonth), Number(b.carryForwardExpiryDay))) {
+      throw new Error('Service bands: carry-forward expiry must be a real calendar date (valid month and day).');
     }
   }
   if (bands[0].fromYears !== 0) {
@@ -718,8 +807,11 @@ export async function updateLeavePolicy(
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
      *  when omitted — the requestLeave precedent for clock reads in core. */
     asOf?: string;
+    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
+    reason?: string | null;
   },
 ): Promise<{ affected: number; totalDelta: number }> {
+  const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
     // Step 4: a prior SELECT of the current row — needed both to preserve the existing accrual bands
     // (tri-state below) and to know whether gradeId/companyId/validFrom are actually CHANGING, so the
@@ -810,16 +902,23 @@ export async function updateLeavePolicy(
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
       payload: {
-        annualDays: p.annualDays,
-        carryForwardMax,
-        companyId,
-        validFrom: p.validFrom,
-        ...expiry,
-        ...carryFlags,
-        ...bandsAccrual,
+        // 4ec5a940 — before/after snapshot so the Audit tab shows old → new (the prior row is already
+        // loaded as `current` above — no extra read). Config values (days, caps, accrual) are tenant
+        // configuration, not personal data, so cleartext is allowed (ADR-0030 Layer-0).
+        before: {
+          ...(((current.accrual ?? {}) as Record<string, unknown>) ?? {}),
+          companyId: current.companyId,
+          validFrom: current.validFrom,
+        },
+        after: {
+          ...accrual,
+          companyId,
+          validFrom: p.validFrom,
+        },
         // Feedback 49809272: the correction's blast radius — this event is the recalc SUMMARY (the
         // per-employee `leave.entitlement.recalculated` events are the per-row audit).
         recalc,
+        ...(reason ? { reason } : {}),
       },
     });
     return recalc;
@@ -916,7 +1015,10 @@ export function listPositions(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(position.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(position.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (62de487d): resolve via origin ∪ shared-in ∪ global (flag-gated).
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(position, 'position', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(position.title),
@@ -941,7 +1043,10 @@ export function listCostCenters(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(costCenter.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(costCenter.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (62de487d): resolve via origin ∪ shared-in ∪ global (flag-gated).
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(costCenter, 'cost_center', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(costCenter.code),
@@ -968,7 +1073,10 @@ export function listBusinessUnits(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(businessUnit.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(businessUnit.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (62de487d): resolve via origin ∪ shared-in ∪ global (flag-gated).
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(businessUnit, 'business_unit', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(businessUnit.code),
@@ -979,6 +1087,36 @@ export function listBusinessUnits(
 // The System Labels admin page is the ONLY consumer of `description`, so it gets its own read queries that
 // select the column. The general-purpose listDepartments/listPositions/listCostCenters/listBusinessUnits
 // used by the hire form and People filters are deliberately left untouched (no description) — narrow scope.
+//
+// Audit columns (62de487d): the four label tables carry `created_at` but no updated_at/updated_by — the
+// "Last updated" audit info the grid shows is DERIVED from the domain-event log (each create/update/archive
+// already appends one; substrate discipline). Correlated subqueries over domain_event keyed by the row's
+// aggregate id: latest occurred_at + the actor's display name (SYSTEM/agent events → null name). RLS on
+// domain_event grants admins tenant-wide read, and this page is scopedAdmin, so the subqueries resolve.
+
+/** The outer table's id column, FULLY QUALIFIED ("table"."id"), for correlating into the domain_event
+ *  subqueries. Drizzle interpolates a bare column into sql`` unqualified ("id"), which Postgres binds to
+ *  the SUBQUERY's own relations first — silently wrong in lastUpdatedAtSql (de.id) and fatally ambiguous
+ *  in lastUpdatedBySql (de/au/p all carry id). Caught by the R17 clean-room gate. */
+function qualifiedId(idCol: AnyColumn) {
+  return sql.raw(`"${getTableName(idCol.table)}"."${idCol.name}"`);
+}
+/** Scalar SQL: the most-recent domain-event timestamp for a label row (its aggregate). The idCol is the
+ *  outer table's id column, correlated into the subquery. */
+function lastUpdatedAtSql(agg: string, idCol: AnyColumn) {
+  return sql<string | null>`(select max(de.occurred_at) from domain_event de
+    where de.aggregate_type = ${agg} and de.aggregate_id = ${qualifiedId(idCol)})`;
+}
+/** Scalar SQL: the display name of the actor on the most-recent domain-event for a label row. SYSTEM /
+ *  agent events (no actor_id, or no linked person) resolve to null — the UI shows a system fallback. */
+function lastUpdatedBySql(agg: string, idCol: AnyColumn) {
+  return sql<string | null>`(select p.full_name from domain_event de
+    left join app_user au on au.id = de.actor_id
+    left join person p on p.id = au.person_id
+    where de.aggregate_type = ${agg} and de.aggregate_id = ${qualifiedId(idCol)}
+    order by de.occurred_at desc limit 1)`;
+}
+
 
 export function listDepartmentsForLabels(
   ctx: SessionContext,
@@ -991,8 +1129,14 @@ export function listDepartmentsForLabels(
         companyId: department.companyId,
         name: department.name,
         businessUnitId: department.businessUnitId,
+        // 6fadb036: the department head an approval `department_head` step routes to (nullable).
+        headEmploymentId: department.headEmploymentId,
         description: department.description,
         archivedAt: department.archivedAt,
+        isGlobal: department.isGlobal,
+        createdAt: department.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('department', department.id),
+        lastUpdatedBy: lastUpdatedBySql('department', department.id),
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
       .from(department)
@@ -1016,6 +1160,10 @@ export function listPositionsForLabels(
         jobFamily: position.jobFamily,
         description: position.description,
         archivedAt: position.archivedAt,
+        isGlobal: position.isGlobal,
+        createdAt: position.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('position', position.id),
+        lastUpdatedBy: lastUpdatedBySql('position', position.id),
         inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
       })
       .from(position)
@@ -1039,6 +1187,10 @@ export function listCostCentersForLabels(
         name: costCenter.name,
         description: costCenter.description,
         archivedAt: costCenter.archivedAt,
+        isGlobal: costCenter.isGlobal,
+        createdAt: costCenter.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('cost-center', costCenter.id),
+        lastUpdatedBy: lastUpdatedBySql('cost-center', costCenter.id),
         inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
       })
       .from(costCenter)
@@ -1060,8 +1212,14 @@ export function listBusinessUnitsForLabels(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        // 6fadb036: the BU head an approval `business_unit_head` step routes to (nullable).
+        headEmploymentId: businessUnit.headEmploymentId,
         description: businessUnit.description,
         archivedAt: businessUnit.archivedAt,
+        isGlobal: businessUnit.isGlobal,
+        createdAt: businessUnit.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('business-unit', businessUnit.id),
+        lastUpdatedBy: lastUpdatedBySql('business-unit', businessUnit.id),
         inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
       })
       .from(businessUnit)
@@ -1521,24 +1679,36 @@ export function listUsers(ctx: SessionContext) {
 
 export async function updateDepartment(
   ctx: SessionContext,
-  p: { id: string; name: string; businessUnitId?: string | null; description?: string },
+  p: { id: string; name: string; businessUnitId?: string | null; headEmploymentId?: string | null; description?: string },
 ) {
   const name = cleanName(p.name, 'Department name');
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    // businessUnitId is tri-state: undefined → leave the column untouched (a name-only rename must NOT wipe
-    // the BU); null/'' → clear it; an id → set it (validated to the department's own company). Fetch the
-    // department's company for the cross-company guard when a non-empty id is supplied.
-    const setValues: { name: string; description: string | null; businessUnitId?: string | null } = { name, description };
-    if (p.businessUnitId !== undefined) {
+    // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
+    // rename must NOT wipe them); null/'' → clear it; an id → set it (validated to the department's own
+    // company). Fetch the department's company once when either is supplied.
+    const setValues: {
+      name: string;
+      description: string | null;
+      businessUnitId?: string | null;
+      headEmploymentId?: string | null;
+    } = { name, description };
+    if (p.businessUnitId !== undefined || p.headEmploymentId !== undefined) {
       const [dep] = await tx
         .select({ companyId: department.companyId })
         .from(department)
         .where(eq(department.id, p.id))
         .limit(1);
       if (!dep) throw new Error('Department not found');
-      setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+      if (p.businessUnitId !== undefined) {
+        setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+      }
+      if (p.headEmploymentId !== undefined) {
+        // 6fadb036: the head (a `department_head` approval decider) must be an employment in the SAME
+        // company as the department (mirrors ADR-0071 §i same-company guard for org-chart approvers).
+        setValues.headEmploymentId = await resolveHeadEmploymentId(tx, p.headEmploymentId, dep.companyId);
+      }
     }
     await tx.update(department).set(setValues).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A department named “${name}” already exists in this company.`);
@@ -1624,12 +1794,30 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateBusinessUnit(ctx: SessionContext, p: { id: string; code: string; name: string; description?: string }) {
+export async function updateBusinessUnit(
+  ctx: SessionContext,
+  p: { id: string; code: string; name: string; headEmploymentId?: string | null; description?: string },
+) {
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.update(businessUnit).set({ code, name, description }).where(eq(businessUnit.id, p.id)).catch((e) => {
+    // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
+    const setValues: { code: string; name: string; description: string | null; headEmploymentId?: string | null } = {
+      code,
+      name,
+      description,
+    };
+    if (p.headEmploymentId !== undefined) {
+      const [bu] = await tx
+        .select({ companyId: businessUnit.companyId })
+        .from(businessUnit)
+        .where(eq(businessUnit.id, p.id))
+        .limit(1);
+      if (!bu) throw new Error('Business unit not found');
+      setValues.headEmploymentId = await resolveHeadEmploymentId(tx, p.headEmploymentId, bu.companyId);
+    }
+    await tx.update(businessUnit).set(setValues).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
       throw e;
     });
@@ -1643,6 +1831,241 @@ export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archiv
       throw e;
     });
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'business-unit', aggregateId: p.id, eventType: p.archived ? 'business-unit.archived' : 'business-unit.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+// ── System Labels grid: atomic bulk save (Excel-style edit → one Save) ───────────────────────────────
+// Feedback 62de487d. The grid lets an admin edit many rows and add new ones, then Save commits them ALL
+// in ONE transaction (Requirement 4: "all changes are saved in a single transaction"). Each row keeps
+// its OWN DomainEvent (department.created / position.updated / …) — SUBSTRATE DISCIPLINE: the audit
+// trail stays per-aggregate, one event per changed label. Any validation failure (duplicate code /
+// missing mandatory field / cross-company BU / non-group-admin trying to set Global) aborts the WHOLE
+// transaction (throw → rollback) and returns the offending rows so the grid can highlight them.
+
+export type LabelKindStr = 'department' | 'position' | 'cost_center' | 'business_unit';
+
+/** One new row to create. `key` is the client's row key, echoed back on any error for row highlighting. */
+export type LabelCreateInput = {
+  key: string;
+  companyId: string;
+  isGlobal?: boolean;
+  code?: string;
+  name?: string;
+  title?: string;
+  jobFamily?: string;
+  businessUnitId?: string | null;
+  // 6fadb036: department / business-unit head (approval routing target). Ignored for other kinds.
+  headEmploymentId?: string | null;
+  description?: string;
+};
+/** One existing row to update. `archived` toggles the soft-archive; scope (isGlobal) is applied too. */
+export type LabelUpdateInput = {
+  key: string;
+  id: string;
+  isGlobal?: boolean;
+  archived?: boolean;
+  code?: string;
+  name?: string;
+  title?: string;
+  jobFamily?: string;
+  businessUnitId?: string | null;
+  // 6fadb036: department / business-unit head (approval routing target). Ignored for other kinds.
+  headEmploymentId?: string | null;
+  description?: string;
+};
+export type LabelRowError = { key: string; field?: string; message: string };
+
+/** Thrown to roll the whole bulk-save transaction back; carries the per-row errors for the grid. */
+export class LabelBulkError extends Error {
+  rowErrors: LabelRowError[];
+  constructor(rowErrors: LabelRowError[]) {
+    super('One or more label rows are invalid.');
+    this.name = 'LabelBulkError';
+    this.rowErrors = rowErrors;
+  }
+}
+
+const KIND_AGG: Record<LabelKindStr, string> = {
+  department: 'department',
+  position: 'position',
+  cost_center: 'cost-center',
+  business_unit: 'business-unit',
+};
+
+/** Postgres insufficient_privilege (42501) — raised by the app.guard_is_global() trigger when a
+ *  non-group-admin tries to set is_global=true. Surfaced as a friendly per-row scope error. */
+function isPrivilegeError(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  return code === '42501';
+}
+
+export async function bulkSaveLabels(
+  ctx: SessionContext,
+  kind: LabelKindStr,
+  p: { creates: LabelCreateInput[]; updates: LabelUpdateInput[] },
+): Promise<{ created: number; updated: number; createdIds: { key: string; id: string }[] }> {
+  const agg = KIND_AGG[kind];
+  return withTenant(ctx, async (tx) => {
+    const errors: LabelRowError[] = [];
+    // Maps each created draft's client key → its new server id so the grid can convert the draft row
+    // into a persisted row in place (instead of leaving it as a dirty draft that re-inserts on next Save).
+    const createdIds: { key: string; id: string }[] = [];
+    let created = 0;
+    let updated = 0;
+
+    // Field validation shared by create + update; returns cleaned values or pushes a row error.
+    const clean = (
+      key: string,
+      raw: string | undefined,
+      field: string,
+      label: string,
+      required: boolean,
+    ): string | null => {
+      const v = (raw ?? '').trim();
+      if (!v) {
+        if (required) errors.push({ key, field, message: `${label} is required.` });
+        return null;
+      }
+      return v;
+    };
+
+    for (const c of p.creates) {
+      try {
+        if (kind === 'department') {
+          const name = clean(c.key, c.name, 'name', 'Department name', true);
+          if (!name) continue;
+          const businessUnitId = await resolveDepartmentBusinessUnitId(tx, c.businessUnitId, c.companyId);
+          // 6fadb036: same-company-validated head (blank ⇒ null).
+          const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
+          const [row] = await tx
+            .insert(department)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, headEmploymentId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: department.id });
+          createdIds.push({ key: c.key, id: row.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false } });
+        } else if (kind === 'position') {
+          const title = clean(c.key, c.title, 'title', 'Position title', true);
+          if (!title) continue;
+          const [row] = await tx
+            .insert(position)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: position.id });
+          createdIds.push({ key: c.key, id: row.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'position.created', actor: actorOf(ctx), payload: { companyId: c.companyId, title, isGlobal: c.isGlobal ?? false } });
+        } else if (kind === 'cost_center') {
+          const code = clean(c.key, c.code, 'code', 'Cost-center code', true);
+          const name = clean(c.key, c.name, 'name', 'Cost-center name', true);
+          if (!code || !name) continue;
+          const [row] = await tx
+            .insert(costCenter)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: costCenter.id });
+          createdIds.push({ key: c.key, id: row.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'cost-center.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
+        } else {
+          const code = clean(c.key, c.code, 'code', 'Business-unit code', true);
+          const name = clean(c.key, c.name, 'name', 'Business-unit name', true);
+          if (!code || !name) continue;
+          // 6fadb036: same-company-validated head (blank ⇒ null).
+          const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
+          const [row] = await tx
+            .insert(businessUnit)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, headEmploymentId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: businessUnit.id });
+          createdIds.push({ key: c.key, id: row.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
+        }
+        created++;
+      } catch (e) {
+        if (isUniqueViolation(e)) errors.push({ key: c.key, field: kind === 'department' || kind === 'position' ? (kind === 'department' ? 'name' : 'title') : 'code', message: 'A label with this code / name already exists in the company.' });
+        else if (isPrivilegeError(e)) errors.push({ key: c.key, field: 'scope', message: 'Only a group admin can make a label global.' });
+        // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
+        else if (e instanceof CrossCompanyError) errors.push({ key: c.key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message });
+        else throw e;
+      }
+    }
+
+    for (const u of p.updates) {
+      try {
+        if (kind === 'department') {
+          const name = clean(u.key, u.name, 'name', 'Department name', true);
+          if (!name) continue;
+          const set: { name: string; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.businessUnitId !== undefined || u.headEmploymentId !== undefined) {
+            const [dep] = await tx.select({ companyId: department.companyId }).from(department).where(eq(department.id, u.id)).limit(1);
+            if (dep) {
+              if (u.businessUnitId !== undefined) set.businessUnitId = await resolveDepartmentBusinessUnitId(tx, u.businessUnitId, dep.companyId);
+              // 6fadb036: tri-state head — undefined ⇒ untouched; blank ⇒ clear; id ⇒ same-company-validated.
+              if (u.headEmploymentId !== undefined) set.headEmploymentId = await resolveHeadEmploymentId(tx, u.headEmploymentId, dep.companyId);
+            }
+          }
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(department).set(set).where(eq(department.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'department.updated', actor: actorOf(ctx), payload: { name, isGlobal: u.isGlobal, archived: u.archived } });
+        } else if (kind === 'position') {
+          const title = clean(u.key, u.title, 'title', 'Position title', true);
+          if (!title) continue;
+          const set: { title: string; jobFamily: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { title, jobFamily: u.jobFamily?.trim() || null, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(position).set(set).where(eq(position.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title, isGlobal: u.isGlobal, archived: u.archived } });
+        } else if (kind === 'cost_center') {
+          const code = clean(u.key, u.code, 'code', 'Cost-center code', true);
+          const name = clean(u.key, u.name, 'name', 'Cost-center name', true);
+          if (!code || !name) continue;
+          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(costCenter).set(set).where(eq(costCenter.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
+        } else {
+          const code = clean(u.key, u.code, 'code', 'Business-unit code', true);
+          const name = clean(u.key, u.name, 'name', 'Business-unit name', true);
+          if (!code || !name) continue;
+          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          // 6fadb036: tri-state head — undefined ⇒ untouched; blank ⇒ clear; id ⇒ same-company-validated.
+          if (u.headEmploymentId !== undefined) {
+            const [bu] = await tx.select({ companyId: businessUnit.companyId }).from(businessUnit).where(eq(businessUnit.id, u.id)).limit(1);
+            if (bu) set.headEmploymentId = await resolveHeadEmploymentId(tx, u.headEmploymentId, bu.companyId);
+          }
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(businessUnit).set(set).where(eq(businessUnit.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
+        }
+        updated++;
+      } catch (e) {
+        if (isUniqueViolation(e)) errors.push({ key: u.key, field: kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code', message: 'A label with this code / name already exists in the company.' });
+        else if (isPrivilegeError(e)) errors.push({ key: u.key, field: 'scope', message: 'Only a group admin can make a label global.' });
+        // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
+        else if (e instanceof CrossCompanyError) errors.push({ key: u.key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message });
+        else throw e;
+      }
+    }
+
+    if (errors.length) throw new LabelBulkError(errors); // rollback everything — atomic save.
+    return { created, updated, createdIds };
+  });
+}
+
+/**
+ * Turn a company's Shared System Labels feature ON/OFF (the resolver switch). OFF (default) = origin-only
+ * for that company; ON = it also sees global + labels shared into it. RLS on `company` already requires
+ * admin-for-company to write. Substrate: append a company-level event.
+ */
+export async function setCompanySharedLabels(ctx: SessionContext, p: { companyId: string; enabled: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(company).set({ sharedSystemLabels: p.enabled }).where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: p.enabled ? 'company.shared-labels.enabled' : 'company.shared-labels.disabled',
+      actor: actorOf(ctx),
+      payload: { enabled: p.enabled },
+    });
   });
 }
 
@@ -1676,7 +2099,10 @@ const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at
  * here (and the LeaveType schema comment). Each message is capped at CUSTOM_MESSAGE_MAX_LEN characters
  * (enforced in the service, not the DB).
  */
-const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays'] as const;
+// `applyNotice` (feedback 9d8cf621) is an APPLY-TIME custom message — not a block message. It rides the
+// same customMessages JSONB + merge convention so no migration/column is needed: an empty value removes the
+// key (message disabled), a non-empty value stores the HR-authored notice shown to employees on the apply form.
+const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays', 'applyNotice'] as const;
 const CUSTOM_MESSAGE_MAX_LEN = 500;
 
 export async function updateLeaveType(
@@ -1684,6 +2110,11 @@ export async function updateLeaveType(
   p: {
     id: string;
     name: string;
+    // Leave Type master page (feedback 097de541): optional description edited from the identity sub-form.
+    // OWN tri-state (undefined = column untouched), exactly like backdatingLimitDays — the identity form posts
+    // a hidden `identity=1` marker so an unrelated sub-form save never touches this column. Empty string ⇒
+    // null (never store ""); an explicit null clears it.
+    description?: string | null;
     eligibility?: LeaveEligibility | null;
     durations?: LeaveDurationType[] | null;
     // Supporting-document config (claims-style flat signature; each is tri-state — undefined = leave column).
@@ -1721,9 +2152,12 @@ export async function updateLeaveType(
     // another rule's message. Any future writer of this column MUST follow the same merge-in-transaction
     // convention. Each message is capped at 500 chars and only known rule keys are accepted.
     customMessages?: Record<string, string> | null;
+    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
+    reason?: string | null;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
+  const reason = normalizeReason(p.reason);
   const touchEligibility = p.eligibility !== undefined;
   const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
   const touchDurations = p.durations !== undefined;
@@ -1757,6 +2191,15 @@ export async function updateLeaveType(
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
   const touchCustomMessages = p.customMessages !== undefined;
+  // Leave Type master page (feedback 097de541): its OWN tri-state — the identity sub-form posts `identity=1`
+  // and forwards `description`; any other save omits it, so the description column stays untouched.
+  const touchDescription = p.description !== undefined;
+  const nextDescription =
+    touchDescription
+      ? typeof p.description === 'string' && p.description.trim() !== ''
+        ? p.description.trim()
+        : null
+      : undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
   }
@@ -1827,11 +2270,16 @@ export async function updateLeaveType(
   const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
   const partialSet = touchPartial ? { perDateApproval: p.perDateApproval } : {};
+  // Leave Type master page (feedback 097de541): its own set fragment (the trimmed value, or null to clear).
+  const descriptionSet = touchDescription ? { description: nextDescription ?? null } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
         name: leaveType.name,
+        // Leave Type master page (feedback 097de541): selected for the rename-uniqueness check (below) and the
+        // description audit diff (MUST be here or before?.description is always undefined).
+        description: leaveType.description,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         requiresDocument: leaveType.requiresDocument,
@@ -1853,6 +2301,24 @@ export async function updateLeaveType(
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // Name uniqueness on rename (feedback 097de541): only when the name actually changes (case-insensitive),
+    // so an unrelated sub-form save that re-posts the current name — and any legacy duplicate that predates
+    // this rule — never trips the guard. Excludes self and archived types (mirrors createLeaveType + the
+    // partial code index).
+    if (before && name.toLowerCase() !== before.name.toLowerCase()) {
+      const [dupe] = await tx
+        .select({ id: leaveType.id })
+        .from(leaveType)
+        .where(
+          and(
+            isNull(leaveType.archivedAt),
+            sql`${leaveType.id} <> ${p.id}`,
+            sql`lower(${leaveType.name}) = lower(${name})`,
+          ),
+        )
+        .limit(1);
+      if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
+    }
     // Custom validation messages: read-then-patch-then-write on the SHARED JSONB column. Start from what is
     // already stored, apply the caller's touched keys: a value that is empty or all-whitespace after trim is
     // treated as "not configured" and the key is REMOVED (never stored as an empty string, so it round-trips
@@ -1882,6 +2348,7 @@ export async function updateLeaveType(
         ...minAdvanceSet,
         ...expirySet,
         ...partialSet,
+        ...descriptionSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
       })
@@ -1913,6 +2380,7 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
+          ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
           name,
@@ -1938,7 +2406,9 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
+          ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
+        ...(reason ? { reason } : {}),
       },
     });
   });

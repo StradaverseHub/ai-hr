@@ -142,6 +142,7 @@ export default async function PayrollPage({
                           title={tb('resetTitle')}
                           description={tb('resetDescription')}
                           confirmLabel={tb('resetConfirm')}
+                          reasonField={{ name: 'reason', label: tb('resetReasonLabel'), placeholder: tb('resetReasonPlaceholder') }}
                         >
                           {tb('resetPayroll')}
                         </ConfirmSubmit>

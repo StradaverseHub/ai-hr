@@ -1,0 +1,34 @@
+import { getTranslations } from 'next-intl/server';
+import Link from 'next/link';
+
+/**
+ * Sub-navigation within the Claims Settings module (ccbd0508 — Claim Module Simplification). Mirrors
+ * `components/leave-tabs.tsx` exactly so the claims admin surface reads consistently: Claim Types (master
+ * data only) · Claim Limits (per Job-Grade entitlement rules) · Reimbursements (payout). Each tab is a real
+ * sub-route (server component) loading only its own data — the "Claim Limit submenu" the reporter asked for.
+ */
+export async function ClaimsTabs({ active }: { active: 'types' | 'limits' | 'reimbursements' }) {
+  const t = await getTranslations('admin.claimsTabs');
+  const tabs = [
+    { key: 'types', href: '/admin/claims', label: t('types') },
+    { key: 'limits', href: '/admin/claims/limits', label: t('limits') },
+    { key: 'reimbursements', href: '/admin/claims/reimbursements', label: t('reimbursements') },
+  ] as const;
+  return (
+    <div className="flex gap-1 overflow-x-auto border-b border-border">
+      {tabs.map((tab) => (
+        <Link
+          key={tab.key}
+          href={tab.href}
+          className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors ${
+            active === tab.key
+              ? 'border-primary font-medium text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          {tab.label}
+        </Link>
+      ))}
+    </div>
+  );
+}

@@ -4,9 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getLocale } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { listLeaveTypes } from '@/core/read';
+import { listLeaveTypes, myEmployment } from '@/core/read';
 import {
   addLeaveAttachment,
+  adminCancelLeave,
   decideLeave,
   requestLeave,
   requestLeaveCancellation,
@@ -152,6 +153,29 @@ export async function requestLeaveCancellationAction(formData: FormData) {
   revalidatePath('/approvals');
   revalidatePath('/');
   redirect('/leave?toast=cancellationRequested');
+}
+
+// HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0). Immediate, no approval workflow:
+// adminCancelLeave re-runs every gate server-side (HR-only, self-ban, pending|approved status, approved-
+// REPLACEMENT block, closed-payroll block) so a stale form can't slip through. The `back` field lands the
+// caller back where they started — '/' from the dashboard calendar, '/leave' from Leave Management — with the
+// record list refreshed. We pass the real HR actor via cancelledByEmploymentId (deciderEmploymentId pattern).
+export async function adminCancelLeaveAction(formData: FormData) {
+  const session = await getSession();
+  const leaveRequestId = String(formData.get('leaveRequestId'));
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  // Whitelist the return surface so a crafted form can't redirect off-app.
+  const back = String(formData.get('back') ?? '') === '/' ? '/' : '/leave';
+  try {
+    const me = await myEmployment(session);
+    await adminCancelLeave(session, { leaveRequestId, reason, cancelledByEmploymentId: me?.employmentId });
+  } catch (e) {
+    redirect(`${back}?error=${encodeURIComponent(await localizeLeaveError(e))}`);
+  }
+  revalidatePath('/leave');
+  revalidatePath('/approvals');
+  revalidatePath('/');
+  redirect(`${back}?toast=adminCancelled`);
 }
 
 export async function decideLeaveAction(formData: FormData) {

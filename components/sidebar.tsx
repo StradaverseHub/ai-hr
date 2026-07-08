@@ -12,6 +12,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock,
+  FileBarChart,
   FileUp,
   HandCoins,
   Hourglass,
@@ -27,6 +28,7 @@ import {
   Lock,
   ScrollText,
   ShieldCheck,
+  Smartphone,
   Tags,
   Target,
   SlidersHorizontal,
@@ -52,7 +54,7 @@ type CollapsibleGroupItem = {
   cookieKey: string;
   children: ChildItem[];
 };
-type Row = Item | CollapsibleGroupItem;
+type Row = ChildItem | CollapsibleGroupItem;
 const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
 
@@ -63,6 +65,9 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // confirmed the relocation b3dc0f78 had deferred as contested (ticket order: Holidays → Policy
 // → Allowance → Locations → TOIL). Reserved (do not create): an "Overtime Configuration" child
 // is owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
+// Child order (f60cd403): day-to-day Records first, then the admin-config screens, and the
+// administrative bulk-upload Import ALWAYS last — it is used far less than daily attendance ops.
+// hrefs / icons / visibility flags are unchanged by that reorder; only row position moved.
 const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'attendance',
@@ -70,14 +75,33 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   cookieKey: 'nav_attendance_open',
   children: [
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
-    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
-    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
-    // e776d17d reserves the "Overtime Configuration" child slot here.
+    // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Import).
     { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass, adminOnly: true },
+    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
+    // Import stays last: administrative bulk-upload, used less than daily attendance (f60cd403).
+    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
+  ],
+};
+
+// Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
+// map to the reporter's categories; each opens the Reports hub filtered to that category, where the
+// predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
+const REPORTS_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  labelKey: 'reports',
+  icon: FileBarChart,
+  cookieKey: 'nav_reports_open',
+  children: [
+    { href: '/reports?cat=master', labelKey: 'reportMaster', icon: Users, adminOnly: true },
+    { href: '/reports?cat=attendance', labelKey: 'reportAttendance', icon: Clock, adminOnly: true },
+    { href: '/reports?cat=leave', labelKey: 'reportLeave', icon: CalendarDays, adminOnly: true },
+    { href: '/reports?cat=payroll', labelKey: 'reportPayroll', icon: Wallet, adminOnly: true },
+    { href: '/reports?cat=claim', labelKey: 'reportClaim', icon: Receipt, adminOnly: true },
+    { href: '/reports?cat=performance', labelKey: 'reportPerformance', icon: Target, adminOnly: true },
   ],
 };
 
@@ -86,21 +110,26 @@ const GROUPS: Group[] = [
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
-      { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       ATTENDANCE_NODE,
       { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
+      // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
+      { href: '/mobile-preview', labelKey: 'mobilePreview', icon: Smartphone },
     ],
   },
   {
+    // 1b35f17b: Personnel relocated out of the top-level menu into Manage. The group used to be
+    // gated whole-group (managerUp) — but Personnel is visible to EVERY employee, so gating is now
+    // per-row (canSeeChild): all employees see "Manage → Personnel"; managers/admins additionally
+    // see Approvals + Performance. Route guards are unchanged (scopedSession on /personnel).
     labelKey: 'manage',
-    managerUp: true,
     items: [
-      { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals' },
-      { href: '/performance', labelKey: 'performance', icon: Target },
+      { href: '/personnel', labelKey: 'people', icon: Users },
+      { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
+      { href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
     ],
   },
   {
@@ -117,6 +146,7 @@ const GROUPS: Group[] = [
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
+      REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       { href: '/admin/privacy', labelKey: 'dataPrivacy', icon: Lock },
       { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },
@@ -151,9 +181,17 @@ export function Sidebar({
   // Per-child visibility for collapsible nodes (the new capability vs. whole-group gating).
   const canSeeChild = (c: ChildItem) =>
     c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true;
-  const groups = GROUPS.filter((g) =>
-    g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true,
-  );
+  const groups = GROUPS
+    // Group-level flags still supported (the Admin group uses adminOnly).
+    .filter((g) => (g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true))
+    // 1b35f17b: filter per-row too, so a group (e.g. Manage) can mix all-employee rows
+    // (Personnel) with manager-up rows (Approvals/Performance).
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((r) => (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
+    }))
+    // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
+    .filter((g) => g.items.length > 0);
 
   const toggle = () =>
     setCollapsed((c) => {

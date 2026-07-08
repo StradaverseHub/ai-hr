@@ -7,7 +7,7 @@ import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
 import { ToilElectButton } from '@/components/toil-elect-button';
-import { generateRosterAction } from './actions';
+import { copyRosterAction, generateRosterAction } from './actions';
 
 const DAY = 86_400_000;
 const mondayOf = (iso: string): string => {
@@ -23,7 +23,7 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00
 export default async function RosterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ companyId?: string; week?: string; error?: string; generated?: string }>;
+  searchParams: Promise<{ companyId?: string; week?: string; error?: string; generated?: string; copied?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
   const t = await getTranslations('roster');
@@ -54,6 +54,8 @@ export default async function RosterPage({
   ]);
   // Success banner for the roster generator: "employments.workingRows.restRows" packed by the action.
   const gen = sp.generated && /^\d+\.\d+\.\d+$/.test(sp.generated) ? sp.generated.split('.').map(Number) : null;
+  // R17 3e8350db — success banner for "copy roster": the number of rows copied onto the target window.
+  const copiedCount = sp.copied && /^\d+$/.test(sp.copied) ? Number(sp.copied) : null;
   const exceptions = variance.filter((v) => v.kind !== 'on_track');
   // "Bank in lieu" appears on rest-worked rows only when TOIL is on (env kill-switch AND company policy).
   const toilOn = process.env.TOIL_ENABLED === 'true' && (toilPolicies[0]?.enabled ?? false);
@@ -99,6 +101,11 @@ export default async function RosterPage({
       {gen && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
           {t('generated', { employees: gen[0], working: gen[1], rest: gen[2] })}
+        </div>
+      )}
+      {copiedCount != null && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+          {copiedCount > 0 ? t('copiedDone', { rows: copiedCount }) : t('copiedEmpty')}
         </div>
       )}
 
@@ -205,6 +212,40 @@ export default async function RosterPage({
         </div>
       </Card>
 
+      {/* R17 3e8350db — "Copy roster schedules from previous weeks or months". Copies every roster row from a
+          source window forward onto a target window starting at targetFrom, preserving each row's day-offset.
+          Scoped to this company's active employees (posted as hidden employmentIds). Defaults: source = the
+          previous week, target = the current week. */}
+      <Card>
+        <SectionHeader title={t('copyTitle')} />
+        <div className="space-y-3 px-4 py-3">
+          {activeEmployees.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('noEmployees')}</p>
+          ) : (
+            <form action={copyRosterAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="companyId" value={companyId} />
+              {activeEmployees.map((e) => (
+                <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
+              ))}
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('copySource')}
+                <span className="flex items-center gap-1.5">
+                  <input type="date" name="sourceFrom" required defaultValue={addDays(weekStart, -7)} className={inputCls} />
+                  <span className="text-xs text-muted-foreground">–</span>
+                  <input type="date" name="sourceTo" required defaultValue={addDays(weekStart, -1)} className={inputCls} />
+                </span>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                {t('copyTargetStart')}
+                <input type="date" name="targetFrom" required defaultValue={weekStart} className={inputCls} />
+              </label>
+              <button className={btnPrimary}>{t('copyButton')}</button>
+            </form>
+          )}
+          <p className="text-xs text-muted-foreground">{t('copyHint')}</p>
+        </div>
+      </Card>
+
       <Card>
         <SectionHeader title={t('weeklyRoster')} count={activeEmployees.length} />
         <div className="px-4 py-3">
@@ -215,7 +256,7 @@ export default async function RosterPage({
           ) : (
             <RosterGrid
               weekDates={weekDates}
-              employees={activeEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name }))}
+              employees={activeEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name, code: e.employeeCode }))}
               shifts={shifts.map((sh) => ({ id: sh.id, name: sh.name, startTime: sh.startTime, endTime: sh.endTime }))}
               initial={initial}
             />

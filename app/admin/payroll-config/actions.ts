@@ -24,6 +24,17 @@ export async function savePayrollConfigAction(formData: FormData) {
   const hrdfStatus = (['not_registered', 'mandatory', 'optional'] as const).includes(rawHrdf as never)
     ? (rawHrdf as HrdfStatus)
     : 'not_registered';
+  // Step 6 (f3148da1) — assemble the payslip-release blob from the mode + value; cleanPayslipRelease
+  // validates + clamps (fixed_day → day, relative → offsetDays; 'immediate' or a blank value ⇒ null).
+  const releaseMode = str(formData, 'payslipReleaseMode') ?? 'immediate';
+  const releaseValueRaw = str(formData, 'payslipReleaseValue');
+  const releaseValue = releaseValueRaw !== undefined ? Number(releaseValueRaw) : undefined;
+  const payslipRelease =
+    releaseMode === 'fixed_day'
+      ? { mode: 'fixed_day' as const, day: releaseValue }
+      : releaseMode === 'relative'
+        ? { mode: 'relative' as const, offsetDays: releaseValue }
+        : { mode: 'immediate' as const };
   try {
     await setPayrollConfig(s, {
       companyId,
@@ -36,6 +47,8 @@ export async function savePayrollConfigAction(formData: FormData) {
       attendanceCutOffDay: str(formData, 'attendanceCutOffDay') ?? null,
       probationMonths: str(formData, 'probationMonths') ?? null,
       reviewReminderDays: str(formData, 'reviewReminderDays') ?? null,
+      defaultPayrollPolicyId: str(formData, 'defaultPayrollPolicyId') ?? null,
+      payslipRelease,
     });
     await setCompanyStatutoryMY(s, {
       companyId,

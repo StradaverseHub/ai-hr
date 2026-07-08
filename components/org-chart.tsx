@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, ChevronUp, Minus, Plus, Search } from 'lucide-react';
-import { Avatar, EmployeeCode } from '@/components/ui';
+import { Avatar, EmployeeName } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
 export type OrgEmp = {
@@ -178,12 +178,8 @@ export function OrgChart({ employees, edges }: { employees: OrgEmp[]; edges: Org
         <div className="flex items-center gap-2.5">
           <Avatar name={e.name} className="size-9 text-xs" />
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-foreground">{e.name}</div>
-            {e.employeeCode && (
-              <div className="truncate">
-                <EmployeeCode code={e.employeeCode} />
-              </div>
-            )}
+            {/* Employee ID left-of-name (feedback 38668d9b) */}
+            <EmployeeName code={e.employeeCode} name={e.name} className="truncate text-sm font-semibold text-foreground" />
             <div className="truncate text-xs text-muted-foreground">{e.role ?? '—'}</div>
           </div>
         </div>

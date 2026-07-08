@@ -4,12 +4,14 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
-import { listAllowancePolicies } from '@/core/read';
+import { listAllowancePolicies, auditEvents } from '@/core/read';
+import { humanizeEvent } from '@/lib/audit-format';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, resetAction, transferAllowancesAction } from '../actions';
+import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, requestUnlockOtpAction, resetAction, transferAllowancesAction, unlockAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
+import { ReprocessPanel } from './reprocess-panel';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -19,12 +21,12 @@ export default async function BatchPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; hw?: string }>;
+  searchParams: Promise<{ error?: string; from?: string; hw?: string; otp?: string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
   const { batchId } = await params;
-  const { error, from, hw } = await searchParams;
+  const { error, from, hw, otp } = await searchParams;
   const data = await batchDetail(s, batchId);
   if (!data) notFound();
   const { batch, slips } = data;
@@ -48,6 +50,15 @@ export default async function BatchPage({
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
   const resetOn = process.env.PAYROLL_RESET_ENABLED === 'true';
+  // Selective reprocessing (feedback 9bc442bc, reporter ask #3) needs same-month adjustment runs.
+  const multiCycleOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
+  // Unlock Closed run (feedback 9bc442bc, reporter ask #2) — gated so an environment can keep Closed
+  // permanently frozen. Step-up OTP + reason + warnings live in the service; the page is requireAdmin-gated
+  // and unlockClosedBatch re-asserts the granular payroll.unlock permission (super_admin by default).
+  const unlockOn = process.env.PAYROLL_UNLOCK_ENABLED === 'true';
+  // Per-run History (reporter ask #4 "fully traceable") — this batch's lifecycle events (created /
+  // processed / reset / run-added / selective-reprocess / closed / payment-summary.exported). Read-only.
+  const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });
   // Payroll Process wizard: this draft is presented as "Step 3 of 3" when it arrived straight from the
   // wizard's terminal create action. A compact one-shot holiday-warning code list rides the query string
   // ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch is the
@@ -109,6 +120,7 @@ export default async function BatchPage({
                   title={t('resetTitle')}
                   description={t('resetDescription')}
                   confirmLabel={t('resetConfirm')}
+                  reasonField={{ name: 'reason', label: t('resetReasonLabel'), placeholder: t('resetReasonPlaceholder') }}
                 >
                   {t('resetPayroll')}
                 </ConfirmSubmit>
@@ -126,6 +138,65 @@ export default async function BatchPage({
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400">
           🔒 {t('lockedNote')}
         </div>
+      )}
+
+      {/* Unlock a CLOSED run (feedback 9bc442bc, reporter ask #2): a controlled, audited reversal of the
+          closed-immutability freeze. Requires a step-up confirmation code (OTP) + a reason; the service
+          warns if payment was disbursed or statutory returns were filed. Gated by PAYROLL_UNLOCK_ENABLED
+          and the granular payroll.unlock permission (re-asserted server-side). */}
+      {batch.status === 'closed' && unlockOn && (
+        <Card className="overflow-hidden border-amber-300 dark:border-amber-500/40">
+          <SectionHeader title={t('unlockTitle')} />
+          <div className="space-y-3 px-4 py-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+              🔓 {t('unlockLockedNote')}
+            </div>
+            <p className="text-xs text-muted-foreground">{t('unlockDescription')}</p>
+            {!otp ? (
+              <form action={requestUnlockOtpAction}>
+                <input type="hidden" name="batchId" value={batch.id} />
+                <Button type="submit" size="sm" variant="secondary">
+                  {t('unlockRequestOtp')}
+                </Button>
+              </form>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+                  {t('unlockOtpIssued', { code: otp })}
+                </div>
+                <form action={unlockAction} className="space-y-3">
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-foreground">{t('unlockCodeLabel')}</span>
+                    <input
+                      name="code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      required
+                      placeholder={t('unlockCodePlaceholder')}
+                      className={inputCls}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-foreground">{t('unlockReasonLabel')}</span>
+                    <textarea
+                      name="reason"
+                      rows={2}
+                      required
+                      placeholder={t('unlockReasonPlaceholder')}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring dark:bg-input/30"
+                    />
+                  </label>
+                  <div className="flex justify-end">
+                    <Button type="submit" size="sm">
+                      {t('unlockConfirm')}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+        </Card>
       )}
 
       {batch.status === 'draft' && (
@@ -444,6 +515,81 @@ export default async function BatchPage({
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* Selective reprocessing (feedback 9bc442bc, reporter ask #3): pick specific employees on a
+          PROCESSED run and reprocess them as a same-month adjustment run — the regular run's payslips
+          for everyone else stay physically untouched. Admin-only (page is requireAdmin; the action +
+          service re-assert it) and gated on multi-cycle. Not on closed runs (permanently immutable). */}
+      {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
+        <Card>
+          <SectionHeader title={t('reprocessTitle')} />
+          <div className="px-4 pb-4">
+            <p className="mb-3 text-xs text-muted-foreground">{t('reprocessHint')}</p>
+            <ReprocessPanel
+              batchId={batch.id}
+              employees={slips.map((sl) => ({ employmentId: sl.employmentId, employeeCode: sl.employeeCode, name: sl.name }))}
+            />
+          </div>
+        </Card>
+      )}
+
+      {/* Per-run History (reporter ask #4 "fully traceable — who, when, why, before/after"): this run's
+          append-only lifecycle events. The reset event carries its reason + reversal counts; the
+          selective-reprocess event carries who was picked. Read-only, admin-only (page is requireAdmin). */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('historyTitle')} count={history.length} />
+        {history.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('historyEmpty')}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {history.map((ev) => {
+              const pl = (ev.payload ?? {}) as Record<string, unknown>;
+              const reason = typeof pl.reason === 'string' && pl.reason.trim() ? pl.reason.trim() : null;
+              return (
+                <li key={ev.id} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium">{humanizeEvent(ev.eventType)}</div>
+                    {reason && <div className="mt-0.5 text-xs text-muted-foreground">{t('historyReason', { reason })}</div>}
+                    {ev.eventType === 'payroll-batch.reset' && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {t('historyResetCounts', {
+                          payslips: Number(pl.payslipsCleared ?? 0),
+                          loans: Number(pl.loanInstalmentsReversed ?? 0),
+                          claims: Number(pl.claimsReverted ?? 0),
+                        })}
+                      </div>
+                    )}
+                    {(ev.eventType === 'payroll-batch.selective-reprocessed' ||
+                      ev.eventType === 'payroll-batch.selective-reprocess-initiated') && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {t('historyReprocessCount', { n: Number(pl.reprocessedCount ?? pl.employeeCount ?? 0) })}
+                      </div>
+                    )}
+                    {ev.eventType === 'payroll-batch.unlocked' &&
+                      (() => {
+                        const w = (pl.warnings ?? {}) as { paymentDisbursed?: boolean; statutoryFiled?: boolean };
+                        return (
+                          <>
+                            {w.paymentDisbursed && (
+                              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">{t('unlockWarnPayment')}</div>
+                            )}
+                            {w.statutoryFiled && (
+                              <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">{t('unlockWarnStatutory')}</div>
+                            )}
+                          </>
+                        );
+                      })()}
+                  </div>
+                  <div className="text-xs text-muted-foreground sm:text-right">
+                    <div>{ev.actorName ?? t('historySystemActor')}</div>
+                    <div className="tabular-nums">{new Date(ev.occurredAt).toLocaleString()}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Card>
     </div>
   );

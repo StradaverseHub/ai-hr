@@ -286,13 +286,20 @@ describe('leave import — commit', () => {
       records: toRecords([
         { employee_id: e.code, leave_type: 'ANNUAL', transaction_type: 'adjustment', days: '5', effective_date: '2026-01-01' },
       ]),
+      source: { kind: 'file', name: 'leave.xlsx', format: 'xlsx' },
     });
     // The batch aggregateId is a generated uuid — scan every leave.import.completed event this tenant has.
     const rows = await owner.db
-      .select({ t: schema.domainEvent.eventType })
+      .select({ t: schema.domainEvent.eventType, p: schema.domainEvent.payload })
       .from(schema.domainEvent)
       .where(eq(schema.domainEvent.tenantId, b.tenantId));
-    expect(rows.map((r) => r.t)).toContain('leave.import.completed');
+    const evt = rows.find((r) => r.t === 'leave.import.completed');
+    expect(evt).toBeTruthy();
+    // Payload records how the batch reached commit (file vs paste) for the audit trail.
+    expect((evt!.p as { source?: { kind?: string; format?: string } }).source).toMatchObject({
+      kind: 'file',
+      format: 'xlsx',
+    });
   });
 });
 

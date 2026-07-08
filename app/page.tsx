@@ -1,22 +1,37 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
   dashboardStats,
   groupBreakdown,
+  leaveBalances,
   listCompanies,
+  myEmployment,
   plannedAbsences,
   recentActivity,
   recentHires,
+  reportingLinesFor,
   upcomingHolidays,
 } from '@/core/read';
+import { pendingManagerReviewsFor } from '@/core/employment-review';
+import { myFeedbackRequests } from '@/core/performance';
+import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
+import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import { TimelineNav } from '@/components/timeline-nav';
-import { requestLeaveCancellationAction } from '@/app/leave/actions';
+import { requestLeaveCancellationAction, adminCancelLeaveAction } from '@/app/leave/actions';
+import {
+  type DashboardCardId,
+  pendingTasksCount,
+  resolveDashboardRole,
+  ROLE_CARDS,
+  teamAwayToday,
+  upcomingRemindersCount,
+} from '@/lib/dashboard-cards';
 import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
 
 const rm = (n: unknown) =>
@@ -102,6 +117,7 @@ export default async function DashboardPage({
   searchParams: Promise<{ abs?: string }>;
 }) {
   const t = await getTranslations('dashboard');
+  const locale = await getLocale(); // R37: render leave-type names in the viewer's language
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
   // Date window: a 14-day planned-absences strip, by default starting 2 days before
@@ -116,20 +132,138 @@ export default async function DashboardPage({
   const absFrom = new Date(startMs).toISOString().slice(0, 10);
   const absTo = new Date(startMs + (ABS_DAYS - 1) * 86_400_000).toISOString().slice(0, 10);
   const since60 = new Date(todayMs - 60 * 86_400_000).toISOString().slice(0, 10);
+
+  // R17 e6f0384c — role-based summary cards. Resolve the viewer's dashboard role FIRST (cheap: own
+  // employment + reporting edges), then fetch only what the resolved role's cards render. Every read
+  // below is an existing scope-fenced read; the role only selects WHICH fenced reads run — it never
+  // widens access.
+  const me = await myEmployment(s);
+  const admin = isAdmin(s);
+  const managerRole = (s.roles ?? []).includes('manager');
+  // A Direct Manager via a reporting_line edge may not hold the `manager` platform role (0110); OR it in.
+  const hasDirectReports =
+    !admin && !managerRole && me
+      ? (await reportingLinesFor(s, me.employmentId)).reports.length > 0
+      : false;
+  const role = resolveDashboardRole({ admin, managerRole, hasDirectReports });
+  const wantStats = role === 'hr_admin' || role === 'manager'; // manager needs attendance breakdown
+  const wantBreakdown = role === 'hr_admin';
+
   const [stats, activity, companies, breakdown, absences, hires, events] = await Promise.all([
-    dashboardStats(s, scopeIds),
+    wantStats ? dashboardStats(s, scopeIds) : Promise.resolve(null),
     recentActivity(s, 8),
     listCompanies(s),
-    groupBreakdown(s),
+    wantBreakdown ? groupBreakdown(s) : Promise.resolve([]),
     // Partial Leave Cancellation from the calendar (ADR-0065): pass MYT "today" so each approved row's
     // cancellable candidate dates match the Leave page / service cut-off exactly (strictly-after-MYT).
     plannedAbsences(s, scopeIds, { from: absFrom, to: absTo }, todayInKualaLumpur()),
     recentHires(s, scopeIds, { since: since60, limit: 5 }),
     upcomingHolidays(s, { from: todayIso, limit: 5 }),
   ]);
-  const att = stats.attendance;
+
+  // Employee card data: own leave balance + own PENDING TASKS. "Pending Tasks" = action items the
+  // employee must complete themselves (e.g. give 360 feedback; document-upload obligations plug in as
+  // those task types ship) — deliberately NOT the inverse "my requests awaiting someone else's decision".
+  // All reads are self-scoped via RLS.
+  let empBalances: { leaveTypeId: string; leaveType: string; available: number }[] = [];
+  let empTaskCount = 0;
+  if (role === 'employee' && me) {
+    const [balances, feedbackRequests] = await Promise.all([
+      leaveBalances(s, me.employmentId, locale),
+      myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
+    ]);
+    empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));
+    empTaskCount = pendingTasksCount([feedbackRequests.length]);
+  }
+
+  // Manager card data: team away today, onboarding this week, the same approvals count as the bell, and
+  // the Upcoming Reminders digest (review deadlines assigned to this manager + company holidays soon).
+  let mgrAwayCount = 0;
+  let mgrOnboarding = 0;
+  let mgrApprovals = 0;
+  let mgrReminders = 0;
+  if (role === 'manager') {
+    const since7 = new Date(todayMs - 6 * 86_400_000).toISOString().slice(0, 10);
+    // teamAwayToday must be computed over a window that always covers today. The strip's window shifts
+    // with ?abs=, so when it's overridden, fetch the default (today-2 … +11) window just for the count.
+    const defaultFrom = new Date(todayMs - 2 * 86_400_000).toISOString().slice(0, 10);
+    const defaultTo = new Date(todayMs + (ABS_DAYS - 3) * 86_400_000).toISOString().slice(0, 10);
+    const [awayRows, weekHires, approvals, reviewDeadlines] = await Promise.all([
+      absParam
+        ? plannedAbsences(s, scopeIds, { from: defaultFrom, to: defaultTo }, todayInKualaLumpur())
+        : Promise.resolve(absences),
+      recentHires(s, scopeIds, { since: since7, limit: 50 }),
+      pendingApprovalsCount(s, scopeIds),
+      // Performance / probation review deadlines assigned to this manager (the reporter's "review
+      // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.
+      me ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
+    ]);
+    mgrAwayCount = teamAwayToday(awayRows, todayIso, s.personId ?? null);
+    mgrOnboarding = weekHires.length;
+    mgrApprovals = approvals;
+    // Reminder window: holidays in the next 30 days + the manager's open review deadlines. (No training
+    // module yet, so training reminders contribute 0 — the helper absorbs them when one ships.)
+    const reminderCutoffIso = new Date(todayMs + 30 * 86_400_000).toISOString().slice(0, 10);
+    mgrReminders = upcomingRemindersCount(events, reviewDeadlines.length, todayIso, reminderCutoffIso);
+  }
+
+  const att = stats?.attendance ?? { date: null as string | null, present: 0, late: 0, halfDay: 0, absent: 0 };
   const attTotal = att.present + att.late + att.halfDay + att.absent;
   const pct = (n: number) => (attTotal ? `${(n / attTotal) * 100}%` : '0%');
+
+  // Map a card id → its rendered card. Order comes from ROLE_CARDS[role]. `leaveBalance` renders the
+  // interactive client island; the rest are plain StatCards. Non-`#` hrefs navigate; `#…` scroll to
+  // an in-page anchor added below.
+  const renderCard = (id: DashboardCardId): ReactNode => {
+    switch (id) {
+      case 'headcount':
+        return <StatCard key={id} label={t('headcount')} value={stats?.headcount ?? 0} hint={t('activeEmployees')} href="/personnel" />;
+      case 'pendingLeave':
+        return <StatCard key={id} label={t('pendingLeave')} value={stats?.pendingLeave ?? 0} hint={t('awaitingApproval')} href="/leave" />;
+      case 'companies':
+        return (
+          <StatCard
+            key={id}
+            label={t('companies')}
+            value={stats?.companies ?? 0}
+            hint={t('departments', { count: stats?.departments ?? 0 })}
+            href="/admin/organization"
+          />
+        );
+      case 'latestPayroll':
+        return (
+          <StatCard
+            key={id}
+            label={t('latestPayroll')}
+            value={stats?.latestPayroll ? rm(stats.latestPayroll.net) : '—'}
+            hint={stats?.latestPayroll ? `${stats.latestPayroll.payPeriod} · ${stats.latestPayroll.status}` : t('noRunsYet')}
+            href="/payroll"
+          />
+        );
+      case 'leaveBalance':
+        return <LeaveBalanceCard key={id} balances={empBalances} href="/leave" />;
+      case 'nextHoliday':
+        return (
+          <StatCard
+            key={id}
+            label={t('nextHoliday')}
+            value={<span className="text-xl">{events[0] ? events[0].name : '—'}</span>}
+            hint={events[0] ? daysAway(events[0].date, todayMs, t) : t('nothingScheduled')}
+            href="#upcoming-events"
+          />
+        );
+      case 'pendingTasks':
+        return <StatCard key={id} label={t('pendingTasks')} value={empTaskCount} hint={t('requireYourAttention')} href="/me" />;
+      case 'teamAwayToday':
+        return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="#planned-absences" />;
+      case 'onboardingWeek':
+        return <StatCard key={id} label={t('onboardingThisWeek')} value={mgrOnboarding} hint={t('startedLast7Days')} href="/personnel" />;
+      case 'approvalRequests':
+        return <StatCard key={id} label={t('approvalRequests')} value={mgrApprovals} hint={t('awaitingYourAction')} href="/approvals" />;
+      case 'upcomingReminders':
+        return <StatCard key={id} label={t('upcomingReminders')} value={mgrReminders} hint={t('reviewsAndHolidays')} href="#upcoming-events" />;
+    }
+  };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -142,34 +276,25 @@ export default async function DashboardPage({
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label={t('headcount')} value={stats.headcount} hint={t('activeEmployees')} href="/personnel" />
-        <StatCard label={t('pendingLeave')} value={stats.pendingLeave} hint={t('awaitingApproval')} href="/leave" />
-        <StatCard
-          label={t('companies')}
-          value={stats.companies}
-          hint={t('departments', { count: stats.departments })}
-          href="/admin/organization"
-        />
-        <StatCard
-          label={t('latestPayroll')}
-          value={stats.latestPayroll ? rm(stats.latestPayroll.net) : '—'}
-          hint={stats.latestPayroll ? `${stats.latestPayroll.payPeriod} · ${stats.latestPayroll.status}` : t('noRunsYet')}
-          href="/payroll"
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{ROLE_CARDS[role].map(renderCard)}</div>
+
+      <div id="planned-absences" className="scroll-mt-4">
+        <PlannedAbsences
+          rows={absences}
+          from={absFrom}
+          days={ABS_DAYS}
+          todayIso={todayIso}
+          controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
+          // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
+          // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
+          viewerPersonId={s.personId}
+          cancelAction={requestLeaveCancellationAction}
+          // HR Admin Leave Cancellation on behalf (feedback 22e68ff0): admins get an immediate cancel
+          // affordance on other employees' pills; same action the Leave page posts.
+          viewerIsAdmin={isAdmin(s)}
+          adminCancelAction={adminCancelLeaveAction}
         />
       </div>
-
-      <PlannedAbsences
-        rows={absences}
-        from={absFrom}
-        days={ABS_DAYS}
-        todayIso={todayIso}
-        controls={<TimelineNav from={absFrom} isDefault={!absParam} />}
-        // Partial Leave Cancellation from the calendar (ADR-0065): the viewer gates "own leave only"; the action
-        // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
-        viewerPersonId={s.personId}
-        cancelAction={requestLeaveCancellationAction}
-      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card className="p-5">
@@ -204,7 +329,7 @@ export default async function DashboardPage({
           )}
         </Card>
 
-        <Card className="p-5">
+        <Card id="upcoming-events" className="scroll-mt-4 p-5">
           <h2 className="text-sm font-semibold">{t('upcomingEvents')}</h2>
           <p className="text-xs text-muted-foreground">{t('publicHolidays')}</p>
           {events.length === 0 ? (
@@ -232,36 +357,42 @@ export default async function DashboardPage({
         </Card>
       </div>
 
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3">
-          <h2 className="text-sm font-semibold">{t('headcountByCompany')}</h2>
-          <span className="text-xs text-muted-foreground">
-            {t('totalCount', { count: breakdown.reduce((sum, c) => sum + c.headcount, 0) })}
-          </span>
-        </div>
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-border border-t border-border">
-            {orderTree(breakdown).map(({ row, depth }) => (
-              <tr key={row.id} className="hover:bg-muted/40">
-                <td className="py-2 pr-4" style={{ paddingLeft: `${1 + depth * 1.5}rem` }}>
-                  {row.name}
-                </td>
-                <td className="px-4 py-2 text-right tabular-nums">{row.headcount}</td>
-              </tr>
-            ))}
-            {breakdown.length === 0 && (
-              <tr>
-                <td className="px-4 py-6 text-center text-muted-foreground" colSpan={2}>
-                  {t('noCompanies')}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+      {/* R17: company-wide headcount breakdown is HR-only (data was admin-gated in the read anyway). */}
+      {role === 'hr_admin' && (
+        <Card className="overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3">
+            <h2 className="text-sm font-semibold">{t('headcountByCompany')}</h2>
+            <span className="text-xs text-muted-foreground">
+              {t('totalCount', { count: breakdown.reduce((sum, c) => sum + c.headcount, 0) })}
+            </span>
+          </div>
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-border border-t border-border">
+              {orderTree(breakdown).map(({ row, depth }) => (
+                <tr key={row.id} className="hover:bg-muted/40">
+                  <td className="py-2 pr-4" style={{ paddingLeft: `${1 + depth * 1.5}rem` }}>
+                    {row.name}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{row.headcount}</td>
+                </tr>
+              ))}
+              {breakdown.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={2}>
+                    {t('noCompanies')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          {/* R17: attendance breakdown for HR + managers (team attendance); an employee's single own
+              record already lives on /me's clock card, so it's hidden for the employee role. */}
+          {role !== 'employee' && (
           <Card className="p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-semibold">{t('attendance')}</h2>
@@ -295,10 +426,14 @@ export default async function DashboardPage({
               </>
             )}
           </Card>
+          )}
 
+          {/* R17: latest-payroll-run detail is HR-only — kills the misleading employee-facing
+              "No payroll runs yet · Create one →" prompt they can't act on. */}
+          {role === 'hr_admin' && (
           <Card className="p-5">
             <h2 className="text-sm font-semibold">{t('latestPayrollRun')}</h2>
-            {stats.latestPayroll ? (
+            {stats?.latestPayroll ? (
               <div className="mt-3 flex items-center justify-between">
                 <div>
                   <div className="text-lg font-semibold">{stats.latestPayroll.payPeriod}</div>
@@ -319,6 +454,7 @@ export default async function DashboardPage({
               </p>
             )}
           </Card>
+          )}
         </div>
 
         <Card className="p-5">

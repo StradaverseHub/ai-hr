@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
@@ -155,23 +155,33 @@ export default async function ApprovalsPage({
     ),
   );
   // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
+  const locale = await getLocale();
   const dateBreakdownLabels = {
     viewDateBreakdown: t('viewDateBreakdown'),
     dateBreakdown: t('dateBreakdown'),
+    dateColumn: t('date'),
+    dayColumn: t('dayColumn'),
+    daysColumn: t('daysColumn'),
+    decisionColumn: t('decisionColumn'),
+    reasonColumn: t('reasonColumn'),
     approve: t('approve'),
     reject: t('reject'),
     rejectReason: t('rejectReasonPlaceholder'),
+    submitDecisions: t('submitDecisions'),
     statusPending: t('dateStatus.pending'),
     statusApproved: t('dateStatus.approved'),
     statusRejected: t('dateStatus.rejected'),
+    employeeRemark: t('employeeRemark'),
   };
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
   // Partial Leave Cancellation (ADR-0065): exclude the viewer's OWN cancellation requests (self-approval ban).
   const pendingCancellations = leaveCancellations.filter((c) => !mine(c.personId));
   // 2B-1: a request may sit at a manager step or an HR step. A manager step is decidable by the
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
+  // 6fadb036: a manager step reads "Manager review"; every other kind (HR, HR Manager, Payroll, Dept/BU
+  // Head, Custom Role) is an admin/role-authority step and reads under the generic HR-review stage label.
   const stageLabel = (kind: string | null) =>
-    kind === 'hr_admin' ? t('stageHr') : kind === 'direct_manager' ? t('stageManager') : '';
+    kind === 'direct_manager' ? t('stageManager') : t('stageHr');
   // ADR-0069: travel can be self-filed, so self-exclude the viewer's own from the actionable count.
   const pendingTravel = travel.filter((tr) => !mine(tr.personId));
   const total =
@@ -281,6 +291,14 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.startDate} → {r.endDate}
+                    {/* R17 600be8ac ask #1: surface the applicant's own words so the approver's summary shows
+                        WHY the leave was requested, not just the dates. Prefer the mandatory remark, else reason. */}
+                    {(r.employeeRemark || r.reason) && (
+                      <div className="mt-0.5 max-w-[16rem] whitespace-normal text-xs text-muted-foreground/80">
+                        <span className="font-medium text-foreground/60">{t('employeeRemark')}:</span>{' '}
+                        {r.employeeRemark || r.reason}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {Number(r.days)}
@@ -300,13 +318,21 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     {mine(r.personId) ? (
                       <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>
-                    ) : r.currentStepKind === 'hr_admin' && !admin ? (
+                    ) : r.currentStepKind && r.currentStepKind !== 'direct_manager' && !admin ? (
+                      // 6fadb036: any non-manager step (HR / HR Manager / Payroll / Dept-BU Head / Custom Role)
+                      // is an admin/role-authority gate — a plain manager viewer sees the stage, not buttons.
                       <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
                     ) : (breakdowns.get(r.id)?.length ?? 0) > 0 ? (
                       // Partial Leave Approval — single-request model (ADR-0068): this request has per-date
                       // sub-rows → decide each requested date in the inline detail expander (one inbox row).
                       <div className="flex justify-end">
-                        <LeaveDateBreakdown requestId={r.id} dates={breakdowns.get(r.id)!} labels={dateBreakdownLabels} />
+                        <LeaveDateBreakdown
+                          requestId={r.id}
+                          dates={breakdowns.get(r.id)!}
+                          locale={locale}
+                          remark={r.employeeRemark || r.reason}
+                          labels={dateBreakdownLabels}
+                        />
                       </div>
                     ) : (
                       // Ordinary request (no per-date rows): one approve/reject control (reject requires a reason).
@@ -488,7 +514,11 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {pendingTravel.map((tr) => (
                 <tr key={tr.id}>
-                  <td className="px-4 py-2.5 font-medium">{tr.employee}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    {/* Employee ID left-of-name (feedback 38668d9b) */}
+                    <EmployeeCode code={tr.employeeCode} className="mr-1.5" />
+                    {tr.employee}
+                  </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {tr.travelFrom} → {tr.travelTo}
                   </td>
@@ -519,8 +549,9 @@ export default async function ApprovalsPage({
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">
+                      {/* Employee ID left-of-name (feedback 38668d9b) */}
+                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                       {r.employee}
-                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {Object.entries((r.proposed ?? {}) as Record<string, unknown>)
@@ -621,10 +652,11 @@ export default async function ApprovalsPage({
               <li key={r.id} className="px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="flex items-center">
+                    {/* Employee ID left-of-name (feedback 38668d9b) */}
+                    {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                     <Link href={`/personnel/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
                       {r.employee}
                     </Link>
-                    {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')} · {tReview('dueDate')} {r.dueDate}
@@ -663,10 +695,11 @@ export default async function ApprovalsPage({
                 <li key={r.id} className="px-4 py-3">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="flex items-center">
+                      {/* Employee ID left-of-name (feedback 38668d9b) */}
+                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                       <Link href={`/personnel/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
                         {r.employee}
                       </Link>
-                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')}

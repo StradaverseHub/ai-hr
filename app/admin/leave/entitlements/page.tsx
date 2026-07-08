@@ -2,12 +2,23 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
-import { listAdHocLeaveGrants } from '@/core/admin';
+import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
+import type { ServiceBand } from '@/core/leave-compute';
+import { entitlement } from '@/localization/my/leave';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
+import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
 import {
+  archiveLeaveTypeAction,
+  countEmployeesInScopeAction,
+  createLeavePoliciesMultiAction,
+  createLeaveTypeAction,
+  deleteLeavePolicyAction,
+  deleteLeaveTypeAction,
+  updateLeavePolicyAction,
+  updateLeaveTypeAction,
   openLeaveYearAction,
   runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
@@ -16,14 +27,17 @@ import {
 } from '../../actions';
 
 /**
- * Leave Settings — Entitlements tab (0d147b78 — Leave Settings Reorganization).
+ * Leave Settings — Entitlements tab.
  *
- * Company-level entitlement operations, re-homed here from the former single Leave Settings page:
- * the leave-year opener + earned-accrual runner, the per-company accrual cycle (calendar vs
- * anniversary), the grade catalog that grade-scoped policies reference, the bulk import link, and the
- * festive / one-off grant. Per-type entitlement POLICIES (days/carry/bands) stay on the Leave Types
- * tab inside `LeaveTypePanel`, since they are edited per leave type. No action/service change — every
- * form keeps its existing server action, `requireAdmin()` guard preserved verbatim.
+ * Feedback 9d8cf621 (Entitlements Setting reorganization): the per-leave-type CONFIGURATION panel now lives
+ * here — "one leave type, one full set of settings", exactly where HR expects it. Each `LeaveTypePanel`
+ * carries leave-type identity, eligibility, allowed durations, supporting-document config, backdating limit,
+ * advance-notice, expiry, the apply-time custom message AND that type's effective-dated entitlement policies
+ * (the editable ranges table + the multi-company/grade "Employee Selection" chips). Beneath it are the
+ * company-level entitlement operations re-homed here earlier (0d147b78): leave-year opener + earned-accrual
+ * runner, per-company accrual cycle, grade catalog, bulk import, festive grant. The whole `LeaveTypePanel` +
+ * add-type form moved wholesale from the Types tab, so every sub-form keeps its tri-state marker + hidden
+ * `name` intact — no column is wiped on save.
  */
 export default async function LeaveEntitlementsPage({
   searchParams,
@@ -33,15 +47,16 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, companies, grades, adHocGrants] = await Promise.all([
+  const [types, policies, companies, grades, adHocGrants] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
+    listLeavePolicies(s),
     listCompanies(s),
     listJobGrades(s),
     listAdHocLeaveGrants(s),
   ]);
-  // ADR-0066: festive-grant company picker only offers companies this admin actually administers,
-  // so "Select all" always succeeds for a company-scoped admin. hasGrantFor is the exact predicate
-  // grantAdHocLeave's authority gate uses, so anything selectable here is guaranteed to pass it.
+  const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
+  // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
+  // are separately RLS-gated and must not be narrowed here.
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
   const effectiveGrants = withEffectiveGrants(s);
   const canGroupWide = isGroupAdmin(effectiveGrants);
@@ -63,11 +78,138 @@ export default async function LeaveEntitlementsPage({
   const todayIso = new Date().toISOString().slice(0, 10);
   const nextYear = new Date().getUTCFullYear() + 1;
 
+  // Statutory floor display (MY pack): sample the three service bands.
+  const floorBands = (code: string) => {
+    const days = [...new Set([0, 2, 6].map((y) => entitlement(code, y)))];
+    return days[0] === 0 ? null : days.join(' / ');
+  };
+
+  // Group each type's effective-dated policies, newest first, for inline editing.
+  const polByType = new Map<string, EntitlementPolicy[]>();
+  for (const p of policies) {
+    const acc = p.accrual as {
+      annualDays?: number;
+      carryForwardMax?: number;
+      method?: string;
+      carryForwardExpiryMonth?: number;
+      carryForwardExpiryDay?: number;
+      carryForwardExpiryMode?: 'date' | 'months';
+      carryForwardExpiryMonths?: number;
+      carryForwardEnabled?: boolean;
+      carryForwardIncludeEarned?: boolean;
+      serviceBands?: ServiceBand[];
+    } | null;
+    const ep: EntitlementPolicy = {
+      id: p.id,
+      annualDays: Number(acc?.annualDays ?? 0),
+      serviceBands: Array.isArray(acc?.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
+      carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+      carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
+      carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
+      carryForwardExpiryMode: acc?.carryForwardExpiryMode === 'months' ? 'months' : 'date',
+      carryForwardExpiryMonths: acc?.carryForwardExpiryMonths ?? null,
+      carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
+      carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
+      method: acc?.method,
+      gradeId: p.gradeId,
+      gradeName: p.gradeName,
+      companyId: p.companyId,
+      companyName: p.companyName,
+      validFrom: p.validFrom,
+      validTo: p.validTo,
+    };
+    const arr = polByType.get(p.leaveTypeId);
+    if (arr) arr.push(ep);
+    else polByType.set(p.leaveTypeId, [ep]);
+  }
+  for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
       <LeaveTabs active="entitlements" />
       <ErrorBanner message={error} />
+
+      {/* Feedback 9d8cf621 — per-type configuration + entitlements. "1 leave type, 1 full set of settings". */}
+      <Card data-tour="leave-config">
+        <SectionHeader title={t('typesSectionTitle')} count={types.length} />
+        <ul className="divide-y divide-border">
+          {types.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</li>
+          )}
+          {types.map((lt) => (
+            <LeaveTypePanel
+              key={lt.id}
+              id={lt.id}
+              name={lt.name}
+              code={lt.code}
+              description={lt.description ?? null}
+              archived={!!lt.archivedAt}
+              inUse={lt.inUse}
+              isAnnual={lt.code === 'ANNUAL'}
+              floorLabel={floorBands(lt.code)}
+              floor0={entitlement(lt.code, 0)}
+              eligibility={(lt.eligibility as { gender?: string; maritalStatus?: string; minServiceMonths?: number } | null) ?? null}
+              durations={(lt.durations as string[] | null) ?? null}
+              requiresDocument={lt.requiresDocument}
+              mandatoryAfterDays={lt.mandatoryAfterDays ?? null}
+              allowedMimeTypes={(lt.allowedMimeTypes as string[] | null) ?? null}
+              maxDocBytes={lt.maxDocBytes}
+              employeeRemarkRequired={lt.employeeRemarkRequired}
+              hrRemarkRequired={lt.hrRemarkRequired}
+              backdatingLimitDays={lt.backdatingLimitDays ?? null}
+              minAdvanceDays={lt.minAdvanceDays ?? null}
+              expiryValue={lt.expiryValue ?? null}
+              expiryUnit={lt.expiryUnit ?? null}
+              customMessages={(lt.customMessages as Record<string, string> | null) ?? null}
+              policies={polByType.get(lt.id) ?? []}
+              grades={gradeOptions}
+              companies={companyOptions}
+              updateTypeAction={updateLeaveTypeAction}
+              archiveTypeAction={archiveLeaveTypeAction}
+              deleteTypeAction={deleteLeaveTypeAction}
+              createPolicyAction={createLeavePoliciesMultiAction}
+              updatePolicyAction={updateLeavePolicyAction}
+              deletePolicyAction={deleteLeavePolicyAction}
+              countInScopeAction={countEmployeesInScopeAction}
+            />
+          ))}
+        </ul>
+        <form
+          action={createLeaveTypeAction}
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6"
+        >
+          <Field label={t('codeLabel')}>
+            <input
+              name="code"
+              required
+              placeholder={t('codePlaceholder')}
+              title={t('codeHint')}
+              className={`${inputCls} uppercase`}
+            />
+          </Field>
+          <Field label={t('nameLabel')}>
+            <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
+          </Field>
+          <Field label={t('descriptionLabel')}>
+            <input name="description" placeholder={t('descriptionPlaceholder')} className={inputCls} />
+          </Field>
+          <Field label={t('statusLabel')}>
+            <select name="active" defaultValue="active" className={inputCls}>
+              <option value="active">{t('statusActive')}</option>
+              <option value="inactive">{t('statusInactive')}</option>
+            </select>
+          </Field>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="paid" defaultChecked className="size-4 rounded" />
+            {t('paidLabel')}
+          </label>
+          <button className={btnPrimary}>{t('addType')}</button>
+        </form>
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+          {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
+        </p>
+      </Card>
 
       <Card>
         <SectionHeader title={t('leaveYearTitle')} />
@@ -178,8 +320,7 @@ export default async function LeaveEntitlementsPage({
         </form>
       </Card>
 
-      {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical
-          leave from a paste-CSV. Reached from here (like attendance/import and people/import). */}
+      {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical leave. */}
       <Card>
         <SectionHeader title={t('importTitle')} />
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4">

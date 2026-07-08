@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
 import { attendanceForDate, attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
 import { allowancePreviewForPeriod, listAllowancePolicies } from '@/core/read';
-import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { TimelineNav } from '@/components/timeline-nav';
 import { OtReportExport } from '@/components/ot-report-export';
@@ -142,7 +142,8 @@ export default async function AttendancePage({
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2.5">
                       <Avatar name={r.name} className="size-7 text-[10px]" />
-                      <span className="font-medium">{r.name}</span>
+                      {/* Employee ID left-of-name (feedback 38668d9b) */}
+                      <EmployeeName code={r.employeeCode} name={r.name} className="font-medium" />
                     </div>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
@@ -340,7 +341,8 @@ export default async function AttendancePage({
             <tbody className="divide-y divide-border">
               {summary.map((r) => (
                 <tr key={r.employmentId}>
-                  <td className="px-4 py-2.5 font-medium">{r.name}</td>
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  <td className="px-4 py-2.5 font-medium"><EmployeeName code={r.employeeCode} name={r.name} /></td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{r.present}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{r.late || '—'}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{r.halfDay || '—'}</td>

@@ -80,12 +80,17 @@ export function OnboardingTour({
     const attempt = () => {
       if (cancelled) return;
       const el = document.querySelector(step.target as string) as HTMLElement | null;
-      if (el) {
+      // A target inside a hidden tab panel (client-state tabs, e.g. /me & /admin/personnel) exists in
+      // the DOM but measures 0×0. Ask the tab shell to reveal it (TOUR_REVEAL_EVENT), then keep retrying
+      // so the next tick measures a laid-out element instead of spotlighting empty space.
+      const hidden = el != null && el.offsetWidth === 0 && el.offsetHeight === 0;
+      if (el && !hidden) {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         settle(el);
         window.setTimeout(() => !cancelled && settle(el), 300); // after smooth-scroll
       } else if (tries++ < 25) {
-        window.setTimeout(attempt, 140); // wait for navigation / render
+        if (hidden) window.dispatchEvent(new CustomEvent('tour:reveal', { detail: step.target }));
+        window.setTimeout(attempt, 140); // wait for navigation / render / tab reveal
       } else {
         setBox(null); // give up → centered fallback
       }

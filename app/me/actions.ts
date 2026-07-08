@@ -65,7 +65,7 @@ function nowParts() {
 /** Feedback 31474452 (Step 5): read-only pre-submission preview for the /me leave form — "this will deduct X
  *  day(s)" + balance before/after — called from the client via useTransition (see
  *  components/leave-duration-fields.tsx). Always resolves the CALLER'S OWN employment (never a form field —
- *  `employmentId` on `p` is accepted only so this matches the shared previewAction prop shape with the
+ *  `employmentId` on `p` is accepted only so this matches the shared preview `action` prop shape with the
  *  /leave form and is IGNORED here), same trust boundary as myRequestLeave. Day-based durations only. */
 export async function myPreviewLeaveDeduction(p: {
   employmentId?: string;
@@ -259,9 +259,20 @@ export async function myUpdateContact(formData: FormData) {
   try {
     await updateOwnContact(s, {
       phone: String(formData.get('phone') ?? ''),
-      address: String(formData.get('address') ?? ''),
+      // b4682879 — structured home address (legacy single-line `address` retired from the UI).
+      personalEmail: String(formData.get('personalEmail') ?? ''),
+      addressLine1: String(formData.get('addressLine1') ?? ''),
+      addressLine2: String(formData.get('addressLine2') ?? ''),
+      addressLine3: String(formData.get('addressLine3') ?? ''),
+      postcode: String(formData.get('postcode') ?? ''),
+      city: String(formData.get('city') ?? ''),
+      state: String(formData.get('state') ?? ''),
+      country: String(formData.get('country') ?? ''),
       emergencyContactName: String(formData.get('emergencyContactName') ?? ''),
+      emergencyContactRelationship: String(formData.get('emergencyContactRelationship') ?? ''),
       emergencyContactPhone: String(formData.get('emergencyContactPhone') ?? ''),
+      emergencyContactPhone2: String(formData.get('emergencyContactPhone2') ?? ''),
+      emergencyContactAddress: String(formData.get('emergencyContactAddress') ?? ''),
     });
   } catch (e) {
     redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);

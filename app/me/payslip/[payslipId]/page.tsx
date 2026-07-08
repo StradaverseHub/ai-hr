@@ -22,6 +22,8 @@ type Stat = {
   cp38?: number;
   zakat?: number;
   recordLines?: RecordLine[];
+  // f3148da1 Step 4 — OT excess redirected to a pay item (shown as a distinct earnings line).
+  otConvert?: { code: string; name: string; amount: number };
 };
 
 function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
@@ -67,8 +69,9 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <div>
             <h1 className="text-lg font-semibold tracking-tight">{t('title', { payPeriod: p.payPeriod })}</h1>
             <p className="text-sm text-muted-foreground">
+              {/* Employee ID left-of-name (feedback 38668d9b) */}
+              {p.employeeCode ? `${p.employeeCode} · ` : ''}
               {p.employee} · {p.company}
-              {p.employeeCode && ` · ${t('employeeCodeLabel')} ${p.employeeCode}`}
             </p>
           </div>
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize text-muted-foreground">
@@ -81,8 +84,13 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
             {t('earnings')}
           </h2>
           <Row label={t('basicSalary')} value={rm(p.basic)} />
-          <Row label={t('allowances')} value={rm(p.allowance)} />
+          {/* f3148da1 — the converted OT excess is folded into stored allowance; show the base allowance net
+              of it, then a dedicated line for the pay item, so gross still reconciles. */}
+          <Row label={t('allowances')} value={rm(Number(p.allowance ?? 0) - Number(st.otConvert?.amount ?? 0))} />
           <Row label={t('overtime')} value={rm(p.overtime)} />
+          {Number(st.otConvert?.amount) > 0 && (
+            <Row label={t('otConverted', { item: st.otConvert!.name })} value={rm(st.otConvert!.amount)} />
+          )}
           <Row label={t('bonus')} value={rm(p.bonus)} />
           <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
             <span>{t('grossPay')}</span>

@@ -27,6 +27,7 @@ import {
   person,
   rosterAssignment,
   shift,
+  type ShiftOtRule,
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
 
@@ -262,6 +263,9 @@ const MINS_PER_DAY = 1440;
 const fmtTime = (mins: number): string =>
   `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}:00`;
 const addGrace = (t: string, grace: number): string => fmtTime((toMinutes(t) + grace) % MINS_PER_DAY);
+// R17 3e8350db — early-leave grace: a checkout before (shift end − grace) is short. Cross-midnight safe
+// (the +MINS_PER_DAY keeps the modulo positive when the subtraction underflows).
+const subGrace = (t: string, grace: number): string => fmtTime((toMinutes(t) - grace + MINS_PER_DAY) % MINS_PER_DAY);
 
 /** In→out span in minutes, cross-midnight aware: a check-out time-of-day earlier than check-in means the
  *  shift ran past midnight (e.g. 22:00 → 06:00 = 480m), so add a day. For same-day spans this is identical
@@ -294,6 +298,10 @@ type ResolvedSchedule = {
   // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
   normalMinutesOverride: number | null;
+  // R17 3e8350db — the resolved shift's per-shift OT rule (eligibility / minimum block / daily cap). Shapes
+  // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
+  // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
+  otRule: ShiftOtRule | null;
   crossesMidnight: boolean;
   // ec4cbf63: 'default-shift' / 'default-shift-rest' = resolved from employment.default_shift_id (no roster
   // row for the date). Diagnostic only — nothing downstream branches on source for pay except the hourly
@@ -321,6 +329,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       brk: shift.breakMinutes,
       crosses: shift.crossesMidnight,
       override: shift.normalMinutesOverride,
+      lateGrace: shift.lateGraceMinutes,
+      earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+      otRule: shift.otRule,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -334,6 +345,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     scheduledMinutes: scheduledMinutes(pol),
     breakMinutes: pol.breakMinutes,
     normalMinutesOverride: null,
+    otRule: null,
     crossesMidnight: false,
     source: 'policy',
   });
@@ -344,11 +356,18 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     const sched = netScheduledMinutes(ra.start, ra.end, ra.crosses!, ra.brk!);
     return {
       dayType: isHoliday ? 'holiday' : 'workday',
-      lateAfter: addGrace(ra.start, grace),
-      halfDayBefore: fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
+      // R17 3e8350db — a per-shift late grace (minutes) overrides the policy-derived grace; NULL keeps the
+      // legacy addGrace(start, policy grace). A per-shift early-leave grace makes the half-day threshold
+      // shift-end − grace; NULL keeps the midpoint heuristic. Both null ⇒ byte-identical to before.
+      lateAfter: ra.lateGrace != null ? addGrace(ra.start, ra.lateGrace) : addGrace(ra.start, grace),
+      halfDayBefore:
+        ra.earlyLeaveGrace != null
+          ? subGrace(ra.end, ra.earlyLeaveGrace)
+          : fmtTime((toMinutes(ra.start) + Math.floor(shiftSpan(ra.start, ra.end, ra.crosses!) / 2)) % MINS_PER_DAY),
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
       normalMinutesOverride: ra.override ?? null,
+      otRule: ra.otRule ?? null,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
     };
@@ -373,6 +392,9 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       crosses: shift.crossesMidnight,
       override: shift.normalMinutesOverride,
       pattern: shift.weeklyPattern,
+      lateGrace: shift.lateGraceMinutes,
+      earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+      otRule: shift.otRule,
     })
     .from(employment)
     .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
@@ -381,15 +403,20 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
   if (ds) {
     if (ds.pattern?.includes(isoWeekday(date))) {
       // Working day of the default shift — mirror the roster-shift branch byte-for-byte, incl. the
-      // holiday day-type overlay (the default shift's hours still define the schedule on a holiday).
+      // holiday day-type overlay (the default shift's hours still define the schedule on a holiday) and
+      // the R17 per-shift grace override.
       const sched = netScheduledMinutes(ds.start, ds.end, ds.crosses, ds.brk);
       return {
         dayType: isHoliday ? 'holiday' : 'workday',
-        lateAfter: addGrace(ds.start, grace),
-        halfDayBefore: fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
+        lateAfter: ds.lateGrace != null ? addGrace(ds.start, ds.lateGrace) : addGrace(ds.start, grace),
+        halfDayBefore:
+          ds.earlyLeaveGrace != null
+            ? subGrace(ds.end, ds.earlyLeaveGrace)
+            : fmtTime((toMinutes(ds.start) + Math.floor(shiftSpan(ds.start, ds.end, ds.crosses) / 2)) % MINS_PER_DAY),
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
         normalMinutesOverride: ds.override ?? null,
+        otRule: ds.otRule ?? null,
         crossesMidnight: ds.crosses,
         source: 'default-shift',
       };
@@ -431,10 +458,21 @@ function deriveAttendance(
   // R7 Multi-Shift Phase 1 — the ONE deliberate OT-derivation change: when the rostered shift carries a
   // manual normal-hours override, workday OT is measured against IT (the override is the shift's normal
   // working minutes everywhere, not a display figure). Null ⇒ span − break, byte-identical to before.
-  const otMinutes =
+  let otMinutes =
     s.dayType === 'workday'
       ? Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes))
       : workedMinutes;
+  // R17 3e8350db — per-shift "OT Rules" shape WORKDAY OT accrual only (rest/holiday premium is statutory and
+  // untouched): eligible=false zeroes workday OT; a minimum block drops OT below the threshold to zero; a
+  // daily cap clamps it. Null rule ⇒ byte-identical to before.
+  if (s.dayType === 'workday' && s.otRule) {
+    if (!s.otRule.eligible) {
+      otMinutes = 0;
+    } else {
+      if (s.otRule.minMinutes != null && otMinutes < s.otRule.minMinutes) otMinutes = 0;
+      if (s.otRule.dailyCapMinutes != null) otMinutes = Math.min(otMinutes, s.otRule.dailyCapMinutes);
+    }
+  }
   return { status, workedMinutes, otMinutes };
 }
 
@@ -746,6 +784,7 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         companyId: employment.companyId,
         attendanceId: attendance.id,
         checkInAt: attendance.checkInAt,
@@ -832,6 +871,7 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
 export type MonthSummaryRow = {
   employmentId: string;
   name: string;
+  employeeCode: string | null;
   present: number;
   late: number;
   halfDay: number;
@@ -866,6 +906,7 @@ export function attendanceMonthSummary(
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
       })
@@ -995,6 +1036,7 @@ export function attendanceMonthSummary(
       return {
         employmentId: e.employmentId,
         name: e.name,
+        employeeCode: e.employeeCode,
         present,
         late,
         halfDay,

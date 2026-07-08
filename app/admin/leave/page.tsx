@@ -3,34 +3,22 @@ import { requireAdmin } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listLeavePolicies } from '@/core/admin';
 import type { ServiceBand } from '@/core/leave-compute';
-import { entitlement } from '@/localization/my/leave';
-import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { LeaveTabs } from '@/components/leave-tabs';
-import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { LeaveRulePreview } from '@/components/leave-rule-preview';
-import {
-  archiveLeaveTypeAction,
-  createLeavePolicyAction,
-  createLeaveTypeAction,
-  deleteLeavePolicyAction,
-  deleteLeaveTypeAction,
-  updateLeavePolicyAction,
-  updateLeaveTypeAction,
-} from '../actions';
+import { deleteLeaveTypeAction } from '../actions';
 
 /**
- * Leave Settings — Leave Types tab (0d147b78 — Leave Settings Reorganization).
+ * Leave Settings — Leave Types tab.
  *
- * Feature 0d147b78 re-slices the former single, top-to-bottom Leave Settings page into a tabbed IA
- * that mirrors the Payroll module (`<LeaveTabs />` + real sub-routes). This route is the FIRST tab:
- * the effective-rules overview + live preview, the leave-type list (identity, eligibility, durations,
- * supporting-document, payroll-impact, backdating, expiry AND per-type entitlement policies all live
- * inside `LeaveTypePanel`), and the add-type form. The company-level cards (leave year, accrual cycle,
- * grades, half-day deduction, encashment, import, festive grant, approval chain) moved to their own
- * tabs — see `entitlements/`, `application-rules/`, `payroll/`, `approval/`, `audit/`.
- *
- * No schema/service/action change: every `<form action={…}>` keeps pointing at its existing server
- * action (behaviour #6/#7/#8 hold by construction — this is pure IA/JSX movement).
+ * Feedback 9d8cf621 (Entitlements Setting reorganization) moved the per-type CONFIGURATION panel — leave-type
+ * identity, eligibility, durations, supporting-document, backdating, advance-notice, expiry, apply-time
+ * message AND the per-type entitlement policies — off this tab and onto the Entitlements tab (`entitlements/`),
+ * where HR expects "one leave type, one full set of settings". This tab keeps the read-only master listing
+ * (identity / status), the effective-rules overview + resolution order, and the live preview; every Edit link
+ * jumps to the config panel on the Entitlements tab (`/admin/leave/entitlements#type-<id>`). No schema/service
+ * change — the master-table delete keeps its existing server action.
  */
 export default async function LeaveTypesPage({
   searchParams,
@@ -47,67 +35,12 @@ export default async function LeaveTypesPage({
     listJobGrades(s),
   ]);
   const gradeOptions = grades.map((g) => ({ id: g.id, name: g.name }));
-  // ADR-0066: companies for the per-policy scope select. IMPORTANT: companyOptions stays the FULL
-  // list — policy writes are separately RLS-gated and must not be narrowed here.
   const companyOptions = companies.map((c) => ({ id: c.id, name: c.name }));
   const activeTypeOptions = types.filter((t) => !t.archivedAt).map((t) => ({ id: t.id, name: t.name }));
   const typeNameById = new Map(types.map((t) => [t.id, t.name]));
   const typeCodeById = new Map(types.map((t) => [t.id, t.code]));
 
-  // Statutory floor display (MY pack): sample the three service bands. 6 (not 5)
-  // catches the top band on both boundary conventions (annual ≤5 vs sick <5).
-  const floorBands = (code: string) => {
-    const days = [...new Set([0, 2, 6].map((y) => entitlement(code, y)))];
-    return days[0] === 0 ? null : days.join(' / ');
-  };
-
-  // Group each type's effective-dated policies, newest first, for inline editing.
-  const polByType = new Map<string, EntitlementPolicy[]>();
-  for (const p of policies) {
-    const acc = p.accrual as {
-      annualDays?: number;
-      carryForwardMax?: number;
-      method?: string;
-      carryForwardExpiryMonth?: number;
-      carryForwardExpiryDay?: number;
-      carryForwardExpiryMode?: 'date' | 'months';
-      carryForwardExpiryMonths?: number;
-      carryForwardEnabled?: boolean;
-      carryForwardIncludeEarned?: boolean;
-      serviceBands?: ServiceBand[];
-    } | null;
-    const ep: EntitlementPolicy = {
-      id: p.id,
-      annualDays: Number(acc?.annualDays ?? 0),
-      // Leave Entitlement Rules Engine: absent ⇒ null (no bands, flat annualDays only).
-      serviceBands: Array.isArray(acc?.serviceBands) && acc.serviceBands.length > 0 ? acc.serviceBands : null,
-      carryForwardMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
-      carryForwardExpiryMonth: acc?.carryForwardExpiryMonth ?? null,
-      carryForwardExpiryDay: acc?.carryForwardExpiryDay ?? null,
-      // R4 Build #1: mode absent ⇒ 'date' so existing policies hydrate as date-mode (back-compat).
-      carryForwardExpiryMode: acc?.carryForwardExpiryMode === 'months' ? 'months' : 'date',
-      carryForwardExpiryMonths: acc?.carryForwardExpiryMonths ?? null,
-      // Carry-forward enhancement: absent ⇒ undefined so the panel's back-compat default (cap > 0) drives
-      // the checkbox; an explicit boolean round-trips.
-      carryForwardEnabled: typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : null,
-      carryForwardIncludeEarned: acc?.carryForwardIncludeEarned ?? false,
-      method: acc?.method,
-      gradeId: p.gradeId,
-      gradeName: p.gradeName,
-      // ADR-0066: the owning company (null = group default) + its name for the scope badge.
-      companyId: p.companyId,
-      companyName: p.companyName,
-      validFrom: p.validFrom,
-      validTo: p.validTo,
-    };
-    const arr = polByType.get(p.leaveTypeId);
-    if (arr) arr.push(ep);
-    else polByType.set(p.leaveTypeId, [ep]);
-  }
-  for (const arr of polByType.values()) arr.sort((a, b) => b.validFrom.localeCompare(a.validFrom));
-
   // Leave Entitlement Rules Engine — effective-rules table (all types, all scopes) + the live preview.
-  // Reuses the already-loaded `policies` / `types` / `companies` / `grades` — no extra query.
   const activeRules = policies
     .filter((p) => !p.validTo)
     .map((p) => {
@@ -140,9 +73,97 @@ export default async function LeaveTypesPage({
       <LeaveTabs active="types" />
       <ErrorBanner message={error} />
 
+      {/* Leave Type master page (feedback 097de541) — read-only master listing. Edit jumps to the per-type
+          config panel on the Entitlements tab (feedback 9d8cf621). */}
+      <Card>
+        <SectionHeader title={t('typeMasterTitle')} count={types.length} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium">{t('colName')}</th>
+                <th className="px-4 py-2 font-medium">{t('colCode')}</th>
+                <th className="px-4 py-2 font-medium">{t('colPaid')}</th>
+                <th className="px-4 py-2 font-medium">{t('colDescription')}</th>
+                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colActions')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {types.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                    {t('noLeaveTypes')}
+                  </td>
+                </tr>
+              )}
+              {types.map((lt) => {
+                const isActive = !lt.archivedAt;
+                return (
+                  <tr key={lt.id} className={isActive ? '' : 'opacity-60'}>
+                    <td className="px-4 py-2 font-medium text-foreground">{lt.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{lt.code}</td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {lt.paid ? t('paidValue') : t('unpaidValue')}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{lt.description || '—'}</td>
+                    <td className="px-4 py-2">
+                      <span className="inline-flex items-center gap-1.5" title={isActive ? t('statusActive') : t('statusInactive')}>
+                        <span
+                          aria-hidden
+                          className={`inline-block size-2 shrink-0 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`}
+                        />
+                        <span className="sr-only">{isActive ? t('statusActive') : t('statusInactive')}</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <a
+                          href={`/admin/leave/entitlements#type-${lt.id}`}
+                          className="rounded-md px-2 py-1 text-foreground underline decoration-border hover:decoration-foreground"
+                        >
+                          {t('edit')}
+                        </a>
+                        {lt.inUse ? (
+                          <button
+                            type="button"
+                            disabled
+                            title={t('deleteInUseTooltip')}
+                            className="cursor-not-allowed rounded-md px-2 py-1 text-muted-foreground/60"
+                          >
+                            {t('delete')}
+                          </button>
+                        ) : (
+                          <form action={deleteLeaveTypeAction}>
+                            <input type="hidden" name="id" value={lt.id} />
+                            <ConfirmSubmit
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              title={t('deleteTypeConfirmTitle')}
+                              description={t('deleteTypeConfirmDescription')}
+                              confirmLabel={t('deleteConfirmLabel')}
+                            >
+                              {t('delete')}
+                            </ConfirmSubmit>
+                          </form>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+          {t('typeMasterConfigHint')}
+        </p>
+      </Card>
+
       {/* Leave Entitlement Rules Engine — consolidated view: every effective rule, the resolution order in
-          plain words, and a live preview. Anchor links (#type-<id>) jump to the per-type panel below for
-          CRUD, so this table is read-only and never duplicates editing. */}
+          plain words, and a live preview. Anchor links (#type-<id>) jump to the per-type panel on the
+          Entitlements tab for CRUD, so this table is read-only and never duplicates editing. */}
       <Card>
         <SectionHeader title={t('rulesCardTitle')} count={activeRules.length} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">{t('rulesCardHelp')}</p>
@@ -168,7 +189,7 @@ export default async function LeaveTypesPage({
               {activeRules.map((r) => (
                 <tr key={r.id}>
                   <td className="px-4 py-2">
-                    <a href={`#type-${r.leaveTypeId}`} className="text-foreground underline decoration-border hover:decoration-foreground">
+                    <a href={`/admin/leave/entitlements#type-${r.leaveTypeId}`} className="text-foreground underline decoration-border hover:decoration-foreground">
                       {r.leaveTypeName}
                     </a>
                   </td>
@@ -202,79 +223,6 @@ export default async function LeaveTypesPage({
             />
           </div>
         )}
-      </Card>
-
-      <Card data-tour="leave-config">
-        <SectionHeader title={t('typesSectionTitle')} count={types.length} />
-        <ul className="divide-y divide-border">
-          {types.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveTypes')}</li>
-          )}
-          {types.map((t) => (
-            <LeaveTypePanel
-              key={t.id}
-              id={t.id}
-              name={t.name}
-              code={t.code}
-              archived={!!t.archivedAt}
-              inUse={t.inUse}
-              isAnnual={t.code === 'ANNUAL'}
-              floorLabel={floorBands(t.code)}
-              floor0={entitlement(t.code, 0)}
-              eligibility={(t.eligibility as { gender?: string; maritalStatus?: string; minServiceMonths?: number } | null) ?? null}
-              durations={(t.durations as string[] | null) ?? null}
-              requiresDocument={t.requiresDocument}
-              mandatoryAfterDays={t.mandatoryAfterDays ?? null}
-              allowedMimeTypes={(t.allowedMimeTypes as string[] | null) ?? null}
-              maxDocBytes={t.maxDocBytes}
-              employeeRemarkRequired={t.employeeRemarkRequired}
-              hrRemarkRequired={t.hrRemarkRequired}
-              backdatingLimitDays={t.backdatingLimitDays ?? null}
-              minAdvanceDays={t.minAdvanceDays ?? null}
-              expiryValue={t.expiryValue ?? null}
-              expiryUnit={t.expiryUnit ?? null}
-              customMessages={(t.customMessages as Record<string, string> | null) ?? null}
-              paid={t.paid}
-              sendToPayroll={t.sendToPayroll}
-              counting={t.counting}
-              perDateApproval={t.perDateApproval}
-              policies={polByType.get(t.id) ?? []}
-              grades={gradeOptions}
-              companies={companyOptions}
-              updateTypeAction={updateLeaveTypeAction}
-              archiveTypeAction={archiveLeaveTypeAction}
-              deleteTypeAction={deleteLeaveTypeAction}
-              createPolicyAction={createLeavePolicyAction}
-              updatePolicyAction={updateLeavePolicyAction}
-              deletePolicyAction={deleteLeavePolicyAction}
-            />
-          ))}
-        </ul>
-        <form
-          action={createLeaveTypeAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-        >
-          <Field label={t('codeLabel')}>
-            <input
-              name="code"
-              required
-              placeholder={t('codePlaceholder')}
-              title={t('codeHint')}
-              className={`${inputCls} uppercase`}
-            />
-          </Field>
-          <Field label={t('nameLabel')}>
-            <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
-          </Field>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="paid" defaultChecked className="size-4 rounded" />
-            {t('paidLabel')}
-          </label>
-          <button className={btnPrimary}>{t('addType')}</button>
-        </form>
-        <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-          {t.rich('typesHelp', { strong: (chunks) => <span className="font-medium">{chunks}</span> })}
-        </p>
       </Card>
     </div>
   );

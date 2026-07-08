@@ -8,15 +8,39 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, employmentTypeEnum, leaveApprovalPolicy } from '../db/schema';
+import { company, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
 
-export const LEVEL_KINDS = ['direct_manager', 'hr_admin'] as const;
+// 6fadb036 (R17 gap-close) — the reporter's full approver-step vocabulary (list C). Ordered as the
+// request lists them; `hr_admin` is the internal id for the "HR" label. Each kind has a concrete
+// decision-time resolver in core/leave.ts (assertCanDecideLeaveStep) and a generation-time drop rule:
+//   direct_manager      → the subject's active administrative manager         (dropped when none)
+//   department_head     → department.head_employment_id of the subject's dept (dropped when unset)
+//   business_unit_head  → business_unit.head_employment_id of the subject's BU (dropped when unset)
+//   hr_admin ("HR")     → hr_admin / super_admin role                          (never dropped)
+//   hr_manager          → HR-tier authority (hr_admin / super_admin) — a distinct gate; a ranked
+//                         hr_manager sub-role is a documented follow-up (ADR-0071 §i)                (never dropped)
+//   payroll             → payroll_partner (subject's company) / super_admin    (never dropped)
+//   custom_role         → an admin gate (hr_admin / super_admin); binding a specific named role per
+//                         step is a documented follow-up (ADR-0071 §i custom_position guard)         (never dropped)
+export const LEVEL_KINDS = [
+  'direct_manager',
+  'department_head',
+  'business_unit_head',
+  'hr_admin',
+  'hr_manager',
+  'payroll',
+  'custom_role',
+] as const;
 export type LeaveLevelKind = (typeof LEVEL_KINDS)[number];
+
+/** Kinds that route to an org-chart HEAD (department / business unit). A step of these kinds is generated
+ *  only when the subject's dept/BU actually has a head set — otherwise dropped (no dead step). */
+export const HEAD_LEVEL_KINDS: readonly LeaveLevelKind[] = ['department_head', 'business_unit_head'];
 
 /** The chain an opted-in company gets when no rule matches — identical to 2B-1. */
 const FALLBACK_CHAIN: LeaveLevelKind[] = ['direct_manager', 'hr_admin'];
 
-function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
+export function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is LeaveLevelKind => (LEVEL_KINDS as readonly string[]).includes(x as string));
 }
@@ -47,6 +71,8 @@ type RuleRow = {
   minDays: number | null;
   maxDays: number | null;
   levels: unknown;
+  // 6fadb036: when set (and the template is active), the template's levels are the effective chain.
+  templateId: string | null;
   createdAt: Date;
 };
 
@@ -126,12 +152,36 @@ export async function resolveApprovalChain(
       minDays: leaveApprovalPolicy.minDays,
       maxDays: leaveApprovalPolicy.maxDays,
       levels: leaveApprovalPolicy.levels,
+      templateId: leaveApprovalPolicy.templateId,
       createdAt: leaveApprovalPolicy.createdAt,
     })
     .from(leaveApprovalPolicy)
     .where(
       and(eq(leaveApprovalPolicy.companyId, companyId), eq(leaveApprovalPolicy.active, true)),
     )) as RuleRow[];
+
+  // 6fadb036: fetch the tenant's ACTIVE templates once (few rows). A rule with template_id draws its chain
+  // from the template; the tenant-default template is the fallback just above the built-in chain. Runs under
+  // the requester's tx (RLS scopes to the tenant), same reason the policy itself is readable tenant-wide.
+  const templates = await tx
+    .select({
+      id: leaveApprovalTemplate.id,
+      levels: leaveApprovalTemplate.levels,
+      isTenantDefault: leaveApprovalTemplate.isTenantDefault,
+    })
+    .from(leaveApprovalTemplate)
+    .where(eq(leaveApprovalTemplate.active, true));
+  const templateLevels = new Map<string, LeaveLevelKind[]>();
+  let tenantDefaultLevels: LeaveLevelKind[] = [];
+  for (const t of templates) {
+    const lv = sanitizeLevels(t.levels);
+    templateLevels.set(t.id, lv);
+    if (t.isTenantDefault) tenantDefaultLevels = lv;
+  }
+  // The effective ordered chain of a rule: the template's levels when template-driven (and the template is
+  // active), else the row's own levels.
+  const effectiveLevels = (r: RuleRow): LeaveLevelKind[] =>
+    r.templateId ? (templateLevels.get(r.templateId) ?? []) : sanitizeLevels(r.levels);
 
   const matching = rules.filter((r) => ruleMatches(r, leaveTypeId, attrs));
   if (matching.length) {
@@ -144,9 +194,12 @@ export async function resolveApprovalChain(
         bestScore = s;
       }
     }
-    const lv = sanitizeLevels(best.levels);
+    const lv = effectiveLevels(best);
     if (lv.length) return lv;
   }
+  // No matching rule (or its effective chain resolved empty): fall back to the org-wide default template,
+  // then the built-in chain.
+  if (tenantDefaultLevels.length) return tenantDefaultLevels;
   return FALLBACK_CHAIN;
 }
 
@@ -176,19 +229,39 @@ function defaultRuleFilter() {
   return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`;
 }
 
+/** 4ec5a940 — normalise an OPTIONAL "why the change was made" note for the audit event payload. Kept local
+ *  (not imported from ./admin) to avoid a module import cycle: admin → leave → leave-approval-policy. Blank
+ *  ⇒ undefined so the payload key is omitted; capped at 500 chars. Tenant free-text, PDPA-safe (ADR-0030). */
+const REASON_MAX_LEN = 500;
+function normalizeReason(v: string | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  if (!s) return undefined;
+  return s.length > REASON_MAX_LEN ? s.slice(0, REASON_MAX_LEN) : s;
+}
+
 /** Set a company's default chain + on/off toggle. Admin-only (enforced by the policy + company RLS).
  *  Under ADR-0071 the "company default" is the fully-wildcard rule; this upserts that row and leaves any
  *  scoped rules untouched. */
 export async function setLeaveApprovalPolicy(
   ctx: SessionContext,
-  p: { companyId: string; enabled: boolean; levels: string[] },
+  p: { companyId: string; enabled: boolean; levels: string[]; reason?: string | null },
 ) {
   const levels = sanitizeLevels(p.levels);
+  const reason = normalizeReason(p.reason);
   if (p.enabled && levels.length === 0) throw new Error('An enabled approval chain needs at least one level');
   return withTenant(ctx, async (tx) => {
+    // 4ec5a940 — capture the prior enabled flag + chain BEFORE the writes, so the audit event carries a
+    // real before→after comparison (forward-only). The company row holds the toggle; the default rule row
+    // holds the chain.
+    const [priorCompany] = await tx
+      .select({ enabled: company.leaveMultiApproval })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
     await tx.update(company).set({ leaveMultiApproval: p.enabled }).where(eq(company.id, p.companyId));
     const [existing] = await tx
-      .select({ id: leaveApprovalPolicy.id })
+      .select({ id: leaveApprovalPolicy.id, levels: leaveApprovalPolicy.levels })
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.companyId, p.companyId), isNull(leaveApprovalPolicy.leaveTypeId), defaultRuleFilter()))
       .limit(1);
@@ -212,7 +285,14 @@ export async function setLeaveApprovalPolicy(
       aggregateId: id,
       eventType: existing ? 'leave-approval-policy.updated' : 'leave-approval-policy.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, enabled: p.enabled, levels },
+      payload: {
+        companyId: p.companyId,
+        before: existing
+          ? { enabled: priorCompany?.enabled ?? false, levels: sanitizeLevels(existing.levels) }
+          : null,
+        after: { enabled: p.enabled, levels },
+        ...(reason ? { reason } : {}),
+      },
     });
     return { id };
   });
@@ -235,6 +315,8 @@ export type LeaveApprovalRule = {
   maxDays: number | null;
   active: boolean;
   levels: LeaveLevelKind[];
+  // 6fadb036: the template this rule draws its chain from (null = custom `levels`).
+  templateId: string | null;
 };
 
 /** The scoping + chain inputs shared by create/update. Every scoping dimension is nullable/wildcard. */
@@ -359,10 +441,31 @@ export async function updateLeaveApprovalRule(
   ctx: SessionContext,
   ruleId: string,
   p: LeaveApprovalRuleInput,
+  // 4ec5a940 — optional free-text justification for the audit event; passed as a separate arg so
+  // cleanRuleInput (which validates the scoping tuple) is untouched.
+  opts?: { reason?: string | null },
 ) {
   const c = cleanRuleInput(p);
+  const reason = normalizeReason(opts?.reason);
   return withTenant(ctx, async (tx) => {
     await assertNoDuplicateRule(tx, p.companyId, c, ruleId);
+    // 4ec5a940 — snapshot the prior rule scope + chain BEFORE the update, for a real before→after audit diff.
+    const [prev] = await tx
+      .select({
+        ruleName: leaveApprovalPolicy.ruleName,
+        leaveTypeId: leaveApprovalPolicy.leaveTypeId,
+        businessUnitId: leaveApprovalPolicy.businessUnitId,
+        departmentId: leaveApprovalPolicy.departmentId,
+        positionId: leaveApprovalPolicy.positionId,
+        gradeId: leaveApprovalPolicy.gradeId,
+        employmentType: leaveApprovalPolicy.employmentType,
+        minDays: leaveApprovalPolicy.minDays,
+        maxDays: leaveApprovalPolicy.maxDays,
+        levels: leaveApprovalPolicy.levels,
+      })
+      .from(leaveApprovalPolicy)
+      .where(and(eq(leaveApprovalPolicy.id, ruleId), eq(leaveApprovalPolicy.companyId, p.companyId)))
+      .limit(1);
     await tx
       .update(leaveApprovalPolicy)
       .set({
@@ -385,7 +488,25 @@ export async function updateLeaveApprovalRule(
       aggregateId: ruleId,
       eventType: 'leave-approval-rule.updated',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, ...c },
+      payload: {
+        companyId: p.companyId,
+        before: prev
+          ? {
+              ruleName: prev.ruleName,
+              leaveTypeId: prev.leaveTypeId,
+              businessUnitId: prev.businessUnitId,
+              departmentId: prev.departmentId,
+              positionId: prev.positionId,
+              gradeId: prev.gradeId,
+              employmentType: prev.employmentType,
+              minDays: prev.minDays,
+              maxDays: prev.maxDays,
+              levels: sanitizeLevels(prev.levels),
+            }
+          : null,
+        after: { ...c },
+        ...(reason ? { reason } : {}),
+      },
     });
     return { id: ruleId };
   });
@@ -431,6 +552,7 @@ export async function listLeaveApprovalRules(
         maxDays: leaveApprovalPolicy.maxDays,
         active: leaveApprovalPolicy.active,
         levels: leaveApprovalPolicy.levels,
+        templateId: leaveApprovalPolicy.templateId,
         createdAt: leaveApprovalPolicy.createdAt,
       })
       .from(leaveApprovalPolicy)
@@ -451,6 +573,7 @@ export async function listLeaveApprovalRules(
         maxDays: r.maxDays,
         active: r.active,
         levels: sanitizeLevels(r.levels),
+        templateId: r.templateId,
       }))
       .sort((a, b) => {
         // Most-specific first, then newest-created — matches resolution intuition on the screen.
@@ -458,5 +581,28 @@ export async function listLeaveApprovalRules(
         const sb = specificity(b as unknown as RuleRow);
         return sb - sa;
       });
+  });
+}
+
+/** 6fadb036 — flip a company's multi-step-approval opt-in WITHOUT touching its default chain. The
+ *  assignment screen surfaces this: a template assignment only fires when the company has multi-step
+ *  approval on (core/leave.ts), so HR must be able to enable it inline. Admin-only (company RLS). */
+export async function setLeaveMultiApproval(ctx: SessionContext, companyId: string, enabled: boolean) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ enabled: company.leaveMultiApproval })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    await tx.update(company).set({ leaveMultiApproval: enabled }).where(eq(company.id, companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: companyId,
+      eventType: 'company.leave-multi-approval.changed',
+      actor: actorOf(ctx),
+      payload: { companyId, enabled, before: before?.enabled ?? null },
+    });
+    return { id: companyId };
   });
 }

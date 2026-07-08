@@ -21,6 +21,7 @@ import { createIndividualTxn } from '../core/payroll-individual-txn';
 import { listPayComponents, seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
 import {
   listFixedTransactionsAcross,
+  listIndividualTxnCreators,
   listIndividualTxnsAcross,
   listProcessedPayslipsAcross,
 } from '../core/payroll-view';
@@ -204,6 +205,44 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     const onlyE1 = await listIndividualTxnsAcross(a, { companyIds: [base.companyId, companyB.companyId], employmentId: e1.employmentId });
     expect(onlyE1.every((r) => r.employmentId === e1.employmentId)).toBe(true);
     expect(onlyE1).toHaveLength(2);
+  });
+
+  it('individual: payroll-item / department / transaction-status / created-date filters narrow (feedback 7b2d4228)', async () => {
+    const a = adminCtx(base);
+    const e1 = await hire(a, base.companyId, base.deptA, 'Filt A');
+    const e2 = await hire(a, companyB.companyId, companyB.deptId, 'Filt B');
+    const bMay = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    const bMayB = await createBatch(a, { companyId: companyB.companyId, payPeriod: '2026-05' });
+    await createIndividualTxn(a, { batchId: bMay.batchId, employmentId: e1.employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 100 });
+    await createIndividualTxn(a, { batchId: bMay.batchId, employmentId: e1.employmentId, kind: 'deduction', txnDate: '2026-05-11', amount: 50 });
+    await createIndividualTxn(a, { batchId: bMayB.batchId, employmentId: e2.employmentId, kind: 'earning', txnDate: '2026-05-12', amount: 70 });
+    const companyIds = [base.companyId, companyB.companyId];
+
+    // Payroll item (kind) narrows to the two earnings.
+    const earnings = await listIndividualTxnsAcross(a, { companyIds, kind: 'earning' });
+    expect(earnings.every((r) => r.kind === 'earning')).toBe(true);
+    expect(earnings).toHaveLength(2);
+
+    // Department narrows to e1's department only (deptA has e1's two rows; e2 is in company B's dept).
+    const deptA = await listIndividualTxnsAcross(a, { companyIds, departmentId: base.deptA });
+    expect(deptA.every((r) => r.employmentId === e1.employmentId)).toBe(true);
+    expect(deptA).toHaveLength(2);
+
+    // Transaction status: every batch is draft; a 'closed' filter returns nothing.
+    expect(await listIndividualTxnsAcross(a, { companyIds, batchStatus: 'draft' })).toHaveLength(3);
+    expect(await listIndividualTxnsAcross(a, { companyIds, batchStatus: 'closed' })).toHaveLength(0);
+
+    // Created date: rows are created "now"; a today lower-bound keeps all, a tomorrow lower-bound drops all.
+    const today = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+    const all = await listIndividualTxnsAcross(a, { companyIds, createdFrom: today });
+    expect(all).toHaveLength(3);
+    expect(all.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.createdOn))).toBe(true);
+    expect(await listIndividualTxnsAcross(a, { companyIds, createdFrom: tomorrow })).toHaveLength(0);
+
+    // Created-by: an unknown actor id matches nothing; the creators option list is a well-formed array.
+    expect(await listIndividualTxnsAcross(a, { companyIds, createdBy: '00000000-0000-0000-0000-000000000000' })).toHaveLength(0);
+    expect(Array.isArray(await listIndividualTxnCreators(a, { companyIds }))).toBe(true);
   });
 
   it('individual: scope fencing excludes the out-of-scope company; empty scope fails closed', async () => {

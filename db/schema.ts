@@ -210,6 +210,30 @@ export const companyLogo = pgTable(
   (t) => [index('company_logo_company_idx').on(t.companyId)],
 );
 
+// person_photo = 1:1 profile photograph per person, bytea SIDE TABLE (mirrors company_logo). PNG/JPEG only
+// (mime re-derived from magic bytes at upload; SVG excluded — scriptable). RLS (0164): read is scoped to
+// app.can_see_person(person_id) — narrower than the logo's tenant-wide read because a face photo is
+// personal data, not branding — and WRITE is admin-only. unique(person_id) enforces the 1:1 upsert.
+export const personPhoto = pgTable(
+  'person_photo',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .unique()
+      .references(() => person.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('person_photo_person_idx').on(t.tenantId, t.personId)],
+);
+
 // location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
 // supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
 // company.default_work_state). `country` is captured for display only — the engine keeps using
@@ -368,10 +392,15 @@ export const person = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    // fullName IS "Full name (as per IC/Passport)" — canonical on payslips / bank files / statutory docs
+    // (notNull, never derived). first/last/preferred below are INDEPENDENT nullable name parts (b4682879).
     fullName: text('full_name').notNull(),
-    primaryEmail: text('primary_email').notNull(),
+    primaryEmail: text('primary_email').notNull(), // login / work email (personalEmail is separate below)
     phone: text('phone'),
     // Low-risk personal fields the employee self-maintains on /me (ADR-0012).
+    // NOTE: `address` is the LEGACY free-text home address — retained for rollback / PDPA history but NO
+    // LONGER rendered or written by the UI (b4682879 backfilled it into addressLine1); use the structured
+    // address columns below going forward.
     address: text('address'),
     dateOfBirth: date('date_of_birth'),
     // Wave 2 (ADR-0038 2A): self-declared; gate maternity (female) / paternity (married male) eligibility.
@@ -379,6 +408,29 @@ export const person = pgTable(
     maritalStatus: text('marital_status'), // 'single' | 'married' | 'other'
     emergencyContactName: text('emergency_contact_name'),
     emergencyContactPhone: text('emergency_contact_phone'),
+    // ── b4682879 Personnel Profile redesign — all NULLABLE, additive, HR-maintained ──
+    // Name parts (independent of fullName; display fallback stays fullName).
+    firstName: text('first_name'),
+    lastName: text('last_name'),
+    preferredName: text('preferred_name'), // known / preferred name
+    // PDPA 2010 s.40 sensitive demographics (religion / race). Row-visible to the same readers as the rest
+    // of the person row; erasable immediately via core/pdpa.ts (never statutory-locked).
+    religion: text('religion'),
+    race: text('race'),
+    nationality: text('nationality'), // free text — analytics epfCitizenship is a payroll proxy, not this
+    // Contact & structured home address (personalEmail ⊥ primaryEmail).
+    personalEmail: text('personal_email'),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    addressLine3: text('address_line3'),
+    postcode: text('postcode'),
+    city: text('city'),
+    state: text('state'),
+    country: text('country'),
+    // Extended emergency contact (name + phone above; relationship free text, second phone, address).
+    emergencyContactRelationship: text('emergency_contact_relationship'),
+    emergencyContactPhone2: text('emergency_contact_phone2'),
+    emergencyContactAddress: text('emergency_contact_address'),
     // ADR-0029 scope-out: the single "paymaster" employment through which this person's taxable
     // remuneration runs for PCB when they hold concurrent employments across the group's companies.
     // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).
@@ -425,6 +477,9 @@ export const businessUnit = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Approval vocabulary (6fadb036, migration 0164): the business-unit head — the employment a
+    // `business_unit_head` approval step routes to. Nullable; a head step is dropped at generation when unset.
+    headEmploymentId: uuid('head_employment_id').references((): AnyPgColumn => employment.id, { onDelete: 'set null' }),
     // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
     isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -448,6 +503,9 @@ export const department = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Approval vocabulary (6fadb036, migration 0164): the department head — the employment a
+    // `department_head` approval step routes to. Nullable; a head step is dropped at generation when unset.
+    headEmploymentId: uuid('head_employment_id').references((): AnyPgColumn => employment.id, { onDelete: 'set null' }),
     // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
     isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -571,6 +629,12 @@ export const employment = pgTable(
     defaultShiftId: uuid('default_shift_id').references((): AnyPgColumn => shift.id, {
       onDelete: 'set null',
     }),
+    // R17 3e8350db — the reporter's "Shift Type" field. 'fixed' = the person follows their profile Default
+    // shift (default_shift_id) every working day; 'roster' = no permanent shift on the profile, scheduled
+    // purely from /roster. The invariant (enforced in core/roster.ts assignEmployeeShift): fixed ⇒
+    // default_shift_id is set, roster ⇒ default_shift_id is null. Backfilled from default_shift_id in
+    // migration 0162; default 'roster' == today's "no default shift" behaviour. CHECK in ('fixed','roster').
+    shiftType: text('shift_type').$type<'fixed' | 'roster'>().notNull().default('roster'),
     terminatedOn: date('terminated_on'),
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
@@ -666,6 +730,9 @@ export const leaveType = pgTable('leave_type', {
   tenantId: tenantId(),
   code: text('code').notNull(), // e.g. 'ANNUAL'
   name: text('name').notNull(),
+  // Leave Type master page (feedback 097de541): optional free-text description shown to HR admins in the
+  // master listing + the identity edit form. Nullable (existing rows ⇒ NULL ⇒ rendered "—"). No enforcement.
+  description: text('description'),
   paid: boolean('paid').notNull().default(true),
   // 'working_days' (exclude weekends + holidays) | 'calendar_days' (consecutive)
   counting: text('counting').notNull().default('calendar_days'),
@@ -1025,6 +1092,11 @@ export const leaveApprovalPolicy = pgTable(
     maxDays: integer('max_days'),
     active: boolean('active').notNull().default(true),
     levels: jsonb('levels').notNull().default(sql`'[]'::jsonb`),
+    // 6fadb036 (R17): a rule may draw its chain from a reusable APPROVAL TEMPLATE instead of its own
+    // `levels`. When set, the template is the single source of truth for the ordered steps (the row's own
+    // `levels` is cleared to []); resolution reads the template's levels. Nullable/FK-restrict — a
+    // referenced template can never be hard-deleted. A row with template_id null keeps custom `levels`.
+    templateId: uuid('template_id').references((): AnyPgColumn => leaveApprovalTemplate.id),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
   },
@@ -1039,6 +1111,43 @@ export const leaveApprovalPolicy = pgTable(
   ],
 );
 
+// 6fadb036 (R17) — Approval Workflow Enhancement. A REUSABLE approval TEMPLATE: a named, tenant-level
+// ordered chain (`levels`, same 'direct_manager' | 'hr_admin' vocabulary as leave_approval_policy) that HR
+// maintains in ONE place and assigns to many (company × leave-type) combinations. Assigning a template to a
+// combination writes a leave_approval_policy row with `template_id` set (that row's own `levels` is cleared
+// to [] — the template is the single source of truth), so the existing "most-specific rule wins" resolution
+// is reused unchanged. `is_tenant_default` marks the single org-wide default chain that covers every company
+// and leave type with no specific rule (including newly created ones), sitting just above the built-in
+// fallback in resolution. Editing a template updates every place it is used; pending requests keep their
+// snapshotted steps (ADR-0071 §g). Catalog RLS: readable tenant-wide (the requester resolves the chain in
+// its own transaction, same reason leave_approval_policy is tenant-wide) and writable only by an admin.
+export const leaveApprovalTemplate = pgTable(
+  'leave_approval_template',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    description: text('description'),
+    levels: jsonb('levels').notNull().default(sql`'[]'::jsonb`),
+    // At most one active row per tenant may carry this flag (partial unique index below) — the org-wide
+    // default chain. Cleared automatically when the template is deactivated.
+    isTenantDefault: boolean('is_tenant_default').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [
+    // Case-insensitive unique name among a tenant's ACTIVE templates (mirrors leave_type_tenant_code_uq).
+    uniqueIndex('leave_approval_template_name_uq')
+      .on(t.tenantId, sql`lower(${t.name})`)
+      .where(sql`active`),
+    // Exactly one org-wide-default template per tenant.
+    uniqueIndex('leave_approval_template_default_uq')
+      .on(t.tenantId)
+      .where(sql`is_tenant_default and active`),
+  ],
+);
+
 // 2.1.1 Payroll Policy — Monthly General Settings config (ADR-0064). Stored as `config jsonb` on the row;
 // NULL = today's exact behaviour. The shape + cleanX validation live in core/payroll-policy-config.ts (which
 // imports this type); the field bag is defined here so the Drizzle column can be typed without a cycle. Every
@@ -1047,32 +1156,73 @@ export const leaveApprovalPolicy = pgTable(
 export type RoundingMode = 'none' | 'up' | 'down' | 'nearest';
 export type ProrationDivisor = 'calendar_month' | 'custom_days';
 export type OtDayType = 'workday' | 'rest_day' | 'holiday';
-export type NegativeNetMode = 'retain' | 'set_zero'; // carry_forward is a gated follow-up (ADR-0064 §1d)
+// 'carry_forward' (f3148da1 Step 2) holds a negative net at 0 THIS cycle and remembers the shortfall as a
+// running per-employee balance that is recovered from the next cycle's positive net. The balance is DERIVED
+// (no mutable table) from each employment's closed payslips' `statutory.carryForward` stamps, so a rolled-back
+// batch drops out of the balance automatically. 'retain'/'set_zero' behave exactly as before.
+export type NegativeNetMode = 'retain' | 'set_zero' | 'carry_forward';
+// f3148da1 Step 5 — the divisor basis used to value one unpaid-leave / leave-encashment day. Each of the four
+// day-divisor modes changes a monthly-payroll figure (calendar days / a fixed divisor / the salary cut-off
+// window length / the actual working days in the period).
 export type LeaveDivisor =
   | 'calendar_month'
   | 'custom_days'
   | 'cutoff_days'
-  | 'working_days'
-  | 'custom_hours'
-  | 'custom_minutes';
+  | 'working_days';
+// f3148da1 Step 5 (R17 gap-fix reinstatement) — the divisor basis for the UNPAID TIME-OFF deduction formula:
+// partial-day unpaid absences (half_day_am / half_day_pm / hourly requests, duration_type != 'full_day').
+// Supports the four day divisors PLUS a per-time valuation: 'custom_hours' values the absence at
+// basic / customHours per hour and 'custom_minutes' at basic / customMinutes per minute (a request's stored
+// fractional day converts back to time at the leave module's 8-hour standard day — core/leave
+// DEFAULT_STANDARD_HOURS — so an hourly unpaid time-off round-trips to its hour count).
+export type TimeOffDivisor = LeaveDivisor | 'custom_hours' | 'custom_minutes';
 // 2.1.4 (Custom period) — the cut-off WINDOW mode. 'calendar' (default/absent) = the statutory calendar month
 // (1st→last), today's exact behaviour. 'custom' anchors a non-calendar operational window on `anchorDay`: for a
 // statutory month M, the window is [anchorDay of M-1 .. (anchorDay-1) of M]. STATUTORY contributions
-// (EPF/SOCSO/EIS/PCB) stay calendar-bound BY LAW regardless of the window. This slice STORES + VALIDATES the
-// window only — applying it to OT/attendance/leave input selection is a deferred follow-up gated on the kernel
-// seam, so a custom cut-off changes no payslip numbers yet.
+// (EPF/SOCSO/EIS/PCB) stay calendar-bound BY LAW regardless of the window. c7fdfcf6 (Payroll Schedule) promoted
+// this from "stored + validated only" to ACTIVE: the payroll run now selects each transaction type (salary
+// proration, overtime, attendance, unpaid leave, claims) from its resolved window — a calendar/absent config
+// stays byte-identical to today.
 export type CutOffMode = 'calendar' | 'custom';
+// c7fdfcf6 (Payroll Schedule) — the five payroll transaction types that each carry an INDEPENDENT cut-off
+// window. 'salary' uses the policy's default/base anchor day (cutOff.anchorDay); the other four are
+// overridable per-type via cutOff.perType (absent ⇒ inherit the salary/base anchor ⇒ inherit calendar).
+export type CutOffType = 'salary' | 'claim' | 'overtime' | 'leave' | 'attendance';
+// c7fdfcf6 (Payroll Schedule) — payroll FREQUENCY. 'monthly' (default/absent) = one run per statutory month,
+// today's exact behaviour. 'weekly'/'biweekly' are OPERATIONAL run cadences: the WAGES they pay still
+// aggregate into ONE statutory month for EPF/SOCSO/EIS/PCB (Malaysian statutory contributions are computed
+// per calendar month BY LAW — LHDN MTD, PERKESO Act 4 s.6, monthly EPF returns), so the frequency changes the
+// operational cut-off cadence + which transactions fall in each cycle, never the statutory month they contribute in.
+export type PayrollFrequency = 'monthly' | 'weekly' | 'biweekly';
+// c7fdfcf6 (Payroll Schedule) — the four per-type cut-off anchor days (each 1..28; 'salary' has none, it uses
+// the base/frequency anchorDay). Absent ⇒ inherit the base anchor. Reused by both the base cutOff.perType and
+// the per-frequency override blocks (cutOff.perFrequency.{weekly,biweekly}.perType).
+export type CutOffPerType = { claim?: number; overtime?: number; leave?: number; attendance?: number };
+// c7fdfcf6 gap-fix — one frequency's cut-off anchors: the base (salary) anchor day + optional per-type
+// overrides. When the schedule's frequency is weekly/biweekly, that frequency's block (if present) takes
+// precedence over the base cutOff anchors, so each payroll frequency carries its OWN cut-off periods.
+export type CutOffAnchors = { anchorDay?: number; perType?: CutOffPerType };
+// f3148da1 Step 3 — one basic-salary proration formula: the divisor + optional working-day basis. Shared as
+// the default (`proration`) and overridable per employee event (`prorationHire`/`prorationResign`).
+export type ProrationSettings = {
+  divisor?: ProrationDivisor;
+  customDays?: number; //                     used when divisor='custom_days'
+  includeSaturday?: boolean; //               working-day basis (only when a working-day divisor is chosen)
+  includeSunday?: boolean;
+  includeHoliday?: boolean;
+};
 export type PayrollPolicyConfig = {
   // 1a — earnings / deductions / net-pay rounding (default 'none' on each = byte-identical).
   rounding?: { earnings?: RoundingMode; deductions?: RoundingMode; netPay?: RoundingMode };
   // 1b — basic-salary proration divisor + working-day basis (default calendar_month = EA s.18A daysInMonth).
-  proration?: {
-    divisor?: ProrationDivisor;
-    customDays?: number; //                     used when divisor='custom_days'
-    includeSaturday?: boolean; //               working-day basis (only when a working-day divisor is chosen)
-    includeSunday?: boolean;
-    includeHoliday?: boolean;
-  };
+  // This is the SHARED/default proration formula, used for any employee event without its own override below.
+  proration?: ProrationSettings;
+  // f3148da1 Step 3 — per-event basic-salary formulas. When present, `prorationHire` overrides `proration` for
+  // a NEW-HIRE partial month (hired mid-period) and `prorationResign` overrides it for a RESIGNED/terminated
+  // partial month (terminated mid-period), so the two events are independently configurable ("New Hire Basic
+  // Salary Formula" / "Resigned Employee Basic Salary Formula"). Absent ⇒ inherit `proration` (byte-identical).
+  prorationHire?: ProrationSettings;
+  prorationResign?: ProrationSettings;
   // 1c — split a mid-period salary increment across the two straddling comp rows (default false = single row).
   salaryIncrementProration?: boolean;
   // 1d — negative-net handling after the net-pay computation (default 'retain' = today's s.24 clamp behaviour).
@@ -1083,25 +1233,73 @@ export type PayrollPolicyConfig = {
     maxAmount?: number; //                       total OT RM cap (0/absent = no cap)
     eligibleDayTypes?: OtDayType[]; //          which classified days qualify (absent = all three)
     multiplier?: number; //                      workday OT multiplier, floored at the s.60A 1.5× minimum
+    // Step 4 (f3148da1) — what to do with the OT amount above the cap. Absent/undefined ⇒ today's behaviour
+    // (the excess is simply dropped once the cap bites). action='convert' redirects the excess onto a chosen
+    // company pay component (by id) so it is still paid to the employee under that component's line + name;
+    // an absent/foreign componentId falls back to cap-and-drop (cleanPayrollPolicyConfig persists it only
+    // with a UUID componentId; the kernel re-validates it belongs to the employment's company).
+    exceedHandling?: { action: 'convert'; componentId: string };
   };
-  // 1f — divisor selector for unpaid-leave / unpaid-time-off / leave-encashment (default calendar_month).
+  // 1f — divisor selectors for the three Step-5 leave formulas (default calendar_month on each).
+  // `unpaidLeaveDivisor` (Unpaid Leave Deduction Formula) values FULL-DAY unpaid-leave days.
+  // `unpaidTimeOffDivisor` (Unpaid Time Off Deduction Formula) values PARTIAL-DAY unpaid absences (half-day /
+  // hourly requests, duration_type != 'full_day'); absent ⇒ those days pool with the unpaid-leave path
+  // exactly as before (byte-identical). It additionally supports 'custom_hours' / 'custom_minutes' per-time
+  // valuation — see unpaidTimeOffDailyRate.
+  // `encashmentDivisor` (Leave Encashment Formula) sets the ORP day-divisor used to value encashed annual
+  // leave in the leaver advisory (default = the statutory 26-day ordinary-rate divisor; see
+  // encashmentDivisorDays).
   leave?: {
     unpaidLeaveDivisor?: LeaveDivisor;
-    unpaidTimeOffDivisor?: LeaveDivisor;
+    unpaidTimeOffDivisor?: TimeOffDivisor;
     encashmentDivisor?: LeaveDivisor;
     customDays?: number; //                     used when a *_Divisor is 'custom_days'
-    customHours?: number; //                    used when a *_Divisor is 'custom_hours'
-    customMinutes?: number; //                  used when a *_Divisor is 'custom_minutes'
+    customHours?: number; //                    used when unpaidTimeOffDivisor is 'custom_hours'
+    customMinutes?: number; //                  used when unpaidTimeOffDivisor is 'custom_minutes'
   };
   // 2.1.4 (Custom period) — the operational cut-off WINDOW. Default (absent / mode='calendar') = the statutory
   // calendar month, byte-identical to today. mode='custom' records an anchor day so the window runs
   // [anchorDay of M-1 .. (anchorDay-1) of M] for statutory month M. anchorDay ∈ 1..28 (avoids the 29–31
-  // month-length trap). CONFIGURABLE ONLY in this slice — not yet read by the kernel; statutory months stay
-  // calendar-bound by law.
+  // month-length trap). c7fdfcf6 (Payroll Schedule): the kernel now READS this window to select each transaction
+  // type (salary proration + the four perType windows below); statutory months stay calendar-bound by law.
   cutOff?: {
     mode?: CutOffMode;
     anchorDay?: number; //                      day-of-month the custom window opens (1..28), when mode='custom'
+    // c7fdfcf6 (Payroll Schedule) — PER-TYPE cut-off anchor days. Each 1..28; an absent type inherits the base
+    // `anchorDay` (the salary/default window). All absent + mode='custom' ⇒ every type shares the base window;
+    // mode='calendar'/absent ⇒ NONE apply (calendar month, byte-identical). 'salary' has no perType key — it
+    // always uses the base `anchorDay`. These finally give the five company_payroll_config.*_cut_off_day columns
+    // a policy-level counterpart in the resolution chain (policy perType → policy anchorDay → company column → calendar).
+    perType?: CutOffPerType;
+    // c7fdfcf6 gap-fix — PER-FREQUENCY cut-off overrides. When the schedule's `frequency` (below) is 'weekly'
+    // or 'biweekly', that frequency's block (anchorDay + perType) takes precedence over the base anchors above,
+    // so distinct cut-off windows can be configured independently for Weekly vs Bi-Weekly vs Monthly (the base
+    // anchors are the Monthly window). Absent ⇒ the frequency inherits the base window. Only applied when
+    // mode='custom' (a calendar mode stays byte-identical regardless of frequency).
+    perFrequency?: {
+      weekly?: CutOffAnchors;
+      biweekly?: CutOffAnchors;
+    };
   };
+  // c7fdfcf6 (Payroll Schedule) — payroll FREQUENCY. Absent/'monthly' ⇒ today's single monthly run. 'weekly'/
+  // 'biweekly' are OPERATIONAL run cadences: the payroll run reads this to GENERATE the frequency's ordered
+  // cut-off periods (see payrollScheduleFor) that tile the statutory month, and each frequency resolves its own
+  // cut-off windows via `cutOff.perFrequency` above. Statutory contributions (EPF/SOCSO/EIS/PCB) stay
+  // calendar-month-aggregated BY LAW regardless of the run cadence (see PayrollFrequency).
+  frequency?: PayrollFrequency;
+};
+
+// Step 6 (f3148da1) — payslip RELEASE configuration, stored per-company on company_payroll_config.payslip_release.
+// Controls WHEN a closed batch's payslips become visible to employees in Employee Self-Service (ESS). NULL /
+// mode='immediate' = today's behaviour (visible the moment the batch closes). 'fixed_day' releases on a fixed
+// day-of-month of the month AFTER the pay period; 'relative' offsets the company pay-day anchor by ±N days. The
+// computed release instant is NEVER earlier than the batch close instant (a batch not yet closed is never
+// released). Admin payroll surfaces are unaffected — only the ESS employee view is gated.
+export type PayslipReleaseMode = 'immediate' | 'fixed_day' | 'relative';
+export type PayslipRelease = {
+  mode?: PayslipReleaseMode;
+  day?: number; //        1..31 — day-of-month the payslip is released (fixed_day), clamped to month length
+  offsetDays?: number; // -15..15 — days before(-)/after(+) the company pay-day anchor (relative)
 };
 
 // 2.1 Payroll Policy — a named, reusable, company-scoped template for HOW an employee gets paid. Assigned
@@ -1189,7 +1387,13 @@ export const compensation = pgTable(
     monthlyAllowance: numeric('monthly_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
+    // Free-text reason for the change (e.g. "annual increment", "merit adjustment"). Nullable — historical
+    // rows and system/import writes leave it NULL (feedback 87c82b18, migration 0162).
+    remarks: text('remarks'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+    // Last in-place edit of this row (Edit Salary Record flow, feedback 87c82b18, migration 0163). NULL
+    // until the row is edited; "Last Updated By" is derived from the latest compensation.updated event.
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -1306,9 +1510,10 @@ export const companyStatutoryMy = pgTable(
 );
 
 // Per-company payroll scheduling config (ADR-0035 1B, #17): cut-off day (when inputs close), pay day,
-// and payment basis. Scheduling METADATA in Wave 1 — drives display + future automation, NOT the period
-// computation. An absent row ⇒ today's month-end defaults. RLS: company-scoped admin (is_admin_for),
-// mirroring company_bank_profile.
+// and payment basis. c7fdfcf6 (Payroll Schedule): the per-type cut-off day columns are now the COMPANY-LEVEL
+// fallback that DRIVES which transactions a payroll run picks up (see the column comments below) — no longer
+// display-only metadata. An absent row / null column ⇒ today's calendar-month defaults. RLS: company-scoped
+// admin (is_admin_for), mirroring company_bank_profile.
 export const companyPayrollConfig = pgTable(
   'company_payroll_config',
   {
@@ -1320,8 +1525,11 @@ export const companyPayrollConfig = pgTable(
     cutOffDay: integer('cut_off_day'), // day of month payroll inputs close (1–31); null = month-end. The salary/inputs cut-off.
     payDay: integer('pay_day'), // day of month salary is paid (1–31); null = month-end
     paymentBasis: text('payment_basis').notNull().default('monthly'),
-    // Per-purpose cut-off scheduling METADATA — these join cutOffDay (the salary/inputs cut-off) as
-    // scheduling reference only; null = month-end / inherit. None feed period computation.
+    // Per-purpose cut-off days. c7fdfcf6 (Payroll Schedule) promoted these from pure metadata into the
+    // COMPANY-LEVEL fallback of the cut-off resolution chain (policy perType → policy anchorDay → THESE columns
+    // → calendar month): when an employment's payroll policy sets no custom cut-off, the payroll run pulls each
+    // transaction type from the window anchored on the matching column here (cutOffDay = salary). null = the
+    // calendar month (today's exact behaviour). Statutory contributions still aggregate per calendar month by law.
     overtimeCutOffDay: integer('overtime_cut_off_day'), // day of month OT inputs close (1–31); null = month-end
     claimCutOffDay: integer('claim_cut_off_day'), // day of month claim inputs close (1–31); null = month-end
     unpaidLeaveCutOffDay: integer('unpaid_leave_cut_off_day'), // day of month unpaid-leave inputs close (1–31); null = month-end
@@ -1333,6 +1541,12 @@ export const companyPayrollConfig = pgTable(
     // reminder sweep nudges the manager + HR). Null/empty ⇒ default [30, 14, 7], resolved at sweep time
     // (core/employment-review.ts resolveReminderDays). Stored sorted-desc, deduped, each 1–365.
     reviewReminderDays: integer('review_reminder_days').array(),
+    // Step 1 (f3148da1) — the COMPANY-DEFAULT payroll policy applied to any employee with no policy assigned
+    // on their employment. NULL = today's behaviour (unassigned ⇒ hardcoded monthly). Same-company, active
+    // policy enforced service-side; the kernel falls back to it in resolveAssignedPolicy.
+    defaultPayrollPolicyId: uuid('default_payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id),
+    // Step 6 (f3148da1) — payslip release config (see PayslipRelease). NULL = immediate (today's behaviour).
+    payslipRelease: jsonb('payslip_release').$type<PayslipRelease | null>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -1670,6 +1884,18 @@ export const travelRequest = pgTable(
 // is employer policy; the value feeds a typed pay-component (C5), never a sourced statutory rate.
 export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_shift'; value: number };
 
+// R17 3e8350db — per-shift OT rule. The reporter's "OT Rules" template field. This is DELIBERATELY NOT a
+// per-shift multiplier: the 1.5×/2×/3× rates + the RM4,000 wage ceiling are statutory (EA 1955 s.60A) and
+// stay company-level (#overtime-rates) so a shift can never pay below the law. What a shift CAN configure is
+// the shape of its WORKDAY overtime accrual:
+//   • eligible=false      ⇒ this shift accrues no workday OT at all (e.g. a flexi/management shift).
+//   • minMinutes          ⇒ workday OT only starts counting once it exceeds this many minutes past normal
+//                           (a per-shift OT "block"; below it, no OT).
+//   • dailyCapMinutes     ⇒ cap on the workday OT minutes credited per day.
+// Rest-day / public-holiday premium (statutory) is untouched by this rule. NULL column ⇒ legacy behaviour
+// (eligible, no minimum, no cap).
+export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinutes?: number };
+
 // R7 Multi-Shift Phase 1: one break window inside a shift. 'HH:MM:SS', start < end (lexicographic order is
 // chronological), so a single break can never cross midnight — Phase 1 excludes overnight breaks. STORAGE-
 // ONLY this phase: the engine keeps reading the canonical break_minutes scalar (= Σ durations).
@@ -1727,6 +1953,16 @@ export const shift = pgTable(
     // drive generateRosterFromTemplate and behaves exactly as before.
     weeklyPattern: integer('weekly_pattern').array(),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
+    // R17 3e8350db — per-shift grace windows (minutes). NULL ⇒ inherit the company-policy behaviour
+    // (core/attendance.ts scheduleFor): late = policy grace applied to the shift start, early-leave = the
+    // shift midpoint. When set, lateness is measured from start + lateGraceMinutes and early-leave from
+    // end − earlyLeaveGraceMinutes. CHECK ≥ 0 lives in migration 0162.
+    lateGraceMinutes: integer('late_grace_minutes'),
+    earlyLeaveGraceMinutes: integer('early_leave_grace_minutes'),
+    // R17 3e8350db — the reporter's per-shift "OT Rules". Shapes WORKDAY overtime accrual (eligibility /
+    // minimum block / daily cap); statutory multipliers stay company-level. NULL ⇒ legacy behaviour. See the
+    // ShiftOtRule type above.
+    otRule: jsonb('ot_rule').$type<ShiftOtRule | null>(),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
@@ -2215,7 +2451,11 @@ export const payrollCycle = pgTable(
     // The fixed behavioural run type this cycle maps to (NOT the label). The kernel gates on this.
     runType: payrollRunTypeEnum('run_type').notNull(),
     // Free-text label an off_cycle preset carries (e.g. 'Advance Salary'). Null for straight-through cycles.
+    // LOAD-BEARING: snapshotted onto the batch and used to narrow the delete-guard — do NOT reuse as a note.
     remarks: text('remarks'),
+    // Free-text Processing Behaviour note (R17 1f6b536b). Pure documentation / business reference for
+    // payroll administrators — it does NOT drive payroll math (run_type does). Nullable.
+    description: text('description'),
     // Dropdown ordering (ascending). Ties broken by name in the read layer.
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -2272,6 +2512,13 @@ export const payrollBatch = pgTable(
     // whole company (today's behaviour). Generation narrows the active-employee set to this scope.
     scope: jsonb('scope'),
     remarks: text('remarks'),
+    // Step 6 (f3148da1) — when closeBatch finalized this run. NULL for legacy batches. Audit field.
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    // Step 6 (f3148da1) — the instant this batch's payslips become visible to employees in ESS, COMPUTED AT
+    // CLOSE TIME (closeBatch runs under an admin session that can read the company release config; the ESS
+    // employee session cannot, so the gate must NOT re-read that config). NULL = not yet closed OR (for legacy
+    // batches, backfilled to created_at) already released. myPayslips/payslipDetail gate on releasedAt <= now.
+    releasedAt: timestamp('released_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
@@ -2308,9 +2555,122 @@ export const payslip = pgTable(
     totalDeductions: numeric('total_deductions', { precision: 12, scale: 2 }).notNull(),
     netPay: numeric('net_pay', { precision: 12, scale: 2 }).notNull(),
     employerCost: numeric('employer_cost', { precision: 12, scale: 2 }).notNull(),
+    // Optimistic concurrency control (feedback 9bc442bc, reporter req. #5). Bumped every time selective
+    // reprocessing replaces this employee's slip; the reprocess path takes a row-level lock (SELECT … FOR
+    // UPDATE) on exactly the selected rows and asserts the expected version, so concurrent reprocessing of
+    // the same employee conflicts loudly while leaving unrelated employees' rows unlocked and untouched.
+    version: integer('version').notNull().default(1),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId)],
+);
+
+// ─────────────── Payroll status control + selective reprocessing (feedback 9bc442bc) ───────────────
+// Dedicated audit tables (reporter req.: capture actor/timestamp/reason + before/after snapshot for every
+// rollback, unlock and reprocess) — a purpose-built, queryable trail alongside the generic domain_event log.
+export const payrollStatusHistory = pgTable(
+  'payroll_status_history',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    action: text('action').notNull(), // 'rollback' | 'unlock' | 'close' | 'reprocess'
+    fromStatus: text('from_status'),
+    toStatus: text('to_status'),
+    actorType: text('actor_type').notNull(),
+    actorId: uuid('actor_id'),
+    reason: text('reason'),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payroll_status_history_batch_idx').on(t.batchId)],
+);
+
+export const payrollEmployeeResultHistory = pgTable(
+  'payroll_employee_result_history',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    action: text('action').notNull(), // 'reprocess'
+    actorType: text('actor_type').notNull(),
+    actorId: uuid('actor_id'),
+    reason: text('reason'),
+    versionBefore: integer('version_before'),
+    versionAfter: integer('version_after'),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payroll_emp_result_history_batch_idx').on(t.batchId)],
+);
+
+// Queue-based reprocessing (reporter req.): a durable job row with an idempotency key (a double-clicked
+// or retried submit reuses the same job instead of spawning a duplicate run) whose status the UI polls.
+export const payrollReprocessJob = pgTable(
+  'payroll_reprocess_job',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    status: text('status').notNull().default('queued'), // 'queued' | 'running' | 'completed' | 'failed'
+    employmentIds: jsonb('employment_ids').$type<string[]>().notNull(),
+    reason: text('reason'),
+    requestedBy: uuid('requested_by'),
+    result: jsonb('result'),
+    error: text('error'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('payroll_reprocess_job_idem_uq').on(t.tenantId, t.idempotencyKey)],
+);
+
+// Granular RBAC permission grants (reporter req.: payroll.rollback / unlock / reprocess.selective / close,
+// configurable per company/tenant). Rows OVERRIDE the code defaults for a (permission_key, role) pair;
+// company_id NULL = tenant-wide. Resolver in lib/payroll-permissions.ts.
+export const payrollPermissionGrant = pgTable(
+  'payroll_permission_grant',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id').references(() => company.id),
+    permissionKey: text('permission_key').notNull(),
+    role: text('role').notNull(),
+    allowed: boolean('allowed').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+// Step-up / OTP challenge for the high-risk Unlock action (reporter req.: confirmation step, password
+// re-entry or OTP). A one-time code is issued, hashed, and must be re-entered to unlock; single-use + TTL.
+export const payrollStepUpChallenge = pgTable(
+  'payroll_step_up_challenge',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    userId: uuid('user_id').notNull(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    purpose: text('purpose').notNull(), // 'unlock'
+    codeHash: text('code_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payroll_step_up_challenge_lookup_idx').on(t.batchId, t.userId, t.purpose)],
 );
 
 // Per-employee, per-batch payroll inputs entered before generation. Overtime is manual; unpaid
@@ -2962,6 +3322,77 @@ export const aiProviderConfig = pgTable(
   (t) => [uniqueIndex('ai_provider_config_tenant_provider_uq').on(t.tenantId, t.provider)],
 );
 
+// ─────────────────────── Custom Report Builder (ADR-0074, c440b365) ───────────────────────
+// A user-defined report: a name + a chosen dataset from the CLOSED registry (core/report-registry.ts)
+// + a declarative `spec` (columns / filters / sort / grouping / layout properties). No free-form SQL —
+// the spec only names dataset/field ids the registry exposes, and every underlying read enforces
+// tenant RLS + company scope. RLS + grants live in migration 0163.
+export type CustomReportSpec = {
+  datasetId: string;
+  columns: string[];
+  filters?: Record<string, string | number | null>;
+  sort?: { field: string; dir: 'asc' | 'desc' } | null;
+  groupBy?: string | null;
+  // Layout / presentation properties (AI-designer output + manual overrides). Non-structural: they only
+  // affect how the report is rendered/exported, never which rows/columns are read.
+  layout?: {
+    title?: string | null;
+    subtitle?: string | null;
+    description?: string | null;
+    orientation?: 'portrait' | 'landscape';
+    paperSize?: 'A4' | 'A3' | 'Letter' | 'Legal';
+    margins?: 'narrow' | 'normal' | 'wide';
+    header?: string | null;
+    footer?: string | null;
+    dateFormat?: 'iso' | 'dmy' | 'mdy' | 'long';
+    numberFormat?: 'plain' | 'grouped';
+    pageBreakOn?: string | null; // field id whose value change starts a new page (grouped print)
+    watermark?: string | null;
+    companyLogo?: string | null; // data-URI image OR a short text mark rendered top-right
+    align?: Record<string, 'left' | 'center' | 'right'>; // per-field alignment override (AI designer fills this)
+    widths?: Record<string, number>; // per-field relative column-width weight (1 = default)
+    freeze?: string[]; // field ids to freeze (kept as the leading, non-scrolling columns)
+    summary?: string[]; // field ids to total in a summary row
+    averages?: string[]; // field ids to average in a second summary row
+    // Per-report role→verb grid (Create/Edit/Delete/Export/Share/View/ManageTemplates). Layered ON TOP of
+    // the coarse admin route-guard and enforced per verb in core/custom-reports.ts: view/export on the run
+    // paths, create on save/duplicate, edit on update, delete on delete, share on setShared and
+    // manageTemplates on save-as-template. super_admin always passes; empty/absent grid ⇒ admin-only
+    // (today's behaviour, the route guard alone).
+    permissions?: Record<string, string[]>;
+  } | null;
+};
+
+/** The seven report permission verbs the reporter enumerated (role-based report access grid). */
+export const REPORT_PERMISSION_VERBS = [
+  'view',
+  'create',
+  'edit',
+  'delete',
+  'export',
+  'share',
+  'manageTemplates',
+] as const;
+export type ReportPermissionVerb = (typeof REPORT_PERMISSION_VERBS)[number];
+
+export const customReport = pgTable(
+  'custom_report',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    category: text('category').notNull(),
+    datasetId: text('dataset_id').notNull(),
+    spec: jsonb('spec').$type<CustomReportSpec>().notNull(),
+    isFavourite: boolean('is_favourite').notNull().default(false),
+    shared: boolean('shared').notNull().default(false),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('custom_report_tenant_category_idx').on(t.tenantId, t.category)],
+);
+
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
 // A tenant-shared repository of documents. Two content kinds in one table: 'article' = Markdown
 // authored/edited in-app; 'file' = an uploaded binary (bytes in `content`). The seeded module user
@@ -3165,9 +3596,13 @@ export const claimType = pgTable(
     tenantId: tenantId(),
     code: text('code').notNull(), // e.g. 'MEDICAL', 'TRAVEL', 'MEALS'
     name: text('name').notNull(),
+    /** Free-text description of the claim category (ccbd0508 — claim-type basic info). */
+    description: text('description'),
     /** Seeds each new claim's `taxable`; the approver confirms/overrides per claim (flat tax, ADR-0021). */
     defaultTaxable: boolean('default_taxable').notNull().default(false),
     requiresReceipt: boolean('requires_receipt').notNull().default(true),
+    /** Per-type receipt-backdate window (days). NULL ⇒ the global RECEIPT_BACKDATE_DAYS default. (ccbd0508) */
+    maxReceiptAgeDays: integer('max_receipt_age_days'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -3209,10 +3644,22 @@ export const claimPolicy = pgTable(
     claimTypeId: uuid('claim_type_id')
       .notNull()
       .references(() => claimType.id),
+    /**
+     * Job-grade dimension (ccbd0508). NULL ⇒ applies to ALL grades (the default row); a grade-matched row
+     * wins over the null-grade default at resolution time (mirrors leave_policy's grade tiering). Reuses the
+     * same job_grade master maintained for Leave — no duplicate grade setup.
+     */
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
     /** NULL = unlimited. Annual cap on approved claims of this type per employee. */
     annualBudget: numeric('annual_budget', { precision: 12, scale: 2 }),
     /** NULL = no cap. Max amount of a single claim. */
     perClaimCap: numeric('per_claim_cap', { precision: 12, scale: 2 }),
+    /** NULL = no monthly cap. Max total (pending+approved+paid) of this type per calendar month. (ccbd0508) */
+    monthlyLimit: numeric('monthly_limit', { precision: 12, scale: 2 }),
+    /** NULL = no lifetime cap. Max total of this type ever (all-time). (ccbd0508) */
+    lifetimeLimit: numeric('lifetime_limit', { precision: 12, scale: 2 }),
+    /** NULL = no count cap. Max number of claims of this type per calendar year. (ccbd0508) */
+    maxClaimsPerYear: integer('max_claims_per_year'),
     /**
      * Per-type rate/calculation config (discriminated union; nullable/absent ⇒ default 'receipt').
      *   { kind: 'receipt' }                                — amount entered by the employee (current behaviour).
@@ -3225,7 +3672,10 @@ export const claimPolicy = pgTable(
     validTo: date('valid_to'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom)],
+  (t) => [
+    index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom),
+    index('claim_policy_type_grade_idx').on(t.claimTypeId, t.gradeId, t.validFrom),
+  ],
 );
 
 export type ClaimRateConfig =

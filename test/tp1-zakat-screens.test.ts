@@ -6,35 +6,20 @@
  *  (a) PROVENANCE regression — a zakat-only save must NOT poison a live tp1_self relief's provenance, so the
  *      TP1 self-relief prefill keeps auto-tracking it. Without the step-1 core fix this fails.
  *  (b) A TP1 edit still resets provenance to manual (null) — we did not over-preserve.
- *  (c) Action-layer single-field semantics — saveZakatAction with NO tp1Deduction field must not zero TP1
- *      (catches the Number(...)||0 copy trap at the action boundary).
+ *  (c) Single-field zakat semantics — a zakat-only deduction write must not zero the sibling TP1 value
+ *      (the Number(...)||0 copy trap). Feedback d435673e removed the Zakat write-screen action
+ *      (saveZakatAction), so this now asserts the core setPayrollDeductionInput contract directly.
  *  (d) Legacy-row edge — a zakat-only save over a row whose tp1_source is a non-null, non-'tp1_self' value
  *      reads back correctly and does not throw.
  */
 import { and, eq } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, setPayrollDeductionInput, prefillTp1FromSelfRelief } from '../core/payroll';
-import { saveZakatAction } from '../app/payroll/transactions/deductions-actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-
-// The action layer calls requireAdmin() (Clerk/session) which is unavailable in the test harness. Mock the
-// authz module to return the seeded admin ctx so the action's setPayrollDeductionInput runs under RLS.
-let ADMIN: ReturnType<typeof adminCtx>;
-vi.mock('../lib/authz', () => ({
-  requireAdmin: async () => ADMIN,
-}));
-// The server action calls revalidatePath + redirect (next/navigation/cache) which throw outside a request.
-// Stub them so the action's DB write completes and we can assert on the row.
-vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
-vi.mock('next/navigation', () => ({
-  redirect: () => {
-    throw new Error('NEXT_REDIRECT');
-  },
-}));
 
 describe('Separated TP1/Zakat screens — provenance + single-field semantics', () => {
   let base: Base;
@@ -44,7 +29,6 @@ describe('Separated TP1/Zakat screens — provenance + single-field semantics', 
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
-    ADMIN = adminCtx(base);
   });
   afterAll(async () => {
     await closeAll();
@@ -136,21 +120,18 @@ describe('Separated TP1/Zakat screens — provenance + single-field semantics', 
     expect(Number((await readRow(batchId, employmentId)).tp1Deduction)).toBe(1234); // untouched
   });
 
-  it('(c) saveZakatAction (no tp1Deduction field) does not zero or alter TP1 — action-boundary copy-trap guard', async () => {
+  it('(c) a zakat-only deduction write does not zero or alter TP1 — single-field copy-trap guard', async () => {
     const { a, employmentId, batchId } = await hireWithBatch();
     // Seed a TP1 value via a real TP1 edit.
     await setPayrollDeductionInput(a, { batchId, employmentId, tp1Deduction: 250 });
     expect(Number((await readRow(batchId, employmentId)).tp1Deduction)).toBe(250);
 
-    // Invoke the ZAKAT action with a FormData that has NO tp1Deduction field at all.
-    const fd = new FormData();
-    fd.set('batchId', batchId);
-    fd.set('employmentId', employmentId);
-    fd.set('zakat', '75');
-    await expect(saveZakatAction(fd)).rejects.toThrow('NEXT_REDIRECT'); // redirect stub throws on success
+    // A zakat-only write (tp1Deduction left undefined) must preserve the TP1 value, not zero it — this is the
+    // contract the (now-removed) saveZakatAction relied on and the batch-grid zakat write still relies on.
+    await setPayrollDeductionInput(a, { batchId, employmentId, zakat: 75 });
 
     const row = await readRow(batchId, employmentId);
-    expect(Number(row.tp1Deduction)).toBe(250); // NOT zeroed by the missing field
+    expect(Number(row.tp1Deduction)).toBe(250); // NOT zeroed by the untouched field
     expect(Number(row.zakat)).toBe(75);
   });
 

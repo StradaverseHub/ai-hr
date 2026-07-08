@@ -1,5 +1,5 @@
 /**
- * Attendance nav consolidation guard (items b3dc0f78 + 5cb199b3).
+ * Attendance nav consolidation guard (items b3dc0f78 + 5cb199b3 + f60cd403).
  *
  * The ticket (5cb199b3) fixes the sidebar's Attendance grouping: the five attendance-config
  * screens — Holidays, Attendance Policy, Attendance Allowance, Locations, Time Off in Lieu —
@@ -72,5 +72,49 @@ describe('sidebar Attendance group (5cb199b3 consolidation)', () => {
     for (const href of TICKET_HREFS) {
       expect(countQuoted(SRC, href), `${href} appears exactly once in sidebar.tsx`).toBe(1);
     }
+  });
+
+  // f60cd403: day-to-day Records first, administrative bulk-upload Import always last.
+  it('keeps Records (/attendance) as the first child of the Attendance node', () => {
+    const first = node.indexOf(`'/attendance'`);
+    expect(first, 'Records is a child of the Attendance node').toBeGreaterThan(-1);
+    const others = ["'/attendance/import'", "'/roster'", ...TICKET_HREFS.map((h) => `'${h}'`)];
+    for (const q of others) {
+      const idx = node.indexOf(q);
+      expect(idx, `${q} present`).toBeGreaterThan(-1);
+      expect(first, `Records precedes ${q}`).toBeLessThan(idx);
+    }
+  });
+
+  it('keeps Import (/attendance/import) as the last child of the Attendance node', () => {
+    const importIdx = node.indexOf(`'/attendance/import'`);
+    expect(importIdx, 'Import is a child of the Attendance node').toBeGreaterThan(-1);
+    // Every other quoted href in the node appears before Import.
+    const others = [`'/attendance'`, `'/roster'`, ...TICKET_HREFS.map((h) => `'${h}'`)];
+    for (const q of others) {
+      const idx = node.indexOf(q);
+      expect(idx, `${q} present`).toBeGreaterThan(-1);
+      expect(idx, `${q} precedes Import (Import stays last)`).toBeLessThan(importIdx);
+    }
+  });
+
+  it('keeps the Import row manager-gated (permissions unchanged by the reorder)', () => {
+    const line = node.split('\n').find((l) => l.includes(`'/attendance/import'`));
+    expect(line, 'Import row exists').toBeDefined();
+    expect(line, 'Import keeps managerUp visibility').toMatch(/managerUp:\s*true/);
+  });
+});
+
+describe('sidebar Attendance labels (f60cd403 rename)', () => {
+  const en = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8'),
+  ) as { nav: Record<string, string> };
+
+  it('renames Attendance record → Records', () => {
+    expect(en.nav.attendanceRecords).toBe('Records');
+  });
+
+  it('renames Attendance import → Import', () => {
+    expect(en.nav.attendanceImport).toBe('Import');
   });
 });

@@ -15,7 +15,7 @@
 import { and, count, eq, inArray, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, payrollPolicy, type PayRule, type PayrollPolicyConfig } from '../db/schema';
+import { companyPayrollConfig, employment, payrollPolicy, type PayRule, type PayrollPolicyConfig } from '../db/schema';
 import { validatePayRule, type PayRuleKind } from './pay-rule';
 import { cleanPayrollPolicyConfig } from './payroll-policy-config';
 
@@ -45,6 +45,14 @@ export class PolicyInUseError extends Error {
   constructor(message = 'This payroll policy is assigned to employees and cannot be deleted') {
     super(message);
     this.name = 'PolicyInUseError';
+  }
+}
+
+/** Step 1 (f3148da1) — thrown when deleting a policy set as a company's DEFAULT payroll policy. */
+export class DefaultPolicyInUseError extends Error {
+  constructor(message = 'This payroll policy is set as a company default and cannot be deleted') {
+    super(message);
+    this.name = 'DefaultPolicyInUseError';
   }
 }
 
@@ -252,6 +260,13 @@ export async function deletePolicy(ctx: SessionContext, p: { id: string }): Prom
       .from(employment)
       .where(eq(employment.payrollPolicyId, p.id));
     if (Number(n) > 0) throw new PolicyInUseError();
+    // Step 1 (f3148da1) — a policy set as a company default cannot be deleted either (FK would also block it,
+    // but a friendly typed error gives the UI a localized message instead of a raw constraint violation).
+    const [{ d }] = await tx
+      .select({ d: count() })
+      .from(companyPayrollConfig)
+      .where(eq(companyPayrollConfig.defaultPayrollPolicyId, p.id));
+    if (Number(d) > 0) throw new DefaultPolicyInUseError();
     await tx.delete(payrollPolicy).where(eq(payrollPolicy.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -425,11 +440,24 @@ export async function resolveAssignedPolicy(
   employmentId: string,
 ): Promise<PolicyRow | null> {
   const [emp] = await tx
-    .select({ policyId: employment.payrollPolicyId })
+    .select({ policyId: employment.payrollPolicyId, companyId: employment.companyId })
     .from(employment)
     .where(eq(employment.id, employmentId))
     .limit(1);
-  if (!emp || emp.policyId == null) return null; // no policy assigned → monthly default
+  if (!emp) return null;
+  // Step 1 (f3148da1) — when the employment has no directly-assigned policy, fall back to the company DEFAULT
+  // payroll policy (company_payroll_config.default_payroll_policy_id). Still null ⇒ monthly default (unchanged).
+  // This single resolution point covers both the config threading AND the daily/hourly pay-rule branch.
+  let policyId = emp.policyId;
+  if (policyId == null) {
+    const [cfg] = await tx
+      .select({ def: companyPayrollConfig.defaultPayrollPolicyId })
+      .from(companyPayrollConfig)
+      .where(eq(companyPayrollConfig.companyId, emp.companyId))
+      .limit(1);
+    policyId = cfg?.def ?? null;
+  }
+  if (policyId == null) return null; // no assigned + no company default → monthly default
   const [pol] = await tx
     .select({
       id: payrollPolicy.id,
@@ -444,7 +472,7 @@ export async function resolveAssignedPolicy(
       updatedAt: payrollPolicy.updatedAt,
     })
     .from(payrollPolicy)
-    .where(eq(payrollPolicy.id, emp.policyId))
+    .where(eq(payrollPolicy.id, policyId))
     .limit(1);
   // Assigned but not visible under RLS, or inactive → monthly default. (For the Monthly-only slice this is
   // benign: monthly is the only computed type. When non-monthly ships, an inactive-but-assigned policy gets

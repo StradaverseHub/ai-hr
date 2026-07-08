@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
@@ -5,7 +6,7 @@ import { listPayrollCycles, PAYROLL_CYCLE_RUN_TYPES } from '@/core/payroll-cycle
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
-import { deleteCycleAction, seedCatalogAction, setActiveAction, upsertCycleAction } from './actions';
+import { copyCycleAction, deleteCycleAction, seedCatalogAction, setActiveAction, upsertCycleAction } from './actions';
 
 const PAGE = '/admin/payroll-cycle';
 
@@ -18,11 +19,11 @@ const PAGE = '/admin/payroll-cycle';
 export default async function PayrollCyclePage({
   searchParams,
 }: {
-  searchParams: Promise<{ company?: string; error?: string; edit?: string }>;
+  searchParams: Promise<{ company?: string; error?: string; edit?: string; copy?: string }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payrollCycleConfig');
-  const { company: companyParam, error, edit } = await searchParams;
+  const { company: companyParam, error, edit, copy } = await searchParams;
 
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
@@ -30,6 +31,9 @@ export default async function PayrollCyclePage({
 
   const cycles = companyId ? await listPayrollCycles(s, companyId) : [];
   const editing = edit ? cycles.find((c) => c.id === edit) ?? null : null;
+  const copying = copy ? cycles.find((c) => c.id === copy) ?? null : null;
+  // The OTHER companies a cycle can be copied into (everything the admin manages except the current one).
+  const otherCompanies = companies.filter((c) => c.id !== companyId);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -72,6 +76,7 @@ export default async function PayrollCyclePage({
                   <tr>
                     <th className="px-4 py-2 font-medium">{t('colName')}</th>
                     <th className="px-4 py-2 font-medium">{t('colRunType')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colBehaviour')}</th>
                     <th className="px-4 py-2 font-medium">{t('colRemarks')}</th>
                     <th className="px-4 py-2 text-center font-medium">{t('colSort')}</th>
                     <th className="px-4 py-2 text-center font-medium">{t('colStatus')}</th>
@@ -82,10 +87,20 @@ export default async function PayrollCyclePage({
                   {cycles.map((c) => {
                     const active = c.archivedAt == null;
                     return (
-                      <tr key={c.id} className={editing?.id === c.id ? 'bg-primary/5' : undefined}>
+                      <Fragment key={c.id}>
+                      <tr className={editing?.id === c.id || copying?.id === c.id ? 'bg-primary/5' : undefined}>
                         <td className="px-4 py-2.5 font-medium">{c.name}</td>
                         <td className="px-4 py-2.5 text-muted-foreground">
                           <span title={t(`runTypeHint.${c.runType}`)}>{t(`runType.${c.runType}`)}</span>
+                        </td>
+                        <td className="max-w-xs px-4 py-2.5 text-muted-foreground">
+                          {c.description ? (
+                            <span className="line-clamp-2 whitespace-pre-line" title={c.description}>
+                              {c.description}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
                         </td>
                         <td className="px-4 py-2.5 text-muted-foreground">{c.remarks ?? '—'}</td>
                         <td className="px-4 py-2.5 text-center tabular-nums">{c.sortOrder}</td>
@@ -97,6 +112,18 @@ export default async function PayrollCyclePage({
                             <a href={`${PAGE}?company=${companyId}&edit=${c.id}`} className="text-xs font-medium text-primary hover:underline">
                               {t('edit')}
                             </a>
+                            {otherCompanies.length > 0 && (
+                              <a
+                                href={
+                                  copying?.id === c.id
+                                    ? `${PAGE}?company=${companyId}`
+                                    : `${PAGE}?company=${companyId}&copy=${c.id}`
+                                }
+                                className="text-xs font-medium text-primary hover:underline"
+                              >
+                                {t('copy')}
+                              </a>
+                            )}
                             <form action={setActiveAction}>
                               <input type="hidden" name="companyId" value={companyId} />
                               <input type="hidden" name="id" value={c.id} />
@@ -120,11 +147,43 @@ export default async function PayrollCyclePage({
                           </div>
                         </td>
                       </tr>
+                      {copying?.id === c.id && otherCompanies.length > 0 && (
+                        <tr className="bg-muted/30">
+                          <td colSpan={7} className="px-4 py-4">
+                            <form action={copyCycleAction} className="space-y-3">
+                              <input type="hidden" name="companyId" value={companyId} />
+                              <input type="hidden" name="id" value={c.id} />
+                              <div>
+                                <p className="text-sm font-medium">{t('copyTitle', { name: c.name })}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">{t('copyDescription')}</p>
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {otherCompanies.map((oc) => (
+                                  <label key={oc.id} className="flex items-center gap-2 text-sm">
+                                    <input type="checkbox" name="companyIds" value={oc.id} defaultChecked className="size-4 rounded" />
+                                    <span>{oc.name}</span>
+                                  </label>
+                                ))}
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <button className={btnPrimary}>{t('copyConfirm')}</button>
+                                <a
+                                  href={`${PAGE}?company=${companyId}`}
+                                  className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                                >
+                                  {t('cancelEdit')}
+                                </a>
+                              </div>
+                            </form>
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                   {cycles.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                         {t('empty')}
                       </td>
                     </tr>
@@ -156,8 +215,19 @@ export default async function PayrollCyclePage({
                 <input name="sortOrder" type="number" min={0} defaultValue={editing?.sortOrder ?? 0} className={inputCls} />
               </Field>
               <Field label={t('colRemarks')}>
-                <input name="remarks" defaultValue={editing?.remarks ?? ''} placeholder={t('remarksPlaceholder')} className={`${inputCls} sm:col-span-2`} />
+                <input name="remarks" defaultValue={editing?.remarks ?? ''} placeholder={t('remarksPlaceholder')} className={inputCls} />
               </Field>
+              <div className="sm:col-span-3">
+                <Field label={t('colBehaviour')}>
+                  <textarea
+                    name="description"
+                    rows={2}
+                    defaultValue={editing?.description ?? ''}
+                    placeholder={t('behaviourPlaceholder')}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
               <p className="text-xs text-muted-foreground sm:col-span-3">{t('runTypeHelp')}</p>
               <div className="flex items-center gap-3 sm:col-span-3">
                 <button className={btnPrimary}>{editing ? t('saveChanges') : t('addCycle')}</button>

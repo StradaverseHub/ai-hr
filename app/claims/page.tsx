@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { myEmployment } from '@/core/read';
-import { dateMinusDays, listClaimsForEmployment, listClaimTypes, RECEIPT_BACKDATE_DAYS } from '@/core/claims';
+import { getEmployeeClaimTypes, listClaimsForEmployment } from '@/core/claims';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimFormType } from '@/components/claim-form';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -31,16 +31,31 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
     );
   }
 
-  const [types, claims] = await Promise.all([listClaimTypes(s), listClaimsForEmployment(s, me.employmentId)]);
+  const [types, claims] = await Promise.all([
+    getEmployeeClaimTypes(s, me.employmentId),
+    listClaimsForEmployment(s, me.employmentId),
+  ]);
   const today = new Date().toISOString().slice(0, 10);
-  const minDate = dateMinusDays(today, RECEIPT_BACKDATE_DAYS);
+  const dayMs = 86400000;
   const formTypes: ClaimFormType[] = types.map((ct) => ({
     id: ct.id,
     code: ct.code,
     name: ct.name,
     requiresReceipt: ct.requiresReceipt,
-    rateConfig: ct.policy?.rateConfig ?? null,
+    rateConfig: ct.rateConfig,
     items: ct.items,
+    // Per-type receipt window ⇒ the earliest date the picker allows for THIS type.
+    minDate: new Date(new Date(`${today}T00:00:00Z`).getTime() - ct.maxReceiptAgeDays * dayMs).toISOString().slice(0, 10),
+    balance: {
+      annualLimit: ct.balance.annualLimit,
+      usedThisYear: ct.balance.usedThisYear,
+      remainingThisYear: ct.balance.remainingThisYear,
+      monthlyLimit: ct.balance.monthlyLimit,
+      remainingThisMonth: ct.balance.remainingThisMonth,
+      perClaimCap: ct.balance.perClaimCap,
+      claimsUsedThisYear: ct.balance.claimsUsedThisYear,
+      maxClaimsPerYear: ct.balance.maxClaimsPerYear,
+    },
   }));
 
   return (
@@ -53,7 +68,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         {types.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noTypes')}</p>
         ) : (
-          <ClaimForm types={formTypes} submitAction={submitClaimAction} todayUtc={today} minDate={minDate} />
+          <ClaimForm types={formTypes} submitAction={submitClaimAction} todayUtc={today} />
         )}
       </Card>
 

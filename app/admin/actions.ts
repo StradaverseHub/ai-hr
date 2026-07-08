@@ -66,6 +66,7 @@ import {
   deleteClockingLocation,
   ClockingLocationInUseError,
 } from '@/core/clocking-location';
+import { countEmployeesInScope } from '@/core/read';
 import { requireAdmin } from '@/lib/authz';
 import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
@@ -241,11 +242,14 @@ export async function updateDepartmentAction(formData: FormData) {
   // businessUnitId is present on the edit row (a select). Empty string clears the link; a value sets it.
   // If the field is absent entirely (undefined), leave the BU untouched (tri-state in the service).
   const buRaw = formData.get('businessUnitId');
+  // 6fadb036: headEmploymentId is present on the edit row (a select). Absent field ⇒ untouched; empty ⇒ clear.
+  const headRaw = formData.get('headEmploymentId');
   try {
     await updateDepartment(s, {
       id: String(formData.get('id')),
       name: String(formData.get('name') ?? '').trim(),
       businessUnitId: buRaw === null ? undefined : String(buRaw).trim() || null,
+      headEmploymentId: headRaw === null ? undefined : String(headRaw).trim() || null,
     });
   } catch (e) {
     fail(ORG, e);
@@ -311,6 +315,10 @@ export async function createLeaveTypeAction(formData: FormData) {
       code: String(formData.get('code') ?? '').trim().toUpperCase(),
       name: String(formData.get('name') ?? '').trim(),
       paid: formData.get('paid') === 'on',
+      // Leave Type master page (feedback 097de541): the add-type form now carries an optional Description and
+      // a Status select (active|inactive, default active). The service trims the description (empty ⇒ null).
+      description: String(formData.get('description') ?? '').trim(),
+      active: formData.get('active') !== 'inactive',
     });
   } catch (e) {
     fail(LEAVE, e);
@@ -385,6 +393,62 @@ export async function createLeavePolicyAction(formData: FormData) {
   ok(LEAVE);
 }
 
+/**
+ * Feedback 9d8cf621 — "Employee Selection" fan-out. The add-entitlement form now offers MULTI-select
+ * companies + grades (removable chips). On save we create one leave_policy per (company × grade) combination
+ * so a single HR action can scope one entitlement to several companies/grades at once. An empty companies
+ * axis ⇒ [null] (group default / all companies); an empty grades axis ⇒ [null] (all grades) — i.e. today's
+ * single group-default row when nothing is selected. Each createLeavePolicy appends its OWN
+ * `leave-policy.created` DomainEvent (substrate discipline — one event per created row, correct by
+ * construction). The band editor's per-range Carry-Forward Days / Carry-Forward Expiry / Maximum Balance Days
+ * ride the serviceBands JSON untouched.
+ */
+export async function createLeavePoliciesMultiAction(formData: FormData) {
+  const s = await getSession();
+  const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
+  const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
+  const companies: (string | null)[] = companyIds.length ? companyIds : [null];
+  const grades: (string | null)[] = gradeIds.length ? gradeIds : [null];
+  const bands = serviceBandsField(formData);
+  try {
+    for (const companyId of companies) {
+      for (const gradeId of grades) {
+        await createLeavePolicy(s, {
+          leaveTypeId: String(formData.get('leaveTypeId')),
+          annualDays: Number(formData.get('annualDays')),
+          carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+          carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
+          carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+          carryForwardExpiryMode: carryExpiryMode(formData),
+          carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
+          carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
+          carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
+          method: String(formData.get('method') || '') || undefined,
+          gradeId,
+          companyId,
+          serviceBands: bands,
+          validFrom: String(formData.get('validFrom')),
+        });
+      }
+    }
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/**
+ * Feedback 9d8cf621 — live "entitled employees" count next to the Employee-Selection chips. READ-ONLY
+ * (no DomainEvent). Returns the number of active employees the currently-selected companies/grades cover.
+ */
+export async function countEmployeesInScopeAction(p: {
+  companyIds: string[];
+  gradeIds: string[];
+}): Promise<number> {
+  const s = await getSession();
+  return countEmployeesInScope(s, { companyIds: p.companyIds, gradeIds: p.gradeIds });
+}
+
 export async function updateLeavePolicyAction(formData: FormData) {
   const s = await getSession();
   // Feedback 49809272: an in-place correction re-projects affected employees' CURRENT cycle and posts
@@ -410,6 +474,8 @@ export async function updateLeavePolicyAction(formData: FormData) {
       serviceBands: serviceBandsField(formData),
       validFrom: String(formData.get('validFrom')),
       asOf: todayInKualaLumpur(),
+      // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
+      reason: String(formData.get('reason') || '') || null,
     });
   } catch (e) {
     fail(LEAVE, e);
@@ -773,8 +839,15 @@ export async function createBusinessUnitAction(fd: FormData) {
 }
 export async function updateBusinessUnitAction(fd: FormData) {
   const s = await getSession();
+  // 6fadb036: headEmploymentId tri-state (absent ⇒ untouched; empty ⇒ clear).
+  const headRaw = fd.get('headEmploymentId');
   try {
-    await updateBusinessUnit(s, { id: String(fd.get('id')), code: String(fd.get('code') ?? '').trim(), name: String(fd.get('name') ?? '').trim() });
+    await updateBusinessUnit(s, {
+      id: String(fd.get('id')),
+      code: String(fd.get('code') ?? '').trim(),
+      name: String(fd.get('name') ?? '').trim(),
+      headEmploymentId: headRaw === null ? undefined : String(headRaw).trim() || null,
+    });
   } catch (e) { fail(ORG, e); }
   ok(ORG);
 }
@@ -810,6 +883,14 @@ export async function deleteCompanyAction(fd: FormData) {
 
 export async function updateLeaveTypeAction(fd: FormData) {
   const s = await getSession();
+  // Leave Type master page (feedback 097de541): the identity sub-form posts `identity=1` (marker) and edits
+  // the free-text description alongside the name. OWN tri-state (mirrors backdating): only when the marker is
+  // present do we forward `description`, so any other sub-form save leaves the description column untouched.
+  // Empty string ⇒ null (service trims + treats blank as cleared).
+  const touchIdentity = fd.get('identity') === '1';
+  const identityFields = touchIdentity
+    ? { description: String(fd.get('description') ?? '').trim() === '' ? null : String(fd.get('description')).trim() }
+    : {};
   // #25 visibility: the eligibility form posts `eligibility=1` (a marker hidden input) so a name-only
   // rename — which doesn't carry that marker — leaves the rule untouched (tri-state in updateLeaveType).
   const touchEligibility = fd.get('eligibility') === '1';
@@ -894,12 +975,22 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
   // service trims + treats blank as "not configured" (removes the key) and MERGES the forwarded keys onto
   // what is stored (read-then-patch-then-write), so saving one rule's message never clobbers the other's.
+  // Custom apply-time message (feedback 9d8cf621): its own sub-form posts `applyNotice=1` (marker) plus an
+  // "Enable custom message" checkbox + the message textarea. When the checkbox is unchecked the textarea is
+  // hidden and we forward an empty string ⇒ the merge in updateLeaveType removes the key (message disabled);
+  // a non-empty string stores the notice shown to employees on the leave apply form. Rides the SAME shared
+  // customMessages JSONB + merge convention as the two block messages, so saving one never clobbers the others.
+  const touchApplyNotice = fd.get('applyNotice') === '1';
+  const applyNoticeEnabled = fd.get('enableApplyNotice') === 'on';
   const customMessageFields =
-    touchBackdating || touchMinAdvance
+    touchBackdating || touchMinAdvance || touchApplyNotice
       ? {
           customMessages: {
             ...(touchBackdating ? { backdatingLimitDays: String(fd.get('customMessageBackdating') ?? '').trim() } : {}),
             ...(touchMinAdvance ? { minAdvanceDays: String(fd.get('customMessageMinAdvance') ?? '').trim() } : {}),
+            ...(touchApplyNotice
+              ? { applyNotice: applyNoticeEnabled ? String(fd.get('customMessageApplyNotice') ?? '').trim() : '' }
+              : {}),
           },
         }
       : {};
@@ -907,6 +998,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
       name: String(fd.get('name') ?? '').trim(),
+      ...identityFields,
       eligibility,
       durations,
       ...docFields,
@@ -916,6 +1008,8 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...expiryFields,
       ...partialFields,
       ...customMessageFields,
+      // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
+      reason: String(fd.get('reason') || '') || null,
     });
   } catch (e) {
     fail(LEAVE, e);
