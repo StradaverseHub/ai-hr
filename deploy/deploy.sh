@@ -13,10 +13,20 @@ cd "$(dirname "$0")/.."
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"; : "${DEV_TENANT_ID:?set in .env.production}"
 
-echo "▸ Installing dependencies…"
-# --prod=false: the build, drizzle-kit (migrate) and tsx (seed) are devDependencies, which a
-# NODE_ENV=production install would otherwise skip.
-pnpm install --frozen-lockfile --prod=false
+# Skip the install when the lockfile hasn't moved since the last successful install. node_modules is
+# rsync-excluded (it persists across deploys), so on a code-only update — the common case — reinstalling
+# is pure overhead. We hash pnpm-lock.yaml and stash it INSIDE node_modules (also rsync-excluded, so the
+# marker survives), then reinstall only when the hash differs or node_modules is gone. --prod=false: the
+# build, drizzle-kit (migrate) and tsx (seed) are devDependencies a NODE_ENV=production install would skip.
+LOCK_HASH="$(sha256sum pnpm-lock.yaml | cut -d' ' -f1)"
+LOCK_MARKER="node_modules/.deploy-lockfile-sha"
+if [ -d node_modules ] && [ "$(cat "$LOCK_MARKER" 2>/dev/null)" = "$LOCK_HASH" ]; then
+  echo "▸ Dependencies unchanged (lockfile hash matches) — skipping install."
+else
+  echo "▸ Installing dependencies…"
+  pnpm install --frozen-lockfile --prod=false
+  echo "$LOCK_HASH" > "$LOCK_MARKER"
+fi
 
 echo "▸ Building production server…"
 pnpm build
