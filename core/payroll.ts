@@ -1346,6 +1346,10 @@ export async function prefillTp1FromSelfRelief(
  * it, and the derivation here is a trivial constant (fixedAmount), not an OT-style computation that would
  * warrant a derivation payload. Writes ONLY for active employees; never zeroes others (an employee whose
  * setup became inactive keeps any prior manual zakat — admin must clear it, same as OT/bonus preservation).
+ *
+ * NOTE (feedback d435673e): the Zakat screen's one-off override section was removed, so this prefill, the
+ * batch input grid and the batch import are now the ONLY writers of `payroll_input.zakat`. Kernel precedence
+ * is unchanged (manual > fixed > percent_of_pcb) — see the effectiveZakat resolution in generatePayslips.
  */
 export async function prefillFixedZakat(
   ctx: SessionContext,

@@ -34,6 +34,7 @@ import {
   assignment,
   company,
   domainEvent,
+  employeeStatutoryMy,
   employment,
   employmentPayComponent,
   payComponent,
@@ -489,3 +490,229 @@ export function exportIndividualTxnsCsv(
     return { content, filename, rowCount: rows.length };
   });
 }
+
+// ───────────────────── Zakat Transaction History (feedback d435673e) ─────────────────────
+//
+// Two complementary read-only lists that back the Zakat screen's Transaction History block:
+//   • listZakatElections   — what was KEYED on the Zakat screen: every employee with a saved zakat
+//     election (state/method/rate/effective period + last-saved time). Answers "view all previously
+//     saved Zakat transactions" even before any payroll run exists.
+//   • listZakatTxnsAcross  — what was APPLIED in payroll: the zakat actually deducted in each PROCESSED
+//     payroll run (from payslip.statutory->>'zakat' > 0), by year/month/employee/company/cycle.
+// Both are pure SELECTs → no domain event (same read-only convention as the list* functions above). The
+// ONE exception is `exportZakatTxnsCsv`, which appends a `zakat.history.exported` egress event (mirroring
+// exportIndividualTxnsCsv / paymentSummaryForBatch).
+
+export type ZakatElectionViewRow = {
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  companyId: string;
+  company: string;
+  zakatActive: boolean;
+  zakatMethod: string | null;
+  zakatPercent: string | null;
+  zakatFixed: string | null;
+  zakatState: string | null;
+  zakatEffectiveFrom: string | null;
+  zakatEffectiveTo: string | null;
+  updatedAt: string; // ISO timestamp of the last statutory-row save (the election's "last saved")
+};
+
+/**
+ * Every ACTIVE employee (in the scoped companies) with a saved zakat election — the durable per-employee
+ * setup keyed on the Zakat screen. Starts from `employment` and inner-joins the MY statutory row (mirroring
+ * prefillFixedZakat's join at core/payroll.ts), so only employees who actually have an election appear, one
+ * row per employment. NOTE: switching zakat OFF nulls every zakat field (resolveZakatElection's "no election
+ * regardless of stray values" rule), so a switched-off setup drops out of this list — its save history lives
+ * in the domain-event log and its past deductions in listZakatTxnsAcross. The `method IS NOT NULL OR active`
+ * predicate is a safety net that keeps LEGACY inactive-with-method rows visible. Read-only, no domain event
+ * (pure SELECT). Fails closed on an empty `companyIds` set (mirrors the list* functions above).
+ */
+export function listZakatElections(
+  ctx: SessionContext,
+  p: { companyIds: string[] },
+): Promise<ZakatElectionViewRow[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        employmentId: employment.id,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: employment.companyId,
+        company: company.legalName,
+        zakatActive: employeeStatutoryMy.zakatActive,
+        zakatMethod: employeeStatutoryMy.zakatMethod,
+        zakatPercent: employeeStatutoryMy.zakatPercent,
+        zakatFixed: employeeStatutoryMy.zakatFixed,
+        zakatState: employeeStatutoryMy.zakatState,
+        zakatEffectiveFrom: employeeStatutoryMy.zakatEffectiveFrom,
+        zakatEffectiveTo: employeeStatutoryMy.zakatEffectiveTo,
+        updatedAt: sql<string>`to_char(${employeeStatutoryMy.updatedAt}, 'YYYY-MM-DD"T"HH24:MI:SS')`,
+      })
+      .from(employment)
+      .innerJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(
+        and(
+          inArray(employment.companyId, p.companyIds),
+          isNull(employment.terminatedOn), // active employments (matches the election picker on the screen)
+          // A "saved election" = a method was set OR the deduction is switched on. The kernel nulls the
+          // method on switch-off, so the OR arm is a safety net for legacy inactive-with-method rows.
+          or(sql`${employeeStatutoryMy.zakatMethod} IS NOT NULL`, eq(employeeStatutoryMy.zakatActive, true)),
+        ),
+      )
+      .orderBy(asc(person.fullName)),
+  );
+}
+
+export type ZakatTxnViewRow = {
+  id: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  companyId: string;
+  company: string;
+  payPeriod: string; // = "effective payroll month"
+  runType: RunType;
+  runSeq: number;
+  batchStatus: string; // processed/closed — payslips only exist post-generation
+  zakat: string; // the RM zakat deducted, from payslip.statutory->>'zakat'
+  createdOn: string; // 'YYYY-MM-DD HH:MM:SS' — payslip.created_at (= created date & time)
+};
+
+/** The filter set the Zakat "Applied in payroll" history + its CSV export share (all optional, AND-ed;
+ *  every value is scope-guarded / enum-coerced by the caller before it reaches Postgres). */
+export type ZakatTxnFilter = {
+  companyIds: string[];
+  year?: number;
+  month?: number;
+  employmentId?: string;
+  cycle?: string; // payroll run type
+};
+
+/** Shared query for the Zakat "Applied in payroll" history AND its CSV export (one source of truth). Zakat
+ *  actually deducted (`payslip.statutory->>'zakat' > 0`) across processed runs in the scoped companies. */
+function queryZakatTxns(tx: Tx, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
+  const cycle = cleanRunType(p.cycle);
+  return tx
+    .select({
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      employeeName: person.fullName,
+      employeeCode: employment.employeeCode,
+      companyId: payrollBatch.companyId,
+      company: company.legalName,
+      payPeriod: payrollBatch.payPeriod,
+      runType: payrollBatch.runType,
+      runSeq: payrollBatch.runSeq,
+      batchStatus: payrollBatch.status,
+      zakat: sql<string>`(${payslip.statutory}->>'zakat')`,
+      createdOn: sql<string>`to_char(${payslip.createdAt}, 'YYYY-MM-DD HH24:MI:SS')`,
+    })
+    .from(payslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(
+      and(
+        inArray(payrollBatch.companyId, p.companyIds),
+        periodFilter(p.year, p.month),
+        p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
+        cycle ? eq(payrollBatch.runType, cycle) : undefined,
+        // Only rows that actually carry a zakat deduction — a zero-zakat employee is excluded by construction.
+        sql`(${payslip.statutory}->>'zakat')::numeric > 0`,
+      ),
+    )
+    .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName));
+}
+
+/**
+ * Zakat actually deducted in each PROCESSED payroll run, across employees/companies/periods — the
+ * admin-scoped "Applied in payroll" history. A payslip row only exists after generation, so draft batches
+ * are excluded by construction (no status predicate needed). Read-only, no domain event (pure SELECT).
+ * Fails closed on an empty `companyIds` set.
+ */
+export function listZakatTxnsAcross(ctx: SessionContext, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  return withTenant(ctx, (tx) => queryZakatTxns(tx, p));
+}
+
+/**
+ * Export the Zakat "Applied in payroll" history as a CSV, honouring the SAME scope-guarded filters the
+ * on-screen inquiry uses (`listZakatTxnsAcross`). Opens cleanly in Excel. Admin/scope fencing is enforced by
+ * the route (scopedAdmin) + the fail-closed `companyIds` set here.
+ *
+ * SUBSTRATE: an export is auditable data egress, so this appends ONE `zakat.history.exported` DomainEvent
+ * (mirroring exportIndividualTxnsCsv). The aggregate is VIRTUAL (no report row), so `aggregateId` is a fresh
+ * UUID (domain_event.aggregate_id is UUID-typed) and the applied filter set + row count live in the payload.
+ * ADR-0030 Layer 0: references + counts only — no cleartext amounts in the event payload.
+ */
+export function exportZakatTxnsCsv(
+  ctx: SessionContext,
+  p: ZakatTxnFilter,
+): Promise<{ content: string; filename: string; rowCount: number }> {
+  if (p.companyIds.length === 0) {
+    // Fail closed, but still record the (empty) egress attempt for the audit trail.
+    return withTenant(ctx, async (tx) => {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-report',
+        aggregateId: randomUUID(),
+        eventType: 'zakat.history.exported',
+        actor: actorOf(ctx),
+        payload: { report: 'zakat-transaction-history', rowCount: 0, filters: zakatFilterPayload(p) },
+      });
+      return { content: toCsv([ZAKAT_CSV_HEADER]), filename: zakatCsvFilename(), rowCount: 0 };
+    });
+  }
+  return withTenant(ctx, async (tx) => {
+    const rows = await queryZakatTxns(tx, p);
+    const body = rows.map((r) => [
+      r.payPeriod,
+      r.runType,
+      r.runSeq,
+      r.batchStatus,
+      r.employeeName,
+      r.employeeCode ?? '',
+      r.company,
+      Number(r.zakat).toFixed(2),
+      r.createdOn,
+    ]);
+    const content = toCsv([ZAKAT_CSV_HEADER, ...body]);
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-report',
+      aggregateId: randomUUID(),
+      eventType: 'zakat.history.exported',
+      actor: actorOf(ctx),
+      payload: { report: 'zakat-transaction-history', rowCount: rows.length, filters: zakatFilterPayload(p) },
+    });
+
+    return { content, filename: zakatCsvFilename(), rowCount: rows.length };
+  });
+}
+
+const ZAKAT_CSV_HEADER = [
+  'Effective Payroll Month',
+  'Cycle',
+  'Run',
+  'Status',
+  'Employee',
+  'Employee Code',
+  'Company',
+  'Zakat Amount',
+  'Created Date & Time',
+];
+const zakatCsvFilename = () => `zakat-transaction-history_${new Date().toISOString().slice(0, 10)}.csv`;
+const zakatFilterPayload = (p: ZakatTxnFilter) => ({
+  companyIds: p.companyIds,
+  year: p.year ?? null,
+  month: p.month ?? null,
+  employmentId: p.employmentId ?? null,
+  cycle: p.cycle ?? null,
+});

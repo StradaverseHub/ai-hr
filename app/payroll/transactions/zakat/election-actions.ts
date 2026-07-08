@@ -27,12 +27,10 @@ export async function saveZakatElectionAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
   const personId = String(formData.get('personId'));
-  // Preserve the batch-override section's selection across the redirect (both sections share the page).
-  const batchId = String(formData.get('batchId') ?? '');
+  // Redirect back to the same employee's election (the one-off override section was removed by d435673e, so
+  // there is no sibling selection to preserve any more).
   const back = (extra: string) =>
-    `/payroll/transactions/zakat?employmentId=${encodeURIComponent(employmentId)}${
-      batchId ? `&batchId=${encodeURIComponent(batchId)}` : ''
-    }&${extra}`;
+    `/payroll/transactions/zakat?employmentId=${encodeURIComponent(employmentId)}&${extra}`;
   try {
     const current = await getStatutoryProfileMY(s, personId);
     // The election lives on the MY statutory row; without one (no IC yet) there is nothing to attach it
