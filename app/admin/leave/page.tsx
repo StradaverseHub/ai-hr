@@ -5,6 +5,7 @@ import { listLeavePolicies } from '@/core/admin';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { LeaveRulePreview } from '@/components/leave-rule-preview';
@@ -140,6 +141,95 @@ export default async function LeaveTypesPage({
       <LeaveTabs active="types" />
       <ErrorBanner message={error} />
 
+      {/* Leave Type master page (feedback 097de541) — the FIRST card on the Leave Types tab is the master
+          listing: one row per type (Name / Code / Paid-Unpaid / Description / Status / Actions) with a
+          green/red status dot (hover tooltip) and row-level Edit (jump to the per-type panel below) + Delete.
+          Reuses the already-loaded `types` (no extra query). This is the single source of truth — a type
+          created / edited here is what every downstream screen (apply form, entitlements, balances, reports,
+          filters) reads via listLeaveTypes. */}
+      <Card>
+        <SectionHeader title={t('typeMasterTitle')} count={types.length} />
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-left text-muted-foreground">
+                <th className="px-4 py-2 font-medium">{t('colName')}</th>
+                <th className="px-4 py-2 font-medium">{t('colCode')}</th>
+                <th className="px-4 py-2 font-medium">{t('colPaid')}</th>
+                <th className="px-4 py-2 font-medium">{t('colDescription')}</th>
+                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('colActions')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {types.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                    {t('noLeaveTypes')}
+                  </td>
+                </tr>
+              )}
+              {types.map((lt) => {
+                const isActive = !lt.archivedAt;
+                return (
+                  <tr key={lt.id} className={isActive ? '' : 'opacity-60'}>
+                    <td className="px-4 py-2 font-medium text-foreground">{lt.name}</td>
+                    <td className="px-4 py-2 text-muted-foreground">{lt.code}</td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {lt.paid ? t('paidValue') : t('unpaidValue')}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">{lt.description || '—'}</td>
+                    <td className="px-4 py-2">
+                      <span className="inline-flex items-center gap-1.5" title={isActive ? t('statusActive') : t('statusInactive')}>
+                        <span
+                          aria-hidden
+                          className={`inline-block size-2 shrink-0 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-red-500'}`}
+                        />
+                        <span className="sr-only">{isActive ? t('statusActive') : t('statusInactive')}</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <a
+                          href={`#type-${lt.id}`}
+                          className="rounded-md px-2 py-1 text-foreground underline decoration-border hover:decoration-foreground"
+                        >
+                          {t('edit')}
+                        </a>
+                        {lt.inUse ? (
+                          <button
+                            type="button"
+                            disabled
+                            title={t('deleteInUseTooltip')}
+                            className="cursor-not-allowed rounded-md px-2 py-1 text-muted-foreground/60"
+                          >
+                            {t('delete')}
+                          </button>
+                        ) : (
+                          <form action={deleteLeaveTypeAction}>
+                            <input type="hidden" name="id" value={lt.id} />
+                            <ConfirmSubmit
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              title={t('deleteTypeConfirmTitle')}
+                              description={t('deleteTypeConfirmDescription')}
+                              confirmLabel={t('deleteConfirmLabel')}
+                            >
+                              {t('delete')}
+                            </ConfirmSubmit>
+                          </form>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
       {/* Leave Entitlement Rules Engine — consolidated view: every effective rule, the resolution order in
           plain words, and a live preview. Anchor links (#type-<id>) jump to the per-type panel below for
           CRUD, so this table is read-only and never duplicates editing. */}
@@ -216,6 +306,7 @@ export default async function LeaveTypesPage({
               id={t.id}
               name={t.name}
               code={t.code}
+              description={t.description ?? null}
               archived={!!t.archivedAt}
               inUse={t.inUse}
               isAnnual={t.code === 'ANNUAL'}
@@ -252,7 +343,7 @@ export default async function LeaveTypesPage({
         </ul>
         <form
           action={createLeaveTypeAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-6"
         >
           <Field label={t('codeLabel')}>
             <input
@@ -265,6 +356,16 @@ export default async function LeaveTypesPage({
           </Field>
           <Field label={t('nameLabel')}>
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
+          </Field>
+          {/* Leave Type master page (feedback 097de541): optional Description + create-time Status select. */}
+          <Field label={t('descriptionLabel')}>
+            <input name="description" placeholder={t('descriptionPlaceholder')} className={inputCls} />
+          </Field>
+          <Field label={t('statusLabel')}>
+            <select name="active" defaultValue="active" className={inputCls}>
+              <option value="active">{t('statusActive')}</option>
+              <option value="inactive">{t('statusInactive')}</option>
+            </select>
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="paid" defaultChecked className="size-4 rounded" />

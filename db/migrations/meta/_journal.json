@@ -1135,6 +1135,13 @@
       "when": 1781862160000,
       "tag": "0161_employment_default_shift",
       "breakpoints": true
+    },
+    {
+      "idx": 162,
+      "version": "7",
+      "when": 1781862161000,
+      "tag": "0162_leave_type_description",
+      "breakpoints": true
     }
   ]
 }

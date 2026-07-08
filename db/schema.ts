@@ -666,6 +666,9 @@ export const leaveType = pgTable('leave_type', {
   tenantId: tenantId(),
   code: text('code').notNull(), // e.g. 'ANNUAL'
   name: text('name').notNull(),
+  // Leave Type master page (feedback 097de541): optional free-text description shown to HR admins in the
+  // master listing + the identity edit form. Nullable (existing rows ⇒ NULL ⇒ rendered "—"). No enforcement.
+  description: text('description'),
   paid: boolean('paid').notNull().default(true),
   // 'working_days' (exclude weekends + holidays) | 'calendar_days' (consecutive)
   counting: text('counting').notNull().default('calendar_days'),

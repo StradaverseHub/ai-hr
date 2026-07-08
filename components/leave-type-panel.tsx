@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Button, Field, inputCls } from './ui';
@@ -265,6 +265,7 @@ export function LeaveTypePanel({
   id,
   name,
   code,
+  description,
   archived,
   inUse,
   isAnnual,
@@ -300,6 +301,9 @@ export function LeaveTypePanel({
   id: string;
   name: string;
   code: string;
+  /** Leave Type master page (feedback 097de541): optional free-text description, edited in the identity
+   *  sub-form. Threaded so the input round-trips. null = none. */
+  description: string | null;
   archived: boolean;
   inUse: boolean;
   isAnnual: boolean;
@@ -358,6 +362,18 @@ export function LeaveTypePanel({
   const [editingEligibility, setEditingEligibility] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  // Leave Type master page (feedback 097de541): the master table's Edit action links to #type-<id>; expand
+  // this row when the URL hash targets it (on mount and on later hashchange) so the edit surface is visible
+  // rather than scrolling to a collapsed row.
+  useEffect(() => {
+    const openIfTargeted = () => {
+      if (typeof window !== 'undefined' && window.location.hash === `#type-${id}`) setExpanded(true);
+    };
+    openIfTargeted();
+    window.addEventListener('hashchange', openIfTargeted);
+    return () => window.removeEventListener('hashchange', openIfTargeted);
+  }, [id]);
 
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
   // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
@@ -447,9 +463,23 @@ export function LeaveTypePanel({
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           {/* type-level controls */}
           {editingName ? (
-            <form action={updateTypeAction} className="flex flex-wrap items-center gap-2">
+            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="id" value={id} />
-              <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
+              {/* Leave Type master page (feedback 097de541): marker tells the action to touch the description
+                  column (tri-state guard) — this form edits Name + Description together. */}
+              <input type="hidden" name="identity" value="1" />
+              <Field label={t('nameLabel')}>
+                <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
+              </Field>
+              <Field label={t('descriptionLabel')}>
+                <input
+                  name="description"
+                  defaultValue={description ?? ''}
+                  aria-label={t('descriptionLabel')}
+                  placeholder={t('descriptionPlaceholder')}
+                  className={`${inputCls} w-64`}
+                />
+              </Field>
               <Button type="submit" size="sm">
                 {t('save')}
               </Button>

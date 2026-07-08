@@ -343,7 +343,9 @@ export async function createBusinessUnit(
 
 export async function createLeaveType(
   ctx: SessionContext,
-  p: { code: string; name: string; paid?: boolean },
+  // Leave Type master page (feedback 097de541): the add-type form now carries an optional description and a
+  // create-time active/inactive status (default active). Code + name stay required.
+  p: { code: string; name: string; paid?: boolean; description?: string | null; active?: boolean },
 ) {
   // The code is the semantic key the statutory floor / standing grants / carry-forward match on
   // (exact, uppercase). Normalize hard so 'annual' can never silently miss the EA floor.
@@ -352,10 +354,32 @@ export async function createLeaveType(
     throw new Error('Leave-type code must be letters, digits or underscores (e.g. ANNUAL)');
   }
   const name = cleanName(p.name, 'Leave-type name');
+  // Leave Type master page (feedback 097de541): trim the optional description; empty ⇒ null (never store "").
+  const description = typeof p.description === 'string' && p.description.trim() !== '' ? p.description.trim() : null;
+  // Create-time status. active=false ⇒ insert already archived (mirrors archiveLeaveType semantics). Note the
+  // code-unique index is PARTIAL on archived_at IS NULL, so an inactive-created type does not hold the code —
+  // same trade-off as archiving an existing type; acceptable.
+  const active = p.active !== false;
   return withTenant(ctx, async (tx) => {
+    // Name uniqueness (feedback 097de541): case-insensitive, ACTIVE types only (mirrors the partial code
+    // index which only guards archived_at IS NULL). Enforced in the service — not a DB index — because
+    // existing tenant data may already hold duplicate names. Gives the friendly warning the ticket asks for.
+    const [dupe] = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(and(isNull(leaveType.archivedAt), sql`lower(${leaveType.name}) = lower(${name})`))
+      .limit(1);
+    if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
     const [row] = await tx
       .insert(leaveType)
-      .values({ tenantId: ctx.tenantId, code, name, paid: p.paid ?? true })
+      .values({
+        tenantId: ctx.tenantId,
+        code,
+        name,
+        description,
+        paid: p.paid ?? true,
+        ...(active ? {} : { archivedAt: sql`now()` }),
+      })
       .returning({ id: leaveType.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A leave type with code “${code}” already exists.`);
@@ -367,7 +391,7 @@ export async function createLeaveType(
       aggregateId: row.id,
       eventType: 'leave-type.created',
       actor: actorOf(ctx),
-      payload: { code, name },
+      payload: { code, name, paid: p.paid ?? true, description, active },
     });
     return row;
   });
@@ -1684,6 +1708,11 @@ export async function updateLeaveType(
   p: {
     id: string;
     name: string;
+    // Leave Type master page (feedback 097de541): optional description edited from the identity sub-form.
+    // OWN tri-state (undefined = column untouched), exactly like backdatingLimitDays — the identity form posts
+    // a hidden `identity=1` marker so an unrelated sub-form save never touches this column. Empty string ⇒
+    // null (never store ""); an explicit null clears it.
+    description?: string | null;
     eligibility?: LeaveEligibility | null;
     durations?: LeaveDurationType[] | null;
     // Supporting-document config (claims-style flat signature; each is tri-state — undefined = leave column).
@@ -1757,6 +1786,15 @@ export async function updateLeaveType(
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
   const touchCustomMessages = p.customMessages !== undefined;
+  // Leave Type master page (feedback 097de541): its OWN tri-state — the identity sub-form posts `identity=1`
+  // and forwards `description`; any other save omits it, so the description column stays untouched.
+  const touchDescription = p.description !== undefined;
+  const nextDescription =
+    touchDescription
+      ? typeof p.description === 'string' && p.description.trim() !== ''
+        ? p.description.trim()
+        : null
+      : undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
   }
@@ -1827,11 +1865,16 @@ export async function updateLeaveType(
   const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
   const partialSet = touchPartial ? { perDateApproval: p.perDateApproval } : {};
+  // Leave Type master page (feedback 097de541): its own set fragment (the trimmed value, or null to clear).
+  const descriptionSet = touchDescription ? { description: nextDescription ?? null } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
         name: leaveType.name,
+        // Leave Type master page (feedback 097de541): selected for the rename-uniqueness check (below) and the
+        // description audit diff (MUST be here or before?.description is always undefined).
+        description: leaveType.description,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         requiresDocument: leaveType.requiresDocument,
@@ -1853,6 +1896,24 @@ export async function updateLeaveType(
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // Name uniqueness on rename (feedback 097de541): only when the name actually changes (case-insensitive),
+    // so an unrelated sub-form save that re-posts the current name — and any legacy duplicate that predates
+    // this rule — never trips the guard. Excludes self and archived types (mirrors createLeaveType + the
+    // partial code index).
+    if (before && name.toLowerCase() !== before.name.toLowerCase()) {
+      const [dupe] = await tx
+        .select({ id: leaveType.id })
+        .from(leaveType)
+        .where(
+          and(
+            isNull(leaveType.archivedAt),
+            sql`${leaveType.id} <> ${p.id}`,
+            sql`lower(${leaveType.name}) = lower(${name})`,
+          ),
+        )
+        .limit(1);
+      if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
+    }
     // Custom validation messages: read-then-patch-then-write on the SHARED JSONB column. Start from what is
     // already stored, apply the caller's touched keys: a value that is empty or all-whitespace after trim is
     // treated as "not configured" and the key is REMOVED (never stored as an empty string, so it round-trips
@@ -1882,6 +1943,7 @@ export async function updateLeaveType(
         ...minAdvanceSet,
         ...expirySet,
         ...partialSet,
+        ...descriptionSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
       })
@@ -1913,6 +1975,7 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
+          ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
           name,
@@ -1938,6 +2001,7 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
+          ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
       },
     });

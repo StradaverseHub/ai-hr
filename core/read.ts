@@ -368,6 +368,9 @@ export function listLeaveTypes(
         id: leaveType.id,
         code: leaveType.code,
         name: leaveType.name,
+        // Leave Type master page (feedback 097de541): the free-text description shown in the master listing +
+        // the identity edit form (MUST be projected here or the field renders empty on every reload).
+        description: leaveType.description,
         i18n: leaveType.i18n,
         paid: leaveType.paid,
         counting: leaveType.counting,

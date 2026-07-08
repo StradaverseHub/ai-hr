@@ -311,6 +311,10 @@ export async function createLeaveTypeAction(formData: FormData) {
       code: String(formData.get('code') ?? '').trim().toUpperCase(),
       name: String(formData.get('name') ?? '').trim(),
       paid: formData.get('paid') === 'on',
+      // Leave Type master page (feedback 097de541): the add-type form now carries an optional Description and
+      // a Status select (active|inactive, default active). The service trims the description (empty ⇒ null).
+      description: String(formData.get('description') ?? '').trim(),
+      active: formData.get('active') !== 'inactive',
     });
   } catch (e) {
     fail(LEAVE, e);
@@ -810,6 +814,14 @@ export async function deleteCompanyAction(fd: FormData) {
 
 export async function updateLeaveTypeAction(fd: FormData) {
   const s = await getSession();
+  // Leave Type master page (feedback 097de541): the identity sub-form posts `identity=1` (marker) and edits
+  // the free-text description alongside the name. OWN tri-state (mirrors backdating): only when the marker is
+  // present do we forward `description`, so any other sub-form save leaves the description column untouched.
+  // Empty string ⇒ null (service trims + treats blank as cleared).
+  const touchIdentity = fd.get('identity') === '1';
+  const identityFields = touchIdentity
+    ? { description: String(fd.get('description') ?? '').trim() === '' ? null : String(fd.get('description')).trim() }
+    : {};
   // #25 visibility: the eligibility form posts `eligibility=1` (a marker hidden input) so a name-only
   // rename — which doesn't carry that marker — leaves the rule untouched (tri-state in updateLeaveType).
   const touchEligibility = fd.get('eligibility') === '1';
@@ -907,6 +919,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
     await updateLeaveType(s, {
       id: String(fd.get('id')),
       name: String(fd.get('name') ?? '').trim(),
+      ...identityFields,
       eligibility,
       durations,
       ...docFields,

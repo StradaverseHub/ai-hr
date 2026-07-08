@@ -1,0 +1,14 @@
+-- Leave Type master page (feedback 097de541 "Leave Type Setup Enhancement"). The Leave Types tab becomes
+-- the single master-configuration page for every leave type: a table listing (Name / Code / Paid-Unpaid /
+-- Description / Status / Actions) with a green/red status dot and row-level Edit/Delete. This migration
+-- adds the one missing column the ticket names — an optional free-text Description shown to HR admins.
+--
+-- Nullable, no default, no backfill (existing rows keep NULL ⇒ rendered as "—"). No RLS change:
+-- description is a column on leave_type, already covered by that table's existing row policies
+-- (tenant-scoped reads, admin-gated writes). Name-uniqueness the ticket asks for is enforced in the
+-- service (core/admin.ts createLeaveType/updateLeaveType), NOT a DB index — existing tenant data may
+-- already hold duplicate names, so a unique index could fail to apply; the service check gives the
+-- friendly warning the ticket wants and only guards active (archived_at IS NULL) types.
+--
+-- Idempotent (IF NOT EXISTS): integration may renumber this file.
+ALTER TABLE "leave_type" ADD COLUMN IF NOT EXISTS "description" text;
