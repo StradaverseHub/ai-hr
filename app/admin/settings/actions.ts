@@ -261,7 +261,7 @@ function revalidateLabels() {
 }
 
 export type GridSaveResult =
-  | { ok: true; created: number; updated: number }
+  | { ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] }
   | { ok: false; rowErrors: LabelRowError[]; message?: string };
 
 /** Atomic Save for one category grid: all creates + updates in a single transaction. */

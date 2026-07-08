@@ -1760,10 +1760,13 @@ export async function bulkSaveLabels(
   ctx: SessionContext,
   kind: LabelKindStr,
   p: { creates: LabelCreateInput[]; updates: LabelUpdateInput[] },
-): Promise<{ created: number; updated: number }> {
+): Promise<{ created: number; updated: number; createdIds: { key: string; id: string }[] }> {
   const agg = KIND_AGG[kind];
   return withTenant(ctx, async (tx) => {
     const errors: LabelRowError[] = [];
+    // Maps each created draft's client key → its new server id so the grid can convert the draft row
+    // into a persisted row in place (instead of leaving it as a dirty draft that re-inserts on next Save).
+    const createdIds: { key: string; id: string }[] = [];
     let created = 0;
     let updated = 0;
 
@@ -1793,6 +1796,7 @@ export async function bulkSaveLabels(
             .insert(department)
             .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: department.id });
+          createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false } });
         } else if (kind === 'position') {
           const title = clean(c.key, c.title, 'title', 'Position title', true);
@@ -1801,6 +1805,7 @@ export async function bulkSaveLabels(
             .insert(position)
             .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: position.id });
+          createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'position.created', actor: actorOf(ctx), payload: { companyId: c.companyId, title, isGlobal: c.isGlobal ?? false } });
         } else if (kind === 'cost_center') {
           const code = clean(c.key, c.code, 'code', 'Cost-center code', true);
@@ -1810,6 +1815,7 @@ export async function bulkSaveLabels(
             .insert(costCenter)
             .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: costCenter.id });
+          createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'cost-center.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
         } else {
           const code = clean(c.key, c.code, 'code', 'Business-unit code', true);
@@ -1819,6 +1825,7 @@ export async function bulkSaveLabels(
             .insert(businessUnit)
             .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: businessUnit.id });
+          createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
         }
         created++;
@@ -1881,7 +1888,7 @@ export async function bulkSaveLabels(
     }
 
     if (errors.length) throw new LabelBulkError(errors); // rollback everything — atomic save.
-    return { created, updated };
+    return { created, updated, createdIds };
   });
 }
 

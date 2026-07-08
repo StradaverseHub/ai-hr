@@ -76,7 +76,7 @@ export type GridActions = {
         description?: string;
       }[];
     },
-  ) => Promise<{ ok: true; created: number; updated: number } | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string }>;
+  ) => Promise<{ ok: true; created: number; updated: number; createdIds: { key: string; id: string }[] } | { ok: false; rowErrors: { key: string; field?: string; message: string }[]; message?: string }>;
   setGlobal: (kind: GridKind, labelId: string, isGlobal: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
   assign: (kind: GridKind, labelId: string, companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
   unassign: (kind: GridKind, labelId: string, companyIds: string[]) => Promise<{ ok: true } | { ok: false; message: string }>;
@@ -194,6 +194,7 @@ export function SystemLabelsGrid({
 
   function save() {
     setBanner(null);
+    const k = kind; // capture: the async result must reconcile the kind that was saved.
     const creates = drafts.map((r) => ({
       key: r.key,
       companyId: r.companyId,
@@ -205,10 +206,13 @@ export function SystemLabelsGrid({
       businessUnitId: r.businessUnitId,
       description: r.description,
     }));
+    // NB: scope (isGlobal) is NEVER sent from a text-edit Save — it is owned exclusively by the
+    // dedicated scope popover (toggleGlobal / applyCompanies), which persists immediately. Sending
+    // the row's (possibly stale) isGlobal here would let a later edit+Save silently revert a label
+    // that was made Global via the popover. Only text/BU/archive fields flow through Save.
     const updates = dirtyExisting.map((r) => ({
       key: r.key,
       id: r.id,
-      isGlobal: r.isGlobal,
       archived: r.archived,
       code: r.code,
       name: r.name,
@@ -217,10 +221,25 @@ export function SystemLabelsGrid({
       businessUnitId: r.businessUnitId,
       description: r.description,
     }));
+    const updatedKeys = new Set(updates.map((u) => u.key));
     startTransition(async () => {
-      const res = await actions.save(kind, { creates, updates });
+      const res = await actions.save(k, { creates, updates });
       if (res.ok) {
         setRowErrors({});
+        // Reconcile local state so a repeat Save can't re-insert the drafts or re-fire updates:
+        // convert each saved draft into a persisted (clean) row using the returned server id, and
+        // clear the dirty flag on every row that was updated.
+        const idByKey = new Map(res.createdIds.map((c) => [c.key, c.id]));
+        setRowsByKind((prev) => ({
+          ...prev,
+          [k]: prev[k].map((r) => {
+            if (r.isNew) {
+              const newId = idByKey.get(r.key);
+              return newId ? { ...r, id: newId, key: newId, isNew: false, dirty: false } : r;
+            }
+            return updatedKeys.has(r.key) ? { ...r, dirty: false } : r;
+          }),
+        }));
         setBanner({ kind: 'ok', text: t('saved', { created: res.created, updated: res.updated }) });
       } else {
         const map: Record<string, { field?: string; message: string }> = {};
@@ -239,25 +258,46 @@ export function SystemLabelsGrid({
       else setBanner(null);
     });
   }
+  // Patch a persisted row's fields WITHOUT marking it dirty — scope edits are already committed on the
+  // server, so they must never re-enter the pending Save payload. Keyed by kind so the async result
+  // lands on the right category even if `kind` changed meanwhile.
+  function patchRowClean(k: GridKind, key: string, fields: Partial<RowState>) {
+    setRowsByKind((prev) => ({ ...prev, [k]: prev[k].map((r) => (r.key === key ? { ...r, ...fields } : r)) }));
+  }
   function toggleGlobal(r: RowState) {
-    runScope(() => actions.setGlobal(kind, r.id, !r.isGlobal));
+    const k = kind;
+    const next = !r.isGlobal;
+    startTransition(async () => {
+      const res = await actions.setGlobal(k, r.id, next);
+      if (!res.ok) {
+        setBanner({ kind: 'err', text: res.message });
+        return;
+      }
+      setBanner(null);
+      // Reflect the new scope locally so the Scope pill updates immediately (revalidatePath does not
+      // re-seed the grid) and a later text-edit Save reads the correct isGlobal.
+      patchRowClean(k, r.key, { isGlobal: next });
+    });
   }
   function applyCompanies(r: RowState, nextIds: string[]) {
+    const k = kind;
     const cur = new Set(r.assignedCompanyIds);
     const next = new Set(nextIds);
     const toAssign = nextIds.filter((id) => !cur.has(id));
     const toRemove = r.assignedCompanyIds.filter((id) => !next.has(id));
     startTransition(async () => {
       if (toAssign.length) {
-        const a = await actions.assign(kind, r.id, toAssign);
+        const a = await actions.assign(k, r.id, toAssign);
         if (!a.ok) return setBanner({ kind: 'err', text: a.message });
       }
       if (toRemove.length) {
-        const u = await actions.unassign(kind, r.id, toRemove);
+        const u = await actions.unassign(k, r.id, toRemove);
         if (!u.ok) return setBanner({ kind: 'err', text: u.message });
       }
       setBanner(null);
       setScopePopover(null);
+      // Reflect the new company assignments locally so the Scope pill updates without a hard reload.
+      patchRowClean(k, r.key, { assignedCompanyIds: nextIds });
     });
   }
 
