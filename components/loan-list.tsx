@@ -54,8 +54,9 @@ export function LoanList({ loans }: { loans: LoanWithSchedule[] }) {
           <Fragment key={l.id}>
             <tr className="hover:bg-muted/40">
               <td className="px-4 py-2.5 font-medium">
+                {/* Employee ID left-of-name (feedback 38668d9b) */}
+                {l.employeeCode && <EmployeeCode code={l.employeeCode} className="mr-1.5" />}
                 {l.employeeName}
-                {l.employeeCode && <EmployeeCode code={l.employeeCode} className="ml-2" />}
               </td>
               <td className="px-4 py-2.5">{tType(l.loanType)}</td>
               <td className="px-4 py-2.5 tabular-nums">{money(l.principal)}</td>

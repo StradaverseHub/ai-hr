@@ -64,6 +64,7 @@ export const employeeTemplate: TemplateSpec = {
   // Order matches columns above (required ∪ optional). Departments are Finance / Operations only.
   sampleRows: [
     [
+      'TMPL0001', // employee_code (HR-supplied; not in the demo seed so a raw download→upload round-trips)
       'Aisyah Binti Rahman', // full_name
       'aisyah.template@example.com', // email
       'Finance', // department
@@ -87,6 +88,7 @@ export const employeeTemplate: TemplateSpec = {
       'MALAYSIAN', // epf_citizenship
     ],
     [
+      'TMPL0002', // employee_code
       'Daniel Tan Wei Ming', // full_name
       'daniel.template@example.com', // email
       'Operations', // department

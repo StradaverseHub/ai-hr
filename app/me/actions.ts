@@ -259,9 +259,20 @@ export async function myUpdateContact(formData: FormData) {
   try {
     await updateOwnContact(s, {
       phone: String(formData.get('phone') ?? ''),
-      address: String(formData.get('address') ?? ''),
+      // b4682879 — structured home address (legacy single-line `address` retired from the UI).
+      personalEmail: String(formData.get('personalEmail') ?? ''),
+      addressLine1: String(formData.get('addressLine1') ?? ''),
+      addressLine2: String(formData.get('addressLine2') ?? ''),
+      addressLine3: String(formData.get('addressLine3') ?? ''),
+      postcode: String(formData.get('postcode') ?? ''),
+      city: String(formData.get('city') ?? ''),
+      state: String(formData.get('state') ?? ''),
+      country: String(formData.get('country') ?? ''),
       emergencyContactName: String(formData.get('emergencyContactName') ?? ''),
+      emergencyContactRelationship: String(formData.get('emergencyContactRelationship') ?? ''),
       emergencyContactPhone: String(formData.get('emergencyContactPhone') ?? ''),
+      emergencyContactPhone2: String(formData.get('emergencyContactPhone2') ?? ''),
+      emergencyContactAddress: String(formData.get('emergencyContactAddress') ?? ''),
     });
   } catch (e) {
     redirect(`/me?error=${encodeURIComponent((e as Error).message)}`);

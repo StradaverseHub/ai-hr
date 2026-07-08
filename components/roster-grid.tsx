@@ -10,6 +10,7 @@ import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
+import { EmployeeName } from '@/components/ui';
 
 type ShiftLite = { id: string; name: string; startTime: string; endTime: string };
 type CellState = { kind: 'shift'; shiftId: string } | { kind: 'rest' } | null;
@@ -33,7 +34,7 @@ export function RosterGrid({
   initial,
 }: {
   weekDates: { iso: string; dow: string; day: string }[];
-  employees: { employmentId: string; name: string }[];
+  employees: { employmentId: string; name: string; code?: string | null }[];
   shifts: ShiftLite[];
   initial: Record<string, CellState>;
 }) {
@@ -156,7 +157,7 @@ export function RosterGrid({
                 <td className="sticky left-0 z-10 bg-background px-3 py-1.5">
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={selected.has(e.employmentId)} onChange={() => toggle(e.employmentId)} />
-                    <span className="truncate">{e.name}</span>
+                    <EmployeeName code={e.code} name={e.name} className="truncate" />{/* ID left-of-name (38668d9b) */}
                     {noRestDay(e.employmentId) && (
                       <span
                         title={t('noRestWarningHint')}

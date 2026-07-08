@@ -35,7 +35,7 @@ type Leave = {
   pendingCancellationId?: string | null;
   candidateCancelDates?: string[];
 };
-type Row = { id: string; name: string; role: string | null; leaves: Leave[] };
+type Row = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: Leave[] };
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MS_DAY = 86_400_000;
@@ -146,6 +146,7 @@ export async function PlannedAbsences({
   const gridRows: GridRow[] = rows.map((emp) => ({
     id: emp.id,
     name: emp.name,
+    employeeCode: emp.employeeCode ?? null,
     role: emp.role,
     leaves: emp.leaves.map((l) => ({
       id: l.id,

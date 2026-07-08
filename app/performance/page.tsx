@@ -59,8 +59,9 @@ export default async function PerformancePage({
             {pending.map((r) => (
               <li key={r.reviewId} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                 <div>
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                   <span className="font-medium">{r.employee}</span>
-                  {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                   <span className="ml-2 text-xs text-muted-foreground">{r.cycleName}</span>
                 </div>
                 <Link href={`/performance/review/${r.reviewId}`} className="text-sm text-primary hover:underline">

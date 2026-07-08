@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listReimbursementsDue } from '@/core/claims';
-import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ClaimsTabs } from '@/components/claims-tabs';
 import { markReimbursementsPaidAction } from './actions';
 
@@ -67,10 +67,8 @@ export default async function ReimbursementsPage({
                         <input type="checkbox" name="claimId" value={r.id} defaultChecked className="size-4" />
                       </td>
                       <td className="px-4 py-2.5 font-medium">
-                        {r.claimant}
-                        {r.employeeCode && (
-                          <span className="ml-2 font-mono text-xs text-muted-foreground">{r.employeeCode}</span>
-                        )}
+                        {/* Employee ID left-of-name (feedback 38668d9b) */}
+                        <EmployeeName code={r.employeeCode} name={r.claimant} />
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{r.typeName}</td>
                       <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.incurredOn}</td>

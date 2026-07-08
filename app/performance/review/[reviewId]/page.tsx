@@ -4,6 +4,7 @@ import { getSession } from '@/lib/session';
 import { peerFeedbackForReview, reviewForViewer, reviewGoals } from '@/core/performance';
 import { isAiConfigured } from '@/core/ai-config';
 import { Button, Card, ErrorBanner, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
+import { employeeLabel } from '@/lib/employee-code';
 import { ManagerReviewForm } from './manager-review-form';
 import {
   acknowledgeAction,
@@ -73,7 +74,7 @@ export default async function ReviewPage({
     <div className="mx-auto max-w-3xl space-y-6">
       <PageHeader
         back={{ href: backHref, label: r.isSubject && !r.canManage ? t('backMyWorkspace') : t('backPerformance') }}
-        title={`${r.employee}${r.employeeCode ? ` (${r.employeeCode})` : ''} — ${r.cycleName}`}
+        title={`${employeeLabel(r.employeeCode, r.employee)} — ${r.cycleName}`}
         description={
           <>
             {r.periodStart} → {r.periodEnd}

@@ -15,6 +15,8 @@ import { describe, expect, it } from 'vitest';
 const BANNED = [
   'basicSalary', 'bankName', 'bankAccountNo', 'icNumber', 'netPay', 'grossPay',
   'epfNumber', 'socsoNumber', 'taxNumber', 'overtimeAmount', 'bonusAmount', 'tp1Deduction', 'zakat', 'amount',
+  // b4682879 — PDPA 2010 s.40 sensitive demographics: log them by field NAME, never inline the value.
+  'religion', 'race',
 ];
 
 function tsFiles(dir: string): string[] {

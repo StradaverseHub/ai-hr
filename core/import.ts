@@ -13,11 +13,12 @@
  * day-one migration wants maximum rows in, not all-or-nothing. The dry run is the gate.
  */
 import { withTenant, type SessionContext } from '../db/client';
-import { person, employeeStatutoryMy } from '../db/schema';
+import { person, employeeStatutoryMy, employment } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { hireEmployee } from './org';
 import { setCompensation } from './comp';
 import { setStatutoryProfileMY, isValidIC, normalizeIC } from '../localization/my/statutory';
+import { normalizeEmployeeCode, isValidEmployeeCode, EMPLOYEE_CODE_MAX_LEN } from '../lib/employee-code';
 import { listDepartments, listLeaveTypes } from './read';
 import { listPositions, listCostCenters } from './admin';
 import { appendEvent, actorOf } from '../db/events';
@@ -44,6 +45,7 @@ type ResolvedRow = {
     costCenterId?: string;
     employmentType: 'full_time' | 'part_time' | 'contract' | 'intern';
     hiredOn: string;
+    employeeCode: string;
     grantLeaveTypes: { id: string; code: string }[];
   };
   statutory: {
@@ -92,12 +94,16 @@ async function analyze(
 
   // Existing identifiers (tenant-scoped via RLS) so the import can't create dup ICs (DB-unique)
   // or silently re-add someone by email.
-  const { existingEmails, existingIcs } = await withTenant(ctx, async (tx) => {
+  const { existingEmails, existingIcs, existingCodes } = await withTenant(ctx, async (tx) => {
     const ppl = await tx.select({ email: person.primaryEmail }).from(person);
     const ics = await tx.select({ ic: employeeStatutoryMy.icNumber }).from(employeeStatutoryMy);
+    // Employee IDs already in use in this tenant (feedback 38668d9b) — an import must not collide with an
+    // existing staff ID. Compared on the normalized (uppercased) value, matching the uniqueness rule.
+    const codes = await tx.select({ code: employment.employeeCode }).from(employment);
     return {
       existingEmails: new Set(ppl.map((r) => r.email.toLowerCase())),
       existingIcs: new Set(ics.map((r) => normalizeIC(r.ic))),
+      existingCodes: new Set(codes.filter((r) => r.code).map((r) => normalizeEmployeeCode(r.code))),
     };
   });
 
@@ -106,6 +112,7 @@ async function analyze(
 
   const seenEmails = new Set<string>();
   const seenIcs = new Set<string>();
+  const seenCodes = new Set<string>();
   const resolved: ResolvedRow[] = [];
 
   records.forEach((rec, idx) => {
@@ -113,6 +120,17 @@ async function analyze(
     const warnings: string[] = [];
     const fullName = norm(rec.full_name);
     const email = norm(rec.email);
+
+    // Employee ID (feedback 38668d9b): HR-supplied, required, alphanumeric + dash max 9, unique in the
+    // file and across the tenant. The normalized (uppercased) value is what gets stored + hired with.
+    const codeRaw = norm(rec.employee_code);
+    const codeNorm = normalizeEmployeeCode(codeRaw);
+    if (!codeRaw) errors.push('Missing employee_code');
+    else if (!isValidEmployeeCode(codeRaw))
+      errors.push(`Invalid employee_code "${codeRaw}" (letters/numbers/dash, max ${EMPLOYEE_CODE_MAX_LEN})`);
+    else if (seenCodes.has(codeNorm)) errors.push('Duplicate employee_code in this file');
+    else if (existingCodes.has(codeNorm)) errors.push(`Employee ID "${codeNorm}" is already in use`);
+    if (codeRaw && isValidEmployeeCode(codeRaw)) seenCodes.add(codeNorm);
 
     if (!fullName) errors.push('Missing full_name');
     if (!email) errors.push('Missing email');
@@ -231,6 +249,7 @@ async function analyze(
         costCenterId,
         employmentType,
         hiredOn,
+        employeeCode: codeNorm,
         grantLeaveTypes: grants,
       },
       statutory: {

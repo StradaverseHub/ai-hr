@@ -15,7 +15,8 @@ import {
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
-import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -27,14 +28,20 @@ import {
   endReportingLineAction,
   setCompensationAction,
   setComplianceFieldsAction,
+  setContactAddressAction,
+  setEmergencyContactAction,
   setEmploymentComponentAction,
   setLocationAction,
   setPersonAction,
+  setPersonPhotoAction,
+  removePersonPhotoAction,
   setStatutoryAction,
   terminateAction,
   transferAction,
 } from './actions';
-import { currentCompensation } from '@/core/comp';
+import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
+import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
+import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS } from '@/core/dependents';
@@ -103,6 +110,8 @@ export default async function EmployeePage({
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
   const today = new Date().toISOString().slice(0, 10);
+  // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
+  const photoExists = await hasPersonPhoto(s, emp.personId);
 
   const [history, balances, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
     assignmentHistory(s, employmentId),
@@ -125,7 +134,7 @@ export default async function EmployeePage({
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
-  const comp = admin ? await currentCompensation(s, employmentId) : null;
+  const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
@@ -190,101 +199,215 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
     { key: 'payroll', label: t('tabs.payroll') },
+    { key: 'leave', label: t('tabs.leave') },
     { key: 'documents', label: t('tabs.documents') },
     { key: 'others', label: t('tabs.others') },
   ];
 
   // ── PROFILE ────────────────────────────────────────────────────────────────
-  // Personal details (name, email, phone, holiday calendar, grade) + gender/marital compliance fields.
+  // b4682879 — modular redesign: three organised cards (Personal Details, Contact & Address, Emergency
+  // Contact) plus the existing gender/marital/DOB compliance card. Each card stays its OWN <form> (panels
+  // stay mounted in the tab shell) and routes through the single writer for its trust class (updatePerson
+  // for instant fields, setPersonComplianceFields for the audited compliance fields). The core identity
+  // (fullName / primaryEmail / phone) that updatePerson always writes is passed through as hidden fields on
+  // the cards that don't visibly own it, so saving one section never wipes another's data.
   const profilePanel = admin ? (
-    <Card id="section-personal-details">
-      <SectionHeader title={t('personalDetails')} />
-          <form
-            action={setPersonAction}
-            className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4"
-          >
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <input type="hidden" name="personId" value={emp.personId} />
-            <Field label={t('fullName')}>
-              <input name="fullName" required defaultValue={emp.name} className={inputCls} />
-            </Field>
-            <Field label={t('email')}>
-              <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
-            </Field>
-            <Field label={t('phone')}>
-              <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
-            </Field>
-            <Field label={t('holidayCalendar')}>
-              <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
-                <option value="">{t('holidayCalendarDefault')}</option>
-                {holidayGroups.length > 0 && (
-                  <optgroup label={t('holidayCalendarGroupOptgroup')}>
-                    {holidayGroups.map((g) => (
-                      <option key={g.id} value={`group:${g.id}`}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label={t('holidayCalendarStateOptgroup')}>
-                  {MY_STATES.map((st) => (
-                    <option key={st} value={`state:${st}`}>
-                      {st}
+    <>
+      <Card id="section-personal-details">
+        <SectionHeader title={t('personalDetails')} />
+        <form action={setPersonAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* primaryEmail / phone are owned by the Contact card; carried through so this save keeps them. */}
+          <input type="hidden" name="primaryEmail" value={emp.email} />
+          <input type="hidden" name="phone" value={emp.phone ?? ''} />
+          <Field label={t('employeeIdLabel')}>
+            <input
+              name="employeeCode"
+              required
+              maxLength={9}
+              defaultValue={emp.employeeCode ?? ''}
+              placeholder={t('employeeIdPlaceholder')}
+              className={inputCls}
+            />
+          </Field>
+          <Field label={t('fullNameIc')}>
+            <input name="fullName" required defaultValue={emp.name} className={inputCls} />
+          </Field>
+          <Field label={t('firstName')}>
+            <input name="firstName" defaultValue={emp.firstName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('lastName')}>
+            <input name="lastName" defaultValue={emp.lastName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('preferredName')}>
+            <input name="preferredName" defaultValue={emp.preferredName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('religion')}>
+            <input name="religion" defaultValue={emp.religion ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('race')}>
+            <input name="race" defaultValue={emp.race ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('nationality')}>
+            <input name="nationality" defaultValue={emp.nationality ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('holidayCalendar')}>
+            <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
+              <option value="">{t('holidayCalendarDefault')}</option>
+              {holidayGroups.length > 0 && (
+                <optgroup label={t('holidayCalendarGroupOptgroup')}>
+                  {holidayGroups.map((g) => (
+                    <option key={g.id} value={`group:${g.id}`}>
+                      {g.name}
                     </option>
                   ))}
                 </optgroup>
-              </select>
-            </Field>
-            <Field label={t('grade')}>
-              <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
-                <option value="">{t('gradeNone')}</option>
-                {grades.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
+              )}
+              <optgroup label={t('holidayCalendarStateOptgroup')}>
+                {MY_STATES.map((st) => (
+                  <option key={st} value={`state:${st}`}>
+                    {st}
                   </option>
                 ))}
-              </select>
-            </Field>
-            <div className="sm:col-span-4 flex justify-end">
-              <button className={btnPrimary}>{t('saveDetails')}</button>
-            </div>
-          </form>
+              </optgroup>
+            </select>
+          </Field>
+          <Field label={t('grade')}>
+            <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
+              <option value="">{t('gradeNone')}</option>
+              {grades.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveDetails')}</button>
+          </div>
+        </form>
 
-          {/* Wave 2A-1 / #24: gender + marital status drive leave eligibility. Kept on their OWN
-              submit → setPersonComplianceFields (the approval-gated apply path), separate from the
-              instant-write core fields above. */}
-          <form
-            action={setComplianceFieldsAction}
-            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-          >
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('gender')}>
-              <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
-                <option value="">{t('genderNotSet')}</option>
-                <option value="male">{t('genderMale')}</option>
-                <option value="female">{t('genderFemale')}</option>
-                <option value="undisclosed">{t('genderUndisclosed')}</option>
-              </select>
-            </Field>
-            <Field label={t('maritalStatus')}>
-              <select name="maritalStatus" defaultValue={emp.marital ?? ''} className={inputCls}>
-                <option value="">{t('maritalNotSet')}</option>
-                <option value="single">{t('maritalSingle')}</option>
-                <option value="married">{t('maritalMarried')}</option>
-                <option value="other">{t('maritalOther')}</option>
-              </select>
-            </Field>
-            <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
-            <div className="sm:col-span-4 flex justify-end">
-              <button className={btnPrimary}>{t('saveComplianceFields')}</button>
-            </div>
-          </form>
-    </Card>
+        {/* Wave 2A-1 / #24 + b4682879: gender + marital status (leave eligibility) and date of birth
+            (age-band statutory). Kept on their OWN submit → setPersonComplianceFields (the audited path),
+            separate from the instant-write core fields above. */}
+        <form
+          action={setComplianceFieldsAction}
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <Field label={t('birthDate')}>
+            <input name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('gender')}>
+            <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
+              <option value="">{t('genderNotSet')}</option>
+              <option value="male">{t('genderMale')}</option>
+              <option value="female">{t('genderFemale')}</option>
+              <option value="undisclosed">{t('genderUndisclosed')}</option>
+            </select>
+          </Field>
+          <Field label={t('maritalStatus')}>
+            <select name="maritalStatus" defaultValue={emp.marital ?? ''} className={inputCls}>
+              <option value="">{t('maritalNotSet')}</option>
+              <option value="single">{t('maritalSingle')}</option>
+              <option value="married">{t('maritalMarried')}</option>
+              <option value="other">{t('maritalOther')}</option>
+            </select>
+          </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveComplianceFields')}</button>
+          </div>
+        </form>
+      </Card>
+
+      <Card id="section-contact-address">
+        <SectionHeader title={t('contactAddressTitle')} />
+        <form action={setContactAddressAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* fullName is owned by the Personal Details card; carried through so this save keeps it. */}
+          <input type="hidden" name="fullName" value={emp.name} />
+          <Field label={t('workEmail')}>
+            <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
+          </Field>
+          <Field label={t('phone')}>
+            <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+          </Field>
+          <Field label={t('personalEmail')}>
+            <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('addressLine1')}>
+            <input name="addressLine1" defaultValue={emp.addressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
+          </Field>
+          <Field label={t('addressLine2')}>
+            <input name="addressLine2" defaultValue={emp.addressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
+          </Field>
+          <Field label={t('addressLine3')}>
+            <input name="addressLine3" defaultValue={emp.addressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
+          </Field>
+          <Field label={t('postcode')}>
+            <input name="postcode" defaultValue={emp.postcode ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('city')}>
+            <input name="city" defaultValue={emp.city ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('stateLabel')}>
+            <input name="state" defaultValue={emp.state ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('country')}>
+            <input name="country" defaultValue={emp.country ?? ''} className={inputCls} />
+          </Field>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveContact')}</button>
+          </div>
+        </form>
+      </Card>
+
+      <Card id="section-emergency-contact">
+        <SectionHeader title={t('emergencyTitle')} />
+        <form action={setEmergencyContactAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* identity trio carried through (pass-through) so an emergency-contact save never wipes it. */}
+          <input type="hidden" name="fullName" value={emp.name} />
+          <input type="hidden" name="primaryEmail" value={emp.email} />
+          <input type="hidden" name="phone" value={emp.phone ?? ''} />
+          <Field label={t('emergencyName')}>
+            <input name="emergencyContactName" defaultValue={emp.emergencyContactName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('emergencyRelationship')}>
+            <input
+              name="emergencyContactRelationship"
+              defaultValue={emp.emergencyContactRelationship ?? ''}
+              className={inputCls}
+            />
+          </Field>
+          <Field label={t('emergencyPhone1')}>
+            <input name="emergencyContactPhone" defaultValue={emp.emergencyContactPhone ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('emergencyPhone2')}>
+            <input name="emergencyContactPhone2" defaultValue={emp.emergencyContactPhone2 ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('emergencyAddress')}>
+            <input
+              name="emergencyContactAddress"
+              defaultValue={emp.emergencyContactAddress ?? ''}
+              className={`${inputCls} sm:col-span-4`}
+            />
+          </Field>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveEmergency')}</button>
+          </div>
+        </form>
+      </Card>
+    </>
   ) : null;
 
   // ── PAYROLL ────────────────────────────────────────────────────────────────
@@ -805,77 +928,155 @@ export default async function EmployeePage({
     </Card>
   );
 
-  const compAndStatutoryCards = admin ? (
-    <div id="section-compensation" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <SectionHeader title={t('compensation')} />
-          <div className="p-4">
-            {comp ? (
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-2xl font-semibold tabular-nums">
-                  {comp.currency} {Number(comp.basicSalary).toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {Number(comp.monthlyAllowance) > 0
-                    ? t('compMetaWithAllowance', {
-                        allowance: Number(comp.monthlyAllowance).toLocaleString(),
-                        validFrom: comp.validFrom,
-                      })
-                    : t('compMeta', { validFrom: comp.validFrom })}
-                </span>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
+  // Basic Salary card (feedback 87c82b18 — "Compensation" renamed & rebuilt as salary history). The
+  // salary engine (effective-dated CLOSE+INSERT, payroll picks the row in effect per period) already
+  // exists in core/comp.ts; this surfaces the FULL history: summary, increment maths, status colours,
+  // remarks, and who created each record. Kept in its old Payroll slot; `section-compensation` anchor
+  // stays for fragment-URL safety. Stays a server-rendered <Card>/<form> (f2904eeb) — the only
+  // interactivity (live increment preview + confirm) is the SalaryRevisionConfirm client island.
+  const fmtMoney = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // salaryHistory is newest-first. previous = the next-older row's basic; status is derived from the dates.
+  const salaryRows = salaryHistory.map((row: CompensationHistoryRow, i: number) => {
+    const basic = Number(row.basicSalary);
+    const prevRow = salaryHistory[i + 1];
+    const previous = prevRow ? Number(prevRow.basicSalary) : null;
+    const incrementAmount = previous != null ? basic - previous : null;
+    const incrementPct =
+      incrementAmount != null && previous != null && previous > 0 ? (incrementAmount / previous) * 100 : null;
+    const isFuture = row.validFrom > today;
+    const isActive = !isFuture && (row.validTo == null || row.validTo > today);
+    const status: 'active' | 'future' | 'historical' = isFuture ? 'future' : isActive ? 'active' : 'historical';
+    // Only the OPEN row (validTo null; already non-superseded from the query) is editable — the latest
+    // active OR a future-effective record. Historical (closed) rows stay immutable (Edit flow #4).
+    const editable = !emp.terminatedOn && row.validTo == null;
+    return { row, basic, previous, incrementAmount, incrementPct, status, editable };
+  });
+  // Serialized rows for the client history table (search / filter / sort / export / edit). Salary math is
+  // derived here on the server; the island only presents + filters (f2904eeb-safe, no client fetch).
+  const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
+    id: r.row.id,
+    employmentId: emp.employmentId,
+    effectiveDate: r.row.validFrom,
+    currency: r.row.currency,
+    basic: r.basic,
+    previous: r.previous,
+    incrementAmount: r.incrementAmount,
+    incrementPct: r.incrementPct,
+    status: r.status,
+    remarks: r.row.remarks,
+    createdByName: r.row.createdByName,
+    createdOn: new Date(r.row.recordedAt).toISOString().slice(0, 10),
+    updatedByName: r.row.updatedByName,
+    updatedOn: r.row.updatedAt ? new Date(r.row.updatedAt).toISOString().slice(0, 10) : null,
+    editable: r.editable,
+  }));
+  // The summary shows the row in effect TODAY (active) — NOT the open row, which may be a future revision.
+  const activeDerived = salaryRows.find((r) => r.status === 'active') ?? null;
+  const hasFuture = salaryRows.some((r) => r.status === 'future');
+  const compensationCard = admin ? (
+    <Card id="section-compensation">
+      <SectionHeader title={t('compensation')} />
+      {/* Summary strip — current active basic, effective-since, latest increment, future chip. */}
+      <div className="border-b border-border p-4">
+        {activeDerived ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums">
+                {activeDerived.row.currency} {fmtMoney(activeDerived.basic)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t('compMeta', { validFrom: activeDerived.row.validFrom })}
+              </span>
+            </div>
+            {activeDerived.incrementAmount != null && activeDerived.incrementAmount !== 0 && (
+              <span
+                className={`text-xs font-medium ${
+                  activeDerived.incrementAmount > 0
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-red-700 dark:text-red-400'
+                }`}
+              >
+                {t('salaryLatestIncrement', {
+                  amount: `${activeDerived.row.currency} ${fmtMoney(activeDerived.incrementAmount)}`,
+                  pct: activeDerived.incrementPct != null ? activeDerived.incrementPct.toFixed(2) : '—',
+                })}
+              </span>
             )}
+            {hasFuture && <Badge variant="warning">{t('salaryFutureChip')}</Badge>}
           </div>
-          {!emp.terminatedOn && (
-            <form
-              action={setCompensationAction}
-              className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3"
-            >
-              <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label={t('effectiveDate')}>
-                <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
-              </Field>
-              <Field label={t('basicSalaryMyr')}>
-                <input
-                  name="basicSalary"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  defaultValue={comp ? Number(comp.basicSalary) : ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('allowance')}>
-                <input
-                  name="monthlyAllowance"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={comp ? Number(comp.monthlyAllowance) : 0}
-                  className={inputCls}
-                />
-              </Field>
-              <button className={btnPrimary}>{t('updatePay')}</button>
-            </form>
-          )}
-        </Card>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
+        )}
+      </div>
 
-        <Card>
-          <SectionHeader title={t('statutoryMalaysia')} />
-          <form action={setStatutoryAction} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <input type="hidden" name="personId" value={emp.personId} />
+      {/* History table — every revision, with search / status filter / column sort / CSV export, plus an
+          inline edit affordance on the latest (open) record. Interactive client island (f2904eeb-safe). */}
+      {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
+
+      {/* Add salary revision — the initial record defaults its effective date to the join date. Allowance
+          is no longer maintained here (moved to Pay Components); the action carries it forward. */}
+      {!emp.terminatedOn && (
+        <form
+          action={setCompensationAction}
+          className="space-y-3 border-t border-border p-4"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('effectiveDate')}>
+              <input
+                name="effectiveFrom"
+                type="date"
+                required
+                defaultValue={salaryRows.length ? today : emp.hiredOn}
+                className={inputCls}
+              />
+              {salaryRows.length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
+              )}
+            </Field>
+            <Field label={t('basicSalaryMyr')}>
+              <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
+            </Field>
+            <Field label={t('salaryColRemarks')}>
+              <input
+                name="remarks"
+                type="text"
+                placeholder={t('salaryRemarksPlaceholder')}
+                className={inputCls}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
+          <SalaryRevisionConfirm
+            currentBasic={activeDerived ? activeDerived.basic : null}
+            currency={activeDerived ? activeDerived.row.currency : 'MYR'}
+          />
+        </form>
+      )}
+    </Card>
+  ) : null;
+
+  // Statutory (Malaysia) card — relocated to the TOP of the Payroll tab and redesigned as a full-width
+  // card (feedback 7524eda1). The layout is regrouped into clearly-labelled sections for readability
+  // and future headroom. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
+  // action is a full-row overwrite, so every named input MUST stay mounted at all times (no accordions /
+  // conditional unmounting) or an absent field silently wipes stored data. No server logic changed.
+  const statutoryCard = admin ? (
+    <Card>
+      <SectionHeader title={t('statutoryMalaysia')} />
+      <form action={setStatutoryAction} className="flex flex-col gap-6 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+
+        {/* Group 1 — Identification & tax */}
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('statutoryGroupIdentity')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label={t('icNumber')}>
               <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
-            </Field>
-            <Field label={t('epfNumber')}>
-              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('socsoNumber')}>
-              <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
             </Field>
             <Field label={t('taxNumber')}>
               <input name="taxNumber" defaultValue={statutory?.taxNumber ?? ''} className={inputCls} />
@@ -897,26 +1098,24 @@ export default async function EmployeePage({
                 className={inputCls}
               />
             </Field>
-            <Field label={t('bank')}>
-              <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('bankAccount')}>
-              <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
-            </Field>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
-              {t('eisEligible')}
-            </label>
-            <label className="flex items-center gap-2 text-sm" title={t('taxResidentHint')}>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm" title={t('taxResidentHint')}>
               <input type="checkbox" name="isResident" defaultChecked={statutory ? statutory.isResident : true} className="size-4 rounded" />
               {t('taxResident')}
             </label>
-            <div className="sm:col-span-2 border-t border-border pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t('epfContribTitle')}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{t('epfElectionHint')}</p>
-            </div>
+          </div>
+        </fieldset>
+
+        {/* Group 2 — EPF. Kept at sm:grid-cols-2 because <EpfElection> renders an internal sm:col-span-2
+            rate row; leaving that island's grid assumptions untouched is the safe play. */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('epfContribTitle')}
+          </legend>
+          <p className="text-xs text-muted-foreground">{t('epfElectionHint')}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('epfNumber')}>
+              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
+            </Field>
             <Field label={t('epfCitizenship')}>
               <select name="epfCitizenship" defaultValue={statutory?.epfCitizenship ?? 'citizen'} className={inputCls}>
                 <option value="citizen">{t('epfCitizenshipCitizen')}</option>
@@ -930,14 +1129,47 @@ export default async function EmployeePage({
               employeeRate={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : null}
               employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
             />
-            <div className="sm:col-span-2 border-t border-border pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t('tp3SectionTitle')}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t('tp3SectionDescription')}
-              </p>
-            </div>
+          </div>
+        </fieldset>
+
+        {/* Group 3 — SOCSO & EIS */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('statutoryGroupSocsoEis')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label={t('socsoNumber')}>
+              <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
+            </Field>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm">
+              <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
+              {t('eisEligible')}
+            </label>
+          </div>
+        </fieldset>
+
+        {/* Group 4 — Salary payment (bank) */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('statutoryGroupBank')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label={t('bank')}>
+              <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('bankAccount')}>
+              <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
+            </Field>
+          </div>
+        </fieldset>
+
+        {/* Group 5 — Previous employment / TP3 (opening balances) */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('tp3SectionTitle')}
+          </legend>
+          <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label={t('appliesToYear')}>
               <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
             </Field>
@@ -950,26 +1182,27 @@ export default async function EmployeePage({
             <Field label={t('tp3PcbPaid')}>
               <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
             </Field>
+          </div>
+        </fieldset>
 
-            {/* Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260 — Module
-                Separation Rule): Personnel no longer edits it. The pointer below keeps admins oriented;
-                setStatutoryAction passes the current election through unchanged so this form can't wipe it. */}
-            <p className="sm:col-span-2 border-t border-border pt-3 text-xs text-muted-foreground">
-              {t('zakatMoved')}{' '}
-              <Link
-                href="/payroll/transactions/zakat"
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                {t('zakatMovedLink')}
-              </Link>
-            </p>
+        {/* Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260 — Module
+            Separation Rule): Personnel no longer edits it. The pointer below keeps admins oriented;
+            setStatutoryAction passes the current election through unchanged so this form can't wipe it. */}
+        <p className="border-t border-border pt-4 text-xs text-muted-foreground">
+          {t('zakatMoved')}{' '}
+          <Link
+            href="/payroll/transactions/zakat"
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('zakatMovedLink')}
+          </Link>
+        </p>
 
-            <div className="flex items-end justify-end sm:col-span-2">
-              <button className={btnPrimary}>{t('saveStatutory')}</button>
-            </div>
-          </form>
-        </Card>
-    </div>
+        <div className="flex items-end justify-end">
+          <button className={btnPrimary}>{t('saveStatutory')}</button>
+        </div>
+      </form>
+    </Card>
   ) : null;
 
   // ── DOCUMENTS ──────────────────────────────────────────────────────────────
@@ -1351,16 +1584,22 @@ export default async function EmployeePage({
         {transferTerminateCards}
       </>
     ),
+    // Statutory (Malaysia) pinned to the TOP of the Payroll tab (feedback 7524eda1); Compensation keeps
+    // its old slot at the bottom. Every other card retains its relative order.
     payroll: (
       <>
+        {statutoryCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
         {payrollPolicyCard}
-        {leaveBalanceCard}
-        {compAndStatutoryCards}
+        {compensationCard}
       </>
     ),
+    // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
+    // breakdown drill-down — relocated out of Payroll into a dedicated leave-management tab. Same
+    // card, same data (loaded once for the page), just a different tab; no leave/payroll logic moved.
+    leave: leaveBalanceCard,
     documents: documentsPanel,
     others: (
       <>
@@ -1386,6 +1625,87 @@ export default async function EmployeePage({
         })}
         actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
       />
+
+      {/* b4682879 — modern profile header: photo (or initials fallback) + key employment info. Admin-only
+          upload / replace / remove controls sit under the photo. The photo renders wherever can_see_person
+          allows (RLS on the serve route). */}
+      <Card className="p-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="flex flex-col items-center gap-3">
+            {photoExists ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/personnel/photo/${emp.personId}`}
+                alt={emp.name}
+                className="size-24 shrink-0 rounded-full object-cover ring-1 ring-border"
+              />
+            ) : (
+              <Avatar name={emp.name} className="size-24 text-2xl" />
+            )}
+            {admin && (
+              <div className="flex flex-col items-center gap-1.5">
+                <form action={setPersonPhotoAction} className="flex flex-col items-center gap-1">
+                  <input type="hidden" name="employmentId" value={emp.employmentId} />
+                  <input type="hidden" name="personId" value={emp.personId} />
+                  <input
+                    type="file"
+                    name="photo"
+                    accept="image/png,image/jpeg"
+                    required
+                    className="w-40 text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
+                  />
+                  <button className={`${btnPrimary} h-7 px-2 text-xs`}>
+                    {photoExists ? t('photoReplace') : t('photoUpload')}
+                  </button>
+                </form>
+                {photoExists && (
+                  <form action={removePersonPhotoAction}>
+                    <input type="hidden" name="employmentId" value={emp.employmentId} />
+                    <input type="hidden" name="personId" value={emp.personId} />
+                    <ConfirmSubmit
+                      title={t('photoRemove')}
+                      description={t('photoRemoveConfirm')}
+                      confirmLabel={t('photoRemove')}
+                      size="sm"
+                    >
+                      {t('photoRemove')}
+                    </ConfirmSubmit>
+                  </form>
+                )}
+                <p className="text-center text-[11px] text-muted-foreground">{t('photoHint')}</p>
+              </div>
+            )}
+          </div>
+          <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('employeeIdLabel')}</dt>
+              <dd className="font-medium text-foreground">{emp.employeeCode ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerStatus')}</dt>
+              <dd>
+                <StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerDepartment')}</dt>
+              <dd className="font-medium text-foreground">{current?.department ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerPosition')}</dt>
+              <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerCompany')}</dt>
+              <dd className="font-medium text-foreground">{emp.company}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerJoinDate')}</dt>
+              <dd className="font-medium text-foreground">{emp.hiredOn}</dd>
+            </div>
+          </dl>
+        </div>
+      </Card>
 
       <ErrorBanner message={error} />
 

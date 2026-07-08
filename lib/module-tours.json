@@ -264,7 +264,7 @@
         "route": "/admin/personnel",
         "titleKey": "tour.people.hire.title",
         "bodyKey": "tour.people.hire.body",
-        "placement": "top"
+        "placement": "bottom"
       },
       {
         "id": "orgTree",

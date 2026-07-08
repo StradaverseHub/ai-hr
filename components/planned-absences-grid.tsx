@@ -5,6 +5,7 @@ import { CheckCircle2, ChevronDown, Clock, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
+import { EmployeeName } from '@/components/ui';
 
 const MS_DAY = 86_400_000;
 const ms = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
@@ -46,7 +47,7 @@ export type GridLeave = {
    *  underlying leave request — seeded into the reused CancelDatesDialog checkboxes. */
   candidateCancelDates?: string[];
 };
-export type GridRow = { id: string; name: string; role: string | null; leaves: GridLeave[] };
+export type GridRow = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
 
 /** Default number of employee rows shown before the "show all" affordance kicks in. */
@@ -132,7 +133,8 @@ export function PlannedAbsencesGrid({
                   {initials(emp.name)}
                 </span>
                 <div className="min-w-0">
-                  <div className="truncate text-[13px] font-medium leading-tight">{emp.name}</div>
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  <EmployeeName code={emp.employeeCode} name={emp.name} className="truncate text-[13px] font-medium leading-tight" />
                   {emp.role && <div className="truncate text-xs text-muted-foreground">{emp.role}</div>}
                 </div>
               </div>

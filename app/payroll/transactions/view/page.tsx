@@ -8,7 +8,8 @@ import {
   listIndividualTxnsAcross,
   listProcessedPayslipsAcross,
 } from '@/core/payroll-view';
-import { Badge, Button, Card, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { employeeLabel } from '@/lib/employee-code';
 import { PayrollTabs } from '@/components/payroll-tabs';
 
 /**
@@ -116,8 +117,8 @@ export default async function TransactionViewPage({
         <option value="">{t('view.filters.all')}</option>
         {employees.map((e) => (
           <option key={e.employmentId} value={e.employmentId}>
-            {e.name}
-            {e.employeeCode ? ` (${e.employeeCode})` : ''} · {e.company}
+            {/* Employee ID left-of-name (feedback 38668d9b) */}
+            {employeeLabel(e.employeeCode, e.name)} · {e.company}
           </option>
         ))}
       </select>
@@ -247,10 +248,8 @@ export default async function TransactionViewPage({
                   return (
                     <tr key={r.id}>
                       <td className="px-4 py-2.5 font-medium">
-                        {r.employeeName}
-                        {r.employeeCode && (
-                          <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>
-                        )}
+                        {/* Employee ID left-of-name (feedback 38668d9b) */}
+                        <EmployeeName code={r.employeeCode} name={r.employeeName} />
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
                       <td className="px-4 py-2.5">
@@ -383,10 +382,8 @@ export default async function TransactionViewPage({
                         {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
                       </td>
                       <td className="px-4 py-2.5 font-medium">
-                        {r.employeeName}
-                        {r.employeeCode && (
-                          <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>
-                        )}
+                        {/* Employee ID left-of-name (feedback 38668d9b) */}
+                        <EmployeeName code={r.employeeCode} name={r.employeeName} />
                       </td>
                       <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
                       <td className="px-4 py-2.5 text-right tabular-nums">{rm(r.gross)}</td>

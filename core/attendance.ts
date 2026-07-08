@@ -784,6 +784,7 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         companyId: employment.companyId,
         attendanceId: attendance.id,
         checkInAt: attendance.checkInAt,
@@ -870,6 +871,7 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
 export type MonthSummaryRow = {
   employmentId: string;
   name: string;
+  employeeCode: string | null;
   present: number;
   late: number;
   halfDay: number;
@@ -904,6 +906,7 @@ export function attendanceMonthSummary(
       .select({
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         companyId: employment.companyId,
         hiredOn: employment.hiredOn,
       })
@@ -1033,6 +1036,7 @@ export function attendanceMonthSummary(
       return {
         employmentId: e.employmentId,
         name: e.name,
+        employeeCode: e.employeeCode,
         present,
         late,
         halfDay,

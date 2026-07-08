@@ -658,6 +658,7 @@ export function plannedAbsences(
         personId: employment.personId,
         employmentId: employment.id,
         name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         role: position.title,
         company: company.legalName,
       })
@@ -826,15 +827,17 @@ export function plannedAbsences(
       else byEmp.set(l.employmentId, [l]);
     }
     // One row per person — concurrent employments merge their leave onto a single row.
-    const byPerson = new Map<string, { id: string; name: string; role: string | null; leaves: Leave[] }>();
+    const byPerson = new Map<string, { id: string; name: string; employeeCode: string | null; role: string | null; leaves: Leave[] }>();
     for (const e of emps) {
       const empLeaves = byEmp.get(e.employmentId) ?? [];
       const existing = byPerson.get(e.personId);
       if (existing) {
         existing.leaves.push(...empLeaves);
         if (!existing.role && e.role) existing.role = e.role;
+        // First non-null Employee ID wins for a person spanning concurrent employments (feedback 38668d9b).
+        if (!existing.employeeCode && e.employeeCode) existing.employeeCode = e.employeeCode;
       } else {
-        byPerson.set(e.personId, { id: e.personId, name: e.name, role: e.role, leaves: empLeaves });
+        byPerson.set(e.personId, { id: e.personId, name: e.name, employeeCode: e.employeeCode, role: e.role, leaves: empLeaves });
       }
     }
     return [...byPerson.values()];
@@ -916,6 +919,27 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         // (gender gates maternity, marital gates paternity). HR-set via the approval-gated path.
         gender: person.gender,
         marital: person.maritalStatus,
+        dateOfBirth: person.dateOfBirth,
+        // b4682879 — Personnel Profile redesign: personal / contact / structured-address / emergency fields.
+        firstName: person.firstName,
+        lastName: person.lastName,
+        preferredName: person.preferredName,
+        religion: person.religion,
+        race: person.race,
+        nationality: person.nationality,
+        personalEmail: person.personalEmail,
+        addressLine1: person.addressLine1,
+        addressLine2: person.addressLine2,
+        addressLine3: person.addressLine3,
+        postcode: person.postcode,
+        city: person.city,
+        state: person.state,
+        country: person.country,
+        emergencyContactName: person.emergencyContactName,
+        emergencyContactRelationship: person.emergencyContactRelationship,
+        emergencyContactPhone: person.emergencyContactPhone,
+        emergencyContactPhone2: person.emergencyContactPhone2,
+        emergencyContactAddress: person.emergencyContactAddress,
         // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
         payrollPolicyId: employment.payrollPolicyId,
         payrollPolicyName: payrollPolicy.name,
