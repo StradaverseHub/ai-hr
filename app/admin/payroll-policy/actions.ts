@@ -82,6 +82,23 @@ function prorationFromForm(fd: FormData, prefix: string): Record<string, unknown
  *   • leave (Step 5): the three divisors + custom day/hour/minute values
  *   • rounding: earnings / deductions / net-pay modes
  */
+/**
+ * c7fdfcf6 gap-fix — build ONE per-frequency cut-off override block (anchorDay + the four per-type days) from
+ * the form fields prefixed `cutOffFreq_${freq}_*`. cleanPayrollPolicyConfig clamps every value and drops a block
+ * that collapses to the base window, so a frequency left blank is a safe no-op (inherits the base cut-off).
+ */
+function freqAnchorsFromForm(fd: FormData, freq: 'weekly' | 'biweekly'): Record<string, unknown> {
+  return {
+    anchorDay: numOrUndef(fd, `cutOffFreq_${freq}_anchorDay`),
+    perType: {
+      claim: numOrUndef(fd, `cutOffFreq_${freq}_claim`),
+      overtime: numOrUndef(fd, `cutOffFreq_${freq}_overtime`),
+      leave: numOrUndef(fd, `cutOffFreq_${freq}_leave`),
+      attendance: numOrUndef(fd, `cutOffFreq_${freq}_attendance`),
+    },
+  };
+}
+
 function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
   const eligibleDayTypes = (['workday', 'rest_day', 'holiday'] as const).filter((d) => checked(fd, `otDay_${d}`));
   const exceedAction = String(fd.get('otExceedAction') ?? 'cap');
@@ -142,6 +159,12 @@ function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
               overtime: numOrUndef(fd, 'cutOff_overtime'),
               leave: numOrUndef(fd, 'cutOff_leave'),
               attendance: numOrUndef(fd, 'cutOff_attendance'),
+            },
+            // c7fdfcf6 gap-fix — per-frequency cut-off overrides (Weekly / Bi-Weekly). Each carries its own
+            // anchor day + per-type overrides; cleanPayrollPolicyConfig drops a block that equals the base.
+            perFrequency: {
+              weekly: freqAnchorsFromForm(fd, 'weekly'),
+              biweekly: freqAnchorsFromForm(fd, 'biweekly'),
             },
           },
         }

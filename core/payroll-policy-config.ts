@@ -16,7 +16,9 @@
  * statutory and are NOT user-configurable.
  */
 import type {
+  CutOffAnchors,
   CutOffMode,
+  CutOffPerType,
   CutOffType,
   LeaveDivisor,
   NegativeNetMode,
@@ -118,6 +120,39 @@ function cleanProrationSettings(raw: unknown): ProrationSettings | null {
   return Object.keys(out).length ? out : null;
 }
 
+/**
+ * c7fdfcf6 — coerce + clamp the four per-type cut-off anchors (claim/overtime/leave/attendance) against a base
+ * anchor: each is a 1..28 integer, and a value equal to `baseAnchor` is dropped (it would resolve to the same
+ * window). Returns undefined when none survive, so an uncustomised block stays lean.
+ */
+function cleanCutOffPerType(raw: unknown, baseAnchor: number): CutOffPerType | undefined {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const perType: CutOffPerType = {};
+  for (const type of CUT_OFF_PER_TYPES) {
+    const d = cleanPosInt(r[type], CUT_OFF_ANCHOR_MIN, CUT_OFF_ANCHOR_MAX);
+    if (d !== undefined && d !== baseAnchor) perType[type] = d;
+  }
+  return Object.keys(perType).length ? perType : undefined;
+}
+
+/**
+ * c7fdfcf6 gap-fix — coerce + clamp ONE per-frequency cut-off override block (anchorDay + perType). Its own
+ * anchorDay (1..28), when present AND different from the base policy anchor, replaces the base window for this
+ * frequency; its perType overrides are cleaned against whichever anchor is effective. Returns undefined when the
+ * block collapses to "same as base" (so a no-op frequency block never bloats the row).
+ */
+function cleanCutOffAnchors(raw: unknown, baseAnchor: number): CutOffAnchors | undefined {
+  if (raw == null || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const anchorDay = cleanPosInt(r.anchorDay, CUT_OFF_ANCHOR_MIN, CUT_OFF_ANCHOR_MAX);
+  const effectiveAnchor = anchorDay ?? baseAnchor;
+  const perType = cleanCutOffPerType(r.perType, effectiveAnchor);
+  const out: CutOffAnchors = {};
+  if (anchorDay !== undefined && anchorDay !== baseAnchor) out.anchorDay = anchorDay;
+  if (perType) out.perType = perType;
+  return Object.keys(out).length ? out : undefined;
+}
+
 const cleanDayTypes = (v: unknown): OtDayType[] | undefined => {
   if (!Array.isArray(v)) return undefined;
   const out = [...new Set(v.filter((x): x is OtDayType => OT_DAY_TYPES.includes(x as OtDayType)))];
@@ -214,13 +249,17 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
       // c7fdfcf6 — per-type anchor overrides (claim/overtime/leave/attendance). Each 1..28; a type equal to the
       // base anchorDay is dropped (it would resolve to the same window ⇒ no need to persist). Only carried when
       // at least one survives, so a policy that customises only the base window stays lean.
-      const perTypeRaw = (coRaw.perType ?? {}) as Record<string, unknown>;
-      const perType: NonNullable<NonNullable<PayrollPolicyConfig['cutOff']>['perType']> = {};
-      for (const type of CUT_OFF_PER_TYPES) {
-        const d = cleanPosInt(perTypeRaw[type], CUT_OFF_ANCHOR_MIN, CUT_OFF_ANCHOR_MAX);
-        if (d !== undefined && d !== anchorDay) perType[type] = d;
-      }
-      if (Object.keys(perType).length) cutOff.perType = perType;
+      const perType = cleanCutOffPerType(coRaw.perType, anchorDay);
+      if (perType) cutOff.perType = perType;
+      // c7fdfcf6 gap-fix — PER-FREQUENCY overrides (weekly/biweekly). Each carries its own anchorDay + perType,
+      // cleaned against the base anchor; a block that collapses to "same as base" is dropped.
+      const pfRaw = (coRaw.perFrequency ?? {}) as Record<string, unknown>;
+      const perFrequency: NonNullable<NonNullable<PayrollPolicyConfig['cutOff']>['perFrequency']> = {};
+      const weekly = cleanCutOffAnchors(pfRaw.weekly, anchorDay);
+      const biweekly = cleanCutOffAnchors(pfRaw.biweekly, anchorDay);
+      if (weekly) perFrequency.weekly = weekly;
+      if (biweekly) perFrequency.biweekly = biweekly;
+      if (Object.keys(perFrequency).length) cutOff.perFrequency = perFrequency;
       out.cutOff = cutOff;
     }
   }
@@ -565,11 +604,15 @@ function companyAnchorFor(type: CutOffType, companyCfg: CompanyCutOffConfig | nu
 }
 
 /**
- * Resolve the cut-off WINDOW for a transaction type in a 'YYYY-MM' statutory month, via the resolution chain:
- *   1. policy `cutOff.perType[type]` (claim/overtime/leave/attendance; 'salary' has none)   — when mode='custom'
- *   2. policy `cutOff.anchorDay` (the salary/base window)                                     — when mode='custom'
- *   3. company `*_cut_off_day` column for the type (the company-level default schedule)
- *   4. calendar month `[M-01 … M-end]`                                                        — legacy default
+ * Resolve the cut-off WINDOW for a transaction type in a 'YYYY-MM' statutory month. The chain is FREQUENCY-AWARE
+ * (c7fdfcf6 gap-fix): when the config's `frequency` is weekly/biweekly and that frequency has its own override
+ * block, its anchors take precedence — so each payroll frequency resolves its OWN cut-off periods.
+ *   1. policy `cutOff.perFrequency[freq].perType[type]`  (weekly/biweekly, non-salary)        — when mode='custom'
+ *   2. policy `cutOff.perFrequency[freq].anchorDay`      (that frequency's base/salary window) — when mode='custom'
+ *   3. policy `cutOff.perType[type]`                     (base per-type override)              — when mode='custom'
+ *   4. policy `cutOff.anchorDay`                         (base salary window)                  — when mode='custom'
+ *   5. company `*_cut_off_day` column for the type       (the company-level default schedule)
+ *   6. calendar month `[M-01 … M-end]`                   (legacy default)
  * With NOTHING configured at any tier this returns the exact calendar month, so the kernel path that swaps its
  * hard-coded `[M-01 … M-end]` for this resolver is byte-identical for an unconfigured company/policy. NEVER throws.
  */
@@ -581,8 +624,13 @@ export function cutOffWindowFor(
 ): { start: string; end: string } {
   const co = config?.cutOff;
   if (co?.mode === 'custom' && typeof co.anchorDay === 'number') {
+    const freq = payrollFrequencyOf(config);
+    const fBlock = freq !== 'monthly' ? co.perFrequency?.[freq] : undefined;
+    const baseAnchor = fBlock?.anchorDay ?? co.anchorDay;
     const anchor =
-      type === 'salary' ? co.anchorDay : co.perType?.[type] ?? co.anchorDay;
+      type === 'salary'
+        ? baseAnchor
+        : fBlock?.perType?.[type] ?? co.perType?.[type] ?? baseAnchor;
     return anchorWindowFor(payPeriod, anchor);
   }
   const companyAnchor = companyAnchorFor(type, companyCfg);
@@ -590,6 +638,51 @@ export function cutOffWindowFor(
     return anchorWindowFor(payPeriod, companyAnchor);
   }
   return calendarWindowFor(payPeriod);
+}
+
+// c7fdfcf6 gap-fix — one operational cut-off cycle inside a statutory month. `seq` is 1-based and orders the
+// cycles a weekly/biweekly frequency tiles the month into (monthly ⇒ a single cycle spanning the whole window).
+export type CutOffPeriod = { seq: number; start: string; end: string };
+export type PayrollSchedule = { frequency: PayrollFrequency; periods: CutOffPeriod[] };
+
+const DAY_MS = 86_400_000;
+const isoFromMs = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+/**
+ * c7fdfcf6 gap-fix — GENERATE the ordered cut-off periods a schedule produces for a 'YYYY-MM' statutory month,
+ * driven by its payroll FREQUENCY. This is the concrete "weekly / bi-weekly run generation": the frequency
+ * determines HOW MANY cut-off cycles the month is split into and their From/To boundaries.
+ *   - monthly  ⇒ ONE period spanning the resolved salary cut-off window (byte-identical to today).
+ *   - weekly   ⇒ contiguous 7-day cycles tiling the salary window (last cycle may be short).
+ *   - biweekly ⇒ contiguous 14-day cycles tiling the salary window.
+ * The cycles TILE the window with NO gaps or overlaps by construction, so their union is exactly the monthly
+ * window — the statutory month the wages contribute to is unchanged (EPF/SOCSO/EIS/PCB stay calendar-bound by
+ * law). Pure + deterministic (UTC-day anchored). NEVER throws.
+ */
+export function payrollScheduleFor(
+  config: PayrollPolicyConfig | null,
+  companyCfg: CompanyCutOffConfig | null,
+  payPeriod: string,
+): PayrollSchedule {
+  const frequency = payrollFrequencyOf(config);
+  // The base operational window the frequency tiles = the SALARY cut-off window (frequency-aware already).
+  const base = cutOffWindowFor('salary', config, companyCfg, payPeriod);
+  if (frequency === 'monthly') {
+    return { frequency, periods: [{ seq: 1, start: base.start, end: base.end }] };
+  }
+  const step = frequency === 'weekly' ? 7 : 14;
+  const startMs = Date.parse(`${base.start}T00:00:00Z`);
+  const endMs = Date.parse(`${base.end}T00:00:00Z`);
+  const periods: CutOffPeriod[] = [];
+  let seq = 1;
+  for (let cur = startMs; cur <= endMs; cur += step * DAY_MS) {
+    const cycleEnd = Math.min(cur + (step - 1) * DAY_MS, endMs);
+    periods.push({ seq, start: isoFromMs(cur), end: isoFromMs(cycleEnd) });
+    seq += 1;
+  }
+  // Defensive: a degenerate window (start>end) still yields at least one cycle.
+  if (periods.length === 0) periods.push({ seq: 1, start: base.start, end: base.end });
+  return { frequency, periods };
 }
 
 /** True when the resolved window differs from the plain calendar month — i.e. a real cut-off is in force for

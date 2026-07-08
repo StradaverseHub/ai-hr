@@ -3772,7 +3772,12 @@
       "previewType": "Type",
       "previewFrom": "From",
       "previewTo": "To",
-      "previewHint": "The dates each transaction type will be picked up for the current month, derived from the saved cut-off configuration. Consecutive periods are contiguous and never overlap."
+      "previewHint": "The dates each transaction type will be picked up for the current month, derived from the saved cut-off configuration. Consecutive periods are contiguous and never overlap.",
+      "perFrequencyTitle": "Per-frequency cut-off overrides",
+      "perFrequencyHint": "When the payroll frequency is Weekly or Bi-Weekly, that frequency can use its own anchor day and per-type cut-off days. Leave blank to inherit the Monthly (base) cut-off above. Only used when the period mode is \"Custom period\".",
+      "scheduleTitle": "{frequency} schedule for {period}",
+      "scheduleCycle": "Cycle",
+      "scheduleHint": "The cut-off cycles this payroll frequency generates for the month. Weekly and bi-weekly split the month into contiguous cycles; statutory contributions are still aggregated per calendar month by law."
     },
     "copy": "Copy",
     "copySuffix": "(copy)",

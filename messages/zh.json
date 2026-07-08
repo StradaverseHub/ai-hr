@@ -3772,7 +3772,12 @@
       "previewType": "类型",
       "previewFrom": "起始",
       "previewTo": "结束",
-      "previewHint": "根据已保存的截止配置，各交易类型在当前月份将被纳入的日期。连续周期相互衔接且从不重叠。"
+      "previewHint": "根据已保存的截止配置，各交易类型在当前月份将被纳入的日期。连续周期相互衔接且从不重叠。",
+      "perFrequencyTitle": "按发薪频率的截止日覆盖",
+      "perFrequencyHint": "当发薪频率为每周或双周时，该频率可使用自己的锚定日和各类型截止日。留空则沿用上方的每月（基准）截止日。仅在周期模式为“自定义周期”时使用。",
+      "scheduleTitle": "{period} 的{frequency}排程",
+      "scheduleCycle": "周期",
+      "scheduleHint": "此发薪频率为该月生成的截止周期。每周和双周将该月划分为连续的周期；法定缴款仍依法按日历月汇总。"
     },
     "copy": "复制",
     "copySuffix": "（副本）",

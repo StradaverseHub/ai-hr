@@ -3772,7 +3772,12 @@
       "previewType": "Loại",
       "previewFrom": "Từ",
       "previewTo": "Đến",
-      "previewHint": "Các ngày mỗi loại giao dịch sẽ được lấy cho tháng hiện tại, dẫn xuất từ cấu hình ngày chốt đã lưu. Các kỳ liên tiếp nối tiếp nhau và không bao giờ chồng lấp."
+      "previewHint": "Các ngày mỗi loại giao dịch sẽ được lấy cho tháng hiện tại, dẫn xuất từ cấu hình ngày chốt đã lưu. Các kỳ liên tiếp nối tiếp nhau và không bao giờ chồng lấp.",
+      "perFrequencyTitle": "Ghi đè kỳ chốt theo tần suất",
+      "perFrequencyHint": "Khi tần suất trả lương là Hàng tuần hoặc Hai tuần một lần, tần suất đó có thể dùng ngày neo và ngày chốt theo từng loại riêng. Để trống để kế thừa kỳ chốt Hàng tháng (cơ sở) ở trên. Chỉ dùng khi chế độ kỳ là \"Kỳ tùy chỉnh\".",
+      "scheduleTitle": "Lịch {frequency} cho {period}",
+      "scheduleCycle": "Chu kỳ",
+      "scheduleHint": "Các chu kỳ chốt mà tần suất trả lương này tạo ra cho tháng. Hàng tuần và hai tuần một lần chia tháng thành các chu kỳ liền kề; các khoản đóng góp theo luật vẫn được tổng hợp theo tháng dương lịch theo quy định của pháp luật."
     },
     "copy": "Sao chép",
     "copySuffix": "(bản sao)",

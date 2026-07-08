@@ -1079,6 +1079,14 @@ export type CutOffType = 'salary' | 'claim' | 'overtime' | 'leave' | 'attendance
 // per calendar month BY LAW — LHDN MTD, PERKESO Act 4 s.6, monthly EPF returns), so the frequency changes the
 // operational cut-off cadence + which transactions fall in each cycle, never the statutory month they contribute in.
 export type PayrollFrequency = 'monthly' | 'weekly' | 'biweekly';
+// c7fdfcf6 (Payroll Schedule) — the four per-type cut-off anchor days (each 1..28; 'salary' has none, it uses
+// the base/frequency anchorDay). Absent ⇒ inherit the base anchor. Reused by both the base cutOff.perType and
+// the per-frequency override blocks (cutOff.perFrequency.{weekly,biweekly}.perType).
+export type CutOffPerType = { claim?: number; overtime?: number; leave?: number; attendance?: number };
+// c7fdfcf6 gap-fix — one frequency's cut-off anchors: the base (salary) anchor day + optional per-type
+// overrides. When the schedule's frequency is weekly/biweekly, that frequency's block (if present) takes
+// precedence over the base cutOff anchors, so each payroll frequency carries its OWN cut-off periods.
+export type CutOffAnchors = { anchorDay?: number; perType?: CutOffPerType };
 // f3148da1 Step 3 — one basic-salary proration formula: the divisor + optional working-day basis. Shared as
 // the default (`proration`) and overridable per employee event (`prorationHire`/`prorationResign`).
 export type ProrationSettings = {
@@ -1141,17 +1149,22 @@ export type PayrollPolicyConfig = {
     // mode='calendar'/absent ⇒ NONE apply (calendar month, byte-identical). 'salary' has no perType key — it
     // always uses the base `anchorDay`. These finally give the five company_payroll_config.*_cut_off_day columns
     // a policy-level counterpart in the resolution chain (policy perType → policy anchorDay → company column → calendar).
-    perType?: {
-      claim?: number;
-      overtime?: number;
-      leave?: number;
-      attendance?: number;
+    perType?: CutOffPerType;
+    // c7fdfcf6 gap-fix — PER-FREQUENCY cut-off overrides. When the schedule's `frequency` (below) is 'weekly'
+    // or 'biweekly', that frequency's block (anchorDay + perType) takes precedence over the base anchors above,
+    // so distinct cut-off windows can be configured independently for Weekly vs Bi-Weekly vs Monthly (the base
+    // anchors are the Monthly window). Absent ⇒ the frequency inherits the base window. Only applied when
+    // mode='custom' (a calendar mode stays byte-identical regardless of frequency).
+    perFrequency?: {
+      weekly?: CutOffAnchors;
+      biweekly?: CutOffAnchors;
     };
   };
-  // c7fdfcf6 (Payroll Schedule) — payroll FREQUENCY. Absent/'monthly' ⇒ today's monthly run. 'weekly'/'biweekly'
-  // record the OPERATIONAL cadence on the schedule; statutory contributions stay calendar-month-aggregated by law
-  // (see PayrollFrequency). Stored + surfaced + validated here; a weekly RUN engine (child runs summed to the
-  // statutory month) is a separately-gated follow-up — the frequency selector is the schedule's source of truth.
+  // c7fdfcf6 (Payroll Schedule) — payroll FREQUENCY. Absent/'monthly' ⇒ today's single monthly run. 'weekly'/
+  // 'biweekly' are OPERATIONAL run cadences: the payroll run reads this to GENERATE the frequency's ordered
+  // cut-off periods (see payrollScheduleFor) that tile the statutory month, and each frequency resolves its own
+  // cut-off windows via `cutOff.perFrequency` above. Statutory contributions (EPF/SOCSO/EIS/PCB) stay
+  // calendar-month-aggregated BY LAW regardless of the run cadence (see PayrollFrequency).
   frequency?: PayrollFrequency;
 };
 

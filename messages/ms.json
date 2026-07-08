@@ -3772,7 +3772,12 @@
       "previewType": "Jenis",
       "previewFrom": "Dari",
       "previewTo": "Hingga",
-      "previewHint": "Tarikh setiap jenis transaksi akan diambil untuk bulan semasa, diperoleh daripada konfigurasi potongan yang disimpan. Tempoh berturut-turut adalah bersambung dan tidak pernah bertindih."
+      "previewHint": "Tarikh setiap jenis transaksi akan diambil untuk bulan semasa, diperoleh daripada konfigurasi potongan yang disimpan. Tempoh berturut-turut adalah bersambung dan tidak pernah bertindih.",
+      "perFrequencyTitle": "Ganti tarikh tutup mengikut kekerapan",
+      "perFrequencyHint": "Apabila kekerapan gaji ialah Mingguan atau Dua Mingguan, kekerapan itu boleh menggunakan hari sauh dan hari tutup mengikut jenis tersendiri. Biarkan kosong untuk mewarisi tarikh tutup Bulanan (asas) di atas. Hanya digunakan apabila mod tempoh ialah \"Tempoh tersuai\".",
+      "scheduleTitle": "Jadual {frequency} untuk {period}",
+      "scheduleCycle": "Kitaran",
+      "scheduleHint": "Kitaran tarikh tutup yang dijana oleh kekerapan gaji ini untuk bulan berkenaan. Mingguan dan dua mingguan membahagikan bulan kepada kitaran bersebelahan; caruman berkanun masih dikumpulkan mengikut bulan kalendar seperti dikehendaki undang-undang."
     },
     "copy": "Salin",
     "copySuffix": "(salinan)",

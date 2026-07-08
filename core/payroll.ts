@@ -67,6 +67,8 @@ import {
   encashmentDivisorDays,
   ENCASHMENT_ORP_DIVISOR,
   leaveDivisorDays,
+  payrollFrequencyOf,
+  payrollScheduleFor,
   payslipReleaseAt,
   prorationDivisorDays,
   resolveProrationSettings,
@@ -1785,6 +1787,12 @@ export async function generatePayslips(
     // falling back to the plain calendar month when nothing is configured (byte-identical). Per-employment
     // policy overrides for the SALARY window are applied in the loop below (the policy is resolved there).
     const cutOffSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
+    // c7fdfcf6 gap-fix — the run READS the company-default schedule's payroll FREQUENCY and GENERATES the
+    // ordered cut-off periods it produces for this statutory month (monthly ⇒ one period; weekly/biweekly ⇒ the
+    // tiled 7/14-day cycles). Recorded on the processed event for audit + surfaced to operators; the wages still
+    // aggregate into the one calendar month for EPF/SOCSO/EIS/PCB by law.
+    const runFrequency = payrollFrequencyOf(cutOffSchedule.defaultConfig);
+    const runSchedule = payrollScheduleFor(cutOffSchedule.defaultConfig, cutOffSchedule.companyCfg, payPeriod);
     // Unpaid-leave selection follows the LEAVE cut-off window (company-level). Absent/calendar ⇒ [M-01 … M-end].
     const leaveWindow = batchTypeWindow(cutOffSchedule, 'leave', payPeriod);
     const unpaidByEmp = await unpaidDaysByEmployment(tx, leaveWindow.start, leaveWindow.end);
@@ -2760,7 +2768,12 @@ export async function generatePayslips(
       aggregateId: p.batchId,
       eventType: 'payroll-batch.processed',
       actor: actorOf(ctx),
-      payload: { count: emps.length, totalNet: totals.net },
+      payload: {
+        count: emps.length,
+        totalNet: totals.net,
+        // c7fdfcf6 gap-fix — the resolved payroll frequency + generated cut-off periods for this run (audit).
+        cutOffSchedule: { frequency: runFrequency, periods: runSchedule.periods },
+      },
     });
     return { payslips: emps.length, totalNet: totals.net };
   });

@@ -4,7 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listPolicies, POLICY_TYPES, type PolicyRow } from '@/core/payroll-policy';
 import { listPayComponents } from '@/core/pay-components';
-import { CUT_OFF_PER_TYPES, PAYROLL_FREQUENCIES, cutOffWindowFor, payrollFrequencyOf } from '@/core/payroll-policy-config';
+import { CUT_OFF_PER_TYPES, PAYROLL_FREQUENCIES, cutOffWindowFor, payrollFrequencyOf, payrollScheduleFor } from '@/core/payroll-policy-config';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { Badge } from '@/components/ui/badge';
@@ -61,6 +61,8 @@ export default async function PayrollPolicyPage({
   // c7fdfcf6 (Payroll Schedule) — the per-type anchor overrides + frequency, for prefilling the form.
   const editingPerType = editingCutOff?.perType;
   const editingFrequency = payrollFrequencyOf(editing?.config ?? null);
+  // c7fdfcf6 gap-fix — the per-frequency cut-off override blocks (Weekly / Bi-Weekly), for prefilling the form.
+  const editingPerFrequency = editingCutOff?.perFrequency;
   // c7fdfcf6 — From/To preview: for the CURRENT month, the window each transaction type's saved cut-off resolves
   // to (derived, not stored — consecutive periods are contiguous + non-overlapping by construction). Read-only:
   // it reflects the LAST SAVED config, so the operator sees exactly which dates each run will pick up.
@@ -69,6 +71,9 @@ export default async function PayrollPolicyPage({
     type,
     window: cutOffWindowFor(type, editing?.config ?? null, null, previewPeriod),
   }));
+  // c7fdfcf6 gap-fix — the GENERATED cut-off periods for the saved frequency (monthly ⇒ 1 cycle; weekly/biweekly
+  // ⇒ the tiled 7/14-day cycles). Shows the operator exactly which periods each payroll run will produce.
+  const schedulePreview = payrollScheduleFor(editing?.config ?? null, null, previewPeriod);
   // f3148da1 — the editing policy's General-Settings config, for prefilling the Steps 2–5 sections.
   const cfg = editing?.config ?? null;
   const cfgOt = cfg?.overtime;
@@ -356,6 +361,77 @@ export default async function PayrollPolicyPage({
                   ))}
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.perTypeHint')}</p>
+
+                {/* c7fdfcf6 gap-fix — PER-FREQUENCY cut-off overrides. When the payroll frequency is Weekly or
+                    Bi-Weekly, that frequency can carry its OWN anchor day + per-type days, so Weekly / Bi-Weekly /
+                    Monthly each have independent cut-off periods. Blank ⇒ inherit the base (Monthly) cut-off. */}
+                <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('cutOff.perFrequencyTitle')}</p>
+                {(['weekly', 'biweekly'] as const).map((freq) => {
+                  const block = editingPerFrequency?.[freq];
+                  return (
+                    <div key={freq} className="mb-3 rounded-lg border border-border bg-background/40 px-3 py-2 dark:border-border">
+                      <p className="mb-2 text-xs font-medium text-foreground dark:text-foreground">{t(`cutOff.frequency.${freq}`)}</p>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                        <Field label={t('cutOff.anchorDay')}>
+                          <input
+                            name={`cutOffFreq_${freq}_anchorDay`}
+                            type="number"
+                            min={ANCHOR_MIN}
+                            max={ANCHOR_MAX}
+                            step="1"
+                            inputMode="numeric"
+                            defaultValue={block?.anchorDay ? String(block.anchorDay) : ''}
+                            placeholder={t('cutOff.inheritPlaceholder')}
+                            className={inputCls}
+                          />
+                        </Field>
+                        {CUT_OFF_PER_TYPES.map((type) => (
+                          <Field key={type} label={t(`cutOff.type.${type}`)}>
+                            <input
+                              name={`cutOffFreq_${freq}_${type}`}
+                              type="number"
+                              min={ANCHOR_MIN}
+                              max={ANCHOR_MAX}
+                              step="1"
+                              inputMode="numeric"
+                              defaultValue={block?.perType?.[type] ? String(block.perType[type]) : ''}
+                              placeholder={t('cutOff.inheritPlaceholder')}
+                              className={inputCls}
+                            />
+                          </Field>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <p className="mt-1 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.perFrequencyHint')}</p>
+
+                {/* c7fdfcf6 gap-fix — the GENERATED cut-off cycles for the saved frequency. Monthly shows one
+                    cycle; Weekly / Bi-Weekly show the tiled 7 / 14-day cycles the run will produce. Read-only. */}
+                <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('cutOff.scheduleTitle', { frequency: t(`cutOff.frequency.${schedulePreview.frequency}`), period: previewPeriod })}
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-border dark:border-border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50 text-left uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-1.5 font-medium">{t('cutOff.scheduleCycle')}</th>
+                        <th className="px-3 py-1.5 font-medium">{t('cutOff.previewFrom')}</th>
+                        <th className="px-3 py-1.5 font-medium">{t('cutOff.previewTo')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {schedulePreview.periods.map((p) => (
+                        <tr key={p.seq}>
+                          <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{p.seq}</td>
+                          <td className="px-3 py-1.5 tabular-nums">{p.start}</td>
+                          <td className="px-3 py-1.5 tabular-nums">{p.end}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.scheduleHint')}</p>
 
                 {/* c7fdfcf6 — From/To preview: the window each type's SAVED cut-off resolves to for the current
                     month. Read-only; derived from the last saved config. */}
