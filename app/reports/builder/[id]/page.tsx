@@ -11,7 +11,8 @@ import { scopedAdmin } from '@/lib/scope';
 import { isAiConfigured } from '@/core/ai-config';
 import { getCustomReport } from '@/core/custom-reports';
 import { datasetsForCategory, getDataset, type ReportDataset } from '@/core/report-registry';
-import type { CustomReportSpec } from '@/db/schema';
+import { REPORT_PERMISSION_VERBS, type CustomReportSpec } from '@/db/schema';
+import { MATRIX_ROLES } from '@/lib/permissions';
 import { PageHeader } from '@/components/ui';
 import { ReportBuilder } from '../../ReportBuilder';
 
@@ -50,6 +51,8 @@ export default async function ReportBuilderPage({
 
   const aiEnabled = await isAiConfigured(s);
   const peers = datasetsForCategory(dataset.category).map(serialiseDataset);
+  const roles = MATRIX_ROLES.map((r) => ({ id: r, label: t(`permRole.${r}`) }));
+  const verbs = REPORT_PERMISSION_VERBS.map((v) => ({ id: v, label: t(`permVerb.${v}`) }));
 
   const initialSpec: CustomReportSpec =
     existing?.spec ?? { datasetId: dataset.id, columns: dataset.defaultColumns, sort: null, groupBy: null, filters: {}, layout: { orientation: 'landscape' } };
@@ -69,6 +72,8 @@ export default async function ReportBuilderPage({
         datasets={peers}
         initialSpec={initialSpec}
         aiEnabled={aiEnabled}
+        roles={roles}
+        verbs={verbs}
         error={sp.error}
         toast={sp.toast}
         labels={{
@@ -90,6 +95,7 @@ export default async function ReportBuilderPage({
           filters: t('filters'),
           shareToggle: t('shareToggle'),
           summaryRow: t('summaryRow'),
+          averagesRow: t('averagesRow'),
           moveUp: t('moveUp'),
           moveDown: t('moveDown'),
           remove: t('remove'),
@@ -100,6 +106,35 @@ export default async function ReportBuilderPage({
           previewNote: t('previewNote'),
           save: t('save'),
           saving: t('saving'),
+          saveAsTemplate: t('saveAsTemplate'),
+          subtitle: t('reportSubtitle'),
+          description: t('reportDescription'),
+          companyLogo: t('companyLogo'),
+          companyLogoHint: t('companyLogoHint'),
+          paperSize: t('paperSize'),
+          margins: t('margins'),
+          marginNarrow: t('marginNarrow'),
+          marginNormal: t('marginNormal'),
+          marginWide: t('marginWide'),
+          dateFormat: t('dateFormat'),
+          numberFormat: t('numberFormat'),
+          pageBreakOn: t('pageBreakOn'),
+          header: t('header'),
+          footer: t('footer'),
+          watermark: t('watermark'),
+          alignment: t('alignment'),
+          alignLeft: t('alignLeft'),
+          alignCenter: t('alignCenter'),
+          alignRight: t('alignRight'),
+          width: t('width'),
+          freeze: t('freeze'),
+          pagesApprox: t('pagesApprox'),
+          permissions: t('permissions'),
+          permissionsHint: t('permissionsHint'),
+          role: t('role'),
+          recommendations: t('recommendations'),
+          suggestedColumns: t('suggestedColumns'),
+          bestFormat: t('bestFormat'),
           aiTitle: t('ai.title'),
           aiDescribe: t('ai.describe'),
           aiPlaceholder: t('ai.placeholder'),

@@ -2980,10 +2980,38 @@ export type CustomReportSpec = {
     subtitle?: string | null;
     description?: string | null;
     orientation?: 'portrait' | 'landscape';
-    align?: Record<string, 'left' | 'center' | 'right'>;
+    paperSize?: 'A4' | 'A3' | 'Letter' | 'Legal';
+    margins?: 'narrow' | 'normal' | 'wide';
+    header?: string | null;
+    footer?: string | null;
+    dateFormat?: 'iso' | 'dmy' | 'mdy' | 'long';
+    numberFormat?: 'plain' | 'grouped';
+    pageBreakOn?: string | null; // field id whose value change starts a new page (grouped print)
+    watermark?: string | null;
+    companyLogo?: string | null; // data-URI image OR a short text mark rendered top-right
+    align?: Record<string, 'left' | 'center' | 'right'>; // per-field alignment override (AI designer fills this)
+    widths?: Record<string, number>; // per-field relative column-width weight (1 = default)
+    freeze?: string[]; // field ids to freeze (kept as the leading, non-scrolling columns)
     summary?: string[]; // field ids to total in a summary row
+    averages?: string[]; // field ids to average in a second summary row
+    // Per-report role→verb grid (Create/Edit/Delete/Export/Share/View/ManageTemplates). Advisory metadata
+    // layered ON TOP of the coarse admin route-guard: it records the intended granular permissions and is
+    // enforced for View/Export at the run path. Empty/absent ⇒ admin-only (today's behaviour).
+    permissions?: Record<string, string[]>;
   } | null;
 };
+
+/** The seven report permission verbs the reporter enumerated (role-based report access grid). */
+export const REPORT_PERMISSION_VERBS = [
+  'view',
+  'create',
+  'edit',
+  'delete',
+  'export',
+  'share',
+  'manageTemplates',
+] as const;
+export type ReportPermissionVerb = (typeof REPORT_PERMISSION_VERBS)[number];
 
 export const customReport = pgTable(
   'custom_report',

@@ -59,6 +59,49 @@ describe('validateReportSpec', () => {
     if (!r.ok) expect(r.reason).toContain('bad-summary');
   });
 
+  it('rejects layout align/width/average/freeze/page-break on unknown fields', () => {
+    expect(validateReportSpec(base({ layout: { align: { ghost: 'left' } } })).ok).toBe(false);
+    expect(validateReportSpec(base({ layout: { widths: { ghost: 2 } } })).ok).toBe(false);
+    expect(validateReportSpec(base({ layout: { averages: ['ghost'] } })).ok).toBe(false);
+    expect(validateReportSpec(base({ layout: { freeze: ['ghost'] } })).ok).toBe(false);
+    expect(validateReportSpec(base({ layout: { pageBreakOn: 'ghost' } })).ok).toBe(false);
+  });
+
+  it('accepts a full layout that names only known fields', () => {
+    const r = validateReportSpec(
+      base({
+        columns: ['name', 'department', 'basicSalary'],
+        layout: {
+          align: { name: 'left', basicSalary: 'right' },
+          widths: { name: 2 },
+          summary: ['basicSalary'],
+          averages: ['basicSalary'],
+          freeze: ['name'],
+          pageBreakOn: 'department',
+          permissions: { hr_admin: ['view', 'export'] },
+        },
+      }),
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it('the daily-attendance dataset exposes the reporter field list', () => {
+    const ds = getDataset('attendance_daily');
+    expect(ds).toBeDefined();
+    const ids = new Set(ds!.fields.map((f) => f.id));
+    for (const id of ['branch', 'position', 'shift', 'clockIn', 'clockOut', 'lateMinutes', 'attendanceStatus', 'clockingLocation', 'geofencingStatus', 'remarks'])
+      expect(ids.has(id)).toBe(true);
+  });
+
+  it('default alignment follows the reporter rule (names left, dates/status center, numbers/currency right)', async () => {
+    const { defaultAlign } = await import('../core/report-registry');
+    expect(defaultAlign('text')).toBe('left');
+    expect(defaultAlign('date')).toBe('center');
+    expect(defaultAlign('status')).toBe('center');
+    expect(defaultAlign('number')).toBe('right');
+    expect(defaultAlign('currency')).toBe('right');
+  });
+
   it('every dataset declares valid default columns', () => {
     for (const ds of Object.values(REPORT_DATASETS)) {
       const fieldIds = new Set(ds.fields.map((f) => f.id));

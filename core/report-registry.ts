@@ -16,7 +16,7 @@ import type { SessionContext } from '../db/client';
 import type { CustomReportSpec } from '../db/schema';
 import type { ReportData } from '../lib/report-export';
 import { masterDataExport, leaveBalancesSummary, type ReportFilter } from './analytics';
-import { overtimeReport } from './reporting';
+import { overtimeReport, attendanceDailyReport } from './reporting';
 import { listProcessedPayslipsAcross } from './payroll-view';
 import { listClaimTypes } from './claims';
 
@@ -151,6 +151,45 @@ const ATTENDANCE_OT: ReportDataset = {
   },
 };
 
+// ─────────────────────────────── Attendance (daily punch grid) ───────────────────────────────
+// The reporter's full attendance field list (Branch, Position, Shift, Clock In/Out, Late Minutes, Early
+// Out, Attendance Status, Clocking Location, Geofencing Status, Remarks, …) — the per-day grid the OT
+// summary omits. Month-parameterised, company-scoped.
+const ATTENDANCE_DAILY: ReportDataset = {
+  id: 'attendance_daily',
+  category: 'attendance',
+  label: 'Daily attendance',
+  fields: [
+    { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Identity' },
+    { id: 'name', label: 'Employee Name', type: 'text', group: 'Identity' },
+    { id: 'department', label: 'Department', type: 'text', group: 'Organisation' },
+    { id: 'branch', label: 'Branch', type: 'text', group: 'Organisation' },
+    { id: 'position', label: 'Position', type: 'text', group: 'Organisation' },
+    { id: 'attendanceDate', label: 'Date', type: 'date', group: 'Attendance' },
+    { id: 'shift', label: 'Shift', type: 'text', group: 'Attendance' },
+    { id: 'clockIn', label: 'Clock In', type: 'text', group: 'Attendance' },
+    { id: 'clockOut', label: 'Clock Out', type: 'text', group: 'Attendance' },
+    { id: 'workingHours', label: 'Working Hours', type: 'number', group: 'Hours' },
+    { id: 'otHours', label: 'OT Hours', type: 'number', group: 'Hours' },
+    { id: 'lateMinutes', label: 'Late Minutes', type: 'number', group: 'Hours' },
+    { id: 'earlyOutMinutes', label: 'Early Out (min)', type: 'number', group: 'Hours' },
+    { id: 'attendanceStatus', label: 'Attendance Status', type: 'status', group: 'Attendance' },
+    { id: 'clockingLocation', label: 'Clocking Location', type: 'text', group: 'Location' },
+    { id: 'geofencingStatus', label: 'Geofencing Status', type: 'status', group: 'Location' },
+    { id: 'remarks', label: 'Remarks', type: 'text', group: 'Attendance' },
+  ],
+  filters: [
+    { id: 'month', label: 'Month', kind: 'month' },
+    { id: 'name', label: 'Employee Name contains', kind: 'text' },
+    { id: 'department', label: 'Department contains', kind: 'text' },
+  ],
+  defaultColumns: ['employeeCode', 'name', 'department', 'attendanceDate', 'clockIn', 'clockOut', 'workingHours', 'attendanceStatus'],
+  run: async (ctx, scopeIds, params) => {
+    const month = str(params.month) ?? currentMonth();
+    return attendanceDailyReport(ctx, { month, companyIds: scopeIds });
+  },
+};
+
 // ─────────────────────────────── Leave ───────────────────────────────
 const LEAVE_BALANCES: ReportDataset = {
   id: 'leave_balances',
@@ -248,6 +287,7 @@ const CLAIM_TYPES: ReportDataset = {
 export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [MASTER.id]: MASTER,
   [ATTENDANCE_OT.id]: ATTENDANCE_OT,
+  [ATTENDANCE_DAILY.id]: ATTENDANCE_DAILY,
   [LEAVE_BALANCES.id]: LEAVE_BALANCES,
   [PAYROLL_HISTORY.id]: PAYROLL_HISTORY,
   [CLAIM_TYPES.id]: CLAIM_TYPES,
@@ -306,8 +346,14 @@ export function validateReportSpec(spec: unknown): ValidateResult {
     if (s.sort.dir !== 'asc' && s.sort.dir !== 'desc') return { ok: false, reason: 'bad-sort-dir' };
   }
   if (s.groupBy != null && !fieldIds.has(s.groupBy)) return { ok: false, reason: 'bad-group' };
-  if (s.layout?.summary) {
-    for (const f of s.layout.summary) if (!fieldIds.has(f)) return { ok: false, reason: `bad-summary:${f}` };
+  const L = s.layout;
+  if (L) {
+    if (L.summary) for (const f of L.summary) if (!fieldIds.has(f)) return { ok: false, reason: `bad-summary:${f}` };
+    if (L.averages) for (const f of L.averages) if (!fieldIds.has(f)) return { ok: false, reason: `bad-average:${f}` };
+    if (L.freeze) for (const f of L.freeze) if (!fieldIds.has(f)) return { ok: false, reason: `bad-freeze:${f}` };
+    if (L.align) for (const k of Object.keys(L.align)) if (!fieldIds.has(k)) return { ok: false, reason: `bad-align:${k}` };
+    if (L.widths) for (const k of Object.keys(L.widths)) if (!fieldIds.has(k)) return { ok: false, reason: `bad-width:${k}` };
+    if (L.pageBreakOn != null && !fieldIds.has(L.pageBreakOn)) return { ok: false, reason: 'bad-page-break' };
   }
   return { ok: true };
 }
@@ -354,38 +400,108 @@ export async function runReportSpec(
     });
   }
 
-  // Group ordering: stable-sort by the group field so grouped rows sit together (no sub-headers in the
-  // flat export; the ordering is the grouping the tabular formats can honour).
-  if (spec.groupBy && byId.has(spec.groupBy)) {
-    const g = spec.groupBy;
-    rows = [...rows].sort((a, b) => String(a[g] ?? '').localeCompare(String(b[g] ?? '')));
+  // Group ordering: stable-sort by the group field (or the page-break field) so grouped rows sit together
+  // — the ordering the tabular/print formats honour (PDF pages break on contiguous groups).
+  const orderField = spec.groupBy ?? spec.layout?.pageBreakOn ?? null;
+  if (orderField && byId.has(orderField)) {
+    rows = [...rows].sort((a, b) => String(a[orderField] ?? '').localeCompare(String(b[orderField] ?? '')));
   }
 
-  const columns = spec.columns.map((c) => byId.get(c)?.label ?? c);
-  const body = rows.map((r) => spec.columns.map((c) => r[c] ?? null));
+  const L = spec.layout ?? undefined;
+  // Apply per-type value formatting (date / number formats) BEFORE projecting, so headers stay stable and
+  // the alignment metadata (built below) still matches the numeric/text nature of each column.
+  const fmt = (fieldType: ReportFieldType, v: string | number | null): string | number | null => {
+    if (v == null || v === '') return v;
+    if (fieldType === 'date') return formatDate(String(v), L?.dateFormat ?? 'iso');
+    if ((fieldType === 'number' || fieldType === 'currency') && (L?.numberFormat ?? 'plain') === 'grouped') {
+      const n = Number(v);
+      if (!Number.isNaN(n)) return groupNumber(n);
+    }
+    return v;
+  };
 
-  // Optional summary row: total the requested numeric/currency columns; blank elsewhere; a "Total" label
-  // in the first non-summarised text column when possible.
-  const summarySet = new Set(spec.layout?.summary ?? []);
-  if (summarySet.size > 0) {
-    const summaryRow: (string | number | null)[] = spec.columns.map((c) => {
+  const columns = spec.columns.map((c) => byId.get(c)?.label ?? c);
+  const body = rows.map((r) =>
+    spec.columns.map((c) => {
       const f = byId.get(c);
-      if (summarySet.has(c) && f && (f.type === 'number' || f.type === 'currency')) {
-        const total = rows.reduce((acc, r) => acc + (Number(r[c]) || 0), 0);
-        return Math.round((total + Number.EPSILON) * 100) / 100;
+      return f ? fmt(f.type, r[c] ?? null) : (r[c] ?? null);
+    }),
+  );
+
+  // Summary (totals) + averages rows over the requested numeric/currency columns. Grouped-number format is
+  // applied to the aggregate too so the summary line matches the body cells.
+  const summarySet = new Set(L?.summary ?? []);
+  const avgSet = new Set(L?.averages ?? []);
+  const aggFor = (setIds: Set<string>, label: string, avg: boolean) => {
+    const row: (string | number | null)[] = spec.columns.map((c) => {
+      const f = byId.get(c);
+      if (setIds.has(c) && f && (f.type === 'number' || f.type === 'currency')) {
+        const nums = rows.map((r) => Number(r[c])).filter((n) => !Number.isNaN(n));
+        const total = nums.reduce((a, b) => a + b, 0);
+        const val = avg && nums.length ? total / nums.length : total;
+        const rounded = Math.round((val + Number.EPSILON) * 100) / 100;
+        return (L?.numberFormat ?? 'plain') === 'grouped' ? groupNumber(rounded) : rounded;
       }
       return null;
     });
-    const labelIdx = spec.columns.findIndex((c) => !summarySet.has(c));
-    if (labelIdx >= 0) summaryRow[labelIdx] = 'Total';
-    body.push(summaryRow);
+    const labelIdx = spec.columns.findIndex((c) => !setIds.has(c));
+    if (labelIdx >= 0) row[labelIdx] = label;
+    return row;
+  };
+  if (summarySet.size > 0) body.push(aggFor(summarySet, 'Total', false));
+  if (avgSet.size > 0) body.push(aggFor(avgSet, 'Average', true));
+
+  // Presentation layout for the serializers: per-column alignment (explicit override ⇒ field-type default),
+  // relative widths, frozen leading-column count, plus the header/footer/branding properties.
+  const align = spec.columns.map((c) => L?.align?.[c] ?? defaultAlign(byId.get(c)?.type ?? 'text'));
+  const hasWidths = L?.widths && spec.columns.some((c) => L.widths?.[c] != null);
+  const widths = hasWidths ? spec.columns.map((c) => L?.widths?.[c] ?? 1) : undefined;
+  const freezeSet = new Set(L?.freeze ?? []);
+  let freeze = 0;
+  for (const c of spec.columns) {
+    if (freezeSet.has(c)) freeze++;
+    else break;
   }
 
-  const title = spec.layout?.title || ds.label;
+  const title = L?.title || ds.label;
   return {
     title,
     filename: `${ds.id}_${new Date().toISOString().slice(0, 10)}`,
     columns,
     rows: body,
+    layout: {
+      subtitle: L?.subtitle ?? null,
+      description: L?.description ?? null,
+      header: L?.header ?? null,
+      footer: L?.footer ?? null,
+      watermark: L?.watermark ?? null,
+      companyLogo: L?.companyLogo ?? null,
+      orientation: L?.orientation ?? 'landscape',
+      paperSize: L?.paperSize ?? 'A4',
+      margins: L?.margins ?? 'normal',
+      align,
+      widths,
+      freeze: freeze > 0 ? freeze : undefined,
+    },
   };
+}
+
+/** Format an ISO-ish date string per the report's chosen display format. Non-date input passes through. */
+function formatDate(v: string, f: NonNullable<CustomReportSpec['layout']>['dateFormat']): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (!m) return v;
+  const [, y, mo, d] = m;
+  if (f === 'dmy') return `${d}/${mo}/${y}`;
+  if (f === 'mdy') return `${mo}/${d}/${y}`;
+  if (f === 'long') {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${Number(d)} ${months[Number(mo) - 1] ?? mo} ${y}`;
+  }
+  return `${y}-${mo}-${d}`; // iso
+}
+
+/** Thousands-separated fixed-2 formatting for grouped number format (e.g. 12345.6 → "12,345.60"). */
+function groupNumber(n: number): string {
+  const [int, dec] = n.toFixed(2).split('.');
+  return int.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + dec;
 }

@@ -8,12 +8,17 @@ import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
+  assignment,
   attendance,
   attendanceCorrection,
+  attendancePolicy,
+  clockingLocation,
   company,
   compensation,
+  department,
   employment,
   person,
+  position,
   statutoryReport,
 } from '../db/schema';
 import { packFor } from '../localization/registry';
@@ -522,4 +527,107 @@ export function overtimeReportToReportData(report: OvertimeReport): ReportData {
       approvalLabel[r.otApprovalStatus],
     ]),
   };
+}
+
+// ─────────────────────────── Daily attendance report (c440b365 gap-6) ───────────────────────────
+// A per-day attendance view exposing the reporter's full field list (Branch, Position, Shift, Clock In/Out,
+// Late Minutes, Early Out, Attendance Status, Clocking Location, Geofencing Status, Remarks, …) — the raw
+// punch grid the OT summary omits. Pure READ (no DomainEvent — read-only surface, deliberate skip). Rows are
+// keyed by field id for the custom-report registry to project. Company scope is enforced by the caller's
+// scopeIds (already RLS-fenced); one month at a time.
+
+const _toMin = (t: string | null): number | null => {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
+const _hhmm = (t: string | null): string | null => (t ? t.slice(0, 5) : null);
+
+export type AttendanceDailyRow = Record<string, string | number | null>;
+
+/** Build the per-day attendance grid for a month across the given companies. */
+export async function attendanceDailyReport(
+  ctx: SessionContext,
+  p: { month: string; companyIds?: string[] },
+): Promise<AttendanceDailyRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const monthStart = `${p.month}-01`;
+    const [y, m] = p.month.split('-').map(Number);
+    const monthEnd = `${p.month}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+
+    // One attendance policy per company → work-end / late-after thresholds for late/early-out minutes.
+    const policies = await tx
+      .select({ companyId: attendancePolicy.companyId, lateAfter: attendancePolicy.lateAfter, workEnd: attendancePolicy.workEnd })
+      .from(attendancePolicy);
+    const polByCompany = new Map(policies.map((pp) => [pp.companyId, pp]));
+
+    const rows = await tx
+      .select({
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        position: position.title,
+        companyName: company.legalName,
+        companyId: employment.companyId,
+        departmentName: department.name,
+        attendanceDate: attendance.attendanceDate,
+        checkInAt: attendance.checkInAt,
+        checkOutAt: attendance.checkOutAt,
+        dayType: attendance.dayType,
+        status: attendance.status,
+        workedMinutes: attendance.workedMinutes,
+        otMinutes: attendance.otMinutes,
+        remarks: attendance.remarks,
+        geofenceStatus: attendance.checkInGeofenceStatus,
+        clockingLocationName: clockingLocation.name,
+      })
+      .from(attendance)
+      .innerJoin(employment, eq(employment.id, attendance.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      // Current assignment (validTo/supersededAt null) → department + position.
+      .leftJoin(
+        assignment,
+        and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(clockingLocation, eq(clockingLocation.id, attendance.checkInClockingLocationId))
+      .where(
+        and(
+          p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+          gte(attendance.attendanceDate, monthStart),
+          lte(attendance.attendanceDate, monthEnd),
+        ),
+      )
+      .orderBy(attendance.attendanceDate, person.fullName);
+
+    return rows.map((r) => {
+      const pol = polByCompany.get(r.companyId);
+      const ci = _toMin(r.checkInAt);
+      const co = _toMin(r.checkOutAt);
+      const lateAfter = _toMin(pol?.lateAfter ?? null);
+      const workEnd = _toMin(pol?.workEnd ?? null);
+      const lateMinutes = ci != null && lateAfter != null && ci > lateAfter ? ci - lateAfter : 0;
+      const earlyOut = co != null && workEnd != null && co < workEnd ? workEnd - co : 0;
+      return {
+        name: r.name,
+        employeeCode: r.employeeCode ?? null,
+        branch: r.companyName,
+        department: r.departmentName ?? null,
+        position: r.position,
+        attendanceDate: r.attendanceDate,
+        shift: r.dayType ?? null,
+        clockIn: _hhmm(r.checkInAt),
+        clockOut: _hhmm(r.checkOutAt),
+        workingHours: r.workedMinutes == null ? null : r2(r.workedMinutes / 60),
+        otHours: r.otMinutes == null ? null : r2(r.otMinutes / 60),
+        lateMinutes,
+        earlyOutMinutes: earlyOut,
+        attendanceStatus: r.status,
+        clockingLocation: r.clockingLocationName ?? null,
+        geofencingStatus: r.geofenceStatus ?? null,
+        remarks: r.remarks ?? null,
+      };
+    });
+  });
 }

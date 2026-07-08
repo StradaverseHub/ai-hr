@@ -31,6 +31,31 @@ function assertValid(spec: CustomReportSpec): void {
   if (!v.ok) throw new Error(`Invalid report definition: ${v.reason}`);
 }
 
+/** Raised when a saved report's per-report permission grid denies the acting role View/Export. */
+export class ReportAccessError extends Error {
+  constructor() {
+    super('report-access-denied');
+    this.name = 'ReportAccessError';
+  }
+}
+
+/**
+ * Enforce the report's per-role permission grid (c440b365 gap-7) for a read/export. The grid is ADVISORY
+ * metadata layered on top of the coarse admin route-guard: an EMPTY/absent grid keeps today's behaviour
+ * (admin-only, already enforced by the route). When a grid IS set, super_admin always passes; otherwise the
+ * acting session must hold a role granted `view` or `export`. Structural admin writes remain route-gated.
+ */
+function enforceReportView(ctx: SessionContext, spec: CustomReportSpec): void {
+  const perms = spec.layout?.permissions;
+  if (!perms || Object.keys(perms).length === 0) return;
+  const roles = new Set(ctx.roles ?? []);
+  if (roles.has('super_admin')) return;
+  const ok = Object.entries(perms).some(
+    ([role, verbs]) => roles.has(role) && (verbs.includes('view') || verbs.includes('export')),
+  );
+  if (!ok) throw new ReportAccessError();
+}
+
 /** List saved reports, optionally narrowed to a category. RLS already restricts to owner/shared/admin. */
 export function listCustomReports(ctx: SessionContext, p?: { category?: ReportCategory }): Promise<CustomReportRow[]> {
   return withTenant(ctx, async (tx) => {
@@ -232,6 +257,9 @@ export async function runCustomReport(
     const r = await getCustomReport(ctx, p.id);
     if (!r) throw new Error('Report not found');
     spec = r.spec;
+    // Saved-report path: honour the per-report permission grid. Ad-hoc spec (preview/export-before-save) is
+    // the admin editing the report, so it is not grid-gated (the route's admin guard already applies).
+    enforceReportView(ctx, spec);
   }
   if (!spec) throw new Error('No report spec');
   assertValid(spec);

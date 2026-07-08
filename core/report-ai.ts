@@ -40,11 +40,18 @@ const SYSTEM = [
   'field catalogue. You do NOT write SQL and you may ONLY use the exact field ids and filter ids given.',
   'Choose a sensible ordered subset of columns for the request, arranging identity columns first, then',
   'grouping related fields, and putting numeric/currency totals last. You may set a sort (one field +',
-  'asc/desc), an optional groupBy field, and mark numeric/currency fields to total in a summary row.',
+  'asc/desc), an optional groupBy field, and mark numeric/currency fields to total in a summary row and/or',
+  'average in an averages row. Set an alignment per column following the rule: names/text → left, dates →',
+  'center, numbers/currency → right, status → center. Also RECOMMEND (advisory, for the human): any extra',
+  'useful field ids from the catalogue not already chosen, the best export format (excel|pdf|word|csv), and',
+  'the best orientation.',
   'Respond with ONLY a single minified JSON object on one line, of the shape:',
   '{"spec":{"datasetId":"<id>","columns":["<fieldId>",...],"sort":{"field":"<fieldId>","dir":"asc|desc"},',
-  '"groupBy":"<fieldId or omit>","layout":{"title":"<short title>","orientation":"portrait|landscape",',
-  '"summary":["<numericFieldId>",...]}},"explanation":"<one short sentence>"}.',
+  '"groupBy":"<fieldId or omit>","layout":{"title":"<short title>","subtitle":"<short or omit>",',
+  '"orientation":"portrait|landscape","align":{"<fieldId>":"left|center|right",...},',
+  '"summary":["<numericFieldId>",...],"averages":["<numericFieldId>",...]}},',
+  '"explanation":"<one short sentence>",',
+  '"recommendations":{"extraColumns":["<fieldId>",...],"bestFormat":"excel|pdf|word|csv","note":"<short>"}}.',
   'Use ONLY field ids from the given dataset. No markdown, no code fences, no preamble.',
 ].join(' ');
 
@@ -60,7 +67,16 @@ function parseModelJson(text: string): { spec: unknown; explanation: unknown } |
   }
 }
 
-export type ReportDraftResult = { spec: CustomReportSpec; explanation: string };
+/** Advisory smart-recommendations returned alongside the drafted spec (the human decides what to apply). */
+export type ReportRecommendations = {
+  /** Field ids the AI suggests adding (validated against the dataset; unknown ids dropped). */
+  extraColumns: { id: string; label: string }[];
+  /** Suggested best export format for this report. */
+  bestFormat: 'excel' | 'pdf' | 'word' | 'csv' | null;
+  note: string | null;
+};
+
+export type ReportDraftResult = { spec: CustomReportSpec; explanation: string; recommendations: ReportRecommendations };
 
 /**
  * Draft a report spec from a plain-language description. `datasetId` fixes which module the report is for
@@ -88,10 +104,21 @@ export async function draftReportSpec(
 
   const raw = await generateDraft(cfg, { system: SYSTEM, prompt, maxTokens: 768 });
 
-  const parsed = parseModelJson(raw);
+  const parsed = parseModelJson(raw) as
+    | { spec?: Partial<CustomReportSpec>; explanation?: unknown; recommendations?: unknown }
+    | null;
   const rawSpec = parsed?.spec as Partial<CustomReportSpec> | undefined;
   const explanation = typeof parsed?.explanation === 'string' ? parsed.explanation.trim() : '';
   if (!parsed || !rawSpec) throw new ReportDraftError('invalid_output');
+
+  const fieldIds = new Set(ds.fields.map((f) => f.id));
+  // Sanitise the AI's layout: keep only align entries for known fields; drop alignment for unknown ids.
+  const rawLayout = (rawSpec.layout ?? null) as NonNullable<CustomReportSpec['layout']> | null;
+  const cleanAlign = rawLayout?.align
+    ? Object.fromEntries(Object.entries(rawLayout.align).filter(([k]) => fieldIds.has(k)))
+    : undefined;
+  const cleanSummary = Array.isArray(rawLayout?.summary) ? rawLayout!.summary.filter((f) => fieldIds.has(f)) : undefined;
+  const cleanAverages = Array.isArray(rawLayout?.averages) ? rawLayout!.averages.filter((f) => fieldIds.has(f)) : undefined;
 
   // Force the datasetId to the one the caller selected (the model must not switch modules).
   const spec: CustomReportSpec = {
@@ -100,11 +127,34 @@ export async function draftReportSpec(
     sort: rawSpec.sort ?? null,
     groupBy: rawSpec.groupBy ?? null,
     filters: rawSpec.filters ?? undefined,
-    layout: rawSpec.layout ?? null,
+    layout: rawLayout
+      ? {
+          ...rawLayout,
+          align: cleanAlign && Object.keys(cleanAlign).length ? cleanAlign : undefined,
+          summary: cleanSummary,
+          averages: cleanAverages,
+        }
+      : null,
   };
 
   const v = validateReportSpec(spec);
   if (!v.ok || !explanation) throw new ReportDraftError('invalid_output');
+
+  // Smart recommendations (advisory): validated extra columns, best export format, a short note.
+  const rec = (parsed.recommendations ?? {}) as { extraColumns?: unknown; bestFormat?: unknown; note?: unknown };
+  const labelById = new Map(ds.fields.map((f) => [f.id, f.label]));
+  const chosen = new Set(spec.columns);
+  const extraColumns = (Array.isArray(rec.extraColumns) ? rec.extraColumns : [])
+    .filter((c): c is string => typeof c === 'string' && fieldIds.has(c) && !chosen.has(c))
+    .map((id) => ({ id, label: labelById.get(id) ?? id }));
+  const bestFormat = (['excel', 'pdf', 'word', 'csv'] as const).includes(rec.bestFormat as never)
+    ? (rec.bestFormat as ReportRecommendations['bestFormat'])
+    : null;
+  const recommendations: ReportRecommendations = {
+    extraColumns,
+    bestFormat,
+    note: typeof rec.note === 'string' ? rec.note.trim().slice(0, 240) : null,
+  };
 
   await withTenant(ctx, (tx) =>
     appendEvent(tx, {
@@ -117,7 +167,7 @@ export async function draftReportSpec(
     }),
   );
 
-  return { spec, explanation };
+  return { spec, explanation, recommendations };
 }
 
 /** Referenced so the registry stays the single catalogue source in this module (lint: no-unused). */

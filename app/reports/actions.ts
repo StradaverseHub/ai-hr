@@ -15,7 +15,7 @@ import {
   toggleFavourite,
   updateCustomReport,
 } from '@/core/custom-reports';
-import { draftReportSpec, ReportDraftError } from '@/core/report-ai';
+import { draftReportSpec, ReportDraftError, type ReportRecommendations } from '@/core/report-ai';
 import { validateReportSpec } from '@/core/report-registry';
 import type { CustomReportSpec } from '@/db/schema';
 import type { ReportData } from '@/lib/report-export';
@@ -131,14 +131,36 @@ export async function previewReport(spec: CustomReportSpec, limit = 25): Promise
 export async function draftReport(
   datasetId: string,
   description: string,
-): Promise<{ ok: boolean; spec?: CustomReportSpec; explanation?: string; error?: 'not_configured' | 'invalid_output' | 'forbidden' }> {
+): Promise<{
+  ok: boolean;
+  spec?: CustomReportSpec;
+  explanation?: string;
+  recommendations?: ReportRecommendations;
+  error?: 'not_configured' | 'invalid_output' | 'forbidden';
+}> {
   const s = await getSession();
   if (!isAdmin(s)) return { ok: false, error: 'forbidden' };
   try {
-    const { spec, explanation } = await draftReportSpec(s, { datasetId, description });
-    return { ok: true, spec, explanation };
+    const { spec, explanation, recommendations } = await draftReportSpec(s, { datasetId, description });
+    return { ok: true, spec, explanation, recommendations };
   } catch (e) {
     if (e instanceof ReportDraftError) return { ok: false, error: e.reason };
     return { ok: false, error: 'invalid_output' };
   }
+}
+
+/** Save-as-Template (c440b365 gap-9): duplicate the given saved report as a fresh, shared template copy. */
+export async function saveAsTemplateAction(formData: FormData) {
+  const s = await getSession();
+  const id = String(formData.get('id') ?? '');
+  let newId: string | null = null;
+  try {
+    const r = await duplicateCustomReport(s, id);
+    newId = r?.id ?? null;
+    if (newId) await setShared(s, { id: newId, shared: true });
+  } catch (e) {
+    redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(BASE);
+  redirect(newId ? `${BASE}/builder/${newId}?toast=${encodeURIComponent('Saved as template')}` : BASE);
 }
