@@ -27,6 +27,7 @@ import { PieChart } from '@/components/charts/PieChart';
 import { LineChart } from '@/components/charts/LineChart';
 import { ChartCard } from '@/components/charts/ChartCard';
 import { FilterBar } from './FilterBar';
+import { YearSelect } from './YearSelect';
 import { bucketLabel, localizeDimension } from './labels';
 
 export default async function AnalyticsPage({
@@ -249,21 +250,12 @@ export default async function AnalyticsPage({
               {filters.q && <input type="hidden" name="q" value={filters.q} />}
               <input type="hidden" name="from" value={from} />
               <input type="hidden" name="to" value={to} />
-              <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                {t('carryForwardYear')}
-                <select
-                  name="year"
-                  defaultValue={String(reportYear)}
-                  onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                  className="h-8 rounded-lg border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-                >
-                  {Array.from({ length: 6 }, (_, i) => reportYear - 4 + i).map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <YearSelect
+                label={t('carryForwardYear')}
+                name="year"
+                selected={reportYear}
+                years={Array.from({ length: 6 }, (_, i) => reportYear - 4 + i)}
+              />
             </form>
             <div className="inline-flex items-center gap-1.5">
               <ExportLink href={carryForwardExportHref('csv')} label={t('exportCsv')} />
