@@ -498,7 +498,7 @@ export function exportIndividualTxnsCsv(
 //     election (state/method/rate/effective period + last-saved time). Answers "view all previously
 //     saved Zakat transactions" even before any payroll run exists.
 //   • listZakatTxnsAcross  — what was APPLIED in payroll: the zakat actually deducted in each PROCESSED
-//     payroll run (from payslip.statutory->>'zakat' > 0), by year/month/employee/company/cycle.
+//     payroll run (from payslip.statutory->>'zakat' > 0), by year/month/employee/company/cycle/status.
 // Both are pure SELECTs → no domain event (same read-only convention as the list* functions above). The
 // ONE exception is `exportZakatTxnsCsv`, which appends a `zakat.history.exported` egress event (mirroring
 // exportIndividualTxnsCsv / paymentSummaryForBatch).
@@ -591,12 +591,20 @@ export type ZakatTxnFilter = {
   month?: number;
   employmentId?: string;
   cycle?: string; // payroll run type
+  status?: string; // batch status — 'processed' | 'closed' (a payslip row never sits on a draft batch)
 };
+
+/** Coerce an untrusted status filter to the ONLY two statuses a payslip-backed history row can carry
+ *  (a payslip exists post-generation, so 'draft' is impossible by construction). Anything else — URL
+ *  tamper, stale form — is ignored, never cast (fail closed, mirroring cleanRunType above). */
+const cleanZakatStatus = (v: unknown): 'processed' | 'closed' | undefined =>
+  v === 'processed' || v === 'closed' ? v : undefined;
 
 /** Shared query for the Zakat "Applied in payroll" history AND its CSV export (one source of truth). Zakat
  *  actually deducted (`payslip.statutory->>'zakat' > 0`) across processed runs in the scoped companies. */
 function queryZakatTxns(tx: Tx, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
   const cycle = cleanRunType(p.cycle);
+  const status = cleanZakatStatus(p.status);
   return tx
     .select({
       id: payslip.id,
@@ -623,6 +631,7 @@ function queryZakatTxns(tx: Tx, p: ZakatTxnFilter): Promise<ZakatTxnViewRow[]> {
         periodFilter(p.year, p.month),
         p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
         cycle ? eq(payrollBatch.runType, cycle) : undefined,
+        status ? eq(payrollBatch.status, status) : undefined,
         // Only rows that actually carry a zakat deduction — a zero-zakat employee is excluded by construction.
         sql`(${payslip.statutory}->>'zakat')::numeric > 0`,
       ),
@@ -715,4 +724,5 @@ const zakatFilterPayload = (p: ZakatTxnFilter) => ({
   month: p.month ?? null,
   employmentId: p.employmentId ?? null,
   cycle: p.cycle ?? null,
+  status: p.status ?? null,
 });

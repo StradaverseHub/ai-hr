@@ -10,6 +10,8 @@ import { listEmployees } from '@/core/read';
 import { exportZakatTxnsCsv } from '@/core/payroll-view';
 
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
+// A payslip row only exists post-generation, so 'draft' is impossible in this history by construction.
+const STATUSES = ['processed', 'closed'] as const;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
 function intParam(v: string | null, min: number, max: number): number | undefined {
@@ -39,8 +41,10 @@ export async function GET(req: Request) {
   const month = intParam(url.searchParams.get('hMonth'), 1, 12);
   const rawCycle = url.searchParams.get('hCycle');
   const cycle = rawCycle && (CYCLES as readonly string[]).includes(rawCycle) ? rawCycle : undefined;
+  const rawStatus = url.searchParams.get('hStatus');
+  const status = rawStatus && (STATUSES as readonly string[]).includes(rawStatus) ? rawStatus : undefined;
 
-  const file = await exportZakatTxnsCsv(s, { companyIds, year, month, employmentId, cycle });
+  const file = await exportZakatTxnsCsv(s, { companyIds, year, month, employmentId, cycle, status });
   return new Response(file.content, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

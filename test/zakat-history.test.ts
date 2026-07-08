@@ -16,7 +16,7 @@ import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
-import { createBatch, generatePayslips, setPayrollDeductionInput } from '../core/payroll';
+import { closeBatch, createBatch, generatePayslips, setPayrollDeductionInput } from '../core/payroll';
 import { exportZakatTxnsCsv, listZakatElections, listZakatTxnsAcross } from '../core/payroll-view';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -187,6 +187,41 @@ describe('zakat transaction history (d435673e) — read-only lists + export even
       'Acme Sdn Bhd',
     ]);
     expect(await listZakatTxnsAcross(a, { companyIds: [] })).toEqual([]);
+  });
+
+  it('applied: status filter narrows to processed-only / closed-only; garbage status is ignored (fail closed to unfiltered)', async () => {
+    const a = adminCtx(base);
+    const e = await hirePayrollReady(a, base.companyId, base.deptA, 'Status Z', '900101011234');
+    await setFixedZakat(a, e.personId, 100);
+    // Two regular runs in different months: May stays PROCESSED, April is CLOSED.
+    const bApr = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-04' });
+    await generatePayslips(a, { batchId: bApr.batchId });
+    await closeBatch(a, { batchId: bApr.batchId });
+    const bMay = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId: bMay.batchId });
+    const companyIds = [base.companyId];
+
+    // Unfiltered: both rows, each carrying its batch status.
+    const all = await listZakatTxnsAcross(a, { companyIds });
+    expect(all.map((r) => [r.payPeriod, r.batchStatus])).toEqual([
+      ['2026-05', 'processed'],
+      ['2026-04', 'closed'],
+    ]);
+    // processed-only excludes the closed row…
+    expect((await listZakatTxnsAcross(a, { companyIds, status: 'processed' })).map((r) => r.payPeriod)).toEqual([
+      '2026-05',
+    ]);
+    // …and closed-only excludes the processed row.
+    expect((await listZakatTxnsAcross(a, { companyIds, status: 'closed' })).map((r) => r.payPeriod)).toEqual([
+      '2026-04',
+    ]);
+    // A tampered/garbage status never reaches Postgres — it is ignored (unfiltered), not cast (which would throw).
+    expect(await listZakatTxnsAcross(a, { companyIds, status: 'DROP TABLE' })).toHaveLength(2);
+    // The CSV export honours the same status filter (one source of truth).
+    const file = await exportZakatTxnsCsv(a, { companyIds, status: 'closed' });
+    expect(file.rowCount).toBe(1);
+    expect(file.content).toContain('2026-04');
+    expect(file.content).not.toContain('2026-05');
   });
 
   // ───────────────────── exportZakatTxnsCsv ─────────────────────

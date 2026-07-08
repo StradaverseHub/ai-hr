@@ -20,7 +20,7 @@ import { saveZakatElectionAction } from './election-actions';
  *
  *  B. TRANSACTION HISTORY (read-only, feedback d435673e) — two lists below the editor: "Saved elections"
  *     (every employee with a saved election) and "Applied in payroll" (the zakat actually deducted in each
- *     processed run, filterable by year/month/employee/company/cycle, with a CSV export). Both are pure
+ *     processed run, filterable by year/month/employee/company/cycle/status, with a CSV export). Both are pure
  *     reads (listZakatElections / listZakatTxnsAcross); the CSV route appends the egress event.
  *
  * The old "one-off override (per payroll run)" section was REMOVED by d435673e — the Zakat screen no longer
@@ -34,6 +34,8 @@ import { saveZakatElectionAction } from './election-actions';
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
+// A payslip row only exists post-generation, so 'draft' is impossible in this history by construction.
+const STATUSES = ['processed', 'closed'] as const;
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -58,6 +60,7 @@ export default async function ZakatTransactionPage({
     hYear?: string;
     hMonth?: string;
     hCycle?: string;
+    hStatus?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -85,6 +88,7 @@ export default async function ZakatTransactionPage({
   const hYear = intParam(sp.hYear, 2000, 2100);
   const hMonth = intParam(sp.hMonth, 1, 12);
   const hCycle = CYCLES.includes(sp.hCycle as (typeof CYCLES)[number]) ? sp.hCycle : undefined;
+  const hStatus = STATUSES.includes(sp.hStatus as (typeof STATUSES)[number]) ? sp.hStatus : undefined;
 
   const [elections, appliedRows] = await Promise.all([
     listZakatElections(s, { companyIds: scopeIds }),
@@ -94,6 +98,7 @@ export default async function ZakatTransactionPage({
       month: hMonth,
       employmentId: hEmploymentId,
       cycle: hCycle,
+      status: hStatus,
     }),
   ]);
 
@@ -113,6 +118,7 @@ export default async function ZakatTransactionPage({
       {hYear != null && <input type="hidden" name="hYear" value={String(hYear)} />}
       {hMonth != null && <input type="hidden" name="hMonth" value={String(hMonth).padStart(2, '0')} />}
       {hCycle && <input type="hidden" name="hCycle" value={hCycle} />}
+      {hStatus && <input type="hidden" name="hStatus" value={hStatus} />}
     </>
   );
 
@@ -349,6 +355,7 @@ export default async function ZakatTransactionPage({
               ...(hYear != null ? { hYear: String(hYear) } : {}),
               ...(hMonth != null ? { hMonth: String(hMonth) } : {}),
               ...(hCycle ? { hCycle } : {}),
+              ...(hStatus ? { hStatus } : {}),
             }).toString()}`}
             className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
           >
@@ -411,6 +418,17 @@ export default async function ZakatTransactionPage({
               {CYCLES.map((c) => (
                 <option key={c} value={c}>
                   {t(`individual.cycle.${c}`)}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('zakat.history.status')}>
+            {/* Reuses the payroll-list batch-status labels — the same wording the Status column renders. */}
+            <select name="hStatus" defaultValue={hStatus ?? ''} className={inputCls}>
+              <option value="">{t('zakat.history.all')}</option>
+              {STATUSES.map((st) => (
+                <option key={st} value={st}>
+                  {tList(`status.${st}`)}
                 </option>
               ))}
             </select>
