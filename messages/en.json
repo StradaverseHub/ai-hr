@@ -1746,10 +1746,7 @@
         "loansCta": "Open loans",
         "importHistoryTitle": "Import payroll history",
         "importHistoryDesc": "Bulk import of historical payroll records for data migration.",
-        "importHistoryCta": "Open import",
-        "viewTitle": "Transaction View",
-        "viewDesc": "Read-only inquiry across employees — fixed, individual and processed payroll history.",
-        "viewCta": "Open inquiry"
+        "importHistoryCta": "Open import"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -2983,6 +2980,7 @@
       "batches": "Payroll Process",
       "reports": "Reports",
       "transactions": "Transactions",
+      "view": "Transaction View",
       "setup": "Settings",
       "configuration": "Configuration"
     },

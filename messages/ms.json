@@ -1746,10 +1746,7 @@
         "loansCta": "Buka pinjaman",
         "importHistoryTitle": "Import sejarah gaji",
         "importHistoryDesc": "Import pukal rekod gaji terdahulu untuk migrasi data.",
-        "importHistoryCta": "Buka import",
-        "viewTitle": "Paparan Transaksi",
-        "viewDesc": "Semakan baca sahaja merentas pekerja — transaksi tetap, individu dan sejarah gaji yang diproses.",
-        "viewCta": "Buka semakan"
+        "importHistoryCta": "Buka import"
       },
       "fixed": {
         "title": "Transaksi Tetap",
@@ -2983,6 +2980,7 @@
       "batches": "Proses Gaji",
       "reports": "Laporan",
       "transactions": "Transaksi",
+      "view": "Paparan Transaksi",
       "setup": "Tetapan",
       "configuration": "Konfigurasi"
     },

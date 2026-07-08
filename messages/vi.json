@@ -1746,10 +1746,7 @@
         "loansCta": "Mở khoản vay",
         "importHistoryTitle": "Nhập lịch sử bảng lương",
         "importHistoryDesc": "Nhập hàng loạt hồ sơ lương trước đây phục vụ di chuyển dữ liệu.",
-        "importHistoryCta": "Mở nhập dữ liệu",
-        "viewTitle": "Xem giao dịch",
-        "viewDesc": "Tra cứu chỉ đọc trên toàn bộ nhân viên — giao dịch cố định, cá nhân và lịch sử lương đã xử lý.",
-        "viewCta": "Mở tra cứu"
+        "importHistoryCta": "Mở nhập dữ liệu"
       },
       "fixed": {
         "title": "Giao dịch cố định",
@@ -2983,6 +2980,7 @@
       "batches": "Quy trình tính lương",
       "reports": "Báo cáo",
       "transactions": "Giao dịch",
+      "view": "Xem giao dịch",
       "setup": "Cài đặt",
       "configuration": "Cấu hình"
     },

@@ -1,7 +1,8 @@
 /**
  * Payroll Transaction View (feedback a4a05174) — the centralized, READ-ONLY transaction inquiry.
  *
- * Three cross-employee aggregation reads that back the /payroll/transactions/view screen:
+ * Three cross-employee aggregation reads that back the /payroll/transaction-view screen
+ * (relocated from /payroll/transactions/view to a top-level Payroll tab by feedback 59178702):
  *   • listFixedTransactionsAcross    — recurring fixed pay items across every scoped employee
  *     (generalises listEmploymentPayComponents, which is single-employment). Powers "view by
  *     employee" AND "view by pay item → all employees assigned" via the optional filters.

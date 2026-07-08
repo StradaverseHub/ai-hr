@@ -1746,10 +1746,7 @@
         "loansCta": "打开贷款",
         "importHistoryTitle": "导入薪资历史",
         "importHistoryDesc": "批量导入历史薪资记录，用于数据迁移。",
-        "importHistoryCta": "打开导入",
-        "viewTitle": "交易查询",
-        "viewDesc": "跨员工的只读查询——固定交易、个人交易及已处理的薪资历史。",
-        "viewCta": "打开查询"
+        "importHistoryCta": "打开导入"
       },
       "fixed": {
         "title": "固定交易",
@@ -2983,6 +2980,7 @@
       "batches": "薪资流程",
       "reports": "报表",
       "transactions": "交易",
+      "view": "交易查询",
       "setup": "设置",
       "configuration": "配置"
     },

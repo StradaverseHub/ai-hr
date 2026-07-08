@@ -221,12 +221,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/process/result',
       '/payroll/reports',
       '/payroll/setup',
+      // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
+      // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
+      '/payroll/transaction-view',
       '/payroll/transactions',
       '/payroll/transactions/fixed',
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
-      // R13 a4a05174: centralized read-only Transaction View (scopedAdmin, same guard as the hub).
-      '/payroll/transactions/view',
       '/payroll/transactions/zakat',
     ],
   },
