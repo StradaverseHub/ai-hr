@@ -68,6 +68,8 @@ const LEAVE_STATUS: Record<string, string> = {
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   cancelled: 'bg-muted text-muted-foreground',
+  // R17 600be8ac ask #4: derived "Partially approved" display (approved request with some dates rejected).
+  partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
 };
 
 function LeaveStatus({ status, label }: { status: string; label: string }) {
@@ -1549,7 +1551,11 @@ export default async function EmployeePage({
               </td>
               <td className="px-4 py-2.5 tabular-nums">{t('daysCount', { days: Number(r.days) })}</td>
               <td className="px-4 py-2.5">
-                <LeaveStatus status={r.status} label={t(`leaveStatus.${r.status}`)} />
+                {r.status === 'approved' && r.hasRejectedDates ? (
+                  <LeaveStatus status="partial" label={t('leaveStatus.partiallyApproved')} />
+                ) : (
+                  <LeaveStatus status={r.status} label={t(`leaveStatus.${r.status}`)} />
+                )}
               </td>
             </tr>
           ))}

@@ -3,14 +3,24 @@ import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listJobGrades, listLeaveTypes } from '@/core/read';
 import { listBusinessUnits, listPositions } from '@/core/admin';
 import { getLeaveApprovalPolicy, listLeaveApprovalRules } from '@/core/leave-approval-policy';
+import { listApprovalTemplates, listTemplateAssignments } from '@/core/leave-approval-template';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveApprovalEditor } from '../../leave-approval/editor';
 import { RuleBuilder, type RuleBuilderLabels } from '../../leave-approval/rule-builder';
+import { ApprovalTemplateManager, type TemplateManagerLabels } from '../../leave-approval/template-manager';
 import {
   archiveLeaveApprovalRuleAction,
+  assignApprovalTemplateAction,
+  deleteApprovalTemplateAction,
+  duplicateApprovalTemplateAction,
+  saveApprovalTemplateAction,
   saveLeaveApprovalPolicyAction,
   saveLeaveApprovalRuleAction,
+  setApprovalTemplateActiveAction,
+  setLeaveMultiApprovalAction,
+  setTenantDefaultTemplateAction,
+  unassignApprovalTemplateAction,
 } from '../../leave-approval/actions';
 
 /**
@@ -52,18 +62,89 @@ export default async function LeaveApprovalTabPage({
     })),
   );
 
+  // 6fadb036: reusable templates + their assignments (tenant-level; scoped to companies in view).
+  const [templates, allAssignments] = await Promise.all([
+    listApprovalTemplates(s),
+    listTemplateAssignments(s),
+  ]);
+  const assignments = allAssignments.filter((a) => companyIds.includes(a.companyId));
+  const companyMultiApproval: Record<string, boolean> = Object.fromEntries(
+    rows.map(({ company, pol }) => [company.id, pol.enabled]),
+  );
+
   const labels = {
     enable: t('enable'),
     enableHint: t('enableHint'),
     chain: t('chain'),
     empty: t('empty'),
     manager: t('manager'),
+    departmentHead: t('departmentHead'),
+    businessUnitHead: t('businessUnitHead'),
     hr: t('hr'),
+    hrManager: t('hrManager'),
+    payroll: t('payroll'),
+    customRole: t('customRole'),
     add: t('add'),
     moveUp: t('moveUp'),
     moveDown: t('moveDown'),
     remove: t('remove'),
+    dragToReorder: t('dragToReorder'),
     save: t('save'),
+    reason: t('reason'),
+    reasonPlaceholder: t('reasonPlaceholder'),
+  };
+  const templateLabels: TemplateManagerLabels = {
+    templatesTitle: t('templatesTitle'),
+    templatesHint: t('templatesHint'),
+    addTemplate: t('addTemplate'),
+    editTemplate: t('editTemplate'),
+    duplicateTemplate: t('duplicateTemplate'),
+    deleteTemplate: t('deleteTemplate'),
+    deleteTemplateConfirm: t('deleteTemplateConfirm'),
+    deactivateTemplate: t('deactivateTemplate'),
+    activateTemplate: t('activateTemplate'),
+    templateName: t('templateName'),
+    templateNamePlaceholder: t('templateNamePlaceholder'),
+    templateDescription: t('templateDescription'),
+    statusActive: t('statusActive'),
+    statusInactive: t('statusInactive'),
+    tenantDefault: t('tenantDefault'),
+    tenantDefaultHint: t('tenantDefaultHint'),
+    setTenantDefault: t('setTenantDefault'),
+    unsetTenantDefault: t('unsetTenantDefault'),
+    assignmentsTitle: t('assignmentsTitle'),
+    assignmentsHint: t('assignmentsHint'),
+    assign: t('assign'),
+    assignTemplate: t('assignTemplate'),
+    selectTemplate: t('selectTemplate'),
+    selectCompanies: t('selectCompanies'),
+    selectLeaveTypes: t('selectLeaveTypes'),
+    templateCol: t('templateCol'),
+    leaveTypeCol: t('leaveType'),
+    companyCol: t('company'),
+    noTemplates: t('noTemplates'),
+    noAssignments: t('noAssignments'),
+    unassign: t('unassign'),
+    unassignConfirm: t('unassignConfirm'),
+    multiApprovalOff: t('multiApprovalOff'),
+    enableMultiApproval: t('enableMultiApproval'),
+    rolesGatedNote: t('rolesGatedNote'),
+    save: t('save'),
+    cancel: t('cancel'),
+    chain: t('chain'),
+    empty: t('empty'),
+    manager: t('manager'),
+    departmentHead: t('departmentHead'),
+    businessUnitHead: t('businessUnitHead'),
+    hr: t('hr'),
+    hrManager: t('hrManager'),
+    payroll: t('payroll'),
+    customRole: t('customRole'),
+    add: t('add'),
+    moveUp: t('moveUp'),
+    moveDown: t('moveDown'),
+    remove: t('remove'),
+    dragToReorder: t('dragToReorder'),
   };
   const ruleLabels: RuleBuilderLabels = {
     rulesTitle: t('rulesTitle'),
@@ -86,11 +167,17 @@ export default async function LeaveApprovalTabPage({
     chain: t('chain'),
     empty: t('empty'),
     manager: t('manager'),
+    departmentHead: t('departmentHead'),
+    businessUnitHead: t('businessUnitHead'),
     hr: t('hr'),
+    hrManager: t('hrManager'),
+    payroll: t('payroll'),
+    customRole: t('customRole'),
     add: t('add'),
     moveUp: t('moveUp'),
     moveDown: t('moveDown'),
     remove: t('remove'),
+    dragToReorder: t('dragToReorder'),
     save: t('save'),
     cancel: t('cancel'),
     noRules: t('noRules'),
@@ -99,6 +186,8 @@ export default async function LeaveApprovalTabPage({
     partTime: t('employmentType_part_time'),
     contract: t('employmentType_contract'),
     intern: t('employmentType_intern'),
+    reason: t('reason'),
+    reasonPlaceholder: t('reasonPlaceholder'),
   };
 
   return (
@@ -112,7 +201,31 @@ export default async function LeaveApprovalTabPage({
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('emptyScope')}</p>
         </Card>
       ) : (
-        rows.map(({ company, pol, rules }) => (
+        <>
+          <ApprovalTemplateManager
+            templates={templates}
+            assignments={assignments.map((a) => ({
+              ruleId: a.ruleId,
+              templateId: a.templateId,
+              companyId: a.companyId,
+              leaveTypeId: a.leaveTypeId,
+            }))}
+            companies={companies.map((c) => ({ id: c.id, label: c.name }))}
+            leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
+            companyMultiApproval={companyMultiApproval}
+            actions={{
+              saveTemplate: saveApprovalTemplateAction,
+              duplicateTemplate: duplicateApprovalTemplateAction,
+              setActive: setApprovalTemplateActiveAction,
+              deleteTemplate: deleteApprovalTemplateAction,
+              setDefault: setTenantDefaultTemplateAction,
+              assign: assignApprovalTemplateAction,
+              unassign: unassignApprovalTemplateAction,
+              setMultiApproval: setLeaveMultiApprovalAction,
+            }}
+            labels={templateLabels}
+          />
+          {rows.map(({ company, pol, rules }) => (
           <Card key={company.id}>
             <SectionHeader title={company.name} />
             <LeaveApprovalEditor
@@ -125,7 +238,7 @@ export default async function LeaveApprovalTabPage({
             <RuleBuilder
               companyId={company.id}
               companies={companies.map((c) => ({ id: c.id, label: c.name }))}
-              rules={rules.filter((r) => !isCompanyDefault(r))}
+              rules={rules.filter((r) => !isCompanyDefault(r) && r.templateId == null)}
               leaveTypes={leaveTypesAll.map((x) => ({ id: x.id, label: x.name }))}
               businessUnits={businessUnitsAll
                 .filter((x) => x.companyId === company.id)
@@ -142,7 +255,8 @@ export default async function LeaveApprovalTabPage({
               labels={ruleLabels}
             />
           </Card>
-        ))
+          ))}
+        </>
       )}
     </div>
   );

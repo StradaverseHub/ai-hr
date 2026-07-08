@@ -17,7 +17,15 @@ export type LeavePreview = {
 const ALL_DURATIONS = ['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as const;
 type Duration = (typeof ALL_DURATIONS)[number];
 
-export type LeaveTypeOption = { id: string; label: string; durations: string[] | null; code?: string };
+export type LeaveTypeOption = {
+  id: string;
+  label: string;
+  durations: string[] | null;
+  code?: string;
+  /** Feedback 9d8cf621: optional HR-authored custom message shown to the employee when this type is selected
+   *  on the apply form. Absent/empty ⇒ no notice. */
+  applyNotice?: string | null;
+};
 
 /**
  * ADR-0048 client wrapper for the leave apply forms. It owns the Leave Type <select>, the Leave Duration
@@ -178,6 +186,14 @@ export function LeaveDurationFields({
           ))}
         </select>
       </Field>
+
+      {/* Feedback 9d8cf621: HR-authored custom message for the selected leave type, shown to the employee on
+          the apply form. Rendered only when the selected type carries a non-empty applyNotice. */}
+      {selected?.applyNotice && (
+        <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-foreground">
+          {selected.applyNotice}
+        </div>
+      )}
 
       <Field label={t('fieldDurationType')}>
         <select

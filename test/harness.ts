@@ -38,6 +38,9 @@ const ALL_TABLES = [
   // truncated them between test files (a currently-live isolation bug). A rule/BU row from an earlier test
   // file would silently survive and match (or throw the wildcard-unique index) in a later one.
   'leave_approval_policy', 'business_unit',
+  // 6fadb036 (R17) — reusable approval templates: truncate between test files (same isolation reason as
+  // leave_approval_policy above; a surviving template + its unique-name index would collide across files).
+  'leave_approval_template',
   // ADR-0072 — real auth: invitations must be truncated between tests, and the global unique index on
   // app_user.workos_user_id would otherwise let a leaked subject collide across test files.
   'app_invitation',

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { Button, Field, inputCls } from './ui';
@@ -196,10 +196,23 @@ function CarryExpiryFields({
  * preserve). Contiguity (first from 0, last open-ended, no gaps) is enforced server-side; this editor keeps
  * the UI simple (from / to / days rows) and lets the server reject a malformed shape with a clear message.
  */
-function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslations>; initial: ServiceBand[] | null | undefined }) {
-  const [rows, setRows] = useState<ServiceBand[]>(initial ?? []);
+/** Feedback 9d8cf621: the entitlement-rules table row. Extends the engine's `ServiceBand` (from/to/days —
+ *  the only fields the resolver reads) with the reporter's per-range config columns. These extra fields ride
+ *  the serviceBands JSON untouched (the write-time validator + defensive resolver ignore unknown keys), so
+ *  they are captured/persisted per range without a migration or an engine change. */
+type BandRow = ServiceBand & {
+  carryForwardDays?: number | null;
+  carryForwardExpiryMonth?: number | null;
+  carryForwardExpiryDay?: number | null;
+  maxBalanceDays?: number | null;
+};
 
-  const update = (i: number, patch: Partial<ServiceBand>) =>
+const numOrNull = (v: string): number | null => (v === '' ? null : Number(v));
+
+function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslations>; initial: ServiceBand[] | null | undefined }) {
+  const [rows, setRows] = useState<BandRow[]>((initial as BandRow[] | null | undefined) ?? []);
+
+  const update = (i: number, patch: Partial<BandRow>) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
   const add = () => {
@@ -208,49 +221,125 @@ function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslation
   };
 
   return (
-    <div className="space-y-1.5 rounded-lg bg-background p-3">
+    <div className="w-full space-y-1.5 rounded-lg bg-background p-3 lg:col-span-2">
       <input type="hidden" name="serviceBandsRendered" value="1" />
       <input type="hidden" name="serviceBands" value={JSON.stringify(rows)} />
       <span className="text-xs font-medium text-muted-foreground">{t('serviceBandsLabel')}</span>
       <p className="text-xs text-muted-foreground">{t('serviceBandsHelp')}</p>
       {rows.length === 0 && <p className="text-xs text-muted-foreground">{t('serviceBandsEmpty')}</p>}
-      {rows.map((r, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">{t('serviceBandFrom')}</span>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={r.fromYears}
-            onChange={(e) => update(i, { fromYears: Number(e.target.value) || 0 })}
-            className={`${inputCls} w-16`}
-          />
-          <span className="text-xs text-muted-foreground">{t('serviceBandTo')}</span>
-          <input
-            type="number"
-            min="0"
-            step="1"
-            value={r.toYears ?? ''}
-            placeholder={t('serviceBandOpenEnded')}
-            onChange={(e) => update(i, { toYears: e.target.value === '' ? null : Number(e.target.value) || 0 })}
-            className={`${inputCls} w-16`}
-          />
-          <span className="text-xs text-muted-foreground">{t('serviceBandDays')}</span>
-          <input
-            type="number"
-            min="0"
-            step="0.5"
-            value={r.days}
-            onChange={(e) => update(i, { days: Number(e.target.value) || 0 })}
-            className={`${inputCls} w-20`}
-          />
-          <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)}>
-            {t('remove')}
-          </Button>
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[42rem] text-xs">
+            <thead>
+              <tr className="text-left text-muted-foreground">
+                <th className="px-1.5 py-1 font-medium">{t('bandColFromYear')}</th>
+                <th className="px-1.5 py-1 font-medium">{t('bandColToYear')}</th>
+                <th className="px-1.5 py-1 font-medium">{t('bandColEntitledDays')}</th>
+                <th className="px-1.5 py-1 font-medium">{t('bandColCarryDays')}</th>
+                <th className="px-1.5 py-1 font-medium">{t('bandColCarryExpiry')}</th>
+                <th className="px-1.5 py-1 font-medium">{t('bandColMaxBalance')}</th>
+                <th className="px-1.5 py-1" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="align-middle">
+                  <td className="px-1.5 py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      aria-label={t('bandColFromYear')}
+                      value={r.fromYears}
+                      onChange={(e) => update(i, { fromYears: Number(e.target.value) || 0 })}
+                      className={`${inputCls} w-16`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      aria-label={t('bandColToYear')}
+                      value={r.toYears ?? ''}
+                      placeholder={t('serviceBandOpenEnded')}
+                      onChange={(e) => update(i, { toYears: e.target.value === '' ? null : Number(e.target.value) || 0 })}
+                      className={`${inputCls} w-16`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      aria-label={t('bandColEntitledDays')}
+                      value={r.days}
+                      onChange={(e) => update(i, { days: Number(e.target.value) || 0 })}
+                      className={`${inputCls} w-20`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      aria-label={t('bandColCarryDays')}
+                      value={r.carryForwardDays ?? ''}
+                      onChange={(e) => update(i, { carryForwardDays: numOrNull(e.target.value) })}
+                      className={`${inputCls} w-20`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        step="1"
+                        aria-label={t('carryExpiryMonthLabel')}
+                        placeholder={t('carryExpiryMonthLabel')}
+                        value={r.carryForwardExpiryMonth ?? ''}
+                        onChange={(e) => update(i, { carryForwardExpiryMonth: numOrNull(e.target.value) })}
+                        className={`${inputCls} w-14`}
+                      />
+                      <span className="text-muted-foreground">/</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="31"
+                        step="1"
+                        aria-label={t('carryExpiryDayLabel')}
+                        placeholder={t('carryExpiryDayLabel')}
+                        value={r.carryForwardExpiryDay ?? ''}
+                        onChange={(e) => update(i, { carryForwardExpiryDay: numOrNull(e.target.value) })}
+                        className={`${inputCls} w-14`}
+                      />
+                    </div>
+                  </td>
+                  <td className="px-1.5 py-1">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      aria-label={t('bandColMaxBalance')}
+                      value={r.maxBalanceDays ?? ''}
+                      onChange={(e) => update(i, { maxBalanceDays: numOrNull(e.target.value) })}
+                      className={`${inputCls} w-20`}
+                    />
+                  </td>
+                  <td className="px-1.5 py-1 text-right">
+                    <Button type="button" size="sm" variant="ghost" onClick={() => remove(i)}>
+                      {t('remove')}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      ))}
-      <Button type="button" size="sm" variant="outline" onClick={add}>
-        {t('serviceBandAdd')}
+      )}
+      <Button type="button" size="sm" variant="outline" onClick={add} aria-label={t('serviceBandAdd')}>
+        {t('bandAddPlus')}
       </Button>
     </div>
   );
@@ -265,6 +354,7 @@ export function LeaveTypePanel({
   id,
   name,
   code,
+  description,
   archived,
   inUse,
   isAnnual,
@@ -283,10 +373,6 @@ export function LeaveTypePanel({
   expiryValue,
   expiryUnit,
   customMessages,
-  paid,
-  sendToPayroll,
-  counting,
-  perDateApproval,
   policies,
   grades,
   companies,
@@ -296,10 +382,14 @@ export function LeaveTypePanel({
   createPolicyAction,
   updatePolicyAction,
   deletePolicyAction,
+  countInScopeAction,
 }: {
   id: string;
   name: string;
   code: string;
+  /** Leave Type master page (feedback 097de541): optional free-text description, edited in the identity
+   *  sub-form. Threaded so the input round-trips. null = none. */
+  description: string | null;
   archived: boolean;
   inUse: boolean;
   isAnnual: boolean;
@@ -331,16 +421,6 @@ export function LeaveTypePanel({
    *  field (`backdatingLimitDays` | `minAdvanceDays`). Threaded so each rule's "Custom system message"
    *  textarea round-trips. null / absent key = show the built-in localized default. */
   customMessages: Record<string, string> | null;
-  /** Whether this type is paid — drives the read-only "Affects payroll deduction" display (derived = !paid). */
-  paid: boolean;
-  /** Unpaid payroll-impact: emit the on-approval payroll signal. Editable in the "Payroll impact" sub-form. */
-  sendToPayroll: boolean;
-  /** How this type is counted ('working_days' | 'calendar_days'). Partial approval only fires for
-   *  working_days types — threaded so the per-date toggle can warn when it won't apply. */
-  counting: string;
-  /** Partial Leave Approval (ADR-0068): whether managers can approve/reject individual dates within a
-   *  multi-day request. Editable in the "Per-date approval" sub-form. */
-  perDateApproval: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -351,6 +431,9 @@ export function LeaveTypePanel({
   createPolicyAction: Action;
   updatePolicyAction: Action;
   deletePolicyAction: Action;
+  /** Feedback 9d8cf621: server action returning the count of active employees the selected
+   *  companies/grades cover — drives the live "entitled employees" figure next to the chips. */
+  countInScopeAction: (p: { companyIds: string[]; gradeIds: string[] }) => Promise<number>;
 }) {
   const t = useTranslations('admin.leave');
   const [expanded, setExpanded] = useState(false);
@@ -358,6 +441,39 @@ export function LeaveTypePanel({
   const [editingEligibility, setEditingEligibility] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Feedback 9d8cf621 — custom apply-time message: the enable checkbox drives whether the textarea is shown.
+  // Default from stored state (a non-empty applyNotice ⇒ enabled), so it round-trips on reload.
+  const [applyNoticeEnabled, setApplyNoticeEnabled] = useState<boolean>(!!customMessages?.applyNotice);
+  // Feedback 9d8cf621 — "Employee Selection" chips (add-entitlement form): selected companies + grades and the
+  // live entitled-employee count. Reset when the add form opens; recomputed via the server action on change.
+  const [pickCompanies, setPickCompanies] = useState<string[]>([]);
+  const [pickGrades, setPickGrades] = useState<string[]>([]);
+  const [entitledCount, setEntitledCount] = useState<number | null>(null);
+  const [, startCountTransition] = useTransition();
+
+  const refreshCount = (companyIds: string[], gradeIds: string[]) => {
+    startCountTransition(async () => {
+      try {
+        setEntitledCount(await countInScopeAction({ companyIds, gradeIds }));
+      } catch {
+        setEntitledCount(null);
+      }
+    });
+  };
+  const toggleFrom = (list: string[], value: string) =>
+    list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+
+  // Leave Type master page (feedback 097de541): the master table's Edit action links to #type-<id>; expand
+  // this row when the URL hash targets it (on mount and on later hashchange) so the edit surface is visible
+  // rather than scrolling to a collapsed row.
+  useEffect(() => {
+    const openIfTargeted = () => {
+      if (typeof window !== 'undefined' && window.location.hash === `#type-${id}`) setExpanded(true);
+    };
+    openIfTargeted();
+    window.addEventListener('hashchange', openIfTargeted);
+    return () => window.removeEventListener('hashchange', openIfTargeted);
+  }, [id]);
 
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
   // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
@@ -447,9 +563,34 @@ export function LeaveTypePanel({
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           {/* type-level controls */}
           {editingName ? (
-            <form action={updateTypeAction} className="flex flex-wrap items-center gap-2">
+            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="id" value={id} />
-              <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
+              {/* Leave Type master page (feedback 097de541): marker tells the action to touch the description
+                  column (tri-state guard) — this form edits Name + Description together. */}
+              <input type="hidden" name="identity" value="1" />
+              <Field label={t('nameLabel')}>
+                <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
+              </Field>
+              <Field label={t('descriptionLabel')}>
+                <input
+                  name="description"
+                  defaultValue={description ?? ''}
+                  aria-label={t('descriptionLabel')}
+                  placeholder={t('descriptionPlaceholder')}
+                  className={`${inputCls} w-64`}
+                />
+              </Field>
+              {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
+              <Field label={t('reasonLabel')}>
+                <input
+                  name="reason"
+                  type="text"
+                  maxLength={500}
+                  aria-label={t('reasonLabel')}
+                  placeholder={t('reasonPlaceholder')}
+                  className={`${inputCls} w-64`}
+                />
+              </Field>
               <Button type="submit" size="sm">
                 {t('save')}
               </Button>
@@ -505,6 +646,10 @@ export function LeaveTypePanel({
             </span>
           </div>
 
+          {/* Feedback 9d8cf621: the per-type config sections sit SIDE-BY-SIDE (two-across on lg) instead of
+              one long stacked column. Each section keeps its own self-contained <form> + tri-state marker, so
+              this is pure layout — no form is split and no marker/hidden-name is dropped. */}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {/* #25 visibility — eligibility rules (who can see + apply) */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
@@ -685,76 +830,9 @@ export function LeaveTypePanel({
             <p className="text-xs text-muted-foreground">{t('documentSectionHelp')}</p>
           </div>
 
-          {/* Payroll impact — the two checkboxes the feedback names. "Affects payroll deduction" is read-only,
-              derived from !paid (no second stored column); only "Send to payroll module" is editable. */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('payrollImpactSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the send_to_payroll column (tri-state guard) */}
-              <input type="hidden" name="payrollImpact" value="1" />
-              {/* derived, informational, NOT posted — the disabled checkbox reflects whether the type is paid */}
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" checked={!paid} disabled className="size-3.5 rounded border-border" />
-                {t('affectsPayrollDeductionLabel')}
-              </label>
-              <p className="text-xs text-muted-foreground">{t('affectsPayrollDeductionHelp')}</p>
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="sendToPayroll"
-                  defaultChecked={sendToPayroll}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('sendToPayrollLabel')}
-              </label>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('payrollImpactHelp')}</p>
-          </div>
-
-          {/* Partial Leave Approval (ADR-0068). Its own sub-form (own tri-state) posts `partialApproval=1`.
-              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company
-              whose leave approval chain is single-step; when the type can never satisfy that, we still let the
-              admin set the flag but show a greyed note explaining it won't apply (rather than silently no-op). */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
-            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
-              <input type="hidden" name="id" value={id} />
-              {/* preserve the name — this form does not edit it */}
-              <input type="hidden" name="name" value={name} />
-              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
-              <input type="hidden" name="partialApproval" value="1" />
-              <label className="flex items-center gap-2 text-xs text-foreground">
-                <input
-                  type="checkbox"
-                  name="perDateApproval"
-                  defaultChecked={perDateApproval}
-                  className="size-3.5 rounded border-border"
-                />
-                {t('perDateApprovalLabel')}
-              </label>
-              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
-                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
-              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  {code === 'REPLACEMENT'
-                    ? t('perDateApprovalNoteReplacement')
-                    : t('perDateApprovalNoteCounting')}
-                </p>
-              )}
-              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
-              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
-              <Button type="submit" size="sm">
-                {t('save')}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
-          </div>
+          {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
+              there). The per-date-approval toggle was removed. Both were self-contained sub-forms, so removing
+              them here never touches any other column on save. */}
 
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
               `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,
@@ -883,6 +961,46 @@ export function LeaveTypePanel({
             </div>
           )}
 
+          {/* Feedback 9d8cf621 — custom apply-time message. Own sub-form + tri-state marker `applyNotice=1`.
+              An "Enable custom message" checkbox reveals the textarea; unchecked ⇒ textarea hidden and an empty
+              value posts ⇒ the applyNotice key clears (message disabled). Shown to employees on the apply form. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('applyNoticeSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the applyNotice custom-message key (tri-state guard) */}
+              <input type="hidden" name="applyNotice" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="enableApplyNotice"
+                  checked={applyNoticeEnabled}
+                  onChange={(e) => setApplyNoticeEnabled(e.target.checked)}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('applyNoticeEnableLabel')}
+              </label>
+              {applyNoticeEnabled && (
+                <textarea
+                  name="customMessageApplyNotice"
+                  maxLength={500}
+                  rows={3}
+                  defaultValue={customMessages?.applyNotice ?? ''}
+                  placeholder={t('applyNoticePlaceholder')}
+                  className={inputCls}
+                />
+              )}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('applyNoticeHelp')}</p>
+          </div>
+          </div>
+          {/* end side-by-side grid (feedback 9d8cf621) */}
+
           {/* entitlement timeline */}
           <div className="space-y-1.5">
             <div className="text-xs font-medium text-muted-foreground">{t('companyEntitlements')}</div>
@@ -996,6 +1114,17 @@ export function LeaveTypePanel({
                     </select>
                   </Field>
                   <ServiceBandEditor t={t} initial={p.serviceBands} />
+                  {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event so HR can
+                      answer the reporter's "Why the change was made" column. */}
+                  <Field label={t('reasonLabel')}>
+                    <input
+                      name="reason"
+                      type="text"
+                      maxLength={500}
+                      placeholder={t('reasonPlaceholder')}
+                      className={`${inputCls} w-64`}
+                    />
+                  </Field>
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>
@@ -1149,39 +1278,143 @@ export function LeaveTypePanel({
                   <option value="earned_quarterly">{t('methodEarnedQuarterly')}</option>
                 </select>
               </Field>
-              {grades.length > 0 && (
-                <Field label={t('gradeLabel')}>
-                  <select name="gradeId" defaultValue="" className={`${inputCls} w-40`}>
-                    <option value="">{t('gradeAll')}</option>
-                    {grades.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-              {/* ADR-0066: per-company scope on a new entitlement. */}
-              <Field label={t('policyCompanyLabel')}>
-                <select name="companyId" defaultValue="" className={`${inputCls} w-44`}>
-                  <option value="">{t('policyCompanyGroupDefault')}</option>
-                  {companies.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+              {/* Feedback 9d8cf621 — "Employee Selection": HR picks one or MORE companies + job grades. The
+                  chosen ids post as repeated `companyIds` / `gradeIds` fields (hidden inputs below), and the
+                  action fans out to one entitlement per (company × grade). Empty = group default / all grades
+                  (today's single row). Selected values render as removable chips + a live entitled-employee
+                  count. */}
+              <div className="w-full space-y-2 rounded-lg bg-background p-3 lg:col-span-2">
+                <span className="text-xs font-medium text-muted-foreground">{t('employeeSelectionLabel')}</span>
+                {/* hidden inputs carry the current selection into the POST */}
+                {pickCompanies.map((cid) => (
+                  <input key={cid} type="hidden" name="companyIds" value={cid} />
+                ))}
+                {pickGrades.map((gid) => (
+                  <input key={gid} type="hidden" name="gradeIds" value={gid} />
+                ))}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <span className="text-xs text-muted-foreground">{t('policyCompaniesLabel')}</span>
+                    <select
+                      aria-label={t('policyCompaniesLabel')}
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        const next = toggleFrom(pickCompanies, v);
+                        setPickCompanies(next);
+                        refreshCount(next, pickGrades);
+                      }}
+                      className={`${inputCls} w-full`}
+                    >
+                      <option value="">{t('policyCompanyGroupDefault')}</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex flex-wrap gap-1">
+                      {pickCompanies.map((cid) => {
+                        const c = companies.find((x) => x.id === cid);
+                        return (
+                          <button
+                            key={cid}
+                            type="button"
+                            onClick={() => {
+                              const next = pickCompanies.filter((v) => v !== cid);
+                              setPickCompanies(next);
+                              refreshCount(next, pickGrades);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
+                            aria-label={t('chipRemoveAria', { name: c?.name ?? cid })}
+                          >
+                            {c?.name ?? cid}
+                            <span aria-hidden>×</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {grades.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="text-xs text-muted-foreground">{t('policyGradesLabel')}</span>
+                      <select
+                        aria-label={t('policyGradesLabel')}
+                        value=""
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (!v) return;
+                          const next = toggleFrom(pickGrades, v);
+                          setPickGrades(next);
+                          refreshCount(pickCompanies, next);
+                        }}
+                        className={`${inputCls} w-full`}
+                      >
+                        <option value="">{t('gradeAll')}</option>
+                        {grades.map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.name}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="flex flex-wrap gap-1">
+                        {pickGrades.map((gid) => {
+                          const g = grades.find((x) => x.id === gid);
+                          return (
+                            <button
+                              key={gid}
+                              type="button"
+                              onClick={() => {
+                                const next = pickGrades.filter((v) => v !== gid);
+                                setPickGrades(next);
+                                refreshCount(pickCompanies, next);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-foreground hover:bg-muted/70"
+                              aria-label={t('chipRemoveAria', { name: g?.name ?? gid })}
+                            >
+                              {g?.name ?? gid}
+                              <span aria-hidden>×</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {entitledCount != null && (
+                  <p className="text-xs font-medium text-foreground">
+                    {t('entitledEmployeesCount', { count: entitledCount })}
+                  </p>
+                )}
+              </div>
               <ServiceBandEditor t={t} initial={null} />
-              <Button type="submit" size="sm">
+              {/* Feedback 9d8cf621: save button with a confirmation prompt before writing. */}
+              <ConfirmSubmit
+                size="sm"
+                variant="default"
+                title={t('savePolicyConfirmTitle')}
+                description={t('savePolicyConfirmDescription')}
+                confirmLabel={t('saveConfirmLabel')}
+              >
                 {t('add')}
-              </Button>
+              </ConfirmSubmit>
               <Button type="button" size="sm" variant="outline" onClick={() => setAdding(false)}>
                 {t('cancel')}
               </Button>
             </form>
           ) : (
-            <Button type="button" size="sm" variant="outline" onClick={() => setAdding(true)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setAdding(true);
+                setPickCompanies([]);
+                setPickGrades([]);
+                setEntitledCount(null);
+              }}
+            >
               {t('addEntitlement')}
             </Button>
           )}

@@ -21,8 +21,14 @@ import {
 import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
+  applyMaxBalance,
   bandDaysFor,
+  bandFor,
+  bandCarryExpiry,
+  bandCarryMax,
+  bandMaxBalance,
   carryEnabled,
+  hasAnyCarryExpiry,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -38,8 +44,14 @@ import {
 } from './leave-compute';
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
 export {
+  applyMaxBalance,
   bandDaysFor,
+  bandFor,
+  bandCarryExpiry,
+  bandCarryMax,
+  bandMaxBalance,
   carryEnabled,
+  hasAnyCarryExpiry,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -56,6 +68,7 @@ export {
 import {
   assignment,
   attendancePolicy,
+  businessUnit,
   company,
   department,
   employment,
@@ -1628,7 +1641,34 @@ async function generateApprovalSteps(
     businessUnitId: attr?.businessUnitId ?? null,
     days,
   });
-  const kinds = chain.filter((k) => k !== 'direct_manager' || hasManager);
+  // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
+  // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
+  // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and
+  // are never dropped here — they resolve to role authority at decision time.
+  let deptHead: string | null = null;
+  if (attr?.departmentId) {
+    const [d] = await tx
+      .select({ head: department.headEmploymentId })
+      .from(department)
+      .where(eq(department.id, attr.departmentId))
+      .limit(1);
+    deptHead = d?.head ?? null;
+  }
+  let buHead: string | null = null;
+  if (attr?.businessUnitId) {
+    const [b] = await tx
+      .select({ head: businessUnit.headEmploymentId })
+      .from(businessUnit)
+      .where(eq(businessUnit.id, attr.businessUnitId))
+      .limit(1);
+    buHead = b?.head ?? null;
+  }
+  const kinds = chain.filter((k) => {
+    if (k === 'direct_manager') return hasManager;
+    if (k === 'department_head') return !!deptHead;
+    if (k === 'business_unit_head') return !!buHead;
+    return true;
+  });
   if (kinds.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
     kinds.map((approverKind, stepIndex) => ({
@@ -1731,6 +1771,116 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
   }
 }
 
+/** 6fadb036 (gap-close) — dispatch a leave approval step to the right decider-authority check for its kind.
+ *  Each kind's semantics are documented on LEVEL_KINDS (core/leave-approval-policy.ts). The self-approval
+ *  ban applies to every kind (super_admin keeps the sole-admin escape hatch), matching assertCanDecide. */
+async function assertCanDecideLeaveStep(
+  tx: Tx,
+  ctx: SessionContext,
+  subjectEmploymentId: string,
+  kind: string,
+  label: string,
+) {
+  const roles = ctx.roles ?? [];
+  const isSuper = roles.includes('super_admin');
+  // HR admins hold full leave visibility + authority, so they can clear ANY step — this guarantees every
+  // chain completes even when the designated role-holder/head lacks RLS visibility to the request (a payroll
+  // partner or a dept/BU head who is not also the subject's admin manager cannot see it). The designated
+  // decider still clears their own step when they DO have access (checked below). Documented in the
+  // approver-vocabulary note (ADR-0071 §i follow-up: dedicated approver-role visibility).
+  const isAdminRole = isSuper || roles.includes('hr_admin');
+  // Shared self-approval ban (skipped for super_admin, like assertCanDecide / assertIsHrAdmin).
+  const banSelf = async () => {
+    if (isSuper || ctx.personId == null) return;
+    const [subj] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, subjectEmploymentId))
+      .limit(1);
+    if (subj?.personId === ctx.personId) throw new Error(`You cannot decide your own ${label}`);
+  };
+
+  switch (kind) {
+    case 'direct_manager':
+      return assertCanDecide(tx, ctx, subjectEmploymentId, label);
+    // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
+    // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
+    case 'hr_admin':
+    case 'hr_manager':
+    case 'custom_role':
+      return assertIsHrAdmin(tx, ctx, subjectEmploymentId, label);
+    case 'payroll': {
+      await banSelf();
+      if (isAdminRole) return; // HR/super clears it (guaranteed visibility)
+      const [subj] = await tx
+        .select({ companyId: employment.companyId })
+        .from(employment)
+        .where(eq(employment.id, subjectEmploymentId))
+        .limit(1);
+      const ok = (ctx.grants ?? []).some(
+        (g) => g.role === 'payroll_partner' && (g.companyId == null || g.companyId === subj?.companyId),
+      );
+      if (!ok) throw new Error(`Only Payroll or HR can decide this ${label}`);
+      return;
+    }
+    case 'department_head':
+    case 'business_unit_head': {
+      await banSelf();
+      if (isAdminRole) return; // HR/super clears it (guaranteed visibility)
+      const head = await resolveSubjectHead(tx, subjectEmploymentId, kind);
+      const roleLabel = kind === 'department_head' ? 'department head' : 'business unit head';
+      if (head == null) throw new Error(`No ${roleLabel} is set for this employee — an admin must decide or assign one`);
+      const [h] = await tx
+        .select({ personId: employment.personId })
+        .from(employment)
+        .where(eq(employment.id, head))
+        .limit(1);
+      if (ctx.personId != null && h?.personId === ctx.personId) return;
+      throw new Error(`Only the ${roleLabel} or HR can decide this ${label}`);
+    }
+    default:
+      throw new Error(`Unknown approver step for this ${label}`);
+  }
+}
+
+/** Resolve the subject's current department-head or business-unit-head employment id (null when unset).
+ *  Uses the subject's CURRENT assignment (validTo/supersededAt null), the same predicate as elsewhere. */
+async function resolveSubjectHead(
+  tx: Tx,
+  subjectEmploymentId: string,
+  kind: 'department_head' | 'business_unit_head',
+): Promise<string | null> {
+  if (kind === 'department_head') {
+    const [row] = await tx
+      .select({ head: department.headEmploymentId })
+      .from(assignment)
+      .innerJoin(department, eq(department.id, assignment.departmentId))
+      .where(
+        and(
+          eq(assignment.employmentId, subjectEmploymentId),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .limit(1);
+    return row?.head ?? null;
+  }
+  const [row] = await tx
+    .select({ head: businessUnit.headEmploymentId })
+    .from(assignment)
+    .innerJoin(department, eq(department.id, assignment.departmentId))
+    .innerJoin(businessUnit, eq(businessUnit.id, department.businessUnitId))
+    .where(
+      and(
+        eq(assignment.employmentId, subjectEmploymentId),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .limit(1);
+  return row?.head ?? null;
+}
+
 // endDate is widened in (alongside days/startDate) for the on-approval payroll-impact enrichment below. At
 // runtime decideLeave passes the full leave_request row, so endDate is always present; the type just exposes it.
 type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; days: string; startDate: string; endDate: string };
@@ -1745,6 +1895,11 @@ type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; d
  *  notification renderer emits the honest "partially approved — see the breakdown" body instead of a flat
  *  "approved". It defaults to false/omitted so every non-per-date call site's event payload is byte-identical
  *  to today (the multi-step chain finalization and the single-step whole-request approval never pass it). */
+/** The per-date outcome carried into a MIXED approval event so the notification renderer can list which
+ *  dates were approved / rejected (and why) instead of a generic "see the breakdown". Only populated for the
+ *  mixed case; omitted for every whole-request / all-approved caller so their payload stays byte-identical. */
+type PerDateOutcome = { approved: string[]; rejected: { date: string; reason: string | null }[] };
+
 async function finalizeLeaveApproval(
   tx: Tx,
   ctx: SessionContext,
@@ -1752,6 +1907,7 @@ async function finalizeLeaveApproval(
   deciderEmploymentId?: string,
   daysOverride?: number,
   mixed = false,
+  perDateOutcome?: PerDateOutcome,
 ) {
   const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
   const need = daysOverride ?? Number(req.days);
@@ -1813,6 +1969,10 @@ async function finalizeLeaveApproval(
       // reads to emit the "partially approved" body. Omitted (not `mixed: false`) for every other caller so
       // the whole-request / all-approved payload shape stays byte-identical to today.
       ...(mixed ? { mixed: true } : {}),
+      // Partial Leave Approval (R17 600be8ac): when mixed, carry the per-date breakdown into the payload so
+      // the notification renderer emits a self-contained body listing the approved + rejected dates and the
+      // rejection reason — the reporter's ask #5. Only spread when present ⇒ byte-identical for every other caller.
+      ...(mixed && perDateOutcome ? { perDateOutcome } : {}),
       // When the type opts in (sendToPayroll), attach an ADVISORY payroll-impact contract for a future
       // payroll integration to consume. It is telemetry, NOT a deduction source: the authoritative deduction
       // remains unpaidDaysByEmployment()'s live status='approved' re-query (which auto-corrects on any future
@@ -1891,8 +2051,10 @@ export async function decideLeave(
 
     // Multi-step chain: decide the current step.
     if (steps.length > 0 && current) {
-      if (current.approverKind === 'hr_admin') await assertIsHrAdmin(tx, ctx, req.employmentId, 'leave request');
-      else await assertCanDecide(tx, ctx, req.employmentId, 'leave request'); // direct_manager
+      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind (the full
+      // 7-role vocabulary). direct_manager / department_head / business_unit_head / hr_admin / hr_manager /
+      // payroll / custom_role each have their own resolver in assertCanDecideLeaveStep.
+      await assertCanDecideLeaveStep(tx, ctx, req.employmentId, current.approverKind, 'leave request');
       await tx
         .update(leaveApprovalStep)
         .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })
@@ -2051,33 +2213,120 @@ export async function decideLeaveDate(
       payload: { leaveDate: p.leaveDate, decision: p.decision, ...(rejectReason ? { rejectReason } : {}) },
     });
 
-    // §4E finalization: only when NO pending dates remain.
-    const remaining = await tx
-      .select()
-      .from(leaveRequestDate)
-      .where(eq(leaveRequestDate.leaveRequestId, req.id));
-    const stillPending = remaining.filter((d) => d.status === 'pending');
-    if (stillPending.length > 0) return { status: 'pending' as const };
+    // §4E finalization: only when NO pending dates remain (shared with the batch decideLeaveDates path).
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
+  });
+}
 
-    const approved = remaining.filter((d) => d.status === 'approved');
-    const rejected = remaining.filter((d) => d.status === 'rejected');
-    if (approved.length === 0) {
-      // All rejected → terminal rejection, no debit. Collect the per-date reasons for the audit trail.
-      await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, {
-        rejectReason: rejected.map((d) => `${d.leaveDate}: ${d.rejectReason ?? ''}`).join('; '),
-        perDate: rejected.map((d) => ({ date: d.leaveDate, rejectReason: d.rejectReason })),
+/** §4E finalization tail, shared by the single-date decideLeaveDate and the batch decideLeaveDates. Re-reads
+ *  every leave_request_date row: while any is still pending the request stays pending; once none are pending it
+ *  finalizes exactly once — all-rejected ⇒ terminal rejection (no debit, per-date reasons captured);
+ *  ≥1 approved ⇒ single ledger debit = sum(approved weighted days) + status='approved'. A MIXED outcome
+ *  (≥1 approved AND ≥1 rejected) tags the approved event (mixed + perDateOutcome) so the employee's
+ *  notification honestly reads "partially approved" and lists the approved/rejected dates + reason. */
+async function finalizePerDateIfComplete(
+  tx: Tx,
+  ctx: SessionContext,
+  req: DecidableLeave,
+  deciderEmploymentId?: string,
+): Promise<{ status: 'pending' | 'approved' | 'rejected' }> {
+  const remaining = await tx
+    .select()
+    .from(leaveRequestDate)
+    .where(eq(leaveRequestDate.leaveRequestId, req.id));
+  const stillPending = remaining.filter((d) => d.status === 'pending');
+  if (stillPending.length > 0) return { status: 'pending' as const };
+
+  const approved = remaining.filter((d) => d.status === 'approved');
+  const rejected = remaining.filter((d) => d.status === 'rejected');
+  if (approved.length === 0) {
+    // All rejected → terminal rejection, no debit. Collect the per-date reasons for the audit trail.
+    await finalizeLeaveRejection(tx, ctx, req, deciderEmploymentId, {
+      rejectReason: rejected.map((d) => `${d.leaveDate}: ${d.rejectReason ?? ''}`).join('; '),
+      perDate: rejected.map((d) => ({ date: d.leaveDate, rejectReason: d.rejectReason })),
+    });
+    return { status: 'rejected' as const };
+  }
+  // All-approved OR mixed (≥1 approved) → single ledger debit for sum(approved days) + status='approved'.
+  // §4A makes balance/calendar/attendance/payroll count ONLY the approved dates regardless of top-level
+  // status, so a mixed outcome uses 'approved' + per-date truth (no new "partially_approved" enum this round).
+  const approvedDays = approved.reduce((s, d) => s + Number(d.days), 0);
+  const mixed = rejected.length > 0;
+  const perDateOutcome: PerDateOutcome | undefined = mixed
+    ? {
+        approved: approved.map((d) => d.leaveDate),
+        rejected: rejected.map((d) => ({ date: d.leaveDate, reason: d.rejectReason })),
+      }
+    : undefined;
+  await finalizeLeaveApproval(tx, ctx, req, deciderEmploymentId, approvedDays, mixed, perDateOutcome);
+  return { status: 'approved' as const };
+}
+
+/** ADR-0068 §4D (R17 600be8ac) — decide MANY requested dates of a per-date-approval request in ONE submit.
+ *  The approver fills the decision table (one row per requested date, Approve/Reject + a reason for each
+ *  rejected date) and submits once. Same guards as decideLeaveDate: pending request, assertCanDecide, each
+ *  date exists & is pending, every rejected date carries a non-blank reason (all validated BEFORE the write so
+ *  a bad batch persists nothing). Applies every row update, appends one leave-request.date.decided event PER
+ *  date (uniform audit stream), then runs the shared finalization once. Single-step only (§4C). */
+export async function decideLeaveDates(
+  ctx: SessionContext,
+  p: {
+    leaveRequestId: string;
+    decisions: { leaveDate: string; decision: 'approved' | 'rejected'; rejectReason?: string }[];
+    deciderEmploymentId?: string;
+  },
+) {
+  // Normalize + validate reject reasons BEFORE opening the transaction — a blank reason on any rejected date
+  // aborts the whole batch and persists nothing (no status flip, no ledger row, no event).
+  const decisions = p.decisions.map((d) => ({
+    leaveDate: d.leaveDate,
+    decision: d.decision,
+    rejectReason: d.rejectReason?.trim() || null,
+  }));
+  if (decisions.length === 0) throw new Error('no decisions provided');
+  for (const d of decisions) {
+    if (d.decision === 'rejected' && !d.rejectReason) throw new MissingRejectReasonError();
+  }
+  // Reject a batch that names the same date twice (ambiguous decision).
+  if (new Set(decisions.map((d) => d.leaveDate)).size !== decisions.length) {
+    throw new Error('duplicate leave date in batch');
+  }
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+    if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
+    // Single-step authority (§4C): per-date rows only exist for single-step companies.
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+
+    for (const d of decisions) {
+      const [row] = await tx
+        .select()
+        .from(leaveRequestDate)
+        .where(and(eq(leaveRequestDate.leaveRequestId, req.id), eq(leaveRequestDate.leaveDate, d.leaveDate)))
+        .limit(1);
+      if (!row) throw new Error('leave date not found on this request');
+      if (row.status !== 'pending') throw new Error(`leave date is already ${row.status}`);
+      await tx
+        .update(leaveRequestDate)
+        .set({
+          status: d.decision,
+          rejectReason: d.decision === 'rejected' ? d.rejectReason : null,
+          decidedByEmploymentId: p.deciderEmploymentId ?? null,
+          decidedAt: sql`now()`,
+        })
+        .where(eq(leaveRequestDate.id, row.id));
+      // Substrate: one event per date keeps the audit stream identical to the single-date path.
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-request',
+        aggregateId: req.id,
+        eventType: 'leave-request.date.decided',
+        actor: actorOf(ctx),
+        subjectEmploymentId: req.employmentId,
+        payload: { leaveDate: d.leaveDate, decision: d.decision, ...(d.rejectReason ? { rejectReason: d.rejectReason } : {}) },
       });
-      return { status: 'rejected' as const };
     }
-    // All-approved OR mixed (≥1 approved) → single ledger debit for sum(approved days) + status='approved'.
-    // §4A makes balance/calendar/attendance/payroll count ONLY the approved dates regardless of top-level
-    // status, so a mixed outcome uses 'approved' + per-date truth (no new "partially_approved" enum this round).
-    // A MIXED outcome (≥1 approved AND ≥1 rejected) tags the approved event so the employee's notification
-    // honestly reads "partially approved — see the breakdown" rather than a flat "approved".
-    const approvedDays = approved.reduce((s, d) => s + Number(d.days), 0);
-    const mixed = rejected.length > 0;
-    await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, approvedDays, mixed);
-    return { status: 'approved' as const };
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
   });
 }
 
@@ -2539,6 +2788,164 @@ export async function decideLeaveCancellation(
   });
 }
 
+/**
+ * HR-initiated cancellation of an employee's WHOLE leave request, on their behalf (feedback 22e68ff0).
+ *
+ * Unlike the employee-driven partial give-back (requestLeaveCancellation → decideLeaveCancellation), this is
+ * an immediate, no-approval-workflow HR power: an HR admin cancels a PENDING or APPROVED leave for another
+ * employee for operational/payroll/audit reasons. It flips the request to 'cancelled', restores the entitlement
+ * balance (by reversing the net ledger debit), supersedes any open give-back on the same leave, and appends a
+ * distinct `leave-request.admin-cancelled` event carrying the REAL HR actor (the audit must show HR did it,
+ * not the employee) plus the display fields the employee notification needs.
+ *
+ * Deliberately NOT `assertCanDecide` (which admits managers) — immediate on-behalf cancellation is HR-only.
+ * A manager keeps the existing decide paths. Company scope is free: the row is loaded under RLS, so a
+ * company-scoped hr_admin can't see (⇒ can't cancel) another company's request.
+ */
+export async function adminCancelLeave(
+  ctx: SessionContext,
+  p: { leaveRequestId: string; reason?: string; cancelledByEmploymentId?: string },
+): Promise<{ previousStatus: 'pending' | 'approved'; restoredDays: number }> {
+  return withTenant(ctx, async (tx) => {
+    // HR-only. isAdmin() = hr_admin OR super_admin; a manager (or any other role) is refused here.
+    if (!isAdmin(ctx)) {
+      throw new LeaveCancellationNotAllowedError('only an HR administrator can cancel leave on behalf of an employee');
+    }
+    const isSuper = ctx.roles?.includes('super_admin') ?? false;
+
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+
+    // Self-ban: an HR admin's own leave goes through the normal employee flow, not this on-behalf power
+    // (mirrors assertCanDecide's self-approval ban). super_admin keeps the sole-admin escape hatch.
+    if (!isSuper) {
+      const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+      if (ctx.personId && ctx.personId === subjectPersonId) {
+        throw new LeaveCancellationNotAllowedError('an HR administrator cannot cancel their own leave here');
+      }
+    }
+
+    // Status gate: only pending | approved are cancellable. Already-cancelled / rejected → refuse, naming the
+    // current status (localizeLeaveError maps the typed error to the localized cancellationNotAllowed message).
+    if (req.status !== 'pending' && req.status !== 'approved') {
+      throw new LeaveCancellationNotAllowedError(`the leave is already ${req.status}`);
+    }
+    const previousStatus = req.status as 'pending' | 'approved';
+
+    const [lt] = await tx
+      .select({ code: leaveType.code, name: leaveType.name })
+      .from(leaveType)
+      .where(eq(leaveType.id, req.leaveTypeId))
+      .limit(1);
+
+    // An APPROVED REPLACEMENT (time-off-in-lieu) leave already consumed the toil_accrual register at approval,
+    // and there is no inverse of consumeReplacementLeaveTx — restoring it via the ledger would reintroduce the
+    // ghost-credit bug. A PENDING replacement never consumed the register, so it cancels cleanly.
+    if (previousStatus === 'approved' && lt?.code === 'REPLACEMENT') {
+      throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
+    }
+
+    // Closed-payroll gate: never retroactively alter a period whose payslip was finalised. For each DISTINCT
+    // month spanned by the leave, reject if that employee's batch is closed. (HR may cancel past/started leave —
+    // the admin override vs. the employee's future-only rule — but never a finalised payroll month.)
+    const months = [...new Set(eachDate(req.startDate, req.endDate).map((d) => d.slice(0, 7)))];
+    for (const m of months) {
+      if (await cancelDatePeriodClosed(tx, req.employmentId, `${m}-01`)) {
+        throw new LeaveCancellationPeriodClosedError(`${m}-01`);
+      }
+    }
+
+    // ── Effect ──────────────────────────────────────────────────────────────────────────────────────────
+    // 1) Restore the balance by reversing the NET ledger debit sourced to this request. Net-sum (not req.days)
+    //    is robust to per-date partial approvals, survivors of a prior cancellation split (whose rows net to
+    //    the survivor's current debit), half-day/hourly fractions, and unpaid types that never debited (net 0
+    //    ⇒ nothing to reverse). Pending leave has no debit ⇒ net 0 ⇒ restoredDays 0.
+    const [netRow] = await tx
+      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+      .from(leaveLedger)
+      .where(eq(leaveLedger.sourceRequestId, req.id));
+    const net = Number(netRow?.net ?? 0);
+    let restoredDays = 0;
+    if (net < 0) {
+      restoredDays = round2(-net);
+      await tx.insert(leaveLedger).values({
+        tenantId: ctx.tenantId,
+        employmentId: req.employmentId,
+        leaveTypeId: req.leaveTypeId,
+        entryType: 'debit',
+        days: restoredDays.toFixed(2), // positive = reversal of the original negative debit
+        sourceRequestId: req.id,
+        effectiveOn: req.startDate, // same cycle/carry window as the original debit
+      });
+    }
+
+    // 2) Flip the request to cancelled. decidedByEmploymentId/decidedAt are left untouched (they record the
+    //    ORIGINAL approval decision; the cancellation's who/when lives in the event below).
+    await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
+
+    // 3) Supersede any open employee give-back on this leave, so no dangling pending card sits in /approvals
+    //    (decideLeaveCancellation would then error on it). The column CHECK is pending|approved|rejected, so a
+    //    superseded row becomes 'rejected' with HR as decider, plus a per-row rejected event.
+    const openGiveBacks = await tx
+      .select({ id: leaveCancellationRequest.id })
+      .from(leaveCancellationRequest)
+      .where(
+        and(
+          eq(leaveCancellationRequest.leaveRequestId, req.id),
+          eq(leaveCancellationRequest.status, 'pending'),
+        ),
+      );
+    if (openGiveBacks.length > 0) {
+      await tx
+        .update(leaveCancellationRequest)
+        .set({ status: 'rejected', decidedByEmploymentId: p.cancelledByEmploymentId ?? null, decidedAt: sql`now()` })
+        .where(
+          and(
+            eq(leaveCancellationRequest.leaveRequestId, req.id),
+            eq(leaveCancellationRequest.status, 'pending'),
+          ),
+        );
+      for (const gb of openGiveBacks) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'leave-cancellation-request',
+          aggregateId: gb.id,
+          eventType: 'leave-cancellation.rejected',
+          actor: actorOf(ctx),
+          subjectEmploymentId: req.employmentId,
+          payload: { leaveRequestId: req.id, supersededByAdminCancellation: true },
+        });
+      }
+    }
+
+    // 4) Substrate discipline — the audit trail for this HR action. A DISTINCT event type (not the split
+    //    machinery's leave-request.cancelled) so the notification registry keys the employee notice without
+    //    also firing on a manager approving an employee's own give-back. Payload carries the display fields
+    //    (type/dates) the notification renderer needs (renderers are payload-only) + the full audit facts.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-request',
+      aggregateId: req.id,
+      eventType: 'leave-request.admin-cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: {
+        previousStatus,
+        newStatus: 'cancelled',
+        restoredDays,
+        reason: p.reason?.trim() || null,
+        cancelledByEmploymentId: p.cancelledByEmploymentId ?? null,
+        leaveTypeCode: lt?.code ?? null,
+        leaveTypeName: lt?.name ?? null,
+        startDate: req.startDate,
+        endDate: req.endDate,
+      },
+    });
+
+    return { previousStatus, restoredDays };
+  });
+}
+
 // ───────────────────── Leave-year boundary (STATUTORY-SOURCES §5) ─────────────────────
 
 /** Types granted as standing yearly entitlements; situational types are claimed per event. */
@@ -2709,7 +3116,11 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // default = cap > 0). When disabled, carryMax collapses to 0 ⇒ full forfeit — the requested
         // "disable carry" behaviour. SICK/HOSPITALIZATION stay 0 (statutory annual reset, EA s.60F).
         const carryMax = t.code === 'ANNUAL' && carryEnabled(pol) ? (pol?.carryMax ?? 0) : 0;
-        const carry = Math.min(Math.max(before, 0), carryMax);
+        const rawCarry = Math.min(Math.max(before, 0), carryMax);
+        // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
+        // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
+        // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
+        const { carry, grant: grantDays } = applyMaxBalance(rawCarry, days, pol?.maxBalanceDays);
         const forfeit = Math.max(0, before - carry);
         if (forfeit > 0) {
           await tx.insert(leaveLedger).values({
@@ -2723,12 +3134,15 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           });
           forfeits += 1;
         }
+        // Feedback 9d8cf621: post the (possibly Maximum-Balance-clamped) grant. The row is ALWAYS written —
+        // even at 0 days when the cap is already reached — because it is openLeaveYear's own idempotency
+        // open-marker (openedSet) and the expiry sweep's "year was opened" marker.
         await tx.insert(leaveLedger).values({
           tenantId: ctx.tenantId,
           employmentId: e.employmentId,
           leaveTypeId: t.id,
           entryType: 'accrual',
-          days: days.toFixed(2),
+          days: grantDays.toFixed(2),
           effectiveOn: yearStart,
         });
         granted += 1;
@@ -2954,11 +3368,14 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
         // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
         const carryKey = `${e.employmentId}|${typeId}`;
+        const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
+        const baseCap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
+        // Feedback 9d8cf621 — Maximum Balance Days also bounds the earned carry cap: nothing more than the
+        // cap can be retained into the new cycle. null ⇒ pass-through (baseCap unchanged).
+        const cap = pol!.maxBalanceDays != null ? Math.min(baseCap, Math.max(0, pol!.maxBalanceDays)) : baseCap;
+        const retainedCarry = Math.min(Math.max(priorBalance, 0), cap);
         if (!forfeited.has(carryKey)) {
-          const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
-          const cap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
-          const carry = Math.min(Math.max(priorBalance, 0), cap);
-          const forfeit = Math.round((priorBalance - carry) * 100) / 100;
+          const forfeit = Math.round((priorBalance - retainedCarry) * 100) / 100;
           if (forfeit > 0) {
             await tx.insert(leaveLedger).values({
               tenantId: ctx.tenantId,
@@ -2979,7 +3396,13 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         const accrualStart =
           e.leaveCycle === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
         const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
-        const earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        let earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
+        // never exceeds the cap (i.e. the running balance stays ≤ cap across the cycle). null ⇒ no cap.
+        if (pol!.maxBalanceDays != null) {
+          const room = Math.max(0, Math.round((Math.max(0, pol!.maxBalanceDays) - retainedCarry) * 100) / 100);
+          earnedToDate = Math.min(earnedToDate, room);
+        }
         const rows = accrualRowsBy.get(`${e.employmentId}|${typeId}`) ?? [];
         const already = rows.reduce((s, r) => (r.effectiveOn >= cycleStart ? s + r.days : s), 0);
         const toGrant = Math.round((earnedToDate - already) * 100) / 100;
@@ -3426,8 +3849,10 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 
     // The earliest leave-year a carry-expiry policy could apply to (back-compat boundary): the year of the
     // earliest validFrom among policies that carry an expiry offset. Never sweep before it.
+    // Feedback 9d8cf621: a policy counts if it carries ANY carry-expiry — policy-level OR per service band
+    // (hasAnyCarryExpiry) — so a purely per-range expiry still sets the sweepable-year floor.
     const expiryPolicyYears = policies
-      .filter((pol) => parseCarryExpiry(pol.accrual as AccrualConfig | null) != null)
+      .filter((pol) => hasAnyCarryExpiry(pol.accrual as AccrualConfig | null))
       .map((pol) => Number(pol.validFrom.slice(0, 4)));
     if (expiryPolicyYears.length === 0) return { swept: 0, forfeited: 0 };
     const earliestYear = Math.min(...expiryPolicyYears);

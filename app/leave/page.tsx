@@ -1,20 +1,46 @@
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { leaveBalancesAll, listEmployees, listLeaveTypes, listLeaveRequests } from '@/core/read';
+import {
+  leaveBalancesAll,
+  listCompanies,
+  listDepartments,
+  listEmployees,
+  listLeaveTypes,
+  listLeaveRequests,
+  listLeaveRequestsPage,
+  listLeaveApprovers,
+} from '@/core/read';
+import { listBusinessUnits } from '@/core/admin';
+import { listLocations } from '@/core/location';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Avatar, Button, Card, Field, PageHeader, inputCls } from '@/components/ui';
+import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
+import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
-import { requestLeaveAction, requestLeaveCancellationAction, previewLeaveDeductionAction } from './actions';
+import {
+  requestLeaveAction,
+  requestLeaveCancellationAction,
+  adminCancelLeaveAction,
+  previewLeaveDeductionAction,
+} from './actions';
 
 const REQ_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
 };
+
+// Admin search/filter/sort page size — mirrors /personnel (feedback 0773bda9).
+const PAGE = 25;
+const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+// Approval Information — "Pending with" stages (feedback 0773bda9). The approval chain stores a ROLE
+// (approver_kind), not a named person, so this filter narrows by the stage a pending request awaits.
+const PENDING_STAGES = ['direct_manager', 'hr_admin'] as const;
 
 // Self-service Leave page (consultant feedback #8/#10): Balance + History + Apply only. Team
 // availability lives on the Dashboard (the "Planned absences" timeline); approvals live in the
@@ -32,6 +58,26 @@ export default async function LeavePage({
     loaded?: string;
     state?: string;
     year?: string;
+    // Advanced Search & Filter (feedback 0773bda9) — admin-only. `state` above is already taken by the
+    // holiday warning, so the org filters below use distinct keys. type/status repeat for multi-select.
+    q?: string;
+    page?: string;
+    company?: string;
+    bu?: string;
+    dept?: string;
+    loc?: string;
+    type?: string | string[];
+    status?: string | string[];
+    from?: string;
+    to?: string;
+    appliedFrom?: string;
+    appliedTo?: string;
+    // Approval Information (feedback 0773bda9): approvedBy = final decider employment id; pendingWith =
+    // the stage a pending request currently awaits (direct_manager | hr_admin).
+    approvedBy?: string;
+    pendingWith?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
@@ -49,22 +95,100 @@ export default async function LeavePage({
   const cancellableCandidates = (workingDates: string[] | undefined): string[] =>
     (workingDates ?? []).filter((d) => d > today);
 
-  const [employees, leaveTypes, requests, balances] = await Promise.all([
+  // ── Advanced Search & Filter params (admin only; feedback 0773bda9) ──────────────────────────────────
+  const arr = (v?: string | string[]): string[] => (v == null ? [] : Array.isArray(v) ? v : [v]);
+  const q = sp.q?.trim() || undefined;
+  const page = Math.max(0, Number(sp.page) || 0);
+  const company = sp.company || undefined;
+  const bu = sp.bu || undefined;
+  const dept = sp.dept || undefined;
+  const loc = sp.loc || undefined;
+  const typeIds = arr(sp.type);
+  const statuses = arr(sp.status).filter((s) => (LEAVE_STATUSES as readonly string[]).includes(s));
+  const from = sp.from || undefined;
+  const to = sp.to || undefined;
+  const appliedFrom = sp.appliedFrom || undefined;
+  const appliedTo = sp.appliedTo || undefined;
+  const approvedBy = sp.approvedBy || undefined;
+  const pendingWith =
+    sp.pendingWith && (PENDING_STAGES as readonly string[]).includes(sp.pendingWith) ? sp.pendingWith : undefined;
+  const sort = sp.sort || undefined;
+  const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';
+  const hasFilters =
+    admin &&
+    !!(
+      q ||
+      company ||
+      bu ||
+      dept ||
+      loc ||
+      typeIds.length ||
+      statuses.length ||
+      from ||
+      to ||
+      appliedFrom ||
+      appliedTo ||
+      approvedBy ||
+      pendingWith
+    );
+
+  const [employees, leaveTypes, balances] = await Promise.all([
     listEmployees(session, scopeIds),
     listLeaveTypes(session),
-    listLeaveRequests(session, scopeIds),
     leaveBalancesAll(session, scopeIds),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
 
+  // History: admins get the paginated, filterable, sortable read (over any population size); a
+  // manager/employee keeps the untouched self-service view (their OWN requests, capped list). Option
+  // sources for the filter panel are loaded only on the admin path.
+  const {
+    rows: history,
+    total,
+    companies,
+    businessUnits,
+    departments,
+    locations,
+    approvers,
+  } = admin
+    ? await (async () => {
+        const [pageData, companies, businessUnits, departments, locations, approvers] = await Promise.all([
+          listLeaveRequestsPage(session, {
+            companyIds: scopeIds,
+            q,
+            companyId: company,
+            businessUnitId: bu,
+            departmentId: dept,
+            locationId: loc,
+            leaveTypeIds: typeIds.length ? typeIds : undefined,
+            statuses: statuses.length ? statuses : undefined,
+            from,
+            to,
+            appliedFrom,
+            appliedTo,
+            approvedBy,
+            pendingWith,
+            sort,
+            dir,
+            limit: PAGE,
+            offset: page * PAGE,
+          }),
+          listCompanies(session),
+          listBusinessUnits(session, { companyIds: scopeIds }),
+          listDepartments(session, { companyIds: scopeIds }),
+          listLocations(session, scopeIds),
+          listLeaveApprovers(session, scopeIds),
+        ]);
+        return { rows: pageData.rows, total: pageData.total, companies, businessUnits, departments, locations, approvers };
+      })()
+    : await (async () => {
+        const requests = await listLeaveRequests(session, scopeIds);
+        const mine = requests.filter((r) => session.personId != null && r.personId === session.personId);
+        return { rows: mine, total: mine.length, companies: [], businessUnits: [], departments: [], locations: [], approvers: [] };
+      })();
+
   // Balances are personal: admins see everyone in scope; everyone else sees ONLY their own.
   const visibleBalances = admin ? balances : balances.filter((b) => b.personId === session.personId);
-
-  // History is personal too: a manager/employee sees only their OWN requests here (team requests and
-  // approvals are in the Approvals inbox). Admins keep the full list as an oversight read.
-  const history = admin
-    ? requests
-    : requests.filter((r) => session.personId != null && r.personId === session.personId);
 
   // Pivot balances: one row per employee, one column per leave type seen.
   const balTypes = [...new Map(visibleBalances.map((b) => [b.leaveTypeId, b.leaveType])).entries()].sort(
@@ -77,11 +201,257 @@ export default async function LeavePage({
     balByEmp.set(b.employmentId, e);
   }
 
+  // ── Filter panel + query-string helpers (admin only; feedback 0773bda9) ──────────────────────────────
+  // The active filter set WITHOUT sort/dir/page — the base for every generated link and the search-form's
+  // hidden inputs. Multi params (type/status) are appended so all selected values survive.
+  const filterParams = () => {
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    if (company) p.set('company', company);
+    if (bu) p.set('bu', bu);
+    if (dept) p.set('dept', dept);
+    if (loc) p.set('loc', loc);
+    for (const id of typeIds) p.append('type', id);
+    for (const st of statuses) p.append('status', st);
+    if (from) p.set('from', from);
+    if (to) p.set('to', to);
+    if (appliedFrom) p.set('appliedFrom', appliedFrom);
+    if (appliedTo) p.set('appliedTo', appliedTo);
+    if (approvedBy) p.set('approvedBy', approvedBy);
+    if (pendingWith) p.set('pendingWith', pendingWith);
+    return p;
+  };
+  const withSort = (p: URLSearchParams) => {
+    if (sort) p.set('sort', sort);
+    if (sp.dir) p.set('dir', dir);
+    return p;
+  };
+  // Sort links reset to the first page (drop `page`); toggle asc/desc when re-clicking the active column.
+  const sortHref = (key: string) => {
+    const p = filterParams();
+    p.set('sort', key);
+    p.set('dir', sort === key && dir === 'asc' ? 'desc' : 'asc');
+    return `/leave?${p.toString()}`;
+  };
+  const pageHref = (n: number) => {
+    const p = withSort(filterParams());
+    if (n > 0) p.set('page', String(n));
+    const s = p.toString();
+    return s ? `/leave?${s}` : '/leave';
+  };
+  const exportHref = (format: 'csv' | 'xlsx') => {
+    const p = withSort(filterParams());
+    p.set('format', format);
+    return `/leave/export?${p.toString()}`;
+  };
+  const hasNext = admin && (page + 1) * PAGE < total;
+
+  const filterFields: FilterField[] = [
+    {
+      kind: 'search',
+      name: 'q',
+      label: t('filters.search'),
+      placeholder: t('filters.searchPlaceholder'),
+      ariaLabel: t('filters.searchAria'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.search') }),
+    },
+    {
+      kind: 'select',
+      name: 'company',
+      label: t('filters.company'),
+      ariaLabel: t('filters.company'),
+      allLabel: t('filters.allCompanies'),
+      options: companies.map((c) => ({ value: c.id, label: c.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.company') }),
+    },
+    {
+      kind: 'select',
+      name: 'bu',
+      label: t('filters.businessUnit'),
+      ariaLabel: t('filters.businessUnit'),
+      allLabel: t('filters.allBusinessUnits'),
+      options: businessUnits.map((b) => ({ value: b.id, label: b.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.businessUnit') }),
+    },
+    {
+      kind: 'select',
+      name: 'dept',
+      label: t('filters.department'),
+      ariaLabel: t('filters.department'),
+      allLabel: t('filters.allDepartments'),
+      options: departments.map((d) => ({ value: d.id, label: d.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.department') }),
+    },
+    {
+      kind: 'select',
+      name: 'loc',
+      label: t('filters.location'),
+      ariaLabel: t('filters.location'),
+      allLabel: t('filters.allLocations'),
+      options: locations.map((l) => ({ value: l.id, label: l.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.location') }),
+    },
+    {
+      kind: 'multi',
+      name: 'type',
+      label: t('filters.leaveType'),
+      ariaLabel: t('filters.leaveType'),
+      options: leaveTypes.map((lt) => ({ value: lt.id, label: lt.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.leaveType') }),
+    },
+    {
+      kind: 'multi',
+      name: 'status',
+      label: t('filters.statusLabel'),
+      ariaLabel: t('filters.statusLabel'),
+      options: LEAVE_STATUSES.map((s) => ({ value: s, label: t(`status.${s}`) })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.statusLabel') }),
+    },
+    {
+      kind: 'date',
+      name: 'from',
+      label: t('filters.dateFrom'),
+      ariaLabel: t('filters.dateFrom'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.dateFrom') }),
+    },
+    {
+      kind: 'date',
+      name: 'to',
+      label: t('filters.dateTo'),
+      ariaLabel: t('filters.dateTo'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.dateTo') }),
+    },
+    {
+      kind: 'date',
+      name: 'appliedFrom',
+      label: t('filters.appliedFrom'),
+      ariaLabel: t('filters.appliedFrom'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.appliedFrom') }),
+    },
+    {
+      kind: 'date',
+      name: 'appliedTo',
+      label: t('filters.appliedTo'),
+      ariaLabel: t('filters.appliedTo'),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.appliedTo') }),
+    },
+    // Approval Information (feedback 0773bda9). "Pending with" = the stage a pending request awaits (the
+    // chain stores a ROLE, not a named person, so this is a two-value stage picker). "Approved by" = the
+    // stored final decider (a named person), sourced from requests that have actually been decided.
+    {
+      kind: 'select',
+      name: 'pendingWith',
+      label: t('filters.pendingWith'),
+      ariaLabel: t('filters.pendingWith'),
+      allLabel: t('filters.anyStage'),
+      options: PENDING_STAGES.map((s) => ({ value: s, label: t(`filters.stage.${s}`) })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.pendingWith') }),
+    },
+    {
+      kind: 'select',
+      name: 'approvedBy',
+      label: t('filters.approvedBy'),
+      ariaLabel: t('filters.approvedBy'),
+      allLabel: t('filters.anyApprover'),
+      options: approvers.map((a) => ({ value: a.id, label: a.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.approvedBy') }),
+    },
+  ];
+  const filterValues: Record<string, string | string[] | undefined> = {
+    q,
+    company,
+    bu,
+    dept,
+    loc,
+    type: typeIds,
+    status: statuses,
+    from,
+    to,
+    appliedFrom,
+    appliedTo,
+    pendingWith,
+    approvedBy,
+  };
+  const activeFilterCount =
+    [q, company, bu, dept, loc, from, to, appliedFrom, appliedTo, approvedBy, pendingWith].filter(Boolean).length +
+    (typeIds.length ? 1 : 0) +
+    (statuses.length ? 1 : 0);
+  const filterLabels = {
+    filter: t('filters.filter'),
+    apply: t('filters.apply'),
+    clearAll: t('filters.clearAll'),
+    activeCount: t('filters.activeCount', { count: activeFilterCount }),
+  };
+  // Hidden inputs so the top search box preserves every other active filter + sort when submitted.
+  const searchHiddenParams = [...withSort(filterParams())].filter(([k]) => k !== 'q');
+
+  // Sortable column header (admin): a Link that toggles ?sort=&dir= with an aria-sort hint on the <th>.
+  const sortableTh = (key: string, label: string, extra = '') => {
+    const activeSort = sort === key;
+    return (
+      <th
+        className={`px-4 py-2 font-medium ${extra}`}
+        aria-sort={activeSort ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        <Link
+          href={sortHref(key)}
+          aria-label={t('filters.sortAria', { column: label })}
+          className="inline-flex items-center gap-1 hover:text-foreground"
+        >
+          {label}
+          <span aria-hidden className="text-[10px]">
+            {activeSort ? (dir === 'asc' ? '▲' : '▼') : '↕'}
+          </span>
+        </Link>
+      </th>
+    );
+  };
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div data-tour="leave-intro">
-        <PageHeader title={t('title')} description={t('description')} />
+        <PageHeader
+          title={t('title')}
+          description={t('description')}
+          actions={
+            admin ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Global search bar (reporter: at the top of the page). GET form; hidden inputs carry the
+                    other active filters + sort so searching never drops them. */}
+                <form method="get" action="/leave" className="flex items-center gap-1.5">
+                  {searchHiddenParams.map(([k, v], i) => (
+                    <input key={`${k}-${i}`} type="hidden" name={k} value={v} />
+                  ))}
+                  <input
+                    name="q"
+                    defaultValue={q ?? ''}
+                    placeholder={t('filters.searchPlaceholder')}
+                    aria-label={t('filters.searchAria')}
+                    className={`${inputCls} w-56`}
+                  />
+                  <Button type="submit" size="sm" variant="secondary">
+                    {t('filters.search')}
+                  </Button>
+                </form>
+                <FilterPanel action="/leave" fields={filterFields} values={filterValues} labels={filterLabels} />
+                {/* Export the filtered set (reporter: Excel + CSV). Plain links → admin-gated route. */}
+                <div className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs">
+                  <span className="text-muted-foreground">{t('filters.export')}:</span>
+                  <Link href={exportHref('csv')} className="font-medium text-primary hover:underline">
+                    {t('filters.exportCsv')}
+                  </Link>
+                  <span className="text-muted-foreground">·</span>
+                  <Link href={exportHref('xlsx')} className="font-medium text-primary hover:underline">
+                    {t('filters.exportExcel')}
+                  </Link>
+                </div>
+              </div>
+            ) : undefined
+          }
+        />
       </div>
+
+      {admin && <FilterChips action="/leave" fields={filterFields} values={filterValues} labels={filterLabels} />}
 
       {sp.error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
@@ -92,6 +462,13 @@ export default async function LeavePage({
       {sp.toast === 'cancellationRequested' && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
           {t('cancelRequestedToast')}
+        </div>
+      )}
+
+      {/* HR Admin Leave Cancellation (feedback 22e68ff0): success banner after an on-behalf cancellation. */}
+      {sp.toast === 'adminCancelled' && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-400">
+          {t('adminCancelledToast')}
         </div>
       )}
 
@@ -180,19 +557,48 @@ export default async function LeavePage({
       <Card className="overflow-hidden" data-tour="leave-requests">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
           {admin ? t('requestsTitle') : t('myRequestsTitle')}
-          <span className="ml-2 font-normal text-muted-foreground">{t('requestsCountTotal', { count: history.length })}</span>
+          <span className="ml-2 font-normal text-muted-foreground">
+            {hasFilters
+              ? t('filters.showingOf', { shown: history.length, total })
+              : t('requestsCountTotal', { count: total })}
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
-                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                <th className="px-4 py-2 font-medium">{t('colApplied')}</th>
-                <th className="px-4 py-2 font-medium">{t('colType')}</th>
-                <th className="px-4 py-2 font-medium">{t('colDates')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
-                <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
-                <th className="px-4 py-2 font-medium">{t('colAction')}</th>
+                {admin ? (
+                  <>
+                    {sortableTh('name', t('colEmployee'))}
+                    {sortableTh('applied', t('colApplied'))}
+                    <th className="px-4 py-2 font-medium">{t('colType')}</th>
+                    {/* Leave Start & End are both sortable per the reporter's list — one Dates column, two toggles. */}
+                    <th className="px-4 py-2 font-medium">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Link href={sortHref('start')} className="hover:text-foreground" aria-label={t('filters.sortAria', { column: t('filters.dateFrom') })}>
+                          {t('colDates')}
+                          <span aria-hidden className="ml-0.5 text-[10px]">{sort === 'start' ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                        </Link>
+                        <Link href={sortHref('end')} className="text-[10px] font-normal normal-case text-muted-foreground hover:text-foreground" aria-label={t('filters.sortAria', { column: t('filters.dateTo') })}>
+                          ({t('filters.dateTo')}{sort === 'end' ? (dir === 'asc' ? ' ▲' : ' ▼') : ''})
+                        </Link>
+                      </span>
+                    </th>
+                    <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
+                    {sortableTh('status', t('colStatus'))}
+                    <th className="px-4 py-2 font-medium">{t('colAction')}</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colApplied')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colType')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colDates')}</th>
+                    <th className="px-4 py-2 text-right font-medium">{t('colDays')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colStatus')}</th>
+                    <th className="px-4 py-2 font-medium">{t('colAction')}</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -208,6 +614,13 @@ export default async function LeavePage({
                     </td>
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {r.appliedOn ? new Date(r.appliedOn).toISOString().slice(0, 10) : '—'}
+                      {/* Short leave reference (feedback 0773bda9): the searchable #-prefix of the record id,
+                          shown to admins so the global search's reference match is discoverable. */}
+                      {admin && (
+                        <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                          #{r.id.slice(0, 8)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${chip}`}>
@@ -250,6 +663,23 @@ export default async function LeavePage({
                           {t('cancelPendingBadge')}
                         </span>
                       )}
+                      {/* Approval Information (feedback 0773bda9): decided rows show the final decider; a
+                          still-pending row shows the stage it awaits. Admin history only. */}
+                      {admin && r.decidedByName && (
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                          {t('filters.decidedByLine', { name: r.decidedByName })}
+                        </span>
+                      )}
+                      {admin && r.status === 'pending' && r.currentStepKind && (
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                          {t('filters.pendingWithLine', {
+                            stage:
+                              r.currentStepKind === 'direct_manager' || r.currentStepKind === 'hr_admin'
+                                ? t(`filters.stage.${r.currentStepKind}`)
+                                : r.currentStepKind,
+                          })}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       {(() => {
@@ -262,6 +692,25 @@ export default async function LeavePage({
                         // working dates (holiday-aware, strictly after MYT today); when none remain the button
                         // renders disabled with a reason rather than a silent dash.
                         const isOwn = session.personId != null && r.personId === session.personId;
+                        // HR Admin Leave Cancellation on behalf of an employee (feedback 22e68ff0). An admin
+                        // viewing SOMEONE ELSE's pending/approved leave gets an immediate "Cancel leave" button
+                        // (no approval workflow). An approved REPLACEMENT (TOIL) leave is excluded — its register
+                        // consume has no ledger inverse (matches the service gate). The self-ban mirrors the
+                        // service: the admin's OWN leave falls through to the normal employee give-back flow.
+                        if (
+                          admin &&
+                          !isOwn &&
+                          (r.status === 'pending' || r.status === 'approved') &&
+                          !(r.status === 'approved' && r.typeCode === 'REPLACEMENT')
+                        ) {
+                          return (
+                            <AdminCancelLeaveDialog
+                              leaveRequestId={r.id}
+                              back="/leave"
+                              submitAction={adminCancelLeaveAction}
+                            />
+                          );
+                        }
                         const cancellableShape =
                           r.status === 'approved' &&
                           r.durationType === 'full_day' &&
@@ -283,13 +732,38 @@ export default async function LeavePage({
               {history.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
-                    {t('requestsEmpty')}
+                    {hasFilters ? t('filters.emptyFiltered') : t('requestsEmpty')}
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        {admin && (page > 0 || hasNext) && (
+          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm">
+            {page > 0 ? (
+              <Link href={pageHref(page - 1)} className="text-primary hover:underline">
+                {t('filters.newer')}
+              </Link>
+            ) : (
+              <span />
+            )}
+            <span className="text-xs text-muted-foreground">
+              {t('filters.rangeOf', {
+                from: total === 0 ? 0 : page * PAGE + 1,
+                to: Math.min((page + 1) * PAGE, total),
+                total,
+              })}
+            </span>
+            {hasNext ? (
+              <Link href={pageHref(page + 1)} className="text-primary hover:underline">
+                {t('filters.older')}
+              </Link>
+            ) : (
+              <span />
+            )}
+          </div>
+        )}
       </Card>
 
       <Card data-tour="leave-request">
@@ -311,6 +785,8 @@ export default async function LeavePage({
                 label: lt.requiresDocument ? `${lt.name} · ${t('documentRequiredBadge')}` : lt.name,
                 durations: lt.durations ?? null,
                 code: lt.code,
+                // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
+                applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
               }))}
               startDefault={today}
               showDocumentFields

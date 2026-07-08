@@ -88,6 +88,21 @@ function cleanName(v: string | undefined, label: string): string {
   return s;
 }
 
+/** 4ec5a940 — the reporter's "Why the change was made" audit column. An OPTIONAL free-text note the admin
+ *  may attach to a leave-config change; it is recorded on the DomainEvent payload only (never persisted to
+ *  the aggregate row) and rendered by `describePayload`'s `reason` branch. Returns `undefined` for a
+ *  blank/whitespace value so the payload key is simply omitted (no empty `reason:` line in the audit UI).
+ *  Capped at 500 chars — long enough for a real justification, short enough to keep rows scannable. It is
+ *  tenant free-text, not personal/financial data, so it is PDPA-safe to store in cleartext (ADR-0030
+ *  Layer-0) — the key name also never collides with the banned-key guard. */
+export const REASON_MAX_LEN = 500;
+export function normalizeReason(v: string | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  if (!s) return undefined;
+  return s.length > REASON_MAX_LEN ? s.slice(0, REASON_MAX_LEN) : s;
+}
+
 /**
  * Normalise + validate a leave-type eligibility rule (#25 visibility). Tri-state by the caller:
  *   undefined → caller leaves the column untouched (a name-only rename must NOT clobber a rule);
@@ -207,6 +222,24 @@ async function resolveDepartmentBusinessUnitId(
     .where(eq(businessUnit.id, id))
     .limit(1);
   if (!bu || bu.companyId !== companyId) throw new CrossCompanyError('business-unit');
+  return id;
+}
+
+/** 6fadb036 — validate an org-head employment (department / business-unit head) belongs to the SAME company
+ *  as the unit it heads (same-company guard, ADR-0071 §i). Blank ⇒ null (clears the head). */
+async function resolveHeadEmploymentId(
+  tx: Tx,
+  headEmploymentId: string | null | undefined,
+  companyId: string,
+): Promise<string | null> {
+  const id = (headEmploymentId ?? '').trim();
+  if (!id) return null;
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, id))
+    .limit(1);
+  if (!emp || emp.companyId !== companyId) throw new CrossCompanyError('employment');
   return id;
 }
 
@@ -344,7 +377,9 @@ export async function createBusinessUnit(
 
 export async function createLeaveType(
   ctx: SessionContext,
-  p: { code: string; name: string; paid?: boolean },
+  // Leave Type master page (feedback 097de541): the add-type form now carries an optional description and a
+  // create-time active/inactive status (default active). Code + name stay required.
+  p: { code: string; name: string; paid?: boolean; description?: string | null; active?: boolean },
 ) {
   // The code is the semantic key the statutory floor / standing grants / carry-forward match on
   // (exact, uppercase). Normalize hard so 'annual' can never silently miss the EA floor.
@@ -353,10 +388,32 @@ export async function createLeaveType(
     throw new Error('Leave-type code must be letters, digits or underscores (e.g. ANNUAL)');
   }
   const name = cleanName(p.name, 'Leave-type name');
+  // Leave Type master page (feedback 097de541): trim the optional description; empty ⇒ null (never store "").
+  const description = typeof p.description === 'string' && p.description.trim() !== '' ? p.description.trim() : null;
+  // Create-time status. active=false ⇒ insert already archived (mirrors archiveLeaveType semantics). Note the
+  // code-unique index is PARTIAL on archived_at IS NULL, so an inactive-created type does not hold the code —
+  // same trade-off as archiving an existing type; acceptable.
+  const active = p.active !== false;
   return withTenant(ctx, async (tx) => {
+    // Name uniqueness (feedback 097de541): case-insensitive, ACTIVE types only (mirrors the partial code
+    // index which only guards archived_at IS NULL). Enforced in the service — not a DB index — because
+    // existing tenant data may already hold duplicate names. Gives the friendly warning the ticket asks for.
+    const [dupe] = await tx
+      .select({ id: leaveType.id })
+      .from(leaveType)
+      .where(and(isNull(leaveType.archivedAt), sql`lower(${leaveType.name}) = lower(${name})`))
+      .limit(1);
+    if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
     const [row] = await tx
       .insert(leaveType)
-      .values({ tenantId: ctx.tenantId, code, name, paid: p.paid ?? true })
+      .values({
+        tenantId: ctx.tenantId,
+        code,
+        name,
+        description,
+        paid: p.paid ?? true,
+        ...(active ? {} : { archivedAt: sql`now()` }),
+      })
       .returning({ id: leaveType.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A leave type with code “${code}” already exists.`);
@@ -368,7 +425,7 @@ export async function createLeaveType(
       aggregateId: row.id,
       eventType: 'leave-type.created',
       actor: actorOf(ctx),
-      payload: { code, name },
+      payload: { code, name, paid: p.paid ?? true, description, active },
     });
     return row;
   });
@@ -408,11 +465,21 @@ export async function createJobGrade(
 
 export async function updateJobGrade(
   ctx: SessionContext,
-  p: { id: string; name: string; rank?: number },
+  // 4ec5a940 — optional `reason` for the change (free-text from the config form), recorded on the audit
+  // event payload only (never persisted to the aggregate row).
+  p: { id: string; name: string; rank?: number; reason?: string | null },
 ) {
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
+  const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
+    // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
+    // events that predate this change keep their new-values-only payload; the log is append-only).
+    const [prev] = await tx
+      .select({ name: jobGrade.name, rank: jobGrade.rank })
+      .from(jobGrade)
+      .where(eq(jobGrade.id, p.id))
+      .limit(1);
     await tx.update(jobGrade).set({ name, rank }).where(eq(jobGrade.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -420,7 +487,11 @@ export async function updateJobGrade(
       aggregateId: p.id,
       eventType: 'job-grade.updated',
       actor: actorOf(ctx),
-      payload: { name, rank },
+      payload: {
+        before: prev ? { name: prev.name, rank: prev.rank } : null,
+        after: { name, rank },
+        ...(reason ? { reason } : {}),
+      },
     });
   });
 }
@@ -525,6 +596,23 @@ function validateServiceBands(bands: ServiceBand[]): void {
     }
     if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
       throw new Error('Service bands: days must be zero or a positive number.');
+    }
+    // Feedback 9d8cf621 — per-range entitlement columns (all optional; absent/null = "no override"). The
+    // runtime resolver is separately defensive, but reject a genuinely bad value at write time so HR gets a
+    // clear message instead of a silently-ignored override.
+    if (b.carryForwardDays != null && (typeof b.carryForwardDays !== 'number' || !Number.isFinite(b.carryForwardDays) || b.carryForwardDays < 0)) {
+      throw new Error('Service bands: carry-forward days must be zero or a positive number.');
+    }
+    if (b.maxBalanceDays != null && (typeof b.maxBalanceDays !== 'number' || !Number.isFinite(b.maxBalanceDays) || b.maxBalanceDays < 0)) {
+      throw new Error('Service bands: maximum balance days must be zero or a positive number.');
+    }
+    const hasMonth = b.carryForwardExpiryMonth != null;
+    const hasDay = b.carryForwardExpiryDay != null;
+    if (hasMonth !== hasDay) {
+      throw new Error('Service bands: carry-forward expiry needs both a month and a day, or neither.');
+    }
+    if (hasMonth && hasDay && !isValidMonthDay(Number(b.carryForwardExpiryMonth), Number(b.carryForwardExpiryDay))) {
+      throw new Error('Service bands: carry-forward expiry must be a real calendar date (valid month and day).');
     }
   }
   if (bands[0].fromYears !== 0) {
@@ -719,8 +807,11 @@ export async function updateLeavePolicy(
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
      *  when omitted — the requestLeave precedent for clock reads in core. */
     asOf?: string;
+    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
+    reason?: string | null;
   },
 ): Promise<{ affected: number; totalDelta: number }> {
+  const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
     // Step 4: a prior SELECT of the current row — needed both to preserve the existing accrual bands
     // (tri-state below) and to know whether gradeId/companyId/validFrom are actually CHANGING, so the
@@ -811,16 +902,23 @@ export async function updateLeavePolicy(
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
       payload: {
-        annualDays: p.annualDays,
-        carryForwardMax,
-        companyId,
-        validFrom: p.validFrom,
-        ...expiry,
-        ...carryFlags,
-        ...bandsAccrual,
+        // 4ec5a940 — before/after snapshot so the Audit tab shows old → new (the prior row is already
+        // loaded as `current` above — no extra read). Config values (days, caps, accrual) are tenant
+        // configuration, not personal data, so cleartext is allowed (ADR-0030 Layer-0).
+        before: {
+          ...(((current.accrual ?? {}) as Record<string, unknown>) ?? {}),
+          companyId: current.companyId,
+          validFrom: current.validFrom,
+        },
+        after: {
+          ...accrual,
+          companyId,
+          validFrom: p.validFrom,
+        },
         // Feedback 49809272: the correction's blast radius — this event is the recalc SUMMARY (the
         // per-employee `leave.entitlement.recalculated` events are the per-row audit).
         recalc,
+        ...(reason ? { reason } : {}),
       },
     });
     return recalc;
@@ -1024,6 +1122,8 @@ export function listDepartmentsForLabels(
         companyId: department.companyId,
         name: department.name,
         businessUnitId: department.businessUnitId,
+        // 6fadb036: the department head an approval `department_head` step routes to (nullable).
+        headEmploymentId: department.headEmploymentId,
         description: department.description,
         archivedAt: department.archivedAt,
         isGlobal: department.isGlobal,
@@ -1105,6 +1205,8 @@ export function listBusinessUnitsForLabels(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        // 6fadb036: the BU head an approval `business_unit_head` step routes to (nullable).
+        headEmploymentId: businessUnit.headEmploymentId,
         description: businessUnit.description,
         archivedAt: businessUnit.archivedAt,
         isGlobal: businessUnit.isGlobal,
@@ -1570,24 +1672,36 @@ export function listUsers(ctx: SessionContext) {
 
 export async function updateDepartment(
   ctx: SessionContext,
-  p: { id: string; name: string; businessUnitId?: string | null; description?: string },
+  p: { id: string; name: string; businessUnitId?: string | null; headEmploymentId?: string | null; description?: string },
 ) {
   const name = cleanName(p.name, 'Department name');
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    // businessUnitId is tri-state: undefined → leave the column untouched (a name-only rename must NOT wipe
-    // the BU); null/'' → clear it; an id → set it (validated to the department's own company). Fetch the
-    // department's company for the cross-company guard when a non-empty id is supplied.
-    const setValues: { name: string; description: string | null; businessUnitId?: string | null } = { name, description };
-    if (p.businessUnitId !== undefined) {
+    // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
+    // rename must NOT wipe them); null/'' → clear it; an id → set it (validated to the department's own
+    // company). Fetch the department's company once when either is supplied.
+    const setValues: {
+      name: string;
+      description: string | null;
+      businessUnitId?: string | null;
+      headEmploymentId?: string | null;
+    } = { name, description };
+    if (p.businessUnitId !== undefined || p.headEmploymentId !== undefined) {
       const [dep] = await tx
         .select({ companyId: department.companyId })
         .from(department)
         .where(eq(department.id, p.id))
         .limit(1);
       if (!dep) throw new Error('Department not found');
-      setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+      if (p.businessUnitId !== undefined) {
+        setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+      }
+      if (p.headEmploymentId !== undefined) {
+        // 6fadb036: the head (a `department_head` approval decider) must be an employment in the SAME
+        // company as the department (mirrors ADR-0071 §i same-company guard for org-chart approvers).
+        setValues.headEmploymentId = await resolveHeadEmploymentId(tx, p.headEmploymentId, dep.companyId);
+      }
     }
     await tx.update(department).set(setValues).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A department named “${name}” already exists in this company.`);
@@ -1673,12 +1787,30 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateBusinessUnit(ctx: SessionContext, p: { id: string; code: string; name: string; description?: string }) {
+export async function updateBusinessUnit(
+  ctx: SessionContext,
+  p: { id: string; code: string; name: string; headEmploymentId?: string | null; description?: string },
+) {
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.update(businessUnit).set({ code, name, description }).where(eq(businessUnit.id, p.id)).catch((e) => {
+    // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
+    const setValues: { code: string; name: string; description: string | null; headEmploymentId?: string | null } = {
+      code,
+      name,
+      description,
+    };
+    if (p.headEmploymentId !== undefined) {
+      const [bu] = await tx
+        .select({ companyId: businessUnit.companyId })
+        .from(businessUnit)
+        .where(eq(businessUnit.id, p.id))
+        .limit(1);
+      if (!bu) throw new Error('Business unit not found');
+      setValues.headEmploymentId = await resolveHeadEmploymentId(tx, p.headEmploymentId, bu.companyId);
+    }
+    await tx.update(businessUnit).set(setValues).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
       throw e;
     });
@@ -1941,7 +2073,10 @@ const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at
  * here (and the LeaveType schema comment). Each message is capped at CUSTOM_MESSAGE_MAX_LEN characters
  * (enforced in the service, not the DB).
  */
-const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays'] as const;
+// `applyNotice` (feedback 9d8cf621) is an APPLY-TIME custom message — not a block message. It rides the
+// same customMessages JSONB + merge convention so no migration/column is needed: an empty value removes the
+// key (message disabled), a non-empty value stores the HR-authored notice shown to employees on the apply form.
+const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays', 'applyNotice'] as const;
 const CUSTOM_MESSAGE_MAX_LEN = 500;
 
 export async function updateLeaveType(
@@ -1949,6 +2084,11 @@ export async function updateLeaveType(
   p: {
     id: string;
     name: string;
+    // Leave Type master page (feedback 097de541): optional description edited from the identity sub-form.
+    // OWN tri-state (undefined = column untouched), exactly like backdatingLimitDays — the identity form posts
+    // a hidden `identity=1` marker so an unrelated sub-form save never touches this column. Empty string ⇒
+    // null (never store ""); an explicit null clears it.
+    description?: string | null;
     eligibility?: LeaveEligibility | null;
     durations?: LeaveDurationType[] | null;
     // Supporting-document config (claims-style flat signature; each is tri-state — undefined = leave column).
@@ -1986,9 +2126,12 @@ export async function updateLeaveType(
     // another rule's message. Any future writer of this column MUST follow the same merge-in-transaction
     // convention. Each message is capped at 500 chars and only known rule keys are accepted.
     customMessages?: Record<string, string> | null;
+    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
+    reason?: string | null;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
+  const reason = normalizeReason(p.reason);
   const touchEligibility = p.eligibility !== undefined;
   const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
   const touchDurations = p.durations !== undefined;
@@ -2022,6 +2165,15 @@ export async function updateLeaveType(
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
   const touchCustomMessages = p.customMessages !== undefined;
+  // Leave Type master page (feedback 097de541): its OWN tri-state — the identity sub-form posts `identity=1`
+  // and forwards `description`; any other save omits it, so the description column stays untouched.
+  const touchDescription = p.description !== undefined;
+  const nextDescription =
+    touchDescription
+      ? typeof p.description === 'string' && p.description.trim() !== ''
+        ? p.description.trim()
+        : null
+      : undefined;
   if (p.mandatoryAfterDays != null && (!Number.isInteger(p.mandatoryAfterDays) || p.mandatoryAfterDays < 0)) {
     throw new Error('“Required after more than N days” must be a whole number ≥ 0.');
   }
@@ -2092,11 +2244,16 @@ export async function updateLeaveType(
   const expirySet = touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {};
   // Partial Leave Approval (ADR-0068): its own set fragment.
   const partialSet = touchPartial ? { perDateApproval: p.perDateApproval } : {};
+  // Leave Type master page (feedback 097de541): its own set fragment (the trimmed value, or null to clear).
+  const descriptionSet = touchDescription ? { description: nextDescription ?? null } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
         name: leaveType.name,
+        // Leave Type master page (feedback 097de541): selected for the rename-uniqueness check (below) and the
+        // description audit diff (MUST be here or before?.description is always undefined).
+        description: leaveType.description,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         requiresDocument: leaveType.requiresDocument,
@@ -2118,6 +2275,24 @@ export async function updateLeaveType(
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
       .limit(1);
+    // Name uniqueness on rename (feedback 097de541): only when the name actually changes (case-insensitive),
+    // so an unrelated sub-form save that re-posts the current name — and any legacy duplicate that predates
+    // this rule — never trips the guard. Excludes self and archived types (mirrors createLeaveType + the
+    // partial code index).
+    if (before && name.toLowerCase() !== before.name.toLowerCase()) {
+      const [dupe] = await tx
+        .select({ id: leaveType.id })
+        .from(leaveType)
+        .where(
+          and(
+            isNull(leaveType.archivedAt),
+            sql`${leaveType.id} <> ${p.id}`,
+            sql`lower(${leaveType.name}) = lower(${name})`,
+          ),
+        )
+        .limit(1);
+      if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
+    }
     // Custom validation messages: read-then-patch-then-write on the SHARED JSONB column. Start from what is
     // already stored, apply the caller's touched keys: a value that is empty or all-whitespace after trim is
     // treated as "not configured" and the key is REMOVED (never stored as an empty string, so it round-trips
@@ -2147,6 +2322,7 @@ export async function updateLeaveType(
         ...minAdvanceSet,
         ...expirySet,
         ...partialSet,
+        ...descriptionSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
       })
@@ -2178,6 +2354,7 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
+          ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
           name,
@@ -2203,7 +2380,9 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
+          ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
+        ...(reason ? { reason } : {}),
       },
     });
   });

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { EmployeeName } from '@/components/ui';
+import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 
 const MS_DAY = 86_400_000;
 const ms = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
@@ -46,6 +47,9 @@ export type GridLeave = {
   /** ADR-0065: the exact cancellable working dates (strictly-after-today, holiday-aware) for this pill's
    *  underlying leave request — seeded into the reused CancelDatesDialog checkboxes. */
   candidateCancelDates?: string[];
+  /** feedback 22e68ff0: true when the viewer is an HR admin who may immediately cancel THIS pill's leave on
+   *  behalf of the employee (gated server-side: admin + not own + pending|approved + not approved-REPLACEMENT). */
+  adminCancelEligible?: boolean;
 };
 export type GridRow = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
@@ -72,6 +76,10 @@ export function PlannedAbsencesGrid({
   // absent the grid is read-only and no cancel affordance renders on any pill.
   cancelAction,
   cancelPillLabel,
+  // feedback 22e68ff0: the SAME on-behalf HR-cancel action the Leave page posts. Optional — absent ⇒ no admin
+  // affordance renders on any pill.
+  adminCancelAction,
+  adminCancelPillLabel,
 }: {
   rows: GridRow[];
   dayArr: GridDay[];
@@ -83,6 +91,8 @@ export function PlannedAbsencesGrid({
   showLessLabel: string;
   cancelAction?: (fd: FormData) => void | Promise<void>;
   cancelPillLabel?: string;
+  adminCancelAction?: (fd: FormData) => void | Promise<void>;
+  adminCancelPillLabel?: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const lastIdx = days - 1;
@@ -174,6 +184,10 @@ export function PlannedAbsencesGrid({
                 // pill, triggered by a compact XCircle icon-button appended inside the pill. Gated + candidate
                 // dates resolved server-side; the dialog + action are the SAME ones the Leave page uses.
                 const showCancel = !!cancelAction && !!l.cancelEligible;
+                // feedback 22e68ff0: an HR admin can immediately cancel this pill on the employee's behalf. Same
+                // compact XCircle trigger convention as the employee give-back, but opens AdminCancelLeaveDialog
+                // (confirmation + optional reason) and posts the on-behalf action with back="/".
+                const showAdminCancel = !!adminCancelAction && !!l.adminCancelEligible;
                 return (
                   <div
                     key={l.id}
@@ -228,6 +242,23 @@ export function PlannedAbsencesGrid({
                             type="button"
                             aria-label={cancelPillLabel}
                             title={cancelPillLabel}
+                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                          >
+                            <XCircle className="size-3.5" />
+                          </button>
+                        }
+                      />
+                    )}
+                    {showAdminCancel && (
+                      <AdminCancelLeaveDialog
+                        leaveRequestId={l.id}
+                        back="/"
+                        submitAction={adminCancelAction!}
+                        trigger={
+                          <button
+                            type="button"
+                            aria-label={adminCancelPillLabel}
+                            title={adminCancelPillLabel}
                             className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
                           >
                             <XCircle className="size-3.5" />

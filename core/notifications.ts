@@ -74,20 +74,51 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
     // approved" body that deep-links to /me, where the existing per-date breakdown shows which dates were
     // approved/rejected and why. Every other approval (whole-request, all-approved per-date) has no `mixed`
     // flag and keeps the flat "approved" body — byte-identical to today.
-    render: (p) =>
-      p?.mixed === true
-        ? {
-            severity: 'info',
-            title: 'Leave partially approved',
-            body: 'Some dates in your leave request were approved and some were not — tap to see the breakdown.',
-            linkPath: '/me',
-          }
-        : { severity: 'info', title: 'Leave approved', body: 'Your leave request was approved.', linkPath: '/me' },
+    render: (p) => {
+      if (p?.mixed === true) {
+        // R17 600be8ac ask #5: list the approved + rejected dates and the rejection reason so the notice is
+        // self-contained. perDateOutcome is attached by finalizeLeaveApproval only for the mixed case; fall
+        // back to the generic body if an older event lacks it. Cap the listing so the body stays short.
+        const o = (p.perDateOutcome ?? null) as
+          | { approved?: string[]; rejected?: { date: string; reason?: string | null }[] }
+          | null;
+        const cap = 6;
+        const fmt = (arr: string[]) =>
+          arr.length > cap ? `${arr.slice(0, cap).join(', ')} +${arr.length - cap} more` : arr.join(', ');
+        const approved = o?.approved ?? [];
+        const rejected = o?.rejected ?? [];
+        const parts: string[] = [];
+        if (approved.length) parts.push(`Approved: ${fmt(approved)}`);
+        if (rejected.length) {
+          parts.push(`Rejected: ${fmt(rejected.map((r) => r.date))}`);
+          const reason = rejected.find((r) => r.reason)?.reason;
+          if (reason) parts.push(`Reason: ${reason}`);
+        }
+        const body = parts.length
+          ? `Some dates were approved and some were not. ${parts.join('. ')}.`
+          : 'Some dates in your leave request were approved and some were not — tap to see the breakdown.';
+        return { severity: 'info', title: 'Leave partially approved', body, linkPath: '/me' };
+      }
+      return { severity: 'info', title: 'Leave approved', body: 'Your leave request was approved.', linkPath: '/me' };
+    },
   },
   'leave-request.rejected': {
     kind: 'leave.rejected',
     category: 'leave',
     render: () => ({ severity: 'warning', title: 'Leave not approved', body: 'Your leave request was rejected.', linkPath: '/me' }),
+  },
+  // HR cancelled a leave on the employee's behalf (feedback 22e68ff0). Default recipient = the event's
+  // subjectEmploymentId (the affected employee) — no fan-out resolver. The payload carries the display facts
+  // (type + dates) the ticket wants in the notice. English-only strings, matching every other registry entry.
+  'leave-request.admin-cancelled': {
+    kind: 'leave.admin-cancelled',
+    category: 'leave',
+    render: (p) => ({
+      severity: 'warning',
+      title: 'Leave cancelled by HR',
+      body: `Your ${p?.leaveTypeName ?? 'leave'} (${p?.startDate ?? ''} → ${p?.endDate ?? ''}) has been cancelled by an HR administrator.`,
+      linkPath: '/me',
+    }),
   },
   'toil.accrued': {
     kind: 'toil.accrued',

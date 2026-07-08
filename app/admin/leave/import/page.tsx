@@ -17,7 +17,7 @@ export default async function LeaveImportPage() {
         description={t('description')}
         actions={
           <Button asChild>
-            <a href="#leave-import-form">{t('title')}</a>
+            <a href="#leave-import-form">{t('uploadFile')}</a>
           </Button>
         }
       />

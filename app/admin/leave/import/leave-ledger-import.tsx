@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { UploadCloud } from 'lucide-react';
 import { Button, Card, Field, inputCls } from '@/components/ui';
 import { DownloadTemplate } from '@/components/download-template';
 import { leaveImportTemplate } from '@/lib/import-template';
@@ -12,8 +13,18 @@ import {
   LEAVE_IMPORT_COLUMNS,
   type LeaveImportPreview,
   type LeaveImportResult,
+  type LeaveImportSource,
 } from '@/lib/leave-import-schema';
 import { validateLeaveImportAction, commitLeaveImportAction } from './actions';
+
+// Reporter's human-readable headers (Function 1). They normalise to the snake_case contract
+// (employee_id, …) via parseCsvRecords on re-upload, so the Excel template can be human-friendly.
+const XLSX_TEMPLATE_HEADERS = ['Employee ID', 'Leave Type', 'Transaction Type', 'Days', 'Effective Date'];
+
+// Next server actions default to a ~1 MB body; a 500-row import is ~20 KB, so this is a generous guard.
+const MAX_CSV_BYTES = 900_000;
+
+const ACCEPT = '.csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 const SAMPLE = `employee_id,leave_type,transaction_type,days,effective_date
 E1001,ANNUAL,adjustment,5,2026-01-01
@@ -31,6 +42,12 @@ export function LeaveLedgerImport() {
   const [error, setError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('idle');
   const [pending, startTransition] = useTransition();
+  // How the current data reached the box — recorded in the commit's audit event. Defaults to 'paste'.
+  const [source, setSource] = useState<LeaveImportSource>({ kind: 'paste' });
+  const [fileInfo, setFileInfo] = useState<{ name: string; rows: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [reading, setReading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Any edit invalidates a stale preview/result — force a fresh validate before importing.
   const reset = () => {
@@ -40,11 +57,11 @@ export function LeaveLedgerImport() {
     setError(null);
   };
 
-  const validate = () =>
+  const runValidate = (text: string) =>
     startTransition(async () => {
       setError(null);
       try {
-        const p = await validateLeaveImportAction(csv);
+        const p = await validateLeaveImportAction(text);
         setPreview(p);
         setResult(null);
         setPhase('previewed');
@@ -53,11 +70,13 @@ export function LeaveLedgerImport() {
       }
     });
 
+  const validate = () => runValidate(csv);
+
   const commit = () =>
     startTransition(async () => {
       setError(null);
       try {
-        const r = await commitLeaveImportAction(csv);
+        const r = await commitLeaveImportAction(csv, source);
         setResult(r);
         setPhase('done');
         router.refresh();
@@ -65,6 +84,74 @@ export function LeaveLedgerImport() {
         setError((e as Error).message);
       }
     });
+
+  // Function 2: read a picked/dropped file into the shared `csv` state, then auto-run validation so the
+  // upload flows straight into the Ready/Error preview (Function 2 → 3 → 4). CSV is read natively;
+  // .xlsx/.xls are parsed IN THE BROWSER via the dynamically-imported SheetJS helper (server never sees
+  // a workbook — it always receives the same CSV text as the paste path and re-validates it).
+  const loadFile = async (file: File) => {
+    setError(null);
+    setReading(true);
+    try {
+      const lower = file.name.toLowerCase();
+      let text: string;
+      let format: LeaveImportSource['format'];
+      if (lower.endsWith('.csv')) {
+        format = 'csv';
+        text = await file.text();
+      } else if (lower.endsWith('.xlsx') || lower.endsWith('.xls')) {
+        format = lower.endsWith('.xlsx') ? 'xlsx' : 'xls';
+        const { workbookToCsvText } = await import('@/lib/spreadsheet');
+        try {
+          text = await workbookToCsvText(await file.arrayBuffer());
+        } catch (e) {
+          setError((e as Error).message === 'EMPTY_SHEET' ? t('emptySheet') : t('fileReadError'));
+          return;
+        }
+      } else {
+        setError(t('unsupportedFileType'));
+        return;
+      }
+      if (new Blob([text]).size > MAX_CSV_BYTES) {
+        setError(t('fileTooLarge'));
+        return;
+      }
+      const rows = Math.max(0, text.trim() === '' ? 0 : text.trim().split(/\r?\n/).length - 1);
+      setCsv(text);
+      setSource({ kind: 'file', name: file.name, format });
+      setFileInfo({ name: file.name, rows });
+      setResult(null);
+      runValidate(text);
+    } catch {
+      setError(t('fileReadError'));
+    } finally {
+      setReading(false);
+      // Allow re-selecting the same file (change event won't fire otherwise).
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  // Function 1 (Excel): build a genuine .xlsx template client-side from the reporter's human headers +
+  // the shared sample rows, so HR gets a real Excel file, not a renamed CSV.
+  const downloadXlsxTemplate = async () => {
+    setError(null);
+    try {
+      const { buildXlsx } = await import('@/lib/spreadsheet');
+      const bytes = await buildXlsx(XLSX_TEMPLATE_HEADERS, leaveImportTemplate.sampleRows);
+      const url = URL.createObjectURL(
+        new Blob([bytes as BlobPart], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        }),
+      );
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'leave-import-template.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError(t('fileReadError'));
+    }
+  };
 
   // Function 5: client-side error report of just the failed rows (rowNum, employee_id as given, message).
   // Uses toCsv's csvSafeCell formula-injection guard since it echoes back user-supplied cell values.
@@ -84,27 +171,89 @@ export function LeaveLedgerImport() {
   return (
     <div className="space-y-6">
       <Card id="leave-import-form" className="scroll-mt-6 p-5">
-        <Field label={t('csvData')}>
-          <textarea
-            className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
-            placeholder={t('csvPlaceholder')}
-            value={csv}
-            onChange={(e) => {
-              setCsv(e.target.value);
-              reset();
+        {/* Function 2 — file upload (CSV / XLSX / XLS). Drop or pick a file; it auto-validates. */}
+        <Field label={t('uploadFile')}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
             }}
-            spellCheck={false}
-          />
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              const f = e.dataTransfer.files?.[0];
+              if (f) void loadFile(f);
+            }}
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+              dragging
+                ? 'border-primary bg-primary/5'
+                : 'border-border hover:border-primary/50 hover:bg-muted/40'
+            }`}
+          >
+            <UploadCloud className="h-6 w-6 text-muted-foreground" aria-hidden />
+            <div className="text-sm font-medium">{reading ? t('reading') : t('dropHere')}</div>
+            <p className="text-xs text-muted-foreground">{t('uploadHint')}</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPT}
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void loadFile(f);
+              }}
+            />
+          </div>
+          {fileInfo && (
+            <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+              {t('fileLoaded', { name: fileInfo.name, rows: fileInfo.rows })}
+            </p>
+          )}
         </Field>
 
+        {/* Secondary path: paste raw CSV (also the way to inspect/fix an uploaded file's content). */}
+        <details className="mt-4 border-t border-border pt-3" open={source.kind === 'paste' && !fileInfo}>
+          <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground">
+            {t('pasteToggle')}
+          </summary>
+          <div className="mt-3">
+            <Field label={t('csvData')}>
+              <textarea
+                className={`${inputCls} h-44 resize-y font-mono text-xs leading-relaxed`}
+                placeholder={t('csvPlaceholder')}
+                value={csv}
+                onChange={(e) => {
+                  setCsv(e.target.value);
+                  setSource({ kind: 'paste' });
+                  setFileInfo(null);
+                  reset();
+                }}
+                spellCheck={false}
+              />
+            </Field>
+          </div>
+        </details>
+
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Button onClick={validate} disabled={pending || !csv.trim()}>
+          <Button onClick={validate} disabled={pending || reading || !csv.trim()}>
             {pending && phase !== 'done' ? t('validating') : t('validate')}
           </Button>
           <Button
             variant="outline"
             onClick={() => {
               setCsv(SAMPLE);
+              setSource({ kind: 'paste' });
+              setFileInfo(null);
               reset();
             }}
             disabled={pending}
@@ -112,6 +261,13 @@ export function LeaveLedgerImport() {
             {t('loadSample')}
           </Button>
           <DownloadTemplate spec={leaveImportTemplate} />
+          <button
+            type="button"
+            onClick={() => void downloadXlsxTemplate()}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            {t('downloadTemplateXlsx')}
+          </button>
         </div>
 
         <details className="mt-4 border-t border-border pt-3 text-xs">

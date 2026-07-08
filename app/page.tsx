@@ -23,7 +23,7 @@ import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import { TimelineNav } from '@/components/timeline-nav';
-import { requestLeaveCancellationAction } from '@/app/leave/actions';
+import { requestLeaveCancellationAction, adminCancelLeaveAction } from '@/app/leave/actions';
 import {
   type DashboardCardId,
   pendingTasksCount,
@@ -289,6 +289,10 @@ export default async function DashboardPage({
           // is the SAME one the Leave page posts (redirects to /leave?toast=cancellationRequested + revalidates /).
           viewerPersonId={s.personId}
           cancelAction={requestLeaveCancellationAction}
+          // HR Admin Leave Cancellation on behalf (feedback 22e68ff0): admins get an immediate cancel
+          // affordance on other employees' pills; same action the Leave page posts.
+          viewerIsAdmin={isAdmin(s)}
+          adminCancelAction={adminCancelLeaveAction}
         />
       </div>
 

@@ -32,6 +32,7 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import {
   decideLeave,
   decideLeaveDate,
+  decideLeaveDates,
   requestLeave,
   InsufficientLeaveBalanceError,
   MissingRejectReasonError,
@@ -260,6 +261,99 @@ describe('Partial Leave Approval — per-date decisions + finalization', () => {
     expect(debits).toHaveLength(1);
     expect(Number(debits[0].days)).toBe(-3);
     expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(17);
+  });
+});
+
+describe('Partial Leave Approval — batch decideLeaveDates (R17 600be8ac)', () => {
+  it('a mixed batch in ONE call → correct row states, one date.decided per date, single debit = approved sum, mixed + perDateOutcome payload', async () => {
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    const out = await decideLeaveDates(mgrCtx, {
+      leaveRequestId: res.leaveRequestId,
+      decisions: [
+        { leaveDate: D10, decision: 'approved' },
+        { leaveDate: D11, decision: 'approved' },
+        { leaveDate: D12, decision: 'rejected', rejectReason: 'Business operational requirement on the 12th' },
+      ],
+    });
+    expect(out.status).toBe('approved');
+    // Only the 2 approved dates are debited: 20 − 2 = 18, exactly one debit row.
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(18);
+    const debits = await debitRows(res.leaveRequestId);
+    expect(debits).toHaveLength(1);
+    expect(Number(debits[0].days)).toBe(-2);
+    const rows = await dateRows(res.leaveRequestId);
+    expect(rows.find((r) => r.leaveDate === D12)!.status).toBe('rejected');
+    expect(rows.find((r) => r.leaveDate === D12)!.rejectReason).toBe('Business operational requirement on the 12th');
+    // One date.decided event per date + one terminal approved event.
+    const types = (
+      await owner.db
+        .select({ t: schema.domainEvent.eventType })
+        .from(schema.domainEvent)
+        .where(eq(schema.domainEvent.aggregateId, res.leaveRequestId))
+    ).map((r) => r.t);
+    expect(types.filter((t) => t === 'leave-request.date.decided')).toHaveLength(3);
+    expect(types.filter((t) => t === 'leave-request.approved')).toHaveLength(1);
+    // The mixed approved event carries the per-date outcome so the notification can list dates + reason.
+    const evt = await latestEventPayload(b.tenantId, res.leaveRequestId, 'leave-request.approved');
+    expect(evt?.mixed).toBe(true);
+    const pdo = evt?.perDateOutcome as { approved: string[]; rejected: { date: string; reason: string | null }[] };
+    expect(pdo.approved.sort()).toEqual([D10, D11]);
+    expect(pdo.rejected).toEqual([{ date: D12, reason: 'Business operational requirement on the 12th' }]);
+  });
+
+  it('a blank reject reason anywhere in the batch throws and writes nothing', async () => {
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    await expect(
+      decideLeaveDates(mgrCtx, {
+        leaveRequestId: res.leaveRequestId,
+        decisions: [
+          { leaveDate: D10, decision: 'approved' },
+          { leaveDate: D12, decision: 'rejected', rejectReason: '   ' },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(MissingRejectReasonError);
+    const rows = await dateRows(res.leaveRequestId);
+    expect(rows.every((r) => r.status === 'pending')).toBe(true);
+    expect(await debitRows(res.leaveRequestId)).toHaveLength(0);
+  });
+
+  it('an unknown or already-decided date in the batch throws and leaves the request untouched', async () => {
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    await expect(
+      decideLeaveDates(mgrCtx, {
+        leaveRequestId: res.leaveRequestId,
+        decisions: [{ leaveDate: '2026-08-20', decision: 'approved' }],
+      }),
+    ).rejects.toThrow();
+    // Now decide D10, then a second batch naming D10 again must throw (already decided).
+    await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D10, decision: 'approved' });
+    await expect(
+      decideLeaveDates(mgrCtx, {
+        leaveRequestId: res.leaveRequestId,
+        decisions: [{ leaveDate: D10, decision: 'approved' }],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it('a partial batch (2 of 3 dates) leaves the request pending; a follow-up single decision finalizes', async () => {
+    await grant(b.annualLeaveTypeId, '20.00');
+    const res = await requestSpan(D10, D12);
+    const out = await decideLeaveDates(mgrCtx, {
+      leaveRequestId: res.leaveRequestId,
+      decisions: [
+        { leaveDate: D10, decision: 'approved' },
+        { leaveDate: D11, decision: 'approved' },
+      ],
+    });
+    expect(out.status).toBe('pending');
+    expect((await requestRow(res.leaveRequestId)).status).toBe('pending');
+    expect(await debitRows(res.leaveRequestId)).toHaveLength(0);
+    const last = await decideLeaveDate(mgrCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D12, decision: 'approved' });
+    expect(last.status).toBe('approved');
+    expect(Number((await debitRows(res.leaveRequestId))[0].days)).toBe(-3);
   });
 });
 

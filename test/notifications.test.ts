@@ -96,6 +96,25 @@ describe('notification dispatch + reads (ADR-0034 34-2)', () => {
     expect(n.linkPath).toBe('/me');
   });
 
+  it('a MIXED approval carrying perDateOutcome lists the approved + rejected dates and the reason (R17 600be8ac)', async () => {
+    const A = await makeEmployee();
+    await owner.db.insert(schema.domainEvent).values([
+      event('leave-request.approved', A.employmentId, {
+        decision: 'approved',
+        mixed: true,
+        perDateOutcome: {
+          approved: ['2026-08-01', '2026-08-02'],
+          rejected: [{ date: '2026-08-03', reason: 'Business operational requirement on 03-Aug.' }],
+        },
+      }),
+    ]);
+    expect((await dispatchNotifications(adminCtx(b), {})).created).toBe(1);
+    const [n] = await listNotifications(A.ctx, A.employmentId);
+    expect(n.body).toContain('2026-08-01');
+    expect(n.body).toContain('2026-08-03');
+    expect(n.body).toContain('Business operational requirement on 03-Aug.');
+  });
+
   it('a plain (non-mixed) leave-request.approved keeps the flat "Leave approved" body', async () => {
     const A = await makeEmployee();
     await owner.db.insert(schema.domainEvent).values([event('leave-request.approved', A.employmentId, { decision: 'approved' })]);

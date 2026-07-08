@@ -52,3 +52,12 @@ export type LeaveImportResult = {
   skipped: number;
   totalRows: number;
 };
+
+/** How the imported rows reached the commit — recorded in the leave.import.completed event payload so
+ *  a file-driven migration is distinguishable in the audit trail from a hand-pasted batch. Payload-only
+ *  enrichment of the EXISTING event (no new write, no schema change — domain_event.payload is jsonb). */
+export type LeaveImportSource = {
+  kind: 'file' | 'paste';
+  name?: string; // original filename when kind === 'file'
+  format?: 'csv' | 'xls' | 'xlsx';
+};

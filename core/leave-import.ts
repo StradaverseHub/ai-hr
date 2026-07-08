@@ -40,6 +40,7 @@ import {
   type LeaveRowResult,
   type LeaveImportPreview,
   type LeaveImportResult,
+  type LeaveImportSource,
 } from '../lib/leave-import-schema';
 
 export {
@@ -50,6 +51,7 @@ export {
   type LeaveRowResult,
   type LeaveImportPreview,
   type LeaveImportResult,
+  type LeaveImportSource,
 };
 
 // YYYY-MM-DD with real month/day ranges (mirrors DATE_RE in core/import.ts L33).
@@ -281,7 +283,7 @@ export async function validateLeaveImport(
  */
 export async function commitLeaveImport(
   ctx: SessionContext,
-  p: { records: LeaveImportRecord[] },
+  p: { records: LeaveImportRecord[]; source?: LeaveImportSource },
 ): Promise<LeaveImportResult> {
   const { resolved } = await analyze(ctx, p.records);
   // Skip = a valid row that already exists in the ledger (already-imported warning) — never written.
@@ -326,7 +328,9 @@ export async function commitLeaveImport(
       aggregateId: batchId,
       eventType: 'leave.import.completed',
       actor: actorOf(ctx),
-      payload: { imported, failed: failed.length, skipped, totalRows: resolved.length },
+      // source: how the batch reached commit (file upload vs paste) so a migration is distinguishable
+      // in audit. Payload-only enrichment of THE existing summary event — no new write.
+      payload: { imported, failed: failed.length, skipped, totalRows: resolved.length, source: p.source ?? null },
     }),
   );
 

@@ -1,7 +1,7 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   AGED_FORFEIT_REASON,
   POLICY_RECALC_REASON_PREFIX,
@@ -36,6 +36,7 @@ import {
   leavePolicy,
   leaveRequest,
   leaveRequestDate,
+  leaveRequestStatusEnum,
   leaveType,
   location,
   payComponent,
@@ -376,6 +377,9 @@ export function listLeaveTypes(
         id: leaveType.id,
         code: leaveType.code,
         name: leaveType.name,
+        // Leave Type master page (feedback 097de541): the free-text description shown in the master listing +
+        // the identity edit form (MUST be projected here or the field renders empty on every reload).
+        description: leaveType.description,
         i18n: leaveType.i18n,
         paid: leaveType.paid,
         counting: leaveType.counting,
@@ -451,6 +455,9 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           backdatingLimitDays: leaveType.backdatingLimitDays,
           // Minimum advance-notice rule (0159): projected alongside backdatingLimitDays for the same reason.
           minAdvanceDays: leaveType.minAdvanceDays,
+          // Feedback 9d8cf621: the apply-time custom message (applyNotice key) is read off this JSONB to show
+          // the HR-authored notice under the leave-type select on the /me apply form.
+          customMessages: leaveType.customMessages,
           eligibility: leaveType.eligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
@@ -471,59 +478,109 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
   });
 }
 
+/**
+ * Shared leave-request history projection — used by BOTH the flat `listLeaveRequests` (approvals inbox,
+ * the /leave non-admin self-view) AND the paginated/filtered `listLeaveRequestsPage` (the /leave admin
+ * search & filter surface, feedback 0773bda9). One selection object means the two reads can never drift.
+ */
+const leaveRequestSelection = {
+  id: leaveRequest.id,
+  employmentId: leaveRequest.employmentId,
+  personId: employment.personId,
+  employee: person.fullName,
+  employeeCode: employment.employeeCode,
+  leaveType: leaveType.name,
+  typeCode: leaveType.code,
+  appliedOn: leaveRequest.createdAt,
+  startDate: leaveRequest.startDate,
+  endDate: leaveRequest.endDate,
+  days: leaveRequest.days,
+  durationType: leaveRequest.durationType,
+  hours: leaveRequest.hours,
+  // Hourly-leave time window (0129): surfaced on the admin/leave history table AND the approvals inbox
+  // (app/approvals/page.tsx) so the approver sees the actual window (09:00–11:00), not a bare days
+  // figure. NULL for full_day / half_day rows.
+  fromTime: leaveRequest.fromTime,
+  toTime: leaveRequest.toTime,
+  status: leaveRequest.status,
+  // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
+  // surface can group them as one logical absence. NULL for ordinary requests.
+  parentGroupId: leaveRequest.parentGroupId,
+  // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
+  // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
+  // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
+  // is read off the submitted-event payload (qualifying_service | fifth_child | null).
+  allowanceEligible: leaveRequest.allowanceEligible,
+  survivingChildren: leaveRequest.survivingChildren,
+  confinementDate: leaveRequest.confinementDate,
+  maternityReason: sql<string | null>`(select (e.payload #>> '{maternityAllowance,reason}') from domain_event e where e.aggregate_id = leave_request.id and e.event_type = 'leave-request.submitted' order by e.sequence desc limit 1)`,
+  hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
+  currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+  currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+  // Approval Information (feedback 0773bda9): the final decider's employment id + name, so the admin
+  // history table can show "Approved by" and the advanced filter can narrow by approver. NULL until a
+  // request is decided (pending rows). Kept in the SHARED projection so the flat + paginated reads agree.
+  decidedByEmploymentId: leaveRequest.decidedByEmploymentId,
+  decidedByName: sql<string | null>`(select p.full_name from employment de join person p on p.id = de.person_id where de.id = leave_request.decided_by_employment_id)`,
+  stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+  // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
+  // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
+  applicantBalance: sql<string>`coalesce((select sum(ll.days) from leave_ledger ll where ll.employment_id = leave_request.employment_id and ll.leave_type_id = leave_request.leave_type_id), 0)`,
+  // Partial Leave Cancellation (ADR-0065): the pending cancellation request (if any) on this row, so the
+  // UI can show a "cancellation pending" pill and suppress a second cancel affordance. NULL when none.
+  pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+  pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+  // R5 Build #2 (iterative cancellation): TRUE when this row is a SURVIVOR of a prior cancellation split —
+  // it carries a parent_group_id AND a sibling in the same group is 'cancelled'. Such a survivor is still
+  // cancellable (the employee can give back more days), so the Leave page shows the "Cancel dates" button
+  // for it too; a genuine EL / per-date child (parent group with NO 'cancelled' sibling) never matches.
+  isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+  // R17 600be8ac ask #1: the applicant's own words — the free-text `reason` and (for types that require it) the
+  // mandatory `employeeRemark` — so the approver's summary shows WHY the leave was requested, not just the dates.
+  reason: leaveRequest.reason,
+  employeeRemark: leaveRequest.employeeRemark,
+  // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row. Drives the derived
+  // "Partially approved" display badge (an approved request with some dates rejected) — no new status enum;
+  // the DB status stays 'approved' and every consumer keeps reading per-date truth (§4A). NULL/false otherwise.
+  hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
+} as const;
+
+/** R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
+ *  working dates (roster + public-holiday aware, the SAME frame requestLeaveCancellation validates against)
+ *  so the Leave page offers exactly the cancellable candidates — not a Mon–Fri heuristic. Only resolved for
+ *  approved full-day rows that are either a plain request (parentGroupId null) or a cancellation-split
+ *  survivor; others get []. Runs bounded to the passed page of rows (≤ page size). */
+async function resolveLeaveWorkingDates<
+  T extends {
+    status: string;
+    durationType: string;
+    parentGroupId: string | null;
+    isCancellationSplit: boolean;
+    employmentId: string;
+    startDate: string;
+    endDate: string;
+  },
+>(tx: Tx, rows: T[]): Promise<(T & { workingDates: string[] })[]> {
+  return Promise.all(
+    rows.map(async (r) => {
+      const eligibleShape =
+        r.status === 'approved' &&
+        r.durationType === 'full_day' &&
+        (r.parentGroupId == null || r.isCancellationSplit);
+      const workingDates = eligibleShape
+        ? await workingDatesForSpan(tx, r.employmentId, r.startDate, r.endDate)
+        : [];
+      return { ...r, workingDates };
+    }),
+  );
+}
+
 /** Every leave request in scope (RLS additionally trims to what the viewer may see:
  *  admins everything, managers their reports, employees themselves). Recent first. */
 export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], limit = 200) {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
-      .select({
-        id: leaveRequest.id,
-        employmentId: leaveRequest.employmentId,
-        personId: employment.personId,
-        employee: person.fullName,
-        employeeCode: employment.employeeCode,
-        leaveType: leaveType.name,
-        typeCode: leaveType.code,
-        appliedOn: leaveRequest.createdAt,
-        startDate: leaveRequest.startDate,
-        endDate: leaveRequest.endDate,
-        days: leaveRequest.days,
-        durationType: leaveRequest.durationType,
-        hours: leaveRequest.hours,
-        // Hourly-leave time window (0129): surfaced on the admin/leave history table AND the approvals inbox
-        // (app/approvals/page.tsx) so the approver sees the actual window (09:00–11:00), not a bare days
-        // figure. NULL for full_day / half_day rows.
-        fromTime: leaveRequest.fromTime,
-        toTime: leaveRequest.toTime,
-        status: leaveRequest.status,
-        // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so a
-        // surface can group them as one logical absence. NULL for ordinary requests.
-        parentGroupId: leaveRequest.parentGroupId,
-        // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
-        // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
-        // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
-        // is read off the submitted-event payload (qualifying_service | fifth_child | null).
-        allowanceEligible: leaveRequest.allowanceEligible,
-        survivingChildren: leaveRequest.survivingChildren,
-        confinementDate: leaveRequest.confinementDate,
-        maternityReason: sql<string | null>`(select (e.payload #>> '{maternityAllowance,reason}') from domain_event e where e.aggregate_id = leave_request.id and e.event_type = 'leave-request.submitted' order by e.sequence desc limit 1)`,
-        hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
-        currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
-        currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
-        stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
-        // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
-        // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
-        applicantBalance: sql<string>`coalesce((select sum(ll.days) from leave_ledger ll where ll.employment_id = leave_request.employment_id and ll.leave_type_id = leave_request.leave_type_id), 0)`,
-        // Partial Leave Cancellation (ADR-0065): the pending cancellation request (if any) on this row, so the
-        // UI can show a "cancellation pending" pill and suppress a second cancel affordance. NULL when none.
-        pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
-        pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
-        // R5 Build #2 (iterative cancellation): TRUE when this row is a SURVIVOR of a prior cancellation split —
-        // it carries a parent_group_id AND a sibling in the same group is 'cancelled'. Such a survivor is still
-        // cancellable (the employee can give back more days), so the Leave page shows the "Cancel dates" button
-        // for it too; a genuine EL / per-date child (parent group with NO 'cancelled' sibling) never matches.
-        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
-      })
+      .select(leaveRequestSelection)
       .from(leaveRequest)
       .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
@@ -533,25 +590,153 @@ export function listLeaveRequests(ctx: SessionContext, companyIds?: string[], li
       )
       .orderBy(desc(leaveRequest.createdAt))
       .limit(limit);
+    return resolveLeaveWorkingDates(tx, rows);
+  });
+}
 
-    // R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
-    // working dates (roster + public-holiday aware, the SAME frame requestLeaveCancellation validates against)
-    // so the Leave page offers exactly the cancellable candidates — not a Mon–Fri heuristic that would offer a
-    // holiday the service rejects or hide a working Saturday. Only resolved for approved full-day rows that are
-    // either a plain request (parentGroupId null) or a cancellation-split survivor; others get [].
-    const withDates = await Promise.all(
-      rows.map(async (r) => {
-        const eligibleShape =
-          r.status === 'approved' &&
-          r.durationType === 'full_day' &&
-          (r.parentGroupId == null || r.isCancellationSplit);
-        const workingDates = eligibleShape
-          ? await workingDatesForSpan(tx, r.employmentId, r.startDate, r.endDate)
-          : [];
-        return { ...r, workingDates };
-      }),
+/** One row of the leave-request history table (shared projection + resolved workingDates). */
+export type LeaveRequestRow = Awaited<ReturnType<typeof listLeaveRequests>>[number];
+
+/**
+ * Advanced Search & Filter for Leave Management (feedback 0773bda9) — the paginated, filterable, sortable
+ * read behind the /leave admin surface. Mirrors `listEmployeesPage`: returns { rows, total } so the page can
+ * show "Showing X of Y" and page through arbitrarily large populations (Chin Hin ~4.5k staff), instead of the
+ * 200-row hard cap `listLeaveRequests` imposes. RLS (`withTenant`) is the authority for row visibility;
+ * `companyIds` is the narrowing scope fence from the company switcher (ALWAYS applied), and the individual
+ * filters below narrow further. Read-only — no DomainEvent (search/filter/paginate mutate nothing).
+ */
+export function listLeaveRequestsPage(
+  ctx: SessionContext,
+  p: {
+    companyIds?: string[]; // scope fence (company switcher) — ALWAYS applied
+    q?: string; // name / employeeCode / uuid-prefix reference
+    companyId?: string;
+    businessUnitId?: string;
+    departmentId?: string;
+    locationId?: string;
+    leaveTypeIds?: string[]; // multi
+    statuses?: string[]; // multi — validated against pending|approved|rejected|cancelled
+    // Approval Information (feedback 0773bda9). `approvedBy` = the FINAL decider's employment id
+    // (leave_request.decided_by_employment_id — a stored named person, so this is exact). `pendingWith`
+    // = the ROLE the request is currently awaiting (the first pending approval step's approver_kind:
+    // 'direct_manager' | 'hr_admin'); the chain stores a role, not a named person, so this filter is by
+    // stage, which is the finest granularity the data supports.
+    approvedBy?: string;
+    pendingWith?: string;
+    from?: string;
+    to?: string; // leave-date window (overlap semantics)
+    appliedFrom?: string;
+    appliedTo?: string; // application (createdAt) date range
+    sort?: string;
+    dir?: string; // default: applied desc (today's order)
+    limit: number;
+    offset: number;
+  },
+): Promise<{ rows: LeaveRequestRow[]; total: number }> {
+  return withTenant(ctx, async (tx) => {
+    const q = p.q?.trim();
+    // Current open assignment (≤1 row / employment) — copied from listEmployeesPage so department /
+    // business-unit / location filters resolve off the employee's CURRENT posting, shared by rows + count.
+    const currentAssignment = and(
+      eq(assignment.employmentId, employment.id),
+      isNull(assignment.validTo),
+      isNull(assignment.supersededAt),
     );
-    return withDates;
+    // Statuses validated against the enum before hitting SQL (defence-in-depth; an unknown value would
+    // otherwise widen to nothing but a bad cast could throw). Same for the sort whitelist below.
+    const validStatuses = (p.statuses ?? []).filter((s) =>
+      (leaveRequestStatusEnum.enumValues as readonly string[]).includes(s),
+    ) as (typeof leaveRequestStatusEnum.enumValues)[number][];
+    // uuid-prefix reference search: strip a leading '#', match when it looks like a (partial) uuid.
+    const refTerm = q?.replace(/^#/, '');
+    const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
+    const where = and(
+      p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+      p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+      p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
+      p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+      p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
+      p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
+      validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
+      // Approval Information — "Approved by" is the stored final decider (exact match on a named person).
+      p.approvedBy ? eq(leaveRequest.decidedByEmploymentId, p.approvedBy) : undefined,
+      // "Pending with" narrows to rows whose CURRENT (first) pending approval step awaits this role. The
+      // value is whitelisted against the two approver kinds; an unknown value matches nothing rather than
+      // interpolating raw input. NB: only pending rows have a pending step, so this implicitly scopes to them.
+      p.pendingWith && (p.pendingWith === 'direct_manager' || p.pendingWith === 'hr_admin')
+        ? sql`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1) = ${p.pendingWith}`
+        : undefined,
+      // Leave-date window uses OVERLAP semantics so "July 2026" catches leave spanning a month boundary:
+      // startDate <= to AND endDate >= from.
+      p.to ? lte(leaveRequest.startDate, p.to) : undefined,
+      p.from ? gte(leaveRequest.endDate, p.from) : undefined,
+      // Application-date range compares on created_at::date (calendar day, TZ-agnostic for the admin view).
+      p.appliedFrom ? sql`${leaveRequest.createdAt}::date >= ${p.appliedFrom}` : undefined,
+      p.appliedTo ? sql`${leaveRequest.createdAt}::date <= ${p.appliedTo}` : undefined,
+      q
+        ? isRef
+          ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveRequest.id}::text ilike ${refTerm + '%'})`
+          : sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'})`
+        : undefined,
+    );
+    // Sort whitelist — NEVER interpolate user input into the ORDER BY.
+    const sortCol: Record<string, AnyColumn> = {
+      applied: leaveRequest.createdAt,
+      start: leaveRequest.startDate,
+      end: leaveRequest.endDate,
+      name: person.fullName,
+      status: leaveRequest.status,
+    };
+    const col = sortCol[p.sort ?? 'applied'] ?? leaveRequest.createdAt;
+    const dir = p.dir === 'asc' ? asc : desc;
+    const rows = await tx
+      .select(leaveRequestSelection)
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(where)
+      .orderBy(dir(col), desc(leaveRequest.createdAt))
+      .limit(p.limit)
+      .offset(p.offset);
+    // count(distinct leave_request.id): the assignment join is ≤1/employment, but distinct is the safe guard.
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(distinct ${leaveRequest.id})::int` })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(where);
+    const withDates = await resolveLeaveWorkingDates(tx, rows);
+    return { rows: withDates, total: Number(count) };
+  });
+}
+
+/**
+ * Approval Information filter — distinct people who have DECIDED (final approver/rejecter) at least one
+ * leave request in scope, so the /leave admin "Approved by" filter can offer a named-person picker.
+ * Scoped by the REQUESTER's company (the same `companyIds` fence the history uses), and RLS trims further.
+ * Read-only (feedback 0773bda9). "Pending with" is by role (approver_kind), not a named person, so it needs
+ * no options query — the two stage values are fixed in the page.
+ */
+export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const decider = alias(employment, 'decider_emp');
+    const deciderPerson = alias(person, 'decider_person');
+    const rows = await tx
+      .selectDistinct({ id: decider.id, name: deciderPerson.fullName })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(decider, eq(decider.id, leaveRequest.decidedByEmploymentId))
+      .innerJoin(deciderPerson, eq(deciderPerson.id, decider.personId))
+      .where(
+        companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+      );
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
   });
 }
 
@@ -994,6 +1179,34 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
       .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))
       .orderBy(jobGrade.rank, jobGrade.name),
   );
+}
+
+/**
+ * Feedback 9d8cf621 — "Employee Selection" entitled-employee count. Count ACTIVE (not-terminated)
+ * employments whose company and/or grade fall within the selected scope, so HR sees how many people an
+ * entitlement they are about to save would cover. An empty companyIds/gradeIds axis means "all" on that
+ * axis (a group-default / all-grades scope). RLS scopes the result to the session's tenant + visible
+ * companies via withTenant. READ-ONLY — no DomainEvent (documented skip).
+ */
+export function countEmployeesInScope(
+  ctx: SessionContext,
+  p: { companyIds?: string[]; gradeIds?: string[] },
+): Promise<number> {
+  const companyIds = (p.companyIds ?? []).filter(Boolean);
+  const gradeIds = (p.gradeIds ?? []).filter(Boolean);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ count: sql<number>`count(distinct ${employment.id})::int` })
+      .from(employment)
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          gradeIds.length ? inArray(employment.gradeId, gradeIds) : undefined,
+        ),
+      );
+    return row?.count ?? 0;
+  });
 }
 
 /** All effective-dated assignment versions (newest first) — the bitemporal history. */
@@ -1573,6 +1786,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+        // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row → the /me + personnel
+        // history renders the derived "Partially approved" badge instead of a flat "Approved" (no status enum).
+        hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
@@ -1872,6 +2088,15 @@ export type AuditFilters = {
   aggregateTypes?: string[];
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
+  /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
+   *  caller passes a validated slug from an allowlist; used as `event_type ilike '%.'||action`. */
+  action?: string;
+  /** 4ec5a940 — company filter: matches events whose payload records a `companyId` scope. Documented
+   *  limitation: group-level events that carry no company scope won't match. */
+  companyId?: string;
+  /** 4ec5a940 — leave-type filter: the leave-type aggregate itself, or any event whose payload carries
+   *  a `leaveTypeId` (e.g. a scoped approval rule). */
+  leaveTypeId?: string;
   from?: string; // ISO date (inclusive)
   to?: string; // ISO date (exclusive next day applied by caller)
   limit?: number;
@@ -1905,6 +2130,15 @@ export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<
             ? inArray(domainEvent.aggregateType, f.aggregateTypes)
             : undefined,
           f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
+          // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
+          // caller's allowlist + this bound param double-guard against injection.
+          f.action ? sql`${domainEvent.eventType} ilike ${'%.' + f.action}` : undefined,
+          // 4ec5a940 — company scope drawn from the payload (events that record `companyId`).
+          f.companyId ? sql`${domainEvent.payload}->>'companyId' = ${f.companyId}` : undefined,
+          // 4ec5a940 — the leave-type aggregate row itself, or any event scoped to it via payload.
+          f.leaveTypeId
+            ? sql`((${domainEvent.aggregateType} = 'leave-type' and ${domainEvent.aggregateId}::text = ${f.leaveTypeId}) or ${domainEvent.payload}->>'leaveTypeId' = ${f.leaveTypeId})`
+            : undefined,
           f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
           f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
           f.eventQuery
@@ -1926,6 +2160,28 @@ export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateTyp
       .from(domainEvent)
       .orderBy(domainEvent.aggregateType),
   );
+}
+
+/** 4ec5a940 — the distinct actors who appear in the log (optionally within a set of aggregate types,
+ *  e.g. the leave module for the Leave Audit tab), with their resolved display name — drives the User
+ *  filter dropdown. SYSTEM/AGENT/unlinked principals surface as a null name (the UI labels them). */
+export function auditActors(
+  ctx: SessionContext,
+  aggregateTypes?: string[],
+): Promise<{ actorId: string | null; actorName: string | null }[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .selectDistinct({ actorId: domainEvent.actorId, actorName: person.fullName })
+      .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(
+        aggregateTypes && aggregateTypes.length
+          ? inArray(domainEvent.aggregateType, aggregateTypes)
+          : undefined,
+      )
+      .orderBy(person.fullName),
+  ) as Promise<{ actorId: string | null; actorName: string | null }[]>;
 }
 
 /** Change history for one employee — every event touching their employment, person, statutory
