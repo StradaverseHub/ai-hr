@@ -8,7 +8,7 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { company, employmentTypeEnum, leaveApprovalPolicy } from '../db/schema';
+import { company, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
 
 export const LEVEL_KINDS = ['direct_manager', 'hr_admin'] as const;
 export type LeaveLevelKind = (typeof LEVEL_KINDS)[number];
@@ -16,7 +16,7 @@ export type LeaveLevelKind = (typeof LEVEL_KINDS)[number];
 /** The chain an opted-in company gets when no rule matches — identical to 2B-1. */
 const FALLBACK_CHAIN: LeaveLevelKind[] = ['direct_manager', 'hr_admin'];
 
-function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
+export function sanitizeLevels(raw: unknown): LeaveLevelKind[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((x): x is LeaveLevelKind => (LEVEL_KINDS as readonly string[]).includes(x as string));
 }
@@ -47,6 +47,8 @@ type RuleRow = {
   minDays: number | null;
   maxDays: number | null;
   levels: unknown;
+  // 6fadb036: when set (and the template is active), the template's levels are the effective chain.
+  templateId: string | null;
   createdAt: Date;
 };
 
@@ -126,12 +128,36 @@ export async function resolveApprovalChain(
       minDays: leaveApprovalPolicy.minDays,
       maxDays: leaveApprovalPolicy.maxDays,
       levels: leaveApprovalPolicy.levels,
+      templateId: leaveApprovalPolicy.templateId,
       createdAt: leaveApprovalPolicy.createdAt,
     })
     .from(leaveApprovalPolicy)
     .where(
       and(eq(leaveApprovalPolicy.companyId, companyId), eq(leaveApprovalPolicy.active, true)),
     )) as RuleRow[];
+
+  // 6fadb036: fetch the tenant's ACTIVE templates once (few rows). A rule with template_id draws its chain
+  // from the template; the tenant-default template is the fallback just above the built-in chain. Runs under
+  // the requester's tx (RLS scopes to the tenant), same reason the policy itself is readable tenant-wide.
+  const templates = await tx
+    .select({
+      id: leaveApprovalTemplate.id,
+      levels: leaveApprovalTemplate.levels,
+      isTenantDefault: leaveApprovalTemplate.isTenantDefault,
+    })
+    .from(leaveApprovalTemplate)
+    .where(eq(leaveApprovalTemplate.active, true));
+  const templateLevels = new Map<string, LeaveLevelKind[]>();
+  let tenantDefaultLevels: LeaveLevelKind[] = [];
+  for (const t of templates) {
+    const lv = sanitizeLevels(t.levels);
+    templateLevels.set(t.id, lv);
+    if (t.isTenantDefault) tenantDefaultLevels = lv;
+  }
+  // The effective ordered chain of a rule: the template's levels when template-driven (and the template is
+  // active), else the row's own levels.
+  const effectiveLevels = (r: RuleRow): LeaveLevelKind[] =>
+    r.templateId ? (templateLevels.get(r.templateId) ?? []) : sanitizeLevels(r.levels);
 
   const matching = rules.filter((r) => ruleMatches(r, leaveTypeId, attrs));
   if (matching.length) {
@@ -144,9 +170,12 @@ export async function resolveApprovalChain(
         bestScore = s;
       }
     }
-    const lv = sanitizeLevels(best.levels);
+    const lv = effectiveLevels(best);
     if (lv.length) return lv;
   }
+  // No matching rule (or its effective chain resolved empty): fall back to the org-wide default template,
+  // then the built-in chain.
+  if (tenantDefaultLevels.length) return tenantDefaultLevels;
   return FALLBACK_CHAIN;
 }
 
@@ -235,6 +264,8 @@ export type LeaveApprovalRule = {
   maxDays: number | null;
   active: boolean;
   levels: LeaveLevelKind[];
+  // 6fadb036: the template this rule draws its chain from (null = custom `levels`).
+  templateId: string | null;
 };
 
 /** The scoping + chain inputs shared by create/update. Every scoping dimension is nullable/wildcard. */
@@ -431,6 +462,7 @@ export async function listLeaveApprovalRules(
         maxDays: leaveApprovalPolicy.maxDays,
         active: leaveApprovalPolicy.active,
         levels: leaveApprovalPolicy.levels,
+        templateId: leaveApprovalPolicy.templateId,
         createdAt: leaveApprovalPolicy.createdAt,
       })
       .from(leaveApprovalPolicy)
@@ -451,6 +483,7 @@ export async function listLeaveApprovalRules(
         maxDays: r.maxDays,
         active: r.active,
         levels: sanitizeLevels(r.levels),
+        templateId: r.templateId,
       }))
       .sort((a, b) => {
         // Most-specific first, then newest-created — matches resolution intuition on the screen.
@@ -458,5 +491,28 @@ export async function listLeaveApprovalRules(
         const sb = specificity(b as unknown as RuleRow);
         return sb - sa;
       });
+  });
+}
+
+/** 6fadb036 — flip a company's multi-step-approval opt-in WITHOUT touching its default chain. The
+ *  assignment screen surfaces this: a template assignment only fires when the company has multi-step
+ *  approval on (core/leave.ts), so HR must be able to enable it inline. Admin-only (company RLS). */
+export async function setLeaveMultiApproval(ctx: SessionContext, companyId: string, enabled: boolean) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ enabled: company.leaveMultiApproval })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    await tx.update(company).set({ leaveMultiApproval: enabled }).where(eq(company.id, companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: companyId,
+      eventType: 'company.leave-multi-approval.changed',
+      actor: actorOf(ctx),
+      payload: { companyId, enabled, before: before?.enabled ?? null },
+    });
+    return { id: companyId };
   });
 }

@@ -1028,6 +1028,11 @@ export const leaveApprovalPolicy = pgTable(
     maxDays: integer('max_days'),
     active: boolean('active').notNull().default(true),
     levels: jsonb('levels').notNull().default(sql`'[]'::jsonb`),
+    // 6fadb036 (R17): a rule may draw its chain from a reusable APPROVAL TEMPLATE instead of its own
+    // `levels`. When set, the template is the single source of truth for the ordered steps (the row's own
+    // `levels` is cleared to []); resolution reads the template's levels. Nullable/FK-restrict — a
+    // referenced template can never be hard-deleted. A row with template_id null keeps custom `levels`.
+    templateId: uuid('template_id').references((): AnyPgColumn => leaveApprovalTemplate.id),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
   },
@@ -1039,6 +1044,43 @@ export const leaveApprovalPolicy = pgTable(
       .where(
         sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`,
       ),
+  ],
+);
+
+// 6fadb036 (R17) — Approval Workflow Enhancement. A REUSABLE approval TEMPLATE: a named, tenant-level
+// ordered chain (`levels`, same 'direct_manager' | 'hr_admin' vocabulary as leave_approval_policy) that HR
+// maintains in ONE place and assigns to many (company × leave-type) combinations. Assigning a template to a
+// combination writes a leave_approval_policy row with `template_id` set (that row's own `levels` is cleared
+// to [] — the template is the single source of truth), so the existing "most-specific rule wins" resolution
+// is reused unchanged. `is_tenant_default` marks the single org-wide default chain that covers every company
+// and leave type with no specific rule (including newly created ones), sitting just above the built-in
+// fallback in resolution. Editing a template updates every place it is used; pending requests keep their
+// snapshotted steps (ADR-0071 §g). Catalog RLS: readable tenant-wide (the requester resolves the chain in
+// its own transaction, same reason leave_approval_policy is tenant-wide) and writable only by an admin.
+export const leaveApprovalTemplate = pgTable(
+  'leave_approval_template',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    description: text('description'),
+    levels: jsonb('levels').notNull().default(sql`'[]'::jsonb`),
+    // At most one active row per tenant may carry this flag (partial unique index below) — the org-wide
+    // default chain. Cleared automatically when the template is deactivated.
+    isTenantDefault: boolean('is_tenant_default').notNull().default(false),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
+  },
+  (t) => [
+    // Case-insensitive unique name among a tenant's ACTIVE templates (mirrors leave_type_tenant_code_uq).
+    uniqueIndex('leave_approval_template_name_uq')
+      .on(t.tenantId, sql`lower(${t.name})`)
+      .where(sql`active`),
+    // Exactly one org-wide-default template per tenant.
+    uniqueIndex('leave_approval_template_default_uq')
+      .on(t.tenantId)
+      .where(sql`is_tenant_default and active`),
   ],
 );
 
