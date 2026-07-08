@@ -122,9 +122,9 @@
     "personnelAdmin": "பணியாளர்கள் (நிர்வாகம்)",
     "securityPermission": "பாதுகாப்பு & அனுமதிகள்",
     "attendanceAllowance": "வருகை கொடுப்பனவு",
-    "attendanceRecords": "வருகைப் பதிவுகள்",
+    "attendanceRecords": "பதிவுகள்",
     "clockingLocation": "நேரப் பதிவு இடம்",
-    "attendanceImport": "வருகை இறக்குமதி"
+    "attendanceImport": "இறக்குமதி"
   },
   "dashboard": {
     "title": "டாஷ்போர்டு",

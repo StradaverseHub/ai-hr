@@ -122,9 +122,9 @@
     "personnelAdmin": "Personnel (admin)",
     "securityPermission": "Security & permissions",
     "attendanceAllowance": "Attendance allowance",
-    "attendanceRecords": "Attendance records",
+    "attendanceRecords": "Records",
     "clockingLocation": "Clocking location",
-    "attendanceImport": "Attendance import"
+    "attendanceImport": "Import"
   },
   "dashboard": {
     "title": "Dashboard",

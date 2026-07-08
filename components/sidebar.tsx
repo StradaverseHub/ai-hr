@@ -63,6 +63,9 @@ type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; item
 // confirmed the relocation b3dc0f78 had deferred as contested (ticket order: Holidays → Policy
 // → Allowance → Locations → TOIL). Reserved (do not create): an "Overtime Configuration" child
 // is owned by item e776d17d; when its route lands it inserts itself here after Clocking Location.
+// Child order (f60cd403): day-to-day Records first, then the admin-config screens, and the
+// administrative bulk-upload Import ALWAYS last — it is used far less than daily attendance ops.
+// hrefs / icons / visibility flags are unchanged by that reorder; only row position moved.
 const ATTENDANCE_NODE: CollapsibleGroupItem = {
   collapsible: true,
   labelKey: 'attendance',
@@ -70,14 +73,15 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   cookieKey: 'nav_attendance_open',
   children: [
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
-    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
-    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
     { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
-    // e776d17d reserves the "Overtime Configuration" child slot here.
+    // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Import).
     { href: '/admin/toil', labelKey: 'toilPolicy', icon: Hourglass, adminOnly: true },
+    { href: '/roster', labelKey: 'roster', icon: CalendarRange, managerUp: true },
+    // Import stays last: administrative bulk-upload, used less than daily attendance (f60cd403).
+    { href: '/attendance/import', labelKey: 'attendanceImport', icon: FileUp, managerUp: true },
   ],
 };
 

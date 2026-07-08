@@ -122,9 +122,9 @@
     "personnelAdmin": "พนักงาน (ผู้ดูแล)",
     "securityPermission": "ความปลอดภัยและสิทธิ์",
     "attendanceAllowance": "เบี้ยขยันการเข้างาน",
-    "attendanceRecords": "บันทึกการเข้างาน",
+    "attendanceRecords": "บันทึก",
     "clockingLocation": "สถานที่ลงเวลา",
-    "attendanceImport": "นำเข้าการเข้างาน"
+    "attendanceImport": "นำเข้า"
   },
   "dashboard": {
     "title": "แดชบอร์ด",

@@ -122,9 +122,9 @@
     "personnelAdmin": "Nhân sự (quản trị)",
     "securityPermission": "Bảo mật & quyền hạn",
     "attendanceAllowance": "Phụ cấp chuyên cần",
-    "attendanceRecords": "Hồ sơ chấm công",
+    "attendanceRecords": "Hồ sơ",
     "clockingLocation": "Địa điểm chấm công",
-    "attendanceImport": "Nhập dữ liệu chấm công"
+    "attendanceImport": "Nhập"
   },
   "dashboard": {
     "title": "Bảng điều khiển",

@@ -122,9 +122,9 @@
     "personnelAdmin": "Kakitangan (admin)",
     "securityPermission": "Keselamatan & kebenaran",
     "attendanceAllowance": "Elaun kehadiran",
-    "attendanceRecords": "Rekod kehadiran",
+    "attendanceRecords": "Rekod",
     "clockingLocation": "Lokasi merekod masa",
-    "attendanceImport": "Import kehadiran"
+    "attendanceImport": "Import"
   },
   "dashboard": {
     "title": "Papan pemuka",

@@ -122,9 +122,9 @@
     "personnelAdmin": "员工（管理）",
     "securityPermission": "安全与权限",
     "attendanceAllowance": "出勤津贴",
-    "attendanceRecords": "考勤记录",
+    "attendanceRecords": "记录",
     "clockingLocation": "打卡地点",
-    "attendanceImport": "考勤导入"
+    "attendanceImport": "导入"
   },
   "dashboard": {
     "title": "仪表盘",
