@@ -311,6 +311,8 @@ export default async function LeavePage({
                 label: lt.requiresDocument ? `${lt.name} · ${t('documentRequiredBadge')}` : lt.name,
                 durations: lt.durations ?? null,
                 code: lt.code,
+                // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
+                applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
               }))}
               startDefault={today}
               showDocumentFields

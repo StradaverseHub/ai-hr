@@ -66,6 +66,7 @@ import {
   deleteClockingLocation,
   ClockingLocationInUseError,
 } from '@/core/clocking-location';
+import { countEmployeesInScope } from '@/core/read';
 import { requireAdmin } from '@/lib/authz';
 import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
@@ -387,6 +388,62 @@ export async function createLeavePolicyAction(formData: FormData) {
     fail(LEAVE, e);
   }
   ok(LEAVE);
+}
+
+/**
+ * Feedback 9d8cf621 — "Employee Selection" fan-out. The add-entitlement form now offers MULTI-select
+ * companies + grades (removable chips). On save we create one leave_policy per (company × grade) combination
+ * so a single HR action can scope one entitlement to several companies/grades at once. An empty companies
+ * axis ⇒ [null] (group default / all companies); an empty grades axis ⇒ [null] (all grades) — i.e. today's
+ * single group-default row when nothing is selected. Each createLeavePolicy appends its OWN
+ * `leave-policy.created` DomainEvent (substrate discipline — one event per created row, correct by
+ * construction). The band editor's per-range Carry-Forward Days / Carry-Forward Expiry / Maximum Balance Days
+ * ride the serviceBands JSON untouched.
+ */
+export async function createLeavePoliciesMultiAction(formData: FormData) {
+  const s = await getSession();
+  const companyIds = formData.getAll('companyIds').map(String).filter(Boolean);
+  const gradeIds = formData.getAll('gradeIds').map(String).filter(Boolean);
+  const companies: (string | null)[] = companyIds.length ? companyIds : [null];
+  const grades: (string | null)[] = gradeIds.length ? gradeIds : [null];
+  const bands = serviceBandsField(formData);
+  try {
+    for (const companyId of companies) {
+      for (const gradeId of grades) {
+        await createLeavePolicy(s, {
+          leaveTypeId: String(formData.get('leaveTypeId')),
+          annualDays: Number(formData.get('annualDays')),
+          carryForwardMax: Number(formData.get('carryForwardMax')) || 0,
+          carryForwardExpiryMonth: carryExpiryField(formData.get('carryForwardExpiryMonth')),
+          carryForwardExpiryDay: carryExpiryField(formData.get('carryForwardExpiryDay')),
+          carryForwardExpiryMode: carryExpiryMode(formData),
+          carryForwardExpiryMonths: carryExpiryField(formData.get('carryForwardExpiryMonths')),
+          carryForwardEnabled: carryFlagField(formData, 'carryForwardEnabled'),
+          carryForwardIncludeEarned: carryFlagField(formData, 'carryForwardIncludeEarned'),
+          method: String(formData.get('method') || '') || undefined,
+          gradeId,
+          companyId,
+          serviceBands: bands,
+          validFrom: String(formData.get('validFrom')),
+        });
+      }
+    }
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/**
+ * Feedback 9d8cf621 — live "entitled employees" count next to the Employee-Selection chips. READ-ONLY
+ * (no DomainEvent). Returns the number of active employees the currently-selected companies/grades cover.
+ */
+export async function countEmployeesInScopeAction(p: {
+  companyIds: string[];
+  gradeIds: string[];
+}): Promise<number> {
+  const s = await getSession();
+  return countEmployeesInScope(s, { companyIds: p.companyIds, gradeIds: p.gradeIds });
 }
 
 export async function updateLeavePolicyAction(formData: FormData) {
@@ -906,12 +963,22 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
   // service trims + treats blank as "not configured" (removes the key) and MERGES the forwarded keys onto
   // what is stored (read-then-patch-then-write), so saving one rule's message never clobbers the other's.
+  // Custom apply-time message (feedback 9d8cf621): its own sub-form posts `applyNotice=1` (marker) plus an
+  // "Enable custom message" checkbox + the message textarea. When the checkbox is unchecked the textarea is
+  // hidden and we forward an empty string ⇒ the merge in updateLeaveType removes the key (message disabled);
+  // a non-empty string stores the notice shown to employees on the leave apply form. Rides the SAME shared
+  // customMessages JSONB + merge convention as the two block messages, so saving one never clobbers the others.
+  const touchApplyNotice = fd.get('applyNotice') === '1';
+  const applyNoticeEnabled = fd.get('enableApplyNotice') === 'on';
   const customMessageFields =
-    touchBackdating || touchMinAdvance
+    touchBackdating || touchMinAdvance || touchApplyNotice
       ? {
           customMessages: {
             ...(touchBackdating ? { backdatingLimitDays: String(fd.get('customMessageBackdating') ?? '').trim() } : {}),
             ...(touchMinAdvance ? { minAdvanceDays: String(fd.get('customMessageMinAdvance') ?? '').trim() } : {}),
+            ...(touchApplyNotice
+              ? { applyNotice: applyNoticeEnabled ? String(fd.get('customMessageApplyNotice') ?? '').trim() : '' }
+              : {}),
           },
         }
       : {};

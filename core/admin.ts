@@ -1700,7 +1700,10 @@ const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at
  * here (and the LeaveType schema comment). Each message is capped at CUSTOM_MESSAGE_MAX_LEN characters
  * (enforced in the service, not the DB).
  */
-const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays'] as const;
+// `applyNotice` (feedback 9d8cf621) is an APPLY-TIME custom message — not a block message. It rides the
+// same customMessages JSONB + merge convention so no migration/column is needed: an empty value removes the
+// key (message disabled), a non-empty value stores the HR-authored notice shown to employees on the apply form.
+const CUSTOM_MESSAGE_RULE_KEYS = ['backdatingLimitDays', 'minAdvanceDays', 'applyNotice'] as const;
 const CUSTOM_MESSAGE_MAX_LEN = 500;
 
 export async function updateLeaveType(

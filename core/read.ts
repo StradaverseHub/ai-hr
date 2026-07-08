@@ -446,6 +446,9 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           backdatingLimitDays: leaveType.backdatingLimitDays,
           // Minimum advance-notice rule (0159): projected alongside backdatingLimitDays for the same reason.
           minAdvanceDays: leaveType.minAdvanceDays,
+          // Feedback 9d8cf621: the apply-time custom message (applyNotice key) is read off this JSONB to show
+          // the HR-authored notice under the leave-type select on the /me apply form.
+          customMessages: leaveType.customMessages,
           eligibility: leaveType.eligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
@@ -958,6 +961,34 @@ export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boo
       .where(opts.includeArchived ? undefined : isNull(jobGrade.archivedAt))
       .orderBy(jobGrade.rank, jobGrade.name),
   );
+}
+
+/**
+ * Feedback 9d8cf621 — "Employee Selection" entitled-employee count. Count ACTIVE (not-terminated)
+ * employments whose company and/or grade fall within the selected scope, so HR sees how many people an
+ * entitlement they are about to save would cover. An empty companyIds/gradeIds axis means "all" on that
+ * axis (a group-default / all-grades scope). RLS scopes the result to the session's tenant + visible
+ * companies via withTenant. READ-ONLY — no DomainEvent (documented skip).
+ */
+export function countEmployeesInScope(
+  ctx: SessionContext,
+  p: { companyIds?: string[]; gradeIds?: string[] },
+): Promise<number> {
+  const companyIds = (p.companyIds ?? []).filter(Boolean);
+  const gradeIds = (p.gradeIds ?? []).filter(Boolean);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ count: sql<number>`count(distinct ${employment.id})::int` })
+      .from(employment)
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          gradeIds.length ? inArray(employment.gradeId, gradeIds) : undefined,
+        ),
+      );
+    return row?.count ?? 0;
+  });
 }
 
 /** All effective-dated assignment versions (newest first) — the bitemporal history. */
