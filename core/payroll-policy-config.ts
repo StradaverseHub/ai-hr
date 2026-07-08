@@ -30,6 +30,7 @@ import type {
   ProrationDivisor,
   ProrationSettings,
   RoundingMode,
+  TimeOffDivisor,
 } from '../db/schema';
 
 export type { PayrollPolicyConfig, PayslipRelease };
@@ -75,6 +76,12 @@ const cleanProrationDivisor = (v: unknown): ProrationDivisor =>
   PRORATION_DIVISORS.includes(v as ProrationDivisor) ? (v as ProrationDivisor) : 'calendar_month';
 const cleanLeaveDivisor = (v: unknown): LeaveDivisor =>
   LEAVE_DIVISORS.includes(v as LeaveDivisor) ? (v as LeaveDivisor) : 'calendar_month';
+// f3148da1 Step 5 (R17 gap-fix reinstatement) — the Unpaid Time Off Deduction Formula accepts the four day
+// divisors PLUS the per-time 'custom_hours' / 'custom_minutes' modes (meaningful because time off is a
+// partial-day absence); an unknown value falls back to the calendar-month default.
+export const TIME_OFF_DIVISORS: TimeOffDivisor[] = [...LEAVE_DIVISORS, 'custom_hours', 'custom_minutes'];
+const cleanTimeOffDivisor = (v: unknown): TimeOffDivisor =>
+  TIME_OFF_DIVISORS.includes(v as TimeOffDivisor) ? (v as TimeOffDivisor) : 'calendar_month';
 
 // f3148da1 Step 2 — 'retain' | 'set_zero' | 'carry_forward' are all accepted; any unknown value falls back to
 // 'retain' (today's behaviour). 'carry_forward' holds a negative net at 0 this cycle and recovers it next cycle.
@@ -224,16 +231,24 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   }
   if (Object.keys(overtime).length) out.overtime = overtime;
 
-  // 1f leave divisors — only persisted when at least one divisor is non-default. `unpaidLeaveDivisor` values
-  // every unpaid-leave day (full/partial); `encashmentDivisor` sets the leave-encashment ORP day-divisor.
+  // 1f leave divisors — only persisted when at least one divisor is non-default. The three Step-5 formulas:
+  // `unpaidLeaveDivisor` values FULL-DAY unpaid-leave days; `unpaidTimeOffDivisor` values PARTIAL-DAY unpaid
+  // absences (half-day / hourly — absent ⇒ they pool with the unpaid-leave path, byte-identical);
+  // `encashmentDivisor` sets the leave-encashment ORP day-divisor.
   const lRaw = (r.leave ?? {}) as Record<string, unknown>;
   const leave: NonNullable<PayrollPolicyConfig['leave']> = {};
   const ul = cleanLeaveDivisor(lRaw.unpaidLeaveDivisor);
+  const uto = cleanTimeOffDivisor(lRaw.unpaidTimeOffDivisor);
   const enc = cleanLeaveDivisor(lRaw.encashmentDivisor);
   if (ul !== 'calendar_month') leave.unpaidLeaveDivisor = ul;
+  if (uto !== 'calendar_month') leave.unpaidTimeOffDivisor = uto;
   if (enc !== 'calendar_month') leave.encashmentDivisor = enc;
   const lcd = cleanPosInt(lRaw.customDays, 1, 31);
   if (lcd !== undefined) leave.customDays = lcd;
+  const lch = cleanNonNegNum(lRaw.customHours);
+  if (lch !== undefined && lch > 0) leave.customHours = lch;
+  const lcm = cleanNonNegNum(lRaw.customMinutes);
+  if (lcm !== undefined && lcm > 0) leave.customMinutes = lcm;
   if (Object.keys(leave).length) out.leave = leave;
 
   // 2.1.4 (Custom period) — the cut-off WINDOW. Only persisted when mode='custom' AND anchorDay is a valid
@@ -368,6 +383,42 @@ export function leaveDivisorDays(
     default:
       return facts.calendarDaysInMonth;
   }
+}
+
+// Hours in one standard workday — mirrors core/leave DEFAULT_STANDARD_HOURS (= toil STD_DAY_MINUTES/60 = 8h),
+// duplicated here as a constant (not imported) to keep this pure config module free of the leave module.
+// The leave module stores an hourly request as `days = round(hours / 8, 2)`, so multiplying a fractional
+// time-off day by this constant recovers the absence's hour count.
+export const TIME_OFF_STANDARD_DAY_HOURS = 8;
+
+/**
+ * f3148da1 Step 5 (R17 gap-fix reinstatement) — the per-DAY deduction rate for ONE unpaid TIME-OFF day
+ * (partial-day unpaid absence: half-day / hourly). Returns null when the policy configures NO distinct
+ * time-off divisor (absent / calendar_month / a custom_hours|custom_minutes mode missing its custom value) —
+ * the caller then keeps the legacy pooled path (time-off days deduct through unpaidLeaveDivisor exactly as
+ * before, byte-identical). When configured:
+ *   - day modes (custom_days / cutoff_days / working_days) → monthlyBasic / leaveDivisorDays(mode)
+ *   - 'custom_hours'  H → (monthlyBasic / H) × 8   — per-hour valuation × the 8h standard day, so a stored
+ *     fractional day (hours/8) deducts monthlyBasic / H × hours
+ *   - 'custom_minutes' M → (monthlyBasic / M) × 480 — same, per minute
+ * Clamp-not-throw: a malformed config falls back to null (legacy path), never corrupts payroll.
+ */
+export function unpaidTimeOffDailyRate(
+  monthlyBasic: number,
+  config: PayrollPolicyConfig | null,
+  facts: { calendarDaysInMonth: number; cutoffDays: number; workingDays: number },
+): number | null {
+  const d = config?.leave?.unpaidTimeOffDivisor;
+  if (!d || d === 'calendar_month') return null;
+  if (d === 'custom_hours') {
+    const h = config?.leave?.customHours;
+    return h && h > 0 ? (monthlyBasic / h) * TIME_OFF_STANDARD_DAY_HOURS : null;
+  }
+  if (d === 'custom_minutes') {
+    const m = config?.leave?.customMinutes;
+    return m && m > 0 ? (monthlyBasic / m) * TIME_OFF_STANDARD_DAY_HOURS * 60 : null;
+  }
+  return monthlyBasic / leaveDivisorDays(d, config, facts);
 }
 
 // EA s.60E leave-encashment ORP day-divisor. The statutory ordinary-rate-of-pay divisor is 26 (working days

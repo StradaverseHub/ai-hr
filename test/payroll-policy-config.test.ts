@@ -20,7 +20,7 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { assignPolicy, createPolicy } from '../core/payroll-policy';
-import { cleanPayrollPolicyConfig, EA_S60A_WORKDAY_OT_FLOOR } from '../core/payroll-policy-config';
+import { cleanPayrollPolicyConfig, EA_S60A_WORKDAY_OT_FLOOR, unpaidTimeOffDailyRate } from '../core/payroll-policy-config';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 describe('2.1.1 cleanPayrollPolicyConfig — validation + s.60A floor', () => {
@@ -106,6 +106,48 @@ describe('2.1.1 cleanPayrollPolicyConfig — validation + s.60A floor', () => {
     expect(cleanPayrollPolicyConfig({ leave: { unpaidLeaveDivisor: 'custom_days', customDays: 26 } })).toEqual({
       leave: { unpaidLeaveDivisor: 'custom_days', customDays: 26 },
     });
+  });
+
+  // f3148da1 Step 5 (R17 gap-fix reinstatement) — the Unpaid Time Off Deduction Formula round-trips through
+  // the cleaner, including its per-time modes; defaults drop to null; unknown values fall back.
+  it('unpaidTimeOffDivisor: keeps non-default modes (incl. custom_hours/custom_minutes), drops defaults', () => {
+    expect(cleanPayrollPolicyConfig({ leave: { unpaidTimeOffDivisor: 'working_days' } })).toEqual({
+      leave: { unpaidTimeOffDivisor: 'working_days' },
+    });
+    expect(cleanPayrollPolicyConfig({ leave: { unpaidTimeOffDivisor: 'custom_hours', customHours: 173 } })).toEqual({
+      leave: { unpaidTimeOffDivisor: 'custom_hours', customHours: 173 },
+    });
+    expect(cleanPayrollPolicyConfig({ leave: { unpaidTimeOffDivisor: 'custom_minutes', customMinutes: 10380 } })).toEqual({
+      leave: { unpaidTimeOffDivisor: 'custom_minutes', customMinutes: 10380 },
+    });
+    // the calendar-month default and an unknown mode both collapse back to null (byte-identical to no config)
+    expect(cleanPayrollPolicyConfig({ leave: { unpaidTimeOffDivisor: 'calendar_month' } })).toBeNull();
+    expect(cleanPayrollPolicyConfig({ leave: { unpaidTimeOffDivisor: 'bogus' } })).toBeNull();
+    // a zero/negative custom time value is dropped (the kernel then falls back to the pooled unpaid path)
+    expect(cleanPayrollPolicyConfig({ leave: { unpaidTimeOffDivisor: 'custom_hours', customHours: 0 } })).toEqual({
+      leave: { unpaidTimeOffDivisor: 'custom_hours' },
+    });
+  });
+
+  it('unpaidTimeOffDailyRate: null when unconfigured; day, hour and minute modes value one time-off day', () => {
+    const facts = { calendarDaysInMonth: 30, cutoffDays: 30, workingDays: 22 };
+    // absent config / absent divisor ⇒ null ⇒ the caller keeps the legacy pooled unpaid-leave path
+    expect(unpaidTimeOffDailyRate(3000, null, facts)).toBeNull();
+    expect(unpaidTimeOffDailyRate(3000, { leave: { unpaidLeaveDivisor: 'working_days' } }, facts)).toBeNull();
+    // day modes reuse the leave-divisor facts: working_days ⇒ basic/22; custom_days ⇒ basic/26
+    expect(unpaidTimeOffDailyRate(3000, { leave: { unpaidTimeOffDivisor: 'working_days' } }, facts)).toBeCloseTo(3000 / 22, 10);
+    expect(
+      unpaidTimeOffDailyRate(3000, { leave: { unpaidTimeOffDivisor: 'custom_days', customDays: 26 } }, facts),
+    ).toBeCloseTo(3000 / 26, 10);
+    // custom_hours 173 ⇒ one 8h day deducts 3000/173×8; custom_minutes mirrors it per minute (×480)
+    expect(
+      unpaidTimeOffDailyRate(3000, { leave: { unpaidTimeOffDivisor: 'custom_hours', customHours: 173 } }, facts),
+    ).toBeCloseTo((3000 / 173) * 8, 10);
+    expect(
+      unpaidTimeOffDailyRate(3000, { leave: { unpaidTimeOffDivisor: 'custom_minutes', customMinutes: 10380 } }, facts),
+    ).toBeCloseTo((3000 / 10380) * 480, 10);
+    // a custom_hours mode missing its hours value is a safe no-op (clamp-not-throw ⇒ pooled path)
+    expect(unpaidTimeOffDailyRate(3000, { leave: { unpaidTimeOffDivisor: 'custom_hours' } }, facts)).toBeNull();
   });
 });
 

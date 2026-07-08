@@ -3,7 +3,7 @@
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
 import { createHash, randomInt } from 'node:crypto';
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
@@ -68,6 +68,7 @@ import {
   encashmentDivisorDays,
   ENCASHMENT_ORP_DIVISOR,
   leaveDivisorDays,
+  unpaidTimeOffDailyRate,
   payrollFrequencyOf,
   payrollScheduleFor,
   payslipReleaseAt,
@@ -394,6 +395,11 @@ async function unpaidDaysByEmployment(
   // can resolve the LEAVE window PER employment (its assigned policy), then query per window-group. Omitted ⇒
   // tenant-wide (the legacy behaviour); the batch loop only ever reads its own employments' entries either way.
   employmentIds?: string[],
+  // f3148da1 Step 5 (R17 gap-fix reinstatement) — when true, count ONLY partial-day unpaid absences (half-day
+  // AM/PM + hourly requests, duration_type != 'full_day'): the "unpaid TIME OFF" subset the policy's
+  // unpaidTimeOffDivisor values with its own formula. The batch loop queries this subset only for employments
+  // whose config sets a distinct time-off divisor, so the default path issues no extra query.
+  timeOffOnly = false,
 ): Promise<Map<string, number>> {
   // ADR-0068 §4A: for a per-date-approval request, deduct only the APPROVED dates, not the raw request span —
   // reading leave_request.days would count a mid-span rejected date as unpaid leave. We keep the current
@@ -425,6 +431,7 @@ async function unpaidDaysByEmployment(
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),
         employmentIds && employmentIds.length > 0 ? inArray(leaveRequest.employmentId, employmentIds) : undefined,
+        timeOffOnly ? ne(leaveRequest.durationType, 'full_day') : undefined,
       ),
     )
     .groupBy(leaveRequest.employmentId);
@@ -1897,6 +1904,9 @@ export async function generatePayslips(
     // queried after it. Absent/calendar config ⇒ one group == [M-01 … M-end] (byte-identical to the legacy query).
     const leaveWindowByEmp = new Map<string, { start: string; end: string }>();
     const unpaidByEmp = new Map<string, number>();
+    // f3148da1 Step 5 (R17 gap-fix reinstatement) — the PARTIAL-DAY (time-off) subset of unpaidByEmp, populated
+    // ONLY for employments whose policy configures a distinct unpaidTimeOffDivisor (see the group query below).
+    const unpaidTimeOffByEmp = new Map<string, number>();
 
     // ── 2.1.1 (ADR-0064) — Monthly payroll-policy General Settings, resolved at RUN TIME ──
     // The load-bearing new plumbing: for each employment, resolve its assigned policy's config (raw
@@ -1984,6 +1994,25 @@ export async function generatePayslips(
         const part = await unpaidDaysByEmployment(tx, start, end, ids);
         for (const [k, v] of part) unpaidByEmp.set(k, v);
       }
+      // f3148da1 Step 5 (R17 gap-fix reinstatement) — UNPAID TIME OFF: for employments whose policy configures
+      // a DISTINCT unpaidTimeOffDivisor, also count the PARTIAL-DAY unpaid subset (half-day / hourly requests)
+      // per the same leave windows. The payslip loop values these days with the time-off formula and the
+      // remaining full-day unpaid days with unpaidLeaveDivisor. No distinct divisor anywhere (the default) ⇒
+      // this issues NO query and every unpaid day rides the legacy pooled path, byte-identical.
+      const utoIds = new Set(
+        emps
+          .filter((e) => policyConfigByEmp.get(e.employmentId)?.leave?.unpaidTimeOffDivisor)
+          .map((e) => e.employmentId),
+      );
+      if (utoIds.size > 0) {
+        for (const [key, ids] of groups) {
+          const scoped = ids.filter((id) => utoIds.has(id));
+          if (scoped.length === 0) continue;
+          const [start, end] = key.split('|');
+          const part = await unpaidDaysByEmployment(tx, start, end, scoped, true);
+          for (const [k, v] of part) unpaidTimeOffByEmp.set(k, v);
+        }
+      }
     }
 
     // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — when the run's frequency is weekly/biweekly the statutory
@@ -2037,7 +2066,7 @@ export async function generatePayslips(
     const wdEmpIds = emps
       .filter((e) => {
         const l = policyConfigByEmp.get(e.employmentId)?.leave;
-        return l?.unpaidLeaveDivisor === 'working_days' || l?.encashmentDivisor === 'working_days';
+        return l?.unpaidLeaveDivisor === 'working_days' || l?.unpaidTimeOffDivisor === 'working_days' || l?.encashmentDivisor === 'working_days';
       })
       .map((e) => e.employmentId);
     for (const employmentId of wdEmpIds) {
@@ -2539,9 +2568,28 @@ export async function generatePayslips(
         cutoffDays: salaryCutoffDaysByEmp.get(e.employmentId) ?? dim, // c7fdfcf6 — salary cut-off window length; calendar fallback = dim
         workingDays: workingDaysInPeriodFor(e.employmentId),
       });
+      // f3148da1 Step 5 (R17 gap-fix reinstatement) — the Unpaid Time Off Deduction Formula. When the policy
+      // configures a distinct unpaidTimeOffDivisor, the PARTIAL-DAY unpaid subset (half-day / hourly requests)
+      // deducts at its own per-day rate (day divisor, or per-hour/per-minute × the 8h standard day) while the
+      // remaining FULL-DAY unpaid days keep the unpaidLeaveDivisor rate. No distinct divisor (the default) ⇒
+      // timeOffRate is null and the whole figure stays the single legacy expression, byte-identical.
+      const unpaidDaysAll = unpaidByEmp.get(e.employmentId) ?? 0;
+      const timeOffDays = Math.min(unpaidTimeOffByEmp.get(e.employmentId) ?? 0, unpaidDaysAll);
+      const timeOffRate =
+        timeOffDays > 0
+          ? unpaidTimeOffDailyRate(basicRaw, cfg, {
+              calendarDaysInMonth: dim,
+              cutoffDays: salaryCutoffDaysByEmp.get(e.employmentId) ?? dim,
+              workingDays: workingDaysInPeriodFor(e.employmentId),
+            })
+          : null;
       // 2.1.2 — a daily wage already pays ONLY eligible worked days, so an unpaid-leave day is simply not a
       // worked day (never counted into `basic`); deducting again off basicRaw/divisor would double-count it.
-      const unpaidDeduction = daily ? 0 : round2((basicRaw / unpaidDivisor) * (unpaidByEmp.get(e.employmentId) ?? 0));
+      const unpaidDeduction = daily
+        ? 0
+        : timeOffRate !== null
+          ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
+          : round2((basicRaw / unpaidDivisor) * unpaidDaysAll);
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false

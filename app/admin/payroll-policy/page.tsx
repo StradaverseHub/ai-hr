@@ -88,6 +88,9 @@ export default async function PayrollPolicyPage({
   const otExceedConvert = cfgOt?.exceedHandling?.action === 'convert';
   const ROUNDING_OPTS = ['none', 'up', 'down', 'nearest'] as const;
   const LEAVE_DIVISORS = ['calendar_month', 'custom_days', 'cutoff_days', 'working_days'] as const;
+  // f3148da1 Step 5 (R17 gap-fix reinstatement) — the Unpaid Time Off Deduction Formula additionally supports
+  // per-hour / per-minute valuation (a partial-day absence can be valued by time, not only by a day divisor).
+  const TIME_OFF_DIVISORS = [...LEAVE_DIVISORS, 'custom_hours', 'custom_minutes'] as const;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -598,13 +601,26 @@ export default async function PayrollPolicyPage({
                       {LEAVE_DIVISORS.map((d) => <option key={d} value={d}>{t(`config.leaveDivisor.${d}`)}</option>)}
                     </select>
                   </Field>
+                  <Field label={t('config.unpaidTimeOffDivisor')}>
+                    <select name="unpaidTimeOffDivisor" defaultValue={cfgLeave?.unpaidTimeOffDivisor ?? 'calendar_month'} className={inputCls}>
+                      {TIME_OFF_DIVISORS.map((d) => <option key={d} value={d}>{t(`config.leaveDivisor.${d}`)}</option>)}
+                    </select>
+                  </Field>
                   <Field label={t('config.encashmentDivisor')}>
                     <select name="encashmentDivisor" defaultValue={cfgLeave?.encashmentDivisor ?? 'calendar_month'} className={inputCls}>
                       {LEAVE_DIVISORS.map((d) => <option key={d} value={d}>{t(`config.leaveDivisor.${d}`)}</option>)}
                     </select>
                   </Field>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <Field label={t('config.leaveCustomDays')}>
                     <input name="leaveCustomDays" type="number" min={1} max={31} step="1" inputMode="numeric" defaultValue={cfgLeave?.customDays ?? ''} placeholder="26" className={inputCls} />
+                  </Field>
+                  <Field label={t('config.leaveCustomHours')}>
+                    <input name="leaveCustomHours" type="number" min={0} step="0.5" inputMode="decimal" defaultValue={cfgLeave?.customHours ?? ''} placeholder="—" className={inputCls} />
+                  </Field>
+                  <Field label={t('config.leaveCustomMinutes')}>
+                    <input name="leaveCustomMinutes" type="number" min={0} step="1" inputMode="numeric" defaultValue={cfgLeave?.customMinutes ?? ''} placeholder="—" className={inputCls} />
                   </Field>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.leaveHint')}</p>
