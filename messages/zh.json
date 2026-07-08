@@ -342,7 +342,8 @@
         "pending": "待审",
         "approved": "已批准",
         "rejected": "已驳回",
-        "cancelled": "已取消"
+        "cancelled": "已取消",
+        "partiallyApproved": "部分批准"
       },
       "epfContribTitle": "EPF（公积金）缴纳",
       "epfMode": "EPF 模式",
@@ -983,7 +984,8 @@
       "pending": "待审",
       "approved": "已批准",
       "rejected": "已驳回",
-      "cancelled": "已取消"
+      "cancelled": "已取消",
+      "partiallyApproved": "部分批准"
     },
     "payrollStatus": {
       "draft": "草稿",
@@ -1122,7 +1124,14 @@
     "travelRemarksPlaceholder": "外勤地点及原因",
     "requestTravelButton": "提交出差申请",
     "resignationDocumentLabel": "证明文件",
-    "resignationDocumentHint": "可选。附上您的辞职信或相关文件（PDF、JPG 或 PNG，每个最大 10 MB）。可附上多个文件。"
+    "resignationDocumentHint": "可选。附上您的辞职信或相关文件（PDF、JPG 或 PNG，每个最大 10 MB）。可附上多个文件。",
+    "dateBreakdown": {
+      "title": "查看日期明细",
+      "approved": "已批准",
+      "rejected": "已驳回",
+      "pending": "待处理",
+      "reason": "原因"
+    }
   },
   "approvals": {
     "title": "审批",
@@ -1181,7 +1190,13 @@
     "code": "编号",
     "otHoursLabel": "加班",
     "travelRequests": "出差申请",
-    "noPendingTravel": "没有待处理的出差申请。"
+    "noPendingTravel": "没有待处理的出差申请。",
+    "dayColumn": "星期",
+    "daysColumn": "天数",
+    "decisionColumn": "决定",
+    "reasonColumn": "原因",
+    "submitDecisions": "提交决定",
+    "employeeRemark": "员工备注"
   },
   "performance": {
     "list": {

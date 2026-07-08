@@ -342,7 +342,8 @@
         "pending": "நிலுவையில்",
         "approved": "ஒப்புதலளிக்கப்பட்டது",
         "rejected": "நிராகரிக்கப்பட்டது",
-        "cancelled": "ரத்துசெய்யப்பட்டது"
+        "cancelled": "ரத்துசெய்யப்பட்டது",
+        "partiallyApproved": "பகுதியளவில் அங்கீகரிக்கப்பட்டது"
       },
       "epfContribTitle": "EPF பங்களிப்பு",
       "epfMode": "EPF முறை",
@@ -983,7 +984,8 @@
       "pending": "நிலுவையில்",
       "approved": "ஒப்புதலளிக்கப்பட்டது",
       "rejected": "நிராகரிக்கப்பட்டது",
-      "cancelled": "ரத்துசெய்யப்பட்டது"
+      "cancelled": "ரத்துசெய்யப்பட்டது",
+      "partiallyApproved": "பகுதியளவில் அங்கீகரிக்கப்பட்டது"
     },
     "payrollStatus": {
       "draft": "வரைவு",
@@ -1122,7 +1124,14 @@
     "travelRemarksPlaceholder": "நீங்கள் எங்கு, ஏன் வெளியில் இருந்தீர்கள்",
     "requestTravelButton": "பயண கோரிக்கையை சமர்ப்பிக்கவும்",
     "resignationDocumentLabel": "ஆதரவு ஆவணம்",
-    "resignationDocumentHint": "விருப்பத்தேர்வு. உங்கள் ராஜினாமா கடிதம் அல்லது ஆதரவு கோப்புகளை இணைக்கவும் (PDF, JPG அல்லது PNG, ஒவ்வொன்றும் 10 MB வரை). ஒன்றுக்கு மேற்பட்டவற்றை இணைக்கலாம்."
+    "resignationDocumentHint": "விருப்பத்தேர்வு. உங்கள் ராஜினாமா கடிதம் அல்லது ஆதரவு கோப்புகளை இணைக்கவும் (PDF, JPG அல்லது PNG, ஒவ்வொன்றும் 10 MB வரை). ஒன்றுக்கு மேற்பட்டவற்றை இணைக்கலாம்.",
+    "dateBreakdown": {
+      "title": "தேதி விவரத்தைக் காண்க",
+      "approved": "அங்கீகரிக்கப்பட்டது",
+      "rejected": "நிராகரிக்கப்பட்டது",
+      "pending": "நிலுவையில்",
+      "reason": "காரணம்"
+    }
   },
   "approvals": {
     "title": "ஒப்புதல்கள்",
@@ -1181,7 +1190,13 @@
     "code": "குறியீடு",
     "otHoursLabel": "கூடுதல் நேரம்",
     "travelRequests": "பயண கோரிக்கைகள்",
-    "noPendingTravel": "நிலுவையில் பயண கோரிக்கைகள் இல்லை."
+    "noPendingTravel": "நிலுவையில் பயண கோரிக்கைகள் இல்லை.",
+    "dayColumn": "நாள்",
+    "daysColumn": "நாட்கள்",
+    "decisionColumn": "முடிவு",
+    "reasonColumn": "காரணம்",
+    "submitDecisions": "முடிவுகளைச் சமர்ப்பிக்கவும்",
+    "employeeRemark": "பணியாளர் குறிப்பு"
   },
   "performance": {
     "list": {

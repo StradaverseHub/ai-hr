@@ -1895,6 +1895,11 @@ type DecidableLeave = { id: string; employmentId: string; leaveTypeId: string; d
  *  notification renderer emits the honest "partially approved — see the breakdown" body instead of a flat
  *  "approved". It defaults to false/omitted so every non-per-date call site's event payload is byte-identical
  *  to today (the multi-step chain finalization and the single-step whole-request approval never pass it). */
+/** The per-date outcome carried into a MIXED approval event so the notification renderer can list which
+ *  dates were approved / rejected (and why) instead of a generic "see the breakdown". Only populated for the
+ *  mixed case; omitted for every whole-request / all-approved caller so their payload stays byte-identical. */
+type PerDateOutcome = { approved: string[]; rejected: { date: string; reason: string | null }[] };
+
 async function finalizeLeaveApproval(
   tx: Tx,
   ctx: SessionContext,
@@ -1902,6 +1907,7 @@ async function finalizeLeaveApproval(
   deciderEmploymentId?: string,
   daysOverride?: number,
   mixed = false,
+  perDateOutcome?: PerDateOutcome,
 ) {
   const balance = await leaveBalance(tx, req.employmentId, req.leaveTypeId);
   const need = daysOverride ?? Number(req.days);
@@ -1963,6 +1969,10 @@ async function finalizeLeaveApproval(
       // reads to emit the "partially approved" body. Omitted (not `mixed: false`) for every other caller so
       // the whole-request / all-approved payload shape stays byte-identical to today.
       ...(mixed ? { mixed: true } : {}),
+      // Partial Leave Approval (R17 600be8ac): when mixed, carry the per-date breakdown into the payload so
+      // the notification renderer emits a self-contained body listing the approved + rejected dates and the
+      // rejection reason — the reporter's ask #5. Only spread when present ⇒ byte-identical for every other caller.
+      ...(mixed && perDateOutcome ? { perDateOutcome } : {}),
       // When the type opts in (sendToPayroll), attach an ADVISORY payroll-impact contract for a future
       // payroll integration to consume. It is telemetry, NOT a deduction source: the authoritative deduction
       // remains unpaidDaysByEmployment()'s live status='approved' re-query (which auto-corrects on any future
@@ -2203,33 +2213,120 @@ export async function decideLeaveDate(
       payload: { leaveDate: p.leaveDate, decision: p.decision, ...(rejectReason ? { rejectReason } : {}) },
     });
 
-    // §4E finalization: only when NO pending dates remain.
-    const remaining = await tx
-      .select()
-      .from(leaveRequestDate)
-      .where(eq(leaveRequestDate.leaveRequestId, req.id));
-    const stillPending = remaining.filter((d) => d.status === 'pending');
-    if (stillPending.length > 0) return { status: 'pending' as const };
+    // §4E finalization: only when NO pending dates remain (shared with the batch decideLeaveDates path).
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
+  });
+}
 
-    const approved = remaining.filter((d) => d.status === 'approved');
-    const rejected = remaining.filter((d) => d.status === 'rejected');
-    if (approved.length === 0) {
-      // All rejected → terminal rejection, no debit. Collect the per-date reasons for the audit trail.
-      await finalizeLeaveRejection(tx, ctx, req, p.deciderEmploymentId, {
-        rejectReason: rejected.map((d) => `${d.leaveDate}: ${d.rejectReason ?? ''}`).join('; '),
-        perDate: rejected.map((d) => ({ date: d.leaveDate, rejectReason: d.rejectReason })),
+/** §4E finalization tail, shared by the single-date decideLeaveDate and the batch decideLeaveDates. Re-reads
+ *  every leave_request_date row: while any is still pending the request stays pending; once none are pending it
+ *  finalizes exactly once — all-rejected ⇒ terminal rejection (no debit, per-date reasons captured);
+ *  ≥1 approved ⇒ single ledger debit = sum(approved weighted days) + status='approved'. A MIXED outcome
+ *  (≥1 approved AND ≥1 rejected) tags the approved event (mixed + perDateOutcome) so the employee's
+ *  notification honestly reads "partially approved" and lists the approved/rejected dates + reason. */
+async function finalizePerDateIfComplete(
+  tx: Tx,
+  ctx: SessionContext,
+  req: DecidableLeave,
+  deciderEmploymentId?: string,
+): Promise<{ status: 'pending' | 'approved' | 'rejected' }> {
+  const remaining = await tx
+    .select()
+    .from(leaveRequestDate)
+    .where(eq(leaveRequestDate.leaveRequestId, req.id));
+  const stillPending = remaining.filter((d) => d.status === 'pending');
+  if (stillPending.length > 0) return { status: 'pending' as const };
+
+  const approved = remaining.filter((d) => d.status === 'approved');
+  const rejected = remaining.filter((d) => d.status === 'rejected');
+  if (approved.length === 0) {
+    // All rejected → terminal rejection, no debit. Collect the per-date reasons for the audit trail.
+    await finalizeLeaveRejection(tx, ctx, req, deciderEmploymentId, {
+      rejectReason: rejected.map((d) => `${d.leaveDate}: ${d.rejectReason ?? ''}`).join('; '),
+      perDate: rejected.map((d) => ({ date: d.leaveDate, rejectReason: d.rejectReason })),
+    });
+    return { status: 'rejected' as const };
+  }
+  // All-approved OR mixed (≥1 approved) → single ledger debit for sum(approved days) + status='approved'.
+  // §4A makes balance/calendar/attendance/payroll count ONLY the approved dates regardless of top-level
+  // status, so a mixed outcome uses 'approved' + per-date truth (no new "partially_approved" enum this round).
+  const approvedDays = approved.reduce((s, d) => s + Number(d.days), 0);
+  const mixed = rejected.length > 0;
+  const perDateOutcome: PerDateOutcome | undefined = mixed
+    ? {
+        approved: approved.map((d) => d.leaveDate),
+        rejected: rejected.map((d) => ({ date: d.leaveDate, reason: d.rejectReason })),
+      }
+    : undefined;
+  await finalizeLeaveApproval(tx, ctx, req, deciderEmploymentId, approvedDays, mixed, perDateOutcome);
+  return { status: 'approved' as const };
+}
+
+/** ADR-0068 §4D (R17 600be8ac) — decide MANY requested dates of a per-date-approval request in ONE submit.
+ *  The approver fills the decision table (one row per requested date, Approve/Reject + a reason for each
+ *  rejected date) and submits once. Same guards as decideLeaveDate: pending request, assertCanDecide, each
+ *  date exists & is pending, every rejected date carries a non-blank reason (all validated BEFORE the write so
+ *  a bad batch persists nothing). Applies every row update, appends one leave-request.date.decided event PER
+ *  date (uniform audit stream), then runs the shared finalization once. Single-step only (§4C). */
+export async function decideLeaveDates(
+  ctx: SessionContext,
+  p: {
+    leaveRequestId: string;
+    decisions: { leaveDate: string; decision: 'approved' | 'rejected'; rejectReason?: string }[];
+    deciderEmploymentId?: string;
+  },
+) {
+  // Normalize + validate reject reasons BEFORE opening the transaction — a blank reason on any rejected date
+  // aborts the whole batch and persists nothing (no status flip, no ledger row, no event).
+  const decisions = p.decisions.map((d) => ({
+    leaveDate: d.leaveDate,
+    decision: d.decision,
+    rejectReason: d.rejectReason?.trim() || null,
+  }));
+  if (decisions.length === 0) throw new Error('no decisions provided');
+  for (const d of decisions) {
+    if (d.decision === 'rejected' && !d.rejectReason) throw new MissingRejectReasonError();
+  }
+  // Reject a batch that names the same date twice (ambiguous decision).
+  if (new Set(decisions.map((d) => d.leaveDate)).size !== decisions.length) {
+    throw new Error('duplicate leave date in batch');
+  }
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+    if (req.status !== 'pending') throw new Error(`leave request is already ${req.status}`);
+    // Single-step authority (§4C): per-date rows only exist for single-step companies.
+    await assertCanDecide(tx, ctx, req.employmentId, 'leave request');
+
+    for (const d of decisions) {
+      const [row] = await tx
+        .select()
+        .from(leaveRequestDate)
+        .where(and(eq(leaveRequestDate.leaveRequestId, req.id), eq(leaveRequestDate.leaveDate, d.leaveDate)))
+        .limit(1);
+      if (!row) throw new Error('leave date not found on this request');
+      if (row.status !== 'pending') throw new Error(`leave date is already ${row.status}`);
+      await tx
+        .update(leaveRequestDate)
+        .set({
+          status: d.decision,
+          rejectReason: d.decision === 'rejected' ? d.rejectReason : null,
+          decidedByEmploymentId: p.deciderEmploymentId ?? null,
+          decidedAt: sql`now()`,
+        })
+        .where(eq(leaveRequestDate.id, row.id));
+      // Substrate: one event per date keeps the audit stream identical to the single-date path.
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-request',
+        aggregateId: req.id,
+        eventType: 'leave-request.date.decided',
+        actor: actorOf(ctx),
+        subjectEmploymentId: req.employmentId,
+        payload: { leaveDate: d.leaveDate, decision: d.decision, ...(d.rejectReason ? { rejectReason: d.rejectReason } : {}) },
       });
-      return { status: 'rejected' as const };
     }
-    // All-approved OR mixed (≥1 approved) → single ledger debit for sum(approved days) + status='approved'.
-    // §4A makes balance/calendar/attendance/payroll count ONLY the approved dates regardless of top-level
-    // status, so a mixed outcome uses 'approved' + per-date truth (no new "partially_approved" enum this round).
-    // A MIXED outcome (≥1 approved AND ≥1 rejected) tags the approved event so the employee's notification
-    // honestly reads "partially approved — see the breakdown" rather than a flat "approved".
-    const approvedDays = approved.reduce((s, d) => s + Number(d.days), 0);
-    const mixed = rejected.length > 0;
-    await finalizeLeaveApproval(tx, ctx, req, p.deciderEmploymentId, approvedDays, mixed);
-    return { status: 'approved' as const };
+    return finalizePerDateIfComplete(tx, ctx, req, p.deciderEmploymentId);
   });
 }
 

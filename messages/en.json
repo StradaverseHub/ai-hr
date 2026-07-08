@@ -342,7 +342,8 @@
         "pending": "pending",
         "approved": "approved",
         "rejected": "rejected",
-        "cancelled": "cancelled"
+        "cancelled": "cancelled",
+        "partiallyApproved": "partially approved"
       },
       "epfContribTitle": "EPF contribution",
       "epfMode": "EPF mode",
@@ -1016,7 +1017,8 @@
       "pending": "Pending",
       "approved": "Approved",
       "rejected": "Rejected",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "partiallyApproved": "Partially approved"
     },
     "payrollStatus": {
       "draft": "Draft",
@@ -1122,7 +1124,14 @@
     "travelRemarksPlaceholder": "Where and why you were off-site",
     "requestTravelButton": "Submit travel request",
     "resignationDocumentLabel": "Supporting document",
-    "resignationDocumentHint": "Optional. Attach your resignation letter or supporting files (PDF, JPG or PNG, up to 10 MB each). You can attach more than one."
+    "resignationDocumentHint": "Optional. Attach your resignation letter or supporting files (PDF, JPG or PNG, up to 10 MB each). You can attach more than one.",
+    "dateBreakdown": {
+      "title": "View date breakdown",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Pending",
+      "reason": "Reason"
+    }
   },
   "approvals": {
     "title": "Approvals",
@@ -1181,7 +1190,13 @@
     "code": "Code",
     "otHoursLabel": "OT",
     "travelRequests": "Travel Requests",
-    "noPendingTravel": "No pending travel requests."
+    "noPendingTravel": "No pending travel requests.",
+    "dayColumn": "Day",
+    "daysColumn": "Days",
+    "decisionColumn": "Decision",
+    "reasonColumn": "Reason",
+    "submitDecisions": "Submit decisions",
+    "employeeRemark": "Employee remark"
   },
   "performance": {
     "list": {

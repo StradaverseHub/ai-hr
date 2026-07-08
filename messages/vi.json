@@ -342,7 +342,8 @@
         "pending": "chờ duyệt",
         "approved": "đã duyệt",
         "rejected": "từ chối",
-        "cancelled": "đã hủy"
+        "cancelled": "đã hủy",
+        "partiallyApproved": "duyệt một phần"
       },
       "epfContribTitle": "Đóng góp EPF",
       "epfMode": "Chế độ EPF",
@@ -983,7 +984,8 @@
       "pending": "Chờ duyệt",
       "approved": "Đã duyệt",
       "rejected": "Bị từ chối",
-      "cancelled": "Đã hủy"
+      "cancelled": "Đã hủy",
+      "partiallyApproved": "Duyệt một phần"
     },
     "payrollStatus": {
       "draft": "Nháp",
@@ -1122,7 +1124,14 @@
     "travelRemarksPlaceholder": "Nơi và lý do bạn làm việc bên ngoài",
     "requestTravelButton": "Gửi yêu cầu công tác",
     "resignationDocumentLabel": "Tài liệu hỗ trợ",
-    "resignationDocumentHint": "Tùy chọn. Đính kèm đơn xin nghỉ việc hoặc các tệp hỗ trợ của bạn (PDF, JPG hoặc PNG, tối đa 10 MB mỗi tệp). Bạn có thể đính kèm nhiều tệp."
+    "resignationDocumentHint": "Tùy chọn. Đính kèm đơn xin nghỉ việc hoặc các tệp hỗ trợ của bạn (PDF, JPG hoặc PNG, tối đa 10 MB mỗi tệp). Bạn có thể đính kèm nhiều tệp.",
+    "dateBreakdown": {
+      "title": "Xem chi tiết theo ngày",
+      "approved": "Đã duyệt",
+      "rejected": "Đã từ chối",
+      "pending": "Đang chờ",
+      "reason": "Lý do"
+    }
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -1181,7 +1190,13 @@
     "code": "Mã",
     "otHoursLabel": "Tăng ca",
     "travelRequests": "Yêu cầu công tác",
-    "noPendingTravel": "Không có yêu cầu công tác đang chờ."
+    "noPendingTravel": "Không có yêu cầu công tác đang chờ.",
+    "dayColumn": "Thứ",
+    "daysColumn": "Số ngày",
+    "decisionColumn": "Quyết định",
+    "reasonColumn": "Lý do",
+    "submitDecisions": "Gửi quyết định",
+    "employeeRemark": "Ghi chú của nhân viên"
   },
   "performance": {
     "list": {

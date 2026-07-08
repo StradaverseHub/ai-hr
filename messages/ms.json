@@ -342,7 +342,8 @@
         "pending": "tertangguh",
         "approved": "diluluskan",
         "rejected": "ditolak",
-        "cancelled": "dibatalkan"
+        "cancelled": "dibatalkan",
+        "partiallyApproved": "diluluskan sebahagian"
       },
       "epfContribTitle": "Caruman KWSP",
       "epfMode": "Mod KWSP",
@@ -983,7 +984,8 @@
       "pending": "Tertangguh",
       "approved": "Diluluskan",
       "rejected": "Ditolak",
-      "cancelled": "Dibatalkan"
+      "cancelled": "Dibatalkan",
+      "partiallyApproved": "Diluluskan sebahagian"
     },
     "payrollStatus": {
       "draft": "Draf",
@@ -1122,7 +1124,14 @@
     "travelRemarksPlaceholder": "Di mana dan sebab anda berada di luar pejabat",
     "requestTravelButton": "Hantar permohonan perjalanan",
     "resignationDocumentLabel": "Dokumen sokongan",
-    "resignationDocumentHint": "Pilihan. Lampirkan surat peletakan jawatan atau fail sokongan anda (PDF, JPG atau PNG, sehingga 10 MB setiap satu). Anda boleh melampirkan lebih daripada satu."
+    "resignationDocumentHint": "Pilihan. Lampirkan surat peletakan jawatan atau fail sokongan anda (PDF, JPG atau PNG, sehingga 10 MB setiap satu). Anda boleh melampirkan lebih daripada satu.",
+    "dateBreakdown": {
+      "title": "Lihat pecahan tarikh",
+      "approved": "Diluluskan",
+      "rejected": "Ditolak",
+      "pending": "Menunggu",
+      "reason": "Sebab"
+    }
   },
   "approvals": {
     "title": "Kelulusan",
@@ -1181,7 +1190,13 @@
     "code": "Kod",
     "otHoursLabel": "OT",
     "travelRequests": "Permohonan Perjalanan",
-    "noPendingTravel": "Tiada permohonan perjalanan tertunggak."
+    "noPendingTravel": "Tiada permohonan perjalanan tertunggak.",
+    "dayColumn": "Hari",
+    "daysColumn": "Bil. hari",
+    "decisionColumn": "Keputusan",
+    "reasonColumn": "Sebab",
+    "submitDecisions": "Hantar keputusan",
+    "employeeRemark": "Catatan pekerja"
   },
   "performance": {
     "list": {

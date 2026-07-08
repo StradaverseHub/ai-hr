@@ -527,6 +527,14 @@ const leaveRequestSelection = {
   // cancellable (the employee can give back more days), so the Leave page shows the "Cancel dates" button
   // for it too; a genuine EL / per-date child (parent group with NO 'cancelled' sibling) never matches.
   isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
+  // R17 600be8ac ask #1: the applicant's own words — the free-text `reason` and (for types that require it) the
+  // mandatory `employeeRemark` — so the approver's summary shows WHY the leave was requested, not just the dates.
+  reason: leaveRequest.reason,
+  employeeRemark: leaveRequest.employeeRemark,
+  // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row. Drives the derived
+  // "Partially approved" display badge (an approved request with some dates rejected) — no new status enum;
+  // the DB status stays 'approved' and every consumer keeps reading per-date truth (§4A). NULL/false otherwise.
+  hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
 } as const;
 
 /** R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
@@ -1739,6 +1747,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+        // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row → the /me + personnel
+        // history renders the derived "Partially approved" badge instead of a flat "Approved" (no status enum).
+        hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
       })
       .from(leaveRequest)
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))

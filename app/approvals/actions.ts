@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { decideLeave, decideLeaveDate, decideLeaveCancellation } from '@/core/leave';
+import { decideLeave, decideLeaveDate, decideLeaveDates, decideLeaveCancellation } from '@/core/leave';
 import { localizeLeaveError } from '@/app/me/actions';
 import { decideAttendanceCorrection } from '@/core/attendance';
 import { decideTravelRequest } from '@/core/travel-request';
@@ -65,6 +65,40 @@ export async function decideLeaveDateAction(formData: FormData) {
     fail(new Error(await localizeLeaveError(e)));
   }
   done(`Date ${decision}`);
+}
+
+// Partial Leave Approval — single-request model (R17 600be8ac): decide MANY requested dates in ONE submit
+// from the approver's decision table. `decisions` is a JSON array of { leaveDate, decision, rejectReason? };
+// the service validates (reject ⇒ reason) and finalizes once. Reject reasons are re-localized on failure.
+export async function decideLeaveDatesAction(formData: FormData) {
+  const s = await getSession();
+  let decisions: { leaveDate: string; decision: 'approved' | 'rejected'; rejectReason?: string }[] = [];
+  try {
+    const raw = JSON.parse(String(formData.get('decisions') || '[]'));
+    if (!Array.isArray(raw)) throw new Error('invalid decisions payload');
+    decisions = raw.map((d: { leaveDate?: unknown; decision?: unknown; rejectReason?: unknown }) => {
+      const decision = d.decision === 'rejected' ? 'rejected' : 'approved';
+      if (typeof d.leaveDate !== 'string') throw new Error('invalid decisions payload');
+      return {
+        leaveDate: d.leaveDate,
+        decision,
+        rejectReason: typeof d.rejectReason === 'string' ? d.rejectReason : undefined,
+      };
+    });
+  } catch (e) {
+    fail(e);
+  }
+  try {
+    const me = await myEmployment(s);
+    await decideLeaveDates(s, {
+      leaveRequestId: String(formData.get('id')),
+      decisions,
+      deciderEmploymentId: me?.employmentId,
+    });
+  } catch (e) {
+    fail(new Error(await localizeLeaveError(e)));
+  }
+  done('Leave decided');
 }
 
 // Partial Leave Cancellation (ADR-0065): manager approves/rejects an employee's request to give back a

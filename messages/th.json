@@ -342,7 +342,8 @@
         "pending": "รออนุมัติ",
         "approved": "อนุมัติแล้ว",
         "rejected": "ปฏิเสธแล้ว",
-        "cancelled": "ยกเลิกแล้ว"
+        "cancelled": "ยกเลิกแล้ว",
+        "partiallyApproved": "อนุมัติบางส่วน"
       },
       "epfContribTitle": "การสมทบ EPF",
       "epfMode": "โหมด EPF",
@@ -983,7 +984,8 @@
       "pending": "รออนุมัติ",
       "approved": "อนุมัติแล้ว",
       "rejected": "ปฏิเสธแล้ว",
-      "cancelled": "ยกเลิกแล้ว"
+      "cancelled": "ยกเลิกแล้ว",
+      "partiallyApproved": "อนุมัติบางส่วน"
     },
     "payrollStatus": {
       "draft": "ร่าง",
@@ -1122,7 +1124,14 @@
     "travelRemarksPlaceholder": "สถานที่และเหตุผลที่คุณทำงานนอกสถานที่",
     "requestTravelButton": "ส่งคำขอเดินทาง",
     "resignationDocumentLabel": "เอกสารประกอบ",
-    "resignationDocumentHint": "ไม่บังคับ แนบจดหมายลาออกหรือไฟล์ประกอบของคุณ (PDF, JPG หรือ PNG ไม่เกิน 10 MB ต่อไฟล์) สามารถแนบได้มากกว่าหนึ่งไฟล์"
+    "resignationDocumentHint": "ไม่บังคับ แนบจดหมายลาออกหรือไฟล์ประกอบของคุณ (PDF, JPG หรือ PNG ไม่เกิน 10 MB ต่อไฟล์) สามารถแนบได้มากกว่าหนึ่งไฟล์",
+    "dateBreakdown": {
+      "title": "ดูรายละเอียดแต่ละวัน",
+      "approved": "อนุมัติแล้ว",
+      "rejected": "ปฏิเสธแล้ว",
+      "pending": "รอดำเนินการ",
+      "reason": "เหตุผล"
+    }
   },
   "approvals": {
     "title": "การอนุมัติ",
@@ -1181,7 +1190,13 @@
     "code": "รหัส",
     "otHoursLabel": "OT",
     "travelRequests": "คำขอเดินทาง",
-    "noPendingTravel": "ไม่มีคำขอเดินทางที่รอดำเนินการ"
+    "noPendingTravel": "ไม่มีคำขอเดินทางที่รอดำเนินการ",
+    "dayColumn": "วัน",
+    "daysColumn": "จำนวนวัน",
+    "decisionColumn": "การตัดสิน",
+    "reasonColumn": "เหตุผล",
+    "submitDecisions": "ส่งการตัดสิน",
+    "employeeRemark": "หมายเหตุพนักงาน"
   },
   "performance": {
     "list": {

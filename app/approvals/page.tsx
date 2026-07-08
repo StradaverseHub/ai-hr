@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
@@ -155,15 +155,23 @@ export default async function ApprovalsPage({
     ),
   );
   // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
+  const locale = await getLocale();
   const dateBreakdownLabels = {
     viewDateBreakdown: t('viewDateBreakdown'),
     dateBreakdown: t('dateBreakdown'),
+    dateColumn: t('date'),
+    dayColumn: t('dayColumn'),
+    daysColumn: t('daysColumn'),
+    decisionColumn: t('decisionColumn'),
+    reasonColumn: t('reasonColumn'),
     approve: t('approve'),
     reject: t('reject'),
     rejectReason: t('rejectReasonPlaceholder'),
+    submitDecisions: t('submitDecisions'),
     statusPending: t('dateStatus.pending'),
     statusApproved: t('dateStatus.approved'),
     statusRejected: t('dateStatus.rejected'),
+    employeeRemark: t('employeeRemark'),
   };
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
   // Partial Leave Cancellation (ADR-0065): exclude the viewer's OWN cancellation requests (self-approval ban).
@@ -283,6 +291,14 @@ export default async function ApprovalsPage({
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.startDate} → {r.endDate}
+                    {/* R17 600be8ac ask #1: surface the applicant's own words so the approver's summary shows
+                        WHY the leave was requested, not just the dates. Prefer the mandatory remark, else reason. */}
+                    {(r.employeeRemark || r.reason) && (
+                      <div className="mt-0.5 max-w-[16rem] whitespace-normal text-xs text-muted-foreground/80">
+                        <span className="font-medium text-foreground/60">{t('employeeRemark')}:</span>{' '}
+                        {r.employeeRemark || r.reason}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {Number(r.days)}
@@ -310,7 +326,13 @@ export default async function ApprovalsPage({
                       // Partial Leave Approval — single-request model (ADR-0068): this request has per-date
                       // sub-rows → decide each requested date in the inline detail expander (one inbox row).
                       <div className="flex justify-end">
-                        <LeaveDateBreakdown requestId={r.id} dates={breakdowns.get(r.id)!} labels={dateBreakdownLabels} />
+                        <LeaveDateBreakdown
+                          requestId={r.id}
+                          dates={breakdowns.get(r.id)!}
+                          locale={locale}
+                          remark={r.employeeRemark || r.reason}
+                          labels={dateBreakdownLabels}
+                        />
                       </div>
                     ) : (
                       // Ordinary request (no per-date rows): one approve/reject control (reject requires a reason).
