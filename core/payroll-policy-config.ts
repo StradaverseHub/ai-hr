@@ -703,3 +703,52 @@ export function hasCustomCutOff(
 export function payrollFrequencyOf(config: PayrollPolicyConfig | null): PayrollFrequency {
   return config?.frequency ?? 'monthly';
 }
+
+const round2c = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/**
+ * c7fdfcf6 gap-fix (functional weekly/bi-weekly) — split one employee's NET pay across the run's ordered cut-off
+ * CYCLES so a weekly/bi-weekly run produces distinct per-cycle disbursement amounts (what the employer pays out
+ * each cadence) instead of one lumped monthly figure. The weight of each cycle is its NET operational earnings:
+ *   recurring (basic + allowance + bonus) → prorated by cycle DAYS,
+ *   overtime → by that cycle's OT MINUTES (falls back to cycle days when there are no attendance OT minutes),
+ *   unpaid-leave deduction → by that cycle's unpaid DAYS (falls back to cycle days),
+ * and the shares are scaled so they sum EXACTLY to `net` (the rounding residual lands on the last cycle). Pure +
+ * deterministic. Statutory contributions are NOT split here — they stay settled once on the monthly payslip by
+ * law; this only distributes the take-home across the operational cycles.
+ */
+export function disburseNetAcrossCycles(input: {
+  net: number;
+  recurring: number;
+  overtime: number;
+  unpaid: number;
+  cycleDays: number[];
+  otMinutes: number[];
+  unpaidDays: number[];
+}): number[] {
+  const { net, recurring, overtime, unpaid, cycleDays, otMinutes, unpaidDays } = input;
+  const n = cycleDays.length;
+  if (n === 0) return [];
+  if (n === 1) return [round2c(net)];
+  const totalDays = cycleDays.reduce((a, b) => a + b, 0) || 1;
+  const totalOt = otMinutes.reduce((a, b) => a + b, 0);
+  const totalUp = unpaidDays.reduce((a, b) => a + b, 0);
+  const weights = cycleDays.map((d, i) => {
+    const rec = recurring * (d / totalDays);
+    const ot = overtime * (totalOt > 0 ? (otMinutes[i] ?? 0) / totalOt : d / totalDays);
+    const up = unpaid * (totalUp > 0 ? (unpaidDays[i] ?? 0) / totalUp : d / totalDays);
+    return Math.max(0, rec + ot - up);
+  });
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const out: number[] = [];
+  let allocated = 0;
+  for (let i = 0; i < n; i++) {
+    const amt =
+      i === n - 1
+        ? round2c(net - allocated)
+        : round2c(totalWeight > 0 ? net * (weights[i] / totalWeight) : net * (cycleDays[i] / totalDays));
+    allocated = round2c(allocated + amt);
+    out.push(amt);
+  }
+  return out;
+}

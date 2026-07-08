@@ -64,6 +64,7 @@ import {
   applyRounding,
   type CompanyCutOffConfig,
   cutOffWindowFor,
+  disburseNetAcrossCycles,
   encashmentDivisorDays,
   ENCASHMENT_ORP_DIVISOR,
   leaveDivisorDays,
@@ -221,6 +222,60 @@ export async function resolveBatchCutOffWindow(
 }
 
 /**
+ * c7fdfcf6 gap-fix (per-employment cut-off) — the UNION of a transaction TYPE's cut-off window across the
+ * company-default schedule and EVERY active payroll policy in the company. A prefill query that must bound a
+ * single fetch (it discovers which employments have rows only after the fetch) widens to this union, then filters
+ * each row down to that employment's OWN policy window. When nothing anywhere shifts the window the union equals
+ * the plain calendar month, so an unconfigured company fetches exactly `[M-01 … M-end]` (byte-identical).
+ */
+async function unionTypeWindow(
+  tx: Tx,
+  sched: { companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null },
+  companyId: string,
+  type: CutOffType,
+  payPeriod: string,
+): Promise<{ start: string; end: string }> {
+  const windows = [cutOffWindowFor(type, sched.defaultConfig, sched.companyCfg, payPeriod)];
+  const pols = await tx
+    .select({ config: payrollPolicy.config })
+    .from(payrollPolicy)
+    .where(and(eq(payrollPolicy.companyId, companyId), eq(payrollPolicy.status, 'active')));
+  for (const pol of pols) {
+    windows.push(cutOffWindowFor(type, (pol.config ?? null) as PayrollPolicyConfig | null, sched.companyCfg, payPeriod));
+  }
+  let start = windows[0].start;
+  let end = windows[0].end;
+  for (const w of windows) {
+    if (w.start < start) start = w.start;
+    if (w.end > end) end = w.end;
+  }
+  return { start, end };
+}
+
+/**
+ * c7fdfcf6 gap-fix (per-employment cut-off) — resolve one transaction TYPE's cut-off window for a SPECIFIC
+ * employment, from its ASSIGNED policy (company-default fallback, via resolveAssignedPolicy) → company column →
+ * calendar month. Salary already resolves per-employment in the payslip loop; this extends the SAME per-employee
+ * resolution to OT / attendance / leave so employments on different (non-default) policies each get their own
+ * window instead of sharing the company default. Cached per employmentId; NEVER throws.
+ */
+async function employmentTypeWindow(
+  tx: Tx,
+  sched: { companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null },
+  cache: Map<string, { start: string; end: string }>,
+  employmentId: string,
+  type: CutOffType,
+  payPeriod: string,
+): Promise<{ start: string; end: string }> {
+  const cached = cache.get(employmentId);
+  if (cached) return cached;
+  const cfg = (await resolveAssignedPolicy(tx, employmentId))?.config ?? null;
+  const w = cutOffWindowFor(type, cfg, sched.companyCfg, payPeriod);
+  cache.set(employmentId, w);
+  return w;
+}
+
+/**
  * EA-1955 incomplete-month proration factor for a 'YYYY-MM' wage period: the employee is paid for
  * the calendar days they were employed within the month, over the number of days in that month
  * (Employment Act 1955 s.18A ordinary-rate basis). Returns 1 for a full month, 0 if not employed
@@ -335,6 +390,10 @@ async function unpaidDaysByEmployment(
   tx: Tx,
   periodStart: string,
   periodEnd: string,
+  // c7fdfcf6 gap-fix (per-employment leave cut-off) — optionally scope to a set of employments so the caller
+  // can resolve the LEAVE window PER employment (its assigned policy), then query per window-group. Omitted ⇒
+  // tenant-wide (the legacy behaviour); the batch loop only ever reads its own employments' entries either way.
+  employmentIds?: string[],
 ): Promise<Map<string, number>> {
   // ADR-0068 §4A: for a per-date-approval request, deduct only the APPROVED dates, not the raw request span —
   // reading leave_request.days would count a mid-span rejected date as unpaid leave. We keep the current
@@ -365,6 +424,7 @@ async function unpaidDaysByEmployment(
         ),
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),
+        employmentIds && employmentIds.length > 0 ? inArray(leaveRequest.employmentId, employmentIds) : undefined,
       ),
     )
     .groupBy(leaveRequest.employmentId);
@@ -1386,8 +1446,16 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     // c7fdfcf6 (Payroll Schedule) — resolve the OVERTIME cut-off window for this run: OT transactions are pulled
     // from `[cut-off window]` instead of the fixed calendar month. Absent/calendar config ⇒ the window IS the
     // calendar month, so the query below is byte-identical for an unconfigured company.
+    // Gap-fix (per-employment cut-off): the OT window is resolved PER employment (its assigned policy), not only
+    // against the company default. The SQL fetch widens to the UNION of every active policy's OT window, then each
+    // row is filtered to its own employment's window below. When no policy shifts the window the union equals the
+    // calendar month, so the fetch is byte-identical for an unconfigured company.
     const otSched = await loadBatchCutOffSchedule(tx, batch.companyId);
-    const otWindow = batchTypeWindow(otSched, 'overtime', batch.payPeriod);
+    const otWindow = await unionTypeWindow(tx, otSched, batch.companyId, 'overtime', batch.payPeriod);
+    // When the union already IS the calendar month, every per-employment window is the calendar month too, so the
+    // per-row filter is a no-op and we skip the per-employment policy resolution entirely (byte-identical path).
+    const otPerEmployment = otWindow.start !== periodStart || otWindow.end !== periodEnd;
+    const otWindowCache = new Map<string, { start: string; end: string }>();
 
     // Per-day classified OT minutes within the cut-off window (per-day matters: the
     // rest-day ½/1-day rule cannot be computed from monthly aggregates).
@@ -1397,9 +1465,10 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       process.env.TOIL_ENABLED === 'true'
         ? sql`not exists (select 1 from toil_accrual ta where ta.employment_id = ${attendance.employmentId} and ta.worked_date = ${attendance.attendanceDate} and ta.status <> 'lapsed')`
         : undefined;
-    const otRows = await tx
+    const otRowsRaw = await tx
       .select({
         employmentId: attendance.employmentId,
+        attendanceDate: attendance.attendanceDate,
         dayType: attendance.dayType,
         otMinutes: attendance.otMinutes,
       })
@@ -1414,6 +1483,16 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
           excludeToilDays,
         ),
       );
+    // Gap-fix: keep only rows inside each employment's OWN overtime window (no-op when otPerEmployment is false).
+    const otRows: typeof otRowsRaw = [];
+    for (const r of otRowsRaw) {
+      if (!otPerEmployment) {
+        otRows.push(r);
+        continue;
+      }
+      const w = await employmentTypeWindow(tx, otSched, otWindowCache, r.employmentId, 'overtime', batch.payPeriod);
+      if (r.attendanceDate >= w.start && r.attendanceDate <= w.end) otRows.push(r);
+    }
     if (otRows.length === 0) return { applied: 0, ineligible: 0 };
     const empIds = [...new Set(otRows.map((r) => r.employmentId))];
 
@@ -1543,13 +1622,21 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
 
     // c7fdfcf6 (Payroll Schedule) — shift-differential is derived from ATTENDANCE, so it follows the attendance
     // cut-off window. Absent/calendar config ⇒ the window is the calendar month (byte-identical).
+    // Gap-fix (per-employment cut-off): the attendance window is resolved PER employment (its assigned policy).
+    // The SQL fetch widens to the UNION of every active policy's attendance window, then each row is filtered to
+    // its own employment's window below. Union == calendar month when nothing shifts it ⇒ byte-identical fetch.
     const shiftSched = await loadBatchCutOffSchedule(tx, batch.companyId);
-    const attWindow = batchTypeWindow(shiftSched, 'attendance', batch.payPeriod);
+    const attWindow = await unionTypeWindow(tx, shiftSched, batch.companyId, 'attendance', batch.payPeriod);
+    const [sy, sm] = batch.payPeriod.split('-').map(Number);
+    const shiftPeriodStart = `${batch.payPeriod}-01`;
+    const shiftPeriodEnd = `${batch.payPeriod}-${String(daysInMonth(sy, sm)).padStart(2, '0')}`;
+    const attPerEmployment = attWindow.start !== shiftPeriodStart || attWindow.end !== shiftPeriodEnd;
+    const attWindowCache = new Map<string, { start: string; end: string }>();
 
     // Worked differential shifts in the cut-off window for this company (the actual attendance row joined to the
     // rostered shift, keeping only shifts that carry a differential).
-    const rows = await tx
-      .select({ employmentId: attendance.employmentId, workedMinutes: attendance.workedMinutes, differential: shift.differential })
+    const rowsRaw = await tx
+      .select({ employmentId: attendance.employmentId, attendanceDate: attendance.attendanceDate, workedMinutes: attendance.workedMinutes, differential: shift.differential })
       .from(attendance)
       .innerJoin(employment, eq(employment.id, attendance.employmentId))
       .innerJoin(
@@ -1566,6 +1653,16 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
           isNotNull(shift.differential),
         ),
       );
+    // Gap-fix: keep only rows inside each employment's OWN attendance window (no-op when attPerEmployment false).
+    const rows: typeof rowsRaw = [];
+    for (const r of rowsRaw) {
+      if (!attPerEmployment) {
+        rows.push(r);
+        continue;
+      }
+      const w = await employmentTypeWindow(tx, shiftSched, attWindowCache, r.employmentId, 'attendance', batch.payPeriod);
+      if (r.attendanceDate >= w.start && r.attendanceDate <= w.end) rows.push(r);
+    }
     if (rows.length === 0) return { applied: 0 };
     const empIds = [...new Set(rows.map((r) => r.employmentId))];
 
@@ -1793,9 +1890,13 @@ export async function generatePayslips(
     // aggregate into the one calendar month for EPF/SOCSO/EIS/PCB by law.
     const runFrequency = payrollFrequencyOf(cutOffSchedule.defaultConfig);
     const runSchedule = payrollScheduleFor(cutOffSchedule.defaultConfig, cutOffSchedule.companyCfg, payPeriod);
-    // Unpaid-leave selection follows the LEAVE cut-off window (company-level). Absent/calendar ⇒ [M-01 … M-end].
-    const leaveWindow = batchTypeWindow(cutOffSchedule, 'leave', payPeriod);
-    const unpaidByEmp = await unpaidDaysByEmployment(tx, leaveWindow.start, leaveWindow.end);
+    // Unpaid-leave selection follows the LEAVE cut-off window. Gap-fix (per-employment cut-off): the leave window
+    // is resolved PER employment (its assigned policy → company column → calendar), then employments are GROUPED
+    // by window and unpaid days are queried per group — so employments on different (non-default) policies each
+    // get their own leave window instead of sharing the company default. Populated in the policy loop below, then
+    // queried after it. Absent/calendar config ⇒ one group == [M-01 … M-end] (byte-identical to the legacy query).
+    const leaveWindowByEmp = new Map<string, { start: string; end: string }>();
+    const unpaidByEmp = new Map<string, number>();
 
     // ── 2.1.1 (ADR-0064) — Monthly payroll-policy General Settings, resolved at RUN TIME ──
     // The load-bearing new plumbing: for each employment, resolve its assigned policy's config (raw
@@ -1852,6 +1953,8 @@ export async function generatePayslips(
         salaryCutoffDaysByEmp.set(e.employmentId, salaryWindowDays);
       }
       if (opts.divisorDays !== undefined || opts.workingDayBasis || opts.window) prorationOptsByEmp.set(e.employmentId, opts);
+      // Gap-fix (per-employment cut-off) — this employment's LEAVE cut-off window (policy → company → calendar).
+      leaveWindowByEmp.set(e.employmentId, cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod));
       // 2.1.2 daily branch — only when the resolved policy is daily AND carries a per_day rate. Eligible days
       // = the employee's working days (Mon–Fri) in the period, less public holidays, within their tenure
       // window. Zero eligible days ⇒ basic = 0 (no divide-by-zero: this is a multiply, not a divide).
@@ -1860,6 +1963,70 @@ export async function generatePayslips(
         const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
         const eligibleDays = eligibleWorkingDays(payPeriod, e.hiredOn, e.terminatedOn, dailyHolidays);
         dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: round2(rate * eligibleDays) });
+      }
+    }
+
+    // Gap-fix (per-employment cut-off) — GROUP employments by their resolved LEAVE cut-off window, then query
+    // unpaid days once per distinct window. Most companies: a single group == the calendar month, so this is one
+    // query with the same result as the legacy tenant-wide call (byte-identical). A company with per-policy leave
+    // cut-offs gets each group its own window.
+    {
+      const groups = new Map<string, string[]>();
+      for (const e of emps) {
+        const w = leaveWindowByEmp.get(e.employmentId) ?? { start: periodStart, end: periodEnd };
+        const key = `${w.start}|${w.end}`;
+        const arr = groups.get(key);
+        if (arr) arr.push(e.employmentId);
+        else groups.set(key, [e.employmentId]);
+      }
+      for (const [key, ids] of groups) {
+        const [start, end] = key.split('|');
+        const part = await unpaidDaysByEmployment(tx, start, end, ids);
+        for (const [k, v] of part) unpaidByEmp.set(k, v);
+      }
+    }
+
+    // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — when the run's frequency is weekly/biweekly the statutory
+    // month is split into the ordered cut-off CYCLES (runSchedule.periods). We bucket, PER cycle, each employee's
+    // OT minutes (from attendance) and unpaid-leave days (from approved leave) by their transaction dates. The
+    // payslip loop then disburses each employee's NET across the cycles proportional to each cycle's operational
+    // earnings — turning a weekly employment into N distinct per-cycle pay amounts the employer can actually pay
+    // out weekly, instead of one byte-identical monthly figure. Statutory contributions stay computed ONCE on the
+    // calendar month by law; the single monthly payslip stays the compliance artifact + carries the cycle
+    // breakdown. Monthly frequency (periods.length === 1) skips this whole block ⇒ monthly is byte-identical.
+    const perCycle = runFrequency !== 'monthly' && runSchedule.periods.length > 1;
+    const cycleOtMinutesByEmp = new Map<string, number[]>();
+    const cycleUnpaidDaysByEmp = new Map<string, number[]>();
+    if (perCycle) {
+      const wStart = runSchedule.periods[0].start;
+      const wEnd = runSchedule.periods[runSchedule.periods.length - 1].end;
+      const cycleIndexOf = (date: string): number => runSchedule.periods.findIndex((pd) => date >= pd.start && date <= pd.end);
+      const otCycleRows = await tx
+        .select({ employmentId: attendance.employmentId, d: attendance.attendanceDate, m: attendance.otMinutes })
+        .from(attendance)
+        .innerJoin(employment, eq(employment.id, attendance.employmentId))
+        .where(and(eq(employment.companyId, batch.companyId), gte(attendance.attendanceDate, wStart), lte(attendance.attendanceDate, wEnd), gt(attendance.otMinutes, 0)));
+      for (const r of otCycleRows) {
+        const ci = cycleIndexOf(r.d);
+        if (ci < 0) continue;
+        const arr = cycleOtMinutesByEmp.get(r.employmentId) ?? runSchedule.periods.map(() => 0);
+        arr[ci] += r.m ?? 0;
+        cycleOtMinutesByEmp.set(r.employmentId, arr);
+      }
+      // Unpaid days are attributed to the cycle the request STARTS in (mirrors unpaidDaysByEmployment's "deduct in
+      // the period it starts" policy), using the approved per-date sum when present, else the request's own days.
+      const perDateDays = sql<string>`coalesce((select sum(lrd.days) from leave_request_date lrd where lrd.leave_request_id = ${leaveRequest.id} and lrd.status = 'approved'), ${leaveRequest.days})`;
+      const lvCycleRows = await tx
+        .select({ employmentId: leaveRequest.employmentId, d: leaveRequest.startDate, days: perDateDays })
+        .from(leaveRequest)
+        .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+        .where(and(eq(leaveRequest.status, 'approved'), or(eq(leaveType.paid, false), eq(leaveRequest.allowanceEligible, false)), gte(leaveRequest.startDate, wStart), lte(leaveRequest.startDate, wEnd)));
+      for (const r of lvCycleRows) {
+        const ci = cycleIndexOf(r.d);
+        if (ci < 0) continue;
+        const arr = cycleUnpaidDaysByEmp.get(r.employmentId) ?? runSchedule.periods.map(() => 0);
+        arr[ci] += Number(r.days);
+        cycleUnpaidDaysByEmp.set(r.employmentId, arr);
       }
     }
 
@@ -2574,6 +2741,32 @@ export async function generatePayslips(
         // adds to employer cost alongside the OT it was rerouted from. Default (no convert) ⇒ 0 ⇒ unchanged.
         : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
 
+      // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — disburse this employee's NET across the run's cut-off
+      // CYCLES. Recurring pay (basic + allowance + bonus) prorates by cycle days; OT follows each cycle's OT
+      // minutes (from attendance, bucketed by date); the unpaid-leave deduction follows each cycle's unpaid days;
+      // each cycle's NET operational earnings then weight the NET split. The per-cycle amounts sum EXACTLY to net
+      // (the residual lands on the last cycle). Only produced for weekly/biweekly (perCycle) regular runs; monthly
+      // and additional runs produce no schedule ⇒ their payslip statutory blob is byte-identical to before.
+      let paymentSchedule: { seq: number; from: string; to: string; amount: number }[] | null = null;
+      if (perCycle && !isAdditionalRun) {
+        const periods = runSchedule.periods;
+        const otMin = cycleOtMinutesByEmp.get(e.employmentId) ?? periods.map(() => 0);
+        const upDays = cycleUnpaidDaysByEmp.get(e.employmentId) ?? periods.map(() => 0);
+        const cycleDays = periods.map(
+          (pd) => Math.round((Date.parse(`${pd.end}T00:00:00Z`) - Date.parse(`${pd.start}T00:00:00Z`)) / 86_400_000) + 1,
+        );
+        const amounts = disburseNetAcrossCycles({
+          net,
+          recurring: round2(slipBasic + slipAllowance + bonus),
+          overtime: slipOvertime,
+          unpaid: slipUnpaid,
+          cycleDays,
+          otMinutes: otMin,
+          unpaidDays: upDays,
+        });
+        paymentSchedule = periods.map((pd, i) => ({ seq: pd.seq, from: pd.start, to: pd.end, amount: amounts[i] }));
+      }
+
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
         batchId: p.batchId,
@@ -2598,6 +2791,10 @@ export async function generatePayslips(
           // Only stamped when non-zero (byte-identical to today for every other path); the NEXT cycle's balance
           // derivation replays these stamps (Σ added − applied) off closed payslips.
           ...(carryForward ? { carryForward } : {}),
+          // c7fdfcf6 gap-fix — the per-cycle DISBURSEMENT schedule for a weekly/bi-weekly run (present only when
+          // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
+          // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
+          ...(paymentSchedule ? { paymentSchedule: { frequency: runFrequency, cycles: paymentSchedule } } : {}),
         }, // `version` + (when source=pack) packVersion/signedKeyId snapshot + (when OT paid) otSource
         // Carry-forward recovery/deferral rides otherDeductions too, so the invariant
         // totalDeductions = statDeductions + otherDeductions holds (0 for every non-carry_forward path).
@@ -2771,8 +2968,10 @@ export async function generatePayslips(
       payload: {
         count: emps.length,
         totalNet: totals.net,
-        // c7fdfcf6 gap-fix — the resolved payroll frequency + generated cut-off periods for this run (audit).
-        cutOffSchedule: { frequency: runFrequency, periods: runSchedule.periods },
+        // c7fdfcf6 gap-fix — the resolved payroll frequency + generated cut-off periods for this run. When the
+        // frequency is weekly/biweekly (`disbursedPerCycle`), each payslip carries a per-cycle disbursement
+        // schedule (statutory.paymentSchedule) so the run is FUNCTIONALLY processed per cycle, not audit-only.
+        cutOffSchedule: { frequency: runFrequency, periods: runSchedule.periods, disbursedPerCycle: perCycle },
       },
     });
     return { payslips: emps.length, totalNet: totals.net };

@@ -11,6 +11,7 @@ import {
   calendarWindowFor,
   cleanPayrollPolicyConfig,
   cutOffWindowFor,
+  disburseNetAcrossCycles,
   hasCustomCutOff,
   payrollFrequencyOf,
   payrollScheduleFor,
@@ -223,5 +224,73 @@ describe('c7fdfcf6 gap-fix · payrollScheduleFor — frequency generates cut-off
     // Salary window for anchor 26 = [26 Apr … 25 May]; first weekly cycle opens on the window start.
     expect(s.periods[0].start).toBe('2026-04-26');
     expect(s.periods[s.periods.length - 1].end).toBe('2026-05-25');
+  });
+});
+
+describe('c7fdfcf6 gap-fix · disburseNetAcrossCycles — functional weekly/bi-weekly per-cycle disbursement', () => {
+  it('monthly (one cycle) ⇒ the whole net on the single cycle', () => {
+    expect(disburseNetAcrossCycles({ net: 3200, recurring: 3200, overtime: 0, unpaid: 0, cycleDays: [31], otMinutes: [0], unpaidDays: [0] })).toEqual([3200]);
+  });
+
+  it('four equal 7-day weekly cycles of a flat salary split proportionally by days (residual on last)', () => {
+    // 4 cycles: 7,7,7,3 days (25-day window). Recurring only ⇒ weights follow days; amounts sum EXACTLY to net.
+    const out = disburseNetAcrossCycles({
+      net: 2400,
+      recurring: 2400,
+      overtime: 0,
+      unpaid: 0,
+      cycleDays: [7, 7, 7, 4],
+      otMinutes: [0, 0, 0, 0],
+      unpaidDays: [0, 0, 0, 0],
+    });
+    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(2400, 5);
+    // First three cycles are equal (same day count), last carries the remainder.
+    expect(out[0]).toBe(out[1]);
+    expect(out[1]).toBe(out[2]);
+    expect(out.length).toBe(4);
+  });
+
+  it('overtime lands in the cycle whose OT minutes are non-zero, not spread by days', () => {
+    // Flat recurring split evenly; all OT worked in cycle 2 ⇒ cycle 2 gets the whole OT weight on top.
+    const out = disburseNetAcrossCycles({
+      net: 2000 + 300, // 2000 recurring + 300 OT
+      recurring: 2000,
+      overtime: 300,
+      unpaid: 0,
+      cycleDays: [14, 14],
+      otMinutes: [0, 600],
+      unpaidDays: [0, 0],
+    });
+    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(2300, 5);
+    // Cycle 2 (with the OT) is paid more than cycle 1 (recurring only).
+    expect(out[1]).toBeGreaterThan(out[0]);
+  });
+
+  it('unpaid-leave days reduce the cycle they fall in; total still sums to net', () => {
+    const out = disburseNetAcrossCycles({
+      net: 1800, // 2000 recurring − 200 unpaid
+      recurring: 2000,
+      overtime: 0,
+      unpaid: 200,
+      cycleDays: [15, 15],
+      otMinutes: [0, 0],
+      unpaidDays: [3, 0], // unpaid days all in cycle 1
+    });
+    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(1800, 5);
+    // Cycle 1 (with the unpaid deduction) is paid less than cycle 2.
+    expect(out[0]).toBeLessThan(out[1]);
+  });
+
+  it('always sums to net exactly even with awkward rounding', () => {
+    const out = disburseNetAcrossCycles({
+      net: 1000.03,
+      recurring: 1000.03,
+      overtime: 0,
+      unpaid: 0,
+      cycleDays: [7, 7, 7],
+      otMinutes: [0, 0, 0],
+      unpaidDays: [0, 0, 0],
+    });
+    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(1000.03, 5);
   });
 });
