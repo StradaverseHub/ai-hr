@@ -169,14 +169,16 @@
     "selectLeaveType": "选择假期类型",
     "noLeaveTypes": "没有假期类型",
     "nextHoliday": "下一个公共假期",
-    "myPendingRequests": "我的待处理申请",
-    "awaitingDecision": "等待审批",
+    "pendingTasks": "待办任务",
+    "requireYourAttention": "需要您处理",
     "teamAwayToday": "今日休假团队成员",
     "onApprovedLeaveToday": "今日已批准休假",
     "onboardingThisWeek": "本周入职",
     "startedLast7Days": "过去 7 天内入职",
     "approvalRequests": "审批申请",
-    "awaitingYourAction": "等待您处理"
+    "awaitingYourAction": "等待您处理",
+    "upcomingReminders": "即将到来的提醒",
+    "reviewsAndHolidays": "即将到来的评估与假期"
   },
   "people": {
     "list": {

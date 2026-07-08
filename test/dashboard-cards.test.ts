@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   CARD_META,
   ROLE_CARDS,
+  pendingTasksCount,
   resolveDashboardRole,
   teamAwayToday,
+  upcomingRemindersCount,
   type DashboardRole,
 } from '../lib/dashboard-cards';
 
@@ -27,9 +29,9 @@ describe('resolveDashboardRole', () => {
 });
 
 describe('ROLE_CARDS', () => {
-  it('has the exact card set + order per role', () => {
-    expect(ROLE_CARDS.employee).toEqual(['leaveBalance', 'nextHoliday', 'myPendingRequests']);
-    expect(ROLE_CARDS.manager).toEqual(['teamAwayToday', 'onboardingWeek', 'approvalRequests', 'nextHoliday']);
+  it('has the exact card set + order per role (matches the reporter\'s three sets)', () => {
+    expect(ROLE_CARDS.employee).toEqual(['leaveBalance', 'nextHoliday', 'pendingTasks']);
+    expect(ROLE_CARDS.manager).toEqual(['teamAwayToday', 'onboardingWeek', 'approvalRequests', 'upcomingReminders']);
     expect(ROLE_CARDS.hr_admin).toEqual(['headcount', 'pendingLeave', 'companies', 'latestPayroll']);
   });
 
@@ -84,5 +86,49 @@ describe('teamAwayToday', () => {
       { id: 'viewer', leaves: [approved('2026-07-06', '2026-07-10')] },
     ];
     expect(teamAwayToday(rows, today, 'viewer')).toBe(2);
+  });
+});
+
+describe('pendingTasksCount', () => {
+  it('sums the employee action-item counts', () => {
+    expect(pendingTasksCount([3])).toBe(3);
+    expect(pendingTasksCount([2, 1, 4])).toBe(7);
+  });
+
+  it('is 0 for no task sources / an empty roster', () => {
+    expect(pendingTasksCount([])).toBe(0);
+    expect(pendingTasksCount([0])).toBe(0);
+  });
+
+  it('clamps negative inputs to 0 (defensive)', () => {
+    expect(pendingTasksCount([-1, 2])).toBe(2);
+  });
+});
+
+describe('upcomingRemindersCount', () => {
+  const today = '2026-07-08';
+  const cutoff = '2026-08-07'; // today + 30d
+
+  it('counts review deadlines + holidays inside the window', () => {
+    const holidays = [{ date: '2026-07-20' }, { date: '2026-08-31' }]; // one in-window, one past cutoff
+    expect(upcomingRemindersCount(holidays, 2, today, cutoff)).toBe(3); // 1 holiday + 2 reviews
+  });
+
+  it('includes a holiday landing exactly on today and on the cutoff (inclusive bounds)', () => {
+    const holidays = [{ date: today }, { date: cutoff }];
+    expect(upcomingRemindersCount(holidays, 0, today, cutoff)).toBe(2);
+  });
+
+  it('excludes past holidays and holidays beyond the cutoff', () => {
+    const holidays = [{ date: '2026-07-01' }, { date: '2026-09-01' }];
+    expect(upcomingRemindersCount(holidays, 0, today, cutoff)).toBe(0);
+  });
+
+  it('counts review deadlines even with no upcoming holidays', () => {
+    expect(upcomingRemindersCount([], 4, today, cutoff)).toBe(4);
+  });
+
+  it('clamps a negative review count to 0 (defensive)', () => {
+    expect(upcomingRemindersCount([{ date: '2026-07-10' }], -3, today, cutoff)).toBe(1);
   });
 });

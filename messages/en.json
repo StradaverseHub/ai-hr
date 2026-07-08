@@ -169,14 +169,16 @@
     "selectLeaveType": "Select leave type",
     "noLeaveTypes": "No leave types",
     "nextHoliday": "Next holiday",
-    "myPendingRequests": "My pending requests",
-    "awaitingDecision": "Awaiting a decision",
+    "pendingTasks": "Pending tasks",
+    "requireYourAttention": "Require your attention",
     "teamAwayToday": "Team away today",
     "onApprovedLeaveToday": "On approved leave today",
     "onboardingThisWeek": "Onboarding this week",
     "startedLast7Days": "Started in the last 7 days",
     "approvalRequests": "Approval requests",
-    "awaitingYourAction": "Awaiting your action"
+    "awaitingYourAction": "Awaiting your action",
+    "upcomingReminders": "Upcoming reminders",
+    "reviewsAndHolidays": "Reviews & holidays ahead"
   },
   "people": {
     "list": {

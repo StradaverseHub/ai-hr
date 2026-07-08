@@ -169,14 +169,16 @@
     "selectLeaveType": "เลือกประเภทการลา",
     "noLeaveTypes": "ไม่มีประเภทการลา",
     "nextHoliday": "วันหยุดถัดไป",
-    "myPendingRequests": "คำขอที่รอดำเนินการของฉัน",
-    "awaitingDecision": "รอการอนุมัติ",
+    "pendingTasks": "งานที่ต้องดำเนินการ",
+    "requireYourAttention": "ต้องการความสนใจจากคุณ",
     "teamAwayToday": "สมาชิกทีมที่ลาวันนี้",
     "onApprovedLeaveToday": "ลาที่อนุมัติแล้ววันนี้",
     "onboardingThisWeek": "พนักงานใหม่สัปดาห์นี้",
     "startedLast7Days": "เริ่มงานใน 7 วันที่ผ่านมา",
     "approvalRequests": "คำขออนุมัติ",
-    "awaitingYourAction": "รอการดำเนินการของคุณ"
+    "awaitingYourAction": "รอการดำเนินการของคุณ",
+    "upcomingReminders": "การแจ้งเตือนที่จะมาถึง",
+    "reviewsAndHolidays": "การประเมินและวันหยุดที่จะมาถึง"
   },
   "people": {
     "list": {

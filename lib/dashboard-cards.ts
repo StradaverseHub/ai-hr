@@ -15,21 +15,29 @@ export type DashboardCardId =
   // employee
   | 'leaveBalance'
   | 'nextHoliday'
-  | 'myPendingRequests'
+  | 'pendingTasks'
   // manager
   | 'teamAwayToday'
   | 'onboardingWeek'
   | 'approvalRequests'
+  | 'upcomingReminders'
   // hr_admin
   | 'headcount'
   | 'pendingLeave'
   | 'companies'
   | 'latestPayroll';
 
-/** Ordered card set per resolved role. `nextHoliday` intentionally appears for both employee + manager. */
+/**
+ * Ordered card set per resolved role — matches the reporter's three sets exactly.
+ * - Employee: Leave Balance · Upcoming Holidays · Pending Tasks (self-service action items).
+ * - Manager: Team Away Today · Onboarding This Week · Approval Requests · Upcoming Reminders.
+ * - HR admin: the unchanged high-level company overview.
+ * `nextHoliday` is the employee's "Upcoming Holidays" card; the manager surfaces holidays inside
+ * `upcomingReminders` instead (the reporter's 4th manager card = reminders, not a bare next-holiday).
+ */
 export const ROLE_CARDS: Record<DashboardRole, DashboardCardId[]> = {
-  employee: ['leaveBalance', 'nextHoliday', 'myPendingRequests'],
-  manager: ['teamAwayToday', 'onboardingWeek', 'approvalRequests', 'nextHoliday'],
+  employee: ['leaveBalance', 'nextHoliday', 'pendingTasks'],
+  manager: ['teamAwayToday', 'onboardingWeek', 'approvalRequests', 'upcomingReminders'],
   hr_admin: ['headcount', 'pendingLeave', 'companies', 'latestPayroll'],
 };
 
@@ -42,10 +50,15 @@ export const ROLE_CARDS: Record<DashboardRole, DashboardCardId[]> = {
 export const CARD_META: Record<DashboardCardId, { labelKey: string; href: string }> = {
   leaveBalance: { labelKey: 'leaveBalance', href: '/leave' },
   nextHoliday: { labelKey: 'nextHoliday', href: '#upcoming-events' },
-  myPendingRequests: { labelKey: 'myPendingRequests', href: '/leave' },
+  // Pending Tasks → /me, where the employee actions its tasks (e.g. give 360 feedback; upload/complete
+  // items land here as those task types ship). NOT the inverse "requests awaiting a decision" surface.
+  pendingTasks: { labelKey: 'pendingTasks', href: '/me' },
   teamAwayToday: { labelKey: 'teamAwayToday', href: '#planned-absences' },
   onboardingWeek: { labelKey: 'onboardingThisWeek', href: '/personnel' },
   approvalRequests: { labelKey: 'approvalRequests', href: '/approvals' },
+  // Upcoming Reminders scrolls to the on-page holidays digest; review deadlines it also counts are
+  // actioned from the Approval Requests card (same /approvals inbox).
+  upcomingReminders: { labelKey: 'upcomingReminders', href: '#upcoming-events' },
   headcount: { labelKey: 'headcount', href: '/personnel' },
   pendingLeave: { labelKey: 'pendingLeave', href: '/leave' },
   companies: { labelKey: 'companies', href: '/admin/organization' },
@@ -99,4 +112,37 @@ export function teamAwayToday(
     if (away) count += 1;
   }
   return count;
+}
+
+/**
+ * Count of self-service action items requiring the EMPLOYEE's own attention — the reporter's "Pending
+ * Tasks" ("X tasks require your attention", e.g. uploading documents). Deliberately DISTINCT from the
+ * inverse "my requests awaiting a decision" (leave/claims in someone else's queue): these are things the
+ * employee must DO. Today the only tracked employee-owned task type is pending 360 peer-feedback requests
+ * (from `myFeedbackRequests`); the helper sums an array of counts so new task types (document-upload
+ * obligations, acknowledgements) plug in without touching the renderer. Negative inputs are clamped.
+ */
+export function pendingTasksCount(counts: number[]): number {
+  return counts.reduce((sum, n) => sum + Math.max(0, n), 0);
+}
+
+export type ReminderHoliday = { date: string };
+
+/**
+ * Count of a manager's "Upcoming Reminders" (the reporter's 4th manager card): performance/probation
+ * review deadlines assigned to them + upcoming company holidays within the reminder window
+ * `[todayIso, cutoffIso]` (inclusive). `reviewDeadlineCount` is the manager's pending-review queue
+ * (`pendingManagerReviewsFor(...).length`); `holidays` is the already-fetched upcoming-holidays list.
+ * Mandatory-training reminders contribute 0 until a training module exists — this helper's signature
+ * absorbs them (add a `trainingCount` arg) without a card/renderer change. Pure — the page supplies the
+ * ISO window bounds so no Date/TZ math leaks into the tested helper.
+ */
+export function upcomingRemindersCount(
+  holidays: ReminderHoliday[],
+  reviewDeadlineCount: number,
+  todayIso: string,
+  cutoffIso: string,
+): number {
+  const holidaysSoon = holidays.filter((h) => h.date >= todayIso && h.date <= cutoffIso).length;
+  return holidaysSoon + Math.max(0, reviewDeadlineCount);
 }

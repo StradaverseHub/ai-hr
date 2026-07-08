@@ -169,14 +169,16 @@
     "selectLeaveType": "Pilih jenis cuti",
     "noLeaveTypes": "Tiada jenis cuti",
     "nextHoliday": "Cuti umum seterusnya",
-    "myPendingRequests": "Permohonan saya yang belum selesai",
-    "awaitingDecision": "Menunggu keputusan",
+    "pendingTasks": "Tugasan tertunda",
+    "requireYourAttention": "Memerlukan perhatian anda",
     "teamAwayToday": "Pasukan bercuti hari ini",
     "onApprovedLeaveToday": "Bercuti yang diluluskan hari ini",
     "onboardingThisWeek": "Pengambilan baharu minggu ini",
     "startedLast7Days": "Bermula dalam 7 hari lepas",
     "approvalRequests": "Permohonan kelulusan",
-    "awaitingYourAction": "Menunggu tindakan anda"
+    "awaitingYourAction": "Menunggu tindakan anda",
+    "upcomingReminders": "Peringatan akan datang",
+    "reviewsAndHolidays": "Penilaian & cuti akan datang"
   },
   "people": {
     "list": {

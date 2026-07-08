@@ -8,7 +8,6 @@ import {
   groupBreakdown,
   leaveBalances,
   listCompanies,
-  listLeaveRequests,
   myEmployment,
   plannedAbsences,
   recentActivity,
@@ -16,7 +15,8 @@ import {
   reportingLinesFor,
   upcomingHolidays,
 } from '@/core/read';
-import { listClaimsForEmployment } from '@/core/claims';
+import { pendingManagerReviewsFor } from '@/core/employment-review';
+import { myFeedbackRequests } from '@/core/performance';
 import { pendingApprovalsCount } from '@/core/approvals-inbox';
 import { todayInKualaLumpur } from '@/core/leave';
 import { Card, PageHeader, StatusBadge } from '@/components/ui';
@@ -26,9 +26,11 @@ import { TimelineNav } from '@/components/timeline-nav';
 import { requestLeaveCancellationAction } from '@/app/leave/actions';
 import {
   type DashboardCardId,
+  pendingTasksCount,
   resolveDashboardRole,
   ROLE_CARDS,
   teamAwayToday,
+  upcomingRemindersCount,
 } from '@/lib/dashboard-cards';
 import { ACTOR_DOT, aggregateHref, aggregateLabel, humanizeEvent, relativeTime } from '@/lib/audit-format';
 
@@ -159,41 +161,50 @@ export default async function DashboardPage({
     upcomingHolidays(s, { from: todayIso, limit: 5 }),
   ]);
 
-  // Employee card data: own leave balance + own pending requests (leave + claims). All RLS-scoped to self.
+  // Employee card data: own leave balance + own PENDING TASKS. "Pending Tasks" = action items the
+  // employee must complete themselves (e.g. give 360 feedback; document-upload obligations plug in as
+  // those task types ship) — deliberately NOT the inverse "my requests awaiting someone else's decision".
+  // All reads are self-scoped via RLS.
   let empBalances: { leaveTypeId: string; leaveType: string; available: number }[] = [];
-  let empPendingCount = 0;
+  let empTaskCount = 0;
   if (role === 'employee' && me) {
-    const [balances, ownLeave, ownClaims] = await Promise.all([
+    const [balances, feedbackRequests] = await Promise.all([
       leaveBalances(s, me.employmentId, locale),
-      listLeaveRequests(s, scopeIds),
-      listClaimsForEmployment(s, me.employmentId),
+      myFeedbackRequests(s), // pending 360 peer-feedback the employee must submit
     ]);
     empBalances = balances.map((b) => ({ leaveTypeId: b.leaveTypeId, leaveType: b.leaveType, available: b.available }));
-    const pendingLeave = ownLeave.filter((r) => r.status === 'pending' && r.personId === s.personId).length;
-    const pendingClaims = ownClaims.filter((c) => c.status === 'pending').length;
-    empPendingCount = pendingLeave + pendingClaims;
+    empTaskCount = pendingTasksCount([feedbackRequests.length]);
   }
 
-  // Manager card data: team away today, onboarding this week, and the same approvals count as the bell.
+  // Manager card data: team away today, onboarding this week, the same approvals count as the bell, and
+  // the Upcoming Reminders digest (review deadlines assigned to this manager + company holidays soon).
   let mgrAwayCount = 0;
   let mgrOnboarding = 0;
   let mgrApprovals = 0;
+  let mgrReminders = 0;
   if (role === 'manager') {
     const since7 = new Date(todayMs - 6 * 86_400_000).toISOString().slice(0, 10);
     // teamAwayToday must be computed over a window that always covers today. The strip's window shifts
     // with ?abs=, so when it's overridden, fetch the default (today-2 … +11) window just for the count.
     const defaultFrom = new Date(todayMs - 2 * 86_400_000).toISOString().slice(0, 10);
     const defaultTo = new Date(todayMs + (ABS_DAYS - 3) * 86_400_000).toISOString().slice(0, 10);
-    const [awayRows, weekHires, approvals] = await Promise.all([
+    const [awayRows, weekHires, approvals, reviewDeadlines] = await Promise.all([
       absParam
         ? plannedAbsences(s, scopeIds, { from: defaultFrom, to: defaultTo }, todayInKualaLumpur())
         : Promise.resolve(absences),
       recentHires(s, scopeIds, { since: since7, limit: 50 }),
       pendingApprovalsCount(s, scopeIds),
+      // Performance / probation review deadlines assigned to this manager (the reporter's "review
+      // deadlines" reminder). Same queue the bell counts — surfaced here as an upcoming reminder too.
+      me ? pendingManagerReviewsFor(s, me.employmentId) : Promise.resolve([]),
     ]);
     mgrAwayCount = teamAwayToday(awayRows, todayIso, s.personId ?? null);
     mgrOnboarding = weekHires.length;
     mgrApprovals = approvals;
+    // Reminder window: holidays in the next 30 days + the manager's open review deadlines. (No training
+    // module yet, so training reminders contribute 0 — the helper absorbs them when one ships.)
+    const reminderCutoffIso = new Date(todayMs + 30 * 86_400_000).toISOString().slice(0, 10);
+    mgrReminders = upcomingRemindersCount(events, reviewDeadlines.length, todayIso, reminderCutoffIso);
   }
 
   const att = stats?.attendance ?? { date: null as string | null, present: 0, late: 0, halfDay: 0, absent: 0 };
@@ -241,14 +252,16 @@ export default async function DashboardPage({
             href="#upcoming-events"
           />
         );
-      case 'myPendingRequests':
-        return <StatCard key={id} label={t('myPendingRequests')} value={empPendingCount} hint={t('awaitingDecision')} href="/leave" />;
+      case 'pendingTasks':
+        return <StatCard key={id} label={t('pendingTasks')} value={empTaskCount} hint={t('requireYourAttention')} href="/me" />;
       case 'teamAwayToday':
         return <StatCard key={id} label={t('teamAwayToday')} value={mgrAwayCount} hint={t('onApprovedLeaveToday')} href="#planned-absences" />;
       case 'onboardingWeek':
         return <StatCard key={id} label={t('onboardingThisWeek')} value={mgrOnboarding} hint={t('startedLast7Days')} href="/personnel" />;
       case 'approvalRequests':
         return <StatCard key={id} label={t('approvalRequests')} value={mgrApprovals} hint={t('awaitingYourAction')} href="/approvals" />;
+      case 'upcomingReminders':
+        return <StatCard key={id} label={t('upcomingReminders')} value={mgrReminders} hint={t('reviewsAndHolidays')} href="#upcoming-events" />;
     }
   };
 

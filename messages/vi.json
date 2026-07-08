@@ -169,14 +169,16 @@
     "selectLeaveType": "Chọn loại nghỉ phép",
     "noLeaveTypes": "Không có loại nghỉ phép",
     "nextHoliday": "Ngày lễ tiếp theo",
-    "myPendingRequests": "Yêu cầu đang chờ của tôi",
-    "awaitingDecision": "Đang chờ quyết định",
+    "pendingTasks": "Công việc cần làm",
+    "requireYourAttention": "Cần bạn xử lý",
     "teamAwayToday": "Thành viên nghỉ hôm nay",
     "onApprovedLeaveToday": "Nghỉ phép đã duyệt hôm nay",
     "onboardingThisWeek": "Nhân viên mới tuần này",
     "startedLast7Days": "Bắt đầu trong 7 ngày qua",
     "approvalRequests": "Yêu cầu phê duyệt",
-    "awaitingYourAction": "Đang chờ bạn xử lý"
+    "awaitingYourAction": "Đang chờ bạn xử lý",
+    "upcomingReminders": "Nhắc nhở sắp tới",
+    "reviewsAndHolidays": "Đánh giá & ngày lễ sắp tới"
   },
   "people": {
     "list": {
