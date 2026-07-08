@@ -2312,9 +2312,122 @@ export const payslip = pgTable(
     totalDeductions: numeric('total_deductions', { precision: 12, scale: 2 }).notNull(),
     netPay: numeric('net_pay', { precision: 12, scale: 2 }).notNull(),
     employerCost: numeric('employer_cost', { precision: 12, scale: 2 }).notNull(),
+    // Optimistic concurrency control (feedback 9bc442bc, reporter req. #5). Bumped every time selective
+    // reprocessing replaces this employee's slip; the reprocess path takes a row-level lock (SELECT … FOR
+    // UPDATE) on exactly the selected rows and asserts the expected version, so concurrent reprocessing of
+    // the same employee conflicts loudly while leaving unrelated employees' rows unlocked and untouched.
+    version: integer('version').notNull().default(1),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('payslip_batch_employment_uq').on(t.batchId, t.employmentId)],
+);
+
+// ─────────────── Payroll status control + selective reprocessing (feedback 9bc442bc) ───────────────
+// Dedicated audit tables (reporter req.: capture actor/timestamp/reason + before/after snapshot for every
+// rollback, unlock and reprocess) — a purpose-built, queryable trail alongside the generic domain_event log.
+export const payrollStatusHistory = pgTable(
+  'payroll_status_history',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    action: text('action').notNull(), // 'rollback' | 'unlock' | 'close' | 'reprocess'
+    fromStatus: text('from_status'),
+    toStatus: text('to_status'),
+    actorType: text('actor_type').notNull(),
+    actorId: uuid('actor_id'),
+    reason: text('reason'),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payroll_status_history_batch_idx').on(t.batchId)],
+);
+
+export const payrollEmployeeResultHistory = pgTable(
+  'payroll_employee_result_history',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    action: text('action').notNull(), // 'reprocess'
+    actorType: text('actor_type').notNull(),
+    actorId: uuid('actor_id'),
+    reason: text('reason'),
+    versionBefore: integer('version_before'),
+    versionAfter: integer('version_after'),
+    before: jsonb('before'),
+    after: jsonb('after'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payroll_emp_result_history_batch_idx').on(t.batchId)],
+);
+
+// Queue-based reprocessing (reporter req.): a durable job row with an idempotency key (a double-clicked
+// or retried submit reuses the same job instead of spawning a duplicate run) whose status the UI polls.
+export const payrollReprocessJob = pgTable(
+  'payroll_reprocess_job',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    idempotencyKey: text('idempotency_key').notNull(),
+    status: text('status').notNull().default('queued'), // 'queued' | 'running' | 'completed' | 'failed'
+    employmentIds: jsonb('employment_ids').$type<string[]>().notNull(),
+    reason: text('reason'),
+    requestedBy: uuid('requested_by'),
+    result: jsonb('result'),
+    error: text('error'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [uniqueIndex('payroll_reprocess_job_idem_uq').on(t.tenantId, t.idempotencyKey)],
+);
+
+// Granular RBAC permission grants (reporter req.: payroll.rollback / unlock / reprocess.selective / close,
+// configurable per company/tenant). Rows OVERRIDE the code defaults for a (permission_key, role) pair;
+// company_id NULL = tenant-wide. Resolver in lib/payroll-permissions.ts.
+export const payrollPermissionGrant = pgTable(
+  'payroll_permission_grant',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id').references(() => company.id),
+    permissionKey: text('permission_key').notNull(),
+    role: text('role').notNull(),
+    allowed: boolean('allowed').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
+// Step-up / OTP challenge for the high-risk Unlock action (reporter req.: confirmation step, password
+// re-entry or OTP). A one-time code is issued, hashed, and must be re-entered to unlock; single-use + TTL.
+export const payrollStepUpChallenge = pgTable(
+  'payroll_step_up_challenge',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    userId: uuid('user_id').notNull(),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => payrollBatch.id),
+    purpose: text('purpose').notNull(), // 'unlock'
+    codeHash: text('code_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('payroll_step_up_challenge_lookup_idx').on(t.batchId, t.userId, t.purpose)],
 );
 
 // Per-employee, per-batch payroll inputs entered before generation. Overtime is manual; unpaid

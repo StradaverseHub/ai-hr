@@ -2,9 +2,15 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
+import { createHash, randomInt } from 'node:crypto';
 import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import {
+  PAYROLL_PERMISSION_DEFAULTS,
+  decidePayrollPermission,
+  type PayrollPermissionKey,
+} from '../lib/payroll-permissions';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { toCsv } from '../lib/csv';
@@ -15,6 +21,7 @@ import {
   company,
   companyStatutoryMy,
   compensation,
+  domainEvent,
   employeeLoan,
   employeeStatutoryMy,
   employment,
@@ -28,8 +35,13 @@ import {
   leaveType,
   payPeriod,
   payrollBatch,
+  payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollInput,
+  payrollPermissionGrant,
+  payrollReprocessJob,
+  payrollStatusHistory,
+  payrollStepUpChallenge,
   payslip,
   person,
   rosterAssignment,
@@ -1483,11 +1495,32 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
   });
 }
 
-export async function generatePayslips(ctx: SessionContext, p: { batchId: string }) {
+export async function generatePayslips(
+  ctx: SessionContext,
+  p: {
+    batchId: string;
+    /**
+     * Selective in-place reprocessing (feedback 9bc442bc, reporter ask #3 + #8). When present, the batch
+     * must already be PROCESSED: only these employees' payslips are recomputed, the others stay physically
+     * untouched, batch totals/GL are updated BY DELTA (old-subset subtracted, new-subset added), and the
+     * batch stays processed. This reuses the whole compute path below for byte-faithful figures; only the
+     * employee filter and the final write differ. Loan-ledger apply + claim-paid side-effects run ONLY on
+     * the full draft→processed generation, never on a subset reprocess (those were already applied at the
+     * original processing and the preserved payroll_input rows reproduce the same loan/claim lines).
+     */
+    reprocessSubset?: { employmentIds: string[]; reason?: string; actorId?: string };
+  },
+) {
+  const subset = p.reprocessSubset ?? null;
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1);
     if (!batch) throw new Error('batch not found');
-    if (batch.status !== 'draft') throw new BatchNotDraftError();
+    if (subset) {
+      // Reprocess target must be a processed run (a draft has nothing to reprocess; a closed run is frozen).
+      if (batch.status !== 'processed') throw new BatchNotResettableError();
+    } else if (batch.status !== 'draft') {
+      throw new BatchNotDraftError();
+    }
 
     const [co] = await tx
       .select({ country: company.country })
@@ -1593,6 +1626,14 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           scopeFilter,
+          // Selective reprocess (9bc442bc): narrow the recompute to exactly the picked employees, intersected
+          // with the company set above so a stale/cross-company id can never widen the run.
+          subset
+            ? inArray(
+                employment.id,
+                subset.employmentIds.length ? subset.employmentIds : ['00000000-0000-0000-0000-000000000000'],
+              )
+            : undefined,
         ),
       );
 
@@ -2028,6 +2069,46 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       deductions: 0, employerCost: 0,
     };
 
+    // Selective reprocess (9bc442bc, reporter #5/#6/#8): before recomputing, snapshot + ROW-LOCK the
+    // subset's existing payslips (optimistic-concurrency + before/after audit), tally their OLD
+    // contribution for the delta-totals update, then delete them so the loop below re-inserts fresh
+    // rows. `FOR UPDATE` locks ONLY these rows — unrelated employees' payslips stay unlocked, so a
+    // concurrent reprocess of a different subset never blocks (and a concurrent reprocess of the SAME
+    // employee serialises and re-reads the bumped version).
+    const oldTotals = { ...totals };
+    const versionByEmp = new Map<string, number>();
+    const beforeByEmp = new Map<string, Record<string, unknown>>();
+    if (subset) {
+      if (emps.length === 0) throw new Error('None of the selected employees are active in this period.');
+      const subsetIds = emps.map((e) => e.employmentId);
+      const existing = await tx
+        .select()
+        .from(payslip)
+        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, subsetIds)))
+        .for('update');
+      for (const sl of existing) {
+        versionByEmp.set(sl.employmentId, sl.version);
+        const st = (sl.statutory ?? {}) as Record<string, number>;
+        beforeByEmp.set(sl.employmentId, {
+          grossPay: sl.grossPay, netPay: sl.netPay, totalDeductions: sl.totalDeductions,
+          employerCost: sl.employerCost, statutory: sl.statutory, version: sl.version,
+        });
+        oldTotals.gross += Number(sl.grossPay);
+        oldTotals.net += Number(sl.netPay);
+        oldTotals.deductions += Number(sl.totalDeductions);
+        oldTotals.employerCost += Number(sl.employerCost);
+        oldTotals.epfEmployee += Number(st.epfEmployee ?? 0);
+        oldTotals.epfEmployer += Number(st.epfEmployer ?? 0);
+        oldTotals.socsoEmployee += Number(st.socsoEmployee ?? 0);
+        oldTotals.socsoEmployer += Number(st.socsoEmployer ?? 0);
+        oldTotals.eisEmployee += Number(st.eisEmployee ?? 0);
+        oldTotals.eisEmployer += Number(st.eisEmployer ?? 0);
+        oldTotals.pcb += Number(st.pcb ?? 0);
+        oldTotals.hrdfEmployer += Number(st.hrdf ?? 0);
+      }
+      await tx.delete(payslip).where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, subsetIds)));
+    }
+
     // 1e — apply the policy OT caps to a prefilled OT total. Uses the stored rate-bucket decomposition
     // (otBreakdown) when present so eligible-day-type filtering + multiplier re-rating are exact; when only a
     // flat figure exists, the breakdown is the whole total as a workday leg (so maxAmount still bites and a
@@ -2265,6 +2346,8 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
+        // OCC (9bc442bc): a fresh generation is version 1; a selective reprocess bumps the prior version.
+        version: subset ? (versionByEmp.get(e.employmentId) ?? 0) + 1 : 1,
       });
 
       totals.gross += roundedGross;
@@ -2283,6 +2366,74 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     (Object.keys(totals) as (keyof typeof totals)[]).forEach((k) => {
       totals[k] = round2(totals[k]);
     });
+
+    // ── Selective reprocess (9bc442bc, reporter #8): delta-update batch totals/GL, keep status
+    //    processed + headcount unchanged, record OCC + before/after per-employee history + status
+    //    history, and DO NOT re-run loan/claim side-effects (already applied at original processing). ──
+    if (subset) {
+      const stored = (batch.totals ?? {}) as Record<string, number>;
+      const deltaTotals = { ...totals };
+      (Object.keys(deltaTotals) as (keyof typeof deltaTotals)[]).forEach((k) => {
+        deltaTotals[k] = round2((Number(stored[k]) || 0) + totals[k] - oldTotals[k]);
+      });
+      await tx.update(payrollBatch).set({ totals: deltaTotals }).where(eq(payrollBatch.id, p.batchId));
+
+      // Per-employee before/after result snapshots (dedicated audit table — reporter req.).
+      const newSlips = await tx
+        .select()
+        .from(payslip)
+        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, emps.map((e) => e.employmentId))));
+      const actor = subset.actorId ? { type: 'user' as const, id: subset.actorId } : actorOf(ctx);
+      for (const sl of newSlips) {
+        await tx.insert(payrollEmployeeResultHistory).values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId: sl.employmentId,
+          action: 'reprocess',
+          actorType: actor.type,
+          actorId: actor.id ?? null,
+          reason: subset.reason ?? null,
+          versionBefore: versionByEmp.get(sl.employmentId) ?? null,
+          versionAfter: sl.version,
+          before: beforeByEmp.get(sl.employmentId) ?? null,
+          after: {
+            grossPay: sl.grossPay, netPay: sl.netPay, totalDeductions: sl.totalDeductions,
+            employerCost: sl.employerCost, statutory: sl.statutory, version: sl.version,
+          },
+        });
+      }
+      // Status history (status is unchanged processed→processed, but the reprocess IS a status-control
+      // event the reporter wants captured with actor/timestamp/reason + before/after totals).
+      await tx.insert(payrollStatusHistory).values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        action: 'reprocess',
+        fromStatus: 'processed',
+        toStatus: 'processed',
+        actorType: actor.type,
+        actorId: actor.id ?? null,
+        reason: subset.reason ?? null,
+        before: { totals: stored },
+        after: { totals: deltaTotals, reprocessedEmploymentIds: emps.map((e) => e.employmentId) },
+      });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-batch',
+        aggregateId: p.batchId,
+        eventType: 'payroll-batch.selective-reprocessed',
+        actor,
+        payload: {
+          batchId: p.batchId,
+          companyId: batch.companyId,
+          payPeriod: batch.payPeriod,
+          reprocessedCount: emps.length,
+          headcount: batch.employeeCount,
+          reason: subset.reason ?? null,
+          employmentIds: emps.map((e) => e.employmentId),
+        },
+      });
+      return { reprocessed: emps.length, headcount: batch.employeeCount, totals: deltaTotals };
+    }
 
     await tx
       .update(payrollBatch)
@@ -2365,11 +2516,13 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId })
+      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId, companyId: payrollBatch.companyId })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new Error('batch not found');
+    // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
+    await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new Error('Only a processed batch can be closed');
     await tx.update(payrollBatch).set({ status: 'closed' }).where(eq(payrollBatch.id, p.batchId));
     await appendEvent(tx, {
@@ -2437,14 +2590,6 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   if (process.env.PAYROLL_RESET_ENABLED !== 'true') {
     throw new Error('Payroll reset is not enabled.');
   }
-  // Reset is destructive and ADMIN-only (reporter req. #5: "Payroll Administrator or System
-  // Administrator") — a payroll_partner may run payroll but must NOT reset it. Capability check
-  // here as defence in depth under the page/action gates; RLS scopes WHICH batches resolve at all
-  // (a company-scoped admin sees another company's batch as "batch not found").
-  const callerRoles = [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)];
-  if (!callerRoles.some((r) => r === 'hr_admin' || r === 'super_admin')) {
-    throw new Error('Only an administrator can reset a payroll process');
-  }
   const toC = (v: unknown) => Math.round(Number(v) * 100);
   const fromC = (c: number) => (c / 100).toFixed(2);
   return withTenant(ctx, async (tx) => {
@@ -2461,6 +2606,10 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new Error('batch not found');
+    // Granular RBAC (9bc442bc): payroll.rollback (configurable per company/tenant). Defaults to
+    // hr_admin/super_admin — a payroll_partner is refused exactly as before — but now an operator can
+    // re-map it. RLS still scopes WHICH batches resolve (a cross-company batch reads as "batch not found").
+    await assertPayrollPermission(tx, ctx, 'payroll.rollback', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotResettableError();
 
     // ── 1. Unwind the loan-ledger advance (mirror-image of applyLoansForBatch, ADR-0060) ──
@@ -2625,34 +2774,154 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   });
 }
 
+// ─────────────── Granular payroll RBAC (feedback 9bc442bc, reporter expected_function) ───────────────
+export class PayrollPermissionDeniedError extends Error {
+  constructor(public key: string) {
+    super(`You do not have the '${key}' payroll permission.`);
+    this.name = 'PayrollPermissionDeniedError';
+  }
+}
+/** Step-up (OTP) confirmation is required / failed for a high-risk payroll action. */
+export class StepUpRequiredError extends Error {
+  constructor(msg = 'A valid confirmation code is required.') {
+    super(msg);
+    this.name = 'StepUpRequiredError';
+  }
+}
+/** Unlock target is not a closed run (nothing to unlock). */
+export class BatchNotUnlockableError extends Error {
+  constructor() {
+    super('Only a closed payroll process can be unlocked');
+    this.name = 'BatchNotUnlockableError';
+  }
+}
+
+const callerRolesOf = (ctx: SessionContext): string[] => [
+  ...(ctx.roles ?? []),
+  ...(ctx.grants ?? []).map((g) => g.role),
+];
+
 /**
- * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3). Instead of the risky
- * in-place recompute of a subset inside a processed run, this creates a same-month ADJUSTMENT run
- * scoped to exactly the selected employees. The regular run's payslips are left physically untouched
- * (the reporter's core requirement — "without altering or overwriting the results of unselected
- * employees"); the admin then reviews + generates the scoped draft. Monthly statutory reports already
- * aggregate across every run of the month, so the adjustment folds into the filing totals.
- *
- * Guards (server-side state machine — not just the UI): admin-only (a payroll_partner is refused, same
- * RBAC as reset), the SOURCE run must be 'processed' (a draft has nothing to reprocess; a closed run is
- * permanently immutable and its period is closed), a regular run must exist for the month, and the
- * period must be open. Selected ids are intersected against the company's employees so a stale/cross-
- * company id can never widen or under-set the run. Appends the adjustment run's own run-added event AND
- * a summarising selective-reprocess event on the SOURCE batch capturing actor / reason / who was picked.
+ * Resolve a granular payroll permission for the caller (reporter req.: payroll.rollback / unlock /
+ * reprocess.selective / close, configurable per company/tenant). Company-scoped override rows win over
+ * tenant-wide rows, which win over the code defaults (lib/payroll-permissions.ts). Read within the
+ * caller's tx (the grant table is tenant-readable under RLS).
  */
-export async function reprocessSelectedEmployees(
+export async function resolvePayrollPermission(
+  tx: Tx,
   ctx: SessionContext,
-  p: { batchId: string; employmentIds: string[]; reason?: string },
-) {
-  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
-    throw new Error('Multiple payroll runs per month are not enabled.');
+  key: PayrollPermissionKey,
+  companyId?: string | null,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ role: payrollPermissionGrant.role, allowed: payrollPermissionGrant.allowed, companyId: payrollPermissionGrant.companyId })
+    .from(payrollPermissionGrant)
+    .where(
+      and(
+        eq(payrollPermissionGrant.tenantId, ctx.tenantId),
+        eq(payrollPermissionGrant.permissionKey, key),
+        companyId
+          ? or(isNull(payrollPermissionGrant.companyId), eq(payrollPermissionGrant.companyId, companyId))
+          : isNull(payrollPermissionGrant.companyId),
+      ),
+    );
+  return decidePayrollPermission({
+    key,
+    callerRoles: callerRolesOf(ctx),
+    overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
+  });
+}
+
+async function assertPayrollPermission(tx: Tx, ctx: SessionContext, key: PayrollPermissionKey, companyId?: string | null) {
+  if (!(await resolvePayrollPermission(tx, ctx, key, companyId))) throw new PayrollPermissionDeniedError(key);
+}
+
+const stepUpHash = (code: string, userId: string | undefined, batchId: string) =>
+  createHash('sha256').update(`${code}:${userId ?? ''}:${batchId}`).digest('hex');
+
+/**
+ * Issue a one-time step-up (OTP) code for the high-risk Unlock action (reporter req.: confirmation step,
+ * password re-entry or OTP). The code is hashed at rest, single-use, TTL 10 min, and returned to the
+ * caller so the demo can surface it (a production build would deliver it out-of-band). Requires the
+ * payroll.unlock permission — you cannot mint an unlock challenge you could never complete.
+ */
+export async function requestUnlockChallenge(ctx: SessionContext, p: { batchId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    // Invalidate any earlier unconsumed challenge for this user+batch so only the newest code works.
+    await tx
+      .update(payrollStepUpChallenge)
+      .set({ consumedAt: new Date() })
+      .where(
+        and(
+          eq(payrollStepUpChallenge.batchId, p.batchId),
+          eq(payrollStepUpChallenge.userId, ctx.userId ?? ''),
+          eq(payrollStepUpChallenge.purpose, 'unlock'),
+          isNull(payrollStepUpChallenge.consumedAt),
+        ),
+      );
+    await tx.insert(payrollStepUpChallenge).values({
+      tenantId: ctx.tenantId,
+      userId: ctx.userId ?? '',
+      batchId: p.batchId,
+      purpose: 'unlock',
+      codeHash: stepUpHash(code, ctx.userId, p.batchId),
+      expiresAt,
+    });
+    return { code, expiresAt };
+  });
+}
+
+/** Verify + consume a step-up code within the caller's tx. Returns true iff a valid code was consumed. */
+async function verifyStepUp(tx: Tx, ctx: SessionContext, batchId: string, code: string): Promise<boolean> {
+  if (!code) return false;
+  const [challenge] = await tx
+    .select({ id: payrollStepUpChallenge.id, codeHash: payrollStepUpChallenge.codeHash, expiresAt: payrollStepUpChallenge.expiresAt })
+    .from(payrollStepUpChallenge)
+    .where(
+      and(
+        eq(payrollStepUpChallenge.batchId, batchId),
+        eq(payrollStepUpChallenge.userId, ctx.userId ?? ''),
+        eq(payrollStepUpChallenge.purpose, 'unlock'),
+        isNull(payrollStepUpChallenge.consumedAt),
+      ),
+    )
+    .orderBy(desc(payrollStepUpChallenge.createdAt))
+    .limit(1);
+  if (!challenge) return false;
+  if (new Date(challenge.expiresAt).getTime() < Date.now()) return false;
+  if (challenge.codeHash !== stepUpHash(code, ctx.userId, batchId)) return false;
+  await tx.update(payrollStepUpChallenge).set({ consumedAt: new Date() }).where(eq(payrollStepUpChallenge.id, challenge.id));
+  return true;
+}
+
+/**
+ * Unlock a CLOSED payroll run back to PROCESSED (feedback 9bc442bc, reporter ask #2). This is the
+ * controlled, auditable reversal of the 0011 closed-immutability freeze:
+ *   • gated on the granular payroll.unlock permission (super_admin by default, per-company configurable);
+ *   • a step-up OTP (requestUnlockChallenge) must be confirmed — the reporter's password-re-entry/OTP ask;
+ *   • WARNS when the run's payment summary was already exported and/or statutory returns were already
+ *     recorded for the month (EPF/SOCSO/EIS/LHDN), so the operator knows an amended filing may be needed;
+ *   • flips status via a transaction-local escape hatch the 0011 trigger honours ONLY for this batch id;
+ *   • reopens the parent pay_period (it was cascaded closed) so a correction re-run is possible;
+ *   • records a payroll_status_history row (before/after + reason + warnings) and appends domain events.
+ * Gated behind PAYROLL_UNLOCK_ENABLED so an environment can keep Closed permanently frozen if it prefers
+ * the same-month adjustment-run correction path instead.
+ */
+export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: string; reason?: string; code: string }) {
+  if (process.env.PAYROLL_UNLOCK_ENABLED !== 'true') {
+    throw new Error('Payroll unlock is not enabled.');
   }
-  const callerRoles = [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)];
-  if (!callerRoles.some((r) => r === 'hr_admin' || r === 'super_admin')) {
-    throw new Error('Only an administrator can reprocess payroll');
-  }
-  const requested = [...new Set(p.employmentIds.filter(Boolean))];
-  if (requested.length === 0) throw new Error('Select at least one employee to reprocess.');
+  const reason = (p.reason ?? '').trim();
+  if (!reason) throw new Error('A reason is required to unlock a closed payroll process.');
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({
@@ -2660,95 +2929,216 @@ export async function reprocessSelectedEmployees(
         companyId: payrollBatch.companyId,
         payPeriod: payrollBatch.payPeriod,
         payPeriodId: payrollBatch.payPeriodId,
-        batchDate: payrollBatch.batchDate,
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new Error('batch not found');
-    // Processed-only: reuse the reset guard's error so the action can localise it the same way.
-    if (batch.status !== 'processed') throw new BatchNotResettableError();
+    await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
+    if (batch.status !== 'closed') throw new BatchNotUnlockableError();
+    if (!(await verifyStepUp(tx, ctx, p.batchId, p.code))) {
+      throw new StepUpRequiredError('The confirmation code is invalid or expired — request a new one.');
+    }
 
+    // Warning flags (reporter req.: warn if payment disbursed or statutory submission filed).
+    const [{ n: paymentExports } = { n: 0 }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(domainEvent)
+      .where(and(eq(domainEvent.aggregateId, p.batchId), eq(domainEvent.eventType, 'payroll-batch.payment-summary.exported')));
+    const statReports = await tx
+      .select({ id: statutoryReport.id })
+      .from(statutoryReport)
+      .where(and(eq(statutoryReport.companyId, batch.companyId), eq(statutoryReport.periodKey, batch.payPeriod)));
+    const warnings = {
+      paymentDisbursed: Number(paymentExports) > 0,
+      statutoryFiled: statReports.length > 0,
+      statutoryReportCount: statReports.length,
+    };
+
+    // Flip status via the 0011 escape hatch (transaction-local; cleared at COMMIT — see migration 0163).
+    await tx.execute(sql`select set_config('app.unlock_batch', ${p.batchId}, true)`);
+    await tx.update(payrollBatch).set({ status: 'processed' }).where(eq(payrollBatch.id, p.batchId));
+
+    // Reopen the parent pay_period (closeBatch cascaded it closed once all runs closed).
     const [period] = await tx
-      .select({ id: payPeriod.id, status: payPeriod.status })
+      .select({ status: payPeriod.status })
       .from(payPeriod)
       .where(eq(payPeriod.id, batch.payPeriodId))
       .limit(1);
-    if (!period) throw new Error('No pay period for this month — create the regular run first.');
-    if (period.status === 'closed') throw new Error('This pay period is closed.');
-    const runs = await tx
-      .select({ runSeq: payrollBatch.runSeq, runType: payrollBatch.runType })
-      .from(payrollBatch)
-      .where(eq(payrollBatch.payPeriodId, period.id));
-    if (!runs.some((r) => r.runType === 'regular')) {
-      throw new Error('Create the regular run for this month before reprocessing.');
+    const reopenedPeriod = period?.status === 'closed';
+    if (reopenedPeriod) {
+      await tx.update(payPeriod).set({ status: 'open' }).where(eq(payPeriod.id, batch.payPeriodId));
     }
 
-    // Cross-company membership guard (same intersection createRunAction/updateBatchScope apply).
-    const companyEmps = await tx
-      .select({ id: employment.id })
-      .from(employment)
-      .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, requested)));
-    const valid = new Set(companyEmps.map((e) => e.id));
-    const employmentIds = requested.filter((id) => valid.has(id));
-    if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
-
-    const nextSeq = Math.max(...runs.map((r) => r.runSeq)) + 1;
-    const scope = normalizeScope({ employmentIds });
-    const batchDate = batch.batchDate ?? `${batch.payPeriod}-28`;
-    const [row] = await tx
-      .insert(payrollBatch)
-      .values({
-        tenantId: ctx.tenantId,
-        companyId: batch.companyId,
-        payPeriodId: period.id,
-        runSeq: nextSeq,
-        runType: 'adjustment',
-        payPeriod: batch.payPeriod,
-        batchDate,
-        status: 'draft',
-        scope,
-        remarks: 'Selective reprocess',
-      })
-      .returning({ id: payrollBatch.id });
-
-    // Consistency with createAdditionalRun so the adjustment run is indistinguishable in the log.
-    await appendEvent(tx, {
+    const actor = actorOf(ctx);
+    await tx.insert(payrollStatusHistory).values({
       tenantId: ctx.tenantId,
-      aggregateType: 'payroll-batch',
-      aggregateId: row.id,
-      eventType: 'payroll-batch.run-added',
-      actor: actorOf(ctx),
-      payload: {
-        companyId: batch.companyId,
-        payPeriod: batch.payPeriod,
-        payPeriodId: period.id,
-        runSeq: nextSeq,
-        runType: 'adjustment',
-        paymentDate: batchDate,
-        remarks: 'Selective reprocess',
-        scope,
-        sourceBatchId: p.batchId,
-      },
+      batchId: p.batchId,
+      action: 'unlock',
+      fromStatus: 'closed',
+      toStatus: 'processed',
+      actorType: actor.type,
+      actorId: actor.id ?? null,
+      reason,
+      before: { status: 'closed', periodReopened: reopenedPeriod },
+      after: { status: 'processed', warnings },
     });
-    // Summarising event on the SOURCE run (reporter req. #4: who / when / why / who was picked).
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
-      eventType: 'payroll-batch.selective-reprocess-initiated',
-      actor: actorOf(ctx),
-      payload: {
-        sourceBatchId: p.batchId,
-        adjustmentBatchId: row.id,
-        companyId: batch.companyId,
-        payPeriod: batch.payPeriod,
-        employmentIds,
-        employeeCount: employmentIds.length,
-        reason: p.reason ?? null,
-      },
+      eventType: 'payroll-batch.unlocked',
+      actor,
+      payload: { companyId: batch.companyId, payPeriod: batch.payPeriod, reason, warnings, reopenedPeriod },
     });
-    return { batchId: row.id, employeeCount: employmentIds.length };
+    if (reopenedPeriod) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'pay-period',
+        aggregateId: batch.payPeriodId,
+        eventType: 'pay-period.reopened',
+        actor,
+        payload: { batchId: p.batchId, reason },
+      });
+    }
+    return { warnings, reopenedPeriod };
+  });
+}
+
+/**
+ * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3 + #8) — QUEUE-BASED.
+ *
+ * The public entry: validate + permission-check + enqueue an idempotent job, then run it. Enqueue creates
+ * ONE `payroll_reprocess_job` row keyed by an idempotency key (a double-clicked/retried submit reuses the
+ * same job instead of spawning a duplicate run — the reporter's double-submit guard), whose status the UI
+ * polls (getReprocessJob + the /api/payroll/reprocess-job route). Running the job performs a TRUE in-place
+ * recompute of exactly the selected employees via generatePayslips' reprocessSubset path: their payslips
+ * are recomputed + version-bumped (OCC), everyone else's stay physically untouched, and batch totals/GL
+ * are updated BY DELTA — the reporter's ask #8, not a scope substitution.
+ */
+export async function reprocessSelectedEmployees(
+  ctx: SessionContext,
+  p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
+) {
+  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
+    throw new Error('Multiple payroll runs per month are not enabled.');
+  }
+  const requested = [...new Set(p.employmentIds.filter(Boolean))].sort();
+  if (requested.length === 0) throw new Error('Select at least one employee to reprocess.');
+
+  // Phase 1 — validate + permission + enqueue (idempotent). Its own tx so the job row commits before the
+  // recompute runs (so a poll can observe 'running', and a crash mid-recompute leaves a re-runnable job).
+  const enq = await withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId, employeeCount: payrollBatch.employeeCount })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId);
+    if (batch.status !== 'processed') throw new BatchNotResettableError();
+    const [period] = await tx
+      .select({ status: payPeriod.status })
+      .from(payPeriod)
+      .where(eq(payPeriod.id, batch.payPeriodId))
+      .limit(1);
+    if (period?.status === 'closed') throw new Error('This pay period is closed.');
+
+    // Cross-company membership intersection (a stale/cross-company id can never widen the run).
+    const companyEmps = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, requested)));
+    const employmentIds = requested.filter((id) => companyEmps.some((e) => e.id === id));
+    if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
+
+    // Idempotency: default key binds batch + exact selection + reason so an identical resubmit dedupes,
+    // while a genuinely different request (different pick) enqueues its own job.
+    const idempotencyKey =
+      p.idempotencyKey?.trim() ||
+      createHash('sha256').update(`${p.batchId}:${employmentIds.join(',')}:${p.reason ?? ''}`).digest('hex');
+
+    // ON CONFLICT DO NOTHING → a duplicate submit reuses the existing job row.
+    await tx
+      .insert(payrollReprocessJob)
+      .values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        idempotencyKey,
+        status: 'queued',
+        employmentIds,
+        reason: p.reason ?? null,
+        requestedBy: ctx.userId ?? null,
+      })
+      .onConflictDoNothing({ target: [payrollReprocessJob.tenantId, payrollReprocessJob.idempotencyKey] });
+    const [job] = await tx
+      .select()
+      .from(payrollReprocessJob)
+      .where(and(eq(payrollReprocessJob.tenantId, ctx.tenantId), eq(payrollReprocessJob.idempotencyKey, idempotencyKey)))
+      .limit(1);
+    return { job, employmentIds };
+  });
+
+  const job = enq.job;
+  // Idempotent replay: a completed job returns its stored result without re-running (double-submit safety).
+  if (job.status === 'completed') {
+    return { jobId: job.id, status: 'completed' as const, ...(job.result as Record<string, unknown> | null) };
+  }
+  if (job.status === 'running') {
+    return { jobId: job.id, status: 'running' as const };
+  }
+
+  // Phase 2 — atomically CLAIM the job (queued→running) so a concurrent duplicate request can never
+  // run the recompute twice; if the claim updates no row, another worker already took it → don't re-run.
+  const claimed = await withTenant(ctx, (tx) =>
+    tx
+      .update(payrollReprocessJob)
+      .set({ status: 'running', updatedAt: new Date() })
+      .where(and(eq(payrollReprocessJob.id, job.id), eq(payrollReprocessJob.status, 'queued')))
+      .returning({ id: payrollReprocessJob.id }),
+  );
+  if (claimed.length === 0) {
+    return { jobId: job.id, status: 'running' as const };
+  }
+  try {
+    const result = await generatePayslips(ctx, {
+      batchId: p.batchId,
+      reprocessSubset: { employmentIds: enq.employmentIds, reason: p.reason, actorId: ctx.userId },
+    });
+    await withTenant(ctx, (tx) =>
+      tx
+        .update(payrollReprocessJob)
+        .set({ status: 'completed', result: result as Record<string, unknown>, updatedAt: new Date() })
+        .where(eq(payrollReprocessJob.id, job.id)),
+    );
+    return { jobId: job.id, status: 'completed' as const, ...result };
+  } catch (e) {
+    await withTenant(ctx, (tx) =>
+      tx
+        .update(payrollReprocessJob)
+        .set({ status: 'failed', error: (e as Error).message, updatedAt: new Date() })
+        .where(eq(payrollReprocessJob.id, job.id)),
+    );
+    throw e;
+  }
+}
+
+/** Job-status read for the polling endpoint (reporter req.: a job-status endpoint for the UI). */
+export async function getReprocessJob(ctx: SessionContext, jobId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [job] = await tx
+      .select({
+        id: payrollReprocessJob.id,
+        batchId: payrollReprocessJob.batchId,
+        status: payrollReprocessJob.status,
+        result: payrollReprocessJob.result,
+        error: payrollReprocessJob.error,
+        updatedAt: payrollReprocessJob.updatedAt,
+      })
+      .from(payrollReprocessJob)
+      .where(eq(payrollReprocessJob.id, jobId))
+      .limit(1);
+    return job ?? null;
   });
 }
 

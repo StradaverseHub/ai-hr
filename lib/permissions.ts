@@ -260,6 +260,14 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'requireAdmin',
     routes: ['/admin/pay-components'],
   },
+  {
+    // Granular payroll permission overrides (feedback 9bc442bc) — configurable per company/tenant RBAC.
+    screenKey: 'payrollPermissions',
+    href: '/admin/payroll-permissions',
+    labelKey: 'admin.users.screen.payrollPermissions',
+    guard: 'requireAdmin',
+    routes: ['/admin/payroll-permissions'],
+  },
   // ── Analytics / audit / governance (requireAdmin/scopedAdmin) ──
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },
   { screenKey: 'auditTrail', href: '/admin/audit', labelKey: 'nav.auditTrail', guard: 'requireAdmin', routes: ['/admin/audit'] },

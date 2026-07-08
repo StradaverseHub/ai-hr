@@ -29,6 +29,9 @@ set_flag NOTIFICATIONS_ENABLED true
 set_flag MULTI_CYCLE_PAYROLL_ENABLED true
 set_flag TYPED_PAY_COMPONENTS_ENABLED true
 # a03b2d9b / 9bc442bc — Payroll Reset (revert Processed→Draft) + selective per-employee reprocessing.
-# Admin-only, processed-only; Closed stays permanently immutable (0011 triggers untouched).
+# Admin-only, processed-only.
 set_flag PAYROLL_RESET_ENABLED true
+# 9bc442bc — Unlock a CLOSED run back to Processed (payroll.unlock permission, step-up OTP + reason,
+# payment/statutory warnings, full status-history audit). Reverses the 0011 freeze via a scoped escape hatch.
+set_flag PAYROLL_UNLOCK_ENABLED true
 echo "✅ Flags set. Apply with:  sudo systemctl restart aihr"

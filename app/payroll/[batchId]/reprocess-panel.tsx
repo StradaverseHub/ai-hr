@@ -23,6 +23,12 @@ export function ReprocessPanel({
 }) {
   const t = useTranslations('payroll.batch');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Idempotency token (feedback 9bc442bc, reporter req.): posted with the submit so a double-click / retry
+  // reuses the SAME reprocess job server-side instead of enqueuing a duplicate. Stable per mount; a fresh
+  // token is minted on the next render after the page reloads on success.
+  const [idempotencyKey] = useState(() =>
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${batchId}-${Date.now()}`,
+  );
   const total = employees.length;
 
   const toggle = (id: string) => {
@@ -39,6 +45,7 @@ export function ReprocessPanel({
   return (
     <form action={reprocessSelectedAction} className="space-y-3">
       <input type="hidden" name="batchId" value={batchId} />
+      <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="text-xs font-medium text-foreground">{t('reprocessSummary', { n: selected.size, total })}</span>
         <button type="button" onClick={selectAll} className="text-xs font-medium text-primary hover:underline">

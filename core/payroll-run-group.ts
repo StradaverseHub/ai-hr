@@ -216,7 +216,10 @@ export async function runMultiCompanyPayroll(
               paymentDate: input.paymentDate || undefined,
             });
 
-      const { payslips } = await generatePayslips(ctx, { batchId: created.batchId });
+      // Full draft→processed generation (never the reprocessSubset path), so `payslips` is present;
+      // fall back to 0 to satisfy the union return type of generatePayslips.
+      const genResult = await generatePayslips(ctx, { batchId: created.batchId });
+      const payslips = 'payslips' in genResult && typeof genResult.payslips === 'number' ? genResult.payslips : 0;
       perCompany.push({
         companyId,
         companyName,

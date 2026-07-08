@@ -4,10 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
-import { isAdmin } from '@/lib/authz';
 import {
   BatchNotDraftError,
   BatchNotResettableError,
+  BatchNotUnlockableError,
+  PayrollPermissionDeniedError,
+  StepUpRequiredError,
   closeBatch,
   deleteDraftBatch,
   generatePayslips,
@@ -16,8 +18,10 @@ import {
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
   reprocessSelectedEmployees,
+  requestUnlockChallenge,
   resetProcessedBatch,
   setPayrollInput,
+  unlockClosedBatch,
 } from '@/core/payroll';
 import { prefillClaimsForBatch } from '@/core/claims';
 import { prefillLoansForBatch } from '@/core/loans';
@@ -255,13 +259,15 @@ export async function resetAction(formData: FormData) {
   const batchId = String(formData.get('batchId'));
   const reason = String(formData.get('reason') ?? '').trim();
   const t = await getTranslations('payroll.batch');
-  if (!isAdmin(s)) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('resetAdminOnly'))}`);
-  }
   try {
     await resetProcessedBatch(s, { batchId, reason: reason || undefined });
   } catch (e) {
-    const msg = e instanceof BatchNotResettableError ? t('resetOnlyProcessed') : (e as Error).message;
+    const msg =
+      e instanceof PayrollPermissionDeniedError
+        ? t('resetAdminOnly')
+        : e instanceof BatchNotResettableError
+          ? t('resetOnlyProcessed')
+          : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);
@@ -270,38 +276,100 @@ export async function resetAction(formData: FormData) {
 }
 
 /**
- * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3) — create a same-month
- * adjustment run scoped to the ticked employees, leaving everyone else's processed payslips untouched.
- * Explicit RBAC + processed-only + membership intersection live in reprocessSelectedEmployees (the
- * service); the session carries the real actor. On success we land on the NEW draft run so the admin
- * reviews + generates it (?from=process presents it as the wizard's terminal step). Copy localised here.
+ * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3 + #8) — queue an idempotent
+ * reprocess job that recomputes ONLY the ticked employees IN PLACE (version-bumped payslips, delta
+ * totals), leaving everyone else physically untouched. Granular RBAC (payroll.reprocess.selective),
+ * processed-only, membership intersection, the queue/idempotency guard and the delta recompute all live
+ * in reprocessSelectedEmployees (the service); the session carries the real actor. Stays on the SAME
+ * processed run (in-place), with an "N of M reprocessed" summary. Copy localised here.
  */
 export async function reprocessSelectedAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
   const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
   const reason = String(formData.get('reason') ?? '').trim();
+  const idempotencyKey = String(formData.get('idempotencyKey') ?? '').trim();
   const t = await getTranslations('payroll.batch');
-  if (!isAdmin(s)) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('reprocessAdminOnly'))}`);
-  }
   if (employmentIds.length === 0) {
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('reprocessNoneSelected'))}`);
   }
-  let newBatchId = '';
+  let reprocessed = employmentIds.length;
+  let headcount = employmentIds.length;
   try {
-    ({ batchId: newBatchId } = await reprocessSelectedEmployees(s, {
+    const r = await reprocessSelectedEmployees(s, {
       batchId,
       employmentIds,
       reason: reason || undefined,
-    }));
+      idempotencyKey: idempotencyKey || undefined,
+    });
+    if ('reprocessed' in r && typeof r.reprocessed === 'number') reprocessed = r.reprocessed;
+    if ('headcount' in r && typeof r.headcount === 'number') headcount = r.headcount;
   } catch (e) {
-    const msg = e instanceof BatchNotResettableError ? t('reprocessNotProcessed') : (e as Error).message;
+    const msg =
+      e instanceof PayrollPermissionDeniedError
+        ? t('reprocessAdminOnly')
+        : e instanceof BatchNotResettableError
+          ? t('reprocessNotProcessed')
+          : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);
-  redirect(`/payroll/${newBatchId}?from=process&toast=${encodeURIComponent(t('reprocessDone', { n: employmentIds.length }))}`);
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('reprocessDone', { n: reprocessed, total: headcount }))}`);
+}
+
+/**
+ * Step-up (OTP) request for the high-risk Unlock action (feedback 9bc442bc, reporter ask #2). Issues a
+ * single-use confirmation code the admin must re-enter to unlock a closed run. In this demo the code is
+ * surfaced back on the page (a production build delivers it out-of-band). payroll.unlock permission +
+ * issuance live in requestUnlockChallenge (the service).
+ */
+export async function requestUnlockOtpAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const t = await getTranslations('payroll.batch');
+  let code = '';
+  try {
+    ({ code } = await requestUnlockChallenge(s, { batchId }));
+  } catch (e) {
+    const msg = e instanceof PayrollPermissionDeniedError ? t('unlockPermissionDenied') : (e as Error).message;
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(`/payroll/${batchId}?otp=${encodeURIComponent(code)}`);
+}
+
+/**
+ * Unlock a CLOSED run back to Processed (feedback 9bc442bc, reporter ask #2). Requires the step-up code
+ * + a reason. Warnings (payment disbursed / statutory filed) are computed + audited in the service; the
+ * success toast surfaces them so the operator sees them immediately. All authority (payroll.unlock,
+ * closed-only, OTP verification, escape-hatch flip, period reopen, audit) lives in unlockClosedBatch.
+ */
+export async function unlockAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const reason = String(formData.get('reason') ?? '').trim();
+  const code = String(formData.get('code') ?? '').trim();
+  const t = await getTranslations('payroll.batch');
+  let warned = false;
+  try {
+    const r = await unlockClosedBatch(s, { batchId, reason: reason || undefined, code });
+    warned = r.warnings.paymentDisbursed || r.warnings.statutoryFiled;
+  } catch (e) {
+    const msg =
+      e instanceof PayrollPermissionDeniedError
+        ? t('unlockPermissionDenied')
+        : e instanceof StepUpRequiredError
+          ? t('unlockOtpInvalid')
+          : e instanceof BatchNotUnlockableError
+            ? t('unlockNotClosed')
+            : (e as Error).message;
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath(`/payroll/${batchId}`);
+  revalidatePath('/payroll');
+  const toast = warned ? t('unlockDoneWarned') : t('unlockDone');
+  redirect(`/payroll/${batchId}?toast=${encodeURIComponent(toast)}`);
 }
 
 export async function closeAction(formData: FormData) {
