@@ -502,6 +502,7 @@
         "family": "Family",
         "job": "Job",
         "payroll": "Payroll",
+        "leave": "Leave Information",
         "documents": "Documents",
         "others": "Others",
         "empty": "Nothing to show here."

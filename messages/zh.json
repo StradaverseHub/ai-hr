@@ -502,6 +502,7 @@
         "family": "家庭",
         "job": "职务",
         "payroll": "薪酬",
+        "leave": "休假信息",
         "documents": "文件",
         "others": "其他",
         "empty": "此处暂无内容。"

@@ -15,7 +15,7 @@
 import { useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'payroll' | 'documents' | 'others';
+export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'payroll' | 'leave' | 'documents' | 'others';
 
 export function PersonnelTabs({
   tabs,

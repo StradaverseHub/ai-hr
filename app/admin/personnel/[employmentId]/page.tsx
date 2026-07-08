@@ -189,11 +189,12 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
     { key: 'payroll', label: t('tabs.payroll') },
+    { key: 'leave', label: t('tabs.leave') },
     { key: 'documents', label: t('tabs.documents') },
     { key: 'others', label: t('tabs.others') },
   ];
@@ -1357,10 +1358,13 @@ export default async function EmployeePage({
         {cp38Card}
         {encashmentCard}
         {payrollPolicyCard}
-        {leaveBalanceCard}
         {compAndStatutoryCards}
       </>
     ),
+    // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
+    // breakdown drill-down — relocated out of Payroll into a dedicated leave-management tab. Same
+    // card, same data (loaded once for the page), just a different tab; no leave/payroll logic moved.
+    leave: leaveBalanceCard,
     documents: documentsPanel,
     others: (
       <>
