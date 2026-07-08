@@ -65,6 +65,13 @@ const cleanRemarks = (v: string | null | undefined): string | null => {
   return s === '' ? null : s;
 };
 
+/** Normalise the free-text Processing Behaviour note. Collapse leading/trailing whitespace but PRESERVE
+ *  internal newlines (it is a multi-line description field, unlike the single-line remarks label). */
+const cleanDescription = (v: string | null | undefined): string | null => {
+  const s = (v ?? '').replace(/[ \t]+/g, ' ').replace(/\r\n/g, '\n').trim();
+  return s === '' ? null : s;
+};
+
 const isUniqueViolation = (e: unknown): boolean => {
   let cur = e as { code?: string; cause?: unknown } | null | undefined;
   for (let i = 0; cur && i < 4; i++) {
@@ -132,6 +139,7 @@ export type PayrollCycleRow = {
   name: string;
   runType: PayrollCycleRunType;
   remarks: string | null;
+  description: string | null;
   sortOrder: number;
   archivedAt: Date | null;
 };
@@ -156,6 +164,7 @@ export function listPayrollCycles(
         name: r.name,
         runType: r.runType as PayrollCycleRunType,
         remarks: r.remarks,
+        description: r.description,
         sortOrder: r.sortOrder,
         archivedAt: r.archivedAt,
       }),
@@ -178,6 +187,7 @@ export function getActivePayrollCycle(ctx: SessionContext, id: string, companyId
       name: row.name,
       runType: row.runType as PayrollCycleRunType,
       remarks: row.remarks,
+      description: row.description,
     };
   });
 }
@@ -204,6 +214,7 @@ export type UpsertPayrollCycleInput = {
   name: string;
   runType: string;
   remarks?: string | null;
+  description?: string | null;
   sortOrder?: number;
 };
 
@@ -217,6 +228,7 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
   const name = cleanName(p.name);
   const runType = cleanRunType(p.runType);
   const remarks = cleanRemarks(p.remarks);
+  const description = cleanDescription(p.description);
   const sortOrder = Number.isFinite(p.sortOrder) ? Number(p.sortOrder) : 0;
   return withTenant(ctx, async (tx) => {
     if (p.id) {
@@ -227,7 +239,7 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
       }
       await tx
         .update(payrollCycle)
-        .set({ name, runType, remarks, sortOrder })
+        .set({ name, runType, remarks, description, sortOrder })
         .where(eq(payrollCycle.id, p.id))
         .catch((e) => {
           if (isUniqueViolation(e)) throw new PayrollCycleDuplicateNameError();
@@ -239,7 +251,12 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
         aggregateId: p.id,
         eventType: 'payroll-cycle.updated',
         actor: actorOf(ctx),
-        payload: { before: before ? { name: before.name, runType: before.runType, remarks: before.remarks, sortOrder: before.sortOrder } : null, after: { name, runType, remarks, sortOrder } },
+        payload: {
+          before: before
+            ? { name: before.name, runType: before.runType, remarks: before.remarks, description: before.description, sortOrder: before.sortOrder }
+            : null,
+          after: { name, runType, remarks, description, sortOrder },
+        },
       });
       return { id: p.id };
     }
@@ -249,7 +266,7 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
     }
     const [row] = await tx
       .insert(payrollCycle)
-      .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, runType, remarks, sortOrder })
+      .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, runType, remarks, description, sortOrder })
       .returning({ id: payrollCycle.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new PayrollCycleDuplicateNameError();
@@ -261,7 +278,7 @@ export async function upsertPayrollCycle(ctx: SessionContext, p: UpsertPayrollCy
       aggregateId: row.id,
       eventType: 'payroll-cycle.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name, runType, remarks, sortOrder },
+      payload: { companyId: p.companyId, name, runType, remarks, description, sortOrder },
     });
     return { id: row.id };
   });
@@ -325,5 +342,112 @@ export async function deletePayrollCycle(ctx: SessionContext, id: string) {
       payload: {},
     });
     return { id };
+  });
+}
+
+/** The outcome for one target company in a copy-to-companies operation. */
+export type CopyCycleOutcome = 'created' | 'skipped_duplicate' | 'skipped_regular_conflict';
+export type CopyCycleResult = { companyId: string; outcome: CopyCycleOutcome; id?: string };
+
+/**
+ * Copy an existing cycle's DEFINITION (name, runType, remarks, description, sortOrder) into one or more
+ * OTHER companies in a single transaction — the ticket's "create once, assign to many companies" workflow.
+ * Each target is handled independently and its outcome recorded (never throws mid-loop — mirrors the
+ * per-company continue discipline of runMultiCompanyPayroll):
+ *   - `skipped_duplicate`         — a LIVE cycle with the same (case-insensitive) name already exists there;
+ *   - `skipped_regular_conflict`  — the source is a regular cycle and the target already has an active one;
+ *   - `created`                   — a clone row was inserted (and a `payroll-cycle.created` event appended).
+ * A single `payroll-cycle.copied` summary event is appended on the SOURCE row recording every target/outcome.
+ * RLS (WITH CHECK can_admin_payroll_for(company_id)) is the fail-closed backstop for a target the actor
+ * cannot administer — the server action additionally pre-filters targets to the admin's scoped companies.
+ */
+export async function copyPayrollCycleToCompanies(
+  ctx: SessionContext,
+  p: { id: string; companyIds: string[] },
+): Promise<{ results: CopyCycleResult[] }> {
+  return withTenant(ctx, async (tx) => {
+    const [source] = await tx.select().from(payrollCycle).where(eq(payrollCycle.id, p.id));
+    if (!source) throw new Error('Payroll cycle not found');
+
+    // De-dupe targets and drop the source's own company (nothing to copy onto itself).
+    const targets = [...new Set(p.companyIds)].filter((cid) => cid && cid !== source.companyId);
+    const results: CopyCycleResult[] = [];
+
+    for (const companyId of targets) {
+      // Pre-check: a live duplicate name in the target short-circuits (the DB partial-unique index is the
+      // hard backstop, caught below via isUniqueViolation should two calls race).
+      const [dup] = await tx
+        .select({ id: payrollCycle.id })
+        .from(payrollCycle)
+        .where(
+          and(
+            eq(payrollCycle.companyId, companyId),
+            sql`lower(${payrollCycle.name}) = lower(${source.name})`,
+            sql`${payrollCycle.archivedAt} IS NULL`,
+          ),
+        );
+      if (dup) {
+        results.push({ companyId, outcome: 'skipped_duplicate' });
+        continue;
+      }
+      // A regular clone must be the ONLY active regular in the target — otherwise it would trip the
+      // one-regular invariant. Record the skip and continue rather than aborting the whole copy.
+      if (source.runType === 'regular' && (await activeRegularCount(tx, companyId)) > 0) {
+        results.push({ companyId, outcome: 'skipped_regular_conflict' });
+        continue;
+      }
+      let insertedId: string | null = null;
+      try {
+        const [row] = await tx
+          .insert(payrollCycle)
+          .values({
+            tenantId: ctx.tenantId,
+            companyId,
+            name: source.name,
+            runType: source.runType,
+            remarks: source.remarks,
+            description: source.description,
+            sortOrder: source.sortOrder,
+          })
+          .returning({ id: payrollCycle.id });
+        insertedId = row.id;
+      } catch (e) {
+        // A concurrent insert of the same name races us to the unique index — treat as a duplicate skip.
+        if (isUniqueViolation(e)) {
+          results.push({ companyId, outcome: 'skipped_duplicate' });
+          continue;
+        }
+        throw e;
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-cycle',
+        aggregateId: insertedId,
+        eventType: 'payroll-cycle.created',
+        actor: actorOf(ctx),
+        payload: {
+          companyId,
+          name: source.name,
+          runType: source.runType,
+          remarks: source.remarks,
+          description: source.description,
+          sortOrder: source.sortOrder,
+          copiedFromCycleId: source.id,
+        },
+      });
+      results.push({ companyId, outcome: 'created', id: insertedId });
+    }
+
+    // One mutation-level summary event on the source (system-labels precedent — carries every target).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-cycle',
+      aggregateId: source.id,
+      eventType: 'payroll-cycle.copied',
+      actor: actorOf(ctx),
+      payload: { targets: results.map((r) => ({ companyId: r.companyId, outcome: r.outcome, newCycleId: r.id ?? null })) },
+    });
+
+    return { results };
   });
 }

@@ -49,6 +49,7 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
+import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
 
@@ -2086,6 +2087,9 @@ export type AuditFilters = {
   /** Restrict to a fixed SET of aggregate types (e.g. the leave module's aggregates for the leave
    *  Audit tab). Applied alongside `aggregateType` — pass one or the other, not both. */
   aggregateTypes?: string[];
+  /** Restrict to a single aggregate INSTANCE (e.g. one payroll batch's lifecycle events for a per-run
+   *  History card). AND-ed onto the other filters; read-only, no event appended. */
+  aggregateId?: string;
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
   /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
@@ -2129,6 +2133,7 @@ export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<
           f.aggregateTypes && f.aggregateTypes.length
             ? inArray(domainEvent.aggregateType, f.aggregateTypes)
             : undefined,
+          f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
           f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
           // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
           // caller's allowlist + this bound param double-guard against injection.
@@ -2381,7 +2386,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
   return withTenant(ctx, async (tx) => {
     if (employmentIds.length === 0) return [];
-    return tx
+    const rows = await tx
       .select({
         id: payslip.id,
         company: company.legalName,
@@ -2393,12 +2398,23 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
         deductions: payslip.totalDeductions,
         net: payslip.netPay,
         statutory: payslip.statutory,
+        // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
+        // the admin-only company_payroll_config which the employee session cannot read).
+        releasedAt: payrollBatch.releasedAt,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(inArray(payslip.employmentId, employmentIds))
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+    // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
+    // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
+    // they stay visible. The ESS payslip section filters on `released`.
+    const now = Date.now();
+    return rows.map((r) => ({
+      ...r,
+      released: r.status === 'closed' && (r.releasedAt == null || r.releasedAt.getTime() <= now),
+    }));
   });
 }
 

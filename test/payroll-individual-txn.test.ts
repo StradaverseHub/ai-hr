@@ -27,10 +27,13 @@ import {
   AmountNotPositiveError,
   CompanyMismatchError,
   EmploymentNotInBatchScopeError,
+  EmptyEmployeeSelectionError,
+  DuplicateTxnRowError,
   TXN_KINDS,
   TXN_UNITS,
 } from '../core/payroll-individual-txn';
 import { BatchNotDraftError, createAdditionalRun } from '../core/payroll';
+import { exportIndividualTxnsCsv } from '../core/payroll-view';
 import {
   adminCtx,
   closeAll,
@@ -321,7 +324,7 @@ describe('1.2.2 Individual Transaction', () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-05');
     const { ids } = await createIndividualTxnsBulk(a, {
       batchId,
-      employmentId,
+      employmentIds: [employmentId],
       rows: [
         { kind: 'earning', txnDate: '2026-05-05', amount: 100, notes: 'a' },
         { kind: 'deduction', txnDate: '2026-05-10', amount: 50, notes: 'b' },
@@ -338,13 +341,124 @@ describe('1.2.2 Individual Transaction', () => {
     }
   });
 
+  it('multi-employee bulk save: 2 employees × 2 rows ⇒ 4 rows + 4 created events, each subject-scoped', async () => {
+    const a = adminCtx(base);
+    const e1 = await hireEmployee(a, {
+      person: { fullName: 'Multi One', primaryEmail: `m1${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const e2 = await hireEmployee(a, {
+      person: { fullName: 'Multi Two', primaryEmail: `m2${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+
+    const { ids } = await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [e1.employmentId, e2.employmentId],
+      rows: [
+        { kind: 'earning', txnDate: '2026-05-05', amount: 100 },
+        { kind: 'deduction', txnDate: '2026-05-10', amount: 50 },
+      ],
+    });
+    expect(ids).toHaveLength(4); // 2 rows × 2 employees
+
+    const list = await listIndividualTxns(a, { batchId });
+    expect(list).toHaveLength(4);
+    expect(list.filter((r) => r.employmentId === e1.employmentId)).toHaveLength(2);
+    expect(list.filter((r) => r.employmentId === e2.employmentId)).toHaveLength(2);
+
+    // Each created event's subjectEmploymentId names its own row's employee (per-record scoping).
+    const events = await owner.db
+      .select({ id: schema.domainEvent.aggregateId, subj: schema.domainEvent.subjectEmploymentId })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'payroll.individual-txn.created'));
+    const byRow = new Map(list.map((r) => [r.id, r.employmentId]));
+    expect(events).toHaveLength(4);
+    for (const ev of events) expect(ev.subj).toBe(byRow.get(ev.id));
+  });
+
+  it('empty employee selection throws EmptyEmployeeSelectionError, nothing persists', async () => {
+    const { a, batchId } = await hireWithBatch('2026-05');
+    await expect(
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
+    ).rejects.toBeInstanceOf(EmptyEmployeeSelectionError);
+    expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
+  });
+
+  it('multi-employee atomicity: one out-of-scope employee (C4) rolls back ALL — zero rows for either', async () => {
+    const a = adminCtx(base);
+    const included = await hireEmployee(a, {
+      person: { fullName: 'Batch In', primaryEmail: `bi${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const excluded = await hireEmployee(a, {
+      person: { fullName: 'Batch Out', primaryEmail: `bo${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    // The batch scope names ONLY the first employee; the second is out of scope.
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { employmentIds: [included.employmentId] },
+    });
+    await expect(
+      createIndividualTxnsBulk(a, {
+        batchId,
+        employmentIds: [included.employmentId, excluded.employmentId],
+        rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }],
+      }),
+    ).rejects.toBeInstanceOf(EmploymentNotInBatchScopeError);
+    // Even the in-scope employee's row must NOT persist — the whole transaction rolled back.
+    expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
+  });
+
+  it('multi-employee atomicity: one wrong-company employee (C3) rolls back ALL', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch('2026-05');
+    const [c2] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: base.tenantId, legalName: 'Other Co Sdn Bhd' })
+      .returning({ id: schema.company.id });
+    const [d2] = await owner.db
+      .insert(schema.department)
+      .values({ tenantId: base.tenantId, companyId: c2.id, name: 'OpsX' })
+      .returning({ id: schema.department.id });
+    const wrongCo = await hireEmployee(a, {
+      person: { fullName: 'Wrong Co Multi', primaryEmail: `wcm${randomUUID()}@acme.test` },
+      companyId: c2.id,
+      departmentId: d2.id,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await expect(
+      createIndividualTxnsBulk(a, {
+        batchId,
+        employmentIds: [employmentId, wrongCo.employmentId],
+        rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }],
+      }),
+    ).rejects.toBeInstanceOf(CompanyMismatchError);
+    expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
+  });
+
   it('real rollback: a later-row numeric(12,2) overflow persists ZERO rows and ZERO events', async () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-05');
     // amount numeric(12,2) overflows at ≥ 1e10 — the THIRD row throws mid-transaction, AFTER two inserts.
     await expect(
       createIndividualTxnsBulk(a, {
         batchId,
-        employmentId,
+        employmentIds: [employmentId],
         rows: [
           { kind: 'earning', txnDate: '2026-05-01', amount: 100 },
           { kind: 'earning', txnDate: '2026-05-02', amount: 200 },
@@ -367,7 +481,7 @@ describe('1.2.2 Individual Transaction', () => {
     await expect(
       createIndividualTxnsBulk(a, {
         batchId,
-        employmentId,
+        employmentIds: [employmentId],
         rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }],
       }),
     ).rejects.toBeInstanceOf(BatchNotDraftError);
@@ -377,15 +491,15 @@ describe('1.2.2 Individual Transaction', () => {
   it('amount>0 magnitude convention: 0 and negative rejected; a positive-amount deduction accepted', async () => {
     const { a, employmentId, batchId } = await hireWithBatch('2026-05');
     await expect(
-      createIndividualTxnsBulk(a, { batchId, employmentId, rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 0 }] }),
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 0 }] }),
     ).rejects.toBeInstanceOf(AmountNotPositiveError);
     await expect(
-      createIndividualTxnsBulk(a, { batchId, employmentId, rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: -5 }] }),
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: -5 }] }),
     ).rejects.toBeInstanceOf(AmountNotPositiveError);
     // A deduction is a POSITIVE magnitude with kind='deduction' (never a negative amount) — accepted.
     const { ids } = await createIndividualTxnsBulk(a, {
       batchId,
-      employmentId,
+      employmentIds: [employmentId],
       rows: [{ kind: 'deduction', txnDate: '2026-05-10', amount: 120 }],
     });
     expect(ids).toHaveLength(1);
@@ -394,6 +508,48 @@ describe('1.2.2 Individual Transaction', () => {
     expect(Number(list[0].amount)).toBeCloseTo(120, 2);
     // The retained single-row update path enforces the SAME amount>0 rule (both surviving write paths agree).
     await expect(updateIndividualTxn(a, { id: ids[0], amount: 0 })).rejects.toBeInstanceOf(AmountNotPositiveError);
+  });
+
+  it('duplicate-record validation: two byte-identical grid rows are rejected, nothing persists', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch('2026-05');
+    // Same item + date + amount + remarks twice in one submission ⇒ a keying mistake ⇒ whole tx rejected.
+    await expect(
+      createIndividualTxnsBulk(a, {
+        batchId,
+        employmentIds: [employmentId],
+        rows: [
+          { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'bonus' },
+          { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'bonus' },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(DuplicateTxnRowError);
+    expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
+
+    // Rows that differ in amount OR remarks are NOT duplicates — both persist.
+    const { ids } = await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [employmentId],
+      rows: [
+        { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'bonus' },
+        { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'second claim' },
+      ],
+    });
+    expect(ids).toHaveLength(2);
+
+    // The multi-employee cartesian is NOT a duplicate: the same single row for two employees writes two rows.
+    const e2 = await hireEmployee(a, {
+      person: { fullName: 'Dup Two', primaryEmail: `dup2${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { ids: ids2 } = await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [employmentId, e2.employmentId],
+      rows: [{ kind: 'overtime', txnDate: '2026-05-12', amount: 40, notes: 'ot' }],
+    });
+    expect(ids2).toHaveLength(2);
   });
 
   it('company match (C3): employment.companyId != batch.companyId throws CompanyMismatchError, nothing persists', async () => {
@@ -417,7 +573,7 @@ describe('1.2.2 Individual Transaction', () => {
     await expect(
       createIndividualTxnsBulk(a, {
         batchId,
-        employmentId: other.employmentId,
+        employmentIds: [other.employmentId],
         rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 100 }],
       }),
     ).rejects.toBeInstanceOf(CompanyMismatchError);
@@ -448,10 +604,10 @@ describe('1.2.2 Individual Transaction', () => {
     });
     // The included employee saves fine; the excluded one is rejected and nothing lands for them.
     await expect(
-      createIndividualTxnsBulk(a, { batchId, employmentId: included.employmentId, rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [included.employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
     ).resolves.toMatchObject({ ids: [expect.any(String)] });
     await expect(
-      createIndividualTxnsBulk(a, { batchId, employmentId: excluded.employmentId, rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [excluded.employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
     ).rejects.toBeInstanceOf(EmploymentNotInBatchScopeError);
     // Only the one included row persisted.
     expect(await listIndividualTxns(a, { batchId })).toHaveLength(1);
@@ -468,7 +624,7 @@ describe('1.2.2 Individual Transaction', () => {
       expect(off1.batchId).not.toBe(off2.batchId);
 
       // A row saved against the CHOSEN batch lands on exactly that batch, not a sibling with the same runType.
-      await createIndividualTxnsBulk(a, { batchId: off2.batchId, employmentId, rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }] });
+      await createIndividualTxnsBulk(a, { batchId: off2.batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }] });
       expect(await listIndividualTxns(a, { batchId: off2.batchId })).toHaveLength(1);
       expect(await listIndividualTxns(a, { batchId: off1.batchId })).toHaveLength(0);
       expect(await listIndividualTxns(a, { batchId: regularBatch })).toHaveLength(0);
@@ -481,11 +637,11 @@ describe('1.2.2 Individual Transaction', () => {
     // 2026 is not a leap year ⇒ Feb has 28 days. 2026-02-28 accepted; 2026-02-29 rejected.
     const { a, employmentId, batchId } = await hireWithBatch('2026-02');
     await expect(
-      createIndividualTxnsBulk(a, { batchId, employmentId, rows: [{ kind: 'earning', txnDate: '2026-02-29', amount: 1 }] }),
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-02-29', amount: 1 }] }),
     ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
     expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
     await expect(
-      createIndividualTxnsBulk(a, { batchId, employmentId, rows: [{ kind: 'earning', txnDate: '2026-02-28', amount: 1 }] }),
+      createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-02-28', amount: 1 }] }),
     ).resolves.toMatchObject({ ids: [expect.any(String)] });
   });
 
@@ -501,10 +657,48 @@ describe('1.2.2 Individual Transaction', () => {
     const uE = await createAppUser(base.tenantId, emp.personId, 'employee');
     const empCtx: SessionContext = { tenantId: base.tenantId, userId: uE, roles: ['employee'] };
     await expect(
-      createIndividualTxnsBulk(empCtx, { batchId, employmentId, rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
+      createIndividualTxnsBulk(empCtx, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }] }),
     ).rejects.toThrow();
     // The admin sees nothing was written.
     expect(await listIndividualTxns(adminCtx(base), { batchId })).toHaveLength(0);
+  });
+
+  // ───────────────────── history export (exportIndividualTxnsCsv) ─────────────────────
+
+  it('export produces a CSV of the scoped rows and appends one exported event', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch('2026-05');
+    await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [employmentId],
+      rows: [
+        { kind: 'earning', txnDate: '2026-05-05', amount: 100 },
+        { kind: 'deduction', txnDate: '2026-05-10', amount: 50 },
+      ],
+    });
+    const file = await exportIndividualTxnsCsv(a, { companyIds: [base.companyId] });
+    expect(file.rowCount).toBe(2);
+    expect(file.filename).toMatch(/\.csv$/);
+    expect(file.content).toContain('Employee'); // header row
+    expect(file.content.trim().split(/\r\n/)).toHaveLength(3); // header + 2 rows
+
+    const exported = await owner.db
+      .select({ t: schema.domainEvent.eventType })
+      .from(schema.domainEvent)
+      .where(eq(schema.domainEvent.eventType, 'payroll.individual-txn.exported'));
+    expect(exported.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('export fails closed on an empty scope: header-only CSV, zero rows', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch('2026-05');
+    await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-05', amount: 100 }],
+    });
+    // No authorised company ⇒ no rows, regardless of what exists in the tenant.
+    const file = await exportIndividualTxnsCsv(a, { companyIds: [] });
+    expect(file.rowCount).toBe(0);
+    expect(file.content.trim().split(/\r\n/)).toHaveLength(1); // header only
   });
 
   // ───────────────────── i18n dynamic-key parity ─────────────────────

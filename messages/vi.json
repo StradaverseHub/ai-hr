@@ -549,7 +549,7 @@
         "cp38Records": "Bản ghi trả góp CP38",
         "hint": "Đây là bản tóm tắt chỉ đọc. Nguồn có thể chỉnh sửa cho các trường này nằm trong tab Lương (Theo luật)."
       },
-      "zakatMoved": "Thiết lập zakat (qua lương) đã chuyển sang Lương → Giao dịch → Zakat.",
+      "zakatMoved": "Zakat đã chuyển sang Lương → Giao dịch → Zakat.",
       "zakatMovedLink": "Mở màn hình zakat",
       "defaultShiftTitle": "Ca mặc định",
       "defaultShiftLabel": "Ca",
@@ -1131,8 +1131,9 @@
       "generatedNote": "Đây là phiếu lương do hệ thống tạo.",
       "downloadPdf": "Tải PDF",
       "cp38": "CP38 (khoản trả góp LHDN)",
-      "zakat": "Zakat (qua lương)",
-      "zakatOffsetNote": "PCB ở trên đã trừ khoản này"
+      "zakat": "Zakat",
+      "zakatOffsetNote": "PCB ở trên đã trừ khoản này",
+      "otConverted": "Làm thêm giờ (chuyển thành {item})"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",
@@ -1802,7 +1803,12 @@
       "colEpfEmployer": "Chủ lao động (RM)",
       "addBand": "Thêm bậc",
       "removeBand": "Xóa bậc",
-      "colActions": "Thao tác"
+      "colActions": "Thao tác",
+      "tabOverview": "Tổng quan",
+      "secHrdf": "HRDF",
+      "hrdfNote": "Mức thu HRD Corp (Đạo luật PSMB 2001) áp dụng cho người sử dụng lao động đủ điều kiện.",
+      "advancedEdit": "Chỉnh sửa nâng cao (bảng bậc)",
+      "viewBody": "Mở"
     },
     "batch": {
       "back": "Bảng lương",
@@ -1912,7 +1918,45 @@
       "resetDone": "Đã đặt lại quy trình tính lương về Nháp",
       "resetOnlyProcessed": "Chỉ có thể đặt lại quy trình tính lương ở trạng thái Đã xử lý.",
       "resetAdminOnly": "Chỉ quản trị viên mới có thể đặt lại quy trình tính lương.",
-      "lockedNote": "Quy trình tính lương này đã bị khóa — phiếu lương đã được tạo. Để chỉnh sửa, quản trị viên phải đặt lại về Nháp."
+      "lockedNote": "Quy trình tính lương này đã bị khóa — phiếu lương đã được tạo. Để chỉnh sửa, quản trị viên phải đặt lại về Nháp.",
+      "resetReasonLabel": "Lý do (tùy chọn)",
+      "resetReasonPlaceholder": "Vì sao đặt lại đợt tính này? (được ghi vào nhật ký kiểm toán)",
+      "reprocessTitle": "Xử lý lại nhân viên đã chọn",
+      "reprocessHint": "Đánh dấu những nhân viên cần chỉnh sửa và chỉ xử lý lại họ. Chỉ những nhân viên được chọn được tính lại tại chỗ — phiếu lương của người khác vẫn giữ nguyên — và tổng của đợt được cập nhật theo delta. Chạy như một tác vụ xếp hàng nên nhấp đúp không tạo trùng.",
+      "reprocessSummary": "Đã chọn {n}/{total}",
+      "reprocessSelectAll": "Chọn tất cả",
+      "reprocessClear": "Xóa chọn",
+      "reprocessNoEmployees": "Không có nhân viên trong đợt này.",
+      "reprocessReasonLabel": "Lý do (tùy chọn)",
+      "reprocessReasonPlaceholder": "Vì sao xử lý lại những nhân viên này? (được ghi vào nhật ký kiểm toán)",
+      "reprocessSelected": "Xử lý lại mục đã chọn",
+      "reprocessDone": "Đã xử lý lại {n}/{total} nhân viên.",
+      "reprocessAdminOnly": "Bạn không có quyền xử lý lại tính lương.",
+      "reprocessNoneSelected": "Chọn ít nhất một nhân viên để xử lý lại.",
+      "reprocessNotProcessed": "Chỉ đợt tính lương đã xử lý mới có thể xử lý lại.",
+      "historyTitle": "Lịch sử",
+      "historyEmpty": "Chưa có sự kiện nào được ghi cho đợt này.",
+      "historyReason": "Lý do: {reason}",
+      "historyResetCounts": "Đã xóa {payslips} phiếu lương · Đã hoàn {loans} kỳ trả nợ · Đã trả {claims} yêu cầu về hàng đợi",
+      "historyReprocessCount": "Đã xử lý lại {n} nhân viên",
+      "historySystemActor": "Hệ thống",
+      "unlockTitle": "Mở khóa kỳ lương đã đóng",
+      "unlockLockedNote": "Quy trình lương này đã đóng và không thể thay đổi. Mở khóa sẽ mở lại để chỉnh sửa — một thao tác được kiểm soát và ghi nhật ký, yêu cầu mã xác nhận.",
+      "unlockDescription": "Mở khóa đưa đợt đã đóng này về trạng thái Đã xử lý để có thể chỉnh sửa. Đây là thao tác rủi ro cao: các tờ khai theo luật hoặc tệp thanh toán có thể đã được tạo ra từ đợt này. Cần mã xác nhận và lý do.",
+      "unlockRequestOtp": "Gửi mã xác nhận",
+      "unlockOtpIssued": "Mã xác nhận: {code} — nhập vào bên dưới trong vòng 10 phút để mở khóa.",
+      "unlockCodeLabel": "Mã xác nhận",
+      "unlockCodePlaceholder": "Mã 6 chữ số",
+      "unlockReasonLabel": "Lý do (bắt buộc)",
+      "unlockReasonPlaceholder": "Vì sao mở khóa đợt đã đóng này? (được ghi vào nhật ký kiểm toán)",
+      "unlockConfirm": "Mở khóa lương",
+      "unlockWarnPayment": "⚠ Bảng tổng hợp thanh toán của đợt này đã được xuất — có thể đã chi trả.",
+      "unlockWarnStatutory": "⚠ Các tờ khai theo luật (EPF/SOCSO/EIS/LHDN) của tháng này đã được ghi nhận — có thể cần nộp tờ khai điều chỉnh.",
+      "unlockDone": "Đã mở khóa quy trình lương và đưa về trạng thái Đã xử lý.",
+      "unlockDoneWarned": "Đã mở khóa quy trình lương. Lưu ý: việc thanh toán và/hoặc nộp tờ khai theo luật đã diễn ra — hãy kiểm tra xem có cần nộp tờ khai điều chỉnh không.",
+      "unlockNotClosed": "Chỉ quy trình lương đã đóng mới có thể mở khóa.",
+      "unlockOtpInvalid": "Mã xác nhận không hợp lệ hoặc đã hết hạn — hãy yêu cầu mã mới.",
+      "unlockPermissionDenied": "Bạn không có quyền mở khóa quy trình lương đã đóng."
     },
     "transactions": {
       "title": "Giao dịch",
@@ -1930,17 +1974,14 @@
         "tp1Desc": "Miễn giảm thuế TP1 hàng tháng theo nhân viên trên đợt nháp.",
         "tp1Cta": "Sửa miễn giảm TP1",
         "zakatTitle": "Zakat",
-        "zakatDesc": "Zakat trả qua lương theo nhân viên trên đợt nháp.",
+        "zakatDesc": "Khoản khấu trừ zakat của nhân viên qua lương, kèm lịch sử giao dịch.",
         "zakatCta": "Sửa zakat",
         "loansTitle": "Khoản vay",
         "loansDesc": "Khoản trả góp vay của nhân viên — tự động khấu trừ mỗi kỳ lương.",
         "loansCta": "Mở khoản vay",
         "importHistoryTitle": "Nhập lịch sử bảng lương",
         "importHistoryDesc": "Nhập hàng loạt hồ sơ lương trước đây phục vụ di chuyển dữ liệu.",
-        "importHistoryCta": "Mở nhập dữ liệu",
-        "viewTitle": "Xem giao dịch",
-        "viewDesc": "Tra cứu chỉ đọc trên toàn bộ nhân viên — giao dịch cố định, cá nhân và lịch sử lương đã xử lý.",
-        "viewCta": "Mở tra cứu"
+        "importHistoryCta": "Mở nhập dữ liệu"
       },
       "fixed": {
         "title": "Giao dịch cố định",
@@ -2076,7 +2117,24 @@
         "saving": "Đang lưu…",
         "saveAll": "Lưu tất cả",
         "otherTools": "Công cụ khác",
-        "back": "Quay lại"
+        "back": "Quay lại",
+        "selectedCount": "Đã chọn {count}",
+        "clearSelection": "Xóa tất cả",
+        "removeEmployee": "Bỏ {name}",
+        "deptFilter": "Phòng ban",
+        "allDepartments": "Tất cả phòng ban",
+        "statusFilter": "Trạng thái",
+        "allStatuses": "Tất cả trạng thái",
+        "showingCapped": "Hiển thị {cap} đầu tiên trong tổng số {total}",
+        "applyAllHint": "Mỗi dòng sẽ được ghi cho tất cả {count} nhân viên đã chọn.",
+        "coverageGapHint": "Một số nhân viên đã chọn không có trong đợt này: {names}",
+        "reviewEmployees": "Nhân viên ({count})",
+        "noSharedDraft": "Không có đợt nháp nào bao gồm tất cả nhân viên đã chọn.",
+        "noEmployeesSelected": "Vui lòng chọn ít nhất một nhân viên.",
+        "duplicateRow": "Không cho phép dòng trùng lặp — hai mục có cùng khoản mục, ngày, số tiền và ghi chú.",
+        "itemGroupGeneral": "Chung",
+        "itemGroupEarnings": "Thu nhập (Danh mục khoản lương)",
+        "itemGroupDeductions": "Khấu trừ (Danh mục khoản lương)"
       },
       "tp1": {
         "title": "Miễn giảm TP1",
@@ -2091,16 +2149,9 @@
       },
       "zakat": {
         "title": "Zakat",
-        "subtitle": "Thiết lập zakat theo từng nhân viên, cùng ghi đè một lần cho một kỳ lương.",
-        "pickBatch": "Đợt nháp",
-        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
-        "employee": "Nhân viên",
-        "amount": "Zakat",
-        "save": "Lưu",
-        "saved": "Đã lưu.",
-        "empty": "Không có nhân viên trong đợt này.",
+        "subtitle": "Khoản khấu trừ zakat cố định của nhân viên qua lương, áp dụng cho mọi kỳ lương thường.",
         "election": {
-          "title": "Thiết lập zakat (qua lương)",
+          "title": "Zakat",
           "subtitle": "Khoản khấu trừ zakat cố định của nhân viên — bang, phương thức, mức và thời gian hiệu lực. Được áp dụng trong mỗi kỳ lương thường.",
           "pickEmployee": "Nhân viên",
           "noEmployees": "Không có nhân viên trong phạm vi công ty hiện tại.",
@@ -2109,7 +2160,7 @@
           "company": "Công ty",
           "noProfile": "Nhân viên này chưa có hồ sơ pháp định Malaysia. Hãy lưu số IC trong hồ sơ nhân sự trước.",
           "openPersonnel": "Mở hồ sơ nhân sự",
-          "save": "Lưu thiết lập",
+          "save": "Lưu",
           "active": "Khấu trừ zakat qua lương",
           "state": "Cơ quan zakat (bang)",
           "method": "Phương thức",
@@ -2121,9 +2172,34 @@
           "effectiveTo": "Hiệu lực đến",
           "nonResidentHint": "Phần trăm PCB cho ra RM0 đối với người không cư trú và người có thu nhập dưới ngưỡng — dùng Số tiền cố định nếu cần khấu trừ."
         },
-        "override": {
-          "title": "Ghi đè một lần (theo kỳ lương)",
-          "subtitle": "Số tiền RM nhập tay chỉ cho một đợt nháp — sẽ ghi đè thiết lập cố định cho kỳ đó."
+        "history": {
+          "title": "Lịch sử giao dịch",
+          "subtitle": "Chế độ xem chỉ đọc của mọi bản ghi zakat đã lưu, phục vụ đối chiếu và kiểm toán.",
+          "electionsTitle": "Thiết lập đã lưu",
+          "electionsSubtitle": "Mọi nhân viên có thiết lập zakat đã lưu. Tắt zakat sẽ xóa thiết lập; các khoản khấu trừ trước đây vẫn nằm trong danh sách lương bên dưới.",
+          "electionsEmpty": "Chưa có bản ghi zakat nào được lưu.",
+          "appliedTitle": "Đã khấu trừ trong lương",
+          "appliedSubtitle": "Số zakat thực tế được khấu trừ trong từng kỳ lương đã xử lý.",
+          "appliedEmpty": "Không có khoản khấu trừ zakat nào khớp với bộ lọc đã chọn.",
+          "exportCsv": "Xuất CSV",
+          "company": "Công ty",
+          "employee": "Nhân viên",
+          "year": "Năm",
+          "month": "Tháng",
+          "all": "Tất cả",
+          "apply": "Áp dụng bộ lọc",
+          "colPeriod": "Tháng lương",
+          "colCycle": "Chu kỳ",
+          "colEmployee": "Nhân viên",
+          "colCompany": "Công ty",
+          "colMethod": "Phương thức",
+          "colAmount": "Số tiền",
+          "colState": "Bang",
+          "colEffective": "Hiệu lực",
+          "colCreated": "Ngày tạo",
+          "status": "Trạng thái",
+          "active": "Đang bật",
+          "inactive": "Đã tắt"
         }
       },
       "view": {
@@ -2144,7 +2220,13 @@
           "month": "Tháng",
           "cycle": "Chu kỳ lương",
           "apply": "Áp dụng bộ lọc",
-          "all": "Tất cả"
+          "all": "Tất cả",
+          "department": "Phòng ban",
+          "txnStatus": "Trạng thái giao dịch",
+          "createdBy": "Người tạo",
+          "createdFrom": "Tạo từ",
+          "createdTo": "Tạo đến",
+          "createdDate": "Ngày tạo"
         },
         "fixed": {
           "empty": "Không có giao dịch cố định nào khớp với bộ lọc đã chọn."
@@ -2154,7 +2236,8 @@
         },
         "history": {
           "empty": "Không có kết quả lương đã xử lý nào khớp với bộ lọc đã chọn."
-        }
+        },
+        "exportCsv": "Xuất CSV"
       }
     },
     "setup": {
@@ -2964,7 +3047,8 @@
         "loans": "Khoản vay",
         "payrollConfig": "Cấu hình bảng lương",
         "payrollPolicy": "Chính sách bảng lương",
-        "payComponents": "Thành phần lương"
+        "payComponents": "Thành phần lương",
+        "payrollPermissions": "Quyền tính lương"
       },
       "scope": {
         "people": "Mọi người đều có thể mở; danh sách chỉ giới hạn ở những người bạn được phép xem.",
@@ -3219,6 +3303,25 @@
       "deleteShift": "Xóa",
       "deleteShiftHint": "Xóa vĩnh viễn ca chưa dùng. Ca được lịch trực hoặc ca mặc định của nhân viên tham chiếu phải lưu trữ thay vì xóa."
     },
+    "payrollPermissions": {
+      "title": "Quyền tính lương",
+      "subtitle": "Các thao tác tính lương chi tiết (hoàn tác, mở khóa, xử lý lại có chọn lọc, đóng) — có thể cấu hình theo công ty hoặc toàn bộ tổ chức thuê bao.",
+      "defaultsTitle": "Quyền mặc định",
+      "defaultsHint": "Đây là các mặc định tích hợp sẵn. Thêm quy tắc ghi đè bên dưới để mở rộng hoặc thu hẹp ai nắm giữ một quyền cho một công ty cụ thể hoặc toàn bộ tổ chức thuê bao.",
+      "overridesTitle": "Ghi đè",
+      "overridesEmpty": "Không có ghi đè — áp dụng các mặc định ở trên.",
+      "addTitle": "Thêm ghi đè",
+      "addButton": "Lưu ghi đè",
+      "colKey": "Quyền",
+      "colDefaultRoles": "Vai trò mặc định",
+      "colScope": "Phạm vi",
+      "colRole": "Vai trò",
+      "colAllowed": "Truy cập",
+      "tenantWide": "Toàn bộ tổ chức",
+      "allow": "Cho phép",
+      "deny": "Từ chối",
+      "remove": "Xóa"
+    },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",
       "pageDescription": "Cho phép công việc vào ngày nghỉ, ngày lễ hoặc tăng ca được lưu thành ngày nghỉ bù thay vì trả tiền mặt, theo từng công ty. Theo hợp đồng, không theo luật định: một ngày đã làm được trả tiền hoặc lưu bù, không phải cả hai.",
@@ -3362,6 +3465,7 @@
       "batches": "Quy trình tính lương",
       "reports": "Báo cáo",
       "transactions": "Giao dịch",
+      "view": "Xem giao dịch",
       "setup": "Cài đặt",
       "configuration": "Cấu hình"
     },
@@ -3944,18 +4048,29 @@
     "claimCutOff": "Ngày chốt hoàn ứng",
     "unpaidLeaveCutOff": "Ngày chốt nghỉ không lương",
     "attendanceCutOff": "Ngày chốt chấm công",
-    "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Chỉ dùng để tham chiếu lập lịch — các giá trị này không thay đổi cách tính kỳ lương, và không bắt buộc thứ tự giữa các trường (ví dụ chấm công trước ngày trả lương).",
+    "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Đây là các cửa sổ chốt MẶC ĐỊNH CỦA CÔNG TY: bảng lương lấy từng loại giao dịch (làm thêm giờ, yêu cầu hoàn, nghỉ không lương, chấm công) từ cửa sổ được cấu hình khi chính sách lương của nhân viên không tự đặt riêng. Các khoản đóng góp theo luật vẫn được tổng hợp theo tháng dương lịch.",
     "save": "Lưu",
     "hiringTitle": "Mặc định tuyển dụng",
     "probationMonths": "Thời gian thử việc mặc định (tháng)",
     "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
     "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
+    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống).",
+    "policyReleaseTitle": "Chính sách mặc định & phát hành phiếu lương",
+    "defaultPolicy": "Chính sách lương mặc định",
+    "defaultPolicyNone": "Không (mặc định hàng tháng)",
+    "defaultPolicyHint": "Áp dụng cho mọi nhân viên chưa được gán chính sách lương riêng.",
+    "releaseMode": "Phát hành phiếu lương",
+    "release_immediate": "Ngay sau khi chốt lương",
+    "release_fixed_day": "Ngày cố định trong tháng",
+    "release_relative": "Tương đối so với ngày trả lương",
+    "releaseValue": "Ngày / độ lệch",
+    "releaseValuePlaceholder": "vd. 5 hoặc -2",
+    "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",
     "description": "Các quy tắc có tên, tái sử dụng được cho cách xử lý lương của từng nhân viên. Gán chính sách cho nhân viên và lương sẽ tự động áp dụng.",
-    "previewNotice": "Chính sách Hàng tháng và Hàng ngày đã hoạt động. Chính sách Theo giờ giờ đây có thể cấu hình (mức theo giờ và thiết lập lịch ca), nhưng việc tạo phiếu lương theo giờ trực tiếp là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Chính sách Kỳ tùy chỉnh giờ đây có thể cấu hình: bạn có thể ghi lại cửa sổ chốt sổ (một ngày neo cho kỳ không theo lịch dương), nhưng việc áp dụng cửa sổ đó cho làm thêm giờ, chấm công và nghỉ phép là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Các tháng theo luật (EPF, SOCSO, EIS, PCB) luôn giữ theo tháng dương lịch theo quy định của pháp luật.",
+    "previewNotice": "Cài đặt chung bên dưới (tính theo tỷ lệ, lương thực nhận âm, giới hạn làm thêm, số chia phép, làm tròn) đang hoạt động và được áp dụng khi tính lương. Mức tối thiểu theo luật (EPF, SOCSO, EIS, PCB và sàn làm thêm theo EA 1955) luôn bị khóa và không thể đặt thấp hơn luật. Cửa sổ chốt kỳ tùy chỉnh được ghi nhận nhưng chưa áp dụng vào tính toán.",
     "emptyScope": "Không có công ty nào trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
     "catalogTitle": "Chính sách",
     "searchPlaceholder": "Tìm chính sách…",
@@ -4022,7 +4137,8 @@
     "errors": {
       "duplicateName": "Đã có chính sách lương với tên này cho công ty này.",
       "inUse": "Chính sách này được gán cho nhân viên và không thể xóa. Hãy bỏ gán trước.",
-      "companyMismatch": "Chính sách lương chỉ có thể gán cho nhân viên trong chính công ty của nó."
+      "companyMismatch": "Chính sách lương chỉ có thể gán cho nhân viên trong chính công ty của nó.",
+      "defaultInUse": "Chính sách lương này được đặt làm mặc định của công ty và không thể xóa."
     },
     "fieldDailyRate": "Mức theo ngày (Hàng ngày)",
     "dailyRatePlaceholder": "ví dụ 120.00",
@@ -4040,10 +4156,102 @@
       "modeCustom": "Kỳ tùy chỉnh",
       "anchorDay": "Ngày neo",
       "anchorDayPlaceholder": "vd. 25",
-      "anchorDayHint": "Chỉ dùng cho chế độ \"Kỳ tùy chỉnh\". Ngày neo (1–28) là ngày trong tháng mà cửa sổ mở — ví dụ, neo 25 nghĩa là cửa sổ chạy từ ngày 25 của tháng trước đến ngày 24 của tháng kỳ. Chỉ áp dụng cho chính sách Kỳ tùy chỉnh; các tháng theo luật vẫn giữ theo tháng dương lịch."
+      "anchorDayHint": "Chỉ dùng cho chế độ \"Kỳ tùy chỉnh\". Ngày neo (1–28) là ngày trong tháng mà cửa sổ mở — ví dụ, neo 25 nghĩa là cửa sổ chạy từ ngày 25 của tháng trước đến ngày 24 của tháng kỳ. Chỉ áp dụng cho chính sách Kỳ tùy chỉnh; các tháng theo luật vẫn giữ theo tháng dương lịch.",
+      "frequencyLabel": "Tần suất trả lương",
+      "frequency": {
+        "monthly": "Hàng tháng",
+        "weekly": "Hàng tuần",
+        "biweekly": "Hai tuần một lần"
+      },
+      "frequencyHint": "Tần suất chạy bảng lương. Hàng tuần và hai tuần một lần là nhịp vận hành — các khoản đóng góp theo luật (EPF, SOCSO, EIS, PCB) vẫn được tổng hợp và báo cáo theo tháng dương lịch theo quy định của pháp luật.",
+      "perTypeTitle": "Ghi đè ngày chốt theo loại",
+      "type": {
+        "salary": "Lương",
+        "claim": "Yêu cầu hoàn",
+        "overtime": "Làm thêm giờ",
+        "leave": "Nghỉ phép",
+        "attendance": "Chấm công"
+      },
+      "inheritPlaceholder": "Kế thừa",
+      "perTypeHint": "Mỗi loại giao dịch có thể chốt vào ngày neo riêng (1–28). Để trống để kế thừa ngày neo lương ở trên. Chỉ dùng khi chế độ kỳ là \"Kỳ tùy chỉnh\".",
+      "previewTitle": "Xem trước ngày chốt cho {period}",
+      "previewType": "Loại",
+      "previewFrom": "Từ",
+      "previewTo": "Đến",
+      "previewHint": "Các ngày mỗi loại giao dịch sẽ được lấy cho tháng hiện tại, dẫn xuất từ cấu hình ngày chốt đã lưu. Các kỳ liên tiếp nối tiếp nhau và không bao giờ chồng lấp.",
+      "perFrequencyTitle": "Ghi đè kỳ chốt theo tần suất",
+      "perFrequencyHint": "Khi tần suất trả lương là Hàng tuần hoặc Hai tuần một lần, tần suất đó có thể dùng ngày neo và ngày chốt theo từng loại riêng. Để trống để kế thừa kỳ chốt Hàng tháng (cơ sở) ở trên. Chỉ dùng khi chế độ kỳ là \"Kỳ tùy chỉnh\".",
+      "scheduleTitle": "Lịch {frequency} cho {period}",
+      "scheduleCycle": "Chu kỳ",
+      "scheduleHint": "Các chu kỳ chốt mà tần suất trả lương này tạo ra cho tháng. Hàng tuần và hai tuần một lần chia tháng thành các chu kỳ liền kề; các khoản đóng góp theo luật vẫn được tổng hợp theo tháng dương lịch theo quy định của pháp luật."
     },
     "copy": "Sao chép",
-    "copySuffix": "(bản sao)"
+    "copySuffix": "(bản sao)",
+    "config": {
+      "prorationTitle": "Tính lương theo tỷ lệ & ngày công tham chiếu",
+      "prorationDivisor": "Cơ sở tính tỷ lệ",
+      "divisorCalendar": "Ngày theo lịch",
+      "divisorCustom": "Ngày làm việc cố định",
+      "divisorInherit": "Mặc định (dùng cơ sở ở trên)",
+      "prorationCustomDays": "Số ngày cố định (vd. 26)",
+      "includeSaturday": "Tính thứ Bảy",
+      "includeSunday": "Tính Chủ nhật",
+      "includeHoliday": "Tính ngày lễ",
+      "salaryIncrementProration": "Chia khoản tăng lương giữa tháng theo hai mức",
+      "salaryConfigTitle": "Cấu hình lương",
+      "salaryConfigHint": "Cấu hình công thức lương cơ bản cho từng sự kiện nhân viên một cách độc lập. Để một sự kiện ở \"mặc định\" sẽ kế thừa cơ sở ở trên.",
+      "hireFormula": "Công thức lương cơ bản cho nhân viên mới",
+      "resignFormula": "Công thức lương cơ bản cho nhân viên nghỉ việc",
+      "incrementFormula": "Công thức lương cơ bản khi tăng lương",
+      "incrementHint": "Khi bật, việc tăng lương giữa tháng được chia theo từng ngày giữa mức cũ và mức mới.",
+      "prorationHint": "Dùng khi nhân viên vào/nghỉ giữa tháng. Mặc định (ngày theo lịch) giữ nguyên kết quả hiện tại.",
+      "negativeNetTitle": "Lương thực nhận âm",
+      "negativeNetLabel": "Khi lương thực nhận âm",
+      "negativeRetain": "Giữ số tiền âm",
+      "negativeSetZero": "Đặt lương thực nhận về 0",
+      "negativeCarryForward": "Chuyển số dư sang chu kỳ tiếp theo",
+      "negativeNetHint": "\"Chuyển tiếp\" giữ lương thực nhận của chu kỳ này ở mức 0 và thu hồi phần thiếu từ lương thực nhận của chu kỳ tiếp theo.",
+      "overtimeTitle": "Làm thêm giờ",
+      "otMultiplier": "Hệ số mức lương thường",
+      "otMaxHours": "Giờ làm thêm tối đa/tháng",
+      "otMaxAmount": "Số tiền làm thêm tối đa/tháng (RM)",
+      "otDayWorkday": "Ngày làm việc",
+      "otDayRestDay": "Ngày nghỉ",
+      "otDayHoliday": "Ngày lễ",
+      "otExceedLabel": "Khi làm thêm vượt mức tối đa",
+      "otExceedCap": "Giới hạn (mặc định)",
+      "otExceedConvert": "Chuyển phần vượt thành khoản chi trả",
+      "otExceedComponent": "Khoản chi trả cho phần vượt",
+      "otExceedComponentNone": "Chọn khoản chi trả",
+      "otHint": "Hệ số có sàn theo luật là 1.5×. Chuyển đổi sẽ đưa phần làm thêm vượt mức sang khoản chi trả đã chọn để vẫn được trả.",
+      "leaveTitle": "Tính phép",
+      "unpaidLeaveDivisor": "Số chia nghỉ không lương",
+      "unpaidTimeOffDivisor": "Số chia nghỉ việc không lương",
+      "encashmentDivisor": "Số chia quy đổi phép thành tiền",
+      "leaveDivisor": {
+        "calendar_month": "Tháng theo lịch",
+        "custom_days": "Số ngày cố định",
+        "cutoff_days": "Số ngày kỳ chốt",
+        "working_days": "Ngày làm việc",
+        "custom_hours": "Số giờ cố định",
+        "custom_minutes": "Số phút cố định"
+      },
+      "leaveCustomDays": "Số ngày cố định",
+      "leaveCustomHours": "Số giờ cố định",
+      "leaveCustomMinutes": "Số phút cố định",
+      "leaveHint": "Số chia quyết định giá trị một ngày nghỉ không lương / ngày quy đổi. Mặc định (tháng theo lịch) giữ nguyên kết quả hiện tại.",
+      "roundingTitle": "Làm tròn",
+      "roundingEarnings": "Thu nhập",
+      "roundingDeductions": "Khoản khấu trừ",
+      "roundingNetPay": "Lương thực nhận",
+      "rounding": {
+        "none": "Chính xác (2 chữ số)",
+        "up": "Làm tròn lên",
+        "down": "Làm tròn xuống",
+        "nearest": "Ringgit gần nhất"
+      },
+      "roundingHint": "Việc làm tròn đóng góp theo luật luôn tuân theo quy định pháp luật riêng và không bị ảnh hưởng."
+    }
   },
   "leaveApproval": {
     "title": "Chuỗi phê duyệt nghỉ phép",
@@ -4466,7 +4674,7 @@
     "catalogTitle": "Chu kỳ",
     "seedDefaults": "Thêm chu kỳ mặc định",
     "colName": "Tên",
-    "colRunType": "Hành vi xử lý",
+    "colRunType": "Loại kỳ chạy",
     "colRemarks": "Ghi chú",
     "colSort": "Thứ tự",
     "colStatus": "Trạng thái",
@@ -4486,7 +4694,7 @@
     "cancelEdit": "Hủy",
     "namePlaceholder": "vd. Thưởng cuối năm",
     "remarksPlaceholder": "Nhãn tùy chọn (vd. Tạm ứng lương)",
-    "runTypeHelp": "Hành vi xử lý quyết định quy tắc lương được áp dụng (vd. khấu trừ khoản vay và OT chỉ áp dụng cho đợt Thường). Đây là cố định — chỉ tên và danh sách có thể cấu hình.",
+    "runTypeHelp": "Loại kỳ chạy quyết định các quy tắc lương được áp dụng (ví dụ khấu trừ khoản vay và OT chỉ áp dụng cho kỳ chạy Thường) và là cố định. Dùng Hành vi xử lý để ghi chú bằng lời của bạn mục đích của chu kỳ này.",
     "runType": {
       "regular": "Thường",
       "off_cycle": "Ngoài chu kỳ",
@@ -4502,13 +4710,20 @@
     "toast": {
       "seeded": "Đã thêm chu kỳ mặc định",
       "saved": "Đã lưu chu kỳ",
-      "deleted": "Đã xóa chu kỳ"
+      "deleted": "Đã xóa chu kỳ",
+      "copied": "Đã sao chép {created}, bỏ qua {skipped}."
     },
     "errors": {
       "duplicateName": "Đã có chu kỳ với tên này cho công ty này.",
       "regularConflict": "Công ty này đã có một chu kỳ Thường đang hoạt động. Chỉ cho phép một chu kỳ.",
       "inUse": "Chu kỳ này được dùng trong {refs} đợt trả lương — hãy vô hiệu hóa thay vì xóa."
-    }
+    },
+    "colBehaviour": "Hành vi xử lý",
+    "behaviourPlaceholder": "Mô tả bằng lời của bạn mục đích của chu kỳ này (tham chiếu nghiệp vụ).",
+    "copy": "Sao chép sang công ty",
+    "copyTitle": "Sao chép “{name}” sang các công ty khác",
+    "copyDescription": "Chọn các công ty để sao chép chu kỳ này. Công ty đã có chu kỳ trùng tên — hoặc đã có chu kỳ Thường đang hoạt động khi sao chép chu kỳ Thường — sẽ bị bỏ qua.",
+    "copyConfirm": "Sao chép chu kỳ"
   },
   "auth": {
     "logout": "Đăng xuất",

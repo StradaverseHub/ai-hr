@@ -4,61 +4,15 @@ import { packFor } from '@/localization/registry';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { PayrollTabs } from '@/components/payroll-tabs';
+import { StatutoryTabs } from '@/components/statutory-tabs';
 import { StatutoryConfigForm } from '@/components/statutory-config-form';
-import { StatutoryComponentForm } from '@/components/statutory-component-form';
-import { MY_HRDF, STATUTORY_BODIES, type ContribBand } from '@/localization/my/statutory-tables';
-import type { StatutorySource } from '@/localization/my/statutory-config';
+import { STATUTORY_BODIES } from '@/localization/my/statutory-tables';
 import { latestAvailablePackVersion } from '@/lib/statutory-pack-available';
-import { archiveStatutoryAction, archiveStatutoryComponentAction } from './actions';
+import { archiveStatutoryAction } from './actions';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 const BASE = '/payroll/configuration';
-
-const pct = (n: number) => {
-  const v = n * 100;
-  return `${Number.isInteger(v) ? v : v.toFixed(2)}%`;
-};
-const rm = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
-const fmtUpTo = (n: number | null, top: string) => (n == null || !Number.isFinite(n) ? top : rm(n));
-
-function SourceMeta({ src, label }: { src?: StatutorySource; label: string }) {
-  if (!src) return null;
-  return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3 text-xs text-muted-foreground">
-      {src.verified && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
-          ✓ {label}
-        </span>
-      )}
-      <span className="min-w-0">{src.authority}</span>
-      <a
-        href={src.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-primary underline-offset-2 hover:underline"
-      >
-        ↗ source
-      </a>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 py-1.5">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="font-mono text-sm font-medium tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-/** Scalar per-body sections that get an inline Edit form (whole-ruleset bodies use ?edit=1 instead).
- *  Overtime was removed here (feedback e776d17d) — OT rates are now edited on the Attendance Policy
- *  screen, not under Payroll statutory settings. Only EPF remains an inline scalar section. */
-type ScalarSection = 'epf';
-const SCALAR_SECTIONS: ScalarSection[] = ['epf'];
-const isScalarSection = (v: string | undefined): v is ScalarSection =>
-  v != null && (SCALAR_SECTIONS as string[]).includes(v);
 
 export default async function StatutoryConfigPage({
   searchParams,
@@ -68,9 +22,14 @@ export default async function StatutoryConfigPage({
   const s = await requireAdmin();
   const t = await getTranslations('payroll.config');
   const { edit, error, section } = await searchParams;
-  const activeSection = isScalarSection(section) ? section : undefined;
   const back = await settingsBack();
   const pack = packFor('MY');
+
+  // Old deep-links: ?section=epf used to switch the single page into the EPF inline editor. The page is now
+  // split into per-body sub-routes (31646c85), so bounce any legacy section link to that body's own tab.
+  if (section && (STATUTORY_BODIES as readonly string[]).includes(section) && section !== 'ot') {
+    redirect(`${BASE}/${section}`);
+  }
 
   if (!pack) {
     return (
@@ -91,10 +50,11 @@ export default async function StatutoryConfigPage({
     ]);
   const latestAvailable = latestAvailablePackVersion();
   const stale = !!(latestAvailable && (!syncStatus.latestIngested || latestAvailable > syncStatus.latestIngested));
-  const sources = pack.statutoryConfig.sources;
-  const src = Object.fromEntries(sources.map((x) => [x.key, x])) as Record<string, StatutorySource>;
 
-  // ─────────────────────────────── Edit mode ───────────────────────────────
+  // ─────────────────────────────── Edit mode (whole ruleset) ───────────────────────────────
+  // The advanced whole-ruleset editor still lives on the index behind ?edit=1 — it preserves existing
+  // bookmarks and the "edit everything at once" flow. The per-body tabs add SCOPED entry points into the
+  // same form (sections=[...]); they don't remove this full editor.
   if (edit) {
     return (
       <div className="mx-auto max-w-5xl space-y-6">
@@ -102,7 +62,7 @@ export default async function StatutoryConfigPage({
           title={t('editTitle')}
           back={back}
           actions={
-            <Link href="/payroll/configuration">
+            <Link href={BASE}>
               <Button variant="outline" size="sm">
                 {t('view')}
               </Button>
@@ -113,74 +73,18 @@ export default async function StatutoryConfigPage({
             URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
             — do not repoint to /payroll/setup. */}
         <PayrollTabs active="setup" />
+        <StatutoryTabs active="overview" />
         <ErrorBanner message={error} />
         <Card className="border-amber-300/60 bg-amber-50/50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {t('safetyNote')}
         </Card>
         <p className="text-sm text-muted-foreground">{t('editIntro')}</p>
-        <StatutoryConfigForm
-          ruleset={ruleset}
-          defaultVersion={ruleset.version}
-        />
+        <StatutoryConfigForm ruleset={ruleset} defaultVersion={ruleset.version} />
       </div>
     );
   }
 
-  // ─────────────────────────────── View mode ───────────────────────────────
-  const sampleBands = (bands: ContribBand[]) => [bands[0], bands[bands.length - 1]];
-
-  // Labels for the per-body scalar override form — shared between the inline section forms and the
-  // bottom shared form so copy stays consistent.
-  const componentDefaults = {
-    epf: {
-      employeeRate: ruleset.epf.employeeRate,
-      employerRateLow: ruleset.epf.employerRateLow,
-      employerRateHigh: ruleset.epf.employerRateHigh,
-      employerThreshold: ruleset.epf.employerThreshold,
-    },
-    ot: {
-      wageCeiling: ruleset.ot.wageCeiling,
-      restDayExcessMultiplier: ruleset.ot.restDayExcessMultiplier ?? 2,
-      holidayExcessMultiplier: ruleset.ot.holidayExcessMultiplier ?? 3,
-    },
-    hrdf: ruleset.hrdf ?? MY_HRDF,
-  };
-  const componentLabels = {
-    body: t('componentBody'),
-    body_epf: t('body_epf'),
-    body_ot: t('body_ot'),
-    body_hrdf: t('body_hrdf'),
-    effectiveFrom: t('effectiveFrom'),
-    version: t('version'),
-    notes: t('fieldNotes'),
-    epfEmployeeRate: t('epfEmployeeRate'),
-    epfEmployerRateLow: t('epfEmployerRateLow'),
-    epfEmployerRateHigh: t('epfEmployerRateHigh'),
-    epfEmployerThreshold: t('epfEmployerThreshold'),
-    otWageCeiling: t('otWageCeiling'),
-    otRestDayExcessMultiplier: t('otRestDayExcessMultiplier'),
-    otHolidayExcessMultiplier: t('otHolidayExcessMultiplier'),
-    hrdfMandatory: t('hrdfMandatory'),
-    hrdfOptional: t('hrdfOptional'),
-    publish: t('componentPublish'),
-    cancelEdit: t('cancelEdit'),
-    cancelHref: BASE,
-  };
-
-  // Concurrency-mitigation hint (ADR-0037 revision): surface the newest live override per body so an
-  // admin can eyeball whether it changed since they opened the page. Newest-effective row wins; archived
-  // rows are ignored. Pre-existing insert-only model — no locking added in this pass.
-  const latestOverrideByBody = new Map<string, { version: string; effectiveFrom: string }>();
-  for (const co of componentOverrides) {
-    if (co.archivedAt) continue;
-    if (!latestOverrideByBody.has(co.body))
-      latestOverrideByBody.set(co.body, { version: co.version, effectiveFrom: co.effectiveFrom });
-  }
-  const lastEditedHint = (body: string) => {
-    const o = latestOverrideByBody.get(body);
-    return o ? t('lastEdited', { version: o.version, effectiveFrom: o.effectiveFrom }) : null;
-  };
-
+  // ─────────────────────────────── Overview (view mode) ───────────────────────────────
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
@@ -188,7 +92,7 @@ export default async function StatutoryConfigPage({
         description={t('subtitle')}
         back={back}
         actions={
-          <Link href="/payroll/configuration?edit=1">
+          <Link href={`${BASE}?edit=1`}>
             <Button size="sm">{t('edit')}</Button>
           </Link>
         }
@@ -197,6 +101,7 @@ export default async function StatutoryConfigPage({
           URL intentionally stays /payroll/configuration so existing bookmarks/actions BASE keep working
           — do not repoint to /payroll/setup. */}
       <PayrollTabs active="setup" />
+      <StatutoryTabs active="overview" />
       <ErrorBanner message={error} />
 
       {/* Active-set banner — three-way: built-in default / vendor pack / tenant override */}
@@ -228,7 +133,8 @@ export default async function StatutoryConfigPage({
         ) : null}
       </Card>
 
-      {/* Per-body versions (ADR-0037, #6) — each statutory body resolves its own version + source */}
+      {/* Per-body versions (ADR-0037, #6) — each statutory body resolves its own version + source and now
+          links to its own dedicated configuration tab (31646c85). */}
       <Card className="p-4">
         <h2 className="text-sm font-semibold">{t('perBodyTitle')}</h2>
         <p className="mt-1 text-xs text-muted-foreground">{t('perBodySubtitle')}</p>
@@ -240,7 +146,11 @@ export default async function StatutoryConfigPage({
           {STATUTORY_BODIES.filter((b) => b !== 'ot').map((b) => {
             const c = components[b];
             return (
-              <div key={b} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+              <Link
+                key={b}
+                href={`${BASE}/${b}`}
+                className="flex items-center justify-between rounded-lg border border-border px-3 py-2 transition-colors hover:border-primary/50 hover:bg-accent/40"
+              >
                 <div className="min-w-0">
                   <div className="text-sm font-medium">{t(`body_${b}`)}</div>
                   <div className="truncate font-mono text-xs text-muted-foreground">{c.version}</div>
@@ -258,146 +168,13 @@ export default async function StatutoryConfigPage({
                 >
                   {t(`src_${c.source}`)}
                 </span>
-              </div>
+              </Link>
             );
           })}
         </div>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* EPF */}
-        <Card className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t('secEpf')}</h2>
-            {activeSection !== 'epf' && (
-              <Link href={`${BASE}?section=epf`}>
-                <Button variant="outline" size="sm">
-                  {t('editSection', { body: t('body_epf') })}
-                </Button>
-              </Link>
-            )}
-          </div>
-          {activeSection === 'epf' ? (
-            <>
-              <p className="mt-2 text-xs text-muted-foreground">{t('editSectionIntro')}</p>
-              <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} lockedBody="epf" />
-            </>
-          ) : (
-            <>
-              <div className="mt-2 divide-y divide-border">
-                <Row label={t('epfEmployeeRate')} value={pct(ruleset.epf.employeeRate)} />
-                <Row label={t('epfEmployerRateLow')} value={pct(ruleset.epf.employerRateLow)} />
-                <Row label={t('epfEmployerRateHigh')} value={pct(ruleset.epf.employerRateHigh)} />
-                <Row label={t('epfEmployerThreshold')} value={rm(ruleset.epf.employerThreshold)} />
-                {/* contribCeiling is a statutory contribution ceiling (not an OT field). It used to display
-                    inside the removed Overtime card; kept visible here so relocating OT (feedback e776d17d)
-                    doesn't drop it from the statutory page. */}
-                <Row label={t('contribCeiling')} value={rm(ruleset.contribCeiling)} />
-              </div>
-              {lastEditedHint('epf') && (
-                <p className="mt-2 text-[11px] text-muted-foreground">{lastEditedHint('epf')}</p>
-              )}
-              <SourceMeta src={src.epf} label={t('verified')} />
-            </>
-          )}
-        </Card>
-
-        {/* Overtime card removed (feedback e776d17d) — OT rates are now edited on the Attendance Policy
-            screen (/admin/attendance). Payroll still consumes the same resolved ruleset.ot value; only the
-            editing surface moved. */}
-
-        {/* SOCSO */}
-        <Card className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t('secSocso')}</h2>
-            <Link href={`${BASE}?edit=1`}>
-              <Button variant="outline" size="sm">
-                {t('editSection', { body: t('body_socso') })}
-              </Button>
-            </Link>
-          </div>
-          <div className="mt-2 divide-y divide-border">
-            <Row label={`${t('rate')} (employer / employee)`} value={`${pct(ruleset.socso.rates.employer)} / ${pct(ruleset.socso.rates.employee)}`} />
-            <Row label="Category 1 / 2 bands" value={`${ruleset.socso.category1.length} / ${ruleset.socso.category2.length}`} />
-            {sampleBands(ruleset.socso.category1).map((b, i) => (
-              <Row key={i} label={`Cat 1 ≤ ${fmtUpTo(b.upTo, t('topBand'))}`} value={`${rm(b.employer)} / ${rm(b.employee)}`} />
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t('bandsReadOnly', { count: ruleset.socso.category1.length })}
-          </p>
-          <SourceMeta src={src.socso} label={t('verified')} />
-        </Card>
-
-        {/* EIS */}
-        <Card className="p-4">
-          <div className="flex items-start justify-between gap-2">
-            <h2 className="text-sm font-semibold">{t('secEis')}</h2>
-            <Link href={`${BASE}?edit=1`}>
-              <Button variant="outline" size="sm">
-                {t('editSection', { body: t('body_eis') })}
-              </Button>
-            </Link>
-          </div>
-          <div className="mt-2 divide-y divide-border">
-            <Row label={`${t('rate')} (employer / employee)`} value={`${pct(ruleset.eis.rates.employer)} / ${pct(ruleset.eis.rates.employee)}`} />
-            <Row label="Bands" value={String(ruleset.eis.bands.length)} />
-            {sampleBands(ruleset.eis.bands).map((b, i) => (
-              <Row key={i} label={`≤ ${fmtUpTo(b.upTo, t('topBand'))}`} value={`${rm(b.employer)} / ${rm(b.employee)}`} />
-            ))}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            {t('bandsReadOnly', { count: ruleset.eis.bands.length })}
-          </p>
-          <SourceMeta src={src.eis} label={t('verified')} />
-        </Card>
-      </div>
-
-      {/* PCB — full width */}
-      <Card className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <h2 className="text-sm font-semibold">{t('secPcb')}</h2>
-          <Link href={`${BASE}?edit=1`}>
-            <Button variant="outline" size="sm">
-              {t('editSection', { body: t('body_pcb') })}
-            </Button>
-          </Link>
-        </div>
-        <div className="mt-2 grid gap-x-8 sm:grid-cols-2">
-          <Row label={t('reliefIndividual')} value={rm(ruleset.pcb.reliefs.individual)} />
-          <Row label={t('reliefSpouse')} value={rm(ruleset.pcb.reliefs.spouse)} />
-          <Row label={t('reliefPerChild')} value={rm(ruleset.pcb.reliefs.perChild)} />
-          <Row label={t('reliefEpfCap')} value={rm(ruleset.pcb.reliefs.epfReliefCap)} />
-        </div>
-        <h3 className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('pcbBands')}</h3>
-        <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="py-1.5 pr-4 font-medium">{t('colUpTo')}</th>
-                <th className="py-1.5 pr-4 font-medium">{t('colM')}</th>
-                <th className="py-1.5 pr-4 font-medium">{t('colR')}</th>
-                <th className="py-1.5 pr-4 font-medium">{t('colBCat13')}</th>
-                <th className="py-1.5 font-medium">{t('colBCat2')}</th>
-              </tr>
-            </thead>
-            <tbody className="font-mono tabular-nums">
-              {ruleset.pcb.bands.map((b, i) => (
-                <tr key={i} className="border-t border-border">
-                  <td className="py-1.5 pr-4">{fmtUpTo(b.upTo, t('topBand'))}</td>
-                  <td className="py-1.5 pr-4">{b.M.toLocaleString('en-MY')}</td>
-                  <td className="py-1.5 pr-4">{pct(b.R)}</td>
-                  <td className="py-1.5 pr-4">{b.bCat13.toLocaleString('en-MY')}</td>
-                  <td className="py-1.5">{b.bCat2.toLocaleString('en-MY')}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <SourceMeta src={src.pcb} label={t('verified')} />
-      </Card>
-
-      {/* History */}
+      {/* Whole-ruleset version History (published via ?edit=1 or from any body tab's Advanced edit). */}
       <Card className="p-4">
         <h2 className="text-sm font-semibold">{t('history')}</h2>
         {history.length === 0 ? (
@@ -444,15 +221,13 @@ export default async function StatutoryConfigPage({
         )}
       </Card>
 
-      {/* Per-body overrides (ADR-0037, #6) — publish a single-body, effective-dated override + history */}
-      <Card className="p-4">
-        <h2 className="text-sm font-semibold">{t('componentTitle')}</h2>
-        <p className="mt-1 text-xs text-muted-foreground">{t('componentIntro')}</p>
-        {/* 'ot' excluded from the picker (feedback e776d17d) — overtime rates are configured on the
-            Attendance Policy screen, not under Payroll statutory settings. */}
-        <StatutoryComponentForm defaults={componentDefaults} labels={componentLabels} bodies={['epf', 'hrdf']} />
-        {componentOverrides.length > 0 && (
-          <div className="mt-4 overflow-x-auto border-t border-border pt-3">
+      {/* Per-body override history (ADR-0037, #6) — read-only roll-up across ALL bodies. The publish +
+          archive controls live on each body's own tab; this overview is the at-a-glance audit list. */}
+      {componentOverrides.length > 0 && (
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold">{t('componentTitle')}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{t('componentIntro')}</p>
+          <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -465,7 +240,11 @@ export default async function StatutoryConfigPage({
               <tbody>
                 {componentOverrides.map((co) => (
                   <tr key={co.id} className="border-t border-border align-top">
-                    <td className="py-2 pr-4 font-medium">{t(`body_${co.body}`)}</td>
+                    <td className="py-2 pr-4 font-medium">
+                      <Link href={`${BASE}/${co.body}`} className="text-primary underline-offset-2 hover:underline">
+                        {t(`body_${co.body}`)}
+                      </Link>
+                    </td>
                     <td className="py-2 pr-4">
                       <span className="font-mono">{co.version}</span>
                       {co.archivedAt && (
@@ -475,23 +254,18 @@ export default async function StatutoryConfigPage({
                       )}
                     </td>
                     <td className="py-2 pr-4 tabular-nums">{co.effectiveFrom}</td>
-                    <td className="py-2 text-right">
-                      {!co.archivedAt && (
-                        <form action={archiveStatutoryComponentAction}>
-                          <input type="hidden" name="id" value={co.id} />
-                          <Button type="submit" variant="ghost" size="sm">
-                            {t('archive')}
-                          </Button>
-                        </form>
-                      )}
+                    <td className="py-2 text-right text-xs text-muted-foreground">
+                      <Link href={`${BASE}/${co.body}`} className="hover:underline">
+                        {t('viewBody')}
+                      </Link>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
-      </Card>
+        </Card>
+      )}
 
       {/* Vendor pack panel + staleness (ADR-0020 §8) */}
       <Card className="p-4">

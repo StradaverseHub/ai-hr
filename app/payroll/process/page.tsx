@@ -86,7 +86,7 @@ export default async function PayrollProcessPage({ searchParams }: { searchParam
   const cycleLists = await Promise.all(scopeIds.map((id) => listPayrollCycles(s, id, { activeOnly: true })));
   const cyclesByCompany: Record<string, CycleOption[]> = {};
   scopeIds.forEach((id, i) => {
-    cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks }));
+    cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks, description: c.description }));
   });
 
   return (

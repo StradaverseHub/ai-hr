@@ -230,14 +230,33 @@ function NumField({
   );
 }
 
+/** Which body sections the band-table editor renders. Render-only (31646c85 — per-body sub-menu
+ *  redesign): form STATE is always initialised from the full ruleset and the hidden `data` input always
+ *  carries the full assemble(...) output, so unrendered sections round-trip BYTE-IDENTICALLY from state
+ *  (the invariant pinned by test/statutory-band-form-roundtrip.test.ts). Hiding a card never drops data —
+ *  it only scopes what an admin edits on a given body tab. Default = all five (existing callers unchanged). */
+export type ConfigFormSection = 'epf' | 'ceilings' | 'pcb' | 'socso' | 'eis';
+const ALL_SECTIONS: ReadonlyArray<ConfigFormSection> = ['epf', 'ceilings', 'pcb', 'socso', 'eis'];
+
 export function StatutoryConfigForm({
   ruleset,
   defaultVersion,
+  sections = ALL_SECTIONS,
+  cancelHref = '/payroll/configuration',
+  returnTo,
 }: {
   ruleset: StatutoryRuleset;
   defaultVersion: string;
+  /** Body sections to render (render-only; state + payload always cover the full ruleset). */
+  sections?: ReadonlyArray<ConfigFormSection>;
+  /** Where the Cancel link points (defaults to the configuration index). Body tabs pass their own route. */
+  cancelHref?: string;
+  /** Same-origin app path saveStatutoryAction redirects/revalidates back to (defaults to BASE in the
+   *  action). Body tabs pass their own route so a publish returns to the tab it was launched from. */
+  returnTo?: string;
 }) {
   const t = useTranslations('payroll.config');
+  const show = (sec: ConfigFormSection) => sections.includes(sec);
   const [s, setS] = useState<FormState>(() => initState(ruleset));
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setS((p) => ({ ...p, [k]: v }));
   const setBand = (i: number, k: keyof BandRow, v: string) =>
@@ -302,8 +321,9 @@ export function StatutoryConfigForm({
   return (
     <form action={saveStatutoryAction} className="space-y-4">
       <input type="hidden" name="data" value={dataJson} />
+      {returnTo && <input type="hidden" name="returnTo" value={returnTo} />}
 
-      {/* Version metadata */}
+      {/* Version metadata — always rendered (the version/effectiveFrom/notes apply to the whole ruleset). */}
       <Card className="grid gap-4 p-4 sm:grid-cols-3">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">{t('fieldVersion')}</span>
@@ -320,6 +340,7 @@ export function StatutoryConfigForm({
       </Card>
 
       {/* EPF */}
+      {show('epf') && (
       <Card className="p-4">
         <h2 className="mb-3 text-sm font-semibold">{t('secEpf')}</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -362,9 +383,11 @@ export function StatutoryConfigForm({
           actionsHeader={t('colActions')}
         />
       </Card>
+      )}
 
       {/* Ceilings — OT wage ceiling removed here (feedback e776d17d); overtime rates are edited on the
           Attendance Policy screen. The stored ot slice still round-trips unchanged via assemble(). */}
+      {show('ceilings') && (
       <Card className="p-4">
         <h2 className="mb-3 text-sm font-semibold">{t('secCeilings')}</h2>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -372,8 +395,10 @@ export function StatutoryConfigForm({
         </div>
         <p className="mt-3 text-xs text-muted-foreground">{t('ceilingsNote')}</p>
       </Card>
+      )}
 
       {/* PCB reliefs + bands */}
+      {show('pcb') && (
       <Card className="p-4">
         <h2 className="mb-3 text-sm font-semibold">{t('secPcb')}</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -429,12 +454,14 @@ export function StatutoryConfigForm({
           </table>
         </div>
       </Card>
+      )}
 
       {/* SOCSO / EIS — editable RM-amount band grids (feedback ee6e1292), now driven by the SAME generic
           BandGridEditor as EPF/PCB. These are the officially verified PERKESO schedules; the warning below
           makes the edit-with-care contract explicit and the code default remains the authoritative floor
           (an archived/empty override restores the built-in). The grids opt into the derived read-only
           "From" column via `fromHeader`. */}
+      {show('socso') && (
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-semibold">{t('secSocso')}</h2>
         <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
@@ -475,7 +502,9 @@ export function StatutoryConfigForm({
           actionsHeader={t('removeTierAria')}
         />
       </Card>
+      )}
 
+      {show('eis') && (
       <Card className="p-4">
         <h2 className="mb-1 text-sm font-semibold">{t('secEis')}</h2>
         <p className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
@@ -495,9 +524,10 @@ export function StatutoryConfigForm({
           actionsHeader={t('removeTierAria')}
         />
       </Card>
+      )}
 
       <div className="flex items-center justify-end gap-2">
-        <a href="/payroll/configuration">
+        <a href={cancelHref}>
           <Button type="button" variant="outline">
             {t('cancel')}
           </Button>

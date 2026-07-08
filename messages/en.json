@@ -549,7 +549,7 @@
         "cp38Records": "CP38 instalment records",
         "hint": "This is a read-only summary. The editable source of truth for these fields lives under the Payroll tab (Statutory)."
       },
-      "zakatMoved": "The zakat (via salary) election has moved to Payroll → Transactions → Zakat.",
+      "zakatMoved": "Zakat has moved to Payroll → Transactions → Zakat.",
       "zakatMovedLink": "Open the zakat screen",
       "defaultShiftTitle": "Default shift",
       "defaultShiftLabel": "Shift",
@@ -1164,8 +1164,9 @@
       "generatedNote": "This is a system-generated payslip.",
       "downloadPdf": "Download PDF",
       "cp38": "CP38 (LHDN instalment)",
-      "zakat": "Zakat (via salary)",
-      "zakatOffsetNote": "PCB above is already net of this"
+      "zakat": "Zakat",
+      "zakatOffsetNote": "PCB above is already net of this",
+      "otConverted": "Overtime (converted to {item})"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",
@@ -1692,7 +1693,45 @@
       "resetDone": "Payroll process reset to Draft",
       "resetOnlyProcessed": "Only a processed payroll process can be reset.",
       "resetAdminOnly": "Only an administrator can reset a payroll process.",
-      "lockedNote": "This payroll process is locked — payslips have been generated. To make corrections, an administrator must reset it to Draft."
+      "lockedNote": "This payroll process is locked — payslips have been generated. To make corrections, an administrator must reset it to Draft.",
+      "resetReasonLabel": "Reason (optional)",
+      "resetReasonPlaceholder": "Why is this run being reset? (recorded in the audit trail)",
+      "reprocessTitle": "Reprocess selected employees",
+      "reprocessHint": "Tick the employees who need correcting and reprocess just them. Only the ticked employees are recalculated in place — everyone else's payslips stay untouched — and the run's totals update by delta. Runs as a queued job so a double-click can't duplicate it.",
+      "reprocessSummary": "{n} of {total} selected",
+      "reprocessSelectAll": "Select all",
+      "reprocessClear": "Clear",
+      "reprocessNoEmployees": "No employees on this run.",
+      "reprocessReasonLabel": "Reason (optional)",
+      "reprocessReasonPlaceholder": "Why are these employees being reprocessed? (recorded in the audit trail)",
+      "reprocessSelected": "Reprocess selected",
+      "reprocessDone": "{n} of {total} employee(s) reprocessed.",
+      "reprocessAdminOnly": "You do not have permission to reprocess payroll.",
+      "reprocessNoneSelected": "Select at least one employee to reprocess.",
+      "reprocessNotProcessed": "Only a processed payroll run can be reprocessed.",
+      "historyTitle": "History",
+      "historyEmpty": "No recorded events for this run yet.",
+      "historyReason": "Reason: {reason}",
+      "historyResetCounts": "{payslips} payslip(s) cleared · {loans} loan instalment(s) reversed · {claims} claim(s) returned to queue",
+      "historyReprocessCount": "{n} employee(s) reprocessed",
+      "historySystemActor": "System",
+      "unlockTitle": "Unlock closed payroll",
+      "unlockLockedNote": "This payroll process is closed and immutable. Unlocking reopens it for correction — a controlled, audited action that requires a confirmation code.",
+      "unlockDescription": "Unlocking returns this closed run to Processed so it can be corrected. This is high-risk: statutory returns or payment files may already have been produced from it. A confirmation code and a reason are required.",
+      "unlockRequestOtp": "Send confirmation code",
+      "unlockOtpIssued": "Confirmation code: {code} — enter it below within 10 minutes to unlock.",
+      "unlockCodeLabel": "Confirmation code",
+      "unlockCodePlaceholder": "6-digit code",
+      "unlockReasonLabel": "Reason (required)",
+      "unlockReasonPlaceholder": "Why is this closed run being unlocked? (recorded in the audit trail)",
+      "unlockConfirm": "Unlock payroll",
+      "unlockWarnPayment": "⚠ The payment summary for this run has already been exported — payment may have been disbursed.",
+      "unlockWarnStatutory": "⚠ Statutory returns (EPF/SOCSO/EIS/LHDN) were already recorded for this month — an amended filing may be needed.",
+      "unlockDone": "Payroll process unlocked and returned to Processed.",
+      "unlockDoneWarned": "Payroll process unlocked. Note: payment and/or statutory submissions had already occurred — review whether an amended filing is needed.",
+      "unlockNotClosed": "Only a closed payroll process can be unlocked.",
+      "unlockOtpInvalid": "The confirmation code is invalid or expired — request a new one.",
+      "unlockPermissionDenied": "You do not have permission to unlock a closed payroll process."
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -1912,7 +1951,12 @@
       "colEpfEmployer": "Employer (RM)",
       "addBand": "Add band",
       "removeBand": "Remove band",
-      "colActions": "Actions"
+      "colActions": "Actions",
+      "tabOverview": "Overview",
+      "secHrdf": "HRDF",
+      "hrdfNote": "HRD Corp (PSMB Act 2001) levy rates applied to eligible employers.",
+      "advancedEdit": "Advanced edit (band tables)",
+      "viewBody": "Open"
     },
     "transactions": {
       "title": "Transactions",
@@ -1930,17 +1974,14 @@
         "tp1Desc": "Monthly TP1 tax relief per employee on a draft batch.",
         "tp1Cta": "Edit TP1 relief",
         "zakatTitle": "Zakat",
-        "zakatDesc": "Zakat paid via salary per employee on a draft batch.",
+        "zakatDesc": "The employee's zakat deduction via salary, with transaction history.",
         "zakatCta": "Edit zakat",
         "loansTitle": "Loans",
         "loansDesc": "Employee loan instalments — auto-deducted each payroll cycle.",
         "loansCta": "Open loans",
         "importHistoryTitle": "Import payroll history",
         "importHistoryDesc": "Bulk import of historical payroll records for data migration.",
-        "importHistoryCta": "Open import",
-        "viewTitle": "Transaction View",
-        "viewDesc": "Read-only inquiry across employees — fixed, individual and processed payroll history.",
-        "viewCta": "Open inquiry"
+        "importHistoryCta": "Open import"
       },
       "fixed": {
         "title": "Fixed Transaction",
@@ -2076,7 +2117,24 @@
         "saving": "Saving…",
         "saveAll": "Save all",
         "otherTools": "Other tools",
-        "back": "Back"
+        "back": "Back",
+        "selectedCount": "{count} selected",
+        "clearSelection": "Clear all",
+        "removeEmployee": "Remove {name}",
+        "deptFilter": "Department",
+        "allDepartments": "All departments",
+        "statusFilter": "Status",
+        "allStatuses": "All statuses",
+        "showingCapped": "Showing first {cap} of {total}",
+        "applyAllHint": "Each row will be recorded for all {count} selected employees.",
+        "coverageGapHint": "Some selected employees are not in this run: {names}",
+        "reviewEmployees": "Employees ({count})",
+        "noSharedDraft": "No draft run covers all the selected employees.",
+        "noEmployeesSelected": "Select at least one employee.",
+        "duplicateRow": "Duplicate rows are not allowed — two entries have the same item, date, amount, and remarks.",
+        "itemGroupGeneral": "General",
+        "itemGroupEarnings": "Earnings (Pay Item Master)",
+        "itemGroupDeductions": "Deductions (Pay Item Master)"
       },
       "tp1": {
         "title": "TP1 Relief",
@@ -2091,16 +2149,9 @@
       },
       "zakat": {
         "title": "Zakat",
-        "subtitle": "The per-employee zakat election, plus one-off overrides for a payroll run.",
-        "pickBatch": "Draft batch",
-        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
-        "employee": "Employee",
-        "amount": "Zakat",
-        "save": "Save",
-        "saved": "Saved.",
-        "empty": "No employees in this batch.",
+        "subtitle": "The employee's standing zakat deduction via salary, applied on every regular payroll run.",
         "election": {
-          "title": "Zakat election (via salary)",
+          "title": "Zakat",
           "subtitle": "The employee's standing zakat deduction — state, method, rate and effective period. Payroll applies it on every regular run.",
           "pickEmployee": "Employee",
           "noEmployees": "No employees in the current company scope.",
@@ -2109,7 +2160,7 @@
           "company": "Company",
           "noProfile": "This employee has no Malaysian statutory profile yet. Save the IC number on the personnel record first.",
           "openPersonnel": "Open personnel record",
-          "save": "Save election",
+          "save": "Save",
           "active": "Deduct zakat via salary",
           "state": "Zakat authority (state)",
           "method": "Method",
@@ -2121,9 +2172,34 @@
           "effectiveTo": "Effective to",
           "nonResidentHint": "Percentage of PCB produces RM0 for non-residents and below-threshold earners — use Fixed if a deduction is required."
         },
-        "override": {
-          "title": "One-off override (per payroll run)",
-          "subtitle": "A manual RM amount for one draft batch only — it overrides the standing election for that run."
+        "history": {
+          "title": "Transaction history",
+          "subtitle": "Read-only visibility of every saved zakat record, for verification and audit.",
+          "electionsTitle": "Saved elections",
+          "electionsSubtitle": "Every employee with a saved zakat setup on file. Switching zakat off clears the setup; past deductions remain in the payroll list below.",
+          "electionsEmpty": "No saved zakat records yet.",
+          "appliedTitle": "Applied in payroll",
+          "appliedSubtitle": "The zakat actually deducted in each processed payroll run.",
+          "appliedEmpty": "No zakat deductions match the selected filters.",
+          "exportCsv": "Export CSV",
+          "company": "Company",
+          "employee": "Employee",
+          "year": "Year",
+          "month": "Month",
+          "all": "All",
+          "apply": "Apply filters",
+          "colPeriod": "Payroll month",
+          "colCycle": "Cycle",
+          "colEmployee": "Employee",
+          "colCompany": "Company",
+          "colMethod": "Method",
+          "colAmount": "Amount",
+          "colState": "State",
+          "colEffective": "Effective",
+          "colCreated": "Created",
+          "status": "Status",
+          "active": "Active",
+          "inactive": "Inactive"
         }
       },
       "view": {
@@ -2144,7 +2220,13 @@
           "month": "Month",
           "cycle": "Payroll cycle",
           "apply": "Apply filters",
-          "all": "All"
+          "all": "All",
+          "department": "Department",
+          "txnStatus": "Transaction status",
+          "createdBy": "Created by",
+          "createdFrom": "Created from",
+          "createdTo": "Created to",
+          "createdDate": "Created date"
         },
         "fixed": {
           "empty": "No fixed transactions match the selected filters."
@@ -2154,7 +2236,8 @@
         },
         "history": {
           "empty": "No processed payroll results match the selected filters."
-        }
+        },
+        "exportCsv": "Export CSV"
       }
     },
     "setup": {
@@ -2964,7 +3047,8 @@
         "loans": "Loans",
         "payrollConfig": "Payroll configuration",
         "payrollPolicy": "Payroll policy",
-        "payComponents": "Pay components"
+        "payComponents": "Pay components",
+        "payrollPermissions": "Payroll permissions"
       },
       "scope": {
         "people": "Everyone can open this; the list is limited to the people you are allowed to see.",
@@ -3219,6 +3303,25 @@
       "deleteShift": "Delete",
       "deleteShiftHint": "Permanently delete an unused shift. A shift referenced by rosters or an employee's default must be archived instead."
     },
+    "payrollPermissions": {
+      "title": "Payroll permissions",
+      "subtitle": "Granular payroll actions (rollback, unlock, selective reprocess, close) — configurable per company or tenant-wide.",
+      "defaultsTitle": "Default permissions",
+      "defaultsHint": "These are the built-in defaults. Add an override below to widen or narrow who holds a permission for a specific company or tenant-wide.",
+      "overridesTitle": "Overrides",
+      "overridesEmpty": "No overrides — the defaults above apply.",
+      "addTitle": "Add override",
+      "addButton": "Save override",
+      "colKey": "Permission",
+      "colDefaultRoles": "Default roles",
+      "colScope": "Scope",
+      "colRole": "Role",
+      "colAllowed": "Access",
+      "tenantWide": "Tenant-wide",
+      "allow": "Allow",
+      "deny": "Deny",
+      "remove": "Remove"
+    },
     "toilPolicy": {
       "pageTitle": "Time off in lieu",
       "pageDescription": "Let rest-day, holiday, or overtime work be banked as replacement leave instead of paid as cash, per company. Contractual, not statutory: a worked day is paid or banked, never both.",
@@ -3362,6 +3465,7 @@
       "batches": "Payroll Process",
       "reports": "Reports",
       "transactions": "Transactions",
+      "view": "Transaction View",
       "setup": "Settings",
       "configuration": "Configuration"
     },
@@ -3944,18 +4048,29 @@
     "claimCutOff": "Claim cut-off day",
     "unpaidLeaveCutOff": "Unpaid-leave cut-off day",
     "attendanceCutOff": "Attendance cut-off day",
-    "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. Scheduling reference only — these do not change how the pay period is calculated, and no cross-field ordering (e.g. attendance before pay day) is enforced.",
+    "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. These are the COMPANY DEFAULT cut-off windows: payroll pulls each transaction type (overtime, claims, unpaid leave, attendance) from its configured window when an employee's payroll policy doesn't set its own. Statutory contributions still aggregate per calendar month.",
     "save": "Save",
     "hiringTitle": "Hiring defaults",
     "probationMonths": "Default probation period (months)",
     "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
     "reviewReminderDays": "Review reminders (days before end date)",
-    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
+    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank).",
+    "policyReleaseTitle": "Default policy & payslip release",
+    "defaultPolicy": "Default payroll policy",
+    "defaultPolicyNone": "None (monthly default)",
+    "defaultPolicyHint": "Applied to every employee who has no payroll policy assigned individually.",
+    "releaseMode": "Payslip release",
+    "release_immediate": "Immediately after payroll closes",
+    "release_fixed_day": "Fixed day of month",
+    "release_relative": "Relative to pay day",
+    "releaseValue": "Day / offset",
+    "releaseValuePlaceholder": "e.g. 5 or -2",
+    "releaseHint": "Controls when employees can see their payslip in self-service. Fixed day = a day of the month after the pay period; relative = days before(-)/after(+) pay day. Never before payroll closes."
   },
   "payrollPolicy": {
     "title": "Payroll policies",
     "description": "Named, reusable rules for how each employee's payroll is processed. Assign a policy to an employee and payroll applies it automatically.",
-    "previewNotice": "Monthly and Daily policies are live. Hourly policies are configurable now (per-hour rate and shift-schedule setting), but live hourly payslip generation is a signed-off follow-up and not yet applied to payroll. Custom-period policies are configurable now: you can record a cut-off window (an anchor day for a non-calendar period), but applying that window to overtime, attendance and leave is a signed-off follow-up and not yet applied to payroll. Statutory months (EPF, SOCSO, EIS, PCB) always stay on the calendar month by law.",
+    "previewNotice": "General Settings below (proration, negative net pay, overtime caps, leave divisors, rounding) are live and applied during payroll calculation. Statutory minimums (EPF, SOCSO, EIS, PCB, and the EA 1955 overtime floor) always stay locked and cannot be set below the law. Custom-period cut-off windows are recorded but not yet applied to calculation.",
     "emptyScope": "No companies in the current scope. Use the company switcher above.",
     "catalogTitle": "Policies",
     "searchPlaceholder": "Search policies…",
@@ -4022,7 +4137,8 @@
     "errors": {
       "duplicateName": "A payroll policy with this name already exists for this company.",
       "inUse": "This policy is assigned to employees and cannot be deleted. Unassign it first.",
-      "companyMismatch": "A payroll policy can only be assigned to employees in its own company."
+      "companyMismatch": "A payroll policy can only be assigned to employees in its own company.",
+      "defaultInUse": "This payroll policy is set as a company default and cannot be deleted."
     },
     "fieldDailyRate": "Per-day rate (Daily)",
     "dailyRatePlaceholder": "e.g. 120.00",
@@ -4040,10 +4156,102 @@
       "modeCustom": "Custom period",
       "anchorDay": "Anchor day",
       "anchorDayPlaceholder": "e.g. 25",
-      "anchorDayHint": "Used only for the \"Custom period\" mode. The anchor day (1–28) is the day of the month the window opens — for example, anchor 25 means the window runs from the 25th of the previous month to the 24th of the period month. Applies only to Custom-period policies; statutory months stay on the calendar month."
+      "anchorDayHint": "Used only for the \"Custom period\" mode. The anchor day (1–28) is the day of the month the window opens — for example, anchor 25 means the window runs from the 25th of the previous month to the 24th of the period month. Applies only to Custom-period policies; statutory months stay on the calendar month.",
+      "frequencyLabel": "Payroll frequency",
+      "frequency": {
+        "monthly": "Monthly",
+        "weekly": "Weekly",
+        "biweekly": "Bi-weekly"
+      },
+      "frequencyHint": "How often payroll runs. Weekly and bi-weekly are operational cadences — statutory contributions (EPF, SOCSO, EIS, PCB) are still aggregated and reported per calendar month, as required by law.",
+      "perTypeTitle": "Per-type cut-off overrides",
+      "type": {
+        "salary": "Salary",
+        "claim": "Claim",
+        "overtime": "Overtime",
+        "leave": "Leave",
+        "attendance": "Attendance"
+      },
+      "inheritPlaceholder": "Inherit",
+      "perTypeHint": "Each transaction type can close on its own anchor day (1–28). Leave blank to inherit the salary anchor day above. Only used when the period mode is \"Custom period\".",
+      "previewTitle": "Cut-off preview for {period}",
+      "previewType": "Type",
+      "previewFrom": "From",
+      "previewTo": "To",
+      "previewHint": "The dates each transaction type will be picked up for the current month, derived from the saved cut-off configuration. Consecutive periods are contiguous and never overlap.",
+      "perFrequencyTitle": "Per-frequency cut-off overrides",
+      "perFrequencyHint": "When the payroll frequency is Weekly or Bi-Weekly, that frequency can use its own anchor day and per-type cut-off days. Leave blank to inherit the Monthly (base) cut-off above. Only used when the period mode is \"Custom period\".",
+      "scheduleTitle": "{frequency} schedule for {period}",
+      "scheduleCycle": "Cycle",
+      "scheduleHint": "The cut-off cycles this payroll frequency generates for the month. Weekly and bi-weekly split the month into contiguous cycles; statutory contributions are still aggregated per calendar month by law."
     },
     "copy": "Copy",
-    "copySuffix": "(copy)"
+    "copySuffix": "(copy)",
+    "config": {
+      "prorationTitle": "Salary proration & working-day reference",
+      "prorationDivisor": "Proration basis",
+      "divisorCalendar": "Calendar days",
+      "divisorCustom": "Fixed working days",
+      "divisorInherit": "Default (use the basis above)",
+      "prorationCustomDays": "Fixed days (e.g. 26)",
+      "includeSaturday": "Count Saturdays",
+      "includeSunday": "Count Sundays",
+      "includeHoliday": "Count public holidays",
+      "salaryIncrementProration": "Split a mid-month salary increment across the two rates",
+      "prorationHint": "Used when a joiner/leaver works part of the month. Default (calendar days) reproduces today's figures.",
+      "salaryConfigTitle": "Salary configuration",
+      "salaryConfigHint": "Configure the basic-salary formula for each employee event independently. Leaving an event at \"default\" inherits the basis above.",
+      "hireFormula": "New hire basic salary formula",
+      "resignFormula": "Resigned employee basic salary formula",
+      "incrementFormula": "Salary increment basic salary formula",
+      "incrementHint": "When on, a mid-month pay raise is split day-by-day across the old and new rate.",
+      "negativeNetTitle": "Negative net pay",
+      "negativeNetLabel": "When net pay is negative",
+      "negativeRetain": "Keep the negative amount",
+      "negativeSetZero": "Set net pay to zero",
+      "negativeCarryForward": "Carry the balance forward to the next cycle",
+      "negativeNetHint": "\"Carry forward\" holds this cycle's net at zero and recovers the shortfall from the next cycle's net pay.",
+      "overtimeTitle": "Overtime",
+      "otMultiplier": "Ordinary-rate multiplier",
+      "otMaxHours": "Max overtime hours / month",
+      "otMaxAmount": "Max overtime amount / month (RM)",
+      "otDayWorkday": "Working days",
+      "otDayRestDay": "Rest days",
+      "otDayHoliday": "Public holidays",
+      "otExceedLabel": "When overtime exceeds the maximum",
+      "otExceedCap": "Cap it (default)",
+      "otExceedConvert": "Convert the excess to a pay item",
+      "otExceedComponent": "Pay item for the excess",
+      "otExceedComponentNone": "Select a pay item",
+      "otHint": "The multiplier is floored at the statutory 1.5×. Convert redirects any overtime above the cap onto the chosen pay item so it is still paid.",
+      "leaveTitle": "Leave calculation",
+      "unpaidLeaveDivisor": "Unpaid leave divisor",
+      "unpaidTimeOffDivisor": "Unpaid time-off divisor",
+      "encashmentDivisor": "Leave encashment divisor",
+      "leaveDivisor": {
+        "calendar_month": "Calendar month",
+        "custom_days": "Fixed days",
+        "cutoff_days": "Cut-off period days",
+        "working_days": "Working days",
+        "custom_hours": "Fixed hours",
+        "custom_minutes": "Fixed minutes"
+      },
+      "leaveCustomDays": "Fixed days",
+      "leaveCustomHours": "Fixed hours",
+      "leaveCustomMinutes": "Fixed minutes",
+      "leaveHint": "Divisors decide how one unpaid day / encashed day is valued. Default (calendar month) reproduces today's figures.",
+      "roundingTitle": "Rounding",
+      "roundingEarnings": "Earnings",
+      "roundingDeductions": "Deductions",
+      "roundingNetPay": "Net pay",
+      "rounding": {
+        "none": "Exact (2 dp)",
+        "up": "Round up",
+        "down": "Round down",
+        "nearest": "Nearest ringgit"
+      },
+      "roundingHint": "Statutory contribution rounding always follows its own legislated rules and is unaffected."
+    }
   },
   "leaveApproval": {
     "title": "Leave Approval Chain",
@@ -4466,7 +4674,7 @@
     "catalogTitle": "Cycles",
     "seedDefaults": "Add default cycles",
     "colName": "Name",
-    "colRunType": "Processing behaviour",
+    "colRunType": "Run type",
     "colRemarks": "Remarks",
     "colSort": "Order",
     "colStatus": "Status",
@@ -4486,7 +4694,7 @@
     "cancelEdit": "Cancel",
     "namePlaceholder": "e.g. Year-End Bonus",
     "remarksPlaceholder": "Optional label (e.g. Advance Salary)",
-    "runTypeHelp": "The processing behaviour determines the payroll rules applied (e.g. loan deductions and OT only apply on a Regular run). This is fixed — only the name and list are configurable.",
+    "runTypeHelp": "The run type determines the payroll rules applied (e.g. loan deductions and OT only apply on a Regular run) and is fixed. Use Processing behaviour to note, in your own words, what this cycle is for.",
     "runType": {
       "regular": "Regular",
       "off_cycle": "Off-cycle",
@@ -4502,13 +4710,20 @@
     "toast": {
       "seeded": "Default cycles added",
       "saved": "Cycle saved",
-      "deleted": "Cycle deleted"
+      "deleted": "Cycle deleted",
+      "copied": "{created} copied, {skipped} skipped."
     },
     "errors": {
       "duplicateName": "A cycle with this name already exists for this company.",
       "regularConflict": "This company already has an active Regular cycle. Only one is allowed.",
       "inUse": "This cycle is used in {refs} payroll run(s) — deactivate it instead of deleting."
-    }
+    },
+    "colBehaviour": "Processing behaviour",
+    "behaviourPlaceholder": "Describe, in your own words, what this cycle is for (business reference).",
+    "copy": "Copy to companies",
+    "copyTitle": "Copy “{name}” to other companies",
+    "copyDescription": "Select the companies to copy this cycle into. A company that already has a cycle with this name — or an active Regular cycle, when copying a Regular cycle — is skipped.",
+    "copyConfirm": "Copy cycle"
   },
   "auth": {
     "logout": "Log out",

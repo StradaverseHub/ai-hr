@@ -227,17 +227,25 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll',
       '/payroll/[batchId]',
       '/payroll/configuration',
+      // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
+      // each a real sub-route under the same scopedAdmin guard as the index.
+      '/payroll/configuration/epf',
+      '/payroll/configuration/socso',
+      '/payroll/configuration/eis',
+      '/payroll/configuration/pcb',
+      '/payroll/configuration/hrdf',
       '/payroll/history-import',
       '/payroll/process',
       '/payroll/process/result',
       '/payroll/reports',
       '/payroll/setup',
+      // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
+      // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
+      '/payroll/transaction-view',
       '/payroll/transactions',
       '/payroll/transactions/fixed',
       '/payroll/transactions/individual',
       '/payroll/transactions/tp1',
-      // R13 a4a05174: centralized read-only Transaction View (scopedAdmin, same guard as the hub).
-      '/payroll/transactions/view',
       '/payroll/transactions/zakat',
     ],
   },
@@ -269,6 +277,14 @@ export const SCREENS: readonly ScreenEntry[] = [
     labelKey: 'admin.users.screen.payComponents',
     guard: 'requireAdmin',
     routes: ['/admin/pay-components'],
+  },
+  {
+    // Granular payroll permission overrides (feedback 9bc442bc) — configurable per company/tenant RBAC.
+    screenKey: 'payrollPermissions',
+    href: '/admin/payroll-permissions',
+    labelKey: 'admin.users.screen.payrollPermissions',
+    guard: 'requireAdmin',
+    routes: ['/admin/payroll-permissions'],
   },
   // ── Analytics / audit / governance (requireAdmin/scopedAdmin) ──
   { screenKey: 'analytics', href: '/analytics', labelKey: 'nav.analytics', guard: 'scopedAdmin', routes: ['/analytics'] },

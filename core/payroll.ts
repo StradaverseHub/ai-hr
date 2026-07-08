@@ -2,9 +2,15 @@
  * Payroll kernel — generic, jurisdiction-neutral (ADR-0008). Computes gross→net and delegates
  * every statutory contribution to the company's country pack. Each mutation appends an event.
  */
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
+import { createHash, randomInt } from 'node:crypto';
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
+import {
+  PAYROLL_PERMISSION_DEFAULTS,
+  decidePayrollPermission,
+  type PayrollPermissionKey,
+} from '../lib/payroll-permissions';
 import { encashableDaysForEmployment } from './leave-encashment';
 import { packFor } from '../localization/registry';
 import { toCsv } from '../lib/csv';
@@ -13,8 +19,10 @@ import {
   attendance,
   claimRequest,
   company,
+  companyPayrollConfig,
   companyStatutoryMy,
   compensation,
+  domainEvent,
   employeeLoan,
   employeeStatutoryMy,
   employment,
@@ -28,8 +36,14 @@ import {
   leaveType,
   payPeriod,
   payrollBatch,
+  payrollEmployeeResultHistory,
   payrollIndividualTxn,
   payrollInput,
+  payrollPermissionGrant,
+  payrollPolicy,
+  payrollReprocessJob,
+  payrollStatusHistory,
+  payrollStepUpChallenge,
   payslip,
   person,
   rosterAssignment,
@@ -46,12 +60,24 @@ import { resolvePayRule } from './pay-rule';
 import { resolveAssignedPolicy } from './payroll-policy';
 import {
   applyOvertimeCaps,
+  applyOvertimeCapsDetailed,
   applyRounding,
+  type CompanyCutOffConfig,
+  cutOffWindowFor,
+  disburseNetAcrossCycles,
+  encashmentDivisorDays,
+  ENCASHMENT_ORP_DIVISOR,
   leaveDivisorDays,
+  unpaidTimeOffDailyRate,
+  payrollFrequencyOf,
+  payrollScheduleFor,
+  payslipReleaseAt,
   prorationDivisorDays,
+  resolveProrationSettings,
   usesWorkingDayProration,
   workingDayRoster,
 } from './payroll-policy-config';
+import type { CutOffType } from '../db/schema';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -130,6 +156,127 @@ export function defaultPaymentDate(payPeriod: string, payDay: number | null | un
 }
 
 /**
+ * c7fdfcf6 (Payroll Schedule) — the COMPANY-level cut-off schedule for a batch: the company_payroll_config day
+ * columns (the fallback tier) plus the company-default payroll policy's config (the policy tier). Loaded ONCE
+ * per batch flow; each transaction type's window is then resolved via `cutOffWindowFor`. A company with no
+ * config + no default policy resolves every window to the plain calendar month, so the kernel reads that swap
+ * their hard-coded `[M-01 … M-end]` for the resolved window stay byte-identical. Derived read ⇒ no DomainEvent.
+ */
+async function loadBatchCutOffSchedule(
+  tx: Tx,
+  companyId: string,
+): Promise<{ companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null }> {
+  const [cpc] = await tx
+    .select({
+      cutOffDay: companyPayrollConfig.cutOffDay,
+      overtimeCutOffDay: companyPayrollConfig.overtimeCutOffDay,
+      claimCutOffDay: companyPayrollConfig.claimCutOffDay,
+      unpaidLeaveCutOffDay: companyPayrollConfig.unpaidLeaveCutOffDay,
+      attendanceCutOffDay: companyPayrollConfig.attendanceCutOffDay,
+      defaultPayrollPolicyId: companyPayrollConfig.defaultPayrollPolicyId,
+    })
+    .from(companyPayrollConfig)
+    .where(eq(companyPayrollConfig.companyId, companyId))
+    .limit(1);
+  const companyCfg: CompanyCutOffConfig | null = cpc
+    ? {
+        cutOffDay: cpc.cutOffDay,
+        overtimeCutOffDay: cpc.overtimeCutOffDay,
+        claimCutOffDay: cpc.claimCutOffDay,
+        unpaidLeaveCutOffDay: cpc.unpaidLeaveCutOffDay,
+        attendanceCutOffDay: cpc.attendanceCutOffDay,
+      }
+    : null;
+  let defaultConfig: PayrollPolicyConfig | null = null;
+  if (cpc?.defaultPayrollPolicyId) {
+    const [pol] = await tx
+      .select({ config: payrollPolicy.config, status: payrollPolicy.status })
+      .from(payrollPolicy)
+      .where(eq(payrollPolicy.id, cpc.defaultPayrollPolicyId))
+      .limit(1);
+    if (pol && pol.status === 'active') defaultConfig = (pol.config ?? null) as PayrollPolicyConfig | null;
+  }
+  return { companyCfg, defaultConfig };
+}
+
+/** Resolve the company-level cut-off window for one transaction type of a batch's period, from a loaded
+ *  schedule. Byte-identical to `[M-01 … M-end]` when nothing is configured. */
+function batchTypeWindow(
+  sched: { companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null },
+  type: CutOffType,
+  payPeriod: string,
+): { start: string; end: string } {
+  return cutOffWindowFor(type, sched.defaultConfig, sched.companyCfg, payPeriod);
+}
+
+/** c7fdfcf6 (Payroll Schedule) — resolve the company-level cut-off window for a transaction TYPE + period in one
+ *  call (loads the schedule, then resolves). Exported so sibling prefills (e.g. claims) select transactions by
+ *  the same schedule the payroll kernel uses. Calendar month when nothing is configured (byte-identical). */
+export async function resolveBatchCutOffWindow(
+  tx: Tx,
+  companyId: string,
+  type: CutOffType,
+  payPeriod: string,
+): Promise<{ start: string; end: string }> {
+  const sched = await loadBatchCutOffSchedule(tx, companyId);
+  return batchTypeWindow(sched, type, payPeriod);
+}
+
+/**
+ * c7fdfcf6 gap-fix (per-employment cut-off) — the UNION of a transaction TYPE's cut-off window across the
+ * company-default schedule and EVERY active payroll policy in the company. A prefill query that must bound a
+ * single fetch (it discovers which employments have rows only after the fetch) widens to this union, then filters
+ * each row down to that employment's OWN policy window. When nothing anywhere shifts the window the union equals
+ * the plain calendar month, so an unconfigured company fetches exactly `[M-01 … M-end]` (byte-identical).
+ */
+async function unionTypeWindow(
+  tx: Tx,
+  sched: { companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null },
+  companyId: string,
+  type: CutOffType,
+  payPeriod: string,
+): Promise<{ start: string; end: string }> {
+  const windows = [cutOffWindowFor(type, sched.defaultConfig, sched.companyCfg, payPeriod)];
+  const pols = await tx
+    .select({ config: payrollPolicy.config })
+    .from(payrollPolicy)
+    .where(and(eq(payrollPolicy.companyId, companyId), eq(payrollPolicy.status, 'active')));
+  for (const pol of pols) {
+    windows.push(cutOffWindowFor(type, (pol.config ?? null) as PayrollPolicyConfig | null, sched.companyCfg, payPeriod));
+  }
+  let start = windows[0].start;
+  let end = windows[0].end;
+  for (const w of windows) {
+    if (w.start < start) start = w.start;
+    if (w.end > end) end = w.end;
+  }
+  return { start, end };
+}
+
+/**
+ * c7fdfcf6 gap-fix (per-employment cut-off) — resolve one transaction TYPE's cut-off window for a SPECIFIC
+ * employment, from its ASSIGNED policy (company-default fallback, via resolveAssignedPolicy) → company column →
+ * calendar month. Salary already resolves per-employment in the payslip loop; this extends the SAME per-employee
+ * resolution to OT / attendance / leave so employments on different (non-default) policies each get their own
+ * window instead of sharing the company default. Cached per employmentId; NEVER throws.
+ */
+async function employmentTypeWindow(
+  tx: Tx,
+  sched: { companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null },
+  cache: Map<string, { start: string; end: string }>,
+  employmentId: string,
+  type: CutOffType,
+  payPeriod: string,
+): Promise<{ start: string; end: string }> {
+  const cached = cache.get(employmentId);
+  if (cached) return cached;
+  const cfg = (await resolveAssignedPolicy(tx, employmentId))?.config ?? null;
+  const w = cutOffWindowFor(type, cfg, sched.companyCfg, payPeriod);
+  cache.set(employmentId, w);
+  return w;
+}
+
+/**
  * EA-1955 incomplete-month proration factor for a 'YYYY-MM' wage period: the employee is paid for
  * the calendar days they were employed within the month, over the number of days in that month
  * (Employment Act 1955 s.18A ordinary-rate basis). Returns 1 for a full month, 0 if not employed
@@ -147,16 +294,28 @@ function prorationFactor(
   payPeriod: string,
   hiredOn: string,
   terminatedOn: string | null,
-  opts?: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } },
+  opts?: {
+    divisorDays?: number;
+    workingDayBasis?: { roster: number[]; holidays: Set<string> };
+    // c7fdfcf6 (Payroll Schedule) — the SALARY cut-off window overriding the calendar-month bounds. Absent ⇒
+    // the calendar month `[M-01 … M-end]` (byte-identical to the legacy formula). When a policy/company cut-off
+    // is configured, the join-date / resignation proration is counted against this window (e.g. anchor 26 ⇒
+    // [26 of M-1 … 25 of M]) and the denominator is the window's own length in days — delivering the reporter's
+    // "salary cut-off determines Basic Salary / Join-Date / Resignation proration".
+    window?: { start: string; end: string };
+  },
 ): number {
   const [year, month1] = payPeriod.split('-').map(Number);
   const dim = daysInMonth(year, month1);
-  const periodStart = `${payPeriod}-01`;
-  const periodEnd = `${payPeriod}-${String(dim).padStart(2, '0')}`;
+  const periodStart = opts?.window?.start ?? `${payPeriod}-01`;
+  const periodEnd = opts?.window?.end ?? `${payPeriod}-${String(dim).padStart(2, '0')}`;
+  // Inclusive length of the window in days (cross-month safe). For the calendar-month default this equals `dim`.
+  const windowDays =
+    Math.round((Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86_400_000) + 1;
   const start = hiredOn > periodStart ? hiredOn : periodStart;
   const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
   if (start > periodEnd || end < periodStart) return 0;
-  const denom = opts?.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : dim;
+  const denom = opts?.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : windowDays;
   if (opts?.workingDayBasis) {
     // Count the employee's WORKING days within [start, end] vs the working days across the whole period.
     const { roster, holidays } = opts.workingDayBasis;
@@ -179,8 +338,11 @@ function prorationFactor(
     if (denomWork === 0) return 0;
     return Math.min(1, eligibleWork / denomWork);
   }
-  const eligibleDays = Math.max(0, Number(end.slice(8, 10)) - Number(start.slice(8, 10)) + 1);
-  return Math.min(1, eligibleDays / denom);
+  // Cross-month-safe eligible-day count (inclusive). For a same-month calendar window this is identical to the
+  // legacy `end.day − start.day + 1`.
+  const eligibleDays =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+  return Math.min(1, Math.max(0, eligibleDays) / denom);
 }
 
 /**
@@ -229,6 +391,15 @@ async function unpaidDaysByEmployment(
   tx: Tx,
   periodStart: string,
   periodEnd: string,
+  // c7fdfcf6 gap-fix (per-employment leave cut-off) — optionally scope to a set of employments so the caller
+  // can resolve the LEAVE window PER employment (its assigned policy), then query per window-group. Omitted ⇒
+  // tenant-wide (the legacy behaviour); the batch loop only ever reads its own employments' entries either way.
+  employmentIds?: string[],
+  // f3148da1 Step 5 (R17 gap-fix reinstatement) — when true, count ONLY partial-day unpaid absences (half-day
+  // AM/PM + hourly requests, duration_type != 'full_day'): the "unpaid TIME OFF" subset the policy's
+  // unpaidTimeOffDivisor values with its own formula. The batch loop queries this subset only for employments
+  // whose config sets a distinct time-off divisor, so the default path issues no extra query.
+  timeOffOnly = false,
 ): Promise<Map<string, number>> {
   // ADR-0068 §4A: for a per-date-approval request, deduct only the APPROVED dates, not the raw request span —
   // reading leave_request.days would count a mid-span rejected date as unpaid leave. We keep the current
@@ -259,6 +430,8 @@ async function unpaidDaysByEmployment(
         ),
         gte(leaveRequest.startDate, periodStart),
         lte(leaveRequest.startDate, periodEnd),
+        employmentIds && employmentIds.length > 0 ? inArray(leaveRequest.employmentId, employmentIds) : undefined,
+        timeOffOnly ? ne(leaveRequest.durationType, 'full_day') : undefined,
       ),
     )
     .groupBy(leaveRequest.employmentId);
@@ -1173,6 +1346,10 @@ export async function prefillTp1FromSelfRelief(
  * it, and the derivation here is a trivial constant (fixedAmount), not an OT-style computation that would
  * warrant a derivation payload. Writes ONLY for active employees; never zeroes others (an employee whose
  * setup became inactive keeps any prior manual zakat — admin must clear it, same as OT/bonus preservation).
+ *
+ * NOTE (feedback d435673e): the Zakat screen's one-off override section was removed, so this prefill, the
+ * batch input grid and the batch import are now the ONLY writers of `payroll_input.zakat`. Kernel precedence
+ * is unchanged (manual > fixed > percent_of_pcb) — see the effectiveZakat resolution in generatePayslips.
  */
 export async function prefillFixedZakat(
   ctx: SessionContext,
@@ -1272,10 +1449,26 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     const periodStart = `${batch.payPeriod}-01`;
     const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
 
-    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default.
+    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default. The
+    // statutory month stays CALENDAR-bound by law — the cut-off window below moves only which OT transactions
+    // land in the run, never the statutory month they contribute in.
     const rules = await pack.payroll.loadRuleset(tx, { asOf: periodEnd });
 
-    // Per-day classified OT minutes within the pay period (per-day matters: the
+    // c7fdfcf6 (Payroll Schedule) — resolve the OVERTIME cut-off window for this run: OT transactions are pulled
+    // from `[cut-off window]` instead of the fixed calendar month. Absent/calendar config ⇒ the window IS the
+    // calendar month, so the query below is byte-identical for an unconfigured company.
+    // Gap-fix (per-employment cut-off): the OT window is resolved PER employment (its assigned policy), not only
+    // against the company default. The SQL fetch widens to the UNION of every active policy's OT window, then each
+    // row is filtered to its own employment's window below. When no policy shifts the window the union equals the
+    // calendar month, so the fetch is byte-identical for an unconfigured company.
+    const otSched = await loadBatchCutOffSchedule(tx, batch.companyId);
+    const otWindow = await unionTypeWindow(tx, otSched, batch.companyId, 'overtime', batch.payPeriod);
+    // When the union already IS the calendar month, every per-employment window is the calendar month too, so the
+    // per-row filter is a no-op and we skip the per-employment policy resolution entirely (byte-identical path).
+    const otPerEmployment = otWindow.start !== periodStart || otWindow.end !== periodEnd;
+    const otWindowCache = new Map<string, { start: string; end: string }>();
+
+    // Per-day classified OT minutes within the cut-off window (per-day matters: the
     // rest-day ½/1-day rule cannot be computed from monthly aggregates).
     // ADR-0033: when TOIL is on, a day already banked as time-in-lieu is excluded here — the worked OT is
     // compensated once, as cash XOR leave. Flag off ⇒ no clause ⇒ byte-identical.
@@ -1283,9 +1476,10 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       process.env.TOIL_ENABLED === 'true'
         ? sql`not exists (select 1 from toil_accrual ta where ta.employment_id = ${attendance.employmentId} and ta.worked_date = ${attendance.attendanceDate} and ta.status <> 'lapsed')`
         : undefined;
-    const otRows = await tx
+    const otRowsRaw = await tx
       .select({
         employmentId: attendance.employmentId,
+        attendanceDate: attendance.attendanceDate,
         dayType: attendance.dayType,
         otMinutes: attendance.otMinutes,
       })
@@ -1294,12 +1488,22 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       .where(
         and(
           eq(employment.companyId, batch.companyId),
-          gte(attendance.attendanceDate, periodStart),
-          lte(attendance.attendanceDate, periodEnd),
+          gte(attendance.attendanceDate, otWindow.start),
+          lte(attendance.attendanceDate, otWindow.end),
           gt(attendance.otMinutes, 0),
           excludeToilDays,
         ),
       );
+    // Gap-fix: keep only rows inside each employment's OWN overtime window (no-op when otPerEmployment is false).
+    const otRows: typeof otRowsRaw = [];
+    for (const r of otRowsRaw) {
+      if (!otPerEmployment) {
+        otRows.push(r);
+        continue;
+      }
+      const w = await employmentTypeWindow(tx, otSched, otWindowCache, r.employmentId, 'overtime', batch.payPeriod);
+      if (r.attendanceDate >= w.start && r.attendanceDate <= w.end) otRows.push(r);
+    }
     if (otRows.length === 0) return { applied: 0, ineligible: 0 };
     const empIds = [...new Set(otRows.map((r) => r.employmentId))];
 
@@ -1427,14 +1631,23 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
     const [comp] = await tx.select({ id: payComponent.id }).from(payComponent).where(eq(payComponent.code, 'SHIFT_DIFFERENTIAL')).limit(1);
     if (!comp) throw new Error('SHIFT_DIFFERENTIAL pay-component is not seeded — run the catalog seed first');
 
-    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
-    const periodStart = `${batch.payPeriod}-01`;
-    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+    // c7fdfcf6 (Payroll Schedule) — shift-differential is derived from ATTENDANCE, so it follows the attendance
+    // cut-off window. Absent/calendar config ⇒ the window is the calendar month (byte-identical).
+    // Gap-fix (per-employment cut-off): the attendance window is resolved PER employment (its assigned policy).
+    // The SQL fetch widens to the UNION of every active policy's attendance window, then each row is filtered to
+    // its own employment's window below. Union == calendar month when nothing shifts it ⇒ byte-identical fetch.
+    const shiftSched = await loadBatchCutOffSchedule(tx, batch.companyId);
+    const attWindow = await unionTypeWindow(tx, shiftSched, batch.companyId, 'attendance', batch.payPeriod);
+    const [sy, sm] = batch.payPeriod.split('-').map(Number);
+    const shiftPeriodStart = `${batch.payPeriod}-01`;
+    const shiftPeriodEnd = `${batch.payPeriod}-${String(daysInMonth(sy, sm)).padStart(2, '0')}`;
+    const attPerEmployment = attWindow.start !== shiftPeriodStart || attWindow.end !== shiftPeriodEnd;
+    const attWindowCache = new Map<string, { start: string; end: string }>();
 
-    // Worked differential shifts in the period for this company (the actual attendance row joined to the
+    // Worked differential shifts in the cut-off window for this company (the actual attendance row joined to the
     // rostered shift, keeping only shifts that carry a differential).
-    const rows = await tx
-      .select({ employmentId: attendance.employmentId, workedMinutes: attendance.workedMinutes, differential: shift.differential })
+    const rowsRaw = await tx
+      .select({ employmentId: attendance.employmentId, attendanceDate: attendance.attendanceDate, workedMinutes: attendance.workedMinutes, differential: shift.differential })
       .from(attendance)
       .innerJoin(employment, eq(employment.id, attendance.employmentId))
       .innerJoin(
@@ -1445,12 +1658,22 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
       .where(
         and(
           eq(employment.companyId, batch.companyId),
-          gte(attendance.attendanceDate, periodStart),
-          lte(attendance.attendanceDate, periodEnd),
+          gte(attendance.attendanceDate, attWindow.start),
+          lte(attendance.attendanceDate, attWindow.end),
           gt(attendance.workedMinutes, 0),
           isNotNull(shift.differential),
         ),
       );
+    // Gap-fix: keep only rows inside each employment's OWN attendance window (no-op when attPerEmployment false).
+    const rows: typeof rowsRaw = [];
+    for (const r of rowsRaw) {
+      if (!attPerEmployment) {
+        rows.push(r);
+        continue;
+      }
+      const w = await employmentTypeWindow(tx, shiftSched, attWindowCache, r.employmentId, 'attendance', batch.payPeriod);
+      if (r.attendanceDate >= w.start && r.attendanceDate <= w.end) rows.push(r);
+    }
     if (rows.length === 0) return { applied: 0 };
     const empIds = [...new Set(rows.map((r) => r.employmentId))];
 
@@ -1483,11 +1706,32 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
   });
 }
 
-export async function generatePayslips(ctx: SessionContext, p: { batchId: string }) {
+export async function generatePayslips(
+  ctx: SessionContext,
+  p: {
+    batchId: string;
+    /**
+     * Selective in-place reprocessing (feedback 9bc442bc, reporter ask #3 + #8). When present, the batch
+     * must already be PROCESSED: only these employees' payslips are recomputed, the others stay physically
+     * untouched, batch totals/GL are updated BY DELTA (old-subset subtracted, new-subset added), and the
+     * batch stays processed. This reuses the whole compute path below for byte-faithful figures; only the
+     * employee filter and the final write differ. Loan-ledger apply + claim-paid side-effects run ONLY on
+     * the full draft→processed generation, never on a subset reprocess (those were already applied at the
+     * original processing and the preserved payroll_input rows reproduce the same loan/claim lines).
+     */
+    reprocessSubset?: { employmentIds: string[]; reason?: string; actorId?: string };
+  },
+) {
+  const subset = p.reprocessSubset ?? null;
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, p.batchId)).limit(1);
     if (!batch) throw new Error('batch not found');
-    if (batch.status !== 'draft') throw new BatchNotDraftError();
+    if (subset) {
+      // Reprocess target must be a processed run (a draft has nothing to reprocess; a closed run is frozen).
+      if (batch.status !== 'processed') throw new BatchNotResettableError();
+    } else if (batch.status !== 'draft') {
+      throw new BatchNotDraftError();
+    }
 
     const [co] = await tx
       .select({ country: company.country })
@@ -1593,6 +1837,14 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           lte(employment.hiredOn, periodEnd),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
           scopeFilter,
+          // Selective reprocess (9bc442bc): narrow the recompute to exactly the picked employees, intersected
+          // with the company set above so a stale/cross-company id can never widen the run.
+          subset
+            ? inArray(
+                employment.id,
+                subset.employmentIds.length ? subset.employmentIds : ['00000000-0000-0000-0000-000000000000'],
+              )
+            : undefined,
         ),
       );
 
@@ -1638,7 +1890,27 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       string,
       { manualRequested: number; manualApplied: number; cp38Requested: number; cp38Applied: number; loanRequested: number; loanApplied: number }
     >();
-    const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
+    // c7fdfcf6 (Payroll Schedule) — the company-level cut-off schedule (company_payroll_config day columns +
+    // the company-default policy's config). Loaded ONCE; each transaction type's window resolves against it,
+    // falling back to the plain calendar month when nothing is configured (byte-identical). Per-employment
+    // policy overrides for the SALARY window are applied in the loop below (the policy is resolved there).
+    const cutOffSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
+    // c7fdfcf6 gap-fix — the run READS the company-default schedule's payroll FREQUENCY and GENERATES the
+    // ordered cut-off periods it produces for this statutory month (monthly ⇒ one period; weekly/biweekly ⇒ the
+    // tiled 7/14-day cycles). Recorded on the processed event for audit + surfaced to operators; the wages still
+    // aggregate into the one calendar month for EPF/SOCSO/EIS/PCB by law.
+    const runFrequency = payrollFrequencyOf(cutOffSchedule.defaultConfig);
+    const runSchedule = payrollScheduleFor(cutOffSchedule.defaultConfig, cutOffSchedule.companyCfg, payPeriod);
+    // Unpaid-leave selection follows the LEAVE cut-off window. Gap-fix (per-employment cut-off): the leave window
+    // is resolved PER employment (its assigned policy → company column → calendar), then employments are GROUPED
+    // by window and unpaid days are queried per group — so employments on different (non-default) policies each
+    // get their own leave window instead of sharing the company default. Populated in the policy loop below, then
+    // queried after it. Absent/calendar config ⇒ one group == [M-01 … M-end] (byte-identical to the legacy query).
+    const leaveWindowByEmp = new Map<string, { start: string; end: string }>();
+    const unpaidByEmp = new Map<string, number>();
+    // f3148da1 Step 5 (R17 gap-fix reinstatement) — the PARTIAL-DAY (time-off) subset of unpaidByEmp, populated
+    // ONLY for employments whose policy configures a distinct unpaidTimeOffDivisor (see the group query below).
+    const unpaidTimeOffByEmp = new Map<string, number>();
 
     // ── 2.1.1 (ADR-0064) — Monthly payroll-policy General Settings, resolved at RUN TIME ──
     // The load-bearing new plumbing: for each employment, resolve its assigned policy's config (raw
@@ -1649,7 +1921,13 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     const policyConfigByEmp = new Map<string, PayrollPolicyConfig | null>();
     // Working-day proration needs the holiday set per employment; resolve it lazily only when a config asks
     // for a working-day basis, so the default (calendar) path issues NO extra query.
-    const prorationOptsByEmp = new Map<string, { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } }>();
+    const prorationOptsByEmp = new Map<
+      string,
+      { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> }; window?: { start: string; end: string } }
+    >();
+    // c7fdfcf6 (Payroll Schedule) — per-employment SALARY cut-off window day count, feeding the `cutoff_days`
+    // leave-divisor fact (activating the already-shipped 'cutoff_days' divisor selector). Absent config ⇒ `dim`.
+    const salaryCutoffDaysByEmp = new Map<string, number>();
     // ── 2.1.2 — Daily payroll policy: rate × eligible days worked, NO monthly proration ──
     // For an employment on an ACTIVE policyType='daily' policy carrying a per_day PayRule, basic pay is the
     // per-day rate × the number of eligible working days in the period (Mon–Fri roster minus holidays, clamped
@@ -1661,17 +1939,36 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const policy = await resolveAssignedPolicy(tx, e.employmentId);
       const cfg = policy?.config ?? null;
       policyConfigByEmp.set(e.employmentId, cfg);
-      // 1b — proration divisor + working-day basis, resolved once per employee.
-      const divisorDays = prorationDivisorDays(cfg, dim);
-      const opts: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } } = {};
+      // 1b / Step 3 (f3148da1) — proration divisor + working-day basis, resolved once per employee. The formula
+      // is PER-EVENT: a resigned partial month uses the "Resigned Employee Basic Salary Formula", a new-hire
+      // partial month uses the "New Hire Basic Salary Formula", each falling back to the shared proration. A
+      // full month (neither) uses the shared default (inert — the factor is 1 regardless).
+      const isHire = e.hiredOn > periodStart;
+      const isResign = !!(e.terminatedOn && e.terminatedOn < periodEnd);
+      const prorationSettings = resolveProrationSettings(cfg, { isHire, isResign });
+      const divisorDays = prorationDivisorDays(prorationSettings, dim);
+      const opts: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> }; window?: { start: string; end: string } } = {};
       if (divisorDays !== dim) opts.divisorDays = divisorDays;
-      if (usesWorkingDayProration(cfg)) {
-        const holidays = (cfg?.proration?.includeHoliday ?? false)
+      if (usesWorkingDayProration(prorationSettings)) {
+        const holidays = (prorationSettings?.includeHoliday ?? false)
           ? new Set<string>() //              holidays count as worked days ⇒ empty exclusion set
           : await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
-        opts.workingDayBasis = { roster: workingDayRoster(cfg), holidays };
+        opts.workingDayBasis = { roster: workingDayRoster(prorationSettings), holidays };
       }
-      if (opts.divisorDays !== undefined || opts.workingDayBasis) prorationOptsByEmp.set(e.employmentId, opts);
+      // c7fdfcf6 (Payroll Schedule) — the SALARY cut-off window for this employment (policy override → company
+      // column → calendar). When it is a real (non-calendar) window, drive the join-date/resignation proration
+      // by it and record its length for the cutoff_days leave divisor; a calendar/absent config leaves both at
+      // the legacy calendar-month behaviour (byte-identical).
+      const salaryWindow = cutOffWindowFor('salary', cfg, cutOffSchedule.companyCfg, payPeriod);
+      const salaryWindowDays =
+        Math.round((Date.parse(`${salaryWindow.end}T00:00:00Z`) - Date.parse(`${salaryWindow.start}T00:00:00Z`)) / 86_400_000) + 1;
+      if (salaryWindow.start !== periodStart || salaryWindow.end !== periodEnd) {
+        opts.window = salaryWindow;
+        salaryCutoffDaysByEmp.set(e.employmentId, salaryWindowDays);
+      }
+      if (opts.divisorDays !== undefined || opts.workingDayBasis || opts.window) prorationOptsByEmp.set(e.employmentId, opts);
+      // Gap-fix (per-employment cut-off) — this employment's LEAVE cut-off window (policy → company → calendar).
+      leaveWindowByEmp.set(e.employmentId, cutOffWindowFor('leave', cfg, cutOffSchedule.companyCfg, payPeriod));
       // 2.1.2 daily branch — only when the resolved policy is daily AND carries a per_day rate. Eligible days
       // = the employee's working days (Mon–Fri) in the period, less public holidays, within their tenure
       // window. Zero eligible days ⇒ basic = 0 (no divide-by-zero: this is a multiply, not a divide).
@@ -1680,6 +1977,89 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         const dailyHolidays = await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
         const eligibleDays = eligibleWorkingDays(payPeriod, e.hiredOn, e.terminatedOn, dailyHolidays);
         dailyPayByEmp.set(e.employmentId, { rate, eligibleDays, basic: round2(rate * eligibleDays) });
+      }
+    }
+
+    // Gap-fix (per-employment cut-off) — GROUP employments by their resolved LEAVE cut-off window, then query
+    // unpaid days once per distinct window. Most companies: a single group == the calendar month, so this is one
+    // query with the same result as the legacy tenant-wide call (byte-identical). A company with per-policy leave
+    // cut-offs gets each group its own window.
+    {
+      const groups = new Map<string, string[]>();
+      for (const e of emps) {
+        const w = leaveWindowByEmp.get(e.employmentId) ?? { start: periodStart, end: periodEnd };
+        const key = `${w.start}|${w.end}`;
+        const arr = groups.get(key);
+        if (arr) arr.push(e.employmentId);
+        else groups.set(key, [e.employmentId]);
+      }
+      for (const [key, ids] of groups) {
+        const [start, end] = key.split('|');
+        const part = await unpaidDaysByEmployment(tx, start, end, ids);
+        for (const [k, v] of part) unpaidByEmp.set(k, v);
+      }
+      // f3148da1 Step 5 (R17 gap-fix reinstatement) — UNPAID TIME OFF: for employments whose policy configures
+      // a DISTINCT unpaidTimeOffDivisor, also count the PARTIAL-DAY unpaid subset (half-day / hourly requests)
+      // per the same leave windows. The payslip loop values these days with the time-off formula and the
+      // remaining full-day unpaid days with unpaidLeaveDivisor. No distinct divisor anywhere (the default) ⇒
+      // this issues NO query and every unpaid day rides the legacy pooled path, byte-identical.
+      const utoIds = new Set(
+        emps
+          .filter((e) => policyConfigByEmp.get(e.employmentId)?.leave?.unpaidTimeOffDivisor)
+          .map((e) => e.employmentId),
+      );
+      if (utoIds.size > 0) {
+        for (const [key, ids] of groups) {
+          const scoped = ids.filter((id) => utoIds.has(id));
+          if (scoped.length === 0) continue;
+          const [start, end] = key.split('|');
+          const part = await unpaidDaysByEmployment(tx, start, end, scoped, true);
+          for (const [k, v] of part) unpaidTimeOffByEmp.set(k, v);
+        }
+      }
+    }
+
+    // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — when the run's frequency is weekly/biweekly the statutory
+    // month is split into the ordered cut-off CYCLES (runSchedule.periods). We bucket, PER cycle, each employee's
+    // OT minutes (from attendance) and unpaid-leave days (from approved leave) by their transaction dates. The
+    // payslip loop then disburses each employee's NET across the cycles proportional to each cycle's operational
+    // earnings — turning a weekly employment into N distinct per-cycle pay amounts the employer can actually pay
+    // out weekly, instead of one byte-identical monthly figure. Statutory contributions stay computed ONCE on the
+    // calendar month by law; the single monthly payslip stays the compliance artifact + carries the cycle
+    // breakdown. Monthly frequency (periods.length === 1) skips this whole block ⇒ monthly is byte-identical.
+    const perCycle = runFrequency !== 'monthly' && runSchedule.periods.length > 1;
+    const cycleOtMinutesByEmp = new Map<string, number[]>();
+    const cycleUnpaidDaysByEmp = new Map<string, number[]>();
+    if (perCycle) {
+      const wStart = runSchedule.periods[0].start;
+      const wEnd = runSchedule.periods[runSchedule.periods.length - 1].end;
+      const cycleIndexOf = (date: string): number => runSchedule.periods.findIndex((pd) => date >= pd.start && date <= pd.end);
+      const otCycleRows = await tx
+        .select({ employmentId: attendance.employmentId, d: attendance.attendanceDate, m: attendance.otMinutes })
+        .from(attendance)
+        .innerJoin(employment, eq(employment.id, attendance.employmentId))
+        .where(and(eq(employment.companyId, batch.companyId), gte(attendance.attendanceDate, wStart), lte(attendance.attendanceDate, wEnd), gt(attendance.otMinutes, 0)));
+      for (const r of otCycleRows) {
+        const ci = cycleIndexOf(r.d);
+        if (ci < 0) continue;
+        const arr = cycleOtMinutesByEmp.get(r.employmentId) ?? runSchedule.periods.map(() => 0);
+        arr[ci] += r.m ?? 0;
+        cycleOtMinutesByEmp.set(r.employmentId, arr);
+      }
+      // Unpaid days are attributed to the cycle the request STARTS in (mirrors unpaidDaysByEmployment's "deduct in
+      // the period it starts" policy), using the approved per-date sum when present, else the request's own days.
+      const perDateDays = sql<string>`coalesce((select sum(lrd.days) from leave_request_date lrd where lrd.leave_request_id = ${leaveRequest.id} and lrd.status = 'approved'), ${leaveRequest.days})`;
+      const lvCycleRows = await tx
+        .select({ employmentId: leaveRequest.employmentId, d: leaveRequest.startDate, days: perDateDays })
+        .from(leaveRequest)
+        .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+        .where(and(eq(leaveRequest.status, 'approved'), or(eq(leaveType.paid, false), eq(leaveRequest.allowanceEligible, false)), gte(leaveRequest.startDate, wStart), lte(leaveRequest.startDate, wEnd)));
+      for (const r of lvCycleRows) {
+        const ci = cycleIndexOf(r.d);
+        if (ci < 0) continue;
+        const arr = cycleUnpaidDaysByEmp.get(r.employmentId) ?? runSchedule.periods.map(() => 0);
+        arr[ci] += Number(r.days);
+        cycleUnpaidDaysByEmp.set(r.employmentId, arr);
       }
     }
 
@@ -1705,6 +2085,68 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       workingDaysByEmp.set(employmentId, n);
     }
     const workingDaysInPeriodFor = (employmentId: string): number => workingDaysByEmp.get(employmentId) ?? 0;
+
+    // Step 4 (f3148da1) — OT exceed handling: resolve the "convert excess to pay item" component for every
+    // employment whose policy configures `overtime.exceedHandling.action='convert'`. Loaded ONCE here (a
+    // component is tenant-scoped, so RLS confines it to this tenant); a missing/archived component falls back
+    // to today's cap-and-drop (the map simply has no entry ⇒ excess dropped). Default (no such policy) ⇒ the
+    // map is empty and the legacy OT path is byte-identical.
+    const otConvertByEmp = new Map<string, { code: string; name: string }>();
+    const convertComponentIds = [
+      ...new Set(
+        emps
+          .map((e) => policyConfigByEmp.get(e.employmentId)?.overtime?.exceedHandling)
+          .filter((eh): eh is { action: 'convert'; componentId: string } => eh?.action === 'convert')
+          .map((eh) => eh.componentId),
+      ),
+    ];
+    if (convertComponentIds.length) {
+      const comps = await tx
+        .select({ id: payComponent.id, code: payComponent.code, name: payComponent.name, archivedAt: payComponent.archivedAt })
+        .from(payComponent)
+        .where(inArray(payComponent.id, convertComponentIds));
+      const byId = new Map(comps.filter((c) => c.archivedAt == null).map((c) => [c.id, { code: c.code, name: c.name }]));
+      for (const e of emps) {
+        const eh = policyConfigByEmp.get(e.employmentId)?.overtime?.exceedHandling;
+        if (eh?.action === 'convert') {
+          const found = byId.get(eh.componentId);
+          if (found) otConvertByEmp.set(e.employmentId, found);
+        }
+      }
+    }
+
+    // Step 2 carry_forward (f3148da1) — the outstanding negative-net balance carried from PRIOR CLOSED cycles,
+    // DERIVED (no mutable balance table, mirroring the PCB accumulator replay) by summing each employment's
+    // closed payslips' carry-forward stamps: balance = Σ(added − applied), positive = the employee still owes.
+    // Computed ONLY for employments whose policy sets negativeNet='carry_forward' and ONLY on a regular run (an
+    // additional/off-cycle run neither recovers nor defers). A rolled-back batch (status ≠ 'closed') drops out
+    // automatically, so the balance always reflects finalized history. Default (no carry_forward policy) ⇒ the
+    // map is empty and the legacy net path is byte-identical.
+    const carryForwardByEmp = new Map<string, number>();
+    if (batch.runType === 'regular') {
+      const cfEmpIds = emps
+        .filter((e) => policyConfigByEmp.get(e.employmentId)?.negativeNet === 'carry_forward')
+        .map((e) => e.employmentId);
+      if (cfEmpIds.length) {
+        const cfRows = await tx
+          .select({ employmentId: payslip.employmentId, statutory: payslip.statutory })
+          .from(payslip)
+          .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+          .where(
+            and(
+              inArray(payslip.employmentId, cfEmpIds),
+              eq(payrollBatch.status, 'closed'),
+              lt(payrollBatch.payPeriod, payPeriod),
+            ),
+          );
+        for (const r of cfRows) {
+          const cf = (r.statutory as { carryForward?: { applied?: number; added?: number } } | null)?.carryForward;
+          if (!cf) continue;
+          const delta = round2(Number(cf.added ?? 0) - Number(cf.applied ?? 0));
+          carryForwardByEmp.set(r.employmentId, round2((carryForwardByEmp.get(r.employmentId) ?? 0) + delta));
+        }
+      }
+    }
 
     // 1c — salary-increment proration: the two straddling compensation rows (superseded old + open new) for
     // any employment whose policy enables it AND that has a mid-period increment. Resolved once; the loop
@@ -2028,19 +2470,62 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       deductions: 0, employerCost: 0,
     };
 
+    // Selective reprocess (9bc442bc, reporter #5/#6/#8): before recomputing, snapshot + ROW-LOCK the
+    // subset's existing payslips (optimistic-concurrency + before/after audit), tally their OLD
+    // contribution for the delta-totals update, then delete them so the loop below re-inserts fresh
+    // rows. `FOR UPDATE` locks ONLY these rows — unrelated employees' payslips stay unlocked, so a
+    // concurrent reprocess of a different subset never blocks (and a concurrent reprocess of the SAME
+    // employee serialises and re-reads the bumped version).
+    const oldTotals = { ...totals };
+    const versionByEmp = new Map<string, number>();
+    const beforeByEmp = new Map<string, Record<string, unknown>>();
+    if (subset) {
+      if (emps.length === 0) throw new Error('None of the selected employees are active in this period.');
+      const subsetIds = emps.map((e) => e.employmentId);
+      const existing = await tx
+        .select()
+        .from(payslip)
+        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, subsetIds)))
+        .for('update');
+      for (const sl of existing) {
+        versionByEmp.set(sl.employmentId, sl.version);
+        const st = (sl.statutory ?? {}) as Record<string, number>;
+        beforeByEmp.set(sl.employmentId, {
+          grossPay: sl.grossPay, netPay: sl.netPay, totalDeductions: sl.totalDeductions,
+          employerCost: sl.employerCost, statutory: sl.statutory, version: sl.version,
+        });
+        oldTotals.gross += Number(sl.grossPay);
+        oldTotals.net += Number(sl.netPay);
+        oldTotals.deductions += Number(sl.totalDeductions);
+        oldTotals.employerCost += Number(sl.employerCost);
+        oldTotals.epfEmployee += Number(st.epfEmployee ?? 0);
+        oldTotals.epfEmployer += Number(st.epfEmployer ?? 0);
+        oldTotals.socsoEmployee += Number(st.socsoEmployee ?? 0);
+        oldTotals.socsoEmployer += Number(st.socsoEmployer ?? 0);
+        oldTotals.eisEmployee += Number(st.eisEmployee ?? 0);
+        oldTotals.eisEmployer += Number(st.eisEmployer ?? 0);
+        oldTotals.pcb += Number(st.pcb ?? 0);
+        oldTotals.hrdfEmployer += Number(st.hrdf ?? 0);
+      }
+      await tx.delete(payslip).where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, subsetIds)));
+    }
+
     // 1e — apply the policy OT caps to a prefilled OT total. Uses the stored rate-bucket decomposition
     // (otBreakdown) when present so eligible-day-type filtering + multiplier re-rating are exact; when only a
     // flat figure exists, the breakdown is the whole total as a workday leg (so maxAmount still bites and a
     // workday-only restriction is a no-op). Default (no OT config) ⇒ returns `total` unchanged.
-    const applyOvertimeCapsForEmp = (cfg: PayrollPolicyConfig | null, employmentId: string, total: number): number => {
-      if (!cfg?.overtime || total <= 0) return total;
+    // Returns the capped OT figure AND the excess the HOUR/AMOUNT caps removed (Step 4 f3148da1 reroutes the
+    // excess onto a pay item when configured). Default (no OT config) ⇒ { capped: total, excess: 0 }.
+    const applyOvertimeCapsForEmp = (cfg: PayrollPolicyConfig | null, employmentId: string, total: number): { capped: number; excess: number } => {
+      if (!cfg?.overtime || total <= 0) return { capped: total, excess: 0 };
       const bd = otBreakdownByEmp.get(employmentId) as { flat: number; normal: number; rest: number; holiday: number } | null;
       // Map the stored buckets onto the three OT day types. `flat` (a hand-keyed lump with no day type) rides
       // the workday leg so it is still capped by maxAmount but not zeroed by a rest/holiday-only restriction.
       const parts = bd
         ? { workday: round2(bd.normal + bd.flat), restDay: round2(bd.rest), holiday: round2(bd.holiday), workedOtHours: 0 }
         : { workday: total, restDay: 0, holiday: 0, workedOtHours: 0 };
-      return applyOvertimeCaps(cfg, parts);
+      const d = applyOvertimeCapsDetailed(cfg, parts);
+      return { capped: d.capped, excess: d.excess };
     };
 
     for (const e of emps) {
@@ -2064,23 +2549,51 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       const incrementBasic = incrementBasicByEmp.get(e.employmentId);
       const basicRaw = daily ? daily.basic : (incrementBasic ?? en.basicRaw);
       const basic = daily ? daily.basic : (incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross);
-      // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
-      // "reimbursement" earning (paid but untaxed). Claim/reimbursement do not prorate (ADR-0021/0025).
-      const allowance = round2(en.allowanceApplied + en.reimburse);
       // 1e — OT caps: wrap the prefilled/keyed OT figure with the policy's caps (eligible day types, max
       // hours, max amount, floored multiplier). Default (no overtime config) ⇒ the figure is unchanged.
-      const overtime = applyOvertimeCapsForEmp(cfg, e.employmentId, en.overtime);
+      const otCap = applyOvertimeCapsForEmp(cfg, e.employmentId, en.overtime);
+      const overtime = otCap.capped;
+      // Step 4 (f3148da1) — OT exceed handling. When the policy configures "convert excess to pay item" AND a
+      // valid component was resolved, the amount the HOUR/AMOUNT caps cut off is redirected to that pay item so
+      // it is still paid to the employee (regular run only — an additional/off-cycle run carries no OT).
+      // Statutory character: the excess retains OVERTIME's treatment (SOCSO/EIS/PCB base, EPF-exempt) — the
+      // legally-correct treatment for overtime remuneration — while the chosen component controls the payslip
+      // line label/name. Default (no exceedHandling / no excess) ⇒ 0 ⇒ byte-identical.
+      const otConvertComp = otConvertByEmp.get(e.employmentId);
+      const otConvertAmount = !isAdditionalRun && otConvertComp ? round2(otCap.excess) : 0;
+      // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
+      // "reimbursement" earning (paid but untaxed) + the converted OT excess (paid; taxed via the OT stat leg).
+      const allowance = round2(en.allowanceApplied + en.reimburse + otConvertAmount);
       const bonus = en.bonus;
       // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / divisor days). 1f — the
       // divisor is policy-configurable (default calendar_month ⇒ `dim`, byte-identical).
       const unpaidDivisor = leaveDivisorDays(cfg?.leave?.unpaidLeaveDivisor, cfg, {
         calendarDaysInMonth: dim,
-        cutoffDays: dim, //                       cut-off-day-driven divisor is a deferred spec; calendar fallback
+        cutoffDays: salaryCutoffDaysByEmp.get(e.employmentId) ?? dim, // c7fdfcf6 — salary cut-off window length; calendar fallback = dim
         workingDays: workingDaysInPeriodFor(e.employmentId),
       });
+      // f3148da1 Step 5 (R17 gap-fix reinstatement) — the Unpaid Time Off Deduction Formula. When the policy
+      // configures a distinct unpaidTimeOffDivisor, the PARTIAL-DAY unpaid subset (half-day / hourly requests)
+      // deducts at its own per-day rate (day divisor, or per-hour/per-minute × the 8h standard day) while the
+      // remaining FULL-DAY unpaid days keep the unpaidLeaveDivisor rate. No distinct divisor (the default) ⇒
+      // timeOffRate is null and the whole figure stays the single legacy expression, byte-identical.
+      const unpaidDaysAll = unpaidByEmp.get(e.employmentId) ?? 0;
+      const timeOffDays = Math.min(unpaidTimeOffByEmp.get(e.employmentId) ?? 0, unpaidDaysAll);
+      const timeOffRate =
+        timeOffDays > 0
+          ? unpaidTimeOffDailyRate(basicRaw, cfg, {
+              calendarDaysInMonth: dim,
+              cutoffDays: salaryCutoffDaysByEmp.get(e.employmentId) ?? dim,
+              workingDays: workingDaysInPeriodFor(e.employmentId),
+            })
+          : null;
       // 2.1.2 — a daily wage already pays ONLY eligible worked days, so an unpaid-leave day is simply not a
       // worked day (never counted into `basic`); deducting again off basicRaw/divisor would double-count it.
-      const unpaidDeduction = daily ? 0 : round2((basicRaw / unpaidDivisor) * (unpaidByEmp.get(e.employmentId) ?? 0));
+      const unpaidDeduction = daily
+        ? 0
+        : timeOffRate !== null
+          ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
+          : round2((basicRaw / unpaidDivisor) * unpaidDaysAll);
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false
@@ -2124,7 +2637,10 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       };
       // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
       // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
-      //  1) a manual `payroll_input.zakat > 0` (admin override) wins — preserves today's behaviour;
+      //  1) a manual `payroll_input.zakat > 0` (admin override) wins — preserves today's behaviour. NOTE
+      //     (feedback d435673e): the Zakat screen no longer writes payroll_input.zakat (its one-off override
+      //     section was removed); this manual tier is now fed ONLY by the batch input grid, prefillFixedZakat,
+      //     and the batch import. Precedence is unchanged (manual > fixed > percent_of_pcb).
       //  2) else (REGULAR run only) an active 'fixed' election uses its flat amount;
       //  3) else (REGULAR run only) an active 'percent_of_pcb' election multiplies the LIVE pre-offset normal
       //     MTD — derived by a single zero-zakat probe call that reuses this loop's already-built
@@ -2150,8 +2666,12 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           stOpts,
           rules,
         );
+      // Step 4 (f3148da1) — the OT figure fed to the statutory engine INCLUDES the converted excess, so the
+      // redirected amount keeps overtime's statutory character (SOCSO/EIS/PCB, EPF-exempt). The DISPLAYED
+      // overtime line stays the capped figure; the excess shows under the chosen pay item. Convert=0 ⇒ otStat===overtime.
+      const otStat = round2(overtime + otConvertAmount);
       if (zakat <= 0 && !isAdditionalRun && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
-        const probe = computeMonth(bonus, overtime, 0);
+        const probe = computeMonth(bonus, otStat, 0);
         effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
       }
       const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
@@ -2160,7 +2680,7 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
             computeMonth(earlierRun.additional + bonus, earlierRun.overtime),
             computeMonth(earlierRun.additional, earlierRun.overtime),
           )
-        : computeMonth(bonus, overtime);
+        : computeMonth(bonus, otStat);
       const st = {
         ...stCore,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
@@ -2175,6 +2695,11 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
         ...(cp38 > 0 ? { cp38, cp38Ref: cp38ByEmp.get(e.employmentId)?.cp38Ref } : {}),
         // EPF contribution mode applied (Wave 2B audit) — 'auto' unless an i-Topup/exempt election.
         epfMode: e.epfMode ?? 'auto',
+        // Step 4 (f3148da1) — the OT excess redirected to a pay item (regular run, amount>0 only). Drives the
+        // dedicated earnings line on the payslip; the amount is already folded into `allowance`/gross above.
+        ...(otConvertAmount > 0 && otConvertComp
+          ? { otConvert: { code: otConvertComp.code, name: otConvertComp.name, amount: otConvertAmount } }
+          : {}),
         // #6 (ADR-0037): per-body version map, present only when a component override is in effect.
         ...(componentVersions ? { componentVersions } : {}),
         // ADR-0025 §5 (Option A): non-payable, non-taxable components recorded for the payslip only — they
@@ -2230,15 +2755,69 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       // reconciles, then net-rounding (if any) applies last.
       const roundedGross = applyRounding(grossPay, cfg?.rounding?.earnings);
       const totalDeductionsRaw = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
-      const totalDeductions = applyRounding(totalDeductionsRaw, cfg?.rounding?.deductions);
+      let totalDeductions = applyRounding(totalDeductionsRaw, cfg?.rounding?.deductions);
       let net = applyRounding(round2(roundedGross - totalDeductions), cfg?.rounding?.netPay);
       // 1d — negative-net handling. 'set_zero' floors a negative net at 0; 'retain'/null leaves it (the s.24
       // clamp above already keeps net ≥ 0 on the standard path, so 'retain' is a no-op there — byte-identical).
-      // 'carry_forward' is a gated follow-up (cleanPayrollPolicyConfig coerces it to 'retain').
-      if (cfg?.negativeNet === 'set_zero' && net < 0) net = 0;
+      // Step 2 'carry_forward' (f3148da1): holds a negative net at 0 THIS cycle and recovers a PRIOR carried
+      // balance from this cycle's positive net — the running balance is DERIVED (carryForwardByEmp) from earlier
+      // closed cycles and re-stamped below for the next cycle to read. Both adjustments are folded into
+      // totalDeductions so the payslip invariant net = gross − totalDeductions still holds.
+      let carryForward: { applied: number; added: number; balanceBefore: number } | null = null;
+      if (cfg?.negativeNet === 'set_zero' && net < 0) {
+        net = 0;
+      } else if (cfg?.negativeNet === 'carry_forward' && !isAdditionalRun) {
+        const owed = round2(carryForwardByEmp.get(e.employmentId) ?? 0); // >0 ⇒ carried from prior cycle(s)
+        let applied = 0;
+        let added = 0;
+        // Recover the prior balance from this cycle's positive net (never pushing net below 0 in one hit).
+        if (owed > 0 && net > 0) {
+          applied = Math.min(owed, net);
+          net = round2(net - applied);
+        }
+        // A still-negative net (statutory + unpaid exceeded gross) is deferred: raise it to 0 and carry the
+        // shortfall forward. (Mutually exclusive with `applied` — net can't be both > 0 and < 0.)
+        if (net < 0) {
+          added = round2(-net);
+          net = 0;
+        }
+        if (applied > 0 || added > 0) {
+          // Recovery rides deductions (net ↓); a deferred shortfall is a negative deduction (net ↑).
+          totalDeductions = round2(totalDeductions + applied - added);
+          carryForward = { applied, added, balanceBefore: owed };
+        }
+      }
       const employerCost = isAdditionalRun
         ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
-        : round2(wagesExOt + overtime + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
+        // Step 4 (f3148da1) — the converted OT excess is real employer outlay (paid to the employee), so it
+        // adds to employer cost alongside the OT it was rerouted from. Default (no convert) ⇒ 0 ⇒ unchanged.
+        : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
+
+      // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — disburse this employee's NET across the run's cut-off
+      // CYCLES. Recurring pay (basic + allowance + bonus) prorates by cycle days; OT follows each cycle's OT
+      // minutes (from attendance, bucketed by date); the unpaid-leave deduction follows each cycle's unpaid days;
+      // each cycle's NET operational earnings then weight the NET split. The per-cycle amounts sum EXACTLY to net
+      // (the residual lands on the last cycle). Only produced for weekly/biweekly (perCycle) regular runs; monthly
+      // and additional runs produce no schedule ⇒ their payslip statutory blob is byte-identical to before.
+      let paymentSchedule: { seq: number; from: string; to: string; amount: number }[] | null = null;
+      if (perCycle && !isAdditionalRun) {
+        const periods = runSchedule.periods;
+        const otMin = cycleOtMinutesByEmp.get(e.employmentId) ?? periods.map(() => 0);
+        const upDays = cycleUnpaidDaysByEmp.get(e.employmentId) ?? periods.map(() => 0);
+        const cycleDays = periods.map(
+          (pd) => Math.round((Date.parse(`${pd.end}T00:00:00Z`) - Date.parse(`${pd.start}T00:00:00Z`)) / 86_400_000) + 1,
+        );
+        const amounts = disburseNetAcrossCycles({
+          net,
+          recurring: round2(slipBasic + slipAllowance + bonus),
+          overtime: slipOvertime,
+          unpaid: slipUnpaid,
+          cycleDays,
+          otMinutes: otMin,
+          unpaidDays: upDays,
+        });
+        paymentSchedule = periods.map((pd, i) => ({ seq: pd.seq, from: pd.start, to: pd.end, amount: amounts[i] }));
+      }
 
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
@@ -2260,11 +2839,25 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
           ...(slipOvertime > 0 && otSourceByEmp.get(e.employmentId)
             ? { otSource: otSourceByEmp.get(e.employmentId) }
             : {}),
+          // Step 2 carry_forward (f3148da1) — the recovered/deferred amounts + the balance before this cycle.
+          // Only stamped when non-zero (byte-identical to today for every other path); the NEXT cycle's balance
+          // derivation replays these stamps (Σ added − applied) off closed payslips.
+          ...(carryForward ? { carryForward } : {}),
+          // c7fdfcf6 gap-fix — the per-cycle DISBURSEMENT schedule for a weekly/bi-weekly run (present only when
+          // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
+          // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
+          ...(paymentSchedule ? { paymentSchedule: { frequency: runFrequency, cycles: paymentSchedule } } : {}),
         }, // `version` + (when source=pack) packVersion/signedKeyId snapshot + (when OT paid) otSource
-        otherDeductions: round2(slipUnpaid + slipExtraDeduct + slipLoan).toFixed(2),
+        // Carry-forward recovery/deferral rides otherDeductions too, so the invariant
+        // totalDeductions = statDeductions + otherDeductions holds (0 for every non-carry_forward path).
+        otherDeductions: round2(
+          slipUnpaid + slipExtraDeduct + slipLoan + (carryForward ? carryForward.applied - carryForward.added : 0),
+        ).toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
+        // OCC (9bc442bc): a fresh generation is version 1; a selective reprocess bumps the prior version.
+        version: subset ? (versionByEmp.get(e.employmentId) ?? 0) + 1 : 1,
       });
 
       totals.gross += roundedGross;
@@ -2283,6 +2876,74 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
     (Object.keys(totals) as (keyof typeof totals)[]).forEach((k) => {
       totals[k] = round2(totals[k]);
     });
+
+    // ── Selective reprocess (9bc442bc, reporter #8): delta-update batch totals/GL, keep status
+    //    processed + headcount unchanged, record OCC + before/after per-employee history + status
+    //    history, and DO NOT re-run loan/claim side-effects (already applied at original processing). ──
+    if (subset) {
+      const stored = (batch.totals ?? {}) as Record<string, number>;
+      const deltaTotals = { ...totals };
+      (Object.keys(deltaTotals) as (keyof typeof deltaTotals)[]).forEach((k) => {
+        deltaTotals[k] = round2((Number(stored[k]) || 0) + totals[k] - oldTotals[k]);
+      });
+      await tx.update(payrollBatch).set({ totals: deltaTotals }).where(eq(payrollBatch.id, p.batchId));
+
+      // Per-employee before/after result snapshots (dedicated audit table — reporter req.).
+      const newSlips = await tx
+        .select()
+        .from(payslip)
+        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, emps.map((e) => e.employmentId))));
+      const actor = subset.actorId ? { type: 'user' as const, id: subset.actorId } : actorOf(ctx);
+      for (const sl of newSlips) {
+        await tx.insert(payrollEmployeeResultHistory).values({
+          tenantId: ctx.tenantId,
+          batchId: p.batchId,
+          employmentId: sl.employmentId,
+          action: 'reprocess',
+          actorType: actor.type,
+          actorId: actor.id ?? null,
+          reason: subset.reason ?? null,
+          versionBefore: versionByEmp.get(sl.employmentId) ?? null,
+          versionAfter: sl.version,
+          before: beforeByEmp.get(sl.employmentId) ?? null,
+          after: {
+            grossPay: sl.grossPay, netPay: sl.netPay, totalDeductions: sl.totalDeductions,
+            employerCost: sl.employerCost, statutory: sl.statutory, version: sl.version,
+          },
+        });
+      }
+      // Status history (status is unchanged processed→processed, but the reprocess IS a status-control
+      // event the reporter wants captured with actor/timestamp/reason + before/after totals).
+      await tx.insert(payrollStatusHistory).values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        action: 'reprocess',
+        fromStatus: 'processed',
+        toStatus: 'processed',
+        actorType: actor.type,
+        actorId: actor.id ?? null,
+        reason: subset.reason ?? null,
+        before: { totals: stored },
+        after: { totals: deltaTotals, reprocessedEmploymentIds: emps.map((e) => e.employmentId) },
+      });
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payroll-batch',
+        aggregateId: p.batchId,
+        eventType: 'payroll-batch.selective-reprocessed',
+        actor,
+        payload: {
+          batchId: p.batchId,
+          companyId: batch.companyId,
+          payPeriod: batch.payPeriod,
+          reprocessedCount: emps.length,
+          headcount: batch.employeeCount,
+          reason: subset.reason ?? null,
+          employmentIds: emps.map((e) => e.employmentId),
+        },
+      });
+      return { reprocessed: emps.length, headcount: batch.employeeCount, totals: deltaTotals };
+    }
 
     await tx
       .update(payrollBatch)
@@ -2356,7 +3017,14 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
       aggregateId: p.batchId,
       eventType: 'payroll-batch.processed',
       actor: actorOf(ctx),
-      payload: { count: emps.length, totalNet: totals.net },
+      payload: {
+        count: emps.length,
+        totalNet: totals.net,
+        // c7fdfcf6 gap-fix — the resolved payroll frequency + generated cut-off periods for this run. When the
+        // frequency is weekly/biweekly (`disbursedPerCycle`), each payslip carries a per-cycle disbursement
+        // schedule (statutory.paymentSchedule) so the run is FUNCTIONALLY processed per cycle, not audit-only.
+        cutOffSchedule: { frequency: runFrequency, periods: runSchedule.periods, disbursedPerCycle: perCycle },
+      },
     });
     return { payslips: emps.length, totalNet: totals.net };
   });
@@ -2365,20 +3033,36 @@ export async function generatePayslips(ctx: SessionContext, p: { batchId: string
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId })
+      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new Error('batch not found');
+    // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
+    await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new Error('Only a processed batch can be closed');
-    await tx.update(payrollBatch).set({ status: 'closed' }).where(eq(payrollBatch.id, p.batchId));
+    // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
+    // company release config; the ESS employee session cannot, so the gate must be materialized here, not at
+    // read time). We read the company's release config + pay-day and derive releasedAt from the close instant;
+    // NULL config ⇒ immediate ⇒ releasedAt = closedAt (today's behaviour). The ESS reads gate on released_at.
+    const closedAt = new Date();
+    const [cpc] = await tx
+      .select({ payDay: companyPayrollConfig.payDay, payslipRelease: companyPayrollConfig.payslipRelease })
+      .from(companyPayrollConfig)
+      .where(eq(companyPayrollConfig.companyId, batch.companyId))
+      .limit(1);
+    const releasedAt = payslipReleaseAt(closedAt, batch.payPeriod, cpc?.payDay ?? null, cpc?.payslipRelease ?? null) ?? closedAt;
+    await tx
+      .update(payrollBatch)
+      .set({ status: 'closed', closedAt: sql`now()`, releasedAt })
+      .where(eq(payrollBatch.id, p.batchId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.closed',
       actor: actorOf(ctx),
-      payload: {},
+      payload: { releasedAt: releasedAt.toISOString() },
     });
 
     // Wave 2C (ADR-0024): close the parent pay_period once ALL its runs are closed, so the statutory
@@ -2437,14 +3121,6 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   if (process.env.PAYROLL_RESET_ENABLED !== 'true') {
     throw new Error('Payroll reset is not enabled.');
   }
-  // Reset is destructive and ADMIN-only (reporter req. #5: "Payroll Administrator or System
-  // Administrator") — a payroll_partner may run payroll but must NOT reset it. Capability check
-  // here as defence in depth under the page/action gates; RLS scopes WHICH batches resolve at all
-  // (a company-scoped admin sees another company's batch as "batch not found").
-  const callerRoles = [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)];
-  if (!callerRoles.some((r) => r === 'hr_admin' || r === 'super_admin')) {
-    throw new Error('Only an administrator can reset a payroll process');
-  }
   const toC = (v: unknown) => Math.round(Number(v) * 100);
   const fromC = (c: number) => (c / 100).toFixed(2);
   return withTenant(ctx, async (tx) => {
@@ -2456,11 +3132,17 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
         payPeriodId: payrollBatch.payPeriodId,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
+        totals: payrollBatch.totals,
+        employeeCount: payrollBatch.employeeCount,
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new Error('batch not found');
+    // Granular RBAC (9bc442bc): payroll.rollback (configurable per company/tenant). Defaults to
+    // hr_admin/super_admin — a payroll_partner is refused exactly as before — but now an operator can
+    // re-map it. RLS still scopes WHICH batches resolve (a cross-company batch reads as "batch not found").
+    await assertPayrollPermission(tx, ctx, 'payroll.rollback', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotResettableError();
 
     // ── 1. Unwind the loan-ledger advance (mirror-image of applyLoansForBatch, ADR-0060) ──
@@ -2593,6 +3275,31 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       .from(statutoryReport)
       .where(and(eq(statutoryReport.companyId, batch.companyId), eq(statutoryReport.periodKey, batch.payPeriod)));
 
+    // Dedicated status-history row (reporter expected_function: payroll_status_history captures actor,
+    // timestamp, reason, and before/after snapshot for every rollback / unlock / reprocess). Mirrors the
+    // unlock/reprocess inserts so the rollback path is uniformly queryable, not only via the domain event.
+    const resetActor = actorOf(ctx);
+    await tx.insert(payrollStatusHistory).values({
+      tenantId: ctx.tenantId,
+      batchId: p.batchId,
+      action: 'rollback',
+      fromStatus: 'processed',
+      toStatus: 'draft',
+      actorType: resetActor.type,
+      actorId: resetActor.id ?? null,
+      reason: p.reason ?? null,
+      before: { status: 'processed', totals: batch.totals, employeeCount: batch.employeeCount },
+      after: {
+        status: 'draft',
+        totals: null,
+        employeeCount: 0,
+        payslipsCleared: clearedSlips.length,
+        loanInstalmentsReversed: appliedReps.length,
+        loansReopened,
+        claimsReverted: revertedClaims.length,
+      },
+    });
+
     // ONE batch-level reset event summarising every reversal (reporter req. #5: who / when /
     // period / company / optional reason — actor + occurredAt + this payload).
     await appendEvent(tx, {
@@ -2600,7 +3307,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.reset',
-      actor: actorOf(ctx),
+      actor: resetActor,
       payload: {
         fromStatus: 'processed',
         toStatus: 'draft',
@@ -2622,6 +3329,374 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       loanInstalmentsReversed: appliedReps.length,
       claimsReverted: revertedClaims.length,
     };
+  });
+}
+
+// ─────────────── Granular payroll RBAC (feedback 9bc442bc, reporter expected_function) ───────────────
+export class PayrollPermissionDeniedError extends Error {
+  constructor(public key: string) {
+    super(`You do not have the '${key}' payroll permission.`);
+    this.name = 'PayrollPermissionDeniedError';
+  }
+}
+/** Step-up (OTP) confirmation is required / failed for a high-risk payroll action. */
+export class StepUpRequiredError extends Error {
+  constructor(msg = 'A valid confirmation code is required.') {
+    super(msg);
+    this.name = 'StepUpRequiredError';
+  }
+}
+/** Unlock target is not a closed run (nothing to unlock). */
+export class BatchNotUnlockableError extends Error {
+  constructor() {
+    super('Only a closed payroll process can be unlocked');
+    this.name = 'BatchNotUnlockableError';
+  }
+}
+
+const callerRolesOf = (ctx: SessionContext): string[] => [
+  ...(ctx.roles ?? []),
+  ...(ctx.grants ?? []).map((g) => g.role),
+];
+
+/**
+ * Resolve a granular payroll permission for the caller (reporter req.: payroll.rollback / unlock /
+ * reprocess.selective / close, configurable per company/tenant). Company-scoped override rows win over
+ * tenant-wide rows, which win over the code defaults (lib/payroll-permissions.ts). Read within the
+ * caller's tx (the grant table is tenant-readable under RLS).
+ */
+export async function resolvePayrollPermission(
+  tx: Tx,
+  ctx: SessionContext,
+  key: PayrollPermissionKey,
+  companyId?: string | null,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ role: payrollPermissionGrant.role, allowed: payrollPermissionGrant.allowed, companyId: payrollPermissionGrant.companyId })
+    .from(payrollPermissionGrant)
+    .where(
+      and(
+        eq(payrollPermissionGrant.tenantId, ctx.tenantId),
+        eq(payrollPermissionGrant.permissionKey, key),
+        companyId
+          ? or(isNull(payrollPermissionGrant.companyId), eq(payrollPermissionGrant.companyId, companyId))
+          : isNull(payrollPermissionGrant.companyId),
+      ),
+    );
+  return decidePayrollPermission({
+    key,
+    callerRoles: callerRolesOf(ctx),
+    overrides: rows.map((r) => ({ role: r.role, allowed: r.allowed, companyScoped: r.companyId != null })),
+  });
+}
+
+async function assertPayrollPermission(tx: Tx, ctx: SessionContext, key: PayrollPermissionKey, companyId?: string | null) {
+  if (!(await resolvePayrollPermission(tx, ctx, key, companyId))) throw new PayrollPermissionDeniedError(key);
+}
+
+const stepUpHash = (code: string, userId: string | undefined, batchId: string) =>
+  createHash('sha256').update(`${code}:${userId ?? ''}:${batchId}`).digest('hex');
+
+/**
+ * Issue a one-time step-up (OTP) code for the high-risk Unlock action (reporter req.: confirmation step,
+ * password re-entry or OTP). The code is hashed at rest, single-use, TTL 10 min, and returned to the
+ * caller so the demo can surface it (a production build would deliver it out-of-band). Requires the
+ * payroll.unlock permission — you cannot mint an unlock challenge you could never complete.
+ */
+export async function requestUnlockChallenge(ctx: SessionContext, p: { batchId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    // Invalidate any earlier unconsumed challenge for this user+batch so only the newest code works.
+    await tx
+      .update(payrollStepUpChallenge)
+      .set({ consumedAt: new Date() })
+      .where(
+        and(
+          eq(payrollStepUpChallenge.batchId, p.batchId),
+          eq(payrollStepUpChallenge.userId, ctx.userId ?? ''),
+          eq(payrollStepUpChallenge.purpose, 'unlock'),
+          isNull(payrollStepUpChallenge.consumedAt),
+        ),
+      );
+    await tx.insert(payrollStepUpChallenge).values({
+      tenantId: ctx.tenantId,
+      userId: ctx.userId ?? '',
+      batchId: p.batchId,
+      purpose: 'unlock',
+      codeHash: stepUpHash(code, ctx.userId, p.batchId),
+      expiresAt,
+    });
+    return { code, expiresAt };
+  });
+}
+
+/** Verify + consume a step-up code within the caller's tx. Returns true iff a valid code was consumed. */
+async function verifyStepUp(tx: Tx, ctx: SessionContext, batchId: string, code: string): Promise<boolean> {
+  if (!code) return false;
+  const [challenge] = await tx
+    .select({ id: payrollStepUpChallenge.id, codeHash: payrollStepUpChallenge.codeHash, expiresAt: payrollStepUpChallenge.expiresAt })
+    .from(payrollStepUpChallenge)
+    .where(
+      and(
+        eq(payrollStepUpChallenge.batchId, batchId),
+        eq(payrollStepUpChallenge.userId, ctx.userId ?? ''),
+        eq(payrollStepUpChallenge.purpose, 'unlock'),
+        isNull(payrollStepUpChallenge.consumedAt),
+      ),
+    )
+    .orderBy(desc(payrollStepUpChallenge.createdAt))
+    .limit(1);
+  if (!challenge) return false;
+  if (new Date(challenge.expiresAt).getTime() < Date.now()) return false;
+  if (challenge.codeHash !== stepUpHash(code, ctx.userId, batchId)) return false;
+  await tx.update(payrollStepUpChallenge).set({ consumedAt: new Date() }).where(eq(payrollStepUpChallenge.id, challenge.id));
+  return true;
+}
+
+/**
+ * Unlock a CLOSED payroll run back to PROCESSED (feedback 9bc442bc, reporter ask #2). This is the
+ * controlled, auditable reversal of the 0011 closed-immutability freeze:
+ *   • gated on the granular payroll.unlock permission (super_admin by default, per-company configurable);
+ *   • a step-up OTP (requestUnlockChallenge) must be confirmed — the reporter's password-re-entry/OTP ask;
+ *   • WARNS when the run's payment summary was already exported and/or statutory returns were already
+ *     recorded for the month (EPF/SOCSO/EIS/LHDN), so the operator knows an amended filing may be needed;
+ *   • flips status via a transaction-local escape hatch the 0011 trigger honours ONLY for this batch id;
+ *   • reopens the parent pay_period (it was cascaded closed) so a correction re-run is possible;
+ *   • records a payroll_status_history row (before/after + reason + warnings) and appends domain events.
+ * Gated behind PAYROLL_UNLOCK_ENABLED so an environment can keep Closed permanently frozen if it prefers
+ * the same-month adjustment-run correction path instead.
+ */
+export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: string; reason?: string; code: string }) {
+  if (process.env.PAYROLL_UNLOCK_ENABLED !== 'true') {
+    throw new Error('Payroll unlock is not enabled.');
+  }
+  const reason = (p.reason ?? '').trim();
+  if (!reason) throw new Error('A reason is required to unlock a closed payroll process.');
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        payPeriodId: payrollBatch.payPeriodId,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    await assertPayrollPermission(tx, ctx, 'payroll.unlock', batch.companyId);
+    if (batch.status !== 'closed') throw new BatchNotUnlockableError();
+    if (!(await verifyStepUp(tx, ctx, p.batchId, p.code))) {
+      throw new StepUpRequiredError('The confirmation code is invalid or expired — request a new one.');
+    }
+
+    // Warning flags (reporter req.: warn if payment disbursed or statutory submission filed).
+    const [{ n: paymentExports } = { n: 0 }] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(domainEvent)
+      .where(and(eq(domainEvent.aggregateId, p.batchId), eq(domainEvent.eventType, 'payroll-batch.payment-summary.exported')));
+    const statReports = await tx
+      .select({ id: statutoryReport.id })
+      .from(statutoryReport)
+      .where(and(eq(statutoryReport.companyId, batch.companyId), eq(statutoryReport.periodKey, batch.payPeriod)));
+    const warnings = {
+      paymentDisbursed: Number(paymentExports) > 0,
+      statutoryFiled: statReports.length > 0,
+      statutoryReportCount: statReports.length,
+    };
+
+    // Flip status via the 0011 escape hatch (transaction-local; cleared at COMMIT — see migration 0163).
+    await tx.execute(sql`select set_config('app.unlock_batch', ${p.batchId}, true)`);
+    await tx.update(payrollBatch).set({ status: 'processed' }).where(eq(payrollBatch.id, p.batchId));
+
+    // Reopen the parent pay_period (closeBatch cascaded it closed once all runs closed).
+    const [period] = await tx
+      .select({ status: payPeriod.status })
+      .from(payPeriod)
+      .where(eq(payPeriod.id, batch.payPeriodId))
+      .limit(1);
+    const reopenedPeriod = period?.status === 'closed';
+    if (reopenedPeriod) {
+      await tx.update(payPeriod).set({ status: 'open' }).where(eq(payPeriod.id, batch.payPeriodId));
+    }
+
+    const actor = actorOf(ctx);
+    await tx.insert(payrollStatusHistory).values({
+      tenantId: ctx.tenantId,
+      batchId: p.batchId,
+      action: 'unlock',
+      fromStatus: 'closed',
+      toStatus: 'processed',
+      actorType: actor.type,
+      actorId: actor.id ?? null,
+      reason,
+      before: { status: 'closed', periodReopened: reopenedPeriod },
+      after: { status: 'processed', warnings },
+    });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.unlocked',
+      actor,
+      payload: { companyId: batch.companyId, payPeriod: batch.payPeriod, reason, warnings, reopenedPeriod },
+    });
+    if (reopenedPeriod) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'pay-period',
+        aggregateId: batch.payPeriodId,
+        eventType: 'pay-period.reopened',
+        actor,
+        payload: { batchId: p.batchId, reason },
+      });
+    }
+    return { warnings, reopenedPeriod };
+  });
+}
+
+/**
+ * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3 + #8) — QUEUE-BASED.
+ *
+ * The public entry: validate + permission-check + enqueue an idempotent job, then run it. Enqueue creates
+ * ONE `payroll_reprocess_job` row keyed by an idempotency key (a double-clicked/retried submit reuses the
+ * same job instead of spawning a duplicate run — the reporter's double-submit guard), whose status the UI
+ * polls (getReprocessJob + the /api/payroll/reprocess-job route). Running the job performs a TRUE in-place
+ * recompute of exactly the selected employees via generatePayslips' reprocessSubset path: their payslips
+ * are recomputed + version-bumped (OCC), everyone else's stay physically untouched, and batch totals/GL
+ * are updated BY DELTA — the reporter's ask #8, not a scope substitution.
+ */
+export async function reprocessSelectedEmployees(
+  ctx: SessionContext,
+  p: { batchId: string; employmentIds: string[]; reason?: string; idempotencyKey?: string },
+) {
+  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
+    throw new Error('Multiple payroll runs per month are not enabled.');
+  }
+  const requested = [...new Set(p.employmentIds.filter(Boolean))].sort();
+  if (requested.length === 0) throw new Error('Select at least one employee to reprocess.');
+
+  // Phase 1 — validate + permission + enqueue (idempotent). Its own tx so the job row commits before the
+  // recompute runs (so a poll can observe 'running', and a crash mid-recompute leaves a re-runnable job).
+  const enq = await withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ status: payrollBatch.status, companyId: payrollBatch.companyId, payPeriodId: payrollBatch.payPeriodId, employeeCount: payrollBatch.employeeCount })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    await assertPayrollPermission(tx, ctx, 'payroll.reprocess.selective', batch.companyId);
+    if (batch.status !== 'processed') throw new BatchNotResettableError();
+    const [period] = await tx
+      .select({ status: payPeriod.status })
+      .from(payPeriod)
+      .where(eq(payPeriod.id, batch.payPeriodId))
+      .limit(1);
+    if (period?.status === 'closed') throw new Error('This pay period is closed.');
+
+    // Cross-company membership intersection (a stale/cross-company id can never widen the run).
+    const companyEmps = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, requested)));
+    const employmentIds = requested.filter((id) => companyEmps.some((e) => e.id === id));
+    if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
+
+    // Idempotency: default key binds batch + exact selection + reason so an identical resubmit dedupes,
+    // while a genuinely different request (different pick) enqueues its own job.
+    const idempotencyKey =
+      p.idempotencyKey?.trim() ||
+      createHash('sha256').update(`${p.batchId}:${employmentIds.join(',')}:${p.reason ?? ''}`).digest('hex');
+
+    // ON CONFLICT DO NOTHING → a duplicate submit reuses the existing job row.
+    await tx
+      .insert(payrollReprocessJob)
+      .values({
+        tenantId: ctx.tenantId,
+        batchId: p.batchId,
+        idempotencyKey,
+        status: 'queued',
+        employmentIds,
+        reason: p.reason ?? null,
+        requestedBy: ctx.userId ?? null,
+      })
+      .onConflictDoNothing({ target: [payrollReprocessJob.tenantId, payrollReprocessJob.idempotencyKey] });
+    const [job] = await tx
+      .select()
+      .from(payrollReprocessJob)
+      .where(and(eq(payrollReprocessJob.tenantId, ctx.tenantId), eq(payrollReprocessJob.idempotencyKey, idempotencyKey)))
+      .limit(1);
+    return { job, employmentIds };
+  });
+
+  const job = enq.job;
+  // Idempotent replay: a completed job returns its stored result without re-running (double-submit safety).
+  if (job.status === 'completed') {
+    return { jobId: job.id, status: 'completed' as const, ...(job.result as Record<string, unknown> | null) };
+  }
+  if (job.status === 'running') {
+    return { jobId: job.id, status: 'running' as const };
+  }
+
+  // Phase 2 — atomically CLAIM the job (queued→running) so a concurrent duplicate request can never
+  // run the recompute twice; if the claim updates no row, another worker already took it → don't re-run.
+  const claimed = await withTenant(ctx, (tx) =>
+    tx
+      .update(payrollReprocessJob)
+      .set({ status: 'running', updatedAt: new Date() })
+      .where(and(eq(payrollReprocessJob.id, job.id), eq(payrollReprocessJob.status, 'queued')))
+      .returning({ id: payrollReprocessJob.id }),
+  );
+  if (claimed.length === 0) {
+    return { jobId: job.id, status: 'running' as const };
+  }
+  try {
+    const result = await generatePayslips(ctx, {
+      batchId: p.batchId,
+      reprocessSubset: { employmentIds: enq.employmentIds, reason: p.reason, actorId: ctx.userId },
+    });
+    await withTenant(ctx, (tx) =>
+      tx
+        .update(payrollReprocessJob)
+        .set({ status: 'completed', result: result as Record<string, unknown>, updatedAt: new Date() })
+        .where(eq(payrollReprocessJob.id, job.id)),
+    );
+    return { jobId: job.id, status: 'completed' as const, ...result };
+  } catch (e) {
+    await withTenant(ctx, (tx) =>
+      tx
+        .update(payrollReprocessJob)
+        .set({ status: 'failed', error: (e as Error).message, updatedAt: new Date() })
+        .where(eq(payrollReprocessJob.id, job.id)),
+    );
+    throw e;
+  }
+}
+
+/** Job-status read for the polling endpoint (reporter req.: a job-status endpoint for the UI). */
+export async function getReprocessJob(ctx: SessionContext, jobId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [job] = await tx
+      .select({
+        id: payrollReprocessJob.id,
+        batchId: payrollReprocessJob.batchId,
+        status: payrollReprocessJob.status,
+        result: payrollReprocessJob.result,
+        error: payrollReprocessJob.error,
+        updatedAt: payrollReprocessJob.updatedAt,
+      })
+      .from(payrollReprocessJob)
+      .where(eq(payrollReprocessJob.id, jobId))
+      .limit(1);
+    return job ?? null;
   });
 }
 
@@ -2682,7 +3757,9 @@ export type LeaverAdvisoryRow = {
  * Final-pay ADVISORY for employees terminating within a draft batch's period: unused annual
  * leave × ORP daily rate, per EA 1955 s.60E pay-in-lieu. Deliberately NO auto-pay — the
  * EPF/PCB treatment of encashment is not yet sourced, so the admin keys the amount into the
- * bonus input consciously (documented in STATUTORY-SOURCES.md).
+ * bonus input consciously (documented in STATUTORY-SOURCES.md). f3148da1 Step 5: the ORP day-divisor
+ * used for the `suggested` figure is policy-configurable (`leave.encashmentDivisor`), defaulting to the
+ * statutory 26-day divisor — see encashmentDivisorDays.
  */
 export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<LeaverAdvisoryRow[]> {
   return withTenant(ctx, async (tx) => {
@@ -2739,6 +3816,24 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       const encashment = await encashableDaysForEmployment(tx, l.employmentId);
       const effectiveBalance = encashment ? encashment.days : balance;
       const basic = Number(l.basic);
+      // f3148da1 Step 5 — the leave-encashment ORP day-divisor is policy-configurable (default = the statutory
+      // 26-day ordinary-rate divisor, so `basic / 26` is byte-identical when no policy overrides it). Resolve
+      // the employment's assigned policy (and, only for a `working_days` divisor, count the pay-month working
+      // days) LAZILY — a zero balance keeps the legacy 0 with no extra query.
+      let encDivisor = ENCASHMENT_ORP_DIVISOR;
+      if (effectiveBalance > 0) {
+        const encCfg = (await resolveAssignedPolicy(tx, l.employmentId))?.config ?? null;
+        let workingDays = 0;
+        if (encCfg?.leave?.encashmentDivisor === 'working_days') {
+          const holidays = await holidayDatesFor(tx, { employmentId: l.employmentId, startDate: start, endDate: end });
+          for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
+            const d = new Date(t).toISOString().slice(0, 10);
+            const iso = ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
+            if (iso <= 5 && !holidays.has(d)) workingDays++; // Mon–Fri working-day basis, less holidays
+          }
+        }
+        encDivisor = encashmentDivisorDays(encCfg, { workingDays });
+      }
       out.push({
         employmentId: l.employmentId,
         name: l.name,
@@ -2746,7 +3841,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         terminatedOn: l.terminatedOn!,
         basic,
         annualBalance: effectiveBalance,
-        suggested: effectiveBalance > 0 ? round2((basic / 26) * effectiveBalance) : 0,
+        suggested: effectiveBalance > 0 ? round2((basic / encDivisor) * effectiveBalance) : 0,
         encashmentSource: encashment ? 'frozen_snapshot' : 'live_balance',
         ...(encashment ? { frozenAsOf: encashment.calculatedAsOf, overridden: encashment.overridden } : {}),
       });
@@ -2762,6 +3857,7 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
     const slips = await tx
       .select({
         id: payslip.id,
+        employmentId: payslip.employmentId,
         name: person.fullName,
         employeeCode: employment.employeeCode,
         basic: payslip.basicSalary,
@@ -2889,6 +3985,9 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         totalDeductions: payslip.totalDeductions,
         net: payslip.netPay,
         employerCost: payslip.employerCost,
+        // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe: readable by the
+        // employee via their own payslip's batch, unlike the admin-only company_payroll_config).
+        releasedAt: payrollBatch.releasedAt,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -2897,7 +3996,15 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(payslip.id, payslipId))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    // Step 6 — hide a payslip whose batch is not yet closed OR whose release instant has not passed, so the ESS
+    // detail page + PDF route (which both call this) return notFound/404 until release. Admin surfaces use
+    // different reads (payroll-view.ts) and are unaffected. A closed batch with a NULL releasedAt is a legacy
+    // batch (backfilled to created_at by migration 0164), treated as released.
+    const released = row.status === 'closed' && (row.releasedAt == null || row.releasedAt.getTime() <= Date.now());
+    if (!released) return null;
+    const { releasedAt: _r, ...rest } = row;
+    return rest;
   });
 }
 

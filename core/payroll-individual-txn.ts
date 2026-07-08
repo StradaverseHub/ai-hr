@@ -13,7 +13,7 @@
  * Substrate discipline: every write appends a DomainEvent. Payloads are redaction-safe (reference ids + kind,
  * no cleartext amounts — ADR-0030 Layer-0 precedent, mirroring setEmploymentPayComponent).
  */
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { employment, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
@@ -103,6 +103,32 @@ export class EmploymentNotInBatchScopeError extends Error {
     super(`Employment ${employmentId} is not in the scope of batch ${batchId}.`);
     this.name = 'EmploymentNotInBatchScopeError';
   }
+}
+
+/** Thrown when a multi-employee bulk save is called with an empty employee selection. The wizard now
+ *  supports selecting one OR many employees; zero is never valid — a save must name at least one payee. */
+export class EmptyEmployeeSelectionError extends Error {
+  constructor() {
+    super('At least one employee must be selected for a one-off transaction.');
+    this.name = 'EmptyEmployeeSelectionError';
+  }
+}
+
+/** Thrown when the submitted grid contains two IDENTICAL rows (same kind + date + amount + remarks). Two
+ *  legitimate same-day claims always differ in amount or remarks; a byte-for-byte duplicate row is a keying
+ *  mistake (a double paste / double-click), so we reject it before write rather than silently double-post the
+ *  same allowance/deduction. Detection is scoped to WITHIN one submission — recording the same grid for many
+ *  employees (the multi-employee cartesian) is expressly allowed and never treated as a duplicate. */
+export class DuplicateTxnRowError extends Error {
+  constructor(public readonly signature: string) {
+    super(`Duplicate transaction row: ${signature}.`);
+    this.name = 'DuplicateTxnRowError';
+  }
+}
+
+/** Canonical signature of a grid row for duplicate detection (kind + date + normalised amount + remarks). */
+function txnRowSignature(r: { kind: string; txnDate: string; amount: number; notes?: string | null }): string {
+  return [r.kind, r.txnDate, money(r.amount), (r.notes ?? '').trim().toLowerCase()].join('|');
 }
 
 export type IndividualTxnRow = {
@@ -243,88 +269,113 @@ export type BulkTxnRow = {
 };
 
 /**
- * 1.2.2 — Save a whole grid of dated one-off transactions for ONE employee against ONE draft batch, in a
- * SINGLE transaction (the wizard's Step 4 "save all valid entries in one transaction"). Either every row
- * commits or none does — a mid-transaction failure on any later row rolls back the earlier inserts and
- * their events. This is the ONE net-new backend method; it deliberately does NOT loop createIndividualTxn
- * (that opens N transactions with no rollback — C5/scope-creep note).
+ * 1.2.2 — Save a whole grid of dated one-off transactions for ONE OR MANY employees against ONE draft
+ * batch, in a SINGLE transaction (the wizard's Step 4 "save all valid entries in one transaction"). The
+ * same grid of rows is recorded for EVERY selected employee (a cartesian product: rows × employees), so a
+ * payroll admin can pay the same allowance/deduction to twenty people in one atomic pass. Either every row
+ * for every employee commits or none does — a mid-transaction failure on any later row rolls back all the
+ * earlier inserts and their events. This is the ONE net-new backend method; it deliberately does NOT loop
+ * createIndividualTxn / call itself per employee (that opens N transactions with no cross-employee
+ * rollback — C5/scope-creep note). Multi-employee is done INSIDE this one transaction.
  *
  * Correctness guards, in order (fail fast, whole-transaction rollback):
+ *  - non-empty selection (EmptyEmployeeSelectionError) — at least one payee is required.
  *  - draft batch (BatchNotDraftError) — re-checked inside the transaction so a draft→non-draft flip
  *    between selection and save loses nothing (C8/C10).
- *  - company match: employment.companyId == batch.companyId (CompanyMismatchError, C3).
- *  - scope membership: employment ∈ batch.scope (EmploymentNotInBatchScopeError, C4).
+ *  - company match PER employee: employment.companyId == batch.companyId (CompanyMismatchError, C3).
+ *  - scope membership PER employee: employment ∈ batch.scope (EmploymentNotInBatchScopeError, C4).
  *  - per row: valid kind / unit; date-in-period (assertDateInPeriod); amount > 0 (AmountNotPositiveError, C6).
  *
  * One 'payroll.individual-txn.created' DomainEvent is appended PER inserted row (aggregateId = the new row
- * id), byte-identical in shape to createIndividualTxn's event, so per-record History/replay attach and the
- * substrate-coverage grep passes (C7).
+ * id, subjectEmploymentId = that row's employee), byte-identical in shape to createIndividualTxn's event,
+ * so per-record History/replay attach and the substrate-coverage grep passes (C7).
  */
 export function createIndividualTxnsBulk(
   ctx: SessionContext,
-  p: { batchId: string; employmentId: string; rows: BulkTxnRow[] },
+  p: { batchId: string; employmentIds: string[]; rows: BulkTxnRow[] },
 ): Promise<{ ids: string[] }> {
   return withTenant(ctx, async (tx) => {
+    // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
+    const employmentIds = [...new Set(p.employmentIds)];
+    if (employmentIds.length === 0) throw new EmptyEmployeeSelectionError();
+
     // Load + validate the draft batch ONCE inside the transaction (C5/C8: the draft re-check happens here).
     const { payPeriod, companyId: batchCompanyId, scope } = await loadDraftBatch(tx, p.batchId);
 
-    // C3 — the chosen employment must belong to the batch's company (the employee-first flow can otherwise
-    // resolve a batch in the wrong company; createIndividualTxn never cross-checked this).
-    const [emp] = await tx
-      .select({ companyId: employment.companyId })
+    // C3 (per employee) — every chosen employment must belong to the batch's company. One `inArray` query
+    // fetches them all; a missing / mismatched employment fails the whole transaction (nothing persists).
+    const emps = await tx
+      .select({ id: employment.id, companyId: employment.companyId })
       .from(employment)
-      .where(eq(employment.id, p.employmentId))
-      .limit(1);
-    if (!emp || emp.companyId !== batchCompanyId) {
-      throw new CompanyMismatchError(emp?.companyId ?? 'unknown', batchCompanyId);
+      .where(inArray(employment.id, employmentIds));
+    const companyById = new Map(emps.map((e) => [e.id, e.companyId]));
+    for (const eid of employmentIds) {
+      const cid = companyById.get(eid);
+      if (cid == null || cid !== batchCompanyId) {
+        throw new CompanyMismatchError(cid ?? 'unknown', batchCompanyId);
+      }
     }
 
-    // C4 — the employment must be within the batch's scope (departments ∪ explicit employments). A null/empty
-    // scope means "whole company" (already company-matched above), so no membership check is needed then.
-    const { employmentIds } = await resolveBatchScopeFilter(tx, scope);
-    if (employmentIds !== null && !employmentIds.includes(p.employmentId)) {
-      throw new EmploymentNotInBatchScopeError(p.employmentId, p.batchId);
+    // C4 (per employee) — every employment must be within the batch's scope (departments ∪ explicit
+    // employments). A null/empty scope means "whole company" (already company-matched above), so no
+    // membership check is needed then.
+    const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, scope);
+    if (scopeIds !== null) {
+      for (const eid of employmentIds) {
+        if (!scopeIds.includes(eid)) throw new EmploymentNotInBatchScopeError(eid, p.batchId);
+      }
     }
 
     // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
     // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
     const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null }> = [];
+    const seenSignatures = new Set<string>();
     for (const r of p.rows) {
       if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
       if (r.unit != null && !isTxnUnit(r.unit)) throw new InvalidTxnUnitError(r.unit);
       assertDateInPeriod(r.txnDate, payPeriod);
       if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
+      // Duplicate-record validation: reject a byte-for-byte identical row within the same submission (the
+      // reporter's "validate duplicate records before submission"). Distinct amounts/remarks pass through; the
+      // multi-employee cartesian below is NOT a duplicate (same grid, different payee).
+      const sig = txnRowSignature(r);
+      if (seenSignatures.has(sig)) throw new DuplicateTxnRowError(sig);
+      seenSignatures.add(sig);
       validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes });
     }
 
+    // Cartesian insert: the validated grid is recorded once per selected employee. Outer loop = employees so
+    // each row's subjectEmploymentId / payload employmentId names the right payee.
     const ids: string[] = [];
-    for (const r of validated) {
-      const [row] = await tx
-        .insert(payrollIndividualTxn)
-        .values({
+    for (const eid of employmentIds) {
+      for (const r of validated) {
+        const [row] = await tx
+          .insert(payrollIndividualTxn)
+          .values({
+            tenantId: ctx.tenantId,
+            batchId: p.batchId,
+            employmentId: eid,
+            kind: r.kind,
+            txnDate: r.txnDate,
+            amount: money(r.amount),
+            quantity: r.quantity != null ? money(r.quantity) : null,
+            unit: r.unit ?? null,
+            notes: r.notes ?? null,
+          })
+          .returning({ id: payrollIndividualTxn.id });
+        // C7 — one event PER row, byte-identical in shape to the single-row create event.
+        await appendEvent(tx, {
           tenantId: ctx.tenantId,
-          batchId: p.batchId,
-          employmentId: p.employmentId,
-          kind: r.kind,
-          txnDate: r.txnDate,
-          amount: money(r.amount),
-          quantity: r.quantity != null ? money(r.quantity) : null,
-          unit: r.unit ?? null,
-          notes: r.notes ?? null,
-        })
-        .returning({ id: payrollIndividualTxn.id });
-      // C7 — one event PER row, byte-identical in shape to the single-row create event.
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'payroll-individual-txn',
-        aggregateId: row.id,
-        eventType: 'payroll.individual-txn.created',
-        actor: actorOf(ctx),
-        subjectEmploymentId: p.employmentId,
-        // ADR-0030 Layer 0: references + kind, no cleartext amount.
-        payload: { batchId: p.batchId, employmentId: p.employmentId, kind: r.kind, txnDate: r.txnDate },
-      });
-      ids.push(row.id);
+          aggregateType: 'payroll-individual-txn',
+          aggregateId: row.id,
+          eventType: 'payroll.individual-txn.created',
+          actor: actorOf(ctx),
+          subjectEmploymentId: eid,
+          // ADR-0030 Layer 0: references + kind, no cleartext amount.
+          payload: { batchId: p.batchId, employmentId: eid, kind: r.kind, txnDate: r.txnDate },
+        });
+        ids.push(row.id);
+      }
     }
     return { ids };
   });
