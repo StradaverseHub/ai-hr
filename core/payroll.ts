@@ -2601,6 +2601,8 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
         payPeriodId: payrollBatch.payPeriodId,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
+        totals: payrollBatch.totals,
+        employeeCount: payrollBatch.employeeCount,
       })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
@@ -2742,6 +2744,31 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       .from(statutoryReport)
       .where(and(eq(statutoryReport.companyId, batch.companyId), eq(statutoryReport.periodKey, batch.payPeriod)));
 
+    // Dedicated status-history row (reporter expected_function: payroll_status_history captures actor,
+    // timestamp, reason, and before/after snapshot for every rollback / unlock / reprocess). Mirrors the
+    // unlock/reprocess inserts so the rollback path is uniformly queryable, not only via the domain event.
+    const resetActor = actorOf(ctx);
+    await tx.insert(payrollStatusHistory).values({
+      tenantId: ctx.tenantId,
+      batchId: p.batchId,
+      action: 'rollback',
+      fromStatus: 'processed',
+      toStatus: 'draft',
+      actorType: resetActor.type,
+      actorId: resetActor.id ?? null,
+      reason: p.reason ?? null,
+      before: { status: 'processed', totals: batch.totals, employeeCount: batch.employeeCount },
+      after: {
+        status: 'draft',
+        totals: null,
+        employeeCount: 0,
+        payslipsCleared: clearedSlips.length,
+        loanInstalmentsReversed: appliedReps.length,
+        loansReopened,
+        claimsReverted: revertedClaims.length,
+      },
+    });
+
     // ONE batch-level reset event summarising every reversal (reporter req. #5: who / when /
     // period / company / optional reason — actor + occurredAt + this payload).
     await appendEvent(tx, {
@@ -2749,7 +2776,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.reset',
-      actor: actorOf(ctx),
+      actor: resetActor,
       payload: {
         fromStatus: 'processed',
         toStatus: 'draft',
