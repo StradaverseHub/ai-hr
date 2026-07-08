@@ -52,7 +52,7 @@ type CollapsibleGroupItem = {
   cookieKey: string;
   children: ChildItem[];
 };
-type Row = Item | CollapsibleGroupItem;
+type Row = ChildItem | CollapsibleGroupItem;
 const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible' in r && r.collapsible;
 type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
 
@@ -86,7 +86,6 @@ const GROUPS: Group[] = [
     items: [
       { href: '/', labelKey: 'dashboard', icon: LayoutDashboard },
       { href: '/me', labelKey: 'myWorkspace', icon: UserRound, tour: 'nav-me' },
-      { href: '/personnel', labelKey: 'people', icon: Users },
       { href: '/org', labelKey: 'orgChart', icon: Network },
       { href: '/leave', labelKey: 'leave', icon: CalendarDays },
       ATTENDANCE_NODE,
@@ -96,11 +95,15 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    // 1b35f17b: Personnel relocated out of the top-level menu into Manage. The group used to be
+    // gated whole-group (managerUp) — but Personnel is visible to EVERY employee, so gating is now
+    // per-row (canSeeChild): all employees see "Manage → Personnel"; managers/admins additionally
+    // see Approvals + Performance. Route guards are unchanged (scopedSession on /personnel).
     labelKey: 'manage',
-    managerUp: true,
     items: [
-      { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals' },
-      { href: '/performance', labelKey: 'performance', icon: Target },
+      { href: '/personnel', labelKey: 'people', icon: Users },
+      { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
+      { href: '/performance', labelKey: 'performance', icon: Target, managerUp: true },
     ],
   },
   {
@@ -151,9 +154,17 @@ export function Sidebar({
   // Per-child visibility for collapsible nodes (the new capability vs. whole-group gating).
   const canSeeChild = (c: ChildItem) =>
     c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove : true;
-  const groups = GROUPS.filter((g) =>
-    g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true,
-  );
+  const groups = GROUPS
+    // Group-level flags still supported (the Admin group uses adminOnly).
+    .filter((g) => (g.adminOnly ? isAdmin : g.managerUp ? isAdmin || canApprove : true))
+    // 1b35f17b: filter per-row too, so a group (e.g. Manage) can mix all-employee rows
+    // (Personnel) with manager-up rows (Approvals/Performance).
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((r) => (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
+    }))
+    // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
+    .filter((g) => g.items.length > 0);
 
   const toggle = () =>
     setCollapsed((c) => {
