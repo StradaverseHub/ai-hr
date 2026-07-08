@@ -12,7 +12,7 @@
 import { eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { employeeStatutoryMy, employment, person, profileChangeRequest } from '../db/schema';
+import { employeeStatutoryMy, employment, person, personPhoto, profileChangeRequest } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
 
 /** LHDN income-tax / EPF / SOCSO records must be kept ~7 years; statutory PII stays locked until then. */
@@ -26,9 +26,28 @@ type PiiField = { key: string; table: 'person' | 'statutory'; statutoryLocked: b
 // here — it identifies the subject on retained statutory documents and would need a tombstone, not a NULL.
 const PII_FIELDS: PiiField[] = [
   { key: 'phone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
-  { key: 'address', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'address', table: 'person', statutoryLocked: false, scopes: ['contact'] }, // legacy single-line
   { key: 'emergencyContactName', table: 'person', statutoryLocked: false, scopes: ['contact'] },
   { key: 'emergencyContactPhone', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  // b4682879 — new contact & structured-address fields (all erasable immediately; not statutory-locked).
+  { key: 'personalEmail', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'addressLine1', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'addressLine2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'addressLine3', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'postcode', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'city', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'state', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'country', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'emergencyContactRelationship', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'emergencyContactPhone2', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  { key: 'emergencyContactAddress', table: 'person', statutoryLocked: false, scopes: ['contact'] },
+  // b4682879 — name parts + PDPA s.40 sensitive demographics (identity scope; erasable immediately).
+  { key: 'firstName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
+  { key: 'lastName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
+  { key: 'preferredName', table: 'person', statutoryLocked: false, scopes: ['identity'] },
+  { key: 'religion', table: 'person', statutoryLocked: false, scopes: ['identity'] },
+  { key: 'race', table: 'person', statutoryLocked: false, scopes: ['identity'] },
+  { key: 'nationality', table: 'person', statutoryLocked: false, scopes: ['identity'] },
   { key: 'dateOfBirth', table: 'person', statutoryLocked: true, scopes: ['identity'] }, // drives EPF age bands
   { key: 'bankName', table: 'statutory', statutoryLocked: true, scopes: ['financial'] },
   { key: 'bankAccountNo', table: 'statutory', statutoryLocked: true, scopes: ['financial'] },
@@ -108,6 +127,14 @@ export async function erasePersonPii(
       .update(profileChangeRequest)
       .set({ proposed: { redacted: true } })
       .where(eq(profileChangeRequest.personId, emp.personId));
+
+    // b4682879 — the profile photograph is biometric-adjacent personal data (identity scope). Delete it on
+    // an identity/all erasure and report it in `erased`. Never statutory-locked (a face photo is not a
+    // retained tax/EPF record).
+    if (p.scope === 'identity' || p.scope === 'all') {
+      await tx.delete(personPhoto).where(eq(personPhoto.personId, emp.personId));
+      erased.push('profilePhoto');
+    }
 
     // (5) audit record — no PII payload
     await appendEvent(tx, {

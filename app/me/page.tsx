@@ -575,17 +575,54 @@ export default async function MePage({
             <h2 className="text-sm font-semibold">{t('myDetails')}</h2>
             <p className="text-xs text-muted-foreground">{t('contactUpdatesImmediately')}</p>
             <form action={myUpdateContact} className="mt-3 space-y-3">
-              <Field label={t('phoneLabel')}>
-                <input name="phone" defaultValue={profile?.person?.phone ?? ''} className={inputCls} />
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t('phoneLabel')}>
+                  <input name="phone" defaultValue={profile?.person?.phone ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('personalEmailLabel')}>
+                  <input
+                    name="personalEmail"
+                    type="email"
+                    defaultValue={profile?.person?.personalEmail ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <Field label={t('addressLine1Label')}>
+                <input name="addressLine1" defaultValue={profile?.person?.addressLine1 ?? ''} className={inputCls} />
               </Field>
-              <Field label={t('addressLabel')}>
-                <input name="address" defaultValue={profile?.person?.address ?? ''} className={inputCls} />
+              <Field label={t('addressLine2Label')}>
+                <input name="addressLine2" defaultValue={profile?.person?.addressLine2 ?? ''} className={inputCls} />
               </Field>
+              <Field label={t('addressLine3Label')}>
+                <input name="addressLine3" defaultValue={profile?.person?.addressLine3 ?? ''} className={inputCls} />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label={t('postcodeLabel')}>
+                  <input name="postcode" defaultValue={profile?.person?.postcode ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('cityLabel')}>
+                  <input name="city" defaultValue={profile?.person?.city ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('stateLabel')}>
+                  <input name="state" defaultValue={profile?.person?.state ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('countryLabel')}>
+                  <input name="country" defaultValue={profile?.person?.country ?? ''} className={inputCls} />
+                </Field>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Field label={t('emergencyContactLabel')}>
                   <input
                     name="emergencyContactName"
                     defaultValue={profile?.person?.emergencyContactName ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label={t('emergencyRelationshipLabel')}>
+                  <input
+                    name="emergencyContactRelationship"
+                    defaultValue={profile?.person?.emergencyContactRelationship ?? ''}
                     className={inputCls}
                   />
                 </Field>
@@ -596,7 +633,21 @@ export default async function MePage({
                     className={inputCls}
                   />
                 </Field>
+                <Field label={t('emergencyPhone2Label')}>
+                  <input
+                    name="emergencyContactPhone2"
+                    defaultValue={profile?.person?.emergencyContactPhone2 ?? ''}
+                    className={inputCls}
+                  />
+                </Field>
               </div>
+              <Field label={t('emergencyAddressLabel')}>
+                <input
+                  name="emergencyContactAddress"
+                  defaultValue={profile?.person?.emergencyContactAddress ?? ''}
+                  className={inputCls}
+                />
+              </Field>
               <Button type="submit" size="sm">
                 {t('saveDetails')}
               </Button>

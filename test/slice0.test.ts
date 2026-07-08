@@ -1457,12 +1457,12 @@ describe('ESS — profile self-service (ADR-0012)', () => {
     const emp = await empCtxFor(E.personId);
     await updateOwnContact(emp, {
       phone: '0123456789',
-      address: '12 Jalan Test',
+      addressLine1: '12 Jalan Test',
       emergencyContactName: 'Next of Kin',
     });
     const [p] = await owner.db.select().from(schema.person).where(eq(schema.person.id, E.personId));
     expect(p.phone).toBe('0123456789');
-    expect(p.address).toBe('12 Jalan Test');
+    expect(p.addressLine1).toBe('12 Jalan Test');
     expect(p.emergencyContactName).toBe('Next of Kin');
   });
 

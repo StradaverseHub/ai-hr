@@ -720,13 +720,55 @@ export async function setCostAllocation(
 }
 
 /**
- * Edit an employee's core person fields (name / email / phone). A person is shared across all of
- * their (possibly multi-company) employments, so this updates the single canonical record. RLS
- * requires admin (person policy WITH CHECK app.is_admin()). Appends a before/after domain event.
+ * The optional profile fields the redesigned Personnel Profile tab maintains (b4682879). Every field is
+ * `string | null | undefined` where `undefined` = "not on this form, leave unchanged" and `null`/'' = clear.
+ * These are all low-risk instant-write fields (names, structured address, extended emergency contact,
+ * demographics) — the compliance-sensitive DOB / gender / marital fields stay on setPersonComplianceFields.
+ */
+export type PersonProfileFields = {
+  firstName?: string | null;
+  lastName?: string | null;
+  preferredName?: string | null;
+  religion?: string | null;
+  race?: string | null;
+  nationality?: string | null;
+  personalEmail?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  addressLine3?: string | null;
+  postcode?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactRelationship?: string | null;
+  emergencyContactPhone?: string | null;
+  emergencyContactPhone2?: string | null;
+  emergencyContactAddress?: string | null;
+};
+
+const PROFILE_FIELD_KEYS: (keyof PersonProfileFields)[] = [
+  'firstName', 'lastName', 'preferredName', 'religion', 'race', 'nationality', 'personalEmail',
+  'addressLine1', 'addressLine2', 'addressLine3', 'postcode', 'city', 'state', 'country',
+  'emergencyContactName', 'emergencyContactRelationship', 'emergencyContactPhone',
+  'emergencyContactPhone2', 'emergencyContactAddress',
+];
+const trimOrNull = (v: string | null | undefined): string | null => {
+  const s = String(v ?? '').trim();
+  return s === '' ? null : s;
+};
+
+/**
+ * Edit an employee's core person fields (name / email / phone) plus the redesigned Profile fields
+ * (b4682879). A person is shared across all of their (possibly multi-company) employments, so this updates
+ * the single canonical record. RLS requires admin (person policy WITH CHECK app.is_admin()). Appends a
+ * before/after domain event for the original name/email/phone trio; the new profile fields are logged by
+ * NAME ONLY (never values — religion/race/address are PII and the event log is append-only, PDPA-erasure
+ * cannot reach it — mirrors core/profile.ts).
  */
 export async function updatePerson(
   ctx: SessionContext,
-  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null },
+  p: { personId: string; fullName: string; primaryEmail: string; phone?: string | null } & PersonProfileFields,
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -746,7 +788,16 @@ export async function updatePerson(
     };
     if (!after.fullName) throw new Error('Name is required');
     if (!after.primaryEmail) throw new Error('Email is required');
-    await tx.update(person).set(after).where(eq(person.id, p.personId));
+    // Only the profile fields explicitly PRESENT on the caller's payload (undefined = leave unchanged).
+    const profileSet: Record<string, string | null> = {};
+    const profileFields: string[] = [];
+    for (const k of PROFILE_FIELD_KEYS) {
+      if (p[k] !== undefined) {
+        profileSet[k] = trimOrNull(p[k]);
+        profileFields.push(k);
+      }
+    }
+    await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'person',
@@ -754,7 +805,8 @@ export async function updatePerson(
       eventType: 'person.updated',
       actor: actorOf(ctx),
       subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
-      payload: { before, after },
+      // before/after only for the non-PII core trio; profile fields recorded by name (values are PII).
+      payload: profileFields.length > 0 ? { before, after, fields: profileFields } : { before, after },
     });
     return { id: p.personId };
   });

@@ -210,6 +210,30 @@ export const companyLogo = pgTable(
   (t) => [index('company_logo_company_idx').on(t.companyId)],
 );
 
+// person_photo = 1:1 profile photograph per person, bytea SIDE TABLE (mirrors company_logo). PNG/JPEG only
+// (mime re-derived from magic bytes at upload; SVG excluded — scriptable). RLS (0164): read is scoped to
+// app.can_see_person(person_id) — narrower than the logo's tenant-wide read because a face photo is
+// personal data, not branding — and WRITE is admin-only. unique(person_id) enforces the 1:1 upsert.
+export const personPhoto = pgTable(
+  'person_photo',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    personId: uuid('person_id')
+      .notNull()
+      .unique()
+      .references(() => person.id),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('person_photo_person_idx').on(t.tenantId, t.personId)],
+);
+
 // location = company-scoped physical-site master data (ADR-0054). A thin overlay that names a site and
 // supplies an optional `state` override for holiday resolution (location.state ?? employment.work_state ??
 // company.default_work_state). `country` is captured for display only — the engine keeps using
@@ -368,10 +392,15 @@ export const person = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    // fullName IS "Full name (as per IC/Passport)" — canonical on payslips / bank files / statutory docs
+    // (notNull, never derived). first/last/preferred below are INDEPENDENT nullable name parts (b4682879).
     fullName: text('full_name').notNull(),
-    primaryEmail: text('primary_email').notNull(),
+    primaryEmail: text('primary_email').notNull(), // login / work email (personalEmail is separate below)
     phone: text('phone'),
     // Low-risk personal fields the employee self-maintains on /me (ADR-0012).
+    // NOTE: `address` is the LEGACY free-text home address — retained for rollback / PDPA history but NO
+    // LONGER rendered or written by the UI (b4682879 backfilled it into addressLine1); use the structured
+    // address columns below going forward.
     address: text('address'),
     dateOfBirth: date('date_of_birth'),
     // Wave 2 (ADR-0038 2A): self-declared; gate maternity (female) / paternity (married male) eligibility.
@@ -379,6 +408,29 @@ export const person = pgTable(
     maritalStatus: text('marital_status'), // 'single' | 'married' | 'other'
     emergencyContactName: text('emergency_contact_name'),
     emergencyContactPhone: text('emergency_contact_phone'),
+    // ── b4682879 Personnel Profile redesign — all NULLABLE, additive, HR-maintained ──
+    // Name parts (independent of fullName; display fallback stays fullName).
+    firstName: text('first_name'),
+    lastName: text('last_name'),
+    preferredName: text('preferred_name'), // known / preferred name
+    // PDPA 2010 s.40 sensitive demographics (religion / race). Row-visible to the same readers as the rest
+    // of the person row; erasable immediately via core/pdpa.ts (never statutory-locked).
+    religion: text('religion'),
+    race: text('race'),
+    nationality: text('nationality'), // free text — analytics epfCitizenship is a payroll proxy, not this
+    // Contact & structured home address (personalEmail ⊥ primaryEmail).
+    personalEmail: text('personal_email'),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    addressLine3: text('address_line3'),
+    postcode: text('postcode'),
+    city: text('city'),
+    state: text('state'),
+    country: text('country'),
+    // Extended emergency contact (name + phone above; relationship free text, second phone, address).
+    emergencyContactRelationship: text('emergency_contact_relationship'),
+    emergencyContactPhone2: text('emergency_contact_phone2'),
+    emergencyContactAddress: text('emergency_contact_address'),
     // ADR-0029 scope-out: the single "paymaster" employment through which this person's taxable
     // remuneration runs for PCB when they hold concurrent employments across the group's companies.
     // FK to employment is added in migration 0069 (avoids the person↔employment cycle in TS).

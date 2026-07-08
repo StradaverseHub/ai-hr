@@ -15,7 +15,8 @@ import {
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
-import { Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { Avatar, Badge, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnPrimary, inputCls } from '@/components/ui';
+import { hasPersonPhoto } from '@/core/person-photo';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -27,9 +28,13 @@ import {
   endReportingLineAction,
   setCompensationAction,
   setComplianceFieldsAction,
+  setContactAddressAction,
+  setEmergencyContactAction,
   setEmploymentComponentAction,
   setLocationAction,
   setPersonAction,
+  setPersonPhotoAction,
+  removePersonPhotoAction,
   setStatutoryAction,
   terminateAction,
   transferAction,
@@ -104,6 +109,8 @@ export default async function EmployeePage({
   const emp = await employeeDetail(s, employmentId);
   if (!emp) notFound();
   const today = new Date().toISOString().slice(0, 10);
+  // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
+  const photoExists = await hasPersonPhoto(s, emp.personId);
 
   const [history, balances, requests, departments, reporting, employees, grades, delegations] = await Promise.all([
     assignmentHistory(s, employmentId),
@@ -202,101 +209,204 @@ export default async function EmployeePage({
   ];
 
   // ── PROFILE ────────────────────────────────────────────────────────────────
-  // Personal details (name, email, phone, holiday calendar, grade) + gender/marital compliance fields.
+  // b4682879 — modular redesign: three organised cards (Personal Details, Contact & Address, Emergency
+  // Contact) plus the existing gender/marital/DOB compliance card. Each card stays its OWN <form> (panels
+  // stay mounted in the tab shell) and routes through the single writer for its trust class (updatePerson
+  // for instant fields, setPersonComplianceFields for the audited compliance fields). The core identity
+  // (fullName / primaryEmail / phone) that updatePerson always writes is passed through as hidden fields on
+  // the cards that don't visibly own it, so saving one section never wipes another's data.
   const profilePanel = admin ? (
-    <Card id="section-personal-details">
-      <SectionHeader title={t('personalDetails')} />
-          <form
-            action={setPersonAction}
-            className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4"
-          >
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <input type="hidden" name="personId" value={emp.personId} />
-            <Field label={t('employeeIdLabel')}>
-              <input
-                name="employeeCode"
-                required
-                maxLength={9}
-                defaultValue={emp.employeeCode ?? ''}
-                placeholder={t('employeeIdPlaceholder')}
-                className={inputCls}
-              />
-            </Field>
-            <Field label={t('fullName')}>
-              <input name="fullName" required defaultValue={emp.name} className={inputCls} />
-            </Field>
-            <Field label={t('email')}>
-              <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
-            </Field>
-            <Field label={t('phone')}>
-              <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
-            </Field>
-            <Field label={t('holidayCalendar')}>
-              <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
-                <option value="">{t('holidayCalendarDefault')}</option>
-                {holidayGroups.length > 0 && (
-                  <optgroup label={t('holidayCalendarGroupOptgroup')}>
-                    {holidayGroups.map((g) => (
-                      <option key={g.id} value={`group:${g.id}`}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-                <optgroup label={t('holidayCalendarStateOptgroup')}>
-                  {MY_STATES.map((st) => (
-                    <option key={st} value={`state:${st}`}>
-                      {st}
+    <>
+      <Card id="section-personal-details">
+        <SectionHeader title={t('personalDetails')} />
+        <form action={setPersonAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* primaryEmail / phone are owned by the Contact card; carried through so this save keeps them. */}
+          <input type="hidden" name="primaryEmail" value={emp.email} />
+          <input type="hidden" name="phone" value={emp.phone ?? ''} />
+          <Field label={t('employeeIdLabel')}>
+            <input
+              name="employeeCode"
+              required
+              maxLength={9}
+              defaultValue={emp.employeeCode ?? ''}
+              placeholder={t('employeeIdPlaceholder')}
+              className={inputCls}
+            />
+          </Field>
+          <Field label={t('fullNameIc')}>
+            <input name="fullName" required defaultValue={emp.name} className={inputCls} />
+          </Field>
+          <Field label={t('firstName')}>
+            <input name="firstName" defaultValue={emp.firstName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('lastName')}>
+            <input name="lastName" defaultValue={emp.lastName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('preferredName')}>
+            <input name="preferredName" defaultValue={emp.preferredName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('religion')}>
+            <input name="religion" defaultValue={emp.religion ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('race')}>
+            <input name="race" defaultValue={emp.race ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('nationality')}>
+            <input name="nationality" defaultValue={emp.nationality ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('holidayCalendar')}>
+            <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
+              <option value="">{t('holidayCalendarDefault')}</option>
+              {holidayGroups.length > 0 && (
+                <optgroup label={t('holidayCalendarGroupOptgroup')}>
+                  {holidayGroups.map((g) => (
+                    <option key={g.id} value={`group:${g.id}`}>
+                      {g.name}
                     </option>
                   ))}
                 </optgroup>
-              </select>
-            </Field>
-            <Field label={t('grade')}>
-              <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
-                <option value="">{t('gradeNone')}</option>
-                {grades.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name}
+              )}
+              <optgroup label={t('holidayCalendarStateOptgroup')}>
+                {MY_STATES.map((st) => (
+                  <option key={st} value={`state:${st}`}>
+                    {st}
                   </option>
                 ))}
-              </select>
-            </Field>
-            <div className="sm:col-span-4 flex justify-end">
-              <button className={btnPrimary}>{t('saveDetails')}</button>
-            </div>
-          </form>
+              </optgroup>
+            </select>
+          </Field>
+          <Field label={t('grade')}>
+            <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
+              <option value="">{t('gradeNone')}</option>
+              {grades.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveDetails')}</button>
+          </div>
+        </form>
 
-          {/* Wave 2A-1 / #24: gender + marital status drive leave eligibility. Kept on their OWN
-              submit → setPersonComplianceFields (the approval-gated apply path), separate from the
-              instant-write core fields above. */}
-          <form
-            action={setComplianceFieldsAction}
-            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
-          >
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('gender')}>
-              <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
-                <option value="">{t('genderNotSet')}</option>
-                <option value="male">{t('genderMale')}</option>
-                <option value="female">{t('genderFemale')}</option>
-                <option value="undisclosed">{t('genderUndisclosed')}</option>
-              </select>
-            </Field>
-            <Field label={t('maritalStatus')}>
-              <select name="maritalStatus" defaultValue={emp.marital ?? ''} className={inputCls}>
-                <option value="">{t('maritalNotSet')}</option>
-                <option value="single">{t('maritalSingle')}</option>
-                <option value="married">{t('maritalMarried')}</option>
-                <option value="other">{t('maritalOther')}</option>
-              </select>
-            </Field>
-            <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
-            <div className="sm:col-span-4 flex justify-end">
-              <button className={btnPrimary}>{t('saveComplianceFields')}</button>
-            </div>
-          </form>
-    </Card>
+        {/* Wave 2A-1 / #24 + b4682879: gender + marital status (leave eligibility) and date of birth
+            (age-band statutory). Kept on their OWN submit → setPersonComplianceFields (the audited path),
+            separate from the instant-write core fields above. */}
+        <form
+          action={setComplianceFieldsAction}
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <Field label={t('birthDate')}>
+            <input name="dateOfBirth" type="date" defaultValue={emp.dateOfBirth ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('gender')}>
+            <select name="gender" defaultValue={emp.gender ?? ''} className={inputCls}>
+              <option value="">{t('genderNotSet')}</option>
+              <option value="male">{t('genderMale')}</option>
+              <option value="female">{t('genderFemale')}</option>
+              <option value="undisclosed">{t('genderUndisclosed')}</option>
+            </select>
+          </Field>
+          <Field label={t('maritalStatus')}>
+            <select name="maritalStatus" defaultValue={emp.marital ?? ''} className={inputCls}>
+              <option value="">{t('maritalNotSet')}</option>
+              <option value="single">{t('maritalSingle')}</option>
+              <option value="married">{t('maritalMarried')}</option>
+              <option value="other">{t('maritalOther')}</option>
+            </select>
+          </Field>
+          <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveComplianceFields')}</button>
+          </div>
+        </form>
+      </Card>
+
+      <Card id="section-contact-address">
+        <SectionHeader title={t('contactAddressTitle')} />
+        <form action={setContactAddressAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* fullName is owned by the Personal Details card; carried through so this save keeps it. */}
+          <input type="hidden" name="fullName" value={emp.name} />
+          <Field label={t('workEmail')}>
+            <input name="primaryEmail" type="email" required defaultValue={emp.email} className={inputCls} />
+          </Field>
+          <Field label={t('phone')}>
+            <input name="phone" defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+          </Field>
+          <Field label={t('personalEmail')}>
+            <input name="personalEmail" type="email" defaultValue={emp.personalEmail ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('addressLine1')}>
+            <input name="addressLine1" defaultValue={emp.addressLine1 ?? ''} className={`${inputCls} sm:col-span-4`} />
+          </Field>
+          <Field label={t('addressLine2')}>
+            <input name="addressLine2" defaultValue={emp.addressLine2 ?? ''} className={`${inputCls} sm:col-span-4`} />
+          </Field>
+          <Field label={t('addressLine3')}>
+            <input name="addressLine3" defaultValue={emp.addressLine3 ?? ''} className={`${inputCls} sm:col-span-4`} />
+          </Field>
+          <Field label={t('postcode')}>
+            <input name="postcode" defaultValue={emp.postcode ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('city')}>
+            <input name="city" defaultValue={emp.city ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('stateLabel')}>
+            <input name="state" defaultValue={emp.state ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('country')}>
+            <input name="country" defaultValue={emp.country ?? ''} className={inputCls} />
+          </Field>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveContact')}</button>
+          </div>
+        </form>
+      </Card>
+
+      <Card id="section-emergency-contact">
+        <SectionHeader title={t('emergencyTitle')} />
+        <form action={setEmergencyContactAction} className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* identity trio carried through (pass-through) so an emergency-contact save never wipes it. */}
+          <input type="hidden" name="fullName" value={emp.name} />
+          <input type="hidden" name="primaryEmail" value={emp.email} />
+          <input type="hidden" name="phone" value={emp.phone ?? ''} />
+          <Field label={t('emergencyName')}>
+            <input name="emergencyContactName" defaultValue={emp.emergencyContactName ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('emergencyRelationship')}>
+            <input
+              name="emergencyContactRelationship"
+              defaultValue={emp.emergencyContactRelationship ?? ''}
+              className={inputCls}
+            />
+          </Field>
+          <Field label={t('emergencyPhone1')}>
+            <input name="emergencyContactPhone" defaultValue={emp.emergencyContactPhone ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('emergencyPhone2')}>
+            <input name="emergencyContactPhone2" defaultValue={emp.emergencyContactPhone2 ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('emergencyAddress')}>
+            <input
+              name="emergencyContactAddress"
+              defaultValue={emp.emergencyContactAddress ?? ''}
+              className={`${inputCls} sm:col-span-4`}
+            />
+          </Field>
+          <div className="sm:col-span-4 flex justify-end">
+            <button className={btnPrimary}>{t('saveEmergency')}</button>
+          </div>
+        </form>
+      </Card>
+    </>
   ) : null;
 
   // ── PAYROLL ────────────────────────────────────────────────────────────────
@@ -1515,6 +1625,87 @@ export default async function EmployeePage({
         })}
         actions={<StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />}
       />
+
+      {/* b4682879 — modern profile header: photo (or initials fallback) + key employment info. Admin-only
+          upload / replace / remove controls sit under the photo. The photo renders wherever can_see_person
+          allows (RLS on the serve route). */}
+      <Card className="p-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="flex flex-col items-center gap-3">
+            {photoExists ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/personnel/photo/${emp.personId}`}
+                alt={emp.name}
+                className="size-24 shrink-0 rounded-full object-cover ring-1 ring-border"
+              />
+            ) : (
+              <Avatar name={emp.name} className="size-24 text-2xl" />
+            )}
+            {admin && (
+              <div className="flex flex-col items-center gap-1.5">
+                <form action={setPersonPhotoAction} className="flex flex-col items-center gap-1">
+                  <input type="hidden" name="employmentId" value={emp.employmentId} />
+                  <input type="hidden" name="personId" value={emp.personId} />
+                  <input
+                    type="file"
+                    name="photo"
+                    accept="image/png,image/jpeg"
+                    required
+                    className="w-40 text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
+                  />
+                  <button className={`${btnPrimary} h-7 px-2 text-xs`}>
+                    {photoExists ? t('photoReplace') : t('photoUpload')}
+                  </button>
+                </form>
+                {photoExists && (
+                  <form action={removePersonPhotoAction}>
+                    <input type="hidden" name="employmentId" value={emp.employmentId} />
+                    <input type="hidden" name="personId" value={emp.personId} />
+                    <ConfirmSubmit
+                      title={t('photoRemove')}
+                      description={t('photoRemoveConfirm')}
+                      confirmLabel={t('photoRemove')}
+                      size="sm"
+                    >
+                      {t('photoRemove')}
+                    </ConfirmSubmit>
+                  </form>
+                )}
+                <p className="text-center text-[11px] text-muted-foreground">{t('photoHint')}</p>
+              </div>
+            )}
+          </div>
+          <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('employeeIdLabel')}</dt>
+              <dd className="font-medium text-foreground">{emp.employeeCode ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerStatus')}</dt>
+              <dd>
+                <StatusBadge status={emp.terminatedOn ? 'terminated' : (current?.status ?? null)} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerDepartment')}</dt>
+              <dd className="font-medium text-foreground">{current?.department ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerPosition')}</dt>
+              <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerCompany')}</dt>
+              <dd className="font-medium text-foreground">{emp.company}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerJoinDate')}</dt>
+              <dd className="font-medium text-foreground">{emp.hiredOn}</dd>
+            </div>
+          </dl>
+        </div>
+      </Card>
 
       <ErrorBanner message={error} />
 
