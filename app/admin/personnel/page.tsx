@@ -15,6 +15,12 @@ import { getPayrollConfig } from '@/core/payroll-config';
 import { listProfileChangeRequests } from '@/core/profile';
 import { Avatar, Button, Card, EmployeeCode, Field, PageHeader, StatusBadge, inputCls } from '@/components/ui';
 import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-panel';
+import {
+  HireFormProvider,
+  HireFormButton,
+  HireFormPanel,
+  HireFormCancelButton,
+} from '@/components/hire-employee';
 import { HIRE_ORG_FILTER_SCRIPT } from '@/lib/hire-form-filter';
 import { decideProfileChangeAction, hireAction } from './actions';
 
@@ -55,6 +61,7 @@ export default async function PeoplePage({
 }) {
   await requireAdmin(); // Admin-only management surface (ADR: People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.list');
+  const tCommon = await getTranslations('common');
   const { s: session, scopeIds } = await scopedSession();
   const today = new Date().toISOString().slice(0, 10);
   const isAdmin = (session.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
@@ -183,6 +190,7 @@ export default async function PeoplePage({
   };
 
   return (
+    <HireFormProvider>
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title={t('title')}
@@ -207,6 +215,9 @@ export default async function PeoplePage({
               labels={filterLabels}
               dataTour="people-search"
             />
+            {isAdmin && (
+              <HireFormButton label={t('createNewEmployee')} dataTour="people-hire" />
+            )}
           </div>
         }
       />
@@ -222,6 +233,160 @@ export default async function PeoplePage({
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
           {error}
         </div>
+      )}
+
+      {isAdmin && (
+        <HireFormPanel>
+          <Card>
+            <form action={hireAction} className="space-y-6 p-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label={t('fullName')}>
+                  <input name="fullName" required className={inputCls} placeholder={t('fullNamePlaceholder')} />
+                </Field>
+                <Field label={t('email')}>
+                  <input name="primaryEmail" type="email" required className={inputCls} placeholder={t('emailPlaceholder')} />
+                </Field>
+              </div>
+
+              <fieldset className="space-y-4">
+                <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('orgInfoHeading')}
+                </legend>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label={t('company')}>
+                    <select name="companyId" id="hire-company" required className={inputCls}>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('businessUnit')}>
+                    <select
+                      name="businessUnitId"
+                      id="hire-business-unit"
+                      defaultValue=""
+                      data-hire-bu-select
+                      className={inputCls}
+                    >
+                      <option value="">{t('businessUnitNone')}</option>
+                      {businessUnits.map((bu) => (
+                        <option key={bu.id} value={bu.id} data-company={bu.companyId}>
+                          {bu.code} — {bu.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('department')}>
+                    {/* Each department option carries its company id and its BU id (empty = unassigned).
+                        A tiny inline script narrows this list to the chosen Company's departments and,
+                        within that, to the chosen BU's; unassigned (NULL-BU) departments stay visible
+                        under every BU choice (the day-one common case). */}
+                    <select name="departmentId" id="hire-department" required className={inputCls}>
+                      {departments.map((d) => (
+                        <option
+                          key={d.id}
+                          value={d.id}
+                          data-company={d.companyId}
+                          data-business-unit={d.businessUnitId ?? ''}
+                        >
+                          {d.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('position')}>
+                    <select name="positionId" id="hire-position" className={inputCls}>
+                      <option value="">{t('positionNone')}</option>
+                      {positions.map((pos) => (
+                        <option key={pos.id} value={pos.id} data-company={pos.companyId}>
+                          {pos.title}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('jobGrade')}>
+                    <select name="gradeId" className={inputCls}>
+                      <option value="">{t('jobGradeNone')}</option>
+                      {grades.map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('reportingManager')}>
+                    <select name="reportingManagerEmploymentId" defaultValue="" className={inputCls}>
+                      <option value="">{t('noManager')}</option>
+                      {managerCandidates.map((m) => (
+                        <option key={m.employmentId} value={m.employmentId}>
+                          {m.name}
+                          {m.employeeCode ? ` (${m.employeeCode})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('costCenter')}>
+                    <select name="costCenterId" id="hire-cost-center" className={inputCls}>
+                      <option value="">{t('costCenterNone')}</option>
+                      {costCenters.map((cc) => (
+                        <option key={cc.id} value={cc.id} data-company={cc.companyId}>
+                          {cc.code} — {cc.name}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+              </fieldset>
+
+              <fieldset className="space-y-4">
+                <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('employmentInfoHeading')}
+                </legend>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field label={t('employmentType')}>
+                    <select name="employmentType" defaultValue="full_time" className={inputCls}>
+                      <option value="full_time">{t('employmentFullTime')}</option>
+                      <option value="part_time">{t('employmentPartTime')}</option>
+                      <option value="contract">{t('employmentContract')}</option>
+                      <option value="intern">{t('employmentIntern')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('hireDate')}>
+                    <input name="hiredOn" type="date" required defaultValue={today} className={inputCls} />
+                  </Field>
+                  <Field label={t('provisionalEndDate')}>
+                    <input
+                      name="provisionalEndOn"
+                      type="date"
+                      defaultValue={fullTimeProvisionalDefault}
+                      className={inputCls}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">{t('provisionalEndHint')}</p>
+                  </Field>
+                </div>
+              </fieldset>
+
+              <div className="flex items-center gap-2">
+                <Button type="submit">{t('hire')}</Button>
+                <HireFormCancelButton label={tCommon('cancel')} />
+              </div>
+            </form>
+            {/* Org-picker cascading filter (no React client island): the chosen Company narrows the
+                Business Unit / Department / Position / Cost Centre lists to that company's options, and
+                the chosen Business Unit further narrows Departments (unassigned, empty-BU departments
+                stay visible under every BU). Selections that become hidden self-heal — required selects
+                fall back to the first visible option, optional ones to their "None" placeholder. The
+                Reporting Manager (cross-company allowed by design, core/org.ts) and Job Grade
+                (tenant-wide) selects are deliberately NOT filtered. Pure DOM, server-rendered-safe;
+                visibility rule shared with test/hire-form-filter.test.ts via lib/hire-form-filter.ts.
+                The server-side CrossCompanyError guard in core/org.ts remains the final backstop.
+                The form stays mounted (panel toggles via the `hidden` attribute) so this script
+                initialises against the ids at load exactly as it did under the old collapsed panel. */}
+            <script dangerouslySetInnerHTML={{ __html: HIRE_ORG_FILTER_SCRIPT }} />
+          </Card>
+        </HireFormPanel>
       )}
 
       {isAdmin && profileChanges.length > 0 && (
@@ -307,7 +472,7 @@ export default async function PeoplePage({
             {employees.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                  {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployees')}
+                  {q ? t('emptySearch', { q }) : hasFilters ? t('emptyFiltered') : t('emptyNoEmployeesAdmin')}
                 </td>
               </tr>
             )}
@@ -340,155 +505,7 @@ export default async function PeoplePage({
         )}
       </Card>
 
-      <Card data-tour="people-hire">
-        <details>
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium">
-            {t('hireAnEmployee')}
-          </summary>
-          <form action={hireAction} className="space-y-6 border-t border-border p-4">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label={t('fullName')}>
-                <input name="fullName" required className={inputCls} placeholder={t('fullNamePlaceholder')} />
-              </Field>
-              <Field label={t('email')}>
-                <input name="primaryEmail" type="email" required className={inputCls} placeholder={t('emailPlaceholder')} />
-              </Field>
-            </div>
-
-            <fieldset className="space-y-4">
-              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('orgInfoHeading')}
-              </legend>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label={t('company')}>
-                  <select name="companyId" id="hire-company" required className={inputCls}>
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('businessUnit')}>
-                  <select
-                    name="businessUnitId"
-                    id="hire-business-unit"
-                    defaultValue=""
-                    data-hire-bu-select
-                    className={inputCls}
-                  >
-                    <option value="">{t('businessUnitNone')}</option>
-                    {businessUnits.map((bu) => (
-                      <option key={bu.id} value={bu.id} data-company={bu.companyId}>
-                        {bu.code} — {bu.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('department')}>
-                  {/* Each department option carries its company id and its BU id (empty = unassigned).
-                      A tiny inline script narrows this list to the chosen Company's departments and,
-                      within that, to the chosen BU's; unassigned (NULL-BU) departments stay visible
-                      under every BU choice (the day-one common case). */}
-                  <select name="departmentId" id="hire-department" required className={inputCls}>
-                    {departments.map((d) => (
-                      <option
-                        key={d.id}
-                        value={d.id}
-                        data-company={d.companyId}
-                        data-business-unit={d.businessUnitId ?? ''}
-                      >
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('position')}>
-                  <select name="positionId" id="hire-position" className={inputCls}>
-                    <option value="">{t('positionNone')}</option>
-                    {positions.map((pos) => (
-                      <option key={pos.id} value={pos.id} data-company={pos.companyId}>
-                        {pos.title}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('jobGrade')}>
-                  <select name="gradeId" className={inputCls}>
-                    <option value="">{t('jobGradeNone')}</option>
-                    {grades.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('reportingManager')}>
-                  <select name="reportingManagerEmploymentId" defaultValue="" className={inputCls}>
-                    <option value="">{t('noManager')}</option>
-                    {managerCandidates.map((m) => (
-                      <option key={m.employmentId} value={m.employmentId}>
-                        {m.name}
-                        {m.employeeCode ? ` (${m.employeeCode})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label={t('costCenter')}>
-                  <select name="costCenterId" id="hire-cost-center" className={inputCls}>
-                    <option value="">{t('costCenterNone')}</option>
-                    {costCenters.map((cc) => (
-                      <option key={cc.id} value={cc.id} data-company={cc.companyId}>
-                        {cc.code} — {cc.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-            </fieldset>
-
-            <fieldset className="space-y-4">
-              <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {t('employmentInfoHeading')}
-              </legend>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label={t('employmentType')}>
-                  <select name="employmentType" defaultValue="full_time" className={inputCls}>
-                    <option value="full_time">{t('employmentFullTime')}</option>
-                    <option value="part_time">{t('employmentPartTime')}</option>
-                    <option value="contract">{t('employmentContract')}</option>
-                    <option value="intern">{t('employmentIntern')}</option>
-                  </select>
-                </Field>
-                <Field label={t('hireDate')}>
-                  <input name="hiredOn" type="date" required defaultValue={today} className={inputCls} />
-                </Field>
-                <Field label={t('provisionalEndDate')}>
-                  <input
-                    name="provisionalEndOn"
-                    type="date"
-                    defaultValue={fullTimeProvisionalDefault}
-                    className={inputCls}
-                  />
-                  <p className="mt-1 text-xs text-muted-foreground">{t('provisionalEndHint')}</p>
-                </Field>
-              </div>
-            </fieldset>
-
-            <Button type="submit">{t('hire')}</Button>
-          </form>
-          {/* Org-picker cascading filter (no React client island): the chosen Company narrows the
-              Business Unit / Department / Position / Cost Centre lists to that company's options, and
-              the chosen Business Unit further narrows Departments (unassigned, empty-BU departments
-              stay visible under every BU). Selections that become hidden self-heal — required selects
-              fall back to the first visible option, optional ones to their "None" placeholder. The
-              Reporting Manager (cross-company allowed by design, core/org.ts) and Job Grade
-              (tenant-wide) selects are deliberately NOT filtered. Pure DOM, server-rendered-safe;
-              visibility rule shared with test/hire-form-filter.test.ts via lib/hire-form-filter.ts.
-              The server-side CrossCompanyError guard in core/org.ts remains the final backstop. */}
-          <script dangerouslySetInnerHTML={{ __html: HIRE_ORG_FILTER_SCRIPT }} />
-        </details>
-      </Card>
     </div>
+    </HireFormProvider>
   );
 }

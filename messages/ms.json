@@ -185,11 +185,10 @@
       "colStatus": "Status",
       "colHired": "Diambil",
       "emptySearch": "Tiada pekerja sepadan dengan “{q}”.",
-      "emptyNoEmployees": "Belum ada pekerja — ambil seseorang di bawah.",
+      "emptyNoEmployees": "Belum ada pekerja.",
       "newer": "← Lebih baharu",
       "older": "Lebih lama →",
       "rangeOf": "{from}–{to} daripada {total}",
-      "hireAnEmployee": "+ Ambil pekerja",
       "fullName": "Nama penuh",
       "email": "E-mel",
       "company": "Syarikat",
@@ -244,7 +243,9 @@
       "applyFilters": "Guna penapis",
       "clearAllFilters": "Kosongkan semua",
       "activeFilters": "{count, plural, one {# tapisan} other {# tapisan}}",
-      "removeFilter": "Buang tapisan {label}"
+      "removeFilter": "Buang tapisan {label}",
+      "createNewEmployee": "Cipta pekerja baharu",
+      "emptyNoEmployeesAdmin": "Belum ada pekerja — klik \"Cipta pekerja baharu\" di atas untuk menambah."
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -3207,8 +3208,8 @@
           "body": "Setiap pekerja dipaparkan di sini dengan jabatan, syarikat dan statusnya. Klik nama untuk membuka profil penuh mereka."
         },
         "hire": {
-          "title": "Ambil pekerja",
-          "body": "Kembangkan **Ambil pekerja** untuk menambah seseorang dengan syarikat, jabatan dan tarikh mula mereka. Untuk onboarding pukal, gunakan **Import CSV** di atas."
+          "title": "Cipta pekerja baharu",
+          "body": "Klik **+ Cipta pekerja baharu** di kanan atas untuk menambah seseorang dengan syarikat, jabatan dan tarikh mula mereka. Untuk onboarding pukal, gunakan **Import CSV**."
         },
         "orgTree": {
           "title": "Struktur kumpulan anda",

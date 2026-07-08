@@ -185,11 +185,10 @@
       "colStatus": "状态",
       "colHired": "入职",
       "emptySearch": "没有员工匹配“{q}”。",
-      "emptyNoEmployees": "暂无员工 — 在下方添加一名。",
+      "emptyNoEmployees": "暂无员工。",
       "newer": "← 较新",
       "older": "较旧 →",
       "rangeOf": "{from}–{to}，共 {total}",
-      "hireAnEmployee": "+ 录用员工",
       "fullName": "全名",
       "email": "邮箱",
       "company": "公司",
@@ -244,7 +243,9 @@
       "applyFilters": "应用筛选",
       "clearAllFilters": "全部清除",
       "activeFilters": "{count, plural, one {# 个筛选} other {# 个筛选}}",
-      "removeFilter": "移除{label}筛选"
+      "removeFilter": "移除{label}筛选",
+      "createNewEmployee": "创建新员工",
+      "emptyNoEmployeesAdmin": "暂无员工 — 点击上方“创建新员工”添加。"
     },
     "detail": {
       "backToPeople": "员工",
@@ -3207,8 +3208,8 @@
           "body": "每位员工都显示在这里，附带部门、公司和状态。点击姓名可打开其完整资料。"
         },
         "hire": {
-          "title": "招聘员工",
-          "body": "展开 **招聘员工** 添加人员及其公司、部门和入职日期。批量入职可使用顶部的 **导入 CSV**。"
+          "title": "创建新员工",
+          "body": "点击右上角的 **+ 创建新员工** 添加人员及其公司、部门和入职日期。批量入职可使用 **导入 CSV**。"
         },
         "orgTree": {
           "title": "你的集团架构",

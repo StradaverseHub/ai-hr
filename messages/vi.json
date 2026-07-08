@@ -185,11 +185,10 @@
       "colStatus": "Trạng thái",
       "colHired": "Ngày tuyển",
       "emptySearch": "Không có nhân viên nào khớp với “{q}”.",
-      "emptyNoEmployees": "Chưa có nhân viên nào — hãy tuyển dụng bên dưới.",
+      "emptyNoEmployees": "Chưa có nhân viên nào.",
       "newer": "← Mới hơn",
       "older": "Cũ hơn →",
       "rangeOf": "{from}–{to} trên {total}",
-      "hireAnEmployee": "+ Tuyển nhân viên",
       "fullName": "Họ và tên",
       "email": "Email",
       "company": "Công ty",
@@ -244,7 +243,9 @@
       "applyFilters": "Áp dụng bộ lọc",
       "clearAllFilters": "Xóa tất cả",
       "activeFilters": "{count, plural, one {# bộ lọc} other {# bộ lọc}}",
-      "removeFilter": "Xóa bộ lọc {label}"
+      "removeFilter": "Xóa bộ lọc {label}",
+      "createNewEmployee": "Tạo nhân viên mới",
+      "emptyNoEmployeesAdmin": "Chưa có nhân viên nào — nhấp \"Tạo nhân viên mới\" ở trên để thêm."
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -3207,8 +3208,8 @@
           "body": "Mọi nhân viên đều hiển thị ở đây cùng phòng ban, công ty và trạng thái. Nhấp vào một tên để mở hồ sơ đầy đủ của họ."
         },
         "hire": {
-          "title": "Tuyển một nhân viên",
-          "body": "Mở rộng **Tuyển một nhân viên** để thêm người cùng công ty, phòng ban và ngày bắt đầu. Để tiếp nhận hàng loạt, dùng **Nhập CSV** ở phía trên."
+          "title": "Tạo nhân viên mới",
+          "body": "Nhấp **+ Tạo nhân viên mới** ở góc trên bên phải để thêm người cùng công ty, phòng ban và ngày bắt đầu. Để tiếp nhận hàng loạt, dùng **Nhập CSV**."
         },
         "orgTree": {
           "title": "Cấu trúc tập đoàn của bạn",

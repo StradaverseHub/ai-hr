@@ -185,11 +185,10 @@
       "colStatus": "Status",
       "colHired": "Hired",
       "emptySearch": "No employees match “{q}”.",
-      "emptyNoEmployees": "No employees yet — hire someone below.",
+      "emptyNoEmployees": "No employees yet.",
       "newer": "← Newer",
       "older": "Older →",
       "rangeOf": "{from}–{to} of {total}",
-      "hireAnEmployee": "+ Hire an employee",
       "fullName": "Full name",
       "email": "Email",
       "company": "Company",
@@ -244,7 +243,9 @@
       "applyFilters": "Apply filters",
       "clearAllFilters": "Clear all",
       "activeFilters": "{count, plural, one {# filter} other {# filters}}",
-      "removeFilter": "Remove {label} filter"
+      "removeFilter": "Remove {label} filter",
+      "createNewEmployee": "Create new employee",
+      "emptyNoEmployeesAdmin": "No employees yet — click \"Create new employee\" above to add one."
     },
     "detail": {
       "backToPeople": "People",
@@ -3207,8 +3208,8 @@
           "body": "Every employee shows here with their department, company, and status. Click a name to open their full profile."
         },
         "hire": {
-          "title": "Hire an employee",
-          "body": "Expand **Hire an employee** to add someone with their company, department, and start date. For bulk onboarding, use **Import CSV** at the top."
+          "title": "Create new employee",
+          "body": "Click **+ Create new employee** at the top right to add someone with their company, department, and start date. For bulk onboarding, use **Import CSV**."
         },
         "orgTree": {
           "title": "Your group structure",
