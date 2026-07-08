@@ -580,6 +580,17 @@ export function LeaveTypePanel({
                   className={`${inputCls} w-64`}
                 />
               </Field>
+              {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
+              <Field label={t('reasonLabel')}>
+                <input
+                  name="reason"
+                  type="text"
+                  maxLength={500}
+                  aria-label={t('reasonLabel')}
+                  placeholder={t('reasonPlaceholder')}
+                  className={`${inputCls} w-64`}
+                />
+              </Field>
               <Button type="submit" size="sm">
                 {t('save')}
               </Button>
@@ -1103,6 +1114,17 @@ export function LeaveTypePanel({
                     </select>
                   </Field>
                   <ServiceBandEditor t={t} initial={p.serviceBands} />
+                  {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event so HR can
+                      answer the reporter's "Why the change was made" column. */}
+                  <Field label={t('reasonLabel')}>
+                    <input
+                      name="reason"
+                      type="text"
+                      maxLength={500}
+                      placeholder={t('reasonPlaceholder')}
+                      className={`${inputCls} w-64`}
+                    />
+                  </Field>
                   <Button type="submit" size="sm">
                     {t('save')}
                   </Button>

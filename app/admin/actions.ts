@@ -474,6 +474,8 @@ export async function updateLeavePolicyAction(formData: FormData) {
       serviceBands: serviceBandsField(formData),
       validFrom: String(formData.get('validFrom')),
       asOf: todayInKualaLumpur(),
+      // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
+      reason: String(formData.get('reason') || '') || null,
     });
   } catch (e) {
     fail(LEAVE, e);
@@ -1006,6 +1008,8 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...expiryFields,
       ...partialFields,
       ...customMessageFields,
+      // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
+      reason: String(fd.get('reason') || '') || null,
     });
   } catch (e) {
     fail(LEAVE, e);

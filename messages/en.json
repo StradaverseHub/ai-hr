@@ -2615,7 +2615,9 @@
       "savePolicyConfirmDescription": "This will create the entitlement for the selected companies and grades.",
       "saveConfirmLabel": "Save",
       "payrollPerTypeTitle": "Payroll impact by leave type",
-      "typeMasterConfigHint": "Edit a leave type's full configuration on the Entitlements tab."
+      "typeMasterConfigHint": "Edit a leave type's full configuration on the Entitlements tab.",
+      "reasonLabel": "Reason for change (optional)",
+      "reasonPlaceholder": "Why is this being changed?"
     },
     "holidays": {
       "pageTitle": "Public holidays",
@@ -3807,7 +3809,9 @@
     "unassignConfirm": "Remove this assignment? The leave type falls back to the default chain.",
     "multiApprovalOff": "Multi-step approval is off",
     "enableMultiApproval": "Enable multi-step approval",
-    "rolesGatedNote": "Steps route as follows: Department Head / Business Unit Head go to the head set for that unit under Settings → System Labels (a head step is skipped when no head is set); HR and HR Manager go to HR admins; Payroll goes to payroll partners; Custom Role goes to an HR admin. An HR admin can also clear any step, so a chain always completes."
+    "rolesGatedNote": "Steps route as follows: Department Head / Business Unit Head go to the head set for that unit under Settings → System Labels (a head step is skipped when no head is set); HR and HR Manager go to HR admins; Payroll goes to payroll partners; Custom Role goes to an HR admin. An HR admin can also clear any step, so a chain always completes.",
+    "reason": "Reason for change (optional)",
+    "reasonPlaceholder": "Why is this being changed?"
   },
   "feedback": {
     "title": "Feedback",

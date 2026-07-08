@@ -22,6 +22,9 @@ type Labels = {
   remove: string;
   dragToReorder: string;
   save: string;
+  // 4ec5a940 — optional "why the change was made" note surfaced in the audit trail.
+  reason: string;
+  reasonPlaceholder: string;
 };
 
 /** ADR-0039 2B-2 — the per-company approval chain editor. Levels are an ordered list the admin builds;
@@ -63,6 +66,18 @@ export function LeaveApprovalEditor({
       </label>
 
       <StepListEditor levels={levels} setLevels={setLevels} labels={labels} disabled={!enabled} />
+
+      {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
+      <label className="block text-xs">
+        <span className="mb-1 block font-medium text-muted-foreground">{labels.reason}</span>
+        <input
+          name="reason"
+          type="text"
+          maxLength={500}
+          placeholder={labels.reasonPlaceholder}
+          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-sm"
+        />
+      </label>
 
       <Button type="submit" size="sm">
         {labels.save}

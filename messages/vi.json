@@ -2615,7 +2615,9 @@
       "savePolicyConfirmDescription": "Thao tác này sẽ tạo quyền lợi cho các công ty và ngạch bậc đã chọn.",
       "saveConfirmLabel": "Lưu",
       "payrollPerTypeTitle": "Ảnh hưởng lương theo loại nghỉ phép",
-      "typeMasterConfigHint": "Chỉnh sửa toàn bộ cấu hình của loại nghỉ phép trong tab Quyền lợi."
+      "typeMasterConfigHint": "Chỉnh sửa toàn bộ cấu hình của loại nghỉ phép trong tab Quyền lợi.",
+      "reasonLabel": "Lý do thay đổi (tùy chọn)",
+      "reasonPlaceholder": "Vì sao thực hiện thay đổi này?"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",
@@ -3807,7 +3809,9 @@
     "unassignConfirm": "Gỡ phân công này? Loại nghỉ phép sẽ quay lại chuỗi mặc định.",
     "multiApprovalOff": "Phê duyệt nhiều bước đang tắt",
     "enableMultiApproval": "Bật phê duyệt nhiều bước",
-    "rolesGatedNote": "Các bước được chuyển như sau: Trưởng phòng / Trưởng đơn vị kinh doanh chuyển đến người đứng đầu được đặt cho đơn vị đó trong Cài đặt → Nhãn hệ thống (bỏ qua bước người đứng đầu khi chưa đặt); HR và Quản lý HR chuyển đến quản trị viên HR; Payroll chuyển đến đối tác payroll; Vai trò tùy chỉnh chuyển đến quản trị viên HR. Quản trị viên HR cũng có thể duyệt bất kỳ bước nào, vì vậy chuỗi luôn hoàn tất."
+    "rolesGatedNote": "Các bước được chuyển như sau: Trưởng phòng / Trưởng đơn vị kinh doanh chuyển đến người đứng đầu được đặt cho đơn vị đó trong Cài đặt → Nhãn hệ thống (bỏ qua bước người đứng đầu khi chưa đặt); HR và Quản lý HR chuyển đến quản trị viên HR; Payroll chuyển đến đối tác payroll; Vai trò tùy chỉnh chuyển đến quản trị viên HR. Quản trị viên HR cũng có thể duyệt bất kỳ bước nào, vì vậy chuỗi luôn hoàn tất.",
+    "reason": "Lý do thay đổi (tùy chọn)",
+    "reasonPlaceholder": "Vì sao thực hiện thay đổi này?"
   },
   "feedback": {
     "title": "Phản hồi",

@@ -87,6 +87,21 @@ function cleanName(v: string | undefined, label: string): string {
   return s;
 }
 
+/** 4ec5a940 — the reporter's "Why the change was made" audit column. An OPTIONAL free-text note the admin
+ *  may attach to a leave-config change; it is recorded on the DomainEvent payload only (never persisted to
+ *  the aggregate row) and rendered by `describePayload`'s `reason` branch. Returns `undefined` for a
+ *  blank/whitespace value so the payload key is simply omitted (no empty `reason:` line in the audit UI).
+ *  Capped at 500 chars — long enough for a real justification, short enough to keep rows scannable. It is
+ *  tenant free-text, not personal/financial data, so it is PDPA-safe to store in cleartext (ADR-0030
+ *  Layer-0) — the key name also never collides with the banned-key guard. */
+export const REASON_MAX_LEN = 500;
+export function normalizeReason(v: string | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  if (!s) return undefined;
+  return s.length > REASON_MAX_LEN ? s.slice(0, REASON_MAX_LEN) : s;
+}
+
 /**
  * Normalise + validate a leave-type eligibility rule (#25 visibility). Tri-state by the caller:
  *   undefined → caller leaves the column untouched (a name-only rename must NOT clobber a rule);
@@ -449,10 +464,13 @@ export async function createJobGrade(
 
 export async function updateJobGrade(
   ctx: SessionContext,
-  p: { id: string; name: string; rank?: number },
+  // 4ec5a940 — optional `reason` for the change (free-text from the config form), recorded on the audit
+  // event payload only (never persisted to the aggregate row).
+  p: { id: string; name: string; rank?: number; reason?: string | null },
 ) {
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
+  const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
     // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
     // events that predate this change keep their new-values-only payload; the log is append-only).
@@ -471,6 +489,7 @@ export async function updateJobGrade(
       payload: {
         before: prev ? { name: prev.name, rank: prev.rank } : null,
         after: { name, rank },
+        ...(reason ? { reason } : {}),
       },
     });
   });
@@ -787,8 +806,11 @@ export async function updateLeavePolicy(
      *  action layer computes and passes it (tests pass fixed dates); defaults to todayInKualaLumpur()
      *  when omitted — the requestLeave precedent for clock reads in core. */
     asOf?: string;
+    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
+    reason?: string | null;
   },
 ): Promise<{ affected: number; totalDelta: number }> {
+  const reason = normalizeReason(p.reason);
   return withTenant(ctx, async (tx) => {
     // Step 4: a prior SELECT of the current row — needed both to preserve the existing accrual bands
     // (tri-state below) and to know whether gradeId/companyId/validFrom are actually CHANGING, so the
@@ -895,6 +917,7 @@ export async function updateLeavePolicy(
         // Feedback 49809272: the correction's blast radius — this event is the recalc SUMMARY (the
         // per-employee `leave.entitlement.recalculated` events are the per-row audit).
         recalc,
+        ...(reason ? { reason } : {}),
       },
     });
     return recalc;
@@ -1838,9 +1861,12 @@ export async function updateLeaveType(
     // another rule's message. Any future writer of this column MUST follow the same merge-in-transaction
     // convention. Each message is capped at 500 chars and only known rule keys are accepted.
     customMessages?: Record<string, string> | null;
+    /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
+    reason?: string | null;
   },
 ) {
   const name = cleanName(p.name, 'Leave-type name');
+  const reason = normalizeReason(p.reason);
   const touchEligibility = p.eligibility !== undefined;
   const nextEligibility = touchEligibility ? cleanEligibility(p.eligibility) : undefined;
   const touchDurations = p.durations !== undefined;
@@ -2091,6 +2117,7 @@ export async function updateLeaveType(
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
+        ...(reason ? { reason } : {}),
       },
     });
   });

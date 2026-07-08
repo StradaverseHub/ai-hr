@@ -2615,7 +2615,9 @@
       "savePolicyConfirmDescription": "这将为所选的公司和职级创建额度。",
       "saveConfirmLabel": "保存",
       "payrollPerTypeTitle": "按假期类型的薪资影响",
-      "typeMasterConfigHint": "在“额度”选项卡中编辑假期类型的完整配置。"
+      "typeMasterConfigHint": "在“额度”选项卡中编辑假期类型的完整配置。",
+      "reasonLabel": "变更原因（可选）",
+      "reasonPlaceholder": "为何要进行此变更？"
     },
     "holidays": {
       "pageTitle": "公共假期",
@@ -3807,7 +3809,9 @@
     "unassignConfirm": "移除此分配？该假期类型将回退到默认审批链。",
     "multiApprovalOff": "多级审批已关闭",
     "enableMultiApproval": "启用多级审批",
-    "rolesGatedNote": "步骤的审批人如下：部门主管／业务单元主管由该单元在 设置 → 系统标签 中设置的负责人审批（未设置负责人时跳过该步骤）；HR 和人力资源经理由 HR 管理员审批；薪资由薪资合作方审批；自定义角色由 HR 管理员审批。HR 管理员也可审批任何步骤，因此审批链始终能完成。"
+    "rolesGatedNote": "步骤的审批人如下：部门主管／业务单元主管由该单元在 设置 → 系统标签 中设置的负责人审批（未设置负责人时跳过该步骤）；HR 和人力资源经理由 HR 管理员审批；薪资由薪资合作方审批；自定义角色由 HR 管理员审批。HR 管理员也可审批任何步骤，因此审批链始终能完成。",
+    "reason": "变更原因（可选）",
+    "reasonPlaceholder": "为何要进行此变更？"
   },
   "feedback": {
     "title": "反馈",

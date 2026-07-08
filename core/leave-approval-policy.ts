@@ -229,14 +229,26 @@ function defaultRuleFilter() {
   return sql`business_unit_id is null and department_id is null and position_id is null and grade_id is null and employment_type is null and min_days is null and max_days is null`;
 }
 
+/** 4ec5a940 — normalise an OPTIONAL "why the change was made" note for the audit event payload. Kept local
+ *  (not imported from ./admin) to avoid a module import cycle: admin → leave → leave-approval-policy. Blank
+ *  ⇒ undefined so the payload key is omitted; capped at 500 chars. Tenant free-text, PDPA-safe (ADR-0030). */
+const REASON_MAX_LEN = 500;
+function normalizeReason(v: string | null | undefined): string | undefined {
+  if (v == null) return undefined;
+  const s = String(v).replace(/\s+/g, ' ').trim();
+  if (!s) return undefined;
+  return s.length > REASON_MAX_LEN ? s.slice(0, REASON_MAX_LEN) : s;
+}
+
 /** Set a company's default chain + on/off toggle. Admin-only (enforced by the policy + company RLS).
  *  Under ADR-0071 the "company default" is the fully-wildcard rule; this upserts that row and leaves any
  *  scoped rules untouched. */
 export async function setLeaveApprovalPolicy(
   ctx: SessionContext,
-  p: { companyId: string; enabled: boolean; levels: string[] },
+  p: { companyId: string; enabled: boolean; levels: string[]; reason?: string | null },
 ) {
   const levels = sanitizeLevels(p.levels);
+  const reason = normalizeReason(p.reason);
   if (p.enabled && levels.length === 0) throw new Error('An enabled approval chain needs at least one level');
   return withTenant(ctx, async (tx) => {
     // 4ec5a940 — capture the prior enabled flag + chain BEFORE the writes, so the audit event carries a
@@ -279,6 +291,7 @@ export async function setLeaveApprovalPolicy(
           ? { enabled: priorCompany?.enabled ?? false, levels: sanitizeLevels(existing.levels) }
           : null,
         after: { enabled: p.enabled, levels },
+        ...(reason ? { reason } : {}),
       },
     });
     return { id };
@@ -428,8 +441,12 @@ export async function updateLeaveApprovalRule(
   ctx: SessionContext,
   ruleId: string,
   p: LeaveApprovalRuleInput,
+  // 4ec5a940 — optional free-text justification for the audit event; passed as a separate arg so
+  // cleanRuleInput (which validates the scoping tuple) is untouched.
+  opts?: { reason?: string | null },
 ) {
   const c = cleanRuleInput(p);
+  const reason = normalizeReason(opts?.reason);
   return withTenant(ctx, async (tx) => {
     await assertNoDuplicateRule(tx, p.companyId, c, ruleId);
     // 4ec5a940 — snapshot the prior rule scope + chain BEFORE the update, for a real before→after audit diff.
@@ -488,6 +505,7 @@ export async function updateLeaveApprovalRule(
             }
           : null,
         after: { ...c },
+        ...(reason ? { reason } : {}),
       },
     });
     return { id: ruleId };

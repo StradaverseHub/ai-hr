@@ -2615,7 +2615,9 @@
       "savePolicyConfirmDescription": "Ini akan mewujudkan kelayakan untuk syarikat dan gred yang dipilih.",
       "saveConfirmLabel": "Simpan",
       "payrollPerTypeTitle": "Kesan gaji mengikut jenis cuti",
-      "typeMasterConfigHint": "Sunting konfigurasi penuh jenis cuti di tab Kelayakan."
+      "typeMasterConfigHint": "Sunting konfigurasi penuh jenis cuti di tab Kelayakan.",
+      "reasonLabel": "Sebab perubahan (pilihan)",
+      "reasonPlaceholder": "Mengapa ini diubah?"
     },
     "holidays": {
       "pageTitle": "Cuti umum",
@@ -3807,7 +3809,9 @@
     "unassignConfirm": "Buang penetapan ini? Jenis cuti akan kembali kepada rantaian lalai.",
     "multiApprovalOff": "Kelulusan berbilang langkah dimatikan",
     "enableMultiApproval": "Aktifkan kelulusan berbilang langkah",
-    "rolesGatedNote": "Langkah diarahkan seperti berikut: Ketua Jabatan / Ketua Unit Perniagaan pergi kepada ketua yang ditetapkan untuk unit itu di bawah Tetapan → Label Sistem (langkah ketua dilangkau apabila tiada ketua ditetapkan); HR dan Pengurus HR pergi kepada pentadbir HR; Payroll pergi kepada rakan payroll; Peranan Tersuai pergi kepada pentadbir HR. Pentadbir HR juga boleh meluluskan mana-mana langkah supaya rantaian sentiasa selesai."
+    "rolesGatedNote": "Langkah diarahkan seperti berikut: Ketua Jabatan / Ketua Unit Perniagaan pergi kepada ketua yang ditetapkan untuk unit itu di bawah Tetapan → Label Sistem (langkah ketua dilangkau apabila tiada ketua ditetapkan); HR dan Pengurus HR pergi kepada pentadbir HR; Payroll pergi kepada rakan payroll; Peranan Tersuai pergi kepada pentadbir HR. Pentadbir HR juga boleh meluluskan mana-mana langkah supaya rantaian sentiasa selesai.",
+    "reason": "Sebab perubahan (pilihan)",
+    "reasonPlaceholder": "Mengapa ini diubah?"
   },
   "feedback": {
     "title": "Maklum Balas",

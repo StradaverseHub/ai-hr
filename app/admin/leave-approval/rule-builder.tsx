@@ -60,6 +60,9 @@ export type RuleBuilderLabels = {
   partTime: string;
   contract: string;
   intern: string;
+  // 4ec5a940 — optional "why the change was made" note surfaced in the audit trail.
+  reason: string;
+  reasonPlaceholder: string;
 };
 
 const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'contract', 'intern'] as const;
@@ -285,6 +288,12 @@ function RuleForm({
       </div>
 
       <StepListEditor levels={levels} setLevels={setLevels} labels={labels} />
+
+      {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
+      <label className="block space-y-1 text-sm">
+        <span className="text-xs font-medium text-muted-foreground">{labels.reason}</span>
+        <input name="reason" type="text" maxLength={500} placeholder={labels.reasonPlaceholder} className={inputCls} />
+      </label>
 
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={levels.length === 0}>

@@ -34,8 +34,9 @@ export async function saveLeaveApprovalPolicyAction(formData: FormData) {
   const companyId = String(formData.get('companyId') ?? '');
   const enabled = String(formData.get('enabled') ?? '0') === '1';
   const levels = parseLevels(formData);
+  const reason = str(formData.get('reason')); // 4ec5a940 — optional "why" for the audit trail
   try {
-    await setLeaveApprovalPolicy(s, { companyId, enabled, levels });
+    await setLeaveApprovalPolicy(s, { companyId, enabled, levels, reason });
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);
   }
@@ -59,8 +60,9 @@ export async function saveLeaveApprovalRuleAction(formData: FormData) {
     maxDays: numOrNull(formData.get('maxDays')),
     levels: parseLevels(formData),
   };
+  const reason = str(formData.get('reason')); // 4ec5a940 — optional "why" for the audit trail
   try {
-    if (ruleId) await updateLeaveApprovalRule(s, ruleId, input);
+    if (ruleId) await updateLeaveApprovalRule(s, ruleId, input, { reason });
     else await createLeaveApprovalRule(s, input);
   } catch (e) {
     redirect(`${PAGE}?error=${encodeURIComponent((e as Error).message)}`);

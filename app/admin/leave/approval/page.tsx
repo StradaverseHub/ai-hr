@@ -90,6 +90,8 @@ export default async function LeaveApprovalTabPage({
     remove: t('remove'),
     dragToReorder: t('dragToReorder'),
     save: t('save'),
+    reason: t('reason'),
+    reasonPlaceholder: t('reasonPlaceholder'),
   };
   const templateLabels: TemplateManagerLabels = {
     templatesTitle: t('templatesTitle'),
@@ -184,6 +186,8 @@ export default async function LeaveApprovalTabPage({
     partTime: t('employmentType_part_time'),
     contract: t('employmentType_contract'),
     intern: t('employmentType_intern'),
+    reason: t('reason'),
+    reasonPlaceholder: t('reasonPlaceholder'),
   };
 
   return (
