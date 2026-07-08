@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, createShift, duplicateShift, updateShift } from '@/core/roster';
+import { archiveShift, createShiftMulti, duplicateShift, updateShift } from '@/core/roster';
 
 /**
  * Shift-schedule server actions for the Attendance Policy page (Configurable Multi-Shift Attendance
@@ -48,6 +48,8 @@ function shiftFields(formData: FormData) {
   const differential =
     DIFF_KINDS.includes(dk as (typeof DIFF_KINDS)[number]) && dv > 0 ? { kind: dk as (typeof DIFF_KINDS)[number], value: dv } : null;
   const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
+  const lateGraceRaw = String(formData.get('lateGraceMinutes') ?? '').trim();
+  const earlyLeaveGraceRaw = String(formData.get('earlyLeaveGraceMinutes') ?? '').trim();
   const weeklyPattern = formData
     .getAll('weeklyPattern')
     .map((v) => Number(v))
@@ -60,6 +62,9 @@ function shiftFields(formData: FormData) {
     breakMinutes: Number(formData.get('breakMinutes') ?? 0),
     breakPeriods: parseBreakPeriods(String(formData.get('breakPeriods') ?? '')),
     normalMinutesOverride: overrideRaw === '' ? null : Number(overrideRaw),
+    // R17 3e8350db — optional per-shift grace windows (blank ⇒ null ⇒ inherit company-policy behaviour).
+    lateGraceMinutes: lateGraceRaw === '' ? null : Number(lateGraceRaw),
+    earlyLeaveGraceMinutes: earlyLeaveGraceRaw === '' ? null : Number(earlyLeaveGraceRaw),
     weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
     differential,
   };
@@ -71,14 +76,18 @@ const errTarget = (companyId: string, e: unknown) =>
 
 export async function createShiftAction(formData: FormData) {
   const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
+  // R17 3e8350db — centralized authoring: the create form posts one or more companyId checkboxes. Fall
+  // back to the single legacy field so a single-company tenant keeps working. The FIRST company is used for
+  // the redirect/scroll anchor.
+  const companyIds = formData.getAll('companyId').map((v) => String(v)).filter(Boolean);
+  const anchor = companyIds[0] ?? '';
   try {
-    await createShift(s, { companyId, ...shiftFields(formData) });
+    await createShiftMulti(s, { companyIds, ...shiftFields(formData) });
   } catch (e) {
-    redirect(errTarget(companyId, e));
+    redirect(errTarget(anchor, e));
   }
   revalidatePath(BASE);
-  redirect(okTarget(companyId));
+  redirect(okTarget(anchor));
 }
 
 export async function updateShiftAction(formData: FormData) {
@@ -96,8 +105,14 @@ export async function updateShiftAction(formData: FormData) {
 export async function duplicateShiftAction(formData: FormData) {
   const s = await getSession();
   const companyId = String(formData.get('companyId') ?? '');
+  // R17 3e8350db — optional "copy to…" companies. Empty ⇒ same-company duplicate (legacy). The redirect
+  // anchor stays the source company so the shift table scrolls back into view.
+  const targetCompanyIds = formData.getAll('targetCompanyId').map((v) => String(v)).filter(Boolean);
   try {
-    await duplicateShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
+    await duplicateShift(s, {
+      shiftId: String(formData.get('shiftId') ?? ''),
+      targetCompanyIds: targetCompanyIds.length > 0 ? targetCompanyIds : undefined,
+    });
   } catch (e) {
     redirect(errTarget(companyId, e));
   }

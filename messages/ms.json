@@ -104,7 +104,7 @@
     "aiConfig": "AI",
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
-    "attendancePolicy": "Dasar kehadiran",
+    "attendancePolicy": "Tetapan syif",
     "toilPolicy": "Cuti ganti",
     "leaveApproval": "Rantaian kelulusan",
     "feedback": "Maklum Balas",
@@ -518,7 +518,13 @@
       "defaultShiftNone": "Tiada — jadual lalai syarikat",
       "defaultShiftSave": "Simpan",
       "defaultShiftHint": "Syif yang biasa dikerjakan oleh pekerja ini. Digunakan pada mana-mana hari tanpa entri roster khusus — hari yang diroster mengatasinya; kerja lebih masa diukur berdasarkan waktu syif ini.",
-      "defaultShiftAssigned": "Syif lalai disimpan"
+      "defaultShiftAssigned": "Syif lalai disimpan",
+      "shiftTypeTitle": "Susunan syif",
+      "shiftTypeLabel": "Jenis syif",
+      "shiftTypeFixed": "Syif tetap",
+      "shiftTypeRoster": "Syif roster",
+      "shiftTypeHint": "Syif tetap: pekerja mengikut syif lalai yang dipilih setiap hari bekerja. Syif roster: tiada syif tetap di sini — pekerja dijadualkan sepenuhnya dari skrin Roster. Entri roster bertarikh sentiasa mengatasi syif lalai; kerja lebih masa dan kelewatan dikira mengikut syif yang berkenaan pada hari itu.",
+      "defaultShiftChoose": "Pilih syif…"
     },
     "import": {
       "title": "Import pekerja",
@@ -1590,7 +1596,7 @@
       "otRestDayExcessMultiplier": "Kadar lebihan OT hari rehat (× sejam)",
       "otHolidayExcessMultiplier": "Kadar lebihan OT cuti umum (× sejam)",
       "secCeilings": "Siling caruman",
-      "ceilingsNote": "Kadar kerja lebih masa dikonfigurasikan di bawah modul Kehadiran (Dasar kehadiran → Kadar kerja lebih masa), bukan di sini.",
+      "ceilingsNote": "Kadar kerja lebih masa dikonfigurasikan di bawah modul Kehadiran (Tetapan syif → Kadar kerja lebih masa), bukan di sini.",
       "bandsEditWarning": "Jadual PERKESO yang disahkan — sunting hanya untuk perubahan berkanun yang diketahui. Julat gaji mesti menaik tanpa jurang, dan amaun ialah nilai ringgit tetap, bukan peratusan. Suntingan salah boleh dikembalikan dengan mengarkibkan versi ini untuk memulihkan jadual terbina dalam.",
       "socsoCat1": "Kategori 1 — kecederaan + keilatan (bawah 60)",
       "socsoCat2": "Kategori 2 — kecederaan sahaja (umur 60+ / warga asing, majikan sahaja)",
@@ -2512,7 +2518,7 @@
       "customMessagePlaceholder": "Biarkan kosong untuk menggunakan mesej lalai",
       "customMessageHelp": "Dipaparkan kepada pekerja apabila jenis cuti ini disekat kerana tarikh terlalu ke belakang. Sehingga 500 aksara. Biarkan kosong untuk mengekalkan mesej standard. Hanya terpakai untuk jenis cuti ini.",
       "halfDayDeductionTitle": "Potongan separuh hari",
-      "halfDayDeductionHelp": "Mengawal jumlah cuti yang ditolak apabila pekerja memohon cuti pada hari jadual kerja “Separuh Hari” (ditetapkan pada halaman Polisi Kehadiran). Mati: tolak 0.5 hari. Hidup: tolak 1.0 hari penuh. Hari bekerja penuh tidak akan terjejas.",
+      "halfDayDeductionHelp": "Mengawal jumlah cuti yang ditolak apabila pekerja memohon cuti pada hari jadual kerja “Separuh Hari” (ditetapkan pada halaman Tetapan syif). Mati: tolak 0.5 hari. Hidup: tolak 1.0 hari penuh. Hari bekerja penuh tidak akan terjejas.",
       "halfDayDeductionFrozenNote": "Hanya terpakai untuk permohonan baharu — cuti yang telah dihantar atau diluluskan mengekalkan jumlah potongan yang ditunjukkan semasa ia dihantar.",
       "halfDayDeductionOn": "Kini HIDUP — menolak 1.0 hari",
       "halfDayDeductionOff": "Kini MATI — menolak 0.5 hari",
@@ -2785,8 +2791,8 @@
       "turnOff": "Matikan drafan AI"
     },
     "attendancePolicy": {
-      "pageTitle": "Dasar kehadiran",
-      "pageDescription": "Jadual kerja lalai yang digunakan setiap syarikat apabila pekerja tiada jadual syif untuk sesuatu tarikh. Kerja lebih masa dikira melebihi waktu berjadual ini; jadual syif yang disimpan diutamakan.",
+      "pageTitle": "Tetapan syif",
+      "pageDescription": "Selenggara templat syif organisasi anda serta jadual kerja lalai yang digunakan setiap syarikat apabila pekerja tiada roster bagi sesuatu tarikh. Kerja lebih masa dikira melebihi jam yang dijadualkan; roster yang disimpan diutamakan.",
       "noCompanies": "Tiada syarikat dalam skop.",
       "usingDefaults": "Menggunakan lalai",
       "netScheduled": "Bersih berjadual {hours}",
@@ -2859,7 +2865,16 @@
       "otNotes": "Nota",
       "otPublish": "Terbitkan kadar OT",
       "otCancel": "Batal",
-      "colCompany": "Syarikat"
+      "colCompany": "Syarikat",
+      "createInCompanies": "Cipta dalam syarikat",
+      "duplicateTo": "Salin ke…",
+      "duplicateToTitle": "Salin syif ini ke syarikat",
+      "duplicateToConfirm": "Salin ke yang dipilih",
+      "lateGraceLabel": "Tempoh lewat dibenarkan (min)",
+      "earlyLeaveGraceLabel": "Tempoh balik awal dibenarkan (min)",
+      "graceInherit": "Lalai dasar",
+      "lateGraceBadge": "Lewat dibenarkan {minutes} min",
+      "earlyLeaveGraceBadge": "Balik awal dibenarkan {minutes} min"
     },
     "toilPolicy": {
       "pageTitle": "Cuti ganti",

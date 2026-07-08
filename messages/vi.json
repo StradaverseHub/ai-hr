@@ -104,7 +104,7 @@
     "aiConfig": "AI",
     "notifications": "Thông báo",
     "analytics": "Phân tích",
-    "attendancePolicy": "Chính sách chấm công",
+    "attendancePolicy": "Cài đặt ca làm việc",
     "toilPolicy": "Nghỉ bù",
     "leaveApproval": "Chuỗi phê duyệt",
     "feedback": "Phản hồi",
@@ -518,7 +518,13 @@
       "defaultShiftNone": "Không — dùng lịch mặc định của công ty",
       "defaultShiftSave": "Lưu",
       "defaultShiftHint": "Ca mà nhân viên này thường làm việc. Dùng cho bất kỳ ngày nào không có mục lịch trực cụ thể — ngày có lịch trực sẽ ghi đè ca này; giờ làm thêm được tính theo giờ của ca này.",
-      "defaultShiftAssigned": "Đã lưu ca mặc định"
+      "defaultShiftAssigned": "Đã lưu ca mặc định",
+      "shiftTypeTitle": "Sắp xếp ca làm việc",
+      "shiftTypeLabel": "Loại ca",
+      "shiftTypeFixed": "Ca cố định",
+      "shiftTypeRoster": "Ca theo lịch phân ca",
+      "shiftTypeHint": "Ca cố định: nhân viên tuân theo ca mặc định đã chọn mỗi ngày làm việc. Ca theo lịch phân ca: không có ca cố định ở đây — nhân viên được xếp lịch hoàn toàn từ màn hình Lịch phân ca. Mục phân ca theo ngày luôn ghi đè ca mặc định; giờ làm thêm và đi trễ được tính theo ca áp dụng trong ngày.",
+      "defaultShiftChoose": "Chọn một ca…"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -1590,7 +1596,7 @@
       "otRestDayExcessMultiplier": "Hệ số OT vượt giờ ngày nghỉ (× theo giờ)",
       "otHolidayExcessMultiplier": "Hệ số OT vượt giờ ngày lễ (× theo giờ)",
       "secCeilings": "Mức trần đóng góp",
-      "ceilingsNote": "Hệ số tăng ca được cấu hình trong mô-đun Chấm công (Chính sách chấm công → Hệ số tăng ca), không phải tại đây.",
+      "ceilingsNote": "Hệ số tăng ca được cấu hình trong mô-đun Chấm công (Cài đặt ca làm việc → Hệ số tăng ca), không phải tại đây.",
       "bandsEditWarning": "Biểu PERKESO đã xác minh — chỉ chỉnh sửa khi có thay đổi luật định đã biết. Các khoảng lương phải tăng dần không có khoảng trống, và số tiền là giá trị ringgit cố định, không phải phần trăm. Một chỉnh sửa sai có thể hoàn nguyên bằng cách lưu trữ phiên bản này để khôi phục biểu tích hợp sẵn.",
       "socsoCat1": "Loại 1 — thương tật + mất khả năng (dưới 60)",
       "socsoCat2": "Loại 2 — chỉ thương tật (60 tuổi trở lên / người nước ngoài, chỉ chủ lao động)",
@@ -2512,7 +2518,7 @@
       "customMessagePlaceholder": "Để trống để dùng thông báo mặc định",
       "customMessageHelp": "Hiển thị cho nhân viên khi loại nghỉ phép này bị chặn vì lùi ngày quá xa. Tối đa 500 ký tự. Để trống để giữ thông báo tiêu chuẩn. Chỉ áp dụng cho loại nghỉ phép này.",
       "halfDayDeductionTitle": "Trừ lương nửa ngày",
-      "halfDayDeductionHelp": "Kiểm soát số ngày nghỉ bị trừ khi nhân viên xin nghỉ vào ngày làm việc “Nửa ngày” (thiết lập ở trang Chính sách chấm công). Tắt: trừ 0.5 ngày. Bật: trừ 1.0 ngày đầy đủ. Các ngày làm việc đầy đủ không bị ảnh hưởng.",
+      "halfDayDeductionHelp": "Kiểm soát số ngày nghỉ bị trừ khi nhân viên xin nghỉ vào ngày làm việc “Nửa ngày” (thiết lập ở trang Cài đặt ca làm việc). Tắt: trừ 0.5 ngày. Bật: trừ 1.0 ngày đầy đủ. Các ngày làm việc đầy đủ không bị ảnh hưởng.",
       "halfDayDeductionFrozenNote": "Chỉ áp dụng cho đơn xin nghỉ mới — đơn đã gửi hoặc đã duyệt vẫn giữ nguyên số ngày trừ được hiển thị lúc gửi.",
       "halfDayDeductionOn": "Hiện đang BẬT — trừ 1.0 ngày",
       "halfDayDeductionOff": "Hiện đang TẮT — trừ 0.5 ngày",
@@ -2785,8 +2791,8 @@
       "turnOff": "Tắt soạn thảo bằng AI"
     },
     "attendancePolicy": {
-      "pageTitle": "Chính sách chấm công",
-      "pageDescription": "Lịch làm việc mặc định mỗi công ty áp dụng khi nhân viên không có lịch ca cho một ngày. Giờ tăng ca được tính trên số giờ theo lịch này; lịch ca đã lưu được ưu tiên.",
+      "pageTitle": "Cài đặt ca làm việc",
+      "pageDescription": "Quản lý mẫu ca làm việc của tổ chức và lịch làm việc mặc định mà mỗi công ty sử dụng khi nhân viên không có lịch phân ca cho một ngày. Giờ làm thêm được tính vượt trên số giờ theo lịch; lịch phân ca đã lưu được ưu tiên.",
       "noCompanies": "Không có công ty trong phạm vi.",
       "usingDefaults": "Đang dùng mặc định",
       "netScheduled": "Theo lịch thực {hours}",
@@ -2859,7 +2865,16 @@
       "otNotes": "Ghi chú",
       "otPublish": "Công bố hệ số OT",
       "otCancel": "Hủy",
-      "colCompany": "Công ty"
+      "colCompany": "Công ty",
+      "createInCompanies": "Tạo trong các công ty",
+      "duplicateTo": "Sao chép đến…",
+      "duplicateToTitle": "Sao chép ca này đến các công ty",
+      "duplicateToConfirm": "Sao chép đến mục đã chọn",
+      "lateGraceLabel": "Ân hạn đi trễ (phút)",
+      "earlyLeaveGraceLabel": "Ân hạn về sớm (phút)",
+      "graceInherit": "Mặc định theo chính sách",
+      "lateGraceBadge": "Ân hạn đi trễ {minutes} phút",
+      "earlyLeaveGraceBadge": "Ân hạn về sớm {minutes} phút"
     },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",

@@ -281,6 +281,13 @@ export default async function AttendancePolicyPage({
                                 ⊕
                               </span>
                             )}
+                            {(sh.lateGraceMinutes != null || sh.earlyLeaveGraceMinutes != null) && (
+                              <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                {sh.lateGraceMinutes != null && t('lateGraceBadge', { minutes: sh.lateGraceMinutes })}
+                                {sh.lateGraceMinutes != null && sh.earlyLeaveGraceMinutes != null && ' · '}
+                                {sh.earlyLeaveGraceMinutes != null && t('earlyLeaveGraceBadge', { minutes: sh.earlyLeaveGraceMinutes })}
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-2.5 tabular-nums">{sh.startTime.slice(0, 5)}</td>
                           <td className="px-4 py-2.5 tabular-nums">{sh.endTime.slice(0, 5)}</td>
@@ -332,6 +339,41 @@ export default async function AttendancePolicyPage({
                                   {t('duplicate')}
                                 </button>
                               </form>
+                              {/* R17 3e8350db — copy this shift into OTHER companies in one action (no
+                                  re-typing). Native <details> popover, server-action based, no client JS. */}
+                              {visible.length > 1 && (
+                                <details className="relative">
+                                  <summary className="cursor-pointer list-none text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
+                                    {t('duplicateTo')}
+                                  </summary>
+                                  <form
+                                    action={duplicateShiftAction}
+                                    className="absolute right-0 z-10 mt-1 w-56 space-y-2 rounded-lg border border-border bg-popover p-3 text-left shadow-lg"
+                                  >
+                                    <input type="hidden" name="shiftId" value={sh.id} />
+                                    <input type="hidden" name="companyId" value={sh.companyId} />
+                                    <p className="text-xs font-medium text-foreground">{t('duplicateToTitle')}</p>
+                                    <div className="flex flex-col gap-1">
+                                      {visible
+                                        .filter((c) => c.id !== sh.companyId)
+                                        .map((c) => (
+                                          <label key={c.id} className="flex items-center gap-2 text-xs text-foreground">
+                                            <input
+                                              type="checkbox"
+                                              name="targetCompanyId"
+                                              value={c.id}
+                                              className="h-3.5 w-3.5 accent-primary"
+                                            />
+                                            {c.name}
+                                          </label>
+                                        ))}
+                                    </div>
+                                    <button className="w-full rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                                      {t('duplicateToConfirm')}
+                                    </button>
+                                  </form>
+                                </details>
+                              )}
                               <form action={archiveShiftAction}>
                                 <input type="hidden" name="shiftId" value={sh.id} />
                                 <input type="hidden" name="companyId" value={sh.companyId} />
@@ -367,14 +409,32 @@ export default async function AttendancePolicyPage({
                     aria-label={t('colCompany')}
                   />
                 </>
+              ) : visible.length === 1 ? (
+                // Single-company tenant: keep the legacy single hidden field, no picker needed.
+                <input type="hidden" name="companyId" value={visible[0].id} />
               ) : (
-                <select name="companyId" defaultValue={visible[0]?.id} className={`${inputCls} w-40`} aria-label={t('colCompany')}>
-                  {visible.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                // R17 3e8350db — centralized authoring: tick one OR MORE companies to create the same shift
+                // template into each in one action. Defaults to the first company (== legacy behaviour).
+                <fieldset className="w-full">
+                  <legend className="mb-1.5 text-sm font-medium text-foreground">{t('createInCompanies')}</legend>
+                  <div className="flex flex-wrap gap-1.5">
+                    {visible.map((c, i) => (
+                      <label
+                        key={c.id}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary"
+                      >
+                        <input
+                          type="checkbox"
+                          name="companyId"
+                          value={c.id}
+                          defaultChecked={i === 0}
+                          className="h-3.5 w-3.5 accent-primary"
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
               )}
               {editing && <input type="hidden" name="shiftId" value={editing.id} />}
               <input
@@ -400,6 +460,29 @@ export default async function AttendancePolicyPage({
                 defaultBreakMinutes={editing ? String(editing.breakMinutes) : '60'}
                 defaultOverride={editing?.normalMinutesOverride != null ? String(editing.normalMinutesOverride) : ''}
               />
+              {/* R17 3e8350db — per-shift grace windows (minutes). Blank ⇒ inherit the company policy. */}
+              <Field label={t('lateGraceLabel')}>
+                <input
+                  name="lateGraceMinutes"
+                  type="number"
+                  min={0}
+                  placeholder={t('graceInherit')}
+                  defaultValue={editing?.lateGraceMinutes != null ? String(editing.lateGraceMinutes) : ''}
+                  className={`${inputCls} w-28`}
+                  aria-label={t('lateGraceLabel')}
+                />
+              </Field>
+              <Field label={t('earlyLeaveGraceLabel')}>
+                <input
+                  name="earlyLeaveGraceMinutes"
+                  type="number"
+                  min={0}
+                  placeholder={t('graceInherit')}
+                  defaultValue={editing?.earlyLeaveGraceMinutes != null ? String(editing.earlyLeaveGraceMinutes) : ''}
+                  className={`${inputCls} w-28`}
+                  aria-label={t('earlyLeaveGraceLabel')}
+                />
+              </Field>
               <select
                 name="differentialKind"
                 defaultValue={editing?.differential?.kind ?? ''}

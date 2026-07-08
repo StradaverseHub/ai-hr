@@ -104,7 +104,7 @@
     "aiConfig": "AI",
     "notifications": "通知",
     "analytics": "分析",
-    "attendancePolicy": "考勤政策",
+    "attendancePolicy": "班次设置",
     "toilPolicy": "调休",
     "leaveApproval": "审批链",
     "feedback": "反馈",
@@ -518,7 +518,13 @@
       "defaultShiftNone": "无 — 使用公司默认排班",
       "defaultShiftSave": "保存",
       "defaultShiftHint": "该员工通常工作的班次。用于没有特定排班记录的日期 — 排班表可按日期覆盖此班次；加班按该班次的工时计算。",
-      "defaultShiftAssigned": "默认班次已保存"
+      "defaultShiftAssigned": "默认班次已保存",
+      "shiftTypeTitle": "班次安排",
+      "shiftTypeLabel": "班次类型",
+      "shiftTypeFixed": "固定班次",
+      "shiftTypeRoster": "轮班",
+      "shiftTypeHint": "固定班次：员工每个工作日都遵循所选的默认班次。轮班：此处不设固定班次——员工完全由排班表安排。带日期的排班始终优先于默认班次；加班和迟到按当天适用的班次计算。",
+      "defaultShiftChoose": "选择班次…"
     },
     "import": {
       "title": "导入员工",
@@ -1590,7 +1596,7 @@
       "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
       "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）",
       "secCeilings": "缴费上限",
-      "ceilingsNote": "加班费率在考勤模块中配置（考勤政策 → 加班费率），而非此处。",
+      "ceilingsNote": "加班费率在考勤模块中配置（班次设置 → 加班费率），而非此处。",
       "bandsEditWarning": "已核实的 PERKESO 缴费表 — 仅在已知的法定变更时才编辑。工资区间必须递增且不得有断层，金额为固定的令吉数值，而非百分比。若编辑有误，可将此版本归档以恢复内置缴费表。",
       "socsoCat1": "第 1 类 — 工伤 + 残疾（60 岁以下）",
       "socsoCat2": "第 2 类 — 仅工伤（60 岁及以上／外籍，雇主承担）",
@@ -2512,7 +2518,7 @@
       "customMessagePlaceholder": "留空则使用默认消息",
       "customMessageHelp": "当此假期类型因回溯天数过多被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。",
       "halfDayDeductionTitle": "半天扣除",
-      "halfDayDeductionHelp": "控制员工在“半天”工作日程日（在考勤政策页面设置）请假时扣除多少天。关闭：扣除 0.5 天。开启：扣除 1.0 天。全天工作日不受影响。",
+      "halfDayDeductionHelp": "控制员工在“半天”工作日程日（在班次设置页面设置）请假时扣除多少天。关闭：扣除 0.5 天。开启：扣除 1.0 天。全天工作日不受影响。",
       "halfDayDeductionFrozenNote": "仅适用于新申请 — 已提交或已批准的请假将保留提交时显示的扣除金额。",
       "halfDayDeductionOn": "当前已开启 — 扣除 1.0 天",
       "halfDayDeductionOff": "当前已关闭 — 扣除 0.5 天",
@@ -2785,8 +2791,8 @@
       "turnOff": "关闭 AI 起草"
     },
     "attendancePolicy": {
-      "pageTitle": "考勤政策",
-      "pageDescription": "当员工某天没有排班时，各公司采用的默认工作时间表。加班按此排定工时之上计算；已保存的排班优先。",
+      "pageTitle": "班次设置",
+      "pageDescription": "维护贵机构的班次模板，以及当员工某日期没有排班时各公司回退使用的默认工作时间表。加班按超出排定工时计算；已保存的排班优先。",
       "noCompanies": "范围内没有公司。",
       "usingDefaults": "使用默认值",
       "netScheduled": "净排定 {hours}",
@@ -2859,7 +2865,16 @@
       "otNotes": "备注",
       "otPublish": "发布加班费率",
       "otCancel": "取消",
-      "colCompany": "公司"
+      "colCompany": "公司",
+      "createInCompanies": "创建到公司",
+      "duplicateTo": "复制到…",
+      "duplicateToTitle": "将此班次复制到公司",
+      "duplicateToConfirm": "复制到所选",
+      "lateGraceLabel": "迟到宽限（分钟）",
+      "earlyLeaveGraceLabel": "早退宽限（分钟）",
+      "graceInherit": "使用政策默认",
+      "lateGraceBadge": "迟到宽限 {minutes} 分钟",
+      "earlyLeaveGraceBadge": "早退宽限 {minutes} 分钟"
     },
     "toilPolicy": {
       "pageTitle": "调休",

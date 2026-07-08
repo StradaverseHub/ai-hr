@@ -104,7 +104,7 @@
     "aiConfig": "AI",
     "notifications": "Notifications",
     "analytics": "Analytics",
-    "attendancePolicy": "Attendance policy",
+    "attendancePolicy": "Shift settings",
     "toilPolicy": "Time off in lieu",
     "leaveApproval": "Approval chain",
     "feedback": "Feedback",
@@ -518,7 +518,13 @@
       "defaultShiftNone": "None — company default schedule",
       "defaultShiftSave": "Save",
       "defaultShiftHint": "The shift this person normally works. Used on any day without a specific roster entry — a rostered day overrides it; overtime is measured against the shift's hours.",
-      "defaultShiftAssigned": "Default shift saved"
+      "defaultShiftAssigned": "Default shift saved",
+      "shiftTypeTitle": "Shift arrangement",
+      "shiftTypeLabel": "Shift type",
+      "shiftTypeFixed": "Fixed shift",
+      "shiftTypeRoster": "Roster shift",
+      "shiftTypeHint": "Fixed shift: the employee follows the selected default shift every working day. Roster shift: no permanent shift here — the employee is scheduled entirely from the Roster screen. A dated roster entry always overrides the default shift; overtime and lateness are measured against whichever shift applies on the day.",
+      "defaultShiftChoose": "Select a shift…"
     },
     "import": {
       "title": "Import employees",
@@ -1700,7 +1706,7 @@
       "otRestDayExcessMultiplier": "Rest-day OT excess rate (× hourly)",
       "otHolidayExcessMultiplier": "Public-holiday OT excess rate (× hourly)",
       "secCeilings": "Contribution ceilings",
-      "ceilingsNote": "Overtime rates are configured under the Attendance module (Attendance policy → Overtime rates), not here.",
+      "ceilingsNote": "Overtime rates are configured under the Attendance module (Shift settings → Overtime rates), not here.",
       "bandsEditWarning": "Verified PERKESO schedule — edit only for a known statutory change. Wage ranges must ascend without gaps, and amounts are fixed ringgit values, not percentages. A bad edit can be reverted by archiving this version to restore the built-in schedule.",
       "socsoCat1": "Category 1 — injury + invalidity (under 60)",
       "socsoCat2": "Category 2 — injury only (age 60+ / foreign, employer only)",
@@ -2512,7 +2518,7 @@
       "customMessagePlaceholder": "Leave blank to use the default message",
       "customMessageHelp": "Shown to the employee when this leave type is blocked for backdating too far. Up to 500 characters. Leave blank to keep the standard message. Applies to this leave type only.",
       "halfDayDeductionTitle": "Half-day deduction",
-      "halfDayDeductionHelp": "Controls how much leave is deducted when an employee applies leave on a “Half Day” work-schedule day (set on the Attendance policy page). Off: deduct 0.5 day. On: deduct 1.0 full day. Full working days are never affected.",
+      "halfDayDeductionHelp": "Controls how much leave is deducted when an employee applies leave on a “Half Day” work-schedule day (set on the Shift settings page). Off: deduct 0.5 day. On: deduct 1.0 full day. Full working days are never affected.",
       "halfDayDeductionFrozenNote": "Applies to new applications only — leave already submitted or approved keeps the deduction amount shown at the time it was submitted.",
       "halfDayDeductionOn": "Currently ON — deducts 1.0 day",
       "halfDayDeductionOff": "Currently OFF — deducts 0.5 day",
@@ -2785,8 +2791,8 @@
       "turnOff": "Turn off AI drafting"
     },
     "attendancePolicy": {
-      "pageTitle": "Attendance policy",
-      "pageDescription": "The default working schedule each company falls back to when an employee has no roster for a date. Overtime is computed above these scheduled hours; a saved roster takes precedence.",
+      "pageTitle": "Shift settings",
+      "pageDescription": "Maintain your organisation's shift templates and the default working schedule each company falls back to when an employee has no roster for a date. Overtime is computed above the scheduled hours; a saved roster takes precedence.",
       "noCompanies": "No companies in scope.",
       "usingDefaults": "Using defaults",
       "netScheduled": "Net scheduled {hours}",
@@ -2859,7 +2865,16 @@
       "otNotes": "Notes",
       "otPublish": "Publish OT rates",
       "otCancel": "Cancel",
-      "colCompany": "Company"
+      "colCompany": "Company",
+      "createInCompanies": "Create in companies",
+      "duplicateTo": "Copy to…",
+      "duplicateToTitle": "Copy this shift to companies",
+      "duplicateToConfirm": "Copy to selected",
+      "lateGraceLabel": "Late grace (min)",
+      "earlyLeaveGraceLabel": "Early-leave grace (min)",
+      "graceInherit": "Policy default",
+      "lateGraceBadge": "Late grace {minutes} min",
+      "earlyLeaveGraceBadge": "Early-leave grace {minutes} min"
     },
     "toilPolicy": {
       "pageTitle": "Time off in lieu",

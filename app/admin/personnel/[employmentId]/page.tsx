@@ -42,6 +42,7 @@ import { addDependentAction, editDependentAction, archiveDependentAction } from 
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShifts } from '@/core/roster';
+import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups } from '@/core/admin';
 import { listLocations } from '@/core/location';
@@ -702,22 +703,21 @@ export default async function EmployeePage({
   // mirrors the payroll-policy assignment card; lives in the Job tab (it describes how the person works).
   const defaultShiftCard = admin && !emp.terminatedOn ? (
     <Card id="section-default-shift">
-      <SectionHeader title={t('defaultShiftTitle')} />
-          <form action={setDefaultShiftAction} className="flex flex-wrap items-end gap-3 p-4">
+      <SectionHeader title={t('shiftTypeTitle')} />
+          <form action={setDefaultShiftAction} className="space-y-3 p-4">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <Field label={t('defaultShiftLabel')}>
-              <select name="shiftId" defaultValue={emp.defaultShiftId ?? ''} className={inputCls}>
-                <option value="">{t('defaultShiftNone')}</option>
-                {assignableShifts.map((sh) => (
-                  <option key={sh.id} value={sh.id}>
-                    {`${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {/* R17 3e8350db — Shift Type (Fixed / Roster) with a conditionally-shown Default shift picker. */}
+            <EmployeeShiftFields
+              defaultType={emp.shiftType}
+              defaultShiftId={emp.defaultShiftId}
+              shifts={assignableShifts.map((sh) => ({
+                id: sh.id,
+                label: `${sh.code ?? '—'} — ${sh.name} (${sh.startTime.slice(0, 5)}–${sh.endTime.slice(0, 5)})`,
+              }))}
+            />
             <button className={btnPrimary}>{t('defaultShiftSave')}</button>
           </form>
-          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('defaultShiftHint')}</p>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('shiftTypeHint')}</p>
     </Card>
   ) : null;
 

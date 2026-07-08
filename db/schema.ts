@@ -571,6 +571,12 @@ export const employment = pgTable(
     defaultShiftId: uuid('default_shift_id').references((): AnyPgColumn => shift.id, {
       onDelete: 'set null',
     }),
+    // R17 3e8350db — the reporter's "Shift Type" field. 'fixed' = the person follows their profile Default
+    // shift (default_shift_id) every working day; 'roster' = no permanent shift on the profile, scheduled
+    // purely from /roster. The invariant (enforced in core/roster.ts assignEmployeeShift): fixed ⇒
+    // default_shift_id is set, roster ⇒ default_shift_id is null. Backfilled from default_shift_id in
+    // migration 0162; default 'roster' == today's "no default shift" behaviour. CHECK in ('fixed','roster').
+    shiftType: text('shift_type').$type<'fixed' | 'roster'>().notNull().default('roster'),
     terminatedOn: date('terminated_on'),
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
@@ -1727,6 +1733,12 @@ export const shift = pgTable(
     // drive generateRosterFromTemplate and behaves exactly as before.
     weeklyPattern: integer('weekly_pattern').array(),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
+    // R17 3e8350db — per-shift grace windows (minutes). NULL ⇒ inherit the company-policy behaviour
+    // (core/attendance.ts scheduleFor): late = policy grace applied to the shift start, early-leave = the
+    // shift midpoint. When set, lateness is measured from start + lateGraceMinutes and early-leave from
+    // end − earlyLeaveGraceMinutes. CHECK ≥ 0 lives in migration 0162.
+    lateGraceMinutes: integer('late_grace_minutes'),
+    earlyLeaveGraceMinutes: integer('early_leave_grace_minutes'),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),

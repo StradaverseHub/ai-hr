@@ -51,6 +51,12 @@ export type ShiftInput = {
   /** R7 Phase 2 — ISO weekdays (1=Mon…7=Sun) that are WORKING days (rest = complement), mirroring
    *  attendance_policy.working_days. Null/empty ⇒ no pattern; the shift cannot drive roster generation. */
   weeklyPattern?: number[] | null;
+  /** R17 3e8350db — per-shift late grace (minutes): lateness is measured from shift-start + this. Null ⇒
+   *  inherit the company-policy grace (core/attendance.ts). */
+  lateGraceMinutes?: number | null;
+  /** R17 3e8350db — per-shift early-leave grace (minutes): a checkout before shift-end − this is short.
+   *  Null ⇒ inherit the legacy shift-midpoint threshold. */
+  earlyLeaveGraceMinutes?: number | null;
   differential?: ShiftDifferential | null;
 };
 
@@ -64,6 +70,8 @@ type NormalizedShift = {
   breakPeriods: BreakPeriod[] | null;
   normalMinutesOverride: number | null;
   weeklyPattern: number[] | null;
+  lateGraceMinutes: number | null;
+  earlyLeaveGraceMinutes: number | null;
   differential: ShiftDifferential | null;
 };
 
@@ -118,9 +126,35 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     }
     weeklyPattern = days;
   }
+
+  // R17 3e8350db — per-shift grace windows. Blank/absent ⇒ null (inherit the legacy behaviour); when
+  // supplied they must be non-negative integers. No upper bound beyond the shift span is enforced (a grace
+  // larger than the span simply means "never late" / "always short", which is a valid operational choice).
+  const grace = (v: number | null | undefined, label: string): number | null => {
+    if (v == null) return null;
+    const g = Math.trunc(v);
+    if (!Number.isFinite(g) || g < 0) throw new Error(`${label} must be a non-negative number of minutes`);
+    return g;
+  };
+  const lateGraceMinutes = grace(p.lateGraceMinutes, 'Late grace');
+  const earlyLeaveGraceMinutes = grace(p.earlyLeaveGraceMinutes, 'Early-leave grace');
+
   // The auto figure (used when no override): netScheduledMinutes(startTime, endTime, crossesMidnight,
   // breakMinutes) — derived on the fly by scheduleFor / the UI readout, deliberately not stored.
-  return { name, code, startTime, endTime, crossesMidnight, breakMinutes, breakPeriods, normalMinutesOverride, weeklyPattern, differential };
+  return {
+    name,
+    code,
+    startTime,
+    endTime,
+    crossesMidnight,
+    breakMinutes,
+    breakPeriods,
+    normalMinutesOverride,
+    weeklyPattern,
+    lateGraceMinutes,
+    earlyLeaveGraceMinutes,
+    differential,
+  };
 }
 
 function isUniqueViolation(e: unknown): boolean {
@@ -167,6 +201,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           normalMinutesOverride: n.normalMinutesOverride,
           weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
+          lateGraceMinutes: n.lateGraceMinutes,
+          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
           differential: n.differential,
         })
         .returning({ id: shift.id });
@@ -189,10 +225,81 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
         weeklyPattern: n.weeklyPattern,
+        lateGraceMinutes: n.lateGraceMinutes,
+        earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
         hasDifferential: !!n.differential,
       },
     });
     return { id: row.id };
+  });
+}
+
+/**
+ * R17 3e8350db — centralized authoring: create ONE shift template into SEVERAL companies at once (the HR
+ * "type it once, use it everywhere" outcome). Normalizes the input once, then inserts one row per company
+ * inside a SINGLE transaction and appends one `shift.created` DomainEvent PER row (the same per-row
+ * substrate the single create uses). Atomic: a unique-collision in any one company rolls back the whole
+ * batch and reports which company collided. RLS still enforces `is_admin_for(company_id)` per inserted row.
+ */
+export async function createShiftMulti(
+  ctx: SessionContext,
+  p: { companyIds: string[] } & Omit<ShiftInput, 'companyId'>,
+): Promise<{ ids: string[] }> {
+  const companyIds = [...new Set(p.companyIds.filter(Boolean))];
+  if (companyIds.length === 0) throw new Error('Pick at least one company for the shift');
+  const n = normalizeShiftInput(p);
+  return withTenant(ctx, async (tx) => {
+    const ids: string[] = [];
+    for (const companyId of companyIds) {
+      let row: { id: string };
+      try {
+        [row] = await tx
+          .insert(shift)
+          .values({
+            tenantId: ctx.tenantId,
+            companyId,
+            name: n.name,
+            code: n.code,
+            startTime: n.startTime,
+            endTime: n.endTime,
+            breakMinutes: n.breakMinutes,
+            breakPeriods: n.breakPeriods,
+            normalMinutesOverride: n.normalMinutesOverride,
+            weeklyPattern: n.weeklyPattern,
+            crossesMidnight: n.crossesMidnight,
+            lateGraceMinutes: n.lateGraceMinutes,
+            earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+            differential: n.differential,
+          })
+          .returning({ id: shift.id });
+      } catch (e) {
+        throw shiftUniqueError(e, n);
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'shift',
+        aggregateId: row.id,
+        eventType: 'shift.created',
+        actor: actorOf(ctx),
+        payload: {
+          companyId,
+          name: n.name,
+          code: n.code,
+          startTime: n.startTime,
+          endTime: n.endTime,
+          breakMinutes: n.breakMinutes,
+          breakPeriods: n.breakPeriods,
+          normalMinutesOverride: n.normalMinutesOverride,
+          weeklyPattern: n.weeklyPattern,
+          lateGraceMinutes: n.lateGraceMinutes,
+          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+          hasDifferential: !!n.differential,
+          multiCompany: companyIds.length > 1,
+        },
+      });
+      ids.push(row.id);
+    }
+    return { ids };
   });
 }
 
@@ -212,6 +319,8 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           normalMinutesOverride: n.normalMinutesOverride,
           weeklyPattern: n.weeklyPattern,
           crossesMidnight: n.crossesMidnight,
+          lateGraceMinutes: n.lateGraceMinutes,
+          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
           differential: n.differential,
           updatedAt: new Date(),
         })
@@ -234,6 +343,8 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         breakPeriods: n.breakPeriods,
         normalMinutesOverride: n.normalMinutesOverride,
         weeklyPattern: n.weeklyPattern,
+        lateGraceMinutes: n.lateGraceMinutes,
+        earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
         hasDifferential: !!n.differential,
       },
     });
@@ -251,30 +362,80 @@ const firstFree = (mk: (i: number) => string, taken: (v: string) => boolean): st
 };
 
 /** Duplicate a shift template: a FULL-field copy — including the differential (dropping it would silently
- *  lose the shift-premium pay rule), breakPeriods, and the normal-hours override — under collision-safe
- *  "(copy)" / "(copy 2)" name and "-copy" / "-copy-2" code suffixes chosen against the company's
- *  non-archived rows. Emits shift.created with payload.duplicatedFrom (no new event type — nothing
- *  branches on provenance). RLS scopes which source shifts are visible. */
-export async function duplicateShift(ctx: SessionContext, p: { shiftId: string }) {
+ *  lose the shift-premium pay rule), breakPeriods, the normal-hours override and the R17 grace windows —
+ *  under collision-safe name/code suffixes chosen against the TARGET company's non-archived rows. Emits
+ *  shift.created with payload.duplicatedFrom (no new event type — nothing branches on provenance). RLS
+ *  scopes which source shifts are visible AND (via is_admin_for on each inserted row) which targets are
+ *  writable.
+ *
+ *  R17 3e8350db — `targetCompanyIds` centralizes authoring: copy an existing shift into OTHER companies in
+ *  one click (the "no re-typing across companies" outcome). Absent/empty ⇒ same-company copy (the legacy
+ *  "(copy)" behaviour, unchanged). When targets are given, one row + one event is created per target inside
+ *  a single transaction (atomic — a collision in any target rolls back the batch). Within the SAME company
+ *  the name/code get the "(copy)" suffix; into a DIFFERENT company the original name/code are kept when
+ *  free (a different company is its own namespace), suffixed only on an actual collision. */
+export async function duplicateShift(
+  ctx: SessionContext,
+  p: { shiftId: string; targetCompanyIds?: string[] },
+): Promise<{ id: string; name: string; code: string; ids: string[] }> {
   return withTenant(ctx, async (tx) => {
     const [src] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
-    const existing = await tx
-      .select({ name: shift.name, code: shift.code })
-      .from(shift)
-      .where(and(eq(shift.companyId, src.companyId), isNull(shift.archivedAt)));
-    const names = new Set(existing.map((r) => r.name));
-    const codes = new Set(existing.map((r) => (r.code ?? '').toLowerCase()));
-    const name = firstFree((i) => (i === 1 ? `${src.name} (copy)` : `${src.name} (copy ${i})`), (v) => names.has(v));
     const srcCode = src.code ?? 'SHIFT'; // legacy rows are backfilled by 0139; belt-and-braces fallback
-    const code = firstFree((i) => (i === 1 ? `${srcCode}-copy` : `${srcCode}-copy-${i}`), (v) => codes.has(v.toLowerCase()));
-    let row: { id: string };
-    try {
-      [row] = await tx
-        .insert(shift)
-        .values({
-          tenantId: ctx.tenantId,
-          companyId: src.companyId,
+    const targets = [...new Set((p.targetCompanyIds ?? []).filter(Boolean))];
+    // No explicit targets ⇒ same-company copy (legacy path).
+    const companyIds = targets.length > 0 ? targets : [src.companyId];
+
+    const results: { id: string; name: string; code: string }[] = [];
+    for (const companyId of companyIds) {
+      const sameCompany = companyId === src.companyId;
+      const existing = await tx
+        .select({ name: shift.name, code: shift.code })
+        .from(shift)
+        .where(and(eq(shift.companyId, companyId), isNull(shift.archivedAt)));
+      const names = new Set(existing.map((r) => r.name));
+      const codes = new Set(existing.map((r) => (r.code ?? '').toLowerCase()));
+      // Same company: always suffix so the copy is distinguishable. Different company: keep the original
+      // name/code when free, suffix only on a real collision.
+      const name = sameCompany
+        ? firstFree((i) => (i === 1 ? `${src.name} (copy)` : `${src.name} (copy ${i})`), (v) => names.has(v))
+        : firstFree((i) => (i === 1 ? src.name : `${src.name} (copy ${i})`), (v) => names.has(v));
+      const code = sameCompany
+        ? firstFree((i) => (i === 1 ? `${srcCode}-copy` : `${srcCode}-copy-${i}`), (v) => codes.has(v.toLowerCase()))
+        : firstFree((i) => (i === 1 ? srcCode : `${srcCode}-copy-${i}`), (v) => codes.has(v.toLowerCase()));
+      let row: { id: string };
+      try {
+        [row] = await tx
+          .insert(shift)
+          .values({
+            tenantId: ctx.tenantId,
+            companyId,
+            name,
+            code,
+            startTime: src.startTime,
+            endTime: src.endTime,
+            breakMinutes: src.breakMinutes,
+            breakPeriods: src.breakPeriods,
+            normalMinutesOverride: src.normalMinutesOverride,
+            weeklyPattern: src.weeklyPattern,
+            crossesMidnight: src.crossesMidnight,
+            lateGraceMinutes: src.lateGraceMinutes,
+            earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
+            differential: src.differential,
+            archivedAt: null,
+          })
+          .returning({ id: shift.id });
+      } catch (e) {
+        throw shiftUniqueError(e, { name, code });
+      }
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'shift',
+        aggregateId: row.id,
+        eventType: 'shift.created',
+        actor: actorOf(ctx),
+        payload: {
+          companyId,
           name,
           code,
           startTime: src.startTime,
@@ -283,35 +444,17 @@ export async function duplicateShift(ctx: SessionContext, p: { shiftId: string }
           breakPeriods: src.breakPeriods,
           normalMinutesOverride: src.normalMinutesOverride,
           weeklyPattern: src.weeklyPattern,
-          crossesMidnight: src.crossesMidnight,
-          differential: src.differential,
-          archivedAt: null,
-        })
-        .returning({ id: shift.id });
-    } catch (e) {
-      throw shiftUniqueError(e, { name, code });
+          lateGraceMinutes: src.lateGraceMinutes,
+          earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
+          hasDifferential: !!src.differential,
+          duplicatedFrom: p.shiftId,
+          copiedToCompany: !sameCompany,
+        },
+      });
+      results.push({ id: row.id, name, code });
     }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'shift',
-      aggregateId: row.id,
-      eventType: 'shift.created',
-      actor: actorOf(ctx),
-      payload: {
-        companyId: src.companyId,
-        name,
-        code,
-        startTime: src.startTime,
-        endTime: src.endTime,
-        breakMinutes: src.breakMinutes,
-        breakPeriods: src.breakPeriods,
-        normalMinutesOverride: src.normalMinutesOverride,
-        weeklyPattern: src.weeklyPattern,
-        hasDifferential: !!src.differential,
-        duplicatedFrom: p.shiftId,
-      },
-    });
-    return { id: row.id, name, code };
+    // First result keeps the legacy { id, name, code } shape; `ids` exposes all created rows.
+    return { ...results[0], ids: results.map((r) => r.id) };
   });
 }
 // NOTE (R7 Phase 1, deliberate): there is NO deleteShift. Archive is the removal path — it frees the
@@ -357,45 +500,87 @@ export class ArchivedShiftError extends Error {
   }
 }
 
-/** Assign (or clear, when shiftId is null) the DEFAULT shift on an employment — the shift the person
- *  normally works. The attendance engine (core/attendance.ts scheduleFor) uses it on any date WITHOUT a
- *  dated roster row: roster row → default shift → flat company policy. Mirrors payroll-policy assignPolicy:
- *  validates the shift belongs to the SAME company as the employment (RLS won't catch a same-tenant
- *  cross-company mis-assignment) and rejects assigning an ARCHIVED shift (an already-assigned shift that is
- *  archived later keeps resolving — same as a dated roster row pointing at an archived shift). */
-export async function assignDefaultShift(
+export class FixedShiftRequiresShiftError extends Error {
+  constructor(message = 'A Fixed shift arrangement requires a default shift to be selected') {
+    super(message);
+    this.name = 'FixedShiftRequiresShiftError';
+  }
+}
+
+export type EmployeeShiftType = 'fixed' | 'roster';
+
+/**
+ * R17 3e8350db — set an employee's shift ARRANGEMENT (the reporter's "Shift Type") plus, for a Fixed
+ * arrangement, the default shift. This is the single write path that keeps `shift_type` and
+ * `default_shift_id` consistent so the engine never sees a contradictory pair:
+ *   • Fixed  ⇒ a default shift is REQUIRED (validated same-company + non-archived, exactly like the legacy
+ *     assignDefaultShift). The person follows that shift every working day.
+ *   • Roster ⇒ default_shift_id is FORCED to null. The person is scheduled purely from /roster; a day with
+ *     no roster row falls back to the flat company policy (== the pre-default-shift behaviour).
+ * The attendance engine (core/attendance.ts scheduleFor) keeps resolving roster row → default shift → policy,
+ * so it needs no change: a roster employee simply has no default shift for the middle step.
+ */
+export async function assignEmployeeShift(
   ctx: SessionContext,
-  p: { employmentId: string; shiftId: string | null },
+  p: { employmentId: string; shiftType: EmployeeShiftType; shiftId: string | null },
 ): Promise<{ id: string }> {
+  // Roster arrangement never carries a permanent shift on the profile.
+  const shiftId = p.shiftType === 'roster' ? null : p.shiftId;
+  if (p.shiftType === 'fixed' && !shiftId) throw new FixedShiftRequiresShiftError();
   return withTenant(ctx, async (tx) => {
     const [emp] = await tx
-      .select({ id: employment.id, companyId: employment.companyId, before: employment.defaultShiftId })
+      .select({
+        id: employment.id,
+        companyId: employment.companyId,
+        beforeShift: employment.defaultShiftId,
+        beforeType: employment.shiftType,
+      })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!emp) throw new Error('Employment not found');
-    if (p.shiftId != null) {
+    if (shiftId != null) {
       const [sh] = await tx
         .select({ id: shift.id, companyId: shift.companyId, archivedAt: shift.archivedAt })
         .from(shift)
-        .where(eq(shift.id, p.shiftId))
+        .where(eq(shift.id, shiftId))
         .limit(1);
       if (!sh) throw new Error('Shift not found');
       if (sh.companyId !== emp.companyId) throw new ShiftCompanyMismatchError();
       if (sh.archivedAt) throw new ArchivedShiftError();
     }
-    await tx.update(employment).set({ defaultShiftId: p.shiftId }).where(eq(employment.id, p.employmentId));
+    await tx
+      .update(employment)
+      .set({ shiftType: p.shiftType, defaultShiftId: shiftId })
+      .where(eq(employment.id, p.employmentId));
     // SUBSTRATE: state change on employment → append the DomainEvent after the write succeeds.
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
       aggregateId: p.employmentId,
-      eventType: 'employment.default-shift.assigned',
+      eventType: 'employment.shift-arrangement.assigned',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { before: emp.before, after: p.shiftId },
+      payload: {
+        before: { shiftType: emp.beforeType, defaultShiftId: emp.beforeShift },
+        after: { shiftType: p.shiftType, defaultShiftId: shiftId },
+      },
     });
     return { id: p.employmentId };
+  });
+}
+
+/** Legacy default-shift assignment (ec4cbf63). Kept for back-compat: setting a shift is a Fixed
+ *  arrangement, clearing it is a Roster arrangement. Delegates to assignEmployeeShift so `shift_type` stays
+ *  in lockstep with `default_shift_id`. */
+export async function assignDefaultShift(
+  ctx: SessionContext,
+  p: { employmentId: string; shiftId: string | null },
+): Promise<{ id: string }> {
+  return assignEmployeeShift(ctx, {
+    employmentId: p.employmentId,
+    shiftType: p.shiftId ? 'fixed' : 'roster',
+    shiftId: p.shiftId,
   });
 }
 
