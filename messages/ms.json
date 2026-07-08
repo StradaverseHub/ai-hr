@@ -170,7 +170,22 @@
     "joinedYesterday": "menyertai semalam",
     "joinedDaysAgo": "menyertai {d, plural, one {# hari} other {# hari}} lalu",
     "joinedWeeksAgo": "menyertai {w, plural, one {# minggu} other {# minggu}} lalu",
-    "joinedMonthsAgo": "menyertai {m, plural, one {# bulan} other {# bulan}} lalu"
+    "joinedMonthsAgo": "menyertai {m, plural, one {# bulan} other {# bulan}} lalu",
+    "leaveBalance": "Baki cuti",
+    "daysRemaining": "{d, plural, one {# hari} other {# hari}} berbaki",
+    "selectLeaveType": "Pilih jenis cuti",
+    "noLeaveTypes": "Tiada jenis cuti",
+    "nextHoliday": "Cuti umum seterusnya",
+    "pendingTasks": "Tugasan tertunda",
+    "requireYourAttention": "Memerlukan perhatian anda",
+    "teamAwayToday": "Pasukan bercuti hari ini",
+    "onApprovedLeaveToday": "Bercuti yang diluluskan hari ini",
+    "onboardingThisWeek": "Pengambilan baharu minggu ini",
+    "startedLast7Days": "Bermula dalam 7 hari lepas",
+    "approvalRequests": "Permohonan kelulusan",
+    "awaitingYourAction": "Menunggu tindakan anda",
+    "upcomingReminders": "Peringatan akan datang",
+    "reviewsAndHolidays": "Penilaian & cuti akan datang"
   },
   "people": {
     "list": {
@@ -2989,6 +3004,7 @@
       "empty": "Tiada pekerja dalam skop.",
       "employees": "Pekerja",
       "pillTitle": "{type} · {start} hingga {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "Tunjukkan semua {count}",
       "showLess": "Tunjukkan kurang",
       "durationBadgeHalfAm": "½ Pagi",

@@ -170,7 +170,22 @@
     "joinedYesterday": "joined yesterday",
     "joinedDaysAgo": "joined {d, plural, one {# day} other {# days}} ago",
     "joinedWeeksAgo": "joined {w, plural, one {# week} other {# weeks}} ago",
-    "joinedMonthsAgo": "joined {m, plural, one {# month} other {# months}} ago"
+    "joinedMonthsAgo": "joined {m, plural, one {# month} other {# months}} ago",
+    "leaveBalance": "Leave balance",
+    "daysRemaining": "{d, plural, one {# day} other {# days}} remaining",
+    "selectLeaveType": "Select leave type",
+    "noLeaveTypes": "No leave types",
+    "nextHoliday": "Next holiday",
+    "pendingTasks": "Pending tasks",
+    "requireYourAttention": "Require your attention",
+    "teamAwayToday": "Team away today",
+    "onApprovedLeaveToday": "On approved leave today",
+    "onboardingThisWeek": "Onboarding this week",
+    "startedLast7Days": "Started in the last 7 days",
+    "approvalRequests": "Approval requests",
+    "awaitingYourAction": "Awaiting your action",
+    "upcomingReminders": "Upcoming reminders",
+    "reviewsAndHolidays": "Reviews & holidays ahead"
   },
   "people": {
     "list": {
@@ -2989,6 +3004,7 @@
       "empty": "No employees in scope.",
       "employees": "Employees",
       "pillTitle": "{type} · {start} to {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "Show all {count}",
       "showLess": "Show less",
       "durationBadgeHalfAm": "½ AM",

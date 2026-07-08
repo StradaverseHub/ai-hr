@@ -170,7 +170,22 @@
     "joinedYesterday": "gia nhập hôm qua",
     "joinedDaysAgo": "gia nhập {d, plural, one {# ngày} other {# ngày}} trước",
     "joinedWeeksAgo": "gia nhập {w, plural, one {# tuần} other {# tuần}} trước",
-    "joinedMonthsAgo": "gia nhập {m, plural, one {# tháng} other {# tháng}} trước"
+    "joinedMonthsAgo": "gia nhập {m, plural, one {# tháng} other {# tháng}} trước",
+    "leaveBalance": "Số ngày phép còn lại",
+    "daysRemaining": "còn {d, plural, other {# ngày}}",
+    "selectLeaveType": "Chọn loại nghỉ phép",
+    "noLeaveTypes": "Không có loại nghỉ phép",
+    "nextHoliday": "Ngày lễ tiếp theo",
+    "pendingTasks": "Công việc cần làm",
+    "requireYourAttention": "Cần bạn xử lý",
+    "teamAwayToday": "Thành viên nghỉ hôm nay",
+    "onApprovedLeaveToday": "Nghỉ phép đã duyệt hôm nay",
+    "onboardingThisWeek": "Nhân viên mới tuần này",
+    "startedLast7Days": "Bắt đầu trong 7 ngày qua",
+    "approvalRequests": "Yêu cầu phê duyệt",
+    "awaitingYourAction": "Đang chờ bạn xử lý",
+    "upcomingReminders": "Nhắc nhở sắp tới",
+    "reviewsAndHolidays": "Đánh giá & ngày lễ sắp tới"
   },
   "people": {
     "list": {
@@ -2989,6 +3004,7 @@
       "empty": "Không có nhân viên trong phạm vi.",
       "employees": "Nhân viên",
       "pillTitle": "{type} · {start} đến {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "Hiển thị tất cả {count}",
       "showLess": "Thu gọn",
       "durationBadgeHalfAm": "½ Sáng",

@@ -170,7 +170,22 @@
     "joinedYesterday": "நேற்று சேர்ந்தார்",
     "joinedDaysAgo": "{d, plural, one {# நாளுக்கு} other {# நாட்களுக்கு}} முன் சேர்ந்தார்",
     "joinedWeeksAgo": "{w, plural, one {# வாரத்துக்கு} other {# வாரங்களுக்கு}} முன் சேர்ந்தார்",
-    "joinedMonthsAgo": "{m, plural, one {# மாதத்துக்கு} other {# மாதங்களுக்கு}} முன் சேர்ந்தார்"
+    "joinedMonthsAgo": "{m, plural, one {# மாதத்துக்கு} other {# மாதங்களுக்கு}} முன் சேர்ந்தார்",
+    "leaveBalance": "விடுப்பு இருப்பு",
+    "daysRemaining": "{d, plural, one {# நாள்} other {# நாட்கள்}} மீதம்",
+    "selectLeaveType": "விடுப்பு வகையைத் தேர்ந்தெடுக்கவும்",
+    "noLeaveTypes": "விடுப்பு வகைகள் இல்லை",
+    "nextHoliday": "அடுத்த விடுமுறை",
+    "pendingTasks": "நிலுவையிலுள்ள பணிகள்",
+    "requireYourAttention": "உங்கள் கவனம் தேவை",
+    "teamAwayToday": "இன்று விடுப்பில் உள்ள குழு",
+    "onApprovedLeaveToday": "இன்று அங்கீகரிக்கப்பட்ட விடுப்பில்",
+    "onboardingThisWeek": "இந்த வாரம் சேர்ந்தவர்கள்",
+    "startedLast7Days": "கடந்த 7 நாட்களில் சேர்ந்தனர்",
+    "approvalRequests": "ஒப்புதல் கோரிக்கைகள்",
+    "awaitingYourAction": "உங்கள் நடவடிக்கைக்காகக் காத்திருக்கிறது",
+    "upcomingReminders": "வரவிருக்கும் நினைவூட்டல்கள்",
+    "reviewsAndHolidays": "வரவிருக்கும் மதிப்பாய்வுகள் & விடுமுறைகள்"
   },
   "people": {
     "list": {
@@ -2989,6 +3004,7 @@
       "empty": "எல்லைக்குள் பணியாளர்கள் இல்லை.",
       "employees": "பணியாளர்கள்",
       "pillTitle": "{type} · {start} முதல் {end} வரை · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "அனைத்தையும் காட்டு ({count})",
       "showLess": "குறைவாகக் காட்டு",
       "durationBadgeHalfAm": "½ காலை",

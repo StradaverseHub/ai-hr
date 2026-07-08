@@ -170,7 +170,22 @@
     "joinedYesterday": "昨天入职",
     "joinedDaysAgo": "{d, plural, one {# 天前} other {# 天前}}入职",
     "joinedWeeksAgo": "{w, plural, one {# 周前} other {# 周前}}入职",
-    "joinedMonthsAgo": "{m, plural, one {# 个月前} other {# 个月前}}入职"
+    "joinedMonthsAgo": "{m, plural, one {# 个月前} other {# 个月前}}入职",
+    "leaveBalance": "假期余额",
+    "daysRemaining": "剩余 {d, plural, one {# 天} other {# 天}}",
+    "selectLeaveType": "选择假期类型",
+    "noLeaveTypes": "没有假期类型",
+    "nextHoliday": "下一个公共假期",
+    "pendingTasks": "待办任务",
+    "requireYourAttention": "需要您处理",
+    "teamAwayToday": "今日休假团队成员",
+    "onApprovedLeaveToday": "今日已批准休假",
+    "onboardingThisWeek": "本周入职",
+    "startedLast7Days": "过去 7 天内入职",
+    "approvalRequests": "审批申请",
+    "awaitingYourAction": "等待您处理",
+    "upcomingReminders": "即将到来的提醒",
+    "reviewsAndHolidays": "即将到来的评估与假期"
   },
   "people": {
     "list": {
@@ -2989,6 +3004,7 @@
       "empty": "范围内无员工。",
       "employees": "员工",
       "pillTitle": "{type} · {start} 至 {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "显示全部 {count} 人",
       "showLess": "收起",
       "durationBadgeHalfAm": "½ 上午",

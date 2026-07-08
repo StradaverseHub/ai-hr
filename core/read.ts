@@ -686,6 +686,10 @@ export function plannedAbsences(
         days: leaveRequest.days,
         durationType: leaveRequest.durationType,
         hours: leaveRequest.hours,
+        // Leave Calendar Blocked View (c238010b): the hourly window, so the dashboard calendar can render an
+        // hourly pill's exact start/end in its hover tooltip. NULL for full/half-day rows (time cols unset).
+        fromTime: leaveRequest.fromTime,
+        toTime: leaveRequest.toTime,
         // Emergency Leave (0106): the shared id linking an EL submission's children. NULL for ordinary rows.
         parentGroupId: leaveRequest.parentGroupId,
         // Partial Leave Cancellation from the calendar (ADR-0065): the same eligibility fields listLeaveRequests
