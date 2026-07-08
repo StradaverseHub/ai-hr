@@ -3,7 +3,7 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { and, desc, eq, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
+import { and, desc, eq, getTableName, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
@@ -1094,11 +1094,18 @@ export function listBusinessUnits(
 // aggregate id: latest occurred_at + the actor's display name (SYSTEM/agent events → null name). RLS on
 // domain_event grants admins tenant-wide read, and this page is scopedAdmin, so the subqueries resolve.
 
+/** The outer table's id column, FULLY QUALIFIED ("table"."id"), for correlating into the domain_event
+ *  subqueries. Drizzle interpolates a bare column into sql`` unqualified ("id"), which Postgres binds to
+ *  the SUBQUERY's own relations first — silently wrong in lastUpdatedAtSql (de.id) and fatally ambiguous
+ *  in lastUpdatedBySql (de/au/p all carry id). Caught by the R17 clean-room gate. */
+function qualifiedId(idCol: AnyColumn) {
+  return sql.raw(`"${getTableName(idCol.table)}"."${idCol.name}"`);
+}
 /** Scalar SQL: the most-recent domain-event timestamp for a label row (its aggregate). The idCol is the
  *  outer table's id column, correlated into the subquery. */
 function lastUpdatedAtSql(agg: string, idCol: AnyColumn) {
   return sql<string | null>`(select max(de.occurred_at) from domain_event de
-    where de.aggregate_type = ${agg} and de.aggregate_id = ${idCol})`;
+    where de.aggregate_type = ${agg} and de.aggregate_id = ${qualifiedId(idCol)})`;
 }
 /** Scalar SQL: the display name of the actor on the most-recent domain-event for a label row. SYSTEM /
  *  agent events (no actor_id, or no linked person) resolve to null — the UI shows a system fallback. */
@@ -1106,7 +1113,7 @@ function lastUpdatedBySql(agg: string, idCol: AnyColumn) {
   return sql<string | null>`(select p.full_name from domain_event de
     left join app_user au on au.id = de.actor_id
     left join person p on p.id = au.person_id
-    where de.aggregate_type = ${agg} and de.aggregate_id = ${idCol}
+    where de.aggregate_type = ${agg} and de.aggregate_id = ${qualifiedId(idCol)}
     order by de.occurred_at desc limit 1)`;
 }
 
