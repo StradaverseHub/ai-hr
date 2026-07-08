@@ -65,7 +65,14 @@
     "generated": "Roster generated for {employees} employees — {working} working-day and {rest} rest-day entries.",
     "generateHint": "Fills every date in the range from the shift's weekly pattern: shift entries on working days and explicit rest days on the rest, so the company policy never silently overrides the pattern. Re-running overwrites the same dates.",
     "manageShiftsHint": "Shift schedules are managed in Attendance Policy; a person's usual shift is set on their profile as their Default shift. Use the roster for date-specific exceptions.",
-    "manageShiftsLink": "Manage shift schedules"
+    "manageShiftsLink": "Manage shift schedules",
+    "copyTitle": "Copy roster",
+    "copySource": "Copy from",
+    "copyTargetStart": "Paste starting",
+    "copyButton": "Copy roster",
+    "copyHint": "Copies every shift and rest day from the source dates onto the target, keeping each day's position. Re-running overwrites the same target dates.",
+    "copiedDone": "Copied {rows} roster entries onto the target dates.",
+    "copiedEmpty": "No roster entries found in the source dates to copy."
   },
   "common": {
     "appName": "AI HR",
@@ -2874,7 +2881,15 @@
       "earlyLeaveGraceLabel": "Early-leave grace (min)",
       "graceInherit": "Policy default",
       "lateGraceBadge": "Late grace {minutes} min",
-      "earlyLeaveGraceBadge": "Early-leave grace {minutes} min"
+      "earlyLeaveGraceBadge": "Early-leave grace {minutes} min",
+      "otRulesLabel": "OT rules",
+      "otEligibleLabel": "Overtime eligible",
+      "otMinLabel": "Min OT (min)",
+      "otCapLabel": "Daily OT cap (min)",
+      "otNone": "None",
+      "otRulesHint": "Shapes this shift's workday overtime: untick to disable OT, or set a minimum before OT counts and a daily cap. Statutory rates (1.5×/2×/3× and the RM4,000 ceiling) stay in Overtime rates above.",
+      "deleteShift": "Delete",
+      "deleteShiftHint": "Permanently delete an unused shift. A shift referenced by rosters or an employee's default must be archived instead."
     },
     "toilPolicy": {
       "pageTitle": "Time off in lieu",

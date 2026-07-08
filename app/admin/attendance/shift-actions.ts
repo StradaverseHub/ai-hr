@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, createShiftMulti, duplicateShift, updateShift } from '@/core/roster';
+import { archiveShift, createShiftMulti, deleteShift, duplicateShift, updateShift } from '@/core/roster';
 
 /**
  * Shift-schedule server actions for the Attendance Policy page (Configurable Multi-Shift Attendance
@@ -50,6 +50,17 @@ function shiftFields(formData: FormData) {
   const overrideRaw = String(formData.get('normalMinutesOverride') ?? '').trim();
   const lateGraceRaw = String(formData.get('lateGraceMinutes') ?? '').trim();
   const earlyLeaveGraceRaw = String(formData.get('earlyLeaveGraceMinutes') ?? '').trim();
+  // R17 3e8350db — per-shift "OT Rules". A checkbox posts otEligible='on' when TICKED; an unchecked box
+  // posts nothing ⇒ ineligible. Optional min-block / daily-cap minutes. The service collapses a fully-default
+  // rule (eligible, no min, no cap) back to null, so a shift that touched none of these stays legacy.
+  const otEligible = formData.get('otEligible') != null;
+  const otMinRaw = String(formData.get('otMinMinutes') ?? '').trim();
+  const otCapRaw = String(formData.get('otDailyCapMinutes') ?? '').trim();
+  const otRule = {
+    eligible: otEligible,
+    ...(otMinRaw === '' ? {} : { minMinutes: Number(otMinRaw) }),
+    ...(otCapRaw === '' ? {} : { dailyCapMinutes: Number(otCapRaw) }),
+  };
   const weeklyPattern = formData
     .getAll('weeklyPattern')
     .map((v) => Number(v))
@@ -65,6 +76,7 @@ function shiftFields(formData: FormData) {
     // R17 3e8350db — optional per-shift grace windows (blank ⇒ null ⇒ inherit company-policy behaviour).
     lateGraceMinutes: lateGraceRaw === '' ? null : Number(lateGraceRaw),
     earlyLeaveGraceMinutes: earlyLeaveGraceRaw === '' ? null : Number(earlyLeaveGraceRaw),
+    otRule,
     weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
     differential,
   };
@@ -125,6 +137,20 @@ export async function archiveShiftAction(formData: FormData) {
   const companyId = String(formData.get('companyId') ?? '');
   try {
     await archiveShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
+  } catch (e) {
+    redirect(errTarget(companyId, e));
+  }
+  revalidatePath(BASE);
+  redirect(okTarget(companyId));
+}
+
+/** R17 3e8350db — hard-delete a shift template (distinct from Archive). The service refuses if the shift is
+ *  still referenced (roster rows or an employee default) with a ShiftInUseError, surfaced on the page. */
+export async function deleteShiftAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
+  try {
+    await deleteShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
   } catch (e) {
     redirect(errTarget(companyId, e));
   }

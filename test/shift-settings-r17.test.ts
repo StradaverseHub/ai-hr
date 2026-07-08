@@ -17,11 +17,16 @@ import { checkIn, checkOut } from '../core/attendance';
 import {
   assignDefaultShift,
   assignEmployeeShift,
+  assignShift,
+  copyRoster,
   createShift,
   createShiftMulti,
+  deleteShift,
   duplicateShift,
   FixedShiftRequiresShiftError,
   listShifts,
+  rosterForRange,
+  ShiftInUseError,
 } from '../core/roster';
 
 const WED = '2026-07-01'; // ISO weekday 3
@@ -160,6 +165,76 @@ describe('R17 centralized authoring — multi-company create + copy-to-company',
     expect(target[0]).toMatchObject({ code: 'NIGHT', lateGraceMinutes: 10, earlyLeaveGraceMinutes: 20 });
     // Source company still has just its own row (the copy landed in c2).
     expect(await listShifts(a, b.companyId)).toHaveLength(1);
+  });
+});
+
+describe('R17 gap-fix — per-shift OT Rules shape workday overtime', () => {
+  // Default shift 09:00–18:00 (break 60 ⇒ 480 normal minutes). Clocking 09:00→20:00 works 600 min ⇒ raw OT
+  // 120 min. The per-shift OT rule then reshapes THAT figure.
+  async function otMinutesFor(otRule: Parameters<typeof createShift>[1]['otRule']) {
+    const a = adminCtx(b);
+    const emp = await makeEmp();
+    const sh = await createShift(a, {
+      companyId: b.companyId,
+      name: `OT ${randomUUID()}`,
+      code: `OT${randomUUID().slice(0, 6)}`,
+      startTime: '09:00:00',
+      endTime: '18:00:00',
+      breakMinutes: 60,
+      weeklyPattern: [1, 2, 3, 4, 5],
+      otRule,
+    });
+    await assignDefaultShift(a, { employmentId: emp, shiftId: sh.id });
+    await checkIn(a, { employmentId: emp, date: WED, time: '09:00:00' });
+    const out = await checkOut(a, { employmentId: emp, date: WED, time: '20:00:00' });
+    return out.otMinutes;
+  }
+
+  it('no rule ⇒ full raw OT; cap clamps; minimum-block zeroes below threshold; ineligible zeroes', async () => {
+    expect(await otMinutesFor(null)).toBe(120);
+    expect(await otMinutesFor({ eligible: true, dailyCapMinutes: 30 })).toBe(30);
+    expect(await otMinutesFor({ eligible: true, minMinutes: 200 })).toBe(0);
+    expect(await otMinutesFor({ eligible: false })).toBe(0);
+  });
+});
+
+describe('R17 gap-fix — hard delete shift (distinct from archive)', () => {
+  it('deletes an unreferenced shift; refuses one referenced by roster or an employee default', async () => {
+    const a = adminCtx(b);
+    // Unreferenced ⇒ hard delete succeeds and the row is gone.
+    const gone = await createShift(a, { companyId: b.companyId, name: 'Temp', code: 'TMP', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    await deleteShift(a, { shiftId: gone.id });
+    expect(await listShifts(a, b.companyId)).toHaveLength(0);
+
+    // Referenced by a roster row ⇒ blocked.
+    const rostered = await createShift(a, { companyId: b.companyId, name: 'Rostered', code: 'RST', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    await assignShift(a, { employmentId: empId, shiftDate: WED, shiftId: rostered.id });
+    await expect(deleteShift(a, { shiftId: rostered.id })).rejects.toBeInstanceOf(ShiftInUseError);
+
+    // Referenced as an employee default ⇒ blocked.
+    const def = await createShift(a, { companyId: b.companyId, name: 'Default', code: 'DEF', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60, weeklyPattern: [1, 2, 3, 4, 5] });
+    await assignDefaultShift(a, { employmentId: empId, shiftId: def.id });
+    await expect(deleteShift(a, { shiftId: def.id })).rejects.toBeInstanceOf(ShiftInUseError);
+  });
+});
+
+describe('R17 gap-fix — copy roster from a previous period', () => {
+  it('copies shift + rest rows forward by the source→target day offset', async () => {
+    const a = adminCtx(b);
+    const sh = await createShift(a, { companyId: b.companyId, name: 'Morning', code: 'AM', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    // Source week: a shift on 2026-06-24 (Wed) for empId.
+    await assignShift(a, { employmentId: empId, shiftDate: '2026-06-24', shiftId: sh.id });
+    // Copy the source week 2026-06-22..28 forward to start 2026-06-29 (offset +7d ⇒ lands on 2026-07-01).
+    const res = await copyRoster(a, {
+      employmentIds: [empId],
+      sourceFrom: '2026-06-22',
+      sourceTo: '2026-06-28',
+      targetFrom: '2026-06-29',
+    });
+    expect(res.copied).toBe(1);
+    const target = await rosterForRange(a, { employmentIds: [empId], from: '2026-06-29', to: '2026-07-05' });
+    expect(target).toHaveLength(1);
+    expect(target[0]).toMatchObject({ shiftDate: '2026-07-01', shiftId: sh.id, isRestDay: false });
   });
 });
 

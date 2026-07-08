@@ -14,7 +14,7 @@ import { ShiftTimeFields } from '@/components/shift-time-fields';
 import { StatutoryComponentForm } from '@/components/statutory-component-form';
 import { ScrollToCompany } from './scroll-to-company';
 import { setAttendancePolicyAction } from '../actions';
-import { archiveShiftAction, createShiftAction, duplicateShiftAction, updateShiftAction } from './shift-actions';
+import { archiveShiftAction, createShiftAction, deleteShiftAction, duplicateShiftAction, updateShiftAction } from './shift-actions';
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
@@ -381,6 +381,18 @@ export default async function AttendancePolicyPage({
                                   {t('archiveShift')}
                                 </button>
                               </form>
+                              {/* R17 3e8350db — hard Delete (distinct from Archive). The service blocks a
+                                  referenced shift and tells HR to archive instead. */}
+                              <form action={deleteShiftAction}>
+                                <input type="hidden" name="shiftId" value={sh.id} />
+                                <input type="hidden" name="companyId" value={sh.companyId} />
+                                <button
+                                  className="text-xs font-medium text-rose-700 hover:underline dark:text-rose-300"
+                                  title={t('deleteShiftHint')}
+                                >
+                                  {t('deleteShift')}
+                                </button>
+                              </form>
                             </div>
                           </td>
                         </tr>
@@ -483,6 +495,46 @@ export default async function AttendancePolicyPage({
                   aria-label={t('earlyLeaveGraceLabel')}
                 />
               </Field>
+              {/* R17 3e8350db — per-shift "OT Rules": eligibility + an optional minimum block and daily cap.
+                  Statutory multipliers (1.5×/2×/3×, the RM4,000 ceiling) stay company-level at #overtime-rates
+                  — a shift can shape ITS overtime accrual but never pay below the law. Blank min/cap ⇒ none. */}
+              <fieldset className="w-full">
+                <legend className="mb-1.5 text-sm font-medium text-foreground">{t('otRulesLabel')}</legend>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary">
+                    <input
+                      type="checkbox"
+                      name="otEligible"
+                      defaultChecked={editing ? (editing.otRule?.eligible ?? true) : true}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    {t('otEligibleLabel')}
+                  </label>
+                  <Field label={t('otMinLabel')}>
+                    <input
+                      name="otMinMinutes"
+                      type="number"
+                      min={0}
+                      placeholder={t('otNone')}
+                      defaultValue={editing?.otRule?.minMinutes != null ? String(editing.otRule.minMinutes) : ''}
+                      className={`${inputCls} w-28`}
+                      aria-label={t('otMinLabel')}
+                    />
+                  </Field>
+                  <Field label={t('otCapLabel')}>
+                    <input
+                      name="otDailyCapMinutes"
+                      type="number"
+                      min={0}
+                      placeholder={t('otNone')}
+                      defaultValue={editing?.otRule?.dailyCapMinutes != null ? String(editing.otRule.dailyCapMinutes) : ''}
+                      className={`${inputCls} w-28`}
+                      aria-label={t('otCapLabel')}
+                    />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('otRulesHint')}</p>
+              </fieldset>
               <select
                 name="differentialKind"
                 defaultValue={editing?.differential?.kind ?? ''}

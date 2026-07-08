@@ -3,10 +3,11 @@
  * assignments — the "expected" schedule the time engine will consume (C2). Each mutation runs inside
  * withTenant and appends a DomainEvent. RLS gates writes (shift → company admin; roster → can_admin_employment).
  */
+import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type BreakPeriod, type ShiftDifferential } from '../db/schema';
+import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type BreakPeriod, type ShiftDifferential, type ShiftOtRule } from '../db/schema';
 import { isoWeekday, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployeesPage } from './read';
@@ -20,6 +21,28 @@ function validateDifferential(d: ShiftDifferential | null | undefined): ShiftDif
     throw new Error('Shift differential value must be a non-negative number');
   }
   return { kind: d.kind, value: d.value };
+}
+
+/** R17 3e8350db — validate the per-shift "OT Rules" field. It shapes WORKDAY OT accrual only (eligibility /
+ *  minimum block / daily cap); it deliberately carries NO multiplier (statutory, company-level). A rule that
+ *  is fully default (eligible, no min, no cap) collapses to null so existing shifts stay byte-identical. */
+function validateOtRule(r: ShiftOtRule | null | undefined): ShiftOtRule | null {
+  if (r == null) return null;
+  const eligible = r.eligible !== false; // default true
+  const nonNeg = (v: number | undefined, label: string): number | undefined => {
+    if (v == null) return undefined;
+    const n = Math.trunc(v);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a non-negative number of minutes`);
+    return n;
+  };
+  const minMinutes = nonNeg(r.minMinutes, 'OT minimum');
+  const dailyCapMinutes = nonNeg(r.dailyCapMinutes, 'OT daily cap');
+  // Fully-default rule ⇒ null (legacy behaviour).
+  if (eligible && minMinutes == null && dailyCapMinutes == null) return null;
+  const out: ShiftOtRule = { eligible };
+  if (minMinutes != null) out.minMinutes = minMinutes;
+  if (dailyCapMinutes != null) out.dailyCapMinutes = dailyCapMinutes;
+  return out;
 }
 
 /** end ≤ start means the shift runs past midnight (e.g. 22:00:00 → 06:00:00). Times are 'HH:MM:SS', whose
@@ -57,6 +80,9 @@ export type ShiftInput = {
   /** R17 3e8350db — per-shift early-leave grace (minutes): a checkout before shift-end − this is short.
    *  Null ⇒ inherit the legacy shift-midpoint threshold. */
   earlyLeaveGraceMinutes?: number | null;
+  /** R17 3e8350db — the reporter's per-shift "OT Rules". Shapes WORKDAY OT accrual (eligibility / minimum
+   *  block / daily cap); statutory multipliers stay company-level. Null ⇒ legacy behaviour. */
+  otRule?: ShiftOtRule | null;
   differential?: ShiftDifferential | null;
 };
 
@@ -72,6 +98,7 @@ type NormalizedShift = {
   weeklyPattern: number[] | null;
   lateGraceMinutes: number | null;
   earlyLeaveGraceMinutes: number | null;
+  otRule: ShiftOtRule | null;
   differential: ShiftDifferential | null;
 };
 
@@ -138,6 +165,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   };
   const lateGraceMinutes = grace(p.lateGraceMinutes, 'Late grace');
   const earlyLeaveGraceMinutes = grace(p.earlyLeaveGraceMinutes, 'Early-leave grace');
+  const otRule = validateOtRule(p.otRule);
 
   // The auto figure (used when no override): netScheduledMinutes(startTime, endTime, crossesMidnight,
   // breakMinutes) — derived on the fly by scheduleFor / the UI readout, deliberately not stored.
@@ -153,6 +181,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     weeklyPattern,
     lateGraceMinutes,
     earlyLeaveGraceMinutes,
+    otRule,
     differential,
   };
 }
@@ -203,6 +232,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           crossesMidnight: n.crossesMidnight,
           lateGraceMinutes: n.lateGraceMinutes,
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+          otRule: n.otRule,
           differential: n.differential,
         })
         .returning({ id: shift.id });
@@ -227,6 +257,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         weeklyPattern: n.weeklyPattern,
         lateGraceMinutes: n.lateGraceMinutes,
         earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+        otRule: n.otRule,
         hasDifferential: !!n.differential,
       },
     });
@@ -269,6 +300,7 @@ export async function createShiftMulti(
             crossesMidnight: n.crossesMidnight,
             lateGraceMinutes: n.lateGraceMinutes,
             earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+            otRule: n.otRule,
             differential: n.differential,
           })
           .returning({ id: shift.id });
@@ -293,6 +325,7 @@ export async function createShiftMulti(
           weeklyPattern: n.weeklyPattern,
           lateGraceMinutes: n.lateGraceMinutes,
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+          otRule: n.otRule,
           hasDifferential: !!n.differential,
           multiCompany: companyIds.length > 1,
         },
@@ -321,6 +354,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           crossesMidnight: n.crossesMidnight,
           lateGraceMinutes: n.lateGraceMinutes,
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+          otRule: n.otRule,
           differential: n.differential,
           updatedAt: new Date(),
         })
@@ -345,6 +379,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         weeklyPattern: n.weeklyPattern,
         lateGraceMinutes: n.lateGraceMinutes,
         earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
+        otRule: n.otRule,
         hasDifferential: !!n.differential,
       },
     });
@@ -446,6 +481,7 @@ export async function duplicateShift(
           weeklyPattern: src.weeklyPattern,
           lateGraceMinutes: src.lateGraceMinutes,
           earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
+          otRule: src.otRule,
           hasDifferential: !!src.differential,
           duplicatedFrom: p.shiftId,
           copiedToCompany: !sameCompany,
@@ -457,10 +493,62 @@ export async function duplicateShift(
     return { ...results[0], ids: results.map((r) => r.id) };
   });
 }
-// NOTE (R7 Phase 1, deliberate): there is NO deleteShift. Archive is the removal path — it frees the
-// name/code (partial-unique indexes skip archived rows) and preserves DomainEvent + payslip OT references,
-// matching the soft-delete precedent everywhere else (leave types, pay components, business units).
+export class ShiftInUseError extends Error {
+  constructor(message = 'This shift is referenced by roster entries or assigned as an employee default — archive it instead of deleting.') {
+    super(message);
+    this.name = 'ShiftInUseError';
+  }
+}
 
+/**
+ * R17 3e8350db — HARD delete a shift template (the reporter's "Delete", distinct from "Archive"). Archive is
+ * the soft path that preserves history and frees the name/code; Delete is for a template created in error /
+ * never used. To keep attendance + payroll history intact we REFUSE to hard-delete a shift that is still
+ * referenced — any roster_assignment (past or future) or any employee's default_shift_id — and steer HR to
+ * Archive instead (ShiftInUseError). Only a genuinely-unreferenced row is removed. RLS (migration 0075:
+ * is_admin_for(company_id)) gates who may delete which company's shifts; the GRANT includes DELETE.
+ */
+export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): Promise<{ id: string }> {
+  return withTenant(ctx, async (tx) => {
+    const [src] = await tx
+      .select({ id: shift.id, companyId: shift.companyId, name: shift.name, code: shift.code })
+      .from(shift)
+      .where(eq(shift.id, p.shiftId))
+      .limit(1);
+    if (!src) throw new Error('Shift not found (or not visible)');
+    // Referenced by any roster assignment? (RLS scopes visibility, but the count is enough — any hit blocks.)
+    const [ra] = await tx
+      .select({ id: rosterAssignment.id })
+      .from(rosterAssignment)
+      .where(eq(rosterAssignment.shiftId, p.shiftId))
+      .limit(1);
+    if (ra) throw new ShiftInUseError();
+    // Assigned as any employee's default (Fixed-shift arrangement)?
+    const [emp] = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.defaultShiftId, p.shiftId))
+      .limit(1);
+    if (emp) throw new ShiftInUseError();
+    await tx.delete(shift).where(eq(shift.id, p.shiftId));
+    // SUBSTRATE: the row is gone but the append log is independent — record the deletion (aggregateId = the
+    // now-deleted shift id; the human key lives in the payload).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'shift',
+      aggregateId: p.shiftId,
+      eventType: 'shift.deleted',
+      actor: actorOf(ctx),
+      payload: { companyId: src.companyId, name: src.name, code: src.code },
+    });
+    return { id: p.shiftId };
+  });
+}
+
+// NOTE (R7 Phase 1): Archive is the DEFAULT removal path — it frees the name/code (partial-unique indexes
+// skip archived rows) and preserves DomainEvent + payslip OT references, matching the soft-delete precedent
+// everywhere else (leave types, pay components, business units). deleteShift (above, R17) is the hard path,
+// allowed only for an unreferenced template.
 export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) {
   return withTenant(ctx, async (tx) => {
     await tx.update(shift).set({ archivedAt: new Date(), updatedAt: new Date() }).where(eq(shift.id, p.shiftId));
@@ -793,6 +881,87 @@ export async function generateRosterFromTemplate(
     workingRows: assigned.assigned,
     restRows: rested.rested,
   };
+}
+
+/**
+ * R17 3e8350db — "Copy roster schedules from previous weeks or months". Copy every roster row (shift
+ * assignments AND explicit rest days) from a SOURCE date window forward onto a TARGET window that starts at
+ * `targetFrom`, preserving each row's day-offset from the source start. Concretely: for a source Mon–Sun
+ * week and a target starting the following Monday, each day lands on the same weekday one week later. The
+ * source and target may be any length (a week, a month, …); the offset = targetFrom − sourceFrom in whole
+ * days is applied to every source row, so the target window mirrors the source shape exactly.
+ *
+ * Scope: explicit employmentIds (the roster-grid's current company roster), else every employee visible to
+ * the caller under RLS. Idempotent upsert on (employee, date) — re-running overwrites the same target dates,
+ * exactly like the generator. ONE thin summary event (per-row events would spam the log — same documented
+ * skip rationale as assignShiftBulk). Read via rosterForRange semantics; writes respect the roster RLS
+ * (can_admin_employment), so a manager can only copy rows for employees they administer.
+ */
+export async function copyRoster(
+  ctx: SessionContext,
+  p: { employmentIds?: string[]; sourceFrom: string; sourceTo: string; targetFrom: string },
+): Promise<{ copied: number; sourceRows: number }> {
+  if (!isIsoDate(p.sourceFrom) || !isIsoDate(p.sourceTo) || !isIsoDate(p.targetFrom)) {
+    throw new Error('Dates must be YYYY-MM-DD');
+  }
+  const srcFromMs = Date.parse(`${p.sourceFrom}T00:00:00Z`);
+  const srcToMs = Date.parse(`${p.sourceTo}T00:00:00Z`);
+  if (srcToMs < srcFromMs) throw new Error('The source end date must not be before the source start date');
+  if (srcToMs - srcFromMs > 366 * DAY_MS) throw new Error('Copy at most one year of source roster at a time');
+  const offsetDays = Math.round((Date.parse(`${p.targetFrom}T00:00:00Z`) - srcFromMs) / DAY_MS);
+  if (offsetDays === 0) throw new Error('The target start date must differ from the source start date');
+
+  const empIds = [...new Set((p.employmentIds ?? []).filter(Boolean))];
+  return withTenant(ctx, async (tx) => {
+    const srcConds = [gte(rosterAssignment.shiftDate, p.sourceFrom), lte(rosterAssignment.shiftDate, p.sourceTo)];
+    if (empIds.length > 0) srcConds.push(inArray(rosterAssignment.employmentId, empIds));
+    const srcRows = await tx
+      .select({
+        employmentId: rosterAssignment.employmentId,
+        shiftDate: rosterAssignment.shiftDate,
+        shiftId: rosterAssignment.shiftId,
+        isRestDay: rosterAssignment.isRestDay,
+        note: rosterAssignment.note,
+      })
+      .from(rosterAssignment)
+      .where(and(...srcConds));
+    if (srcRows.length === 0) return { copied: 0, sourceRows: 0 };
+
+    const shift1 = (iso: string) => new Date(Date.parse(`${iso}T00:00:00Z`) + offsetDays * DAY_MS).toISOString().slice(0, 10);
+    const values = srcRows.map((r) => ({
+      tenantId: ctx.tenantId,
+      employmentId: r.employmentId,
+      shiftDate: shift1(r.shiftDate),
+      shiftId: r.shiftId,
+      isRestDay: r.isRestDay,
+      note: r.note ?? null,
+    }));
+    await tx
+      .insert(rosterAssignment)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [rosterAssignment.tenantId, rosterAssignment.employmentId, rosterAssignment.shiftDate],
+        set: { shiftId: sql`excluded.shift_id`, isRestDay: sql`excluded.is_rest_day`, note: sql`excluded.note`, updatedAt: new Date() },
+      });
+    // Thin summary event on a virtual aggregate (UUID-typed aggregate_id) — the copied window is described in
+    // the payload; per-row events would flood the log at scale (same skip as assignShiftBulk).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'roster-assignment',
+      aggregateId: randomUUID(),
+      eventType: 'roster.copied',
+      actor: actorOf(ctx),
+      payload: {
+        sourceFrom: p.sourceFrom,
+        sourceTo: p.sourceTo,
+        targetFrom: p.targetFrom,
+        offsetDays,
+        rows: values.length,
+        employmentScope: empIds.length > 0 ? empIds.length : 'all-visible',
+      },
+    });
+    return { copied: values.length, sourceRows: srcRows.length };
+  });
 }
 
 /** The roster grid for a date window (admin/manager view; RLS scopes which employees are visible). */

@@ -65,7 +65,14 @@
     "generated": "Đã tạo lịch cho {employees} nhân viên — {working} mục ngày làm việc và {rest} mục ngày nghỉ.",
     "generateHint": "Điền mọi ngày trong khoảng theo mẫu tuần của ca: mục ca vào ngày làm việc và ngày nghỉ rõ ràng cho các ngày còn lại, để chính sách công ty không âm thầm ghi đè mẫu. Chạy lại sẽ ghi đè các ngày đó.",
     "manageShiftsHint": "Lịch ca được quản lý trong Chính sách chấm công; ca thường lệ của nhân viên được đặt trong hồ sơ dưới dạng Ca mặc định. Dùng lịch trực cho các ngoại lệ theo ngày.",
-    "manageShiftsLink": "Quản lý lịch ca"
+    "manageShiftsLink": "Quản lý lịch ca",
+    "copyTitle": "Sao chép lịch trực",
+    "copySource": "Sao chép từ",
+    "copyTargetStart": "Dán bắt đầu",
+    "copyButton": "Sao chép lịch trực",
+    "copyHint": "Sao chép mọi ca và ngày nghỉ từ ngày nguồn sang mục tiêu, giữ nguyên vị trí mỗi ngày. Chạy lại sẽ ghi đè cùng ngày mục tiêu.",
+    "copiedDone": "Đã sao chép {rows} mục lịch trực sang ngày mục tiêu.",
+    "copiedEmpty": "Không tìm thấy mục lịch trực nào trong ngày nguồn để sao chép."
   },
   "common": {
     "appName": "AI HR",
@@ -2874,7 +2881,15 @@
       "earlyLeaveGraceLabel": "Ân hạn về sớm (phút)",
       "graceInherit": "Mặc định theo chính sách",
       "lateGraceBadge": "Ân hạn đi trễ {minutes} phút",
-      "earlyLeaveGraceBadge": "Ân hạn về sớm {minutes} phút"
+      "earlyLeaveGraceBadge": "Ân hạn về sớm {minutes} phút",
+      "otRulesLabel": "Quy tắc OT",
+      "otEligibleLabel": "Đủ điều kiện làm thêm giờ",
+      "otMinLabel": "OT tối thiểu (phút)",
+      "otCapLabel": "Giới hạn OT hằng ngày (phút)",
+      "otNone": "Không",
+      "otRulesHint": "Định hình làm thêm giờ ngày làm việc của ca này: bỏ chọn để tắt OT, hoặc đặt mức tối thiểu trước khi tính OT và giới hạn hằng ngày. Các mức luật định (1.5×/2×/3× và trần RM4.000) vẫn nằm ở Mức làm thêm giờ phía trên.",
+      "deleteShift": "Xóa",
+      "deleteShiftHint": "Xóa vĩnh viễn ca chưa dùng. Ca được lịch trực hoặc ca mặc định của nhân viên tham chiếu phải lưu trữ thay vì xóa."
     },
     "toilPolicy": {
       "pageTitle": "Nghỉ bù",

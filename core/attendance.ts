@@ -27,6 +27,7 @@ import {
   person,
   rosterAssignment,
   shift,
+  type ShiftOtRule,
 } from '../db/schema';
 import { parseAttendanceCsv } from '../lib/attendance-csv';
 
@@ -297,6 +298,10 @@ type ResolvedSchedule = {
   // working minutes — the workday OT threshold in deriveAttendance — instead of scheduledMinutes. Only a
   // rostered shift can carry one; the policy branch is always null (byte-identical legacy behaviour).
   normalMinutesOverride: number | null;
+  // R17 3e8350db — the resolved shift's per-shift OT rule (eligibility / minimum block / daily cap). Shapes
+  // WORKDAY OT accrual only (deriveAttendance); statutory rest/holiday premium is untouched. Null on the
+  // policy branch and whenever the shift carries no rule ⇒ byte-identical legacy OT.
+  otRule: ShiftOtRule | null;
   crossesMidnight: boolean;
   // ec4cbf63: 'default-shift' / 'default-shift-rest' = resolved from employment.default_shift_id (no roster
   // row for the date). Diagnostic only — nothing downstream branches on source for pay except the hourly
@@ -326,6 +331,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       override: shift.normalMinutesOverride,
       lateGrace: shift.lateGraceMinutes,
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+      otRule: shift.otRule,
     })
     .from(rosterAssignment)
     .leftJoin(shift, eq(shift.id, rosterAssignment.shiftId))
@@ -339,6 +345,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
     scheduledMinutes: scheduledMinutes(pol),
     breakMinutes: pol.breakMinutes,
     normalMinutesOverride: null,
+    otRule: null,
     crossesMidnight: false,
     source: 'policy',
   });
@@ -360,6 +367,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       scheduledMinutes: sched,
       breakMinutes: ra.brk!,
       normalMinutesOverride: ra.override ?? null,
+      otRule: ra.otRule ?? null,
       crossesMidnight: ra.crosses!,
       source: 'roster-shift',
     };
@@ -386,6 +394,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
       pattern: shift.weeklyPattern,
       lateGrace: shift.lateGraceMinutes,
       earlyLeaveGrace: shift.earlyLeaveGraceMinutes,
+      otRule: shift.otRule,
     })
     .from(employment)
     .innerJoin(shift, eq(shift.id, employment.defaultShiftId))
@@ -407,6 +416,7 @@ async function scheduleFor(tx: Tx, employmentId: string, date: string): Promise<
         scheduledMinutes: sched,
         breakMinutes: ds.brk,
         normalMinutesOverride: ds.override ?? null,
+        otRule: ds.otRule ?? null,
         crossesMidnight: ds.crosses,
         source: 'default-shift',
       };
@@ -448,10 +458,21 @@ function deriveAttendance(
   // R7 Multi-Shift Phase 1 — the ONE deliberate OT-derivation change: when the rostered shift carries a
   // manual normal-hours override, workday OT is measured against IT (the override is the shift's normal
   // working minutes everywhere, not a display figure). Null ⇒ span − break, byte-identical to before.
-  const otMinutes =
+  let otMinutes =
     s.dayType === 'workday'
       ? Math.max(0, workedMinutes - (s.normalMinutesOverride ?? s.scheduledMinutes))
       : workedMinutes;
+  // R17 3e8350db — per-shift "OT Rules" shape WORKDAY OT accrual only (rest/holiday premium is statutory and
+  // untouched): eligible=false zeroes workday OT; a minimum block drops OT below the threshold to zero; a
+  // daily cap clamps it. Null rule ⇒ byte-identical to before.
+  if (s.dayType === 'workday' && s.otRule) {
+    if (!s.otRule.eligible) {
+      otMinutes = 0;
+    } else {
+      if (s.otRule.minMinutes != null && otMinutes < s.otRule.minMinutes) otMinutes = 0;
+      if (s.otRule.dailyCapMinutes != null) otMinutes = Math.min(otMinutes, s.otRule.dailyCapMinutes);
+    }
+  }
   return { status, workedMinutes, otMinutes };
 }
 
