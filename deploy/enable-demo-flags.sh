@@ -6,7 +6,8 @@
 # codebase default stays OFF. Re-run any time, then restart:  sudo systemctl restart aihr
 #
 # Maps to consultant feedback: NOTIFICATIONS → #11 bell · MULTI_CYCLE → #1 multiple cycles/month ·
-# TYPED_PAY_COMPONENTS → #9/#14/#15/#21 pay-component config (payment items, EA line, rounding, edit).
+# TYPED_PAY_COMPONENTS → #9/#14/#15/#21 pay-component config (payment items, EA line, rounding, edit) ·
+# PAYROLL_RESET → a03b2d9b / 9bc442bc revert a Processed run to Draft (+ selective reprocess surface).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ENV=.env.production
@@ -27,4 +28,7 @@ echo "▸ Enabling demo features in $ENV…"
 set_flag NOTIFICATIONS_ENABLED true
 set_flag MULTI_CYCLE_PAYROLL_ENABLED true
 set_flag TYPED_PAY_COMPONENTS_ENABLED true
+# a03b2d9b / 9bc442bc — Payroll Reset (revert Processed→Draft) + selective per-employee reprocessing.
+# Admin-only, processed-only; Closed stays permanently immutable (0011 triggers untouched).
+set_flag PAYROLL_RESET_ENABLED true
 echo "✅ Flags set. Apply with:  sudo systemctl restart aihr"

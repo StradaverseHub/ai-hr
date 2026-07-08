@@ -15,6 +15,7 @@ import {
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
   prefillTp1FromSelfRelief,
+  reprocessSelectedEmployees,
   resetProcessedBatch,
   setPayrollInput,
 } from '@/core/payroll';
@@ -266,6 +267,41 @@ export async function resetAction(formData: FormData) {
   revalidatePath(`/payroll/${batchId}`);
   revalidatePath('/payroll');
   redirect(`/payroll/${batchId}?toast=${encodeURIComponent(t('resetDone'))}`);
+}
+
+/**
+ * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3) — create a same-month
+ * adjustment run scoped to the ticked employees, leaving everyone else's processed payslips untouched.
+ * Explicit RBAC + processed-only + membership intersection live in reprocessSelectedEmployees (the
+ * service); the session carries the real actor. On success we land on the NEW draft run so the admin
+ * reviews + generates it (?from=process presents it as the wizard's terminal step). Copy localised here.
+ */
+export async function reprocessSelectedAction(formData: FormData) {
+  const s = await getSession();
+  const batchId = String(formData.get('batchId'));
+  const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+  const reason = String(formData.get('reason') ?? '').trim();
+  const t = await getTranslations('payroll.batch');
+  if (!isAdmin(s)) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('reprocessAdminOnly'))}`);
+  }
+  if (employmentIds.length === 0) {
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(t('reprocessNoneSelected'))}`);
+  }
+  let newBatchId = '';
+  try {
+    ({ batchId: newBatchId } = await reprocessSelectedEmployees(s, {
+      batchId,
+      employmentIds,
+      reason: reason || undefined,
+    }));
+  } catch (e) {
+    const msg = e instanceof BatchNotResettableError ? t('reprocessNotProcessed') : (e as Error).message;
+    redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
+  }
+  revalidatePath('/payroll');
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(`/payroll/${newBatchId}?from=process&toast=${encodeURIComponent(t('reprocessDone', { n: employmentIds.length }))}`);
 }
 
 export async function closeAction(formData: FormData) {

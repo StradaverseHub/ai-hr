@@ -2625,6 +2625,133 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   });
 }
 
+/**
+ * Selective per-employee reprocessing (feedback 9bc442bc, reporter ask #3). Instead of the risky
+ * in-place recompute of a subset inside a processed run, this creates a same-month ADJUSTMENT run
+ * scoped to exactly the selected employees. The regular run's payslips are left physically untouched
+ * (the reporter's core requirement — "without altering or overwriting the results of unselected
+ * employees"); the admin then reviews + generates the scoped draft. Monthly statutory reports already
+ * aggregate across every run of the month, so the adjustment folds into the filing totals.
+ *
+ * Guards (server-side state machine — not just the UI): admin-only (a payroll_partner is refused, same
+ * RBAC as reset), the SOURCE run must be 'processed' (a draft has nothing to reprocess; a closed run is
+ * permanently immutable and its period is closed), a regular run must exist for the month, and the
+ * period must be open. Selected ids are intersected against the company's employees so a stale/cross-
+ * company id can never widen or under-set the run. Appends the adjustment run's own run-added event AND
+ * a summarising selective-reprocess event on the SOURCE batch capturing actor / reason / who was picked.
+ */
+export async function reprocessSelectedEmployees(
+  ctx: SessionContext,
+  p: { batchId: string; employmentIds: string[]; reason?: string },
+) {
+  if (process.env.MULTI_CYCLE_PAYROLL_ENABLED !== 'true') {
+    throw new Error('Multiple payroll runs per month are not enabled.');
+  }
+  const callerRoles = [...(ctx.roles ?? []), ...(ctx.grants ?? []).map((g) => g.role)];
+  if (!callerRoles.some((r) => r === 'hr_admin' || r === 'super_admin')) {
+    throw new Error('Only an administrator can reprocess payroll');
+  }
+  const requested = [...new Set(p.employmentIds.filter(Boolean))];
+  if (requested.length === 0) throw new Error('Select at least one employee to reprocess.');
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({
+        status: payrollBatch.status,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        payPeriodId: payrollBatch.payPeriodId,
+        batchDate: payrollBatch.batchDate,
+      })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('batch not found');
+    // Processed-only: reuse the reset guard's error so the action can localise it the same way.
+    if (batch.status !== 'processed') throw new BatchNotResettableError();
+
+    const [period] = await tx
+      .select({ id: payPeriod.id, status: payPeriod.status })
+      .from(payPeriod)
+      .where(eq(payPeriod.id, batch.payPeriodId))
+      .limit(1);
+    if (!period) throw new Error('No pay period for this month — create the regular run first.');
+    if (period.status === 'closed') throw new Error('This pay period is closed.');
+    const runs = await tx
+      .select({ runSeq: payrollBatch.runSeq, runType: payrollBatch.runType })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.payPeriodId, period.id));
+    if (!runs.some((r) => r.runType === 'regular')) {
+      throw new Error('Create the regular run for this month before reprocessing.');
+    }
+
+    // Cross-company membership guard (same intersection createRunAction/updateBatchScope apply).
+    const companyEmps = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(and(eq(employment.companyId, batch.companyId), inArray(employment.id, requested)));
+    const valid = new Set(companyEmps.map((e) => e.id));
+    const employmentIds = requested.filter((id) => valid.has(id));
+    if (employmentIds.length === 0) throw new Error('None of the selected employees belong to this run.');
+
+    const nextSeq = Math.max(...runs.map((r) => r.runSeq)) + 1;
+    const scope = normalizeScope({ employmentIds });
+    const batchDate = batch.batchDate ?? `${batch.payPeriod}-28`;
+    const [row] = await tx
+      .insert(payrollBatch)
+      .values({
+        tenantId: ctx.tenantId,
+        companyId: batch.companyId,
+        payPeriodId: period.id,
+        runSeq: nextSeq,
+        runType: 'adjustment',
+        payPeriod: batch.payPeriod,
+        batchDate,
+        status: 'draft',
+        scope,
+        remarks: 'Selective reprocess',
+      })
+      .returning({ id: payrollBatch.id });
+
+    // Consistency with createAdditionalRun so the adjustment run is indistinguishable in the log.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: row.id,
+      eventType: 'payroll-batch.run-added',
+      actor: actorOf(ctx),
+      payload: {
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        payPeriodId: period.id,
+        runSeq: nextSeq,
+        runType: 'adjustment',
+        paymentDate: batchDate,
+        remarks: 'Selective reprocess',
+        scope,
+        sourceBatchId: p.batchId,
+      },
+    });
+    // Summarising event on the SOURCE run (reporter req. #4: who / when / why / who was picked).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll-batch.selective-reprocess-initiated',
+      actor: actorOf(ctx),
+      payload: {
+        sourceBatchId: p.batchId,
+        adjustmentBatchId: row.id,
+        companyId: batch.companyId,
+        payPeriod: batch.payPeriod,
+        employmentIds,
+        employeeCount: employmentIds.length,
+        reason: p.reason ?? null,
+      },
+    });
+    return { batchId: row.id, employeeCount: employmentIds.length };
+  });
+}
+
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
 // additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
 // companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
@@ -2762,6 +2889,7 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
     const slips = await tx
       .select({
         id: payslip.id,
+        employmentId: payslip.employmentId,
         name: person.fullName,
         employeeCode: employment.employeeCode,
         basic: payslip.basicSalary,

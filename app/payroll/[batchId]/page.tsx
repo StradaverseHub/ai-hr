@@ -4,12 +4,14 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
-import { listAllowancePolicies } from '@/core/read';
+import { listAllowancePolicies, auditEvents } from '@/core/read';
+import { humanizeEvent } from '@/lib/audit-format';
 import { Button, Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { closeAction, generateAction, prefillClaimsAction, prefillFixedZakatAction, prefillLoansAction, prefillOvertimeAction, prefillShiftDifferentialAction, resetAction, transferAllowancesAction } from '../actions';
 import { ComponentImport } from './component-import';
 import { OtInputRow } from './ot-input-row';
+import { ReprocessPanel } from './reprocess-panel';
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -48,6 +50,11 @@ export default async function BatchPage({
   // Payroll Reset (feedback a03b2d9b) — ships dark behind a flag; the page is already requireAdmin-
   // gated, and resetAction + resetProcessedBatch re-assert admin (a payroll_partner never sees this).
   const resetOn = process.env.PAYROLL_RESET_ENABLED === 'true';
+  // Selective reprocessing (feedback 9bc442bc, reporter ask #3) needs same-month adjustment runs.
+  const multiCycleOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
+  // Per-run History (reporter ask #4 "fully traceable") — this batch's lifecycle events (created /
+  // processed / reset / run-added / selective-reprocess / closed / payment-summary.exported). Read-only.
+  const history = await auditEvents(s, { aggregateId: batchId, limit: 50 });
   // Payroll Process wizard: this draft is presented as "Step 3 of 3" when it arrived straight from the
   // wizard's terminal create action. A compact one-shot holiday-warning code list rides the query string
   // ('country|state|year|loaded|required' ';'-joined) — the domain event appended in createBatch is the
@@ -109,6 +116,7 @@ export default async function BatchPage({
                   title={t('resetTitle')}
                   description={t('resetDescription')}
                   confirmLabel={t('resetConfirm')}
+                  reasonField={{ name: 'reason', label: t('resetReasonLabel'), placeholder: t('resetReasonPlaceholder') }}
                 >
                   {t('resetPayroll')}
                 </ConfirmSubmit>
@@ -444,6 +452,66 @@ export default async function BatchPage({
             </tbody>
           </table>
         </div>
+      </Card>
+
+      {/* Selective reprocessing (feedback 9bc442bc, reporter ask #3): pick specific employees on a
+          PROCESSED run and reprocess them as a same-month adjustment run — the regular run's payslips
+          for everyone else stay physically untouched. Admin-only (page is requireAdmin; the action +
+          service re-assert it) and gated on multi-cycle. Not on closed runs (permanently immutable). */}
+      {batch.status === 'processed' && multiCycleOn && slips.length > 0 && (
+        <Card>
+          <SectionHeader title={t('reprocessTitle')} />
+          <div className="px-4 pb-4">
+            <p className="mb-3 text-xs text-muted-foreground">{t('reprocessHint')}</p>
+            <ReprocessPanel
+              batchId={batch.id}
+              employees={slips.map((sl) => ({ employmentId: sl.employmentId, employeeCode: sl.employeeCode, name: sl.name }))}
+            />
+          </div>
+        </Card>
+      )}
+
+      {/* Per-run History (reporter ask #4 "fully traceable — who, when, why, before/after"): this run's
+          append-only lifecycle events. The reset event carries its reason + reversal counts; the
+          selective-reprocess event carries who was picked. Read-only, admin-only (page is requireAdmin). */}
+      <Card className="overflow-hidden">
+        <SectionHeader title={t('historyTitle')} count={history.length} />
+        {history.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('historyEmpty')}</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {history.map((ev) => {
+              const pl = (ev.payload ?? {}) as Record<string, unknown>;
+              const reason = typeof pl.reason === 'string' && pl.reason.trim() ? pl.reason.trim() : null;
+              return (
+                <li key={ev.id} className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between">
+                  <div>
+                    <div className="text-sm font-medium">{humanizeEvent(ev.eventType)}</div>
+                    {reason && <div className="mt-0.5 text-xs text-muted-foreground">{t('historyReason', { reason })}</div>}
+                    {ev.eventType === 'payroll-batch.reset' && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {t('historyResetCounts', {
+                          payslips: Number(pl.payslipsCleared ?? 0),
+                          loans: Number(pl.loanInstalmentsReversed ?? 0),
+                          claims: Number(pl.claimsReverted ?? 0),
+                        })}
+                      </div>
+                    )}
+                    {ev.eventType === 'payroll-batch.selective-reprocess-initiated' && (
+                      <div className="mt-0.5 text-xs text-muted-foreground">
+                        {t('historyReprocessCount', { n: Number(pl.employeeCount ?? 0) })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground sm:text-right">
+                    <div>{ev.actorName ?? t('historySystemActor')}</div>
+                    <div className="tabular-nums">{new Date(ev.occurredAt).toLocaleString()}</div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </Card>
     </div>
   );
