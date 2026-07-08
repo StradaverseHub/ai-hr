@@ -2974,6 +2974,7 @@
       "empty": "ไม่มีพนักงานในขอบเขต",
       "employees": "พนักงาน",
       "pillTitle": "{type} · {start} ถึง {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "แสดงทั้งหมด {count} รายการ",
       "showLess": "แสดงน้อยลง",
       "durationBadgeHalfAm": "½ เช้า",

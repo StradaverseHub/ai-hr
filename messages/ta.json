@@ -2974,6 +2974,7 @@
       "empty": "எல்லைக்குள் பணியாளர்கள் இல்லை.",
       "employees": "பணியாளர்கள்",
       "pillTitle": "{type} · {start} முதல் {end} வரை · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "அனைத்தையும் காட்டு ({count})",
       "showLess": "குறைவாகக் காட்டு",
       "durationBadgeHalfAm": "½ காலை",

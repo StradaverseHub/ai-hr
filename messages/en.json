@@ -2974,6 +2974,7 @@
       "empty": "No employees in scope.",
       "employees": "Employees",
       "pillTitle": "{type} · {start} to {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "Show all {count}",
       "showLess": "Show less",
       "durationBadgeHalfAm": "½ AM",

@@ -2974,6 +2974,7 @@
       "empty": "范围内无员工。",
       "employees": "员工",
       "pillTitle": "{type} · {start} 至 {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "显示全部 {count} 人",
       "showLess": "收起",
       "durationBadgeHalfAm": "½ 上午",

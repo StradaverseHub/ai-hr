@@ -2974,6 +2974,7 @@
       "empty": "Không có nhân viên trong phạm vi.",
       "employees": "Nhân viên",
       "pillTitle": "{type} · {start} đến {end} · {status}",
+      "pillTitleHourly": "{type} · {start} · {from}–{to} · {status}",
       "showAll": "Hiển thị tất cả {count}",
       "showLess": "Thu gọn",
       "durationBadgeHalfAm": "½ Sáng",
