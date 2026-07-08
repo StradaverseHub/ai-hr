@@ -1064,10 +1064,21 @@ export type LeaveDivisor =
 // 2.1.4 (Custom period) — the cut-off WINDOW mode. 'calendar' (default/absent) = the statutory calendar month
 // (1st→last), today's exact behaviour. 'custom' anchors a non-calendar operational window on `anchorDay`: for a
 // statutory month M, the window is [anchorDay of M-1 .. (anchorDay-1) of M]. STATUTORY contributions
-// (EPF/SOCSO/EIS/PCB) stay calendar-bound BY LAW regardless of the window. This slice STORES + VALIDATES the
-// window only — applying it to OT/attendance/leave input selection is a deferred follow-up gated on the kernel
-// seam, so a custom cut-off changes no payslip numbers yet.
+// (EPF/SOCSO/EIS/PCB) stay calendar-bound BY LAW regardless of the window. c7fdfcf6 (Payroll Schedule) promoted
+// this from "stored + validated only" to ACTIVE: the payroll run now selects each transaction type (salary
+// proration, overtime, attendance, unpaid leave, claims) from its resolved window — a calendar/absent config
+// stays byte-identical to today.
 export type CutOffMode = 'calendar' | 'custom';
+// c7fdfcf6 (Payroll Schedule) — the five payroll transaction types that each carry an INDEPENDENT cut-off
+// window. 'salary' uses the policy's default/base anchor day (cutOff.anchorDay); the other four are
+// overridable per-type via cutOff.perType (absent ⇒ inherit the salary/base anchor ⇒ inherit calendar).
+export type CutOffType = 'salary' | 'claim' | 'overtime' | 'leave' | 'attendance';
+// c7fdfcf6 (Payroll Schedule) — payroll FREQUENCY. 'monthly' (default/absent) = one run per statutory month,
+// today's exact behaviour. 'weekly'/'biweekly' are OPERATIONAL run cadences: the WAGES they pay still
+// aggregate into ONE statutory month for EPF/SOCSO/EIS/PCB (Malaysian statutory contributions are computed
+// per calendar month BY LAW — LHDN MTD, PERKESO Act 4 s.6, monthly EPF returns), so the frequency changes the
+// operational cut-off cadence + which transactions fall in each cycle, never the statutory month they contribute in.
+export type PayrollFrequency = 'monthly' | 'weekly' | 'biweekly';
 // f3148da1 Step 3 — one basic-salary proration formula: the divisor + optional working-day basis. Shared as
 // the default (`proration`) and overridable per employee event (`prorationHire`/`prorationResign`).
 export type ProrationSettings = {
@@ -1120,12 +1131,28 @@ export type PayrollPolicyConfig = {
   // 2.1.4 (Custom period) — the operational cut-off WINDOW. Default (absent / mode='calendar') = the statutory
   // calendar month, byte-identical to today. mode='custom' records an anchor day so the window runs
   // [anchorDay of M-1 .. (anchorDay-1) of M] for statutory month M. anchorDay ∈ 1..28 (avoids the 29–31
-  // month-length trap). CONFIGURABLE ONLY in this slice — not yet read by the kernel; statutory months stay
-  // calendar-bound by law.
+  // month-length trap). c7fdfcf6 (Payroll Schedule): the kernel now READS this window to select each transaction
+  // type (salary proration + the four perType windows below); statutory months stay calendar-bound by law.
   cutOff?: {
     mode?: CutOffMode;
     anchorDay?: number; //                      day-of-month the custom window opens (1..28), when mode='custom'
+    // c7fdfcf6 (Payroll Schedule) — PER-TYPE cut-off anchor days. Each 1..28; an absent type inherits the base
+    // `anchorDay` (the salary/default window). All absent + mode='custom' ⇒ every type shares the base window;
+    // mode='calendar'/absent ⇒ NONE apply (calendar month, byte-identical). 'salary' has no perType key — it
+    // always uses the base `anchorDay`. These finally give the five company_payroll_config.*_cut_off_day columns
+    // a policy-level counterpart in the resolution chain (policy perType → policy anchorDay → company column → calendar).
+    perType?: {
+      claim?: number;
+      overtime?: number;
+      leave?: number;
+      attendance?: number;
+    };
   };
+  // c7fdfcf6 (Payroll Schedule) — payroll FREQUENCY. Absent/'monthly' ⇒ today's monthly run. 'weekly'/'biweekly'
+  // record the OPERATIONAL cadence on the schedule; statutory contributions stay calendar-month-aggregated by law
+  // (see PayrollFrequency). Stored + surfaced + validated here; a weekly RUN engine (child runs summed to the
+  // statutory month) is a separately-gated follow-up — the frequency selector is the schedule's source of truth.
+  frequency?: PayrollFrequency;
 };
 
 // Step 6 (f3148da1) — payslip RELEASE configuration, stored per-company on company_payroll_config.payslip_release.
@@ -1343,9 +1370,10 @@ export const companyStatutoryMy = pgTable(
 );
 
 // Per-company payroll scheduling config (ADR-0035 1B, #17): cut-off day (when inputs close), pay day,
-// and payment basis. Scheduling METADATA in Wave 1 — drives display + future automation, NOT the period
-// computation. An absent row ⇒ today's month-end defaults. RLS: company-scoped admin (is_admin_for),
-// mirroring company_bank_profile.
+// and payment basis. c7fdfcf6 (Payroll Schedule): the per-type cut-off day columns are now the COMPANY-LEVEL
+// fallback that DRIVES which transactions a payroll run picks up (see the column comments below) — no longer
+// display-only metadata. An absent row / null column ⇒ today's calendar-month defaults. RLS: company-scoped
+// admin (is_admin_for), mirroring company_bank_profile.
 export const companyPayrollConfig = pgTable(
   'company_payroll_config',
   {
@@ -1357,8 +1385,11 @@ export const companyPayrollConfig = pgTable(
     cutOffDay: integer('cut_off_day'), // day of month payroll inputs close (1–31); null = month-end. The salary/inputs cut-off.
     payDay: integer('pay_day'), // day of month salary is paid (1–31); null = month-end
     paymentBasis: text('payment_basis').notNull().default('monthly'),
-    // Per-purpose cut-off scheduling METADATA — these join cutOffDay (the salary/inputs cut-off) as
-    // scheduling reference only; null = month-end / inherit. None feed period computation.
+    // Per-purpose cut-off days. c7fdfcf6 (Payroll Schedule) promoted these from pure metadata into the
+    // COMPANY-LEVEL fallback of the cut-off resolution chain (policy perType → policy anchorDay → THESE columns
+    // → calendar month): when an employment's payroll policy sets no custom cut-off, the payroll run pulls each
+    // transaction type from the window anchored on the matching column here (cutOffDay = salary). null = the
+    // calendar month (today's exact behaviour). Statutory contributions still aggregate per calendar month by law.
     overtimeCutOffDay: integer('overtime_cut_off_day'), // day of month OT inputs close (1–31); null = month-end
     claimCutOffDay: integer('claim_cut_off_day'), // day of month claim inputs close (1–31); null = month-end
     unpaidLeaveCutOffDay: integer('unpaid_leave_cut_off_day'), // day of month unpaid-leave inputs close (1–31); null = month-end

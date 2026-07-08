@@ -4,6 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listPolicies, POLICY_TYPES, type PolicyRow } from '@/core/payroll-policy';
 import { listPayComponents } from '@/core/pay-components';
+import { CUT_OFF_PER_TYPES, PAYROLL_FREQUENCIES, cutOffWindowFor, payrollFrequencyOf } from '@/core/payroll-policy-config';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,17 @@ export default async function PayrollPolicyPage({
   // 2.1.4 — the editing policy's stored cut-off window (custom_period only), for prefilling the form.
   const editingCutOff = editing?.config?.cutOff;
   const editingCutOffCustom = editingCutOff?.mode === 'custom';
+  // c7fdfcf6 (Payroll Schedule) — the per-type anchor overrides + frequency, for prefilling the form.
+  const editingPerType = editingCutOff?.perType;
+  const editingFrequency = payrollFrequencyOf(editing?.config ?? null);
+  // c7fdfcf6 — From/To preview: for the CURRENT month, the window each transaction type's saved cut-off resolves
+  // to (derived, not stored — consecutive periods are contiguous + non-overlapping by construction). Read-only:
+  // it reflects the LAST SAVED config, so the operator sees exactly which dates each run will pick up.
+  const previewPeriod = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+  const cutOffPreview = (['salary', ...CUT_OFF_PER_TYPES] as const).map((type) => ({
+    type,
+    window: cutOffWindowFor(type, editing?.config ?? null, null, previewPeriod),
+  }));
   // f3148da1 — the editing policy's General-Settings config, for prefilling the Steps 2–5 sections.
   const cfg = editing?.config ?? null;
   const cfgOt = cfg?.overtime;
@@ -289,7 +301,16 @@ export default async function PayrollPolicyPage({
                   deferred follow-up; statutory months (EPF/SOCSO/EIS/PCB) stay calendar-bound by law. */}
               <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
                 <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('cutOff.title')}</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* c7fdfcf6 — payroll frequency (Weekly / Bi-Weekly / Monthly). Weekly/bi-weekly are operational
+                    cadences; statutory contributions still aggregate into the calendar month by law. */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={t('cutOff.frequencyLabel')}>
+                    <select name="frequency" defaultValue={editingFrequency} className={inputCls}>
+                      {PAYROLL_FREQUENCIES.map((f) => (
+                        <option key={f} value={f}>{t(`cutOff.frequency.${f}`)}</option>
+                      ))}
+                    </select>
+                  </Field>
                   <Field label={t('cutOff.modeLabel')}>
                     <select name="cutOffMode" defaultValue={editingCutOffCustom ? 'custom' : 'calendar'} className={inputCls}>
                       <option value="calendar">{t('cutOff.modeCalendar')}</option>
@@ -310,7 +331,58 @@ export default async function PayrollPolicyPage({
                     />
                   </Field>
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.frequencyHint')}</p>
                 <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.anchorDayHint')}</p>
+
+                {/* c7fdfcf6 — per-type cut-off overrides. Each transaction type (Claim / Overtime / Leave /
+                    Attendance) may close on its own anchor day; blank ⇒ inherit the Salary anchor above. Only
+                    read when mode='custom'. */}
+                <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('cutOff.perTypeTitle')}</p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {CUT_OFF_PER_TYPES.map((type) => (
+                    <Field key={type} label={t(`cutOff.type.${type}`)}>
+                      <input
+                        name={`cutOff_${type}`}
+                        type="number"
+                        min={ANCHOR_MIN}
+                        max={ANCHOR_MAX}
+                        step="1"
+                        inputMode="numeric"
+                        defaultValue={editingPerType?.[type] ? String(editingPerType[type]) : ''}
+                        placeholder={t('cutOff.inheritPlaceholder')}
+                        className={inputCls}
+                      />
+                    </Field>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.perTypeHint')}</p>
+
+                {/* c7fdfcf6 — From/To preview: the window each type's SAVED cut-off resolves to for the current
+                    month. Read-only; derived from the last saved config. */}
+                <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {t('cutOff.previewTitle', { period: previewPeriod })}
+                </p>
+                <div className="overflow-x-auto rounded-lg border border-border dark:border-border">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/50 text-left uppercase tracking-wide text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-1.5 font-medium">{t('cutOff.previewType')}</th>
+                        <th className="px-3 py-1.5 font-medium">{t('cutOff.previewFrom')}</th>
+                        <th className="px-3 py-1.5 font-medium">{t('cutOff.previewTo')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {cutOffPreview.map((row) => (
+                        <tr key={row.type}>
+                          <td className="px-3 py-1.5 text-muted-foreground">{t(`cutOff.type.${row.type}`)}</td>
+                          <td className="px-3 py-1.5 tabular-nums">{row.window.start}</td>
+                          <td className="px-3 py-1.5 tabular-nums">{row.window.end}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.previewHint')}</p>
               </div>
 
               {/* ───────── f3148da1 · General Settings (Steps 2–5) — server-rendered, no client state.

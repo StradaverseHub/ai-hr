@@ -3642,7 +3642,7 @@
     "claimCutOff": "报销截止日",
     "unpaidLeaveCutOff": "无薪假截止日",
     "attendanceCutOff": "考勤截止日",
-    "cutOffsHint": "每月日期（1–31）。留空 = 月末。薪资/输入截止日在上方设为截止日。仅作排程参考——这些不会改变薪资周期的计算方式，也不强制字段之间的顺序（例如考勤早于发薪日）。",
+    "cutOffsHint": "每月的日期（1–31）。留空 = 月末。薪资/输入截止日在上方设为“截止日”。这些是公司默认的截止窗口：当员工的薪资政策未自行设置时，薪资按各交易类型（加班、报销、无薪假、考勤）的配置窗口提取。法定缴款仍按日历月汇总。",
     "save": "保存",
     "hiringTitle": "入职默认设置",
     "probationMonths": "默认试用期（月）",
@@ -3750,7 +3750,29 @@
       "modeCustom": "自定义周期",
       "anchorDay": "锚定日",
       "anchorDayPlaceholder": "例如 25",
-      "anchorDayHint": "仅用于“自定义周期”模式。锚定日（1–28）是窗口开始的当月日期——例如，锚定日 25 表示窗口从上月 25 日运行到周期月 24 日。仅适用于自定义周期政策；法定月份仍按日历月计算。"
+      "anchorDayHint": "仅用于“自定义周期”模式。锚定日（1–28）是窗口开始的当月日期——例如，锚定日 25 表示窗口从上月 25 日运行到周期月 24 日。仅适用于自定义周期政策；法定月份仍按日历月计算。",
+      "frequencyLabel": "薪资周期频率",
+      "frequency": {
+        "monthly": "每月",
+        "weekly": "每周",
+        "biweekly": "每两周"
+      },
+      "frequencyHint": "薪资运行的频率。每周和每两周为运营节奏——法定缴款（EPF、SOCSO、EIS、PCB）仍按日历月汇总并申报，符合法律要求。",
+      "perTypeTitle": "按类型的截止日覆盖",
+      "type": {
+        "salary": "薪资",
+        "claim": "报销",
+        "overtime": "加班",
+        "leave": "请假",
+        "attendance": "考勤"
+      },
+      "inheritPlaceholder": "继承",
+      "perTypeHint": "每种交易类型可按各自的锚定日（1–28）截止。留空则继承上面的薪资锚定日。仅在周期模式为“自定义周期”时使用。",
+      "previewTitle": "{period} 的截止日预览",
+      "previewType": "类型",
+      "previewFrom": "起始",
+      "previewTo": "结束",
+      "previewHint": "根据已保存的截止配置，各交易类型在当前月份将被纳入的日期。连续周期相互衔接且从不重叠。"
     },
     "copy": "复制",
     "copySuffix": "（副本）",

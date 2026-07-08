@@ -17,9 +17,11 @@
  */
 import type {
   CutOffMode,
+  CutOffType,
   LeaveDivisor,
   NegativeNetMode,
   OtDayType,
+  PayrollFrequency,
   PayrollPolicyConfig,
   PayslipRelease,
   PayslipReleaseMode,
@@ -54,6 +56,17 @@ const LEAVE_DIVISORS: LeaveDivisor[] = ['calendar_month', 'custom_days', 'cutoff
 
 const CUT_OFF_MODES: CutOffMode[] = ['calendar', 'custom'];
 const cleanCutOffMode = (v: unknown): CutOffMode => (CUT_OFF_MODES.includes(v as CutOffMode) ? (v as CutOffMode) : 'calendar');
+
+// c7fdfcf6 (Payroll Schedule) — the payroll transaction types that carry a per-type cut-off window, and the
+// four that are independently overridable via cutOff.perType ('salary' always uses the base anchorDay).
+export const CUT_OFF_TYPES: CutOffType[] = ['salary', 'claim', 'overtime', 'leave', 'attendance'];
+export const CUT_OFF_PER_TYPES: Exclude<CutOffType, 'salary'>[] = ['claim', 'overtime', 'leave', 'attendance'];
+
+// c7fdfcf6 (Payroll Schedule) — the supported payroll frequencies. 'monthly' is the default (byte-identical);
+// an unknown/absent value falls back to it.
+export const PAYROLL_FREQUENCIES: PayrollFrequency[] = ['monthly', 'weekly', 'biweekly'];
+const cleanFrequency = (v: unknown): PayrollFrequency =>
+  PAYROLL_FREQUENCIES.includes(v as PayrollFrequency) ? (v as PayrollFrequency) : 'monthly';
 
 const cleanRounding = (v: unknown): RoundingMode => (ROUNDING_MODES.includes(v as RoundingMode) ? (v as RoundingMode) : 'none');
 const cleanProrationDivisor = (v: unknown): ProrationDivisor =>
@@ -196,8 +209,26 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   const cutOffMode = cleanCutOffMode(coRaw.mode);
   if (cutOffMode === 'custom') {
     const anchorDay = cleanPosInt(coRaw.anchorDay, CUT_OFF_ANCHOR_MIN, CUT_OFF_ANCHOR_MAX);
-    if (anchorDay !== undefined) out.cutOff = { mode: 'custom', anchorDay };
+    if (anchorDay !== undefined) {
+      const cutOff: NonNullable<PayrollPolicyConfig['cutOff']> = { mode: 'custom', anchorDay };
+      // c7fdfcf6 — per-type anchor overrides (claim/overtime/leave/attendance). Each 1..28; a type equal to the
+      // base anchorDay is dropped (it would resolve to the same window ⇒ no need to persist). Only carried when
+      // at least one survives, so a policy that customises only the base window stays lean.
+      const perTypeRaw = (coRaw.perType ?? {}) as Record<string, unknown>;
+      const perType: NonNullable<NonNullable<PayrollPolicyConfig['cutOff']>['perType']> = {};
+      for (const type of CUT_OFF_PER_TYPES) {
+        const d = cleanPosInt(perTypeRaw[type], CUT_OFF_ANCHOR_MIN, CUT_OFF_ANCHOR_MAX);
+        if (d !== undefined && d !== anchorDay) perType[type] = d;
+      }
+      if (Object.keys(perType).length) cutOff.perType = perType;
+      out.cutOff = cutOff;
+    }
   }
+
+  // c7fdfcf6 (Payroll Schedule) — payroll frequency. Only persisted when non-default ('monthly'), so a
+  // monthly schedule stays byte-identical to a null config.
+  const frequency = cleanFrequency(r.frequency);
+  if (frequency !== 'monthly') out.frequency = frequency;
 
   return Object.keys(out).length ? out : null;
 }
@@ -462,4 +493,120 @@ export function payslipReleaseAt(
   const candidate = new Date(base + offset * 24 * 60 * 60 * 1000);
   // Never before close.
   return candidate.getTime() > closedAt.getTime() ? candidate : closedAt;
+}
+
+// ─────────────────────── c7fdfcf6: Payroll Schedule cut-off windows ───────────────────────
+// The reporter ask: payroll processing must retrieve ONLY the transactions that fall inside each transaction
+// type's configured cut-off period, and salary proration must follow the salary cut-off period. These windows
+// are DERIVED (never stored) from an anchor day, so consecutive periods are contiguous + non-overlapping BY
+// CONSTRUCTION — the "prevent overlapping/invalid periods" requirement is satisfied structurally.
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+const isoDay = (y: number, m1to12: number, d: number) => `${y}-${pad2(m1to12)}-${pad2(d)}`;
+
+/** The exact calendar-month window for a 'YYYY-MM' period — `[M-01 … M-end]`. This is the byte-identical
+ *  default the payroll kernel used before this feature (an absent/calendar cut-off resolves to exactly this). */
+export function calendarWindowFor(payPeriod: string): { start: string; end: string } {
+  const [y, m] = payPeriod.split('-').map(Number);
+  const dim = daysInMonthUTC(y, m);
+  return { start: isoDay(y, m, 1), end: isoDay(y, m, dim) };
+}
+
+/**
+ * The operational window an anchor day D (1..28) opens for statutory month M: `[D of M−1 … (D−1) of M]`
+ * (semantics documented on db/schema.ts CutOffMode). Examples: D=26 ⇒ [26 of M−1 … 25 of M]; D=1 ⇒ the whole
+ * of M−1 (1st … last day of M−1). D is clamped to 1..28 so the window opens on the same day-of-month every
+ * month (no Feb/30-day trap). Cross-month safe (never assumes start/end share a month).
+ */
+export function anchorWindowFor(payPeriod: string, anchorDay: number): { start: string; end: string } {
+  const [y, m] = payPeriod.split('-').map(Number);
+  const D = Math.min(Math.max(1, Math.trunc(anchorDay)), CUT_OFF_ANCHOR_MAX);
+  const prevY = m === 1 ? y - 1 : y;
+  const prevM = m === 1 ? 12 : m - 1;
+  const start = isoDay(prevY, prevM, D);
+  // end = (D−1) of M; when D===1 that is "day 0 of M" = the last day of M−1.
+  let endY = y;
+  let endM = m;
+  let endD = D - 1;
+  if (endD < 1) {
+    endY = prevY;
+    endM = prevM;
+    endD = daysInMonthUTC(prevY, prevM);
+  }
+  return { start, end: isoDay(endY, endM, endD) };
+}
+
+/** Minimal shape of the company-level cut-off fallback (the existing company_payroll_config day columns). */
+export type CompanyCutOffConfig = {
+  cutOffDay?: number | null; //            salary / default inputs cut-off
+  overtimeCutOffDay?: number | null;
+  claimCutOffDay?: number | null;
+  unpaidLeaveCutOffDay?: number | null; // the 'leave' type
+  attendanceCutOffDay?: number | null;
+};
+
+/** The company-level anchor-day column for a given transaction type (the fallback tier of the resolution chain). */
+function companyAnchorFor(type: CutOffType, companyCfg: CompanyCutOffConfig | null): number | null {
+  if (!companyCfg) return null;
+  switch (type) {
+    case 'salary':
+      return companyCfg.cutOffDay ?? null;
+    case 'overtime':
+      return companyCfg.overtimeCutOffDay ?? null;
+    case 'claim':
+      return companyCfg.claimCutOffDay ?? null;
+    case 'leave':
+      return companyCfg.unpaidLeaveCutOffDay ?? null;
+    case 'attendance':
+      return companyCfg.attendanceCutOffDay ?? null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Resolve the cut-off WINDOW for a transaction type in a 'YYYY-MM' statutory month, via the resolution chain:
+ *   1. policy `cutOff.perType[type]` (claim/overtime/leave/attendance; 'salary' has none)   — when mode='custom'
+ *   2. policy `cutOff.anchorDay` (the salary/base window)                                     — when mode='custom'
+ *   3. company `*_cut_off_day` column for the type (the company-level default schedule)
+ *   4. calendar month `[M-01 … M-end]`                                                        — legacy default
+ * With NOTHING configured at any tier this returns the exact calendar month, so the kernel path that swaps its
+ * hard-coded `[M-01 … M-end]` for this resolver is byte-identical for an unconfigured company/policy. NEVER throws.
+ */
+export function cutOffWindowFor(
+  type: CutOffType,
+  config: PayrollPolicyConfig | null,
+  companyCfg: CompanyCutOffConfig | null,
+  payPeriod: string,
+): { start: string; end: string } {
+  const co = config?.cutOff;
+  if (co?.mode === 'custom' && typeof co.anchorDay === 'number') {
+    const anchor =
+      type === 'salary' ? co.anchorDay : co.perType?.[type] ?? co.anchorDay;
+    return anchorWindowFor(payPeriod, anchor);
+  }
+  const companyAnchor = companyAnchorFor(type, companyCfg);
+  if (companyAnchor != null && Number.isFinite(companyAnchor)) {
+    return anchorWindowFor(payPeriod, companyAnchor);
+  }
+  return calendarWindowFor(payPeriod);
+}
+
+/** True when the resolved window differs from the plain calendar month — i.e. a real cut-off is in force for
+ *  this type. Lets the kernel keep the exact legacy query when nothing is configured. */
+export function hasCustomCutOff(
+  type: CutOffType,
+  config: PayrollPolicyConfig | null,
+  companyCfg: CompanyCutOffConfig | null,
+  payPeriod: string,
+): boolean {
+  const w = cutOffWindowFor(type, config, companyCfg, payPeriod);
+  const cal = calendarWindowFor(payPeriod);
+  return w.start !== cal.start || w.end !== cal.end;
+}
+
+/** The configured payroll frequency for a policy config (default 'monthly'). Surfaced on the schedule; weekly/
+ *  biweekly aggregate into the statutory month (see PayrollFrequency). */
+export function payrollFrequencyOf(config: PayrollPolicyConfig | null): PayrollFrequency {
+  return config?.frequency ?? 'monthly';
 }

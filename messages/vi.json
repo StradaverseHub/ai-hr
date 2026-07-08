@@ -3642,7 +3642,7 @@
     "claimCutOff": "Ngày chốt hoàn ứng",
     "unpaidLeaveCutOff": "Ngày chốt nghỉ không lương",
     "attendanceCutOff": "Ngày chốt chấm công",
-    "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Chỉ dùng để tham chiếu lập lịch — các giá trị này không thay đổi cách tính kỳ lương, và không bắt buộc thứ tự giữa các trường (ví dụ chấm công trước ngày trả lương).",
+    "cutOffsHint": "Ngày trong tháng (1–31). Để trống = cuối tháng. Ngày chốt lương/dữ liệu được đặt ở trên là Ngày chốt. Đây là các cửa sổ chốt MẶC ĐỊNH CỦA CÔNG TY: bảng lương lấy từng loại giao dịch (làm thêm giờ, yêu cầu hoàn, nghỉ không lương, chấm công) từ cửa sổ được cấu hình khi chính sách lương của nhân viên không tự đặt riêng. Các khoản đóng góp theo luật vẫn được tổng hợp theo tháng dương lịch.",
     "save": "Lưu",
     "hiringTitle": "Mặc định tuyển dụng",
     "probationMonths": "Thời gian thử việc mặc định (tháng)",
@@ -3750,7 +3750,29 @@
       "modeCustom": "Kỳ tùy chỉnh",
       "anchorDay": "Ngày neo",
       "anchorDayPlaceholder": "vd. 25",
-      "anchorDayHint": "Chỉ dùng cho chế độ \"Kỳ tùy chỉnh\". Ngày neo (1–28) là ngày trong tháng mà cửa sổ mở — ví dụ, neo 25 nghĩa là cửa sổ chạy từ ngày 25 của tháng trước đến ngày 24 của tháng kỳ. Chỉ áp dụng cho chính sách Kỳ tùy chỉnh; các tháng theo luật vẫn giữ theo tháng dương lịch."
+      "anchorDayHint": "Chỉ dùng cho chế độ \"Kỳ tùy chỉnh\". Ngày neo (1–28) là ngày trong tháng mà cửa sổ mở — ví dụ, neo 25 nghĩa là cửa sổ chạy từ ngày 25 của tháng trước đến ngày 24 của tháng kỳ. Chỉ áp dụng cho chính sách Kỳ tùy chỉnh; các tháng theo luật vẫn giữ theo tháng dương lịch.",
+      "frequencyLabel": "Tần suất trả lương",
+      "frequency": {
+        "monthly": "Hàng tháng",
+        "weekly": "Hàng tuần",
+        "biweekly": "Hai tuần một lần"
+      },
+      "frequencyHint": "Tần suất chạy bảng lương. Hàng tuần và hai tuần một lần là nhịp vận hành — các khoản đóng góp theo luật (EPF, SOCSO, EIS, PCB) vẫn được tổng hợp và báo cáo theo tháng dương lịch theo quy định của pháp luật.",
+      "perTypeTitle": "Ghi đè ngày chốt theo loại",
+      "type": {
+        "salary": "Lương",
+        "claim": "Yêu cầu hoàn",
+        "overtime": "Làm thêm giờ",
+        "leave": "Nghỉ phép",
+        "attendance": "Chấm công"
+      },
+      "inheritPlaceholder": "Kế thừa",
+      "perTypeHint": "Mỗi loại giao dịch có thể chốt vào ngày neo riêng (1–28). Để trống để kế thừa ngày neo lương ở trên. Chỉ dùng khi chế độ kỳ là \"Kỳ tùy chỉnh\".",
+      "previewTitle": "Xem trước ngày chốt cho {period}",
+      "previewType": "Loại",
+      "previewFrom": "Từ",
+      "previewTo": "Đến",
+      "previewHint": "Các ngày mỗi loại giao dịch sẽ được lấy cho tháng hiện tại, dẫn xuất từ cấu hình ngày chốt đã lưu. Các kỳ liên tiếp nối tiếp nhau và không bao giờ chồng lấp."
     },
     "copy": "Sao chép",
     "copySuffix": "(bản sao)",

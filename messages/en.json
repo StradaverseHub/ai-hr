@@ -3642,7 +3642,7 @@
     "claimCutOff": "Claim cut-off day",
     "unpaidLeaveCutOff": "Unpaid-leave cut-off day",
     "attendanceCutOff": "Attendance cut-off day",
-    "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. Scheduling reference only — these do not change how the pay period is calculated, and no cross-field ordering (e.g. attendance before pay day) is enforced.",
+    "cutOffsHint": "Day of month (1–31). Blank = month-end. The salary/inputs cut-off is set above as Cut-off day. These are the COMPANY DEFAULT cut-off windows: payroll pulls each transaction type (overtime, claims, unpaid leave, attendance) from its configured window when an employee's payroll policy doesn't set its own. Statutory contributions still aggregate per calendar month.",
     "save": "Save",
     "hiringTitle": "Hiring defaults",
     "probationMonths": "Default probation period (months)",
@@ -3750,7 +3750,29 @@
       "modeCustom": "Custom period",
       "anchorDay": "Anchor day",
       "anchorDayPlaceholder": "e.g. 25",
-      "anchorDayHint": "Used only for the \"Custom period\" mode. The anchor day (1–28) is the day of the month the window opens — for example, anchor 25 means the window runs from the 25th of the previous month to the 24th of the period month. Applies only to Custom-period policies; statutory months stay on the calendar month."
+      "anchorDayHint": "Used only for the \"Custom period\" mode. The anchor day (1–28) is the day of the month the window opens — for example, anchor 25 means the window runs from the 25th of the previous month to the 24th of the period month. Applies only to Custom-period policies; statutory months stay on the calendar month.",
+      "frequencyLabel": "Payroll frequency",
+      "frequency": {
+        "monthly": "Monthly",
+        "weekly": "Weekly",
+        "biweekly": "Bi-weekly"
+      },
+      "frequencyHint": "How often payroll runs. Weekly and bi-weekly are operational cadences — statutory contributions (EPF, SOCSO, EIS, PCB) are still aggregated and reported per calendar month, as required by law.",
+      "perTypeTitle": "Per-type cut-off overrides",
+      "type": {
+        "salary": "Salary",
+        "claim": "Claim",
+        "overtime": "Overtime",
+        "leave": "Leave",
+        "attendance": "Attendance"
+      },
+      "inheritPlaceholder": "Inherit",
+      "perTypeHint": "Each transaction type can close on its own anchor day (1–28). Leave blank to inherit the salary anchor day above. Only used when the period mode is \"Custom period\".",
+      "previewTitle": "Cut-off preview for {period}",
+      "previewType": "Type",
+      "previewFrom": "From",
+      "previewTo": "To",
+      "previewHint": "The dates each transaction type will be picked up for the current month, derived from the saved cut-off configuration. Consecutive periods are contiguous and never overlap."
     },
     "copy": "Copy",
     "copySuffix": "(copy)",

@@ -40,6 +40,7 @@ import {
   payrollIndividualTxn,
   payrollInput,
   payrollPermissionGrant,
+  payrollPolicy,
   payrollReprocessJob,
   payrollStatusHistory,
   payrollStepUpChallenge,
@@ -61,6 +62,8 @@ import {
   applyOvertimeCaps,
   applyOvertimeCapsDetailed,
   applyRounding,
+  type CompanyCutOffConfig,
+  cutOffWindowFor,
   encashmentDivisorDays,
   ENCASHMENT_ORP_DIVISOR,
   leaveDivisorDays,
@@ -70,6 +73,7 @@ import {
   usesWorkingDayProration,
   workingDayRoster,
 } from './payroll-policy-config';
+import type { CutOffType } from '../db/schema';
 
 export class BatchNotDraftError extends Error {
   constructor() {
@@ -148,6 +152,73 @@ export function defaultPaymentDate(payPeriod: string, payDay: number | null | un
 }
 
 /**
+ * c7fdfcf6 (Payroll Schedule) — the COMPANY-level cut-off schedule for a batch: the company_payroll_config day
+ * columns (the fallback tier) plus the company-default payroll policy's config (the policy tier). Loaded ONCE
+ * per batch flow; each transaction type's window is then resolved via `cutOffWindowFor`. A company with no
+ * config + no default policy resolves every window to the plain calendar month, so the kernel reads that swap
+ * their hard-coded `[M-01 … M-end]` for the resolved window stay byte-identical. Derived read ⇒ no DomainEvent.
+ */
+async function loadBatchCutOffSchedule(
+  tx: Tx,
+  companyId: string,
+): Promise<{ companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null }> {
+  const [cpc] = await tx
+    .select({
+      cutOffDay: companyPayrollConfig.cutOffDay,
+      overtimeCutOffDay: companyPayrollConfig.overtimeCutOffDay,
+      claimCutOffDay: companyPayrollConfig.claimCutOffDay,
+      unpaidLeaveCutOffDay: companyPayrollConfig.unpaidLeaveCutOffDay,
+      attendanceCutOffDay: companyPayrollConfig.attendanceCutOffDay,
+      defaultPayrollPolicyId: companyPayrollConfig.defaultPayrollPolicyId,
+    })
+    .from(companyPayrollConfig)
+    .where(eq(companyPayrollConfig.companyId, companyId))
+    .limit(1);
+  const companyCfg: CompanyCutOffConfig | null = cpc
+    ? {
+        cutOffDay: cpc.cutOffDay,
+        overtimeCutOffDay: cpc.overtimeCutOffDay,
+        claimCutOffDay: cpc.claimCutOffDay,
+        unpaidLeaveCutOffDay: cpc.unpaidLeaveCutOffDay,
+        attendanceCutOffDay: cpc.attendanceCutOffDay,
+      }
+    : null;
+  let defaultConfig: PayrollPolicyConfig | null = null;
+  if (cpc?.defaultPayrollPolicyId) {
+    const [pol] = await tx
+      .select({ config: payrollPolicy.config, status: payrollPolicy.status })
+      .from(payrollPolicy)
+      .where(eq(payrollPolicy.id, cpc.defaultPayrollPolicyId))
+      .limit(1);
+    if (pol && pol.status === 'active') defaultConfig = (pol.config ?? null) as PayrollPolicyConfig | null;
+  }
+  return { companyCfg, defaultConfig };
+}
+
+/** Resolve the company-level cut-off window for one transaction type of a batch's period, from a loaded
+ *  schedule. Byte-identical to `[M-01 … M-end]` when nothing is configured. */
+function batchTypeWindow(
+  sched: { companyCfg: CompanyCutOffConfig | null; defaultConfig: PayrollPolicyConfig | null },
+  type: CutOffType,
+  payPeriod: string,
+): { start: string; end: string } {
+  return cutOffWindowFor(type, sched.defaultConfig, sched.companyCfg, payPeriod);
+}
+
+/** c7fdfcf6 (Payroll Schedule) — resolve the company-level cut-off window for a transaction TYPE + period in one
+ *  call (loads the schedule, then resolves). Exported so sibling prefills (e.g. claims) select transactions by
+ *  the same schedule the payroll kernel uses. Calendar month when nothing is configured (byte-identical). */
+export async function resolveBatchCutOffWindow(
+  tx: Tx,
+  companyId: string,
+  type: CutOffType,
+  payPeriod: string,
+): Promise<{ start: string; end: string }> {
+  const sched = await loadBatchCutOffSchedule(tx, companyId);
+  return batchTypeWindow(sched, type, payPeriod);
+}
+
+/**
  * EA-1955 incomplete-month proration factor for a 'YYYY-MM' wage period: the employee is paid for
  * the calendar days they were employed within the month, over the number of days in that month
  * (Employment Act 1955 s.18A ordinary-rate basis). Returns 1 for a full month, 0 if not employed
@@ -165,16 +236,28 @@ function prorationFactor(
   payPeriod: string,
   hiredOn: string,
   terminatedOn: string | null,
-  opts?: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } },
+  opts?: {
+    divisorDays?: number;
+    workingDayBasis?: { roster: number[]; holidays: Set<string> };
+    // c7fdfcf6 (Payroll Schedule) — the SALARY cut-off window overriding the calendar-month bounds. Absent ⇒
+    // the calendar month `[M-01 … M-end]` (byte-identical to the legacy formula). When a policy/company cut-off
+    // is configured, the join-date / resignation proration is counted against this window (e.g. anchor 26 ⇒
+    // [26 of M-1 … 25 of M]) and the denominator is the window's own length in days — delivering the reporter's
+    // "salary cut-off determines Basic Salary / Join-Date / Resignation proration".
+    window?: { start: string; end: string };
+  },
 ): number {
   const [year, month1] = payPeriod.split('-').map(Number);
   const dim = daysInMonth(year, month1);
-  const periodStart = `${payPeriod}-01`;
-  const periodEnd = `${payPeriod}-${String(dim).padStart(2, '0')}`;
+  const periodStart = opts?.window?.start ?? `${payPeriod}-01`;
+  const periodEnd = opts?.window?.end ?? `${payPeriod}-${String(dim).padStart(2, '0')}`;
+  // Inclusive length of the window in days (cross-month safe). For the calendar-month default this equals `dim`.
+  const windowDays =
+    Math.round((Date.parse(`${periodEnd}T00:00:00Z`) - Date.parse(`${periodStart}T00:00:00Z`)) / 86_400_000) + 1;
   const start = hiredOn > periodStart ? hiredOn : periodStart;
   const end = terminatedOn && terminatedOn < periodEnd ? terminatedOn : periodEnd;
   if (start > periodEnd || end < periodStart) return 0;
-  const denom = opts?.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : dim;
+  const denom = opts?.divisorDays && opts.divisorDays > 0 ? opts.divisorDays : windowDays;
   if (opts?.workingDayBasis) {
     // Count the employee's WORKING days within [start, end] vs the working days across the whole period.
     const { roster, holidays } = opts.workingDayBasis;
@@ -197,8 +280,11 @@ function prorationFactor(
     if (denomWork === 0) return 0;
     return Math.min(1, eligibleWork / denomWork);
   }
-  const eligibleDays = Math.max(0, Number(end.slice(8, 10)) - Number(start.slice(8, 10)) + 1);
-  return Math.min(1, eligibleDays / denom);
+  // Cross-month-safe eligible-day count (inclusive). For a same-month calendar window this is identical to the
+  // legacy `end.day − start.day + 1`.
+  const eligibleDays =
+    Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+  return Math.min(1, Math.max(0, eligibleDays) / denom);
 }
 
 /**
@@ -1290,10 +1376,18 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
     const periodStart = `${batch.payPeriod}-01`;
     const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
 
-    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default.
+    // Statutory ruleset in effect at period end (ADR-0019): DB override or the verified default. The
+    // statutory month stays CALENDAR-bound by law — the cut-off window below moves only which OT transactions
+    // land in the run, never the statutory month they contribute in.
     const rules = await pack.payroll.loadRuleset(tx, { asOf: periodEnd });
 
-    // Per-day classified OT minutes within the pay period (per-day matters: the
+    // c7fdfcf6 (Payroll Schedule) — resolve the OVERTIME cut-off window for this run: OT transactions are pulled
+    // from `[cut-off window]` instead of the fixed calendar month. Absent/calendar config ⇒ the window IS the
+    // calendar month, so the query below is byte-identical for an unconfigured company.
+    const otSched = await loadBatchCutOffSchedule(tx, batch.companyId);
+    const otWindow = batchTypeWindow(otSched, 'overtime', batch.payPeriod);
+
+    // Per-day classified OT minutes within the cut-off window (per-day matters: the
     // rest-day ½/1-day rule cannot be computed from monthly aggregates).
     // ADR-0033: when TOIL is on, a day already banked as time-in-lieu is excluded here — the worked OT is
     // compensated once, as cash XOR leave. Flag off ⇒ no clause ⇒ byte-identical.
@@ -1312,8 +1406,8 @@ export async function prefillOvertimeFromAttendance(ctx: SessionContext, p: { ba
       .where(
         and(
           eq(employment.companyId, batch.companyId),
-          gte(attendance.attendanceDate, periodStart),
-          lte(attendance.attendanceDate, periodEnd),
+          gte(attendance.attendanceDate, otWindow.start),
+          lte(attendance.attendanceDate, otWindow.end),
           gt(attendance.otMinutes, 0),
           excludeToilDays,
         ),
@@ -1445,11 +1539,12 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
     const [comp] = await tx.select({ id: payComponent.id }).from(payComponent).where(eq(payComponent.code, 'SHIFT_DIFFERENTIAL')).limit(1);
     if (!comp) throw new Error('SHIFT_DIFFERENTIAL pay-component is not seeded — run the catalog seed first');
 
-    const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
-    const periodStart = `${batch.payPeriod}-01`;
-    const periodEnd = `${batch.payPeriod}-${String(daysInMonth(pYear, pMonth)).padStart(2, '0')}`;
+    // c7fdfcf6 (Payroll Schedule) — shift-differential is derived from ATTENDANCE, so it follows the attendance
+    // cut-off window. Absent/calendar config ⇒ the window is the calendar month (byte-identical).
+    const shiftSched = await loadBatchCutOffSchedule(tx, batch.companyId);
+    const attWindow = batchTypeWindow(shiftSched, 'attendance', batch.payPeriod);
 
-    // Worked differential shifts in the period for this company (the actual attendance row joined to the
+    // Worked differential shifts in the cut-off window for this company (the actual attendance row joined to the
     // rostered shift, keeping only shifts that carry a differential).
     const rows = await tx
       .select({ employmentId: attendance.employmentId, workedMinutes: attendance.workedMinutes, differential: shift.differential })
@@ -1463,8 +1558,8 @@ export async function prefillShiftDifferentialFromRoster(ctx: SessionContext, p:
       .where(
         and(
           eq(employment.companyId, batch.companyId),
-          gte(attendance.attendanceDate, periodStart),
-          lte(attendance.attendanceDate, periodEnd),
+          gte(attendance.attendanceDate, attWindow.start),
+          lte(attendance.attendanceDate, attWindow.end),
           gt(attendance.workedMinutes, 0),
           isNotNull(shift.differential),
         ),
@@ -1685,7 +1780,14 @@ export async function generatePayslips(
       string,
       { manualRequested: number; manualApplied: number; cp38Requested: number; cp38Applied: number; loanRequested: number; loanApplied: number }
     >();
-    const unpaidByEmp = await unpaidDaysByEmployment(tx, periodStart, periodEnd);
+    // c7fdfcf6 (Payroll Schedule) — the company-level cut-off schedule (company_payroll_config day columns +
+    // the company-default policy's config). Loaded ONCE; each transaction type's window resolves against it,
+    // falling back to the plain calendar month when nothing is configured (byte-identical). Per-employment
+    // policy overrides for the SALARY window are applied in the loop below (the policy is resolved there).
+    const cutOffSchedule = await loadBatchCutOffSchedule(tx, batch.companyId);
+    // Unpaid-leave selection follows the LEAVE cut-off window (company-level). Absent/calendar ⇒ [M-01 … M-end].
+    const leaveWindow = batchTypeWindow(cutOffSchedule, 'leave', payPeriod);
+    const unpaidByEmp = await unpaidDaysByEmployment(tx, leaveWindow.start, leaveWindow.end);
 
     // ── 2.1.1 (ADR-0064) — Monthly payroll-policy General Settings, resolved at RUN TIME ──
     // The load-bearing new plumbing: for each employment, resolve its assigned policy's config (raw
@@ -1696,7 +1798,13 @@ export async function generatePayslips(
     const policyConfigByEmp = new Map<string, PayrollPolicyConfig | null>();
     // Working-day proration needs the holiday set per employment; resolve it lazily only when a config asks
     // for a working-day basis, so the default (calendar) path issues NO extra query.
-    const prorationOptsByEmp = new Map<string, { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } }>();
+    const prorationOptsByEmp = new Map<
+      string,
+      { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> }; window?: { start: string; end: string } }
+    >();
+    // c7fdfcf6 (Payroll Schedule) — per-employment SALARY cut-off window day count, feeding the `cutoff_days`
+    // leave-divisor fact (activating the already-shipped 'cutoff_days' divisor selector). Absent config ⇒ `dim`.
+    const salaryCutoffDaysByEmp = new Map<string, number>();
     // ── 2.1.2 — Daily payroll policy: rate × eligible days worked, NO monthly proration ──
     // For an employment on an ACTIVE policyType='daily' policy carrying a per_day PayRule, basic pay is the
     // per-day rate × the number of eligible working days in the period (Mon–Fri roster minus holidays, clamped
@@ -1716,7 +1824,7 @@ export async function generatePayslips(
       const isResign = !!(e.terminatedOn && e.terminatedOn < periodEnd);
       const prorationSettings = resolveProrationSettings(cfg, { isHire, isResign });
       const divisorDays = prorationDivisorDays(prorationSettings, dim);
-      const opts: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } } = {};
+      const opts: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> }; window?: { start: string; end: string } } = {};
       if (divisorDays !== dim) opts.divisorDays = divisorDays;
       if (usesWorkingDayProration(prorationSettings)) {
         const holidays = (prorationSettings?.includeHoliday ?? false)
@@ -1724,7 +1832,18 @@ export async function generatePayslips(
           : await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
         opts.workingDayBasis = { roster: workingDayRoster(prorationSettings), holidays };
       }
-      if (opts.divisorDays !== undefined || opts.workingDayBasis) prorationOptsByEmp.set(e.employmentId, opts);
+      // c7fdfcf6 (Payroll Schedule) — the SALARY cut-off window for this employment (policy override → company
+      // column → calendar). When it is a real (non-calendar) window, drive the join-date/resignation proration
+      // by it and record its length for the cutoff_days leave divisor; a calendar/absent config leaves both at
+      // the legacy calendar-month behaviour (byte-identical).
+      const salaryWindow = cutOffWindowFor('salary', cfg, cutOffSchedule.companyCfg, payPeriod);
+      const salaryWindowDays =
+        Math.round((Date.parse(`${salaryWindow.end}T00:00:00Z`) - Date.parse(`${salaryWindow.start}T00:00:00Z`)) / 86_400_000) + 1;
+      if (salaryWindow.start !== periodStart || salaryWindow.end !== periodEnd) {
+        opts.window = salaryWindow;
+        salaryCutoffDaysByEmp.set(e.employmentId, salaryWindowDays);
+      }
+      if (opts.divisorDays !== undefined || opts.workingDayBasis || opts.window) prorationOptsByEmp.set(e.employmentId, opts);
       // 2.1.2 daily branch — only when the resolved policy is daily AND carries a per_day rate. Eligible days
       // = the employee's working days (Mon–Fri) in the period, less public holidays, within their tenure
       // window. Zero eligible days ⇒ basic = 0 (no divide-by-zero: this is a multiply, not a divide).
@@ -2242,7 +2361,7 @@ export async function generatePayslips(
       // divisor is policy-configurable (default calendar_month ⇒ `dim`, byte-identical).
       const unpaidDivisor = leaveDivisorDays(cfg?.leave?.unpaidLeaveDivisor, cfg, {
         calendarDaysInMonth: dim,
-        cutoffDays: dim, //                       cut-off-day-driven divisor is a deferred spec; calendar fallback
+        cutoffDays: salaryCutoffDaysByEmp.get(e.employmentId) ?? dim, // c7fdfcf6 — salary cut-off window length; calendar fallback = dim
         workingDays: workingDaysInPeriodFor(e.employmentId),
       });
       // 2.1.2 — a daily wage already pays ONLY eligible worked days, so an unpaid-leave day is simply not a

@@ -128,10 +128,26 @@ function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
       deductions: String(fd.get('roundingDeductions') ?? 'none'),
       netPay: String(fd.get('roundingNetPay') ?? 'none'),
     },
-    // 2.1.4 cut-off window (custom_period only; cleaner drops it for other types).
-    ...(policyType === 'custom_period' && String(fd.get('cutOffMode') ?? 'calendar') === 'custom'
-      ? { cutOff: { mode: 'custom', anchorDay: numOrUndef(fd, 'anchorDay') } }
+    // c7fdfcf6 (Payroll Schedule) — the cut-off WINDOW is now a general payroll-schedule concern configurable on
+    // ANY policy type (not only custom_period): mode='custom' anchors the base (salary) window; per-type inputs
+    // (claim/overtime/leave/attendance) override it. cleanPayrollPolicyConfig drops a 'calendar' mode + any
+    // per-type day equal to the base back to NULL, so an untouched schedule stays byte-identical.
+    ...(String(fd.get('cutOffMode') ?? 'calendar') === 'custom'
+      ? {
+          cutOff: {
+            mode: 'custom',
+            anchorDay: numOrUndef(fd, 'anchorDay'),
+            perType: {
+              claim: numOrUndef(fd, 'cutOff_claim'),
+              overtime: numOrUndef(fd, 'cutOff_overtime'),
+              leave: numOrUndef(fd, 'cutOff_leave'),
+              attendance: numOrUndef(fd, 'cutOff_attendance'),
+            },
+          },
+        }
       : {}),
+    // c7fdfcf6 — payroll frequency (Weekly / Bi-Weekly / Monthly). Cleaner drops 'monthly' (default) to NULL.
+    frequency: String(fd.get('frequency') ?? 'monthly'),
   };
   return raw as PayrollPolicyConfig;
 }

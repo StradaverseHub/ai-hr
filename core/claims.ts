@@ -24,7 +24,8 @@ import {
 export type { ClaimRateConfig };
 import { toCsv } from '../lib/csv';
 import { assertCanDecide } from './approvals';
-import { resolveBatchScopeFilter, type BatchScope } from './payroll';
+import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
+import { calendarWindowFor } from './payroll-policy-config';
 
 const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'reimbursements';
@@ -818,12 +819,31 @@ export async function prefillClaimsForBatch(
 ): Promise<{ applied: number; claims: number; total: number }> {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, status: payrollBatch.status, scope: payrollBatch.scope })
+      .select({
+        id: payrollBatch.id,
+        companyId: payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        status: payrollBatch.status,
+        scope: payrollBatch.scope,
+      })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
     if (!batch) throw new ClaimError('Payroll batch not found');
     if (batch.status !== 'draft') throw new ClaimError('Claims can only be prefilled onto a draft batch');
+
+    // c7fdfcf6 (Payroll Schedule) — the CLAIM cut-off window for this run. A claim is queued only when it was
+    // DECIDED (approved) on or before the window's close; approvals after the cut-off roll to the next run. The
+    // filter is an UPPER bound only (older still-unscheduled claims catch up, unchanged). Applied ONLY when a
+    // real (non-calendar) claim cut-off is configured — with no cut-off, claims are queued by status alone, exactly
+    // as before (byte-identical: the plain calendar month is NOT imposed as a new filter).
+    const claimWindow = await resolveBatchCutOffWindow(tx, batch.companyId, 'claim', batch.payPeriod);
+    const calWindow = calendarWindowFor(batch.payPeriod);
+    const claimCutOffActive = claimWindow.end !== calWindow.end || claimWindow.start !== calWindow.start;
+    // Inclusive end-of-day upper bound on the approval timestamp (UTC — matches how decided_at is stored).
+    const claimDecidedUpperBound = claimCutOffActive
+      ? lte(claimRequest.decidedAt, sql`${`${claimWindow.end}T23:59:59.999Z`}::timestamptz`)
+      : undefined;
 
     // Money-safety fix (Payroll Process wizard plan): narrow to the batch's scope (departments' current
     // assignees ∪ explicit individuals) EXACTLY the way generatePayslips resolves it, so this button never
@@ -843,6 +863,7 @@ export async function prefillClaimsForBatch(
           eq(claimRequest.taxable, true),
           isNull(claimRequest.payrollBatchId),
           scopeFilter,
+          claimDecidedUpperBound,
         ),
       );
     if (due.length === 0) return { applied: 0, claims: 0, total: 0 };

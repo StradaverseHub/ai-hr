@@ -3642,7 +3642,7 @@
     "claimCutOff": "Tarikh tutup tuntutan",
     "unpaidLeaveCutOff": "Tarikh tutup cuti tanpa gaji",
     "attendanceCutOff": "Tarikh tutup kehadiran",
-    "cutOffsHint": "Hari dalam bulan (1–31). Kosong = akhir bulan. Tarikh tutup gaji/input ditetapkan di atas sebagai Tarikh tutup. Rujukan penjadualan sahaja — ini tidak mengubah cara tempoh gaji dikira, dan tiada susunan antara medan (cth. kehadiran sebelum hari gaji) dikuatkuasakan.",
+    "cutOffsHint": "Hari dalam bulan (1–31). Kosong = hujung bulan. Potongan gaji/input ditetapkan di atas sebagai Hari potongan. Ini ialah tetingkap potongan LALAI SYARIKAT: gaji mengambil setiap jenis transaksi (kerja lebih masa, tuntutan, cuti tanpa gaji, kehadiran) daripada tetingkap yang dikonfigurasi apabila dasar gaji pekerja tidak menetapkan sendiri. Caruman berkanun tetap diagregat mengikut bulan kalendar.",
     "save": "Simpan",
     "hiringTitle": "Tetapan lalai pengambilan",
     "probationMonths": "Tempoh percubaan lalai (bulan)",
@@ -3750,7 +3750,29 @@
       "modeCustom": "Tempoh tersuai",
       "anchorDay": "Hari sauh",
       "anchorDayPlaceholder": "cth. 25",
-      "anchorDayHint": "Digunakan hanya untuk mod \"Tempoh tersuai\". Hari sauh (1–28) ialah hari dalam bulan apabila tetingkap dibuka — contohnya, sauh 25 bermaksud tetingkap berjalan dari 25 hari bulan sebelumnya hingga 24 hari bulan tempoh. Hanya digunakan untuk dasar Tempoh tersuai; bulan berkanun kekal pada bulan kalendar."
+      "anchorDayHint": "Digunakan hanya untuk mod \"Tempoh tersuai\". Hari sauh (1–28) ialah hari dalam bulan apabila tetingkap dibuka — contohnya, sauh 25 bermaksud tetingkap berjalan dari 25 hari bulan sebelumnya hingga 24 hari bulan tempoh. Hanya digunakan untuk dasar Tempoh tersuai; bulan berkanun kekal pada bulan kalendar.",
+      "frequencyLabel": "Kekerapan gaji",
+      "frequency": {
+        "monthly": "Bulanan",
+        "weekly": "Mingguan",
+        "biweekly": "Dua mingguan"
+      },
+      "frequencyHint": "Kekerapan gaji dijalankan. Mingguan dan dua mingguan ialah kadens operasi — caruman berkanun (KWSP, PERKESO, SIP, PCB) tetap diagregat dan dilaporkan mengikut bulan kalendar, seperti yang dikehendaki undang-undang.",
+      "perTypeTitle": "Tetapan potongan mengikut jenis",
+      "type": {
+        "salary": "Gaji",
+        "claim": "Tuntutan",
+        "overtime": "Kerja lebih masa",
+        "leave": "Cuti",
+        "attendance": "Kehadiran"
+      },
+      "inheritPlaceholder": "Warisi",
+      "perTypeHint": "Setiap jenis transaksi boleh ditutup pada hari sauhnya sendiri (1–28). Biarkan kosong untuk mewarisi hari sauh gaji di atas. Hanya digunakan apabila mod tempoh ialah \"Tempoh tersuai\".",
+      "previewTitle": "Pratonton potongan untuk {period}",
+      "previewType": "Jenis",
+      "previewFrom": "Dari",
+      "previewTo": "Hingga",
+      "previewHint": "Tarikh setiap jenis transaksi akan diambil untuk bulan semasa, diperoleh daripada konfigurasi potongan yang disimpan. Tempoh berturut-turut adalah bersambung dan tidak pernah bertindih."
     },
     "copy": "Salin",
     "copySuffix": "(salinan)",
