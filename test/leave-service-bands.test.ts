@@ -15,7 +15,13 @@ import { createJobGrade, createLeavePolicy, deleteLeavePolicy, updateLeavePolicy
 import { accrueEarnedLeave, expireCarriedLeave, openLeaveYear } from '../core/leave';
 import { leaveEntitlementBreakdown } from '../core/read';
 import {
+  applyMaxBalance,
+  bandCarryExpiry,
+  bandCarryMax,
   bandDaysFor,
+  bandFor,
+  bandMaxBalance,
+  hasAnyCarryExpiry,
   previewEntitlement,
   resolveGradePolicy,
   type AccrualConfig,
@@ -252,6 +258,35 @@ describe('Leave Entitlement Rules Engine — band validation (admin.ts write-tim
 
   it('rejects toYears <= fromYears within a band', async () => {
     await expect(create([{ fromYears: 0, toYears: 0, days: 20 } as ServiceBand])).rejects.toThrow();
+  });
+
+  // Feedback 9d8cf621 — the new per-range columns are validated at write time (negative caps, half-set
+  // expiry, impossible dates) and a valid set round-trips with its extra keys intact.
+  it('rejects a negative per-range carry-forward days', async () => {
+    await expect(create([{ fromYears: 0, toYears: null, days: 14, carryForwardDays: -1 }])).rejects.toThrow(/carry-forward days/i);
+  });
+
+  it('rejects a negative per-range maximum balance days', async () => {
+    await expect(create([{ fromYears: 0, toYears: null, days: 14, maxBalanceDays: -5 }])).rejects.toThrow(/maximum balance/i);
+  });
+
+  it('rejects a half-set per-range carry-forward expiry (month without day)', async () => {
+    await expect(create([{ fromYears: 0, toYears: null, days: 14, carryForwardExpiryMonth: 6 }])).rejects.toThrow(/month and a day/i);
+  });
+
+  it('rejects an impossible per-range carry-forward expiry date (31 Feb)', async () => {
+    await expect(
+      create([{ fromYears: 0, toYears: null, days: 14, carryForwardExpiryMonth: 2, carryForwardExpiryDay: 31 }]),
+    ).rejects.toThrow(/real calendar date/i);
+  });
+
+  it('accepts and round-trips a band carrying all per-range columns', async () => {
+    const bands: ServiceBand[] = [
+      { fromYears: 0, toYears: null, days: 14, carryForwardDays: 5, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31, maxBalanceDays: 20 },
+    ];
+    const row = await create(bands);
+    const acc = await readAccrual(row.id);
+    expect(acc.serviceBands).toEqual(bands);
   });
 
   it('rejects more than 10 bands', async () => {
@@ -545,5 +580,174 @@ describe('Leave Entitlement Rules Engine — read-layer wiring (leaveEntitlement
     // currentYearEntitlement is ledger-derived (the hire grant, 14 days at 0y band) — read.ts wiring does
     // not change this number; it changes carryMax/expiry consistency (asserted implicitly by not throwing).
     expect(breakdown!.currentYearEntitlement).toBe(14);
+  });
+});
+
+// ═══ Feedback 9d8cf621 — per-range entitlement columns actually drive the engine ══════════════════════
+// Gap 1: Maximum Balance Days must be ENFORCED (clamp balance at grant / earned accrual / carry-in).
+// Gap 2: per-range Carry-Forward Days + Carry-Forward Expiry must be APPLIED (not just persisted).
+
+describe('9d8cf621 pure — per-range resolution + Maximum Balance clamp', () => {
+  it('bandFor returns the matching band object incl. its per-range overrides', () => {
+    const bands: ServiceBand[] = [
+      { fromYears: 0, toYears: 2, days: 14, carryForwardDays: 5, maxBalanceDays: 15 },
+      { fromYears: 2, toYears: null, days: 16, carryForwardDays: 8, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 },
+    ];
+    const acc: AccrualConfig = { annualDays: 12, serviceBands: bands };
+    expect(bandFor(acc, 1)).toMatchObject({ days: 14, carryForwardDays: 5, maxBalanceDays: 15 });
+    expect(bandFor(acc, 3)).toMatchObject({ days: 16, carryForwardDays: 8 });
+    expect(bandFor({ annualDays: 12 }, 3)).toBeNull();
+  });
+
+  it('bandCarryMax / bandMaxBalance / bandCarryExpiry are defensive (bad values ⇒ null)', () => {
+    expect(bandCarryMax({ fromYears: 0, toYears: null, days: 10, carryForwardDays: 7 })).toBe(7);
+    expect(bandCarryMax({ fromYears: 0, toYears: null, days: 10, carryForwardDays: -3 })).toBeNull();
+    expect(bandCarryMax({ fromYears: 0, toYears: null, days: 10 })).toBeNull();
+    expect(bandMaxBalance({ fromYears: 0, toYears: null, days: 10, maxBalanceDays: 0 })).toBe(0);
+    expect(bandMaxBalance({ fromYears: 0, toYears: null, days: 10, maxBalanceDays: null })).toBeNull();
+    expect(bandCarryExpiry({ fromYears: 0, toYears: null, days: 10, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 })).toEqual({ month: 3, day: 31 });
+    expect(bandCarryExpiry({ fromYears: 0, toYears: null, days: 10, carryForwardExpiryMonth: 2, carryForwardExpiryDay: 31 })).toBeNull();
+    expect(bandCarryExpiry({ fromYears: 0, toYears: null, days: 10 })).toBeNull();
+  });
+
+  it('applyMaxBalance clamps carry-in to the cap and the grant to the remaining room', () => {
+    expect(applyMaxBalance(10, 8, null)).toEqual({ carry: 10, grant: 8 }); // no cap ⇒ pass-through
+    expect(applyMaxBalance(10, 8, 15)).toEqual({ carry: 10, grant: 5 }); // room = 15-10 = 5
+    expect(applyMaxBalance(20, 8, 15)).toEqual({ carry: 15, grant: 0 }); // carry over cap ⇒ clamp, no room
+    expect(applyMaxBalance(0, 20, 15)).toEqual({ carry: 0, grant: 15 }); // fresh grant capped
+  });
+
+  it('hasAnyCarryExpiry sees policy-level OR per-band expiry', () => {
+    expect(hasAnyCarryExpiry({ annualDays: 12, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 })).toBe(true);
+    expect(
+      hasAnyCarryExpiry({
+        annualDays: 12,
+        serviceBands: [{ fromYears: 0, toYears: null, days: 14, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 }],
+      }),
+    ).toBe(true);
+    expect(hasAnyCarryExpiry({ annualDays: 12, serviceBands: [{ fromYears: 0, toYears: null, days: 14 }] })).toBe(false);
+    expect(hasAnyCarryExpiry({ annualDays: 12 })).toBe(false);
+  });
+
+  it('resolveGradePolicy surfaces maxBalanceDays + the per-range carry OVERRIDE from the winning band', () => {
+    const rows: GradePolicyRow[] = [
+      {
+        gradeId: null,
+        companyId: null,
+        accrual: {
+          annualDays: 12,
+          carryForwardMax: 2, // policy-level carry — should be OVERRIDDEN by the band's carryForwardDays
+          serviceBands: [
+            { fromYears: 0, toYears: null, days: 14, carryForwardDays: 9, maxBalanceDays: 15, carryForwardExpiryMonth: 6, carryForwardExpiryDay: 30 },
+          ],
+        },
+      },
+    ];
+    const pol = resolveGradePolicy(rows, null, null, 1);
+    expect(pol).not.toBeNull();
+    expect(pol!.days).toBe(14);
+    expect(pol!.carryMax).toBe(9); // per-range override wins over policy-level 2
+    expect(pol!.maxBalanceDays).toBe(15);
+    expect(pol!.carryExpiry).toEqual({ month: 6, day: 30 });
+  });
+
+  it('resolveGradePolicy falls back to policy-level carry/expiry when the band has no override', () => {
+    const rows: GradePolicyRow[] = [
+      {
+        gradeId: null,
+        companyId: null,
+        accrual: {
+          annualDays: 12,
+          carryForwardMax: 4,
+          carryForwardExpiryMonth: 3,
+          carryForwardExpiryDay: 31,
+          serviceBands: [{ fromYears: 0, toYears: null, days: 14 }],
+        },
+      },
+    ];
+    const pol = resolveGradePolicy(rows, null, null, 1);
+    expect(pol!.carryMax).toBe(4);
+    expect(pol!.carryExpiry).toEqual({ month: 3, day: 31 });
+    expect(pol!.maxBalanceDays).toBeNull();
+  });
+});
+
+describe('9d8cf621 integration — Maximum Balance Days enforcement (Gap 1)', () => {
+  it('clamps the hire grant so the opening balance never exceeds the cap', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      serviceBands: [{ fromYears: 0, toYears: null, days: 20, maxBalanceDays: 15 }],
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('2026-01-01'); // 0y ⇒ band days 20, but cap clamps to 15
+    expect(await balance(emp.employmentId)).toBe(15);
+  });
+
+  it('clamps carry-in + grant at openLeaveYear so the balance holds at the cap across years', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 20, // generous carry — the Maximum Balance cap is what binds, not the carry cap
+      serviceBands: [{ fromYears: 0, toYears: null, days: 14, maxBalanceDays: 15 }],
+      validFrom: '2024-01-01',
+    });
+    const emp = await hire('2024-01-01'); // 14 (cap 15 not yet reached)
+    expect(await balance(emp.employmentId)).toBe(14);
+    await openLeaveYear(adminCtx(b), { year: 2025 }); // carry 14 + grant clamped to room(1) = 15
+    expect(await balance(emp.employmentId)).toBe(15);
+    await openLeaveYear(adminCtx(b), { year: 2026 }); // already at cap ⇒ grant 0, stays 15
+    expect(await balance(emp.employmentId)).toBe(15);
+  });
+
+  it('clamps earned accrual so retained-carry + earned never exceeds the cap', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      method: 'earned_monthly',
+      serviceBands: [{ fromYears: 0, toYears: null, days: 14, maxBalanceDays: 5 }],
+      validFrom: '2026-01-01',
+    });
+    const emp = await hire('2026-01-01'); // earned ⇒ no lump grant
+    expect(await balance(emp.employmentId)).toBe(0);
+    await accrueEarnedLeave(adminCtx(b), { asOf: '2026-06-15' }); // 6mo ⇒ 7 earned, clamped to cap 5
+    expect(await balance(emp.employmentId)).toBe(5);
+  });
+});
+
+describe('9d8cf621 integration — per-range carry-forward days + expiry (Gap 2)', () => {
+  it('per-range Carry-Forward Days OVERRIDES the policy-level carry cap at openLeaveYear', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 0, // policy-level would forfeit EVERYTHING — the band's carryForwardDays must win
+      serviceBands: [{ fromYears: 0, toYears: null, days: 14, carryForwardDays: 10 }],
+      validFrom: '2024-01-01',
+    });
+    const emp = await hire('2024-01-01'); // 14
+    expect(await balance(emp.employmentId)).toBe(14);
+    const r = await openLeaveYear(adminCtx(b), { year: 2025 });
+    // carry = min(14, per-range 10) = 10; forfeit 4; + 2025 grant 14 ⇒ 24. Policy-level 0 would give 14.
+    expect(r.forfeits).toBe(1);
+    expect(await balance(emp.employmentId)).toBe(24);
+  });
+
+  it('per-range Carry-Forward Expiry drives expireCarriedLeave (no policy-level expiry set)', async () => {
+    await createLeavePolicy(adminCtx(b), {
+      leaveTypeId: b.annualLeaveTypeId,
+      annualDays: 12,
+      carryForwardMax: 20, // generous carry so the balance carries; expiry is purely per-range
+      serviceBands: [{ fromYears: 0, toYears: null, days: 14, carryForwardExpiryMonth: 3, carryForwardExpiryDay: 31 }],
+      validFrom: '2024-01-01',
+    });
+    const emp = await hire('2024-01-01'); // 14
+    await openLeaveYear(adminCtx(b), { year: 2025 }); // carries 14 (into 2025, expiry 2025-03-31) + grant 14 = 28
+    expect(await balance(emp.employmentId)).toBe(28);
+    const before = await balance(emp.employmentId);
+    // Sweep past 2025-03-31: with only a PER-RANGE expiry, the back-compat boundary (hasAnyCarryExpiry) must
+    // still include this policy — otherwise swept would be 0 (the bug this fix closes).
+    const res = await expireCarriedLeave(adminCtx(b), { today: '2026-04-01' });
+    expect(res.swept).toBeGreaterThanOrEqual(1);
+    expect(await balance(emp.employmentId)).toBeLessThan(before);
   });
 });

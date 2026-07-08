@@ -21,8 +21,14 @@ import {
 import { isoWeekday } from './attendance';
 import { packFor } from '../localization/registry';
 import {
+  applyMaxBalance,
   bandDaysFor,
+  bandFor,
+  bandCarryExpiry,
+  bandCarryMax,
+  bandMaxBalance,
   carryEnabled,
+  hasAnyCarryExpiry,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -38,8 +44,14 @@ import {
 } from './leave-compute';
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
 export {
+  applyMaxBalance,
   bandDaysFor,
+  bandFor,
+  bandCarryExpiry,
+  bandCarryMax,
+  bandMaxBalance,
   carryEnabled,
+  hasAnyCarryExpiry,
   isValidMonthDay,
   isWellFormedBands,
   lastRealDayOfMonth,
@@ -2709,7 +2721,11 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         // default = cap > 0). When disabled, carryMax collapses to 0 ⇒ full forfeit — the requested
         // "disable carry" behaviour. SICK/HOSPITALIZATION stay 0 (statutory annual reset, EA s.60F).
         const carryMax = t.code === 'ANNUAL' && carryEnabled(pol) ? (pol?.carryMax ?? 0) : 0;
-        const carry = Math.min(Math.max(before, 0), carryMax);
+        const rawCarry = Math.min(Math.max(before, 0), carryMax);
+        // Feedback 9d8cf621 — Maximum Balance Days: clamp the carry-in AND this year's grant so the
+        // resulting balance (carry + grant) never exceeds the resolved band's cap. Reducing the carry
+        // increases the forfeit below by construction (forfeit = before − carry). No cap ⇒ pass-through.
+        const { carry, grant: grantDays } = applyMaxBalance(rawCarry, days, pol?.maxBalanceDays);
         const forfeit = Math.max(0, before - carry);
         if (forfeit > 0) {
           await tx.insert(leaveLedger).values({
@@ -2723,12 +2739,15 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
           });
           forfeits += 1;
         }
+        // Feedback 9d8cf621: post the (possibly Maximum-Balance-clamped) grant. The row is ALWAYS written —
+        // even at 0 days when the cap is already reached — because it is openLeaveYear's own idempotency
+        // open-marker (openedSet) and the expiry sweep's "year was opened" marker.
         await tx.insert(leaveLedger).values({
           tenantId: ctx.tenantId,
           employmentId: e.employmentId,
           leaveTypeId: t.id,
           entryType: 'accrual',
-          days: days.toFixed(2),
+          days: grantDays.toFixed(2),
           effectiveOn: yearStart,
         });
         granted += 1;
@@ -2954,11 +2973,14 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
         // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
         const carryKey = `${e.employmentId}|${typeId}`;
+        const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
+        const baseCap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
+        // Feedback 9d8cf621 — Maximum Balance Days also bounds the earned carry cap: nothing more than the
+        // cap can be retained into the new cycle. null ⇒ pass-through (baseCap unchanged).
+        const cap = pol!.maxBalanceDays != null ? Math.min(baseCap, Math.max(0, pol!.maxBalanceDays)) : baseCap;
+        const retainedCarry = Math.min(Math.max(priorBalance, 0), cap);
         if (!forfeited.has(carryKey)) {
-          const priorBalance = priorBalanceBy.get(carryKey) ?? 0;
-          const cap = type.code === 'ANNUAL' ? pol!.carryMax : 0;
-          const carry = Math.min(Math.max(priorBalance, 0), cap);
-          const forfeit = Math.round((priorBalance - carry) * 100) / 100;
+          const forfeit = Math.round((priorBalance - retainedCarry) * 100) / 100;
           if (forfeit > 0) {
             await tx.insert(leaveLedger).values({
               tenantId: ctx.tenantId,
@@ -2979,7 +3001,13 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         const accrualStart =
           e.leaveCycle === 'anniversary' || e.hiredOn <= cycleStart ? cycleStart : `${e.hiredOn.slice(0, 7)}-01`;
         const elapsed = Math.min(totalPeriods, accrualPeriods(accrualStart, p.asOf, pol!.method!));
-        const earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        let earnedToDate = Math.round((entitlement / totalPeriods) * elapsed * 100) / 100;
+        // Feedback 9d8cf621 — Maximum Balance Days: cap the cumulative earned so retainedCarry + earned
+        // never exceeds the cap (i.e. the running balance stays ≤ cap across the cycle). null ⇒ no cap.
+        if (pol!.maxBalanceDays != null) {
+          const room = Math.max(0, Math.round((Math.max(0, pol!.maxBalanceDays) - retainedCarry) * 100) / 100);
+          earnedToDate = Math.min(earnedToDate, room);
+        }
         const rows = accrualRowsBy.get(`${e.employmentId}|${typeId}`) ?? [];
         const already = rows.reduce((s, r) => (r.effectiveOn >= cycleStart ? s + r.days : s), 0);
         const toGrant = Math.round((earnedToDate - already) * 100) / 100;
@@ -3426,8 +3454,10 @@ export async function expireCarriedLeave(ctx: SessionContext, p: { today: string
 
     // The earliest leave-year a carry-expiry policy could apply to (back-compat boundary): the year of the
     // earliest validFrom among policies that carry an expiry offset. Never sweep before it.
+    // Feedback 9d8cf621: a policy counts if it carries ANY carry-expiry — policy-level OR per service band
+    // (hasAnyCarryExpiry) — so a purely per-range expiry still sets the sweepable-year floor.
     const expiryPolicyYears = policies
-      .filter((pol) => parseCarryExpiry(pol.accrual as AccrualConfig | null) != null)
+      .filter((pol) => hasAnyCarryExpiry(pol.accrual as AccrualConfig | null))
       .map((pol) => Number(pol.validFrom.slice(0, 4)));
     if (expiryPolicyYears.length === 0) return { swept: 0, forfeited: 0 };
     const earliestYear = Math.min(...expiryPolicyYears);

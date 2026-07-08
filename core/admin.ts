@@ -549,6 +549,23 @@ function validateServiceBands(bands: ServiceBand[]): void {
     if (typeof b.days !== 'number' || !Number.isFinite(b.days) || b.days < 0) {
       throw new Error('Service bands: days must be zero or a positive number.');
     }
+    // Feedback 9d8cf621 — per-range entitlement columns (all optional; absent/null = "no override"). The
+    // runtime resolver is separately defensive, but reject a genuinely bad value at write time so HR gets a
+    // clear message instead of a silently-ignored override.
+    if (b.carryForwardDays != null && (typeof b.carryForwardDays !== 'number' || !Number.isFinite(b.carryForwardDays) || b.carryForwardDays < 0)) {
+      throw new Error('Service bands: carry-forward days must be zero or a positive number.');
+    }
+    if (b.maxBalanceDays != null && (typeof b.maxBalanceDays !== 'number' || !Number.isFinite(b.maxBalanceDays) || b.maxBalanceDays < 0)) {
+      throw new Error('Service bands: maximum balance days must be zero or a positive number.');
+    }
+    const hasMonth = b.carryForwardExpiryMonth != null;
+    const hasDay = b.carryForwardExpiryDay != null;
+    if (hasMonth !== hasDay) {
+      throw new Error('Service bands: carry-forward expiry needs both a month and a day, or neither.');
+    }
+    if (hasMonth && hasDay && !isValidMonthDay(Number(b.carryForwardExpiryMonth), Number(b.carryForwardExpiryDay))) {
+      throw new Error('Service bands: carry-forward expiry must be a real calendar date (valid month and day).');
+    }
   }
   if (bands[0].fromYears !== 0) {
     throw new Error('Service bands: the first band must start at 0 years (no gap before it).');

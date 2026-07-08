@@ -48,11 +48,32 @@ export type ResolvedPolicy = {
   /** Carry-forward enhancement: explicit on/off switch for the carry rule. When absent, carry is
    *  enabled iff `carryMax > 0` (the back-compat default — see `carryEnabled`). */
   carryForwardEnabled?: boolean;
+  /** Feedback 9d8cf621 — Maximum Balance Days cap resolved from the winning service band (null = no cap).
+   *  The granting engines clamp the running balance against this via `applyMaxBalance`. */
+  maxBalanceDays?: number | null;
 };
 
 /** Leave Entitlement Rules Engine: one contiguous service-length band. `toYears` null = open-ended (the
- *  final band). Matching is half-open on completed service years: fromYears <= years < toYears. */
-export type ServiceBand = { fromYears: number; toYears: number | null; days: number };
+ *  final band). Matching is half-open on completed service years: fromYears <= years < toYears.
+ *
+ *  Feedback 9d8cf621 — per-range entitlement columns. Beyond the resolver-critical `days`, a band may
+ *  carry the reporter's per-range overrides. All are OPTIONAL and DEFENSIVELY read (a bad value is ignored,
+ *  never thrown) so seeds / hand-written rows / legacy bands without them resolve exactly as before:
+ *   - `carryForwardDays`      — this band's carry-forward cap; when a non-negative number, it OVERRIDES the
+ *                               policy-level `carryForwardMax` for employees who resolve to this band.
+ *   - `carryForwardExpiryMonth`/`Day` — this band's carry-forward expiry offset; when a valid (month, day)
+ *                               pair, it OVERRIDES the policy-level carry-expiry for this band.
+ *   - `maxBalanceDays`        — this band's Maximum Balance cap; the running ledger balance is clamped so it
+ *                               never exceeds this at grant / earned-accrual / carry-in (see `applyMaxBalance`). */
+export type ServiceBand = {
+  fromYears: number;
+  toYears: number | null;
+  days: number;
+  carryForwardDays?: number | null;
+  carryForwardExpiryMonth?: number | null;
+  carryForwardExpiryDay?: number | null;
+  maxBalanceDays?: number | null;
+};
 
 /** Shape of the `leave_policy.accrual` JSONB (a documented JSONB extension point — no DDL). */
 export type AccrualConfig = {
@@ -124,19 +145,80 @@ export function parseCarryExpiry(acc: AccrualConfig | null): CarryExpiry | null 
  * write-time validation, so the runtime path must tolerate garbage.
  */
 export function bandDaysFor(acc: AccrualConfig | null, serviceYears: number): number {
-  const annualDays = Number(acc?.annualDays ?? 0);
+  return bandFor(acc, serviceYears)?.days ?? Number(acc?.annualDays ?? 0);
+}
+
+/**
+ * Leave Entitlement Rules Engine — the matching well-formed band for `serviceYears`, or null (no bands /
+ * malformed / no match). Same defensive contract as `bandDaysFor` (never throws inside cron sweeps), but
+ * returns the whole band so callers can also read its per-range overrides (feedback 9d8cf621:
+ * carryForwardDays / carryForwardExpiry / maxBalanceDays). `bandDaysFor` is a thin `?.days` over this.
+ */
+export function bandFor(acc: AccrualConfig | null, serviceYears: number): ServiceBand | null {
   const bands = acc?.serviceBands;
-  if (!Array.isArray(bands) || bands.length === 0) return annualDays;
-  if (!isWellFormedBands(bands)) return annualDays;
+  if (!Array.isArray(bands) || bands.length === 0) return null;
+  if (!isWellFormedBands(bands)) return null;
   for (const b of bands) {
     const upper = b.toYears;
-    if (serviceYears >= b.fromYears && (upper == null || serviceYears < upper)) {
-      return Number(b.days);
-    }
+    if (serviceYears >= b.fromYears && (upper == null || serviceYears < upper)) return b;
   }
   // Contiguous + open-ended-last is enforced by isWellFormedBands, so this is unreachable for a
   // well-formed array — but keep the fallback for defence-in-depth.
-  return annualDays;
+  return null;
+}
+
+/** Feedback 9d8cf621 — read a band's optional per-range carry-forward cap. A finite number ≥ 0 OVERRIDES
+ *  the policy-level `carryForwardMax`; anything else (absent / null / negative / non-numeric) ⇒ null (fall
+ *  back to the policy-level cap). Defensive: a hand-written/seed band with garbage never throws. */
+export function bandCarryMax(band: ServiceBand | null | undefined): number | null {
+  const v = band?.carryForwardDays;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+/** Feedback 9d8cf621 — read a band's optional per-range carry-forward expiry offset. A valid (month, day)
+ *  pair OVERRIDES the policy-level carry-expiry for this band; anything else ⇒ null (fall back). Uses the
+ *  same `isValidMonthDay` guard as `parseCarryExpiry` so legacy garbage resolves to "no expiry". */
+export function bandCarryExpiry(band: ServiceBand | null | undefined): CarryExpiry | null {
+  const m = Number(band?.carryForwardExpiryMonth ?? NaN);
+  const d = Number(band?.carryForwardExpiryDay ?? NaN);
+  return isValidMonthDay(m, d) ? { month: m, day: d } : null;
+}
+
+/** Feedback 9d8cf621 — read a band's optional Maximum Balance Days cap. A finite number ≥ 0 caps the
+ *  running balance (see `applyMaxBalance`); anything else ⇒ null (no cap). Defensive by the same rule. */
+export function bandMaxBalance(band: ServiceBand | null | undefined): number | null {
+  const v = band?.maxBalanceDays;
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+/** Feedback 9d8cf621 — true iff a policy carries ANY carry-forward expiry, either policy-level
+ *  (`parseCarryExpiry`) or on any well-formed service band. Used by `expireCarriedLeave` to compute the
+ *  back-compat "earliest sweepable year" boundary so a purely per-range expiry is not missed. */
+export function hasAnyCarryExpiry(acc: AccrualConfig | null): boolean {
+  if (parseCarryExpiry(acc) != null) return true;
+  const bands = acc?.serviceBands;
+  if (!Array.isArray(bands) || bands.length === 0 || !isWellFormedBands(bands)) return false;
+  return bands.some((b) => bandCarryExpiry(b) != null);
+}
+
+/**
+ * Feedback 9d8cf621 — Maximum Balance Days enforcement. Given the carry-in and the grant about to be
+ * posted, clamp BOTH so the resulting balance (carry + grant) never exceeds the policy's cap:
+ *   - the carry-in itself is clamped to the cap (a carry-in can never exceed Maximum Balance);
+ *   - the grant is then clamped to the remaining room (cap − clamped carry), never below 0.
+ * `maxBalanceDays` null/undefined ⇒ no cap (pass-through, byte-identical to pre-9d8cf621 behaviour).
+ * Pure + rounded to 2dp to match the ledger's `toFixed(2)` precision.
+ */
+export function applyMaxBalance(
+  carry: number,
+  grant: number,
+  maxBalanceDays: number | null | undefined,
+): { carry: number; grant: number } {
+  if (maxBalanceDays == null) return { carry, grant };
+  const cap = Math.max(0, maxBalanceDays);
+  const clampedCarry = Math.min(carry, cap);
+  const room = Math.max(0, Math.round((cap - clampedCarry) * 100) / 100);
+  return { carry: clampedCarry, grant: Math.min(Math.max(grant, 0), room) };
 }
 
 /** Validates the contiguity/shape invariant used by both the defensive resolver (bandDaysFor) and the
@@ -194,21 +276,30 @@ export function resolveGradePolicy(
     let best: ResolvedPolicy | null = null;
     for (const r of subset) {
       const acc = r.accrual as AccrualConfig | null;
-      const days = bandDaysFor(acc, serviceYears);
+      // Feedback 9d8cf621: resolve the winning band ONCE so days AND its per-range overrides
+      // (carryForwardDays / carryForwardExpiry / maxBalanceDays) all come from the SAME band.
+      const band = bandFor(acc, serviceYears);
+      const days = band?.days ?? Number(acc?.annualDays ?? 0);
       // CRITICAL (panel): carryExpiry must be chosen from the SAME winning policy as days/carryMax/method.
       // Assign it inside this block — never outside — or a rejected lower-`days` policy's expiry can leak
-      // onto the selected policy.
+      // onto the selected policy. The per-range band overrides ride along under the same discipline.
       if (!best || days > best.days) {
+        // Feedback 9d8cf621: a per-range carry-forward cap on the winning band OVERRIDES the policy-level
+        // carryForwardMax; a per-range expiry OVERRIDES the policy-level carry-expiry. Absent ⇒ fall back.
+        const perRangeCarry = bandCarryMax(band);
+        const perRangeExpiry = bandCarryExpiry(band);
         best = {
           days,
-          carryMax: Math.max(0, Number(acc?.carryForwardMax ?? 0)),
+          carryMax: perRangeCarry ?? Math.max(0, Number(acc?.carryForwardMax ?? 0)),
           method: acc?.method,
-          carryExpiry: parseCarryExpiry(acc),
+          carryExpiry: perRangeExpiry ?? parseCarryExpiry(acc),
           // Same discipline as carryExpiry above: take the enable flag from the SAME winning policy —
           // never let a rejected lower-`days` policy's flag leak onto the selected one. Absent ⇒ undefined
           // (the `carryEnabled` back-compat default then applies).
           carryForwardEnabled:
             typeof acc?.carryForwardEnabled === 'boolean' ? acc.carryForwardEnabled : undefined,
+          // Feedback 9d8cf621: Maximum Balance Days from the winning band (null = no cap).
+          maxBalanceDays: bandMaxBalance(band),
         };
       }
     }

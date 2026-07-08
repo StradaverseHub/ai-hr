@@ -7,7 +7,7 @@ import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
-import { isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
+import { applyMaxBalance, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import {
   person,
@@ -255,10 +255,13 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
           // ANNUAL pro-rates by months remaining in the hire year (s.60E practice).
           // SICK / HOSPITALIZATION grant in full: s.60F is a per-calendar-year
           // entitlement and must not be prorated for mid-year joiners.
-          const grant =
+          const grantRaw =
             lt.code === 'ANNUAL'
               ? Math.round(((days * (12 - (month - 1))) / 12) * 100) / 100
               : days;
+          // Feedback 9d8cf621 — Maximum Balance Days: a new hire has 0 prior balance, so clamp the initial
+          // grant so it never opens above the resolved band's cap. null ⇒ pass-through (grant unchanged).
+          const { grant } = applyMaxBalance(0, grantRaw, polFor?.maxBalanceDays);
           if (grant <= 0) continue;
           await tx.insert(leaveLedger).values({
             tenantId: ctx.tenantId,
