@@ -1933,7 +1933,11 @@
         "coverageGapHint": "Sesetengah pekerja yang dipilih tiada dalam larian ini: {names}",
         "reviewEmployees": "Pekerja ({count})",
         "noSharedDraft": "Tiada larian draf yang meliputi semua pekerja yang dipilih.",
-        "noEmployeesSelected": "Pilih sekurang-kurangnya seorang pekerja."
+        "noEmployeesSelected": "Pilih sekurang-kurangnya seorang pekerja.",
+        "duplicateRow": "Baris pendua tidak dibenarkan — dua entri mempunyai item, tarikh, jumlah dan catatan yang sama.",
+        "itemGroupGeneral": "Umum",
+        "itemGroupEarnings": "Pendapatan (Induk Item Gaji)",
+        "itemGroupDeductions": "Potongan (Induk Item Gaji)"
       },
       "tp1": {
         "title": "Pelepasan TP1",
@@ -2001,7 +2005,13 @@
           "month": "Bulan",
           "cycle": "Kitaran gaji",
           "apply": "Guna penapis",
-          "all": "Semua"
+          "all": "Semua",
+          "department": "Jabatan",
+          "txnStatus": "Status transaksi",
+          "createdBy": "Dicipta oleh",
+          "createdFrom": "Dicipta dari",
+          "createdTo": "Dicipta hingga",
+          "createdDate": "Tarikh dicipta"
         },
         "fixed": {
           "empty": "Tiada transaksi tetap yang sepadan dengan penapis dipilih."

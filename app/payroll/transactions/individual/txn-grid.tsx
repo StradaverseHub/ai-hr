@@ -11,6 +11,18 @@ import { saveIndividualTxnGridAction, type SaveGridResult } from './actions';
  *  kindLabel.* keys, so a drift here would surface as a failing test. */
 const KINDS = ['earning', 'deduction', 'overtime', 'unpaid', 'leave'] as const;
 
+/** An active pay component from the Payroll Item Master (feedback 7b2d4228) — the item dropdown is now sourced
+ *  dynamically from this catalog (not a hardcoded kind list). Only payable earning/deduction items are passed. */
+export type WizardPayItem = { id: string; code: string; name: string; kind: string };
+
+/** Map a Pay-Item-Master component kind onto one of the five ledger txn kinds. The ledger stores a kind, not a
+ *  component id (ADR-0056 kinds-only ledger), so a chosen master item is recorded as its kind + its name in the
+ *  remarks. 'allowance' ⇒ earning, 'deduction' ⇒ deduction (the two payable one-off classes). */
+const COMPONENT_KIND_TO_TXN: Record<string, (typeof KINDS)[number]> = { allowance: 'earning', deduction: 'deduction' };
+
+/** A resolved item-picker option: either a generic kind (`k:<kind>`) or a master component (`c:<id>`). */
+type ItemOption = { value: string; label: string; kind: (typeof KINDS)[number]; fromMaster: boolean };
+
 /** Real days-in-month (leap-year correct) — mirrors core/payroll.ts daysInMonth so the grid's date max is
  *  the true month-end (not a hardcoded -31), matching what the server's assertDateInPeriod enforces (C9). */
 function daysInMonth(year: number, month1: number): number {
@@ -40,8 +52,8 @@ export type WizardBatch = {
   scope: { departmentIds?: string[]; employmentIds?: string[] } | null;
 };
 
-type GridRow = { kind: string; txnDate: string; amount: string; notes: string };
-const blankRow = (): GridRow => ({ kind: 'earning', txnDate: '', amount: '', notes: '' });
+type GridRow = { item: string; txnDate: string; amount: string; notes: string };
+const blankRow = (): GridRow => ({ item: 'k:earning', txnDate: '', amount: '', notes: '' });
 
 const STEPS = [
   { key: 'employee', titleKey: 'stepEmployee' },
@@ -72,15 +84,38 @@ export function TxnGrid({
   employees,
   batches,
   companies,
+  payItems,
   processHref,
 }: {
   employees: WizardEmployee[];
   batches: WizardBatch[];
   companies: { id: string; name: string }[];
+  payItems: WizardPayItem[];
   processHref: string;
 }) {
   const t = useTranslations('payroll.transactions.individual');
   const tFixed = useTranslations('payroll.transactions.fixed');
+
+  // Item picker options, sourced dynamically from the Payroll Item Master (feedback 7b2d4228). The five generic
+  // kinds are always offered (they cover overtime / unpaid / leave, which are not component-catalog kinds); the
+  // master's active payable earning/deduction components are added as specific, named items above them.
+  const itemOptions = useMemo<ItemOption[]>(() => {
+    const generic: ItemOption[] = KINDS.map((k) => ({ value: `k:${k}`, label: t(`kindLabel.${k}`), kind: k, fromMaster: false }));
+    const master: ItemOption[] = payItems
+      .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
+      .map((c) => ({ value: `c:${c.id}`, label: `${c.code} — ${c.name}`, kind: COMPONENT_KIND_TO_TXN[c.kind], fromMaster: true }));
+    return [...generic, ...master];
+  }, [payItems, t]);
+  const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
+  const masterEarnings = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'earning'), [itemOptions]);
+  const masterDeductions = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'deduction'), [itemOptions]);
+  /** Resolve a grid row into the record that will be persisted: the chosen item → its kind, and (for a named
+   *  master item) its label defaulted into the remarks so the specific pay item is recorded in the ledger. */
+  const resolveRow = (r: GridRow) => {
+    const opt = itemByValue.get(r.item) ?? itemOptions[0];
+    const notes = r.notes.trim() || (opt.fromMaster ? opt.label : '');
+    return { kind: opt.kind, txnDate: r.txnDate, amount: r.amount, notes };
+  };
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
   const [companyId, setCompanyId] = useState('');
@@ -229,11 +264,12 @@ export function TxnGrid({
       return next.length ? next : [blankRow()];
     });
 
-  /** A row is "empty" (ignored) when nothing is filled. Otherwise it must be complete + valid. */
-  const isEmptyRow = (r: GridRow) => !r.kind && !r.txnDate && !r.amount.trim() && !r.notes.trim();
+  /** A row is "empty" (ignored) when no date, amount, or remarks is filled. The item select always carries a
+   *  default, so it is not a content signal on its own. Otherwise the row must be complete + valid. */
+  const isEmptyRow = (r: GridRow) => !r.txnDate && !r.amount.trim() && !r.notes.trim();
   const rowIsValid = (r: GridRow): boolean => {
     if (isEmptyRow(r)) return true; // ignored on save
-    if (!KINDS.includes(r.kind as (typeof KINDS)[number])) return false;
+    if (!itemByValue.has(r.item)) return false;
     if (!r.txnDate) return false;
     if (monthBounds && (r.txnDate < monthBounds.min || r.txnDate > monthBounds.max)) return false;
     const amt = Number(r.amount);
@@ -241,14 +277,41 @@ export function TxnGrid({
     return true;
   };
 
+  /** Canonical duplicate signature of the row AS IT WILL BE SAVED (resolved kind + date + amount + remarks) —
+   *  mirrors the server's txnRowSignature so the client blocks byte-for-byte duplicates before submitting. */
+  const rowSignature = (r: GridRow): string => {
+    const p = resolveRow(r);
+    const amt = Number(p.amount);
+    return [p.kind, p.txnDate, Number.isFinite(amt) ? amt.toFixed(2) : p.amount, p.notes.trim().toLowerCase()].join('|');
+  };
+
   const validate = (): boolean => {
     const bad = new Set<number>();
     rows.forEach((r, i) => {
       if (!rowIsValid(r)) bad.add(i);
     });
+    // Duplicate-record validation (feedback 7b2d4228): flag every non-empty row whose saved shape is identical
+    // to an earlier one (same item/date/amount/remarks) — a double-entry keying mistake.
+    const seen = new Map<string, number>();
+    let hasDuplicate = false;
+    rows.forEach((r, i) => {
+      if (isEmptyRow(r) || bad.has(i)) return;
+      const sig = rowSignature(r);
+      if (seen.has(sig)) {
+        bad.add(i);
+        bad.add(seen.get(sig)!);
+        hasDuplicate = true;
+      } else {
+        seen.set(sig, i);
+      }
+    });
     // At least one non-empty valid row is required.
     const hasContent = rows.some((r) => !isEmptyRow(r));
     setRowErrors(bad);
+    if (hasDuplicate) {
+      setSaveError(t('duplicateRow'));
+      return false;
+    }
     if (bad.size > 0) {
       setSaveError(t('rowIncomplete'));
       return false;
@@ -266,7 +329,10 @@ export function TxnGrid({
     if (!validate()) return;
     const payload = rows
       .filter((r) => !isEmptyRow(r))
-      .map((r) => ({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, notes: r.notes }));
+      .map((r) => {
+        const p = resolveRow(r);
+        return { kind: p.kind, txnDate: p.txnDate, amount: p.amount, notes: p.notes };
+      });
     const fd = new FormData();
     fd.set('batchId', batchId);
     fd.set('employmentIds', JSON.stringify(selectedIds));
@@ -516,12 +582,32 @@ export function TxnGrid({
                   {rows.map((r, i) => (
                     <tr key={i} className={rowErrors.has(i) ? 'bg-red-50/40 dark:bg-red-500/5' : ''}>
                       <td className="px-3 py-1.5">
-                        <select value={r.kind} onChange={(e) => setRow(i, { kind: e.target.value })} className={inputCls}>
-                          {KINDS.map((k) => (
-                            <option key={k} value={k}>
-                              {t(`kindLabel.${k}`)}
-                            </option>
-                          ))}
+                        <select value={r.item} onChange={(e) => setRow(i, { item: e.target.value })} className={inputCls}>
+                          <optgroup label={t('itemGroupGeneral')}>
+                            {KINDS.map((k) => (
+                              <option key={k} value={`k:${k}`}>
+                                {t(`kindLabel.${k}`)}
+                              </option>
+                            ))}
+                          </optgroup>
+                          {masterEarnings.length > 0 && (
+                            <optgroup label={t('itemGroupEarnings')}>
+                              {masterEarnings.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          {masterDeductions.length > 0 && (
+                            <optgroup label={t('itemGroupDeductions')}>
+                              {masterDeductions.map((o) => (
+                                <option key={o.value} value={o.value}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
                         </select>
                       </td>
                       <td className="px-3 py-1.5">

@@ -8,6 +8,10 @@
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { exportIndividualTxnsCsv } from '@/core/payroll-view';
+import { TXN_KINDS } from '@/core/payroll-individual-txn';
+
+const TXN_STATUSES = ['draft', 'processed', 'closed'] as const;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
 function intParam(v: string | null, min: number, max: number): number | undefined {
@@ -36,7 +40,31 @@ export async function GET(req: Request) {
   const year = intParam(url.searchParams.get('year'), 2000, 2100);
   const month = intParam(url.searchParams.get('month'), 1, 12);
 
-  const file = await exportIndividualTxnsCsv(s, { companyIds, year, month, employmentId });
+  // The Individual History filters (feedback 7b2d4228). Whitelist/format-guarded — the core query also
+  // re-coerces enums/dates, but validating here keeps a tampered param from ever reaching the service.
+  const rawKind = url.searchParams.get('kind');
+  const kind = rawKind && (TXN_KINDS as readonly string[]).includes(rawKind) ? rawKind : undefined;
+  const departmentId = url.searchParams.get('departmentId') || undefined;
+  const rawStatus = url.searchParams.get('txnStatus');
+  const batchStatus = rawStatus && (TXN_STATUSES as readonly string[]).includes(rawStatus) ? rawStatus : undefined;
+  const createdBy = url.searchParams.get('createdBy') || undefined;
+  const rawFrom = url.searchParams.get('createdFrom');
+  const createdFrom = rawFrom && ISO_DATE.test(rawFrom) ? rawFrom : undefined;
+  const rawTo = url.searchParams.get('createdTo');
+  const createdTo = rawTo && ISO_DATE.test(rawTo) ? rawTo : undefined;
+
+  const file = await exportIndividualTxnsCsv(s, {
+    companyIds,
+    year,
+    month,
+    employmentId,
+    kind,
+    departmentId,
+    batchStatus,
+    createdBy,
+    createdFrom,
+    createdTo,
+  });
   return new Response(file.content, {
     headers: {
       'Content-Type': 'text/csv; charset=utf-8',

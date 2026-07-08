@@ -114,6 +114,23 @@ export class EmptyEmployeeSelectionError extends Error {
   }
 }
 
+/** Thrown when the submitted grid contains two IDENTICAL rows (same kind + date + amount + remarks). Two
+ *  legitimate same-day claims always differ in amount or remarks; a byte-for-byte duplicate row is a keying
+ *  mistake (a double paste / double-click), so we reject it before write rather than silently double-post the
+ *  same allowance/deduction. Detection is scoped to WITHIN one submission — recording the same grid for many
+ *  employees (the multi-employee cartesian) is expressly allowed and never treated as a duplicate. */
+export class DuplicateTxnRowError extends Error {
+  constructor(public readonly signature: string) {
+    super(`Duplicate transaction row: ${signature}.`);
+    this.name = 'DuplicateTxnRowError';
+  }
+}
+
+/** Canonical signature of a grid row for duplicate detection (kind + date + normalised amount + remarks). */
+function txnRowSignature(r: { kind: string; txnDate: string; amount: number; notes?: string | null }): string {
+  return [r.kind, r.txnDate, money(r.amount), (r.notes ?? '').trim().toLowerCase()].join('|');
+}
+
 export type IndividualTxnRow = {
   id: string;
   employmentId: string;
@@ -310,11 +327,18 @@ export function createIndividualTxnsBulk(
     // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
     // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
     const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null }> = [];
+    const seenSignatures = new Set<string>();
     for (const r of p.rows) {
       if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
       if (r.unit != null && !isTxnUnit(r.unit)) throw new InvalidTxnUnitError(r.unit);
       assertDateInPeriod(r.txnDate, payPeriod);
       if (!(r.amount > 0)) throw new AmountNotPositiveError(r.amount); // C6 — magnitude semantics, all 5 kinds
+      // Duplicate-record validation: reject a byte-for-byte identical row within the same submission (the
+      // reporter's "validate duplicate records before submission"). Distinct amounts/remarks pass through; the
+      // multi-employee cartesian below is NOT a duplicate (same grid, different payee).
+      const sig = txnRowSignature(r);
+      if (seenSignatures.has(sig)) throw new DuplicateTxnRowError(sig);
+      seenSignatures.add(sig);
       validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes });
     }
 

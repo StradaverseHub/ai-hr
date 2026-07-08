@@ -1933,7 +1933,11 @@
         "coverageGapHint": "部分所选员工不在此批次中：{names}",
         "reviewEmployees": "员工（{count}）",
         "noSharedDraft": "没有草稿批次涵盖所有所选员工。",
-        "noEmployeesSelected": "请至少选择一位员工。"
+        "noEmployeesSelected": "请至少选择一位员工。",
+        "duplicateRow": "不允许重复行——有两条记录的项目、日期、金额和备注相同。",
+        "itemGroupGeneral": "通用",
+        "itemGroupEarnings": "收入（薪资项目主档）",
+        "itemGroupDeductions": "扣除（薪资项目主档）"
       },
       "tp1": {
         "title": "TP1 减免",
@@ -2001,7 +2005,13 @@
           "month": "月份",
           "cycle": "薪资周期",
           "apply": "套用筛选",
-          "all": "全部"
+          "all": "全部",
+          "department": "部门",
+          "txnStatus": "交易状态",
+          "createdBy": "创建者",
+          "createdFrom": "创建起始",
+          "createdTo": "创建截止",
+          "createdDate": "创建日期"
         },
         "fixed": {
           "empty": "没有符合所选筛选条件的固定交易。"

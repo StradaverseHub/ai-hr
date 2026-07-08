@@ -24,22 +24,44 @@
  * EMPTY companyIds set fails CLOSED (returns no rows) rather than falling back to "all".
  */
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, or } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { toCsv } from '../lib/csv';
 import {
+  appUser,
+  assignment,
   company,
+  domainEvent,
   employment,
   employmentPayComponent,
   payComponent,
   payrollBatch,
   payrollIndividualTxn,
   payrollRunTypeEnum,
+  payrollTxnKindEnum,
   payslip,
   person,
   type PayrollTxnKind,
 } from '../db/schema';
+
+/** Second `person` alias — resolves the ACTING user's name for the "Created By" dimension (the txn's
+ *  creator lives on the append-only event log, not on the ledger row — ADR-0056). */
+const creatorPerson = alias(person, 'creator_person');
+
+/** The event type appended by createIndividualTxn(sBulk) — the join key for "Created By"/"Created Date". */
+const INDIVIDUAL_TXN_CREATED = 'payroll.individual-txn.created';
+const INDIVIDUAL_TXN_AGGREGATE = 'payroll-individual-txn';
+
+/** Coerce untrusted filter values to valid enum/whitelist members (a tampered value must not reach pg). */
+const cleanTxnKind = (v: unknown): PayrollTxnKind | undefined =>
+  payrollTxnKindEnum.enumValues.includes(v as PayrollTxnKind) ? (v as PayrollTxnKind) : undefined;
+const cleanBatchStatus = (v: unknown): 'draft' | 'processed' | 'closed' | undefined =>
+  v === 'draft' || v === 'processed' || v === 'closed' ? v : undefined;
+/** A 'YYYY-MM-DD' calendar-date param or undefined (anything malformed is ignored, never cast). */
+const cleanDate = (v: unknown): string | undefined =>
+  typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
 
 /** 'YYYY-MM-DD' today — the same string axis validFrom/validTo live on. */
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -155,53 +177,155 @@ export type IndividualTxnViewRow = {
   quantity: string | null;
   unit: string | null;
   notes: string | null;
+  // "Created By" / "Created Date" audit dimensions (ADR-0056: no created_by column on the ledger row, so the
+  // creator is resolved from the row's append-only 'created' DomainEvent → the acting app_user's person name).
+  createdOn: string; // 'YYYY-MM-DD' — payroll_individual_txn.created_at cast to a date
+  createdById: string | null; // app_user id of the creator (null for SYSTEM / pre-substrate rows)
+  createdBy: string | null; // that user's person full name (null when unresolved)
+};
+
+/** The full filter set the Individual Transaction History screen (and its CSV export) applies. All optional
+ *  and AND-ed; every one is scope-guarded / enum-coerced by the caller before it reaches Postgres. */
+export type IndividualTxnFilter = {
+  companyIds: string[];
+  year?: number;
+  month?: number;
+  employmentId?: string;
+  kind?: string; // payroll item classification (earning/deduction/overtime/unpaid/leave)
+  departmentId?: string; // current-assignment department
+  batchStatus?: string; // transaction status = the owning batch's status (draft/processed/closed)
+  createdBy?: string; // app_user id (matched against the 'created' event actor)
+  createdFrom?: string; // 'YYYY-MM-DD' inclusive lower bound on created_at
+  createdTo?: string; // 'YYYY-MM-DD' inclusive upper bound on created_at
 };
 
 /**
- * Dated one-off transactions across ALL batches (any status — draft AND processed/closed, so the
- * inquiry composes with batch-lifecycle changes) in the scoped companies, joined through
- * payroll_batch for period/company/status. Read-only, no domain event (pure SELECT).
- * Generalises listIndividualTxns, which is single-(draft)-batch.
+ * Shared query for the Individual Transaction History screen AND its CSV export (one source of truth for the
+ * filter semantics + created-by resolution). Dated one-off transactions across ALL batches (any status —
+ * draft AND processed/closed) in the scoped companies, joined through payroll_batch for period/company/status
+ * and LEFT-joined to the row's 'created' DomainEvent → app_user → person for the Created By / Created Date
+ * dimensions. Read-only (pure SELECT — no event appended here).
  */
-export function listIndividualTxnsAcross(
-  ctx: SessionContext,
-  p: { companyIds: string[]; year?: number; month?: number; employmentId?: string },
-): Promise<IndividualTxnViewRow[]> {
+async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
+  if (p.companyIds.length === 0) return []; // fail closed — no scope, no rows
+  const kind = cleanTxnKind(p.kind);
+  const batchStatus = cleanBatchStatus(p.batchStatus);
+  const createdFrom = cleanDate(p.createdFrom);
+  const createdTo = cleanDate(p.createdTo);
+
+  // Department filter: resolve the department's current-assignment employments ONCE (fail-closed on an empty
+  // department), then narrow by the id set. A dedicated pre-query avoids a row-multiplying assignment join.
+  let deptEmploymentIds: string[] | undefined;
+  if (p.departmentId) {
+    const deptRows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .innerJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+          eq(assignment.departmentId, p.departmentId),
+        ),
+      );
+    deptEmploymentIds = deptRows.map((r) => r.id);
+    if (deptEmploymentIds.length === 0) return [];
+  }
+
+  return tx
+    .select({
+      id: payrollIndividualTxn.id,
+      employmentId: payrollIndividualTxn.employmentId,
+      employeeName: person.fullName,
+      employeeCode: employment.employeeCode,
+      companyId: payrollBatch.companyId,
+      company: company.legalName,
+      payPeriod: payrollBatch.payPeriod,
+      runType: payrollBatch.runType,
+      runSeq: payrollBatch.runSeq,
+      batchStatus: payrollBatch.status,
+      kind: payrollIndividualTxn.kind,
+      txnDate: payrollIndividualTxn.txnDate,
+      amount: payrollIndividualTxn.amount,
+      quantity: payrollIndividualTxn.quantity,
+      unit: payrollIndividualTxn.unit,
+      notes: payrollIndividualTxn.notes,
+      createdOn: sql<string>`to_char(${payrollIndividualTxn.createdAt}, 'YYYY-MM-DD')`,
+      createdById: appUser.id,
+      createdBy: creatorPerson.fullName,
+    })
+    .from(payrollIndividualTxn)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    // Created-by provenance: the row's 'created' event → the acting app_user → that user's person name.
+    .leftJoin(
+      domainEvent,
+      and(
+        eq(domainEvent.aggregateId, payrollIndividualTxn.id),
+        eq(domainEvent.aggregateType, INDIVIDUAL_TXN_AGGREGATE),
+        eq(domainEvent.eventType, INDIVIDUAL_TXN_CREATED),
+      ),
+    )
+    .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+    .leftJoin(creatorPerson, eq(creatorPerson.id, appUser.personId))
+    .where(
+      and(
+        inArray(payrollBatch.companyId, p.companyIds),
+        periodFilter(p.year, p.month),
+        p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
+        kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
+        deptEmploymentIds ? inArray(payrollIndividualTxn.employmentId, deptEmploymentIds) : undefined,
+        batchStatus ? eq(payrollBatch.status, batchStatus) : undefined,
+        p.createdBy ? eq(domainEvent.actorId, p.createdBy) : undefined,
+        createdFrom ? gte(sql`${payrollIndividualTxn.createdAt}::date`, createdFrom) : undefined,
+        createdTo ? lte(sql`${payrollIndividualTxn.createdAt}::date`, createdTo) : undefined,
+      ),
+    )
+    .orderBy(desc(payrollBatch.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+}
+
+/**
+ * Dated one-off transactions across ALL batches (any status — draft AND processed/closed, so the inquiry
+ * composes with batch-lifecycle changes) in the scoped companies, filtered by the full History filter set
+ * (year/month/employee/company/payroll-item/department/transaction-status/created-by/created-date).
+ * Read-only, no domain event (pure SELECT). Generalises listIndividualTxns, which is single-(draft)-batch.
+ */
+export function listIndividualTxnsAcross(ctx: SessionContext, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
-        id: payrollIndividualTxn.id,
-        employmentId: payrollIndividualTxn.employmentId,
-        employeeName: person.fullName,
-        employeeCode: employment.employeeCode,
-        companyId: payrollBatch.companyId,
-        company: company.legalName,
-        payPeriod: payrollBatch.payPeriod,
-        runType: payrollBatch.runType,
-        runSeq: payrollBatch.runSeq,
-        batchStatus: payrollBatch.status,
-        kind: payrollIndividualTxn.kind,
-        txnDate: payrollIndividualTxn.txnDate,
-        amount: payrollIndividualTxn.amount,
-        quantity: payrollIndividualTxn.quantity,
-        unit: payrollIndividualTxn.unit,
-        notes: payrollIndividualTxn.notes,
-      })
-      .from(payrollIndividualTxn)
+  return withTenant(ctx, (tx) => queryIndividualTxns(tx, p));
+}
+
+/**
+ * Distinct users who have CREATED an individual one-off transaction in the scoped companies — the option set
+ * for the History screen's "Created By" filter. Resolved from the append-only event log (the actor of each
+ * 'created' event) joined to the acting app_user's person name. Read-only (pure SELECT).
+ */
+export function listIndividualTxnCreators(
+  ctx: SessionContext,
+  p: { companyIds: string[] },
+): Promise<{ id: string; name: string }[]> {
+  if (p.companyIds.length === 0) return Promise.resolve([]);
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .selectDistinct({ id: appUser.id, name: creatorPerson.fullName })
+      .from(domainEvent)
+      .innerJoin(payrollIndividualTxn, eq(payrollIndividualTxn.id, domainEvent.aggregateId))
       .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .innerJoin(creatorPerson, eq(creatorPerson.id, appUser.personId))
       .where(
         and(
+          eq(domainEvent.aggregateType, INDIVIDUAL_TXN_AGGREGATE),
+          eq(domainEvent.eventType, INDIVIDUAL_TXN_CREATED),
           inArray(payrollBatch.companyId, p.companyIds),
-          periodFilter(p.year, p.month),
-          p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         ),
       )
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id)),
-  );
+      .orderBy(asc(creatorPerson.fullName));
+    return rows.filter((r): r is { id: string; name: string } => r.id != null && r.name != null);
+  });
 }
 
 // ───────────────────── 3. Transaction History (processed results) ─────────────────────
@@ -295,56 +419,28 @@ export function listProcessedPayslipsAcross(
  */
 export function exportIndividualTxnsCsv(
   ctx: SessionContext,
-  p: { companyIds: string[]; year?: number; month?: number; employmentId?: string },
+  p: IndividualTxnFilter,
 ): Promise<{ content: string; filename: string; rowCount: number }> {
   return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select({
-        payPeriod: payrollBatch.payPeriod,
-        runType: payrollBatch.runType,
-        runSeq: payrollBatch.runSeq,
-        batchStatus: payrollBatch.status,
-        txnDate: payrollIndividualTxn.txnDate,
-        employeeName: person.fullName,
-        employeeCode: employment.employeeCode,
-        company: company.legalName,
-        kind: payrollIndividualTxn.kind,
-        amount: payrollIndividualTxn.amount,
-        quantity: payrollIndividualTxn.quantity,
-        unit: payrollIndividualTxn.unit,
-        notes: payrollIndividualTxn.notes,
-      })
-      .from(payrollIndividualTxn)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        p.companyIds.length === 0
-          ? // fail closed — no scope, no rows (still emits a header-only CSV + a 0-row export event)
-            eq(payrollBatch.companyId, '00000000-0000-0000-0000-000000000000')
-          : and(
-              inArray(payrollBatch.companyId, p.companyIds),
-              periodFilter(p.year, p.month),
-              p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
-            ),
-      )
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+    // Same rows the on-screen History grid shows for this (scope-guarded) filter set — one source of truth.
+    const rows = await queryIndividualTxns(tx, p);
 
     const header = [
       'Payroll Period',
       'Cycle',
       'Run',
-      'Batch Status',
+      'Transaction Status',
       'Transaction Date',
       'Employee',
       'Employee Code',
       'Company',
-      'Item',
+      'Payroll Item',
       'Amount',
       'Quantity',
       'Unit',
       'Remarks',
+      'Created By',
+      'Created Date',
     ];
     const body = rows.map((r) => [
       r.payPeriod,
@@ -360,6 +456,8 @@ export function exportIndividualTxnsCsv(
       r.quantity ?? '',
       r.unit ?? '',
       r.notes ?? '',
+      r.createdBy ?? '',
+      r.createdOn,
     ]);
     const content = toCsv([header, ...body]);
     const filename = `individual-transactions_${new Date().toISOString().slice(0, 10)}.csv`;
@@ -378,6 +476,12 @@ export function exportIndividualTxnsCsv(
           year: p.year ?? null,
           month: p.month ?? null,
           employmentId: p.employmentId ?? null,
+          kind: p.kind ?? null,
+          departmentId: p.departmentId ?? null,
+          batchStatus: p.batchStatus ?? null,
+          createdBy: p.createdBy ?? null,
+          createdFrom: p.createdFrom ?? null,
+          createdTo: p.createdTo ?? null,
         },
       },
     });

@@ -1933,7 +1933,11 @@
         "coverageGapHint": "Some selected employees are not in this run: {names}",
         "reviewEmployees": "Employees ({count})",
         "noSharedDraft": "No draft run covers all the selected employees.",
-        "noEmployeesSelected": "Select at least one employee."
+        "noEmployeesSelected": "Select at least one employee.",
+        "duplicateRow": "Duplicate rows are not allowed — two entries have the same item, date, amount, and remarks.",
+        "itemGroupGeneral": "General",
+        "itemGroupEarnings": "Earnings (Pay Item Master)",
+        "itemGroupDeductions": "Deductions (Pay Item Master)"
       },
       "tp1": {
         "title": "TP1 Relief",
@@ -2001,7 +2005,13 @@
           "month": "Month",
           "cycle": "Payroll cycle",
           "apply": "Apply filters",
-          "all": "All"
+          "all": "All",
+          "department": "Department",
+          "txnStatus": "Transaction status",
+          "createdBy": "Created by",
+          "createdFrom": "Created from",
+          "createdTo": "Created to",
+          "createdDate": "Created date"
         },
         "fixed": {
           "empty": "No fixed transactions match the selected filters."

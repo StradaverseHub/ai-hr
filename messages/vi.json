@@ -1933,7 +1933,11 @@
         "coverageGapHint": "Một số nhân viên đã chọn không có trong đợt này: {names}",
         "reviewEmployees": "Nhân viên ({count})",
         "noSharedDraft": "Không có đợt nháp nào bao gồm tất cả nhân viên đã chọn.",
-        "noEmployeesSelected": "Vui lòng chọn ít nhất một nhân viên."
+        "noEmployeesSelected": "Vui lòng chọn ít nhất một nhân viên.",
+        "duplicateRow": "Không cho phép dòng trùng lặp — hai mục có cùng khoản mục, ngày, số tiền và ghi chú.",
+        "itemGroupGeneral": "Chung",
+        "itemGroupEarnings": "Thu nhập (Danh mục khoản lương)",
+        "itemGroupDeductions": "Khấu trừ (Danh mục khoản lương)"
       },
       "tp1": {
         "title": "Miễn giảm TP1",
@@ -2001,7 +2005,13 @@
           "month": "Tháng",
           "cycle": "Chu kỳ lương",
           "apply": "Áp dụng bộ lọc",
-          "all": "Tất cả"
+          "all": "Tất cả",
+          "department": "Phòng ban",
+          "txnStatus": "Trạng thái giao dịch",
+          "createdBy": "Người tạo",
+          "createdFrom": "Tạo từ",
+          "createdTo": "Tạo đến",
+          "createdDate": "Ngày tạo"
         },
         "fixed": {
           "empty": "Không có giao dịch cố định nào khớp với bộ lọc đã chọn."

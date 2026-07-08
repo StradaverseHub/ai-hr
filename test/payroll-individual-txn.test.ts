@@ -28,6 +28,7 @@ import {
   CompanyMismatchError,
   EmploymentNotInBatchScopeError,
   EmptyEmployeeSelectionError,
+  DuplicateTxnRowError,
   TXN_KINDS,
   TXN_UNITS,
 } from '../core/payroll-individual-txn';
@@ -507,6 +508,48 @@ describe('1.2.2 Individual Transaction', () => {
     expect(Number(list[0].amount)).toBeCloseTo(120, 2);
     // The retained single-row update path enforces the SAME amount>0 rule (both surviving write paths agree).
     await expect(updateIndividualTxn(a, { id: ids[0], amount: 0 })).rejects.toBeInstanceOf(AmountNotPositiveError);
+  });
+
+  it('duplicate-record validation: two byte-identical grid rows are rejected, nothing persists', async () => {
+    const { a, employmentId, batchId } = await hireWithBatch('2026-05');
+    // Same item + date + amount + remarks twice in one submission ⇒ a keying mistake ⇒ whole tx rejected.
+    await expect(
+      createIndividualTxnsBulk(a, {
+        batchId,
+        employmentIds: [employmentId],
+        rows: [
+          { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'bonus' },
+          { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'bonus' },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(DuplicateTxnRowError);
+    expect(await listIndividualTxns(a, { batchId })).toHaveLength(0);
+
+    // Rows that differ in amount OR remarks are NOT duplicates — both persist.
+    const { ids } = await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [employmentId],
+      rows: [
+        { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'bonus' },
+        { kind: 'earning', txnDate: '2026-05-10', amount: 100, notes: 'second claim' },
+      ],
+    });
+    expect(ids).toHaveLength(2);
+
+    // The multi-employee cartesian is NOT a duplicate: the same single row for two employees writes two rows.
+    const e2 = await hireEmployee(a, {
+      person: { fullName: 'Dup Two', primaryEmail: `dup2${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    const { ids: ids2 } = await createIndividualTxnsBulk(a, {
+      batchId,
+      employmentIds: [employmentId, e2.employmentId],
+      rows: [{ kind: 'overtime', txnDate: '2026-05-12', amount: 40, notes: 'ot' }],
+    });
+    expect(ids2).toHaveLength(2);
   });
 
   it('company match (C3): employment.companyId != batch.companyId throws CompanyMismatchError, nothing persists', async () => {

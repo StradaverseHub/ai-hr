@@ -5,11 +5,14 @@ import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import {
   listFixedTransactionsAcross,
+  listIndividualTxnCreators,
   listIndividualTxnsAcross,
   listProcessedPayslipsAcross,
 } from '@/core/payroll-view';
+import { TXN_KINDS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { PayrollTabs } from '@/components/payroll-tabs';
+import { IndividualTxnTable } from './individual-table';
 
 /**
  * Transaction View (feedback a4a05174; relocated to a top-level Payroll tab by feedback 59178702) —
@@ -34,6 +37,8 @@ const TABS = ['fixed', 'individual', 'history'] as const;
 type Tab = (typeof TABS)[number];
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
+const TXN_STATUSES = ['draft', 'processed', 'closed'] as const;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -57,6 +62,13 @@ export default async function TransactionViewPage({
     year?: string;
     month?: string;
     cycle?: string;
+    // Individual-tab History filters (feedback 7b2d4228)
+    kind?: string;
+    departmentId?: string;
+    txnStatus?: string;
+    createdBy?: string;
+    createdFrom?: string;
+    createdTo?: string;
   }>;
 }) {
   const { s, scopeIds } = await scopedAdmin();
@@ -67,11 +79,18 @@ export default async function TransactionViewPage({
 
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'fixed';
 
-  const [employees, companies, components] = await Promise.all([
+  const [employees, companies, components, creators] = await Promise.all([
     listEmployees(s, scopeIds),
     listCompanies(s),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
+    tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
   ]);
+  // Department options for the Individual History filter — distinct current-assignment departments in scope.
+  const departmentOptions = (() => {
+    const seen = new Map<string, string>();
+    for (const e of employees) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
+    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
   // Narrow the company dropdown to the authorised scope — the filter can only narrow, never widen.
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
@@ -88,13 +107,33 @@ export default async function TransactionViewPage({
   const month = intParam(sp.month, 1, 12);
   const cycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
 
+  // Individual-tab History filters — each scope-guarded / whitelist-coerced (a tampered value ⇒ ignored).
+  const kind = TXN_KINDS.includes(sp.kind as (typeof TXN_KINDS)[number]) ? sp.kind : undefined;
+  const departmentId =
+    sp.departmentId && departmentOptions.some((d) => d.id === sp.departmentId) ? sp.departmentId : undefined;
+  const txnStatus = TXN_STATUSES.includes(sp.txnStatus as (typeof TXN_STATUSES)[number]) ? sp.txnStatus : undefined;
+  const createdBy = sp.createdBy && creators.some((c) => c.id === sp.createdBy) ? sp.createdBy : undefined;
+  const createdFrom = sp.createdFrom && ISO_DATE.test(sp.createdFrom) ? sp.createdFrom : undefined;
+  const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
+
   // Only the active tab's query runs — the other two stay empty (single round-trip per view).
   const [fixedRows, individualRows, historyRows] = await Promise.all([
     tab === 'fixed'
       ? listFixedTransactionsAcross(s, { companyIds, employmentId, componentId, status })
       : Promise.resolve([]),
     tab === 'individual'
-      ? listIndividualTxnsAcross(s, { companyIds, year, month, employmentId })
+      ? listIndividualTxnsAcross(s, {
+          companyIds,
+          year,
+          month,
+          employmentId,
+          kind,
+          departmentId,
+          batchStatus: txnStatus,
+          createdBy,
+          createdFrom,
+          createdTo,
+        })
       : Promise.resolve([]),
     tab === 'history'
       ? listProcessedPayslipsAcross(s, { companyIds, year, month, employmentId, cycle })
@@ -208,6 +247,56 @@ export default async function TransactionViewPage({
             </>
           )}
           {tab !== 'fixed' && yearMonthSelects}
+          {tab === 'individual' && (
+            <>
+              <Field label={t('view.filters.payItem')}>
+                <select name="kind" defaultValue={kind ?? ''} className={inputCls}>
+                  <option value="">{t('view.filters.all')}</option>
+                  {TXN_KINDS.map((k) => (
+                    <option key={k} value={k}>
+                      {t(`individual.kindLabel.${k}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('view.filters.department')}>
+                <select name="departmentId" defaultValue={departmentId ?? ''} className={inputCls}>
+                  <option value="">{t('view.filters.all')}</option>
+                  {departmentOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('view.filters.txnStatus')}>
+                <select name="txnStatus" defaultValue={txnStatus ?? ''} className={inputCls}>
+                  <option value="">{t('view.filters.all')}</option>
+                  {TXN_STATUSES.map((st) => (
+                    <option key={st} value={st}>
+                      {tList(`status.${st}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('view.filters.createdBy')}>
+                <select name="createdBy" defaultValue={createdBy ?? ''} className={inputCls}>
+                  <option value="">{t('view.filters.all')}</option>
+                  {creators.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('view.filters.createdFrom')}>
+                <input type="date" name="createdFrom" defaultValue={createdFrom ?? ''} className={inputCls} />
+              </Field>
+              <Field label={t('view.filters.createdTo')}>
+                <input type="date" name="createdTo" defaultValue={createdTo ?? ''} className={inputCls} />
+              </Field>
+            </>
+          )}
           {tab === 'history' && (
             <Field label={t('view.filters.cycle')}>
               <select name="cycle" defaultValue={cycle ?? ''} className={inputCls}>
@@ -299,71 +388,21 @@ export default async function TransactionViewPage({
                 ...(employmentId ? { employmentId } : {}),
                 ...(year != null ? { year: String(year) } : {}),
                 ...(month != null ? { month: String(month) } : {}),
+                ...(kind ? { kind } : {}),
+                ...(departmentId ? { departmentId } : {}),
+                ...(txnStatus ? { txnStatus } : {}),
+                ...(createdBy ? { createdBy } : {}),
+                ...(createdFrom ? { createdFrom } : {}),
+                ...(createdTo ? { createdTo } : {}),
               }).toString()}`}
               className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
             >
               {t('view.exportCsv')}
             </a>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{tList('colPeriod')}</th>
-                  <th className="px-4 py-2 font-medium">{tList('colCycle')}</th>
-                  <th className="px-4 py-2 font-medium">{t('individual.txnDate')}</th>
-                  <th className="px-4 py-2 font-medium">{t('individual.employee')}</th>
-                  <th className="px-4 py-2 font-medium">{tList('colCompany')}</th>
-                  <th className="px-4 py-2 font-medium">{t('individual.kind')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('individual.amount')}</th>
-                  <th className="px-4 py-2 font-medium">{t('individual.quantity')}</th>
-                  <th className="px-4 py-2 font-medium">{t('individual.notes')}</th>
-                  <th className="px-4 py-2 font-medium">{tList('colStatus')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {individualRows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
-                    <td className="px-4 py-2.5">
-                      {t(`individual.cycle.${r.runType}`)}
-                      {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 tabular-nums">{r.txnDate}</td>
-                    <td className="px-4 py-2.5 font-medium">
-                      {r.employeeName}
-                      {r.employeeCode && (
-                        <span className="ml-1 font-mono text-xs text-muted-foreground">({r.employeeCode})</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge>{t(`individual.kindLabel.${r.kind}`)}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{Number(r.amount).toFixed(2)}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {r.quantity != null
-                        ? `${r.quantity}${r.unit ? ` ${t(`individual.unitLabel.${r.unit}`)}` : ''}`
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{r.notes ?? '—'}</td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={r.batchStatus === 'draft' ? 'warning' : 'success'}>
-                        {tList(`status.${r.batchStatus}`)}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-                {individualRows.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">
-                      {t('view.individual.empty')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
+              adds column sorting over the fetched rows. */}
+          <IndividualTxnTable rows={individualRows} />
         </Card>
       )}
 

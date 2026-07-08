@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
+import { listPayComponents } from '@/core/pay-components';
 import { listIndividualTxns, TXN_KINDS, TXN_UNITS } from '@/core/payroll-individual-txn';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -27,12 +28,15 @@ export default async function IndividualTransactionPage({
   const { batchId, error } = await searchParams;
   const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
 
-  const [allBatches, employees, companies] = await Promise.all([
+  const [allBatches, employees, companies, payComponents] = await Promise.all([
     listBatches(s, scopeIds),
     listEmployees(s, scopeIds),
     listCompanies(s),
+    listPayComponents(s), // Payroll Item Master — the wizard item picker is sourced from these active items.
   ]);
   const draftBatches = allBatches.filter((b) => b.status === 'draft');
+  // Active payable earning/deduction items from the master (archived already excluded by listPayComponents).
+  const wizardPayItems = payComponents.map((c) => ({ id: c.id, code: c.code, name: c.name, kind: c.kind }));
 
   // The wizard's Company pre-filter is view-only narrowing on the already access-fenced employee list, so
   // scope the dropdown to the same authorised set (scopeIds) that listEmployees was fenced to — never let
@@ -79,6 +83,7 @@ export default async function IndividualTransactionPage({
     'companyMismatch',
     'employeeNotInScope',
     'rowIncomplete',
+    'duplicateRow',
   ]);
   const errorMessage = error && errorKeys.has(error) ? t(`individual.${error}`) : error;
 
@@ -105,6 +110,7 @@ export default async function IndividualTransactionPage({
         employees={wizardEmployees}
         batches={wizardBatches}
         companies={scopedCompanies}
+        payItems={wizardPayItems}
         processHref="/payroll/process"
       />
       {draftBatches.length === 0 && (

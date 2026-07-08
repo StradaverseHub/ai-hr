@@ -13,6 +13,7 @@ import {
   CompanyMismatchError,
   EmploymentNotInBatchScopeError,
   EmptyEmployeeSelectionError,
+  DuplicateTxnRowError,
   InvalidTxnKindError,
   InvalidTxnUnitError,
   type BulkTxnRow,
@@ -34,11 +35,13 @@ const txnErrorKey = (e: unknown): string =>
           ? 'employeeNotInScope'
           : e instanceof EmptyEmployeeSelectionError
             ? 'noEmployeesSelected'
-            : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
-              ? 'rowIncomplete'
-              : e instanceof BatchNotDraftError
-                ? 'notDraft'
-                : (e as Error).message;
+            : e instanceof DuplicateTxnRowError
+              ? 'duplicateRow'
+              : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
+                ? 'rowIncomplete'
+                : e instanceof BatchNotDraftError
+                  ? 'notDraft'
+                  : (e as Error).message;
 
 const num = (v: FormDataEntryValue | null): number | undefined => {
   if (v == null || v === '') return undefined;
