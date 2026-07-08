@@ -8,6 +8,7 @@ import {
   archiveCostCenter,
   archiveDepartment,
   archivePosition,
+  bulkSaveLabels,
   createBusinessUnit,
   createCostCenter,
   createDepartment,
@@ -15,11 +16,23 @@ import {
   deleteCostCenter,
   deleteDepartment,
   deletePosition,
+  LabelBulkError,
+  setCompanySharedLabels,
   updateBusinessUnit,
   updateCostCenter,
   updateDepartment,
   updatePosition,
+  type LabelCreateInput,
+  type LabelKindStr,
+  type LabelRowError,
+  type LabelUpdateInput,
 } from '@/core/admin';
+import {
+  assignLabelToCompanies,
+  LabelInUseError,
+  setLabelGlobal,
+  unassignLabelFromCompanies,
+} from '@/core/system-labels';
 
 // Route-scoped actions for the System Labels admin page. These wrap the SAME core catalog functions the
 // Organization page used to call, but every ok()/fail() targets SYSTEM_LABELS — NOT '/admin/organization'
@@ -237,4 +250,117 @@ export async function archiveBusinessUnitAction(fd: FormData) {
     fail(SYSTEM_LABELS, e);
   }
   ok(SYSTEM_LABELS);
+}
+
+// ── System Labels grid (62de487d): return-value actions (NOT redirects) — the client grid needs the
+// structured result (per-row validation errors) to highlight cells, so these are invoked directly from
+// the 'use client' component and return a plain object. On success they revalidate the affected routes.
+function revalidateLabels() {
+  revalidatePath(SYSTEM_LABELS);
+  for (const p of REVALIDATE_ALSO) revalidatePath(p);
+}
+
+export type GridSaveResult =
+  | { ok: true; created: number; updated: number }
+  | { ok: false; rowErrors: LabelRowError[]; message?: string };
+
+/** Atomic Save for one category grid: all creates + updates in a single transaction. */
+export async function saveLabelsGridAction(
+  kind: LabelKindStr,
+  payload: { creates: LabelCreateInput[]; updates: LabelUpdateInput[] },
+): Promise<GridSaveResult> {
+  const s = await getSession();
+  try {
+    const r = await bulkSaveLabels(s, kind, payload);
+    revalidateLabels();
+    return { ok: true, ...r };
+  } catch (e) {
+    if (e instanceof LabelBulkError) return { ok: false, rowErrors: e.rowErrors };
+    return { ok: false, rowErrors: [], message: (e as Error).message };
+  }
+}
+
+export type ScopeActionResult = { ok: true } | { ok: false; message: string };
+
+/** Assign a label to companies (company-specific scope). */
+export async function assignLabelCompaniesAction(
+  kind: LabelKindStr,
+  labelId: string,
+  companyIds: string[],
+): Promise<ScopeActionResult> {
+  const s = await getSession();
+  try {
+    await assignLabelToCompanies(s, { kind, labelId, companyIds });
+    revalidateLabels();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Remove a label from companies. Refuses (LabelInUseError) if a removed company still uses it. */
+export async function unassignLabelCompaniesAction(
+  kind: LabelKindStr,
+  labelId: string,
+  companyIds: string[],
+): Promise<ScopeActionResult> {
+  const s = await getSession();
+  try {
+    await unassignLabelFromCompanies(s, { kind, labelId, companyIds });
+    revalidateLabels();
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof LabelInUseError) return { ok: false, message: e.message };
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Set/clear a label's Global ("All Companies") scope. Group-admin-only (DB trigger backstops). */
+export async function setLabelGlobalAction(
+  kind: LabelKindStr,
+  labelId: string,
+  isGlobal: boolean,
+): Promise<ScopeActionResult> {
+  const s = await getSession();
+  try {
+    await setLabelGlobal(s, { kind, labelId, isGlobal });
+    revalidateLabels();
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof LabelInUseError) return { ok: false, message: e.message };
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Toolbar bulk action: assign the selected labels to the selected companies in one go. */
+export async function copyLabelsToCompaniesAction(
+  kind: LabelKindStr,
+  labelIds: string[],
+  companyIds: string[],
+): Promise<ScopeActionResult> {
+  const s = await getSession();
+  try {
+    for (const labelId of labelIds) {
+      await assignLabelToCompanies(s, { kind, labelId, companyIds });
+    }
+    revalidateLabels();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
+}
+
+/** Turn a company's Shared System Labels feature on/off (the resolver switch). */
+export async function setCompanySharedLabelsAction(
+  companyId: string,
+  enabled: boolean,
+): Promise<ScopeActionResult> {
+  const s = await getSession();
+  try {
+    await setCompanySharedLabels(s, { companyId, enabled });
+    revalidateLabels();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: (e as Error).message };
+  }
 }

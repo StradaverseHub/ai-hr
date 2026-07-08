@@ -9,6 +9,7 @@ import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
 import { isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
+import { labelUsableByCompany } from './system-labels';
 import {
   person,
   employment,
@@ -124,29 +125,18 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     }
 
     // Server-side cross-company guard (source of truth — client filtering is not). The chosen
-    // department / position / cost-center must belong to the hiring company. grade_id is tenant-wide
-    // (no company_id), so it is intentionally not checked. RLS already scopes these reads to the tenant.
-    const [dept] = await tx
-      .select({ companyId: department.companyId })
-      .from(department)
-      .where(eq(department.id, p.departmentId))
-      .limit(1);
-    if (!dept || dept.companyId !== p.companyId) throw new CrossCompanyError('department');
-    if (p.positionId) {
-      const [pos] = await tx
-        .select({ companyId: position.companyId })
-        .from(position)
-        .where(eq(position.id, p.positionId))
-        .limit(1);
-      if (!pos || pos.companyId !== p.companyId) throw new CrossCompanyError('position');
+    // department / position / cost-center must be a label the hiring company MAY use. Shared System
+    // Labels (62de487d): this is now the resolver check (origin ∪ shared-in ∪ global, flag-gated) rather
+    // than a strict company_id match — with the flag OFF it collapses to the old origin-only strictness,
+    // so nothing changes until a company opts in. grade_id is tenant-wide (no company_id), not checked.
+    if (!(await labelUsableByCompany(tx, ctx.tenantId, 'department', p.departmentId, p.companyId))) {
+      throw new CrossCompanyError('department');
     }
-    if (p.costCenterId) {
-      const [cc] = await tx
-        .select({ companyId: costCenter.companyId })
-        .from(costCenter)
-        .where(eq(costCenter.id, p.costCenterId))
-        .limit(1);
-      if (!cc || cc.companyId !== p.companyId) throw new CrossCompanyError('cost-center');
+    if (p.positionId && !(await labelUsableByCompany(tx, ctx.tenantId, 'position', p.positionId, p.companyId))) {
+      throw new CrossCompanyError('position');
+    }
+    if (p.costCenterId && !(await labelUsableByCompany(tx, ctx.tenantId, 'cost_center', p.costCenterId, p.companyId))) {
+      throw new CrossCompanyError('cost-center');
     }
 
     const provisionalEndOn = p.provisionalEndOn ?? null;

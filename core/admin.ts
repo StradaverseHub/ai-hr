@@ -3,10 +3,11 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
+import { visibleLabelIdsCondition } from './system-labels';
 import {
   isValidMonthDay,
   isWellFormedBands,
@@ -916,7 +917,10 @@ export function listPositions(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(position.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(position.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (62de487d): resolve via origin ∪ shared-in ∪ global (flag-gated).
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(position, 'position', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(position.title),
@@ -941,7 +945,10 @@ export function listCostCenters(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(costCenter.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(costCenter.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (62de487d): resolve via origin ∪ shared-in ∪ global (flag-gated).
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(costCenter, 'cost_center', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(costCenter.code),
@@ -968,7 +975,10 @@ export function listBusinessUnits(
       .where(
         and(
           opts.includeArchived ? undefined : isNull(businessUnit.archivedAt),
-          opts.companyIds && opts.companyIds.length ? inArray(businessUnit.companyId, opts.companyIds) : undefined,
+          // Shared System Labels (62de487d): resolve via origin ∪ shared-in ∪ global (flag-gated).
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(businessUnit, 'business_unit', opts.companyIds)
+            : undefined,
         ),
       )
       .orderBy(businessUnit.code),
@@ -979,6 +989,29 @@ export function listBusinessUnits(
 // The System Labels admin page is the ONLY consumer of `description`, so it gets its own read queries that
 // select the column. The general-purpose listDepartments/listPositions/listCostCenters/listBusinessUnits
 // used by the hire form and People filters are deliberately left untouched (no description) — narrow scope.
+//
+// Audit columns (62de487d): the four label tables carry `created_at` but no updated_at/updated_by — the
+// "Last updated" audit info the grid shows is DERIVED from the domain-event log (each create/update/archive
+// already appends one; substrate discipline). Correlated subqueries over domain_event keyed by the row's
+// aggregate id: latest occurred_at + the actor's display name (SYSTEM/agent events → null name). RLS on
+// domain_event grants admins tenant-wide read, and this page is scopedAdmin, so the subqueries resolve.
+
+/** Scalar SQL: the most-recent domain-event timestamp for a label row (its aggregate). The idCol is the
+ *  outer table's id column, correlated into the subquery. */
+function lastUpdatedAtSql(agg: string, idCol: AnyColumn) {
+  return sql<string | null>`(select max(de.occurred_at) from domain_event de
+    where de.aggregate_type = ${agg} and de.aggregate_id = ${idCol})`;
+}
+/** Scalar SQL: the display name of the actor on the most-recent domain-event for a label row. SYSTEM /
+ *  agent events (no actor_id, or no linked person) resolve to null — the UI shows a system fallback. */
+function lastUpdatedBySql(agg: string, idCol: AnyColumn) {
+  return sql<string | null>`(select p.full_name from domain_event de
+    left join app_user au on au.id = de.actor_id
+    left join person p on p.id = au.person_id
+    where de.aggregate_type = ${agg} and de.aggregate_id = ${idCol}
+    order by de.occurred_at desc limit 1)`;
+}
+
 
 export function listDepartmentsForLabels(
   ctx: SessionContext,
@@ -993,6 +1026,10 @@ export function listDepartmentsForLabels(
         businessUnitId: department.businessUnitId,
         description: department.description,
         archivedAt: department.archivedAt,
+        isGlobal: department.isGlobal,
+        createdAt: department.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('department', department.id),
+        lastUpdatedBy: lastUpdatedBySql('department', department.id),
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
       })
       .from(department)
@@ -1016,6 +1053,10 @@ export function listPositionsForLabels(
         jobFamily: position.jobFamily,
         description: position.description,
         archivedAt: position.archivedAt,
+        isGlobal: position.isGlobal,
+        createdAt: position.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('position', position.id),
+        lastUpdatedBy: lastUpdatedBySql('position', position.id),
         inUse: sql<boolean>`exists (select 1 from assignment a where a.position_id = position.id and a.superseded_at is null)`,
       })
       .from(position)
@@ -1039,6 +1080,10 @@ export function listCostCentersForLabels(
         name: costCenter.name,
         description: costCenter.description,
         archivedAt: costCenter.archivedAt,
+        isGlobal: costCenter.isGlobal,
+        createdAt: costCenter.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('cost-center', costCenter.id),
+        lastUpdatedBy: lastUpdatedBySql('cost-center', costCenter.id),
         inUse: sql<boolean>`exists (select 1 from assignment a where a.cost_center_id = cost_center.id and a.superseded_at is null)`,
       })
       .from(costCenter)
@@ -1062,6 +1107,10 @@ export function listBusinessUnitsForLabels(
         name: businessUnit.name,
         description: businessUnit.description,
         archivedAt: businessUnit.archivedAt,
+        isGlobal: businessUnit.isGlobal,
+        createdAt: businessUnit.createdAt,
+        lastUpdatedAt: lastUpdatedAtSql('business-unit', businessUnit.id),
+        lastUpdatedBy: lastUpdatedBySql('business-unit', businessUnit.id),
         inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
       })
       .from(businessUnit)
@@ -1643,6 +1692,215 @@ export function archiveBusinessUnit(ctx: SessionContext, p: { id: string; archiv
       throw e;
     });
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'business-unit', aggregateId: p.id, eventType: p.archived ? 'business-unit.archived' : 'business-unit.unarchived', actor: actorOf(ctx), payload: {} });
+  });
+}
+
+// ── System Labels grid: atomic bulk save (Excel-style edit → one Save) ───────────────────────────────
+// Feedback 62de487d. The grid lets an admin edit many rows and add new ones, then Save commits them ALL
+// in ONE transaction (Requirement 4: "all changes are saved in a single transaction"). Each row keeps
+// its OWN DomainEvent (department.created / position.updated / …) — SUBSTRATE DISCIPLINE: the audit
+// trail stays per-aggregate, one event per changed label. Any validation failure (duplicate code /
+// missing mandatory field / cross-company BU / non-group-admin trying to set Global) aborts the WHOLE
+// transaction (throw → rollback) and returns the offending rows so the grid can highlight them.
+
+export type LabelKindStr = 'department' | 'position' | 'cost_center' | 'business_unit';
+
+/** One new row to create. `key` is the client's row key, echoed back on any error for row highlighting. */
+export type LabelCreateInput = {
+  key: string;
+  companyId: string;
+  isGlobal?: boolean;
+  code?: string;
+  name?: string;
+  title?: string;
+  jobFamily?: string;
+  businessUnitId?: string | null;
+  description?: string;
+};
+/** One existing row to update. `archived` toggles the soft-archive; scope (isGlobal) is applied too. */
+export type LabelUpdateInput = {
+  key: string;
+  id: string;
+  isGlobal?: boolean;
+  archived?: boolean;
+  code?: string;
+  name?: string;
+  title?: string;
+  jobFamily?: string;
+  businessUnitId?: string | null;
+  description?: string;
+};
+export type LabelRowError = { key: string; field?: string; message: string };
+
+/** Thrown to roll the whole bulk-save transaction back; carries the per-row errors for the grid. */
+export class LabelBulkError extends Error {
+  rowErrors: LabelRowError[];
+  constructor(rowErrors: LabelRowError[]) {
+    super('One or more label rows are invalid.');
+    this.name = 'LabelBulkError';
+    this.rowErrors = rowErrors;
+  }
+}
+
+const KIND_AGG: Record<LabelKindStr, string> = {
+  department: 'department',
+  position: 'position',
+  cost_center: 'cost-center',
+  business_unit: 'business-unit',
+};
+
+/** Postgres insufficient_privilege (42501) — raised by the app.guard_is_global() trigger when a
+ *  non-group-admin tries to set is_global=true. Surfaced as a friendly per-row scope error. */
+function isPrivilegeError(e: unknown): boolean {
+  const code = (e as { code?: string })?.code;
+  return code === '42501';
+}
+
+export async function bulkSaveLabels(
+  ctx: SessionContext,
+  kind: LabelKindStr,
+  p: { creates: LabelCreateInput[]; updates: LabelUpdateInput[] },
+): Promise<{ created: number; updated: number }> {
+  const agg = KIND_AGG[kind];
+  return withTenant(ctx, async (tx) => {
+    const errors: LabelRowError[] = [];
+    let created = 0;
+    let updated = 0;
+
+    // Field validation shared by create + update; returns cleaned values or pushes a row error.
+    const clean = (
+      key: string,
+      raw: string | undefined,
+      field: string,
+      label: string,
+      required: boolean,
+    ): string | null => {
+      const v = (raw ?? '').trim();
+      if (!v) {
+        if (required) errors.push({ key, field, message: `${label} is required.` });
+        return null;
+      }
+      return v;
+    };
+
+    for (const c of p.creates) {
+      try {
+        if (kind === 'department') {
+          const name = clean(c.key, c.name, 'name', 'Department name', true);
+          if (!name) continue;
+          const businessUnitId = await resolveDepartmentBusinessUnitId(tx, c.businessUnitId, c.companyId);
+          const [row] = await tx
+            .insert(department)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: department.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false } });
+        } else if (kind === 'position') {
+          const title = clean(c.key, c.title, 'title', 'Position title', true);
+          if (!title) continue;
+          const [row] = await tx
+            .insert(position)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: position.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'position.created', actor: actorOf(ctx), payload: { companyId: c.companyId, title, isGlobal: c.isGlobal ?? false } });
+        } else if (kind === 'cost_center') {
+          const code = clean(c.key, c.code, 'code', 'Cost-center code', true);
+          const name = clean(c.key, c.name, 'name', 'Cost-center name', true);
+          if (!code || !name) continue;
+          const [row] = await tx
+            .insert(costCenter)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: costCenter.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'cost-center.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
+        } else {
+          const code = clean(c.key, c.code, 'code', 'Business-unit code', true);
+          const name = clean(c.key, c.name, 'name', 'Business-unit name', true);
+          if (!code || !name) continue;
+          const [row] = await tx
+            .insert(businessUnit)
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .returning({ id: businessUnit.id });
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
+        }
+        created++;
+      } catch (e) {
+        if (isUniqueViolation(e)) errors.push({ key: c.key, field: kind === 'department' || kind === 'position' ? (kind === 'department' ? 'name' : 'title') : 'code', message: 'A label with this code / name already exists in the company.' });
+        else if (isPrivilegeError(e)) errors.push({ key: c.key, field: 'scope', message: 'Only a group admin can make a label global.' });
+        else if (e instanceof CrossCompanyError) errors.push({ key: c.key, field: 'businessUnitId', message: e.message });
+        else throw e;
+      }
+    }
+
+    for (const u of p.updates) {
+      try {
+        if (kind === 'department') {
+          const name = clean(u.key, u.name, 'name', 'Department name', true);
+          if (!name) continue;
+          const set: { name: string; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.businessUnitId !== undefined) {
+            const [dep] = await tx.select({ companyId: department.companyId }).from(department).where(eq(department.id, u.id)).limit(1);
+            if (dep) set.businessUnitId = await resolveDepartmentBusinessUnitId(tx, u.businessUnitId, dep.companyId);
+          }
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(department).set(set).where(eq(department.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'department.updated', actor: actorOf(ctx), payload: { name, isGlobal: u.isGlobal, archived: u.archived } });
+        } else if (kind === 'position') {
+          const title = clean(u.key, u.title, 'title', 'Position title', true);
+          if (!title) continue;
+          const set: { title: string; jobFamily: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { title, jobFamily: u.jobFamily?.trim() || null, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(position).set(set).where(eq(position.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'position.updated', actor: actorOf(ctx), payload: { title, isGlobal: u.isGlobal, archived: u.archived } });
+        } else if (kind === 'cost_center') {
+          const code = clean(u.key, u.code, 'code', 'Cost-center code', true);
+          const name = clean(u.key, u.name, 'name', 'Cost-center name', true);
+          if (!code || !name) continue;
+          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(costCenter).set(set).where(eq(costCenter.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'cost-center.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
+        } else {
+          const code = clean(u.key, u.code, 'code', 'Business-unit code', true);
+          const name = clean(u.key, u.name, 'name', 'Business-unit name', true);
+          if (!code || !name) continue;
+          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
+          await tx.update(businessUnit).set(set).where(eq(businessUnit.id, u.id));
+          await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
+        }
+        updated++;
+      } catch (e) {
+        if (isUniqueViolation(e)) errors.push({ key: u.key, field: kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code', message: 'A label with this code / name already exists in the company.' });
+        else if (isPrivilegeError(e)) errors.push({ key: u.key, field: 'scope', message: 'Only a group admin can make a label global.' });
+        else if (e instanceof CrossCompanyError) errors.push({ key: u.key, field: 'businessUnitId', message: e.message });
+        else throw e;
+      }
+    }
+
+    if (errors.length) throw new LabelBulkError(errors); // rollback everything — atomic save.
+    return { created, updated };
+  });
+}
+
+/**
+ * Turn a company's Shared System Labels feature ON/OFF (the resolver switch). OFF (default) = origin-only
+ * for that company; ON = it also sees global + labels shared into it. RLS on `company` already requires
+ * admin-for-company to write. Substrate: append a company-level event.
+ */
+export async function setCompanySharedLabels(ctx: SessionContext, p: { companyId: string; enabled: boolean }) {
+  return withTenant(ctx, async (tx) => {
+    await tx.update(company).set({ sharedSystemLabels: p.enabled }).where(eq(company.id, p.companyId));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.companyId,
+      eventType: p.enabled ? 'company.shared-labels.enabled' : 'company.shared-labels.disabled',
+      actor: actorOf(ctx),
+      payload: { enabled: p.enabled },
+    });
   });
 }
 
