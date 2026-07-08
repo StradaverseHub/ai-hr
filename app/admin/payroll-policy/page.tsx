@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { listPolicies, POLICY_TYPES, type PolicyRow } from '@/core/payroll-policy';
+import { listPayComponents } from '@/core/pay-components';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,8 @@ export default async function PayrollPolicyPage({
   const all = await listCompanies(s);
   const companies = all.filter((c) => scopeIds.includes(c.id));
   const policies = await listPolicies(s, scopeIds);
+  // f3148da1 Step 4 — pay components offered as the "convert OT excess to pay item" target (earnings only).
+  const payComponents = (await listPayComponents(s)).filter((c) => c.kind === 'allowance');
 
   // Search / filter / sort (the catalog is small — applied in-page over the server-rendered list).
   const sortKey: SortKey = (['name', 'type', 'status', 'updated'] as const).includes(sort as SortKey) ? (sort as SortKey) : 'name';
@@ -54,6 +57,17 @@ export default async function PayrollPolicyPage({
   // 2.1.4 — the editing policy's stored cut-off window (custom_period only), for prefilling the form.
   const editingCutOff = editing?.config?.cutOff;
   const editingCutOffCustom = editingCutOff?.mode === 'custom';
+  // f3148da1 — the editing policy's General-Settings config, for prefilling the Steps 2–5 sections.
+  const cfg = editing?.config ?? null;
+  const cfgOt = cfg?.overtime;
+  const otDayTypes = cfgOt?.eligibleDayTypes; // undefined = all three (no restriction)
+  const dayChecked = (d: 'workday' | 'rest_day' | 'holiday') => (otDayTypes ? otDayTypes.includes(d) : true);
+  const cfgLeave = cfg?.leave;
+  const cfgPror = cfg?.proration;
+  const cfgRound = cfg?.rounding;
+  const otExceedConvert = cfgOt?.exceedHandling?.action === 'convert';
+  const ROUNDING_OPTS = ['none', 'up', 'down', 'nearest'] as const;
+  const LEAVE_DIVISORS = ['calendar_month', 'custom_days', 'cutoff_days', 'working_days', 'custom_hours', 'custom_minutes'] as const;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -295,6 +309,141 @@ export default async function PayrollPolicyPage({
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('cutOff.anchorDayHint')}</p>
               </div>
+
+              {/* ───────── f3148da1 · General Settings (Steps 2–5) — server-rendered, no client state.
+                  Every field defaults to today's behaviour; cleanPayrollPolicyConfig clamps + collapses an
+                  all-default blob back to NULL so an untouched form stays byte-identical. ───────── */}
+
+              {/* Step 2/3 — Proration + working-day reference */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('config.prorationTitle')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('config.prorationDivisor')}>
+                    <select name="prorationDivisor" defaultValue={cfgPror?.divisor ?? 'calendar_month'} className={inputCls}>
+                      <option value="calendar_month">{t('config.divisorCalendar')}</option>
+                      <option value="custom_days">{t('config.divisorCustom')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('config.prorationCustomDays')}>
+                    <input name="prorationCustomDays" type="number" min={1} max={31} step="1" inputMode="numeric" defaultValue={cfgPror?.customDays ?? ''} placeholder="26" className={inputCls} />
+                  </Field>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="includeSaturday" defaultChecked={cfgPror?.includeSaturday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSaturday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="includeSunday" defaultChecked={cfgPror?.includeSunday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSunday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="includeHoliday" defaultChecked={cfgPror?.includeHoliday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeHoliday')}</label>
+                </div>
+                <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" name="salaryIncrementProration" defaultChecked={cfg?.salaryIncrementProration ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.salaryIncrementProration')}</label>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.prorationHint')}</p>
+              </div>
+
+              {/* Step 2 — Negative net pay */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('config.negativeNetTitle')}</p>
+                <Field label={t('config.negativeNetLabel')}>
+                  <select name="negativeNet" defaultValue={cfg?.negativeNet ?? 'retain'} className={inputCls}>
+                    <option value="retain">{t('config.negativeRetain')}</option>
+                    <option value="set_zero">{t('config.negativeSetZero')}</option>
+                  </select>
+                </Field>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.negativeNetHint')}</p>
+              </div>
+
+              {/* Step 4 — Overtime */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('config.overtimeTitle')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={t('config.otMultiplier')}>
+                    <input name="otMultiplier" type="number" min={1.5} step="0.1" inputMode="decimal" defaultValue={cfgOt?.multiplier ?? ''} placeholder="1.5" className={inputCls} />
+                  </Field>
+                  <Field label={t('config.otMaxHours')}>
+                    <input name="otMaxHours" type="number" min={0} step="0.5" inputMode="decimal" defaultValue={cfgOt?.maxHoursPerMonth ?? ''} placeholder="104" className={inputCls} />
+                  </Field>
+                  <Field label={t('config.otMaxAmount')}>
+                    <input name="otMaxAmount" type="number" min={0} step="0.01" inputMode="decimal" defaultValue={cfgOt?.maxAmount ?? ''} placeholder="—" className={inputCls} />
+                  </Field>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="otDay_workday" defaultChecked={dayChecked('workday')} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.otDayWorkday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="otDay_rest_day" defaultChecked={dayChecked('rest_day')} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.otDayRestDay')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="otDay_holiday" defaultChecked={dayChecked('holiday')} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.otDayHoliday')}</label>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('config.otExceedLabel')}>
+                    <select name="otExceedAction" defaultValue={otExceedConvert ? 'convert' : 'cap'} className={inputCls}>
+                      <option value="cap">{t('config.otExceedCap')}</option>
+                      <option value="convert">{t('config.otExceedConvert')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('config.otExceedComponent')}>
+                    <select name="otExceedComponentId" defaultValue={cfgOt?.exceedHandling?.componentId ?? ''} className={inputCls}>
+                      <option value="">{t('config.otExceedComponentNone')}</option>
+                      {payComponents.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.code})</option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.otHint')}</p>
+              </div>
+
+              {/* Step 5 — Leave */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('config.leaveTitle')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={t('config.unpaidLeaveDivisor')}>
+                    <select name="unpaidLeaveDivisor" defaultValue={cfgLeave?.unpaidLeaveDivisor ?? 'calendar_month'} className={inputCls}>
+                      {LEAVE_DIVISORS.map((d) => <option key={d} value={d}>{t(`config.leaveDivisor.${d}`)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={t('config.unpaidTimeOffDivisor')}>
+                    <select name="unpaidTimeOffDivisor" defaultValue={cfgLeave?.unpaidTimeOffDivisor ?? 'calendar_month'} className={inputCls}>
+                      {LEAVE_DIVISORS.map((d) => <option key={d} value={d}>{t(`config.leaveDivisor.${d}`)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={t('config.encashmentDivisor')}>
+                    <select name="encashmentDivisor" defaultValue={cfgLeave?.encashmentDivisor ?? 'calendar_month'} className={inputCls}>
+                      {LEAVE_DIVISORS.map((d) => <option key={d} value={d}>{t(`config.leaveDivisor.${d}`)}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={t('config.leaveCustomDays')}>
+                    <input name="leaveCustomDays" type="number" min={1} max={31} step="1" inputMode="numeric" defaultValue={cfgLeave?.customDays ?? ''} placeholder="26" className={inputCls} />
+                  </Field>
+                  <Field label={t('config.leaveCustomHours')}>
+                    <input name="leaveCustomHours" type="number" min={0} step="0.5" inputMode="decimal" defaultValue={cfgLeave?.customHours ?? ''} placeholder="—" className={inputCls} />
+                  </Field>
+                  <Field label={t('config.leaveCustomMinutes')}>
+                    <input name="leaveCustomMinutes" type="number" min={0} step="1" inputMode="numeric" defaultValue={cfgLeave?.customMinutes ?? ''} placeholder="—" className={inputCls} />
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.leaveHint')}</p>
+              </div>
+
+              {/* Rounding */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('config.roundingTitle')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={t('config.roundingEarnings')}>
+                    <select name="roundingEarnings" defaultValue={cfgRound?.earnings ?? 'none'} className={inputCls}>
+                      {ROUNDING_OPTS.map((r) => <option key={r} value={r}>{t(`config.rounding.${r}`)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={t('config.roundingDeductions')}>
+                    <select name="roundingDeductions" defaultValue={cfgRound?.deductions ?? 'none'} className={inputCls}>
+                      {ROUNDING_OPTS.map((r) => <option key={r} value={r}>{t(`config.rounding.${r}`)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label={t('config.roundingNetPay')}>
+                    <select name="roundingNetPay" defaultValue={cfgRound?.netPay ?? 'none'} className={inputCls}>
+                      {ROUNDING_OPTS.map((r) => <option key={r} value={r}>{t(`config.rounding.${r}`)}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.roundingHint')}</p>
+              </div>
+
               <Field label={t('fieldDescription')}>
                 <input name="description" defaultValue={editing?.description ?? ''} placeholder={t('descriptionPlaceholder')} className={`${inputCls} sm:col-span-2`} />
               </Field>

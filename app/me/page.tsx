@@ -185,7 +185,9 @@ export default async function MePage({
   // Only finalized batches (status 'closed') are offered; draft/processed never surface in the
   // month/cycle options or the default selection. Month = payPeriod ('YYYY-MM'); cycle key =
   // `${runType}#${runSeq}` so a multi-company month with the same cycle keeps all its rows.
-  const finalizedPayslips = payslips.filter((p) => p.status === 'closed');
+  // Step 6 (f3148da1) — only RELEASED payslips are offered in ESS. `released` is computed in myPayslips from
+  // the batch close instant + the company's payslip-release config (immediate / fixed date / relative to payday).
+  const finalizedPayslips = payslips.filter((p) => p.status === 'closed' && p.released);
   const payslipMonths = [...new Set(finalizedPayslips.map((p) => p.payPeriod))].sort((a, b) =>
     a < b ? 1 : a > b ? -1 : 0,
   );

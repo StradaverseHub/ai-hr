@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies } from '@/core/read';
 import { getPayrollConfig } from '@/core/payroll-config';
+import { listAssignablePolicies } from '@/core/payroll-policy';
 import { getCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { settingsBack } from '@/app/payroll/setup/back';
@@ -9,6 +10,7 @@ import { savePayrollConfigAction } from './actions';
 
 const HRDF = ['not_registered', 'mandatory', 'optional'] as const;
 const BASES = ['monthly', 'daily', 'hourly', 'other'] as const;
+const RELEASE_MODES = ['immediate', 'fixed_day', 'relative'] as const;
 
 export default async function PayrollConfigPage({
   searchParams,
@@ -26,6 +28,8 @@ export default async function PayrollConfigPage({
       company: c,
       cfg: await getPayrollConfig(s, c.id),
       stat: await getCompanyStatutoryMY(s, c.id),
+      // Step 1 (f3148da1) — active policies assignable as this company's default payroll policy.
+      policies: await listAssignablePolicies(s, c.id),
     })),
   );
 
@@ -39,7 +43,9 @@ export default async function PayrollConfigPage({
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">{t('emptyScope')}</p>
         </Card>
       ) : (
-        configs.map(({ company, cfg, stat }) => (
+        configs.map(({ company, cfg, stat, policies }) => {
+          const release = (cfg?.payslipRelease ?? null) as { mode?: string; day?: number; offsetDays?: number } | null;
+          return (
           <Card key={company.id}>
             <SectionHeader title={company.name} />
             <form action={savePayrollConfigAction} className="space-y-5 p-4">
@@ -63,6 +69,39 @@ export default async function PayrollConfigPage({
                   </Field>
                 </div>
                 <p className="mt-1.5 text-xs text-muted-foreground">{t('dayHint')}</p>
+              </div>
+
+              {/* Step 1 (f3148da1) — company-default payroll policy + Step 6 payslip release */}
+              <div>
+                <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('policyReleaseTitle')}</h4>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Field label={t('defaultPolicy')}>
+                    <select name="defaultPayrollPolicyId" defaultValue={cfg?.defaultPayrollPolicyId ?? ''} className={inputCls}>
+                      <option value="">{t('defaultPolicyNone')}</option>
+                      {policies.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('releaseMode')}>
+                    <select name="payslipReleaseMode" defaultValue={release?.mode ?? 'immediate'} className={inputCls}>
+                      {RELEASE_MODES.map((m) => (
+                        <option key={m} value={m}>{t(`release_${m}`)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t('releaseValue')}>
+                    <input
+                      type="number"
+                      name="payslipReleaseValue"
+                      defaultValue={release?.mode === 'fixed_day' ? (release.day ?? '') : release?.mode === 'relative' ? (release.offsetDays ?? '') : ''}
+                      placeholder={t('releaseValuePlaceholder')}
+                      className={inputCls}
+                    />
+                  </Field>
+                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('defaultPolicyHint')}</p>
+                <p className="mt-1.5 text-xs text-muted-foreground">{t('releaseHint')}</p>
               </div>
 
               <div>
@@ -130,7 +169,8 @@ export default async function PayrollConfigPage({
               <button className={btnPrimary}>{t('save')}</button>
             </form>
           </Card>
-        ))
+          );
+        })
       )}
     </div>
   );

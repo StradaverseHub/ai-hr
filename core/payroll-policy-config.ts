@@ -21,11 +21,19 @@ import type {
   NegativeNetMode,
   OtDayType,
   PayrollPolicyConfig,
+  PayslipRelease,
+  PayslipReleaseMode,
   ProrationDivisor,
   RoundingMode,
 } from '../db/schema';
 
-export type { PayrollPolicyConfig };
+export type { PayrollPolicyConfig, PayslipRelease };
+
+// UUID v4-ish shape — the OT exceed-handling component id + company-default policy id are validated against
+// this shape before being persisted (a malformed id is dropped, not stored).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const cleanUuid = (v: unknown): string | undefined =>
+  typeof v === 'string' && UUID_RE.test(v.trim()) ? v.trim() : undefined;
 
 // EA s.60A(3) statutory minimum workday-OT multiplier. A configured multiplier is floored at this — it can
 // be raised (employer generosity) but never dropped below the legal floor.
@@ -148,6 +156,13 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   if (mult !== undefined && mult > 0) {
     const floored = Math.max(EA_S60A_WORKDAY_OT_FLOOR, mult); // s.60A floor — never under-pay
     if (floored !== EA_S60A_WORKDAY_OT_FLOOR) overtime.multiplier = floored;
+  }
+  // Step 4 (f3148da1) — exceed handling. Only 'convert' is a real action, and only with a valid UUID component
+  // id (an absent/blank action, or a convert without a UUID, drops back to today's cap-and-drop = byte-identical).
+  const ehRaw = (otRaw.exceedHandling ?? {}) as Record<string, unknown>;
+  if (ehRaw.action === 'convert') {
+    const componentId = cleanUuid(ehRaw.componentId);
+    if (componentId) overtime.exceedHandling = { action: 'convert', componentId };
   }
   if (Object.keys(overtime).length) out.overtime = overtime;
 
@@ -286,6 +301,21 @@ export function applyOvertimeCaps(
   config: PayrollPolicyConfig | null,
   parts: { workday: number; restDay: number; holiday: number; workedOtHours: number },
 ): number {
+  return applyOvertimeCapsDetailed(config, parts).capped;
+}
+
+/**
+ * Same cap logic as {@link applyOvertimeCaps} but also returns the multiplier-adjusted PRE-cap total, so the
+ * caller can compute the excess (preCap − capped) the caps removed. Step 4 (f3148da1) redirects that excess
+ * onto a chosen pay item when the policy configures `overtime.exceedHandling.action='convert'`. `excess` is the
+ * money the HOUR/AMOUNT caps cut off — eligible-day-type filtering + the multiplier re-rating are applied to
+ * BOTH figures first, so a day-type restriction is never treated as an "excess" to reroute (it is a genuine
+ * exclusion, not a cap). Default (no config) ⇒ capped === preCap ⇒ excess 0.
+ */
+export function applyOvertimeCapsDetailed(
+  config: PayrollPolicyConfig | null,
+  parts: { workday: number; restDay: number; holiday: number; workedOtHours: number },
+): { capped: number; preCap: number; excess: number } {
   const ot = config?.overtime;
   let workday = parts.workday;
   let restDay = parts.restDay;
@@ -303,7 +333,9 @@ export function applyOvertimeCaps(
     workday = round2(workday * (ot.multiplier / EA_S60A_WORKDAY_OT_FLOOR));
   }
 
-  let total = round2(workday + restDay + holiday);
+  // The eligible + multiplier-adjusted figure BEFORE the hour/amount caps — the reference the excess is measured against.
+  const preCap = round2(workday + restDay + holiday);
+  let total = preCap;
 
   // maxHoursPerMonth: proportional scale-down when worked OT hours exceed the cap.
   if (ot?.maxHoursPerMonth && ot.maxHoursPerMonth > 0 && parts.workedOtHours > ot.maxHoursPerMonth) {
@@ -313,5 +345,77 @@ export function applyOvertimeCaps(
   if (ot?.maxAmount && ot.maxAmount > 0 && total > ot.maxAmount) {
     total = round2(ot.maxAmount);
   }
-  return total;
+  return { capped: total, preCap, excess: Math.max(0, round2(preCap - total)) };
+}
+
+// ─────────────────────────── Step 6: payslip release (f3148da1) ───────────────────────────
+
+const PAYSLIP_RELEASE_MODES: PayslipReleaseMode[] = ['immediate', 'fixed_day', 'relative'];
+
+/**
+ * Coerce + clamp a raw payslip-release blob into a clean PayslipRelease, or `null` when it is empty / equals the
+ * legacy default (mode='immediate'). NEVER throws (clamp-not-throw). day ∈ 1..31 (fixed_day); offsetDays ∈
+ * -15..15 (relative). A mode missing its parameter falls back to 'immediate' (so a half-filled form is a safe
+ * no-op = today's behaviour).
+ */
+export function cleanPayslipRelease(raw: unknown): PayslipRelease | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const mode = PAYSLIP_RELEASE_MODES.includes(r.mode as PayslipReleaseMode) ? (r.mode as PayslipReleaseMode) : 'immediate';
+  if (mode === 'fixed_day') {
+    const day = cleanPosInt(r.day, 1, 31);
+    return day !== undefined ? { mode: 'fixed_day', day } : null;
+  }
+  if (mode === 'relative') {
+    if (r.offsetDays === null || r.offsetDays === undefined || r.offsetDays === '') return null;
+    const n = Math.trunc(Number(r.offsetDays));
+    const offsetDays = Number.isFinite(n) ? Math.max(-15, Math.min(15, n)) : undefined;
+    return offsetDays !== undefined ? { mode: 'relative', offsetDays } : null;
+  }
+  return null; // 'immediate' = default ⇒ store NULL
+}
+
+/** Days in a Gregorian month (1..12). */
+function daysInMonthUTC(year: number, month1to12: number): number {
+  return new Date(Date.UTC(year, month1to12, 0)).getUTCDate();
+}
+
+/**
+ * The instant a payslip becomes visible in ESS, given the batch close instant, the pay-period ('YYYY-MM'), the
+ * company pay-day (1..31 or null=month-end), and the release config. Pure + deterministic (UTC-day anchored):
+ *  - null cfg / mode='immediate' ⇒ `closedAt` (today's behaviour).
+ *  - 'fixed_day' ⇒ `day` of the month AFTER the pay-period month (payday convention), clamped to month length.
+ *  - 'relative' ⇒ the company pay-day anchor (payDay of the month after the pay period; null ⇒ month-end) ± offsetDays.
+ * The result is NEVER earlier than `closedAt` (a payslip cannot be released before its batch is finalized). When
+ * `closedAt` is null (legacy batch) the batch is treated as ALREADY released (returns null = no gate).
+ */
+export function payslipReleaseAt(
+  closedAt: Date | null,
+  payPeriod: string,
+  payDay: number | null,
+  cfg: PayslipRelease | null,
+): Date | null {
+  if (closedAt == null) return null; // legacy / not-yet-closed handled by caller; null ⇒ released
+  const mode = cfg?.mode ?? 'immediate';
+  if (mode === 'immediate') return closedAt;
+
+  const [y, m] = payPeriod.split('-').map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) return closedAt;
+  // Payday convention: salaries for month M are paid in month M+1.
+  const payYear = m === 12 ? y + 1 : y;
+  const payMonth = m === 12 ? 1 : m + 1; // 1..12
+  const dim = daysInMonthUTC(payYear, payMonth);
+
+  let anchorDay: number;
+  if (mode === 'fixed_day') {
+    anchorDay = Math.min(Math.max(1, cfg?.day ?? 1), dim);
+  } else {
+    // relative: anchor on the company pay-day (null = month-end), then apply the ± offset (may cross months).
+    anchorDay = payDay != null ? Math.min(Math.max(1, payDay), dim) : dim;
+  }
+  const base = Date.UTC(payYear, payMonth - 1, anchorDay);
+  const offset = mode === 'relative' ? (cfg?.offsetDays ?? 0) : 0;
+  const candidate = new Date(base + offset * 24 * 60 * 60 * 1000);
+  // Never before close.
+  return candidate.getTime() > closedAt.getTime() ? candidate : closedAt;
 }

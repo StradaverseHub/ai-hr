@@ -968,7 +968,8 @@
       "downloadPdf": "Tải PDF",
       "cp38": "CP38 (khoản trả góp LHDN)",
       "zakat": "Zakat (qua lương)",
-      "zakatOffsetNote": "PCB ở trên đã trừ khoản này"
+      "zakatOffsetNote": "PCB ở trên đã trừ khoản này",
+      "otConverted": "Làm thêm giờ (chuyển thành {item})"
     },
     "goalsTitle": "Mục tiêu của tôi",
     "goalsEmpty": "Chưa có mục tiêu nào. Hãy thêm một mục tiêu để theo dõi điều bạn đang hướng tới.",
@@ -3647,12 +3648,23 @@
     "probationMonths": "Thời gian thử việc mặc định (tháng)",
     "probationMonthsHint": "Áp dụng cho ngày kết thúc thử việc của nhân viên toàn thời gian (mặc định 3 nếu để trống). Vẫn có thể chỉnh sửa cho mỗi lần tuyển.",
     "reviewReminderDays": "Nhắc nhở đánh giá (số ngày trước ngày kết thúc)",
-    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống)."
+    "reviewReminderDaysHint": "Các ngày cách nhau bằng dấu phẩy trước ngày kết thúc thử việc/hợp đồng/thực tập khi người quản lý và HR được nhắc nhở (mặc định 30, 14, 7 nếu để trống).",
+    "policyReleaseTitle": "Chính sách mặc định & phát hành phiếu lương",
+    "defaultPolicy": "Chính sách lương mặc định",
+    "defaultPolicyNone": "Không (mặc định hàng tháng)",
+    "defaultPolicyHint": "Áp dụng cho mọi nhân viên chưa được gán chính sách lương riêng.",
+    "releaseMode": "Phát hành phiếu lương",
+    "release_immediate": "Ngay sau khi chốt lương",
+    "release_fixed_day": "Ngày cố định trong tháng",
+    "release_relative": "Tương đối so với ngày trả lương",
+    "releaseValue": "Ngày / độ lệch",
+    "releaseValuePlaceholder": "vd. 5 hoặc -2",
+    "releaseHint": "Kiểm soát khi nào nhân viên thấy phiếu lương trong tự phục vụ. Ngày cố định = một ngày của tháng sau kỳ lương; tương đối = số ngày trước(-)/sau(+) ngày trả lương. Không bao giờ trước khi chốt lương."
   },
   "payrollPolicy": {
     "title": "Chính sách lương",
     "description": "Các quy tắc có tên, tái sử dụng được cho cách xử lý lương của từng nhân viên. Gán chính sách cho nhân viên và lương sẽ tự động áp dụng.",
-    "previewNotice": "Chính sách Hàng tháng và Hàng ngày đã hoạt động. Chính sách Theo giờ giờ đây có thể cấu hình (mức theo giờ và thiết lập lịch ca), nhưng việc tạo phiếu lương theo giờ trực tiếp là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Chính sách Kỳ tùy chỉnh giờ đây có thể cấu hình: bạn có thể ghi lại cửa sổ chốt sổ (một ngày neo cho kỳ không theo lịch dương), nhưng việc áp dụng cửa sổ đó cho làm thêm giờ, chấm công và nghỉ phép là phần tiếp theo cần phê duyệt và chưa được áp dụng cho bảng lương. Các tháng theo luật (EPF, SOCSO, EIS, PCB) luôn giữ theo tháng dương lịch theo quy định của pháp luật.",
+    "previewNotice": "Cài đặt chung bên dưới (tính theo tỷ lệ, lương thực nhận âm, giới hạn làm thêm, số chia phép, làm tròn) đang hoạt động và được áp dụng khi tính lương. Mức tối thiểu theo luật (EPF, SOCSO, EIS, PCB và sàn làm thêm theo EA 1955) luôn bị khóa và không thể đặt thấp hơn luật. Cửa sổ chốt kỳ tùy chỉnh được ghi nhận nhưng chưa áp dụng vào tính toán.",
     "emptyScope": "Không có công ty nào trong phạm vi hiện tại. Dùng bộ chuyển công ty ở trên.",
     "catalogTitle": "Chính sách",
     "searchPlaceholder": "Tìm chính sách…",
@@ -3719,7 +3731,8 @@
     "errors": {
       "duplicateName": "Đã có chính sách lương với tên này cho công ty này.",
       "inUse": "Chính sách này được gán cho nhân viên và không thể xóa. Hãy bỏ gán trước.",
-      "companyMismatch": "Chính sách lương chỉ có thể gán cho nhân viên trong chính công ty của nó."
+      "companyMismatch": "Chính sách lương chỉ có thể gán cho nhân viên trong chính công ty của nó.",
+      "defaultInUse": "Chính sách lương này được đặt làm mặc định của công ty và không thể xóa."
     },
     "fieldDailyRate": "Mức theo ngày (Hàng ngày)",
     "dailyRatePlaceholder": "ví dụ 120.00",
@@ -3740,7 +3753,64 @@
       "anchorDayHint": "Chỉ dùng cho chế độ \"Kỳ tùy chỉnh\". Ngày neo (1–28) là ngày trong tháng mà cửa sổ mở — ví dụ, neo 25 nghĩa là cửa sổ chạy từ ngày 25 của tháng trước đến ngày 24 của tháng kỳ. Chỉ áp dụng cho chính sách Kỳ tùy chỉnh; các tháng theo luật vẫn giữ theo tháng dương lịch."
     },
     "copy": "Sao chép",
-    "copySuffix": "(bản sao)"
+    "copySuffix": "(bản sao)",
+    "config": {
+      "prorationTitle": "Tính lương theo tỷ lệ & ngày công tham chiếu",
+      "prorationDivisor": "Cơ sở tính tỷ lệ",
+      "divisorCalendar": "Ngày theo lịch",
+      "divisorCustom": "Ngày làm việc cố định",
+      "prorationCustomDays": "Số ngày cố định (vd. 26)",
+      "includeSaturday": "Tính thứ Bảy",
+      "includeSunday": "Tính Chủ nhật",
+      "includeHoliday": "Tính ngày lễ",
+      "salaryIncrementProration": "Chia khoản tăng lương giữa tháng theo hai mức",
+      "prorationHint": "Dùng khi nhân viên vào/nghỉ giữa tháng. Mặc định (ngày theo lịch) giữ nguyên kết quả hiện tại.",
+      "negativeNetTitle": "Lương thực nhận âm",
+      "negativeNetLabel": "Khi lương thực nhận âm",
+      "negativeRetain": "Giữ số tiền âm",
+      "negativeSetZero": "Đặt lương thực nhận về 0",
+      "negativeNetHint": "Chuyển số dư sang kỳ sau là tính năng riêng có kiểm soát và không có ở đây.",
+      "overtimeTitle": "Làm thêm giờ",
+      "otMultiplier": "Hệ số mức lương thường",
+      "otMaxHours": "Giờ làm thêm tối đa/tháng",
+      "otMaxAmount": "Số tiền làm thêm tối đa/tháng (RM)",
+      "otDayWorkday": "Ngày làm việc",
+      "otDayRestDay": "Ngày nghỉ",
+      "otDayHoliday": "Ngày lễ",
+      "otExceedLabel": "Khi làm thêm vượt mức tối đa",
+      "otExceedCap": "Giới hạn (mặc định)",
+      "otExceedConvert": "Chuyển phần vượt thành khoản chi trả",
+      "otExceedComponent": "Khoản chi trả cho phần vượt",
+      "otExceedComponentNone": "Chọn khoản chi trả",
+      "otHint": "Hệ số có sàn theo luật là 1.5×. Chuyển đổi sẽ đưa phần làm thêm vượt mức sang khoản chi trả đã chọn để vẫn được trả.",
+      "leaveTitle": "Tính phép",
+      "unpaidLeaveDivisor": "Số chia nghỉ không lương",
+      "unpaidTimeOffDivisor": "Số chia nghỉ việc không lương",
+      "encashmentDivisor": "Số chia quy đổi phép thành tiền",
+      "leaveDivisor": {
+        "calendar_month": "Tháng theo lịch",
+        "custom_days": "Số ngày cố định",
+        "cutoff_days": "Số ngày kỳ chốt",
+        "working_days": "Ngày làm việc",
+        "custom_hours": "Số giờ cố định",
+        "custom_minutes": "Số phút cố định"
+      },
+      "leaveCustomDays": "Số ngày cố định",
+      "leaveCustomHours": "Số giờ cố định",
+      "leaveCustomMinutes": "Số phút cố định",
+      "leaveHint": "Số chia quyết định giá trị một ngày nghỉ không lương / ngày quy đổi. Mặc định (tháng theo lịch) giữ nguyên kết quả hiện tại.",
+      "roundingTitle": "Làm tròn",
+      "roundingEarnings": "Thu nhập",
+      "roundingDeductions": "Khoản khấu trừ",
+      "roundingNetPay": "Lương thực nhận",
+      "rounding": {
+        "none": "Chính xác (2 chữ số)",
+        "up": "Làm tròn lên",
+        "down": "Làm tròn xuống",
+        "nearest": "Ringgit gần nhất"
+      },
+      "roundingHint": "Việc làm tròn đóng góp theo luật luôn tuân theo quy định pháp luật riêng và không bị ảnh hưởng."
+    }
   },
   "leaveApproval": {
     "title": "Chuỗi phê duyệt nghỉ phép",

@@ -8,6 +8,7 @@ import {
   assignPolicy,
   copyPolicy,
   createPolicy,
+  DefaultPolicyInUseError,
   deletePolicy,
   DuplicatePolicyNameError,
   PolicyCompanyMismatchError,
@@ -40,17 +41,76 @@ function payRuleFromForm(fd: FormData, policyType: string): PayRule | null {
   return null;
 }
 
-/** 2.1.4 (Custom period) — build the policy `config` carrying the cut-off WINDOW for a custom_period policy.
- *  When the cut-off toggle is "custom", emits `{ cutOff: { mode:'custom', anchorDay } }`; the service's
- *  cleanPayrollPolicyConfig validates anchorDay ∈ 1..28 and drops an invalid/calendar value back to null
- *  (byte-identical). Any other type ⇒ null (no config). This records the window only — it is NOT yet applied
- *  to payroll calculation (deferred follow-up); statutory months stay calendar-bound by law. */
-function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig | null {
-  if (policyType !== 'custom_period') return null;
-  if (String(fd.get('cutOffMode') ?? 'calendar') !== 'custom') return null;
-  const raw = String(fd.get('anchorDay') ?? '').trim();
-  if (!raw) return null;
-  return { cutOff: { mode: 'custom', anchorDay: Number(raw) } };
+const numOrUndef = (fd: FormData, k: string): number | undefined => {
+  const v = String(fd.get(k) ?? '').trim();
+  if (!v) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+};
+const checked = (fd: FormData, k: string): boolean => fd.get(k) === 'on';
+
+/**
+ * f3148da1 (Steps 2–5) — build the full General-Settings `config` blob from the submitted form for ANY policy
+ * type. The service's `cleanPayrollPolicyConfig` coerces + clamps every field and drops all-default groups
+ * back to NULL, so a form left at its defaults persists as NULL (byte-identical to today). Passed on BOTH
+ * create and edit (edit must rebuild the whole blob, else toggling a new field would wipe the others). The
+ * cut-off WINDOW (2.1.4) is only meaningful for custom_period; the cleaner drops it for other types.
+ *   • proration (Step 2/3): divisor + custom days + working-day basis flags + salary-increment split
+ *   • negative net (Step 2)
+ *   • overtime (Step 4): multiplier, max hours, max amount, eligible day types, exceed-handling → pay item
+ *   • leave (Step 5): the three divisors + custom day/hour/minute values
+ *   • rounding: earnings / deductions / net-pay modes
+ */
+function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
+  const eligibleDayTypes = (['workday', 'rest_day', 'holiday'] as const).filter((d) => checked(fd, `otDay_${d}`));
+  const exceedAction = String(fd.get('otExceedAction') ?? 'cap');
+  const otComponentId = String(fd.get('otExceedComponentId') ?? '').trim();
+  // Built as a plain blob and validated/clamped by cleanPayrollPolicyConfig in the service (a bad string falls
+  // back to its default there), so we cast once rather than pre-typing every union field.
+  // Working-day basis flags are OMITTED entirely unless at least one is checked — the cleaner keys off their
+  // PRESENCE (`'includeSaturday' in raw`) to switch from calendar-day to working-day proration, so always
+  // sending them (even as false) would silently flip every policy to working-day counting. Absent = calendar
+  // days (byte-identical). Checking any box opts into working-day proration with the selected weekend roster.
+  const sat = checked(fd, 'includeSaturday');
+  const sun = checked(fd, 'includeSunday');
+  const hol = checked(fd, 'includeHoliday');
+  const anyBasis = sat || sun || hol;
+  const raw: Record<string, unknown> = {
+    proration: {
+      divisor: String(fd.get('prorationDivisor') ?? 'calendar_month'),
+      customDays: numOrUndef(fd, 'prorationCustomDays'),
+      ...(anyBasis ? { includeSaturday: sat, includeSunday: sun, includeHoliday: hol } : {}),
+    },
+    salaryIncrementProration: checked(fd, 'salaryIncrementProration'),
+    negativeNet: String(fd.get('negativeNet') ?? 'retain'),
+    overtime: {
+      multiplier: numOrUndef(fd, 'otMultiplier'),
+      maxHoursPerMonth: numOrUndef(fd, 'otMaxHours'),
+      maxAmount: numOrUndef(fd, 'otMaxAmount'),
+      eligibleDayTypes,
+      ...(exceedAction === 'convert' && otComponentId
+        ? { exceedHandling: { action: 'convert', componentId: otComponentId } }
+        : {}),
+    },
+    leave: {
+      unpaidLeaveDivisor: String(fd.get('unpaidLeaveDivisor') ?? 'calendar_month'),
+      unpaidTimeOffDivisor: String(fd.get('unpaidTimeOffDivisor') ?? 'calendar_month'),
+      encashmentDivisor: String(fd.get('encashmentDivisor') ?? 'calendar_month'),
+      customDays: numOrUndef(fd, 'leaveCustomDays'),
+      customHours: numOrUndef(fd, 'leaveCustomHours'),
+      customMinutes: numOrUndef(fd, 'leaveCustomMinutes'),
+    },
+    rounding: {
+      earnings: String(fd.get('roundingEarnings') ?? 'none'),
+      deductions: String(fd.get('roundingDeductions') ?? 'none'),
+      netPay: String(fd.get('roundingNetPay') ?? 'none'),
+    },
+    // 2.1.4 cut-off window (custom_period only; cleaner drops it for other types).
+    ...(policyType === 'custom_period' && String(fd.get('cutOffMode') ?? 'calendar') === 'custom'
+      ? { cutOff: { mode: 'custom', anchorDay: numOrUndef(fd, 'anchorDay') } }
+      : {}),
+  };
+  return raw as PayrollPolicyConfig;
 }
 
 /** Map a known service error to its localized message; fall back to the raw message otherwise. */
@@ -58,6 +118,7 @@ async function errorMessage(e: unknown): Promise<string> {
   const t = await getTranslations('payrollPolicy.errors');
   if (e instanceof DuplicatePolicyNameError) return t('duplicateName');
   if (e instanceof PolicyInUseError) return t('inUse');
+  if (e instanceof DefaultPolicyInUseError) return t('defaultInUse');
   if (e instanceof PolicyCompanyMismatchError) return t('companyMismatch');
   return (e as Error).message;
 }
@@ -100,6 +161,9 @@ export async function createPolicyAction(formData: FormData) {
   );
 }
 
+// Note: on edit, the full General-Settings config is ALWAYS rebuilt and passed (see updatePolicyAction below) —
+// omitting it would drop the fields not touched this submit.
+
 export async function updatePolicyAction(formData: FormData) {
   const s = await getSession();
   // 2.1.2/2.1.3/2.1.4 — the type is read-only on edit (the hidden field carries the existing type); for a daily
@@ -115,7 +179,9 @@ export async function updatePolicyAction(formData: FormData) {
         ...(policyType === 'daily' || policyType === 'hourly'
           ? { payRule: payRuleFromForm(formData, policyType) }
           : {}),
-        ...(policyType === 'custom_period' ? { config: configFromForm(formData, policyType) } : {}),
+        // f3148da1 — always rebuild + pass the full General-Settings config (all types), else a group left
+        // untouched this submit would be wiped. cleanPayrollPolicyConfig collapses an all-default blob to NULL.
+        config: configFromForm(formData, policyType),
       }).then(() => undefined),
     'saved',
   );

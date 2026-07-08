@@ -19,6 +19,7 @@ import {
   attendance,
   claimRequest,
   company,
+  companyPayrollConfig,
   companyStatutoryMy,
   compensation,
   domainEvent,
@@ -58,8 +59,10 @@ import { resolvePayRule } from './pay-rule';
 import { resolveAssignedPolicy } from './payroll-policy';
 import {
   applyOvertimeCaps,
+  applyOvertimeCapsDetailed,
   applyRounding,
   leaveDivisorDays,
+  payslipReleaseAt,
   prorationDivisorDays,
   usesWorkingDayProration,
   workingDayRoster,
@@ -1747,6 +1750,35 @@ export async function generatePayslips(
     }
     const workingDaysInPeriodFor = (employmentId: string): number => workingDaysByEmp.get(employmentId) ?? 0;
 
+    // Step 4 (f3148da1) — OT exceed handling: resolve the "convert excess to pay item" component for every
+    // employment whose policy configures `overtime.exceedHandling.action='convert'`. Loaded ONCE here (a
+    // component is tenant-scoped, so RLS confines it to this tenant); a missing/archived component falls back
+    // to today's cap-and-drop (the map simply has no entry ⇒ excess dropped). Default (no such policy) ⇒ the
+    // map is empty and the legacy OT path is byte-identical.
+    const otConvertByEmp = new Map<string, { code: string; name: string }>();
+    const convertComponentIds = [
+      ...new Set(
+        emps
+          .map((e) => policyConfigByEmp.get(e.employmentId)?.overtime?.exceedHandling)
+          .filter((eh): eh is { action: 'convert'; componentId: string } => eh?.action === 'convert')
+          .map((eh) => eh.componentId),
+      ),
+    ];
+    if (convertComponentIds.length) {
+      const comps = await tx
+        .select({ id: payComponent.id, code: payComponent.code, name: payComponent.name, archivedAt: payComponent.archivedAt })
+        .from(payComponent)
+        .where(inArray(payComponent.id, convertComponentIds));
+      const byId = new Map(comps.filter((c) => c.archivedAt == null).map((c) => [c.id, { code: c.code, name: c.name }]));
+      for (const e of emps) {
+        const eh = policyConfigByEmp.get(e.employmentId)?.overtime?.exceedHandling;
+        if (eh?.action === 'convert') {
+          const found = byId.get(eh.componentId);
+          if (found) otConvertByEmp.set(e.employmentId, found);
+        }
+      }
+    }
+
     // 1c — salary-increment proration: the two straddling compensation rows (superseded old + open new) for
     // any employment whose policy enables it AND that has a mid-period increment. Resolved once; the loop
     // reads a per-employee blended basic. Default (off / single row) ⇒ the kernel's single open-row read is
@@ -2113,15 +2145,18 @@ export async function generatePayslips(
     // (otBreakdown) when present so eligible-day-type filtering + multiplier re-rating are exact; when only a
     // flat figure exists, the breakdown is the whole total as a workday leg (so maxAmount still bites and a
     // workday-only restriction is a no-op). Default (no OT config) ⇒ returns `total` unchanged.
-    const applyOvertimeCapsForEmp = (cfg: PayrollPolicyConfig | null, employmentId: string, total: number): number => {
-      if (!cfg?.overtime || total <= 0) return total;
+    // Returns the capped OT figure AND the excess the HOUR/AMOUNT caps removed (Step 4 f3148da1 reroutes the
+    // excess onto a pay item when configured). Default (no OT config) ⇒ { capped: total, excess: 0 }.
+    const applyOvertimeCapsForEmp = (cfg: PayrollPolicyConfig | null, employmentId: string, total: number): { capped: number; excess: number } => {
+      if (!cfg?.overtime || total <= 0) return { capped: total, excess: 0 };
       const bd = otBreakdownByEmp.get(employmentId) as { flat: number; normal: number; rest: number; holiday: number } | null;
       // Map the stored buckets onto the three OT day types. `flat` (a hand-keyed lump with no day type) rides
       // the workday leg so it is still capped by maxAmount but not zeroed by a rest/holiday-only restriction.
       const parts = bd
         ? { workday: round2(bd.normal + bd.flat), restDay: round2(bd.rest), holiday: round2(bd.holiday), workedOtHours: 0 }
         : { workday: total, restDay: 0, holiday: 0, workedOtHours: 0 };
-      return applyOvertimeCaps(cfg, parts);
+      const d = applyOvertimeCapsDetailed(cfg, parts);
+      return { capped: d.capped, excess: d.excess };
     };
 
     for (const e of emps) {
@@ -2145,12 +2180,21 @@ export async function generatePayslips(
       const incrementBasic = incrementBasicByEmp.get(e.employmentId);
       const basicRaw = daily ? daily.basic : (incrementBasic ?? en.basicRaw);
       const basic = daily ? daily.basic : (incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross);
-      // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
-      // "reimbursement" earning (paid but untaxed). Claim/reimbursement do not prorate (ADR-0021/0025).
-      const allowance = round2(en.allowanceApplied + en.reimburse);
       // 1e — OT caps: wrap the prefilled/keyed OT figure with the policy's caps (eligible day types, max
       // hours, max amount, floored multiplier). Default (no overtime config) ⇒ the figure is unchanged.
-      const overtime = applyOvertimeCapsForEmp(cfg, e.employmentId, en.overtime);
+      const otCap = applyOvertimeCapsForEmp(cfg, e.employmentId, en.overtime);
+      const overtime = otCap.capped;
+      // Step 4 (f3148da1) — OT exceed handling. When the policy configures "convert excess to pay item" AND a
+      // valid component was resolved, the amount the HOUR/AMOUNT caps cut off is redirected to that pay item so
+      // it is still paid to the employee (regular run only — an additional/off-cycle run carries no OT).
+      // Statutory character: the excess retains OVERTIME's treatment (SOCSO/EIS/PCB base, EPF-exempt) — the
+      // legally-correct treatment for overtime remuneration — while the chosen component controls the payslip
+      // line label/name. Default (no exceedHandling / no excess) ⇒ 0 ⇒ byte-identical.
+      const otConvertComp = otConvertByEmp.get(e.employmentId);
+      const otConvertAmount = !isAdditionalRun && otConvertComp ? round2(otCap.excess) : 0;
+      // Allowance line: wage-bucket non-basic components (incl. the taxable claim) + any all-false
+      // "reimbursement" earning (paid but untaxed) + the converted OT excess (paid; taxed via the OT stat leg).
+      const allowance = round2(en.allowanceApplied + en.reimburse + otConvertAmount);
       const bonus = en.bonus;
       // Unpaid leave deducts at the EA-1955 ordinary rate of pay (monthly basic / divisor days). 1f — the
       // divisor is policy-configurable (default calendar_month ⇒ `dim`, byte-identical).
@@ -2205,7 +2249,10 @@ export async function generatePayslips(
       };
       // 1.2.4 Zakat — resolve THIS month's zakat at generate time so percent never goes stale (declared up
       // front so `computeMonth`'s default can read it; the percent branch is filled in after the closure):
-      //  1) a manual `payroll_input.zakat > 0` (admin override) wins — preserves today's behaviour;
+      //  1) a manual `payroll_input.zakat > 0` (admin override) wins — preserves today's behaviour. NOTE
+      //     (feedback d435673e): the Zakat screen no longer writes payroll_input.zakat (its one-off override
+      //     section was removed); this manual tier is now fed ONLY by the batch input grid, prefillFixedZakat,
+      //     and the batch import. Precedence is unchanged (manual > fixed > percent_of_pcb).
       //  2) else (REGULAR run only) an active 'fixed' election uses its flat amount;
       //  3) else (REGULAR run only) an active 'percent_of_pcb' election multiplies the LIVE pre-offset normal
       //     MTD — derived by a single zero-zakat probe call that reuses this loop's already-built
@@ -2231,8 +2278,12 @@ export async function generatePayslips(
           stOpts,
           rules,
         );
+      // Step 4 (f3148da1) — the OT figure fed to the statutory engine INCLUDES the converted excess, so the
+      // redirected amount keeps overtime's statutory character (SOCSO/EIS/PCB, EPF-exempt). The DISPLAYED
+      // overtime line stays the capped figure; the excess shows under the chosen pay item. Convert=0 ⇒ otStat===overtime.
+      const otStat = round2(overtime + otConvertAmount);
       if (zakat <= 0 && !isAdditionalRun && e.zakatActive && e.zakatMethod === 'percent_of_pcb') {
-        const probe = computeMonth(bonus, overtime, 0);
+        const probe = computeMonth(bonus, otStat, 0);
         effectiveZakat = round2(Number(e.zakatPercent ?? 0) * (probe.pcbNormalPreZakat ?? 0));
       }
       const earlierRun = earlierRunByEmp.get(e.employmentId) ?? { additional: 0, overtime: 0 };
@@ -2241,7 +2292,7 @@ export async function generatePayslips(
             computeMonth(earlierRun.additional + bonus, earlierRun.overtime),
             computeMonth(earlierRun.additional, earlierRun.overtime),
           )
-        : computeMonth(bonus, overtime);
+        : computeMonth(bonus, otStat);
       const st = {
         ...stCore,
         // Stamped so future months' replay can accumulate Z and ∑LP (spec §E.5 / §D.1).
@@ -2256,6 +2307,11 @@ export async function generatePayslips(
         ...(cp38 > 0 ? { cp38, cp38Ref: cp38ByEmp.get(e.employmentId)?.cp38Ref } : {}),
         // EPF contribution mode applied (Wave 2B audit) — 'auto' unless an i-Topup/exempt election.
         epfMode: e.epfMode ?? 'auto',
+        // Step 4 (f3148da1) — the OT excess redirected to a pay item (regular run, amount>0 only). Drives the
+        // dedicated earnings line on the payslip; the amount is already folded into `allowance`/gross above.
+        ...(otConvertAmount > 0 && otConvertComp
+          ? { otConvert: { code: otConvertComp.code, name: otConvertComp.name, amount: otConvertAmount } }
+          : {}),
         // #6 (ADR-0037): per-body version map, present only when a component override is in effect.
         ...(componentVersions ? { componentVersions } : {}),
         // ADR-0025 §5 (Option A): non-payable, non-taxable components recorded for the payslip only — they
@@ -2319,7 +2375,9 @@ export async function generatePayslips(
       if (cfg?.negativeNet === 'set_zero' && net < 0) net = 0;
       const employerCost = isAdditionalRun
         ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
-        : round2(wagesExOt + overtime + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
+        // Step 4 (f3148da1) — the converted OT excess is real employer outlay (paid to the employee), so it
+        // adds to employer cost alongside the OT it was rerouted from. Default (no convert) ⇒ 0 ⇒ unchanged.
+        : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
 
       await tx.insert(payslip).values({
         tenantId: ctx.tenantId,
@@ -2516,7 +2574,7 @@ export async function generatePayslips(
 export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
-      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId, companyId: payrollBatch.companyId })
+      .select({ status: payrollBatch.status, payPeriodId: payrollBatch.payPeriodId, companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
@@ -2524,14 +2582,28 @@ export async function closeBatch(ctx: SessionContext, p: { batchId: string }) {
     // Granular RBAC (9bc442bc): payroll.close (configurable per company/tenant), not a coarse admin check.
     await assertPayrollPermission(tx, ctx, 'payroll.close', batch.companyId);
     if (batch.status !== 'processed') throw new Error('Only a processed batch can be closed');
-    await tx.update(payrollBatch).set({ status: 'closed' }).where(eq(payrollBatch.id, p.batchId));
+    // Step 6 (f3148da1) — compute the payslip RELEASE instant NOW, under this admin session (which can read the
+    // company release config; the ESS employee session cannot, so the gate must be materialized here, not at
+    // read time). We read the company's release config + pay-day and derive releasedAt from the close instant;
+    // NULL config ⇒ immediate ⇒ releasedAt = closedAt (today's behaviour). The ESS reads gate on released_at.
+    const closedAt = new Date();
+    const [cpc] = await tx
+      .select({ payDay: companyPayrollConfig.payDay, payslipRelease: companyPayrollConfig.payslipRelease })
+      .from(companyPayrollConfig)
+      .where(eq(companyPayrollConfig.companyId, batch.companyId))
+      .limit(1);
+    const releasedAt = payslipReleaseAt(closedAt, batch.payPeriod, cpc?.payDay ?? null, cpc?.payslipRelease ?? null) ?? closedAt;
+    await tx
+      .update(payrollBatch)
+      .set({ status: 'closed', closedAt: sql`now()`, releasedAt })
+      .where(eq(payrollBatch.id, p.batchId));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.closed',
       actor: actorOf(ctx),
-      payload: {},
+      payload: { releasedAt: releasedAt.toISOString() },
     });
 
     // Wave 2C (ADR-0024): close the parent pay_period once ALL its runs are closed, so the statutory
@@ -3434,6 +3506,9 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
         totalDeductions: payslip.totalDeductions,
         net: payslip.netPay,
         employerCost: payslip.employerCost,
+        // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe: readable by the
+        // employee via their own payslip's batch, unlike the admin-only company_payroll_config).
+        releasedAt: payrollBatch.releasedAt,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
@@ -3442,7 +3517,15 @@ export function payslipDetail(ctx: SessionContext, payslipId: string) {
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(payslip.id, payslipId))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    // Step 6 — hide a payslip whose batch is not yet closed OR whose release instant has not passed, so the ESS
+    // detail page + PDF route (which both call this) return notFound/404 until release. Admin surfaces use
+    // different reads (payroll-view.ts) and are unaffected. A closed batch with a NULL releasedAt is a legacy
+    // batch (backfilled to created_at by migration 0164), treated as released.
+    const released = row.status === 'closed' && (row.releasedAt == null || row.releasedAt.getTime() <= Date.now());
+    if (!released) return null;
+    const { releasedAt: _r, ...rest } = row;
+    return rest;
   });
 }
 

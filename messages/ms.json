@@ -968,7 +968,8 @@
       "downloadPdf": "Muat turun PDF",
       "cp38": "CP38 (ansuran LHDN)",
       "zakat": "Zakat (melalui gaji)",
-      "zakatOffsetNote": "PCB di atas sudah ditolak zakat ini"
+      "zakatOffsetNote": "PCB di atas sudah ditolak zakat ini",
+      "otConverted": "Kerja lebih masa (ditukar kepada {item})"
     },
     "goalsTitle": "Matlamat saya",
     "goalsEmpty": "Belum ada matlamat. Tambah satu untuk menjejaki apa yang anda usahakan.",
@@ -3647,12 +3648,23 @@
     "probationMonths": "Tempoh percubaan lalai (bulan)",
     "probationMonthsHint": "Digunakan pada tarikh tamat percubaan pekerja sepenuh masa (lalai 3 jika kosong). Masih boleh diubah setiap pengambilan.",
     "reviewReminderDays": "Peringatan penilaian (hari sebelum tarikh tamat)",
-    "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong)."
+    "reviewReminderDaysHint": "Hari dipisahkan koma sebelum tarikh tamat percubaan/kontrak/latihan industri apabila pengurus dan HR diingatkan (lalai 30, 14, 7 jika kosong).",
+    "policyReleaseTitle": "Dasar lalai & pelepasan slip gaji",
+    "defaultPolicy": "Dasar gaji lalai",
+    "defaultPolicyNone": "Tiada (lalai bulanan)",
+    "defaultPolicyHint": "Digunakan untuk setiap pekerja yang tiada dasar gaji ditetapkan secara individu.",
+    "releaseMode": "Pelepasan slip gaji",
+    "release_immediate": "Sebaik sahaja gaji ditutup",
+    "release_fixed_day": "Hari tetap dalam bulan",
+    "release_relative": "Relatif kepada hari gaji",
+    "releaseValue": "Hari / ofset",
+    "releaseValuePlaceholder": "cth. 5 atau -2",
+    "releaseHint": "Mengawal bila pekerja boleh melihat slip gaji dalam layan diri. Hari tetap = hari dalam bulan selepas tempoh gaji; relatif = hari sebelum(-)/selepas(+) hari gaji. Tidak sekali-kali sebelum gaji ditutup."
   },
   "payrollPolicy": {
     "title": "Dasar gaji",
     "description": "Peraturan bernama yang boleh diguna semula untuk cara gaji setiap pekerja diproses. Tetapkan dasar kepada pekerja dan gaji akan menggunakannya secara automatik.",
-    "previewNotice": "Dasar Bulanan dan Harian telah aktif. Dasar Sejam kini boleh dikonfigur (kadar sejam dan tetapan jadual syif), tetapi penjanaan slip gaji sejam secara langsung ialah susulan yang perlu kelulusan dan belum digunakan dalam gaji. Dasar Tempoh tersuai kini boleh dikonfigur: anda boleh merekod tetingkap potongan (hari sauh untuk tempoh bukan kalendar), tetapi penggunaan tetingkap itu pada kerja lebih masa, kehadiran dan cuti ialah susulan yang perlu kelulusan dan belum digunakan dalam gaji. Bulan berkanun (KWSP, PERKESO, SIP, PCB) sentiasa kekal pada bulan kalendar mengikut undang-undang.",
+    "previewNotice": "Tetapan Umum di bawah (prorata, gaji bersih negatif, had lebih masa, pembahagi cuti, pembundaran) adalah aktif dan digunakan semasa pengiraan gaji. Minimum berkanun (EPF, SOCSO, EIS, PCB, dan lantai lebih masa EA 1955) sentiasa dikunci dan tidak boleh ditetapkan di bawah undang-undang. Tetingkap potongan tempoh tersuai direkodkan tetapi belum digunakan dalam pengiraan.",
     "emptyScope": "Tiada syarikat dalam skop semasa. Gunakan penukar syarikat di atas.",
     "catalogTitle": "Dasar",
     "searchPlaceholder": "Cari dasar…",
@@ -3719,7 +3731,8 @@
     "errors": {
       "duplicateName": "Dasar gaji dengan nama ini sudah wujud untuk syarikat ini.",
       "inUse": "Dasar ini ditetapkan kepada pekerja dan tidak boleh dipadam. Nyahtetapkan dahulu.",
-      "companyMismatch": "Dasar gaji hanya boleh ditetapkan kepada pekerja dalam syarikatnya sendiri."
+      "companyMismatch": "Dasar gaji hanya boleh ditetapkan kepada pekerja dalam syarikatnya sendiri.",
+      "defaultInUse": "Dasar gaji ini ditetapkan sebagai lalai syarikat dan tidak boleh dipadam."
     },
     "fieldDailyRate": "Kadar sehari (Harian)",
     "dailyRatePlaceholder": "cth. 120.00",
@@ -3740,7 +3753,64 @@
       "anchorDayHint": "Digunakan hanya untuk mod \"Tempoh tersuai\". Hari sauh (1–28) ialah hari dalam bulan apabila tetingkap dibuka — contohnya, sauh 25 bermaksud tetingkap berjalan dari 25 hari bulan sebelumnya hingga 24 hari bulan tempoh. Hanya digunakan untuk dasar Tempoh tersuai; bulan berkanun kekal pada bulan kalendar."
     },
     "copy": "Salin",
-    "copySuffix": "(salinan)"
+    "copySuffix": "(salinan)",
+    "config": {
+      "prorationTitle": "Prorata gaji & rujukan hari bekerja",
+      "prorationDivisor": "Asas prorata",
+      "divisorCalendar": "Hari kalendar",
+      "divisorCustom": "Hari bekerja tetap",
+      "prorationCustomDays": "Hari tetap (cth. 26)",
+      "includeSaturday": "Kira hari Sabtu",
+      "includeSunday": "Kira hari Ahad",
+      "includeHoliday": "Kira cuti umum",
+      "salaryIncrementProration": "Bahagikan kenaikan gaji pertengahan bulan antara dua kadar",
+      "prorationHint": "Digunakan apabila pekerja masuk/keluar pada sebahagian bulan. Lalai (hari kalendar) mengekalkan angka sedia ada.",
+      "negativeNetTitle": "Gaji bersih negatif",
+      "negativeNetLabel": "Apabila gaji bersih negatif",
+      "negativeRetain": "Kekalkan jumlah negatif",
+      "negativeSetZero": "Tetapkan gaji bersih kepada sifar",
+      "negativeNetHint": "Membawa baki ke kitaran seterusnya ialah keupayaan berasingan yang berpagar dan tidak ditawarkan di sini.",
+      "overtimeTitle": "Kerja lebih masa",
+      "otMultiplier": "Pengganda kadar biasa",
+      "otMaxHours": "Maksimum jam lebih masa / bulan",
+      "otMaxAmount": "Maksimum jumlah lebih masa / bulan (RM)",
+      "otDayWorkday": "Hari bekerja",
+      "otDayRestDay": "Hari rehat",
+      "otDayHoliday": "Cuti umum",
+      "otExceedLabel": "Apabila lebih masa melebihi maksimum",
+      "otExceedCap": "Hadkan (lalai)",
+      "otExceedConvert": "Tukar lebihan kepada item bayaran",
+      "otExceedComponent": "Item bayaran untuk lebihan",
+      "otExceedComponentNone": "Pilih item bayaran",
+      "otHint": "Pengganda dihadkan pada minimum berkanun 1.5×. Tukar mengalihkan lebih masa melebihi had kepada item bayaran yang dipilih supaya ia tetap dibayar.",
+      "leaveTitle": "Pengiraan cuti",
+      "unpaidLeaveDivisor": "Pembahagi cuti tanpa gaji",
+      "unpaidTimeOffDivisor": "Pembahagi masa rehat tanpa gaji",
+      "encashmentDivisor": "Pembahagi penunaian cuti",
+      "leaveDivisor": {
+        "calendar_month": "Bulan kalendar",
+        "custom_days": "Hari tetap",
+        "cutoff_days": "Hari tempoh potongan",
+        "working_days": "Hari bekerja",
+        "custom_hours": "Jam tetap",
+        "custom_minutes": "Minit tetap"
+      },
+      "leaveCustomDays": "Hari tetap",
+      "leaveCustomHours": "Jam tetap",
+      "leaveCustomMinutes": "Minit tetap",
+      "leaveHint": "Pembahagi menentukan nilai satu hari tanpa gaji / hari ditunaikan. Lalai (bulan kalendar) mengekalkan angka sedia ada.",
+      "roundingTitle": "Pembundaran",
+      "roundingEarnings": "Pendapatan",
+      "roundingDeductions": "Potongan",
+      "roundingNetPay": "Gaji bersih",
+      "rounding": {
+        "none": "Tepat (2 titik perpuluhan)",
+        "up": "Bundar ke atas",
+        "down": "Bundar ke bawah",
+        "nearest": "Ringgit terdekat"
+      },
+      "roundingHint": "Pembundaran caruman berkanun sentiasa mengikut peraturan perundangannya sendiri dan tidak terjejas."
+    }
   },
   "leaveApproval": {
     "title": "Rantaian Kelulusan Cuti",

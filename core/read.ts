@@ -48,6 +48,7 @@ import {
   toilAccrual,
 } from '../db/schema';
 import { daysInMonth } from './payroll';
+import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
@@ -2090,7 +2091,7 @@ export function concurrentEmploymentPersons(ctx: SessionContext) {
 export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
   return withTenant(ctx, async (tx) => {
     if (employmentIds.length === 0) return [];
-    return tx
+    const rows = await tx
       .select({
         id: payslip.id,
         company: company.legalName,
@@ -2102,12 +2103,23 @@ export function myPayslips(ctx: SessionContext, employmentIds: string[]) {
         deductions: payslip.totalDeductions,
         net: payslip.netPay,
         statutory: payslip.statutory,
+        // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
+        // the admin-only company_payroll_config which the employee session cannot read).
+        releasedAt: payrollBatch.releasedAt,
       })
       .from(payslip)
       .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .where(inArray(payslip.employmentId, employmentIds))
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+    // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
+    // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
+    // they stay visible. The ESS payslip section filters on `released`.
+    const now = Date.now();
+    return rows.map((r) => ({
+      ...r,
+      released: r.status === 'closed' && (r.releasedAt == null || r.releasedAt.getTime() <= now),
+    }));
   });
 }
 

@@ -1001,7 +1001,8 @@
       "downloadPdf": "Download PDF",
       "cp38": "CP38 (LHDN instalment)",
       "zakat": "Zakat (via salary)",
-      "zakatOffsetNote": "PCB above is already net of this"
+      "zakatOffsetNote": "PCB above is already net of this",
+      "otConverted": "Overtime (converted to {item})"
     },
     "secOverview": "Overview",
     "secProfile": "Profile",
@@ -3647,12 +3648,23 @@
     "probationMonths": "Default probation period (months)",
     "probationMonthsHint": "Applied to a full-time hire’s probation end date (default 3 if blank). Still editable per hire.",
     "reviewReminderDays": "Review reminders (days before end date)",
-    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank)."
+    "reviewReminderDaysHint": "Comma-separated days before the probation/contract/internship end date at which the manager and HR are reminded (default 30, 14, 7 if blank).",
+    "policyReleaseTitle": "Default policy & payslip release",
+    "defaultPolicy": "Default payroll policy",
+    "defaultPolicyNone": "None (monthly default)",
+    "defaultPolicyHint": "Applied to every employee who has no payroll policy assigned individually.",
+    "releaseMode": "Payslip release",
+    "release_immediate": "Immediately after payroll closes",
+    "release_fixed_day": "Fixed day of month",
+    "release_relative": "Relative to pay day",
+    "releaseValue": "Day / offset",
+    "releaseValuePlaceholder": "e.g. 5 or -2",
+    "releaseHint": "Controls when employees can see their payslip in self-service. Fixed day = a day of the month after the pay period; relative = days before(-)/after(+) pay day. Never before payroll closes."
   },
   "payrollPolicy": {
     "title": "Payroll policies",
     "description": "Named, reusable rules for how each employee's payroll is processed. Assign a policy to an employee and payroll applies it automatically.",
-    "previewNotice": "Monthly and Daily policies are live. Hourly policies are configurable now (per-hour rate and shift-schedule setting), but live hourly payslip generation is a signed-off follow-up and not yet applied to payroll. Custom-period policies are configurable now: you can record a cut-off window (an anchor day for a non-calendar period), but applying that window to overtime, attendance and leave is a signed-off follow-up and not yet applied to payroll. Statutory months (EPF, SOCSO, EIS, PCB) always stay on the calendar month by law.",
+    "previewNotice": "General Settings below (proration, negative net pay, overtime caps, leave divisors, rounding) are live and applied during payroll calculation. Statutory minimums (EPF, SOCSO, EIS, PCB, and the EA 1955 overtime floor) always stay locked and cannot be set below the law. Custom-period cut-off windows are recorded but not yet applied to calculation.",
     "emptyScope": "No companies in the current scope. Use the company switcher above.",
     "catalogTitle": "Policies",
     "searchPlaceholder": "Search policies…",
@@ -3719,7 +3731,8 @@
     "errors": {
       "duplicateName": "A payroll policy with this name already exists for this company.",
       "inUse": "This policy is assigned to employees and cannot be deleted. Unassign it first.",
-      "companyMismatch": "A payroll policy can only be assigned to employees in its own company."
+      "companyMismatch": "A payroll policy can only be assigned to employees in its own company.",
+      "defaultInUse": "This payroll policy is set as a company default and cannot be deleted."
     },
     "fieldDailyRate": "Per-day rate (Daily)",
     "dailyRatePlaceholder": "e.g. 120.00",
@@ -3740,7 +3753,64 @@
       "anchorDayHint": "Used only for the \"Custom period\" mode. The anchor day (1–28) is the day of the month the window opens — for example, anchor 25 means the window runs from the 25th of the previous month to the 24th of the period month. Applies only to Custom-period policies; statutory months stay on the calendar month."
     },
     "copy": "Copy",
-    "copySuffix": "(copy)"
+    "copySuffix": "(copy)",
+    "config": {
+      "prorationTitle": "Salary proration & working-day reference",
+      "prorationDivisor": "Proration basis",
+      "divisorCalendar": "Calendar days",
+      "divisorCustom": "Fixed working days",
+      "prorationCustomDays": "Fixed days (e.g. 26)",
+      "includeSaturday": "Count Saturdays",
+      "includeSunday": "Count Sundays",
+      "includeHoliday": "Count public holidays",
+      "salaryIncrementProration": "Split a mid-month salary increment across the two rates",
+      "prorationHint": "Used when a joiner/leaver works part of the month. Default (calendar days) reproduces today's figures.",
+      "negativeNetTitle": "Negative net pay",
+      "negativeNetLabel": "When net pay is negative",
+      "negativeRetain": "Keep the negative amount",
+      "negativeSetZero": "Set net pay to zero",
+      "negativeNetHint": "Carrying the balance to the next cycle is a separate, gated capability and not offered here.",
+      "overtimeTitle": "Overtime",
+      "otMultiplier": "Ordinary-rate multiplier",
+      "otMaxHours": "Max overtime hours / month",
+      "otMaxAmount": "Max overtime amount / month (RM)",
+      "otDayWorkday": "Working days",
+      "otDayRestDay": "Rest days",
+      "otDayHoliday": "Public holidays",
+      "otExceedLabel": "When overtime exceeds the maximum",
+      "otExceedCap": "Cap it (default)",
+      "otExceedConvert": "Convert the excess to a pay item",
+      "otExceedComponent": "Pay item for the excess",
+      "otExceedComponentNone": "Select a pay item",
+      "otHint": "The multiplier is floored at the statutory 1.5×. Convert redirects any overtime above the cap onto the chosen pay item so it is still paid.",
+      "leaveTitle": "Leave calculation",
+      "unpaidLeaveDivisor": "Unpaid leave divisor",
+      "unpaidTimeOffDivisor": "Unpaid time-off divisor",
+      "encashmentDivisor": "Leave encashment divisor",
+      "leaveDivisor": {
+        "calendar_month": "Calendar month",
+        "custom_days": "Fixed days",
+        "cutoff_days": "Cut-off period days",
+        "working_days": "Working days",
+        "custom_hours": "Fixed hours",
+        "custom_minutes": "Fixed minutes"
+      },
+      "leaveCustomDays": "Fixed days",
+      "leaveCustomHours": "Fixed hours",
+      "leaveCustomMinutes": "Fixed minutes",
+      "leaveHint": "Divisors decide how one unpaid day / encashed day is valued. Default (calendar month) reproduces today's figures.",
+      "roundingTitle": "Rounding",
+      "roundingEarnings": "Earnings",
+      "roundingDeductions": "Deductions",
+      "roundingNetPay": "Net pay",
+      "rounding": {
+        "none": "Exact (2 dp)",
+        "up": "Round up",
+        "down": "Round down",
+        "nearest": "Nearest ringgit"
+      },
+      "roundingHint": "Statutory contribution rounding always follows its own legislated rules and is unaffected."
+    }
   },
   "leaveApproval": {
     "title": "Leave Approval Chain",

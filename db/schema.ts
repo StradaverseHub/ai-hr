@@ -1083,6 +1083,12 @@ export type PayrollPolicyConfig = {
     maxAmount?: number; //                       total OT RM cap (0/absent = no cap)
     eligibleDayTypes?: OtDayType[]; //          which classified days qualify (absent = all three)
     multiplier?: number; //                      workday OT multiplier, floored at the s.60A 1.5× minimum
+    // Step 4 (f3148da1) — what to do with the OT amount above the cap. Absent/undefined ⇒ today's behaviour
+    // (the excess is simply dropped once the cap bites). action='convert' redirects the excess onto a chosen
+    // company pay component (by id) so it is still paid to the employee under that component's line + name;
+    // an absent/foreign componentId falls back to cap-and-drop (cleanPayrollPolicyConfig persists it only
+    // with a UUID componentId; the kernel re-validates it belongs to the employment's company).
+    exceedHandling?: { action: 'convert'; componentId: string };
   };
   // 1f — divisor selector for unpaid-leave / unpaid-time-off / leave-encashment (default calendar_month).
   leave?: {
@@ -1102,6 +1108,19 @@ export type PayrollPolicyConfig = {
     mode?: CutOffMode;
     anchorDay?: number; //                      day-of-month the custom window opens (1..28), when mode='custom'
   };
+};
+
+// Step 6 (f3148da1) — payslip RELEASE configuration, stored per-company on company_payroll_config.payslip_release.
+// Controls WHEN a closed batch's payslips become visible to employees in Employee Self-Service (ESS). NULL /
+// mode='immediate' = today's behaviour (visible the moment the batch closes). 'fixed_day' releases on a fixed
+// day-of-month of the month AFTER the pay period; 'relative' offsets the company pay-day anchor by ±N days. The
+// computed release instant is NEVER earlier than the batch close instant (a batch not yet closed is never
+// released). Admin payroll surfaces are unaffected — only the ESS employee view is gated.
+export type PayslipReleaseMode = 'immediate' | 'fixed_day' | 'relative';
+export type PayslipRelease = {
+  mode?: PayslipReleaseMode;
+  day?: number; //        1..31 — day-of-month the payslip is released (fixed_day), clamped to month length
+  offsetDays?: number; // -15..15 — days before(-)/after(+) the company pay-day anchor (relative)
 };
 
 // 2.1 Payroll Policy — a named, reusable, company-scoped template for HOW an employee gets paid. Assigned
@@ -1333,6 +1352,12 @@ export const companyPayrollConfig = pgTable(
     // reminder sweep nudges the manager + HR). Null/empty ⇒ default [30, 14, 7], resolved at sweep time
     // (core/employment-review.ts resolveReminderDays). Stored sorted-desc, deduped, each 1–365.
     reviewReminderDays: integer('review_reminder_days').array(),
+    // Step 1 (f3148da1) — the COMPANY-DEFAULT payroll policy applied to any employee with no policy assigned
+    // on their employment. NULL = today's behaviour (unassigned ⇒ hardcoded monthly). Same-company, active
+    // policy enforced service-side; the kernel falls back to it in resolveAssignedPolicy.
+    defaultPayrollPolicyId: uuid('default_payroll_policy_id').references((): AnyPgColumn => payrollPolicy.id),
+    // Step 6 (f3148da1) — payslip release config (see PayslipRelease). NULL = immediate (today's behaviour).
+    payslipRelease: jsonb('payslip_release').$type<PayslipRelease | null>(),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -2276,6 +2301,13 @@ export const payrollBatch = pgTable(
     // whole company (today's behaviour). Generation narrows the active-employee set to this scope.
     scope: jsonb('scope'),
     remarks: text('remarks'),
+    // Step 6 (f3148da1) — when closeBatch finalized this run. NULL for legacy batches. Audit field.
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    // Step 6 (f3148da1) — the instant this batch's payslips become visible to employees in ESS, COMPUTED AT
+    // CLOSE TIME (closeBatch runs under an admin session that can read the company release config; the ESS
+    // employee session cannot, so the gate must NOT re-read that config). NULL = not yet closed OR (for legacy
+    // batches, backfilled to created_at) already released. myPayslips/payslipDetail gate on releasedAt <= now.
+    releasedAt: timestamp('released_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

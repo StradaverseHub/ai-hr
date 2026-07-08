@@ -968,7 +968,8 @@
       "downloadPdf": "下载 PDF",
       "cp38": "CP38（LHDN 分期扣款）",
       "zakat": "天课（薪资扣除）",
-      "zakatOffsetNote": "上方 PCB 已扣除此项"
+      "zakatOffsetNote": "上方 PCB 已扣除此项",
+      "otConverted": "加班（转为 {item}）"
     },
     "goalsTitle": "我的目标",
     "goalsEmpty": "暂无目标。添加一个，跟踪您正在努力实现的方向。",
@@ -3647,12 +3648,23 @@
     "probationMonths": "默认试用期（月）",
     "probationMonthsHint": "应用于全职员工的试用期结束日期（留空则默认为 3）。每次入职仍可编辑。",
     "reviewReminderDays": "评估提醒（结束日期前天数）",
-    "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。"
+    "reviewReminderDaysHint": "以逗号分隔的天数：在试用/合同/实习结束日期前提醒经理和 HR（留空则默认为 30、14、7）。",
+    "policyReleaseTitle": "默认政策与工资单发放",
+    "defaultPolicy": "默认薪资政策",
+    "defaultPolicyNone": "无（按月默认）",
+    "defaultPolicyHint": "适用于所有未单独分配薪资政策的员工。",
+    "releaseMode": "工资单发放",
+    "release_immediate": "薪资关账后立即发放",
+    "release_fixed_day": "每月固定日期",
+    "release_relative": "相对于发薪日",
+    "releaseValue": "日期/偏移",
+    "releaseValuePlaceholder": "例如 5 或 -2",
+    "releaseHint": "控制员工何时能在自助服务中查看工资单。固定日期＝薪资周期之后月份的某一天；相对＝发薪日之前(-)/之后(+)的天数。绝不会早于薪资关账。"
   },
   "payrollPolicy": {
     "title": "薪资政策",
     "description": "命名的、可复用的规则，用于定义每位员工的薪资处理方式。将政策分配给员工后，薪资会自动应用。",
-    "previewNotice": "月薪和日薪政策已启用。时薪政策现已可配置（每小时费率和班次排班设置），但端到端的时薪薪资单生成是已批准的后续工作，暂未应用于薪资。自定义周期政策现已可配置：您可以记录一个截止窗口（用于非日历周期的锚定日），但将该窗口应用于加班、考勤和休假是已批准的后续工作，暂未应用于薪资。法定月份（EPF、SOCSO、EIS、PCB）依法始终按日历月计算。",
+    "previewNotice": "下方的通用设置（按比例计算、负净薪、加班上限、假期除数、舍入）已生效并在薪资计算中应用。法定最低标准（EPF、SOCSO、EIS、PCB 及 EA 1955 加班下限）始终锁定，不得低于法律规定。自定义周期的截止窗口已记录，但尚未应用于计算。",
     "emptyScope": "当前范围内没有公司。请使用上方的公司切换器。",
     "catalogTitle": "政策",
     "searchPlaceholder": "搜索政策…",
@@ -3719,7 +3731,8 @@
     "errors": {
       "duplicateName": "该公司已存在使用此名称的薪资政策。",
       "inUse": "此政策已分配给员工，无法删除。请先取消分配。",
-      "companyMismatch": "薪资政策只能分配给其所属公司的员工。"
+      "companyMismatch": "薪资政策只能分配给其所属公司的员工。",
+      "defaultInUse": "此薪资政策已设为公司默认，无法删除。"
     },
     "fieldDailyRate": "每日费率（日薪）",
     "dailyRatePlaceholder": "例如 120.00",
@@ -3740,7 +3753,64 @@
       "anchorDayHint": "仅用于“自定义周期”模式。锚定日（1–28）是窗口开始的当月日期——例如，锚定日 25 表示窗口从上月 25 日运行到周期月 24 日。仅适用于自定义周期政策；法定月份仍按日历月计算。"
     },
     "copy": "复制",
-    "copySuffix": "（副本）"
+    "copySuffix": "（副本）",
+    "config": {
+      "prorationTitle": "薪资按比例计算与工作日基准",
+      "prorationDivisor": "按比例基准",
+      "divisorCalendar": "日历天数",
+      "divisorCustom": "固定工作日",
+      "prorationCustomDays": "固定天数（例如 26）",
+      "includeSaturday": "计入星期六",
+      "includeSunday": "计入星期日",
+      "includeHoliday": "计入公共假期",
+      "salaryIncrementProration": "将月中调薪按两种薪率分摊",
+      "prorationHint": "适用于当月部分时间入职/离职的员工。默认（日历天数）与当前计算结果一致。",
+      "negativeNetTitle": "负净薪",
+      "negativeNetLabel": "当净薪为负时",
+      "negativeRetain": "保留负数金额",
+      "negativeSetZero": "将净薪设为零",
+      "negativeNetHint": "将余额结转至下一周期是一项独立且受控的功能，此处不提供。",
+      "overtimeTitle": "加班",
+      "otMultiplier": "普通薪率倍数",
+      "otMaxHours": "每月最高加班时数",
+      "otMaxAmount": "每月最高加班金额（RM）",
+      "otDayWorkday": "工作日",
+      "otDayRestDay": "休息日",
+      "otDayHoliday": "公共假期",
+      "otExceedLabel": "当加班超过上限时",
+      "otExceedCap": "封顶（默认）",
+      "otExceedConvert": "将超额转为薪资项目",
+      "otExceedComponent": "超额对应的薪资项目",
+      "otExceedComponentNone": "选择薪资项目",
+      "otHint": "倍数下限为法定的 1.5×。转换会将超过上限的加班金额转到所选薪资项目，以确保仍然支付。",
+      "leaveTitle": "假期计算",
+      "unpaidLeaveDivisor": "无薪假除数",
+      "unpaidTimeOffDivisor": "无薪休假除数",
+      "encashmentDivisor": "假期兑现除数",
+      "leaveDivisor": {
+        "calendar_month": "日历月",
+        "custom_days": "固定天数",
+        "cutoff_days": "结算周期天数",
+        "working_days": "工作日",
+        "custom_hours": "固定小时",
+        "custom_minutes": "固定分钟"
+      },
+      "leaveCustomDays": "固定天数",
+      "leaveCustomHours": "固定小时",
+      "leaveCustomMinutes": "固定分钟",
+      "leaveHint": "除数决定一天无薪假/兑现假期的价值。默认（日历月）与当前计算结果一致。",
+      "roundingTitle": "舍入",
+      "roundingEarnings": "收入",
+      "roundingDeductions": "扣除",
+      "roundingNetPay": "净薪",
+      "rounding": {
+        "none": "精确（2 位小数）",
+        "up": "向上舍入",
+        "down": "向下舍入",
+        "nearest": "最接近的令吉"
+      },
+      "roundingHint": "法定缴款的舍入始终遵循其自身的法定规则，不受影响。"
+    }
   },
   "leaveApproval": {
     "title": "请假审批链",
