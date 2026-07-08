@@ -23,7 +23,7 @@ import { MeReviewCard } from './review-card';
 import { myCheckIns, myFeedbackRequests, myGoals, myReviews } from '@/core/performance';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { AttendanceClockButton, LocationNotice } from './attendance-clock';
-import { SectionJumpNav } from '@/components/section-jump-nav';
+import { ClientTabs } from '@/components/personnel-tabs';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { durationLabel } from '@/lib/leave-duration';
@@ -43,6 +43,11 @@ import {
   myUpdateGoalProgress,
   myWithdrawResignation,
 } from './actions';
+
+// 311ad7ba: the six ESS tabs, ordered per the reporter's expected_function enumeration. A `?tab=` query
+// param deep-links / survives the native GET reloads (payslip month selector, leave as-at date).
+type MeTabKey = 'overview' | 'profile' | 'pay' | 'performance' | 'documents' | 'leave';
+const ME_TAB_KEYS: readonly MeTabKey[] = ['overview', 'profile', 'pay', 'performance', 'documents', 'leave'];
 
 const rm = (n: unknown) =>
   `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -94,13 +99,13 @@ function Pill({ status, map, label }: { status: string; map: Record<string, stri
 export default async function MePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; month?: string; cycle?: string; asOf?: string }>;
+  searchParams: Promise<{ error?: string; month?: string; cycle?: string; asOf?: string; tab?: string }>;
 }) {
   const t = await getTranslations('me');
   const tLeave = await getTranslations('leave'); // ADR-0048 — duration labels in history
   const tRun = await getTranslations('payroll.list.runType'); // Wave 2C — shared run-type labels
   const s = await getSession();
-  const { error, month: spMonth, cycle: spCycle, asOf: spAsOf } = await searchParams;
+  const { error, month: spMonth, cycle: spCycle, asOf: spAsOf, tab: spTab } = await searchParams;
   const me = await myEmployment(s);
 
   if (!me) {
@@ -213,6 +218,8 @@ export default async function MePage({
     spCycle && payslipCycles.some((c) => c.key === spCycle) ? spCycle : payslipCycles[0]?.key ?? '';
   const displayedPayslips = monthRows.filter((p) => cycleKeyOf(p) === selectedCycle);
 
+  const activeTab: MeTabKey = ME_TAB_KEYS.includes(spTab as MeTabKey) ? (spTab as MeTabKey) : 'overview';
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div data-tour="me-intro">
@@ -224,19 +231,21 @@ export default async function MePage({
 
       <ErrorBanner message={error} />
 
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
-        <SectionJumpNav
-          sections={[
-            { id: 'overview', label: t('secOverview') },
-            { id: 'profile', label: t('secProfile') },
-            { id: 'pay', label: t('secPay') },
-            { id: 'performance', label: t('secPerformance') },
-            { id: 'documents', label: t('secDocuments') },
-          ]}
-        />
-        <div className="min-w-0 flex-1 space-y-6">
-          <section id="overview" className="scroll-mt-4">
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <ClientTabs<MeTabKey>
+        defaultTab={activeTab}
+        emptyLabel={t('tabsEmpty')}
+        ariaLabel={t('title')}
+        tabs={[
+          { key: 'overview', label: t('secOverview') },
+          { key: 'profile', label: t('secProfile') },
+          { key: 'pay', label: t('secPay') },
+          { key: 'performance', label: t('secPerformance') },
+          { key: 'documents', label: t('secDocuments') },
+          { key: 'leave', label: t('secLeave') },
+        ]}
+        panels={{
+          overview: (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Attendance */}
         <Card className="p-5" data-tour="me-attendance">
           <h2 className="text-sm font-semibold">{t('todayHeading')}</h2>
@@ -264,50 +273,16 @@ export default async function MePage({
             <LocationNotice />
           </div>
 
+          {/* 311ad7ba: the recent-days list moved out — Attendance has its own dedicated page. We keep the
+              clock in/out, missed-punch correction and travel-request forms here because /me is the only
+              place an employee can do a geofenced punch or file those self-service requests. */}
           <div className="mt-5 border-t border-border pt-4">
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('recent')}
-            </div>
-            <ul className="space-y-1.5 text-sm">
-              {attendance.slice(0, 6).map((a) => {
-                // ADR-0070: prefer the matched site name, else raw coordinates, else nothing captured.
-                // Distance + pass/not-enforced pill shown per punch (check-out row wins when both exist).
-                const locName = a.checkOutLocationName ?? a.checkInLocationName;
-                const lat = a.checkOutLat ?? a.checkInLat;
-                const lng = a.checkOutLng ?? a.checkInLng;
-                const geoStatus = a.checkOutGeofenceStatus ?? a.checkInGeofenceStatus;
-                const distanceM = a.checkOutDistanceM ?? a.checkInDistanceM;
-                return (
-                  <li key={a.id} className="space-y-0.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="tabular-nums text-muted-foreground">{a.date}</span>
-                      {a.workedMinutes != null && (
-                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                          {Math.floor(a.workedMinutes / 60)}h {String(a.workedMinutes % 60).padStart(2, '0')}m
-                          {(a.otMinutes ?? 0) > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400"> {t('overtimeBadge')}</span>
-                          )}
-                        </span>
-                      )}
-                      <Pill status={a.status} map={ATT_STATUS} label={t(`attStatus.${a.status}`)} />
-                    </div>
-                    {(lat != null || locName) && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <span>{locName ?? `${lat!.toFixed(4)}, ${lng!.toFixed(4)}`}</span>
-                        {distanceM != null && <span>· {t('distanceAway', { m: distanceM })}</span>}
-                        {geoStatus && (
-                          <span>
-                            ·{' '}
-                            {geoStatus === 'pass' ? t('geofencePass') : t('geofenceNotEnforced')}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-              {attendance.length === 0 && <li className="text-muted-foreground">{t('noRecords')}</li>}
-            </ul>
+            <Link
+              href="/attendance"
+              className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+            >
+              {t('viewAttendanceHistory')} →
+            </Link>
           </div>
 
           {/* Missed-punch correction (manager/admin approves — ADR-0011 Phase B) */}
@@ -394,145 +369,6 @@ export default async function MePage({
           </details>
         </Card>
 
-        {/* Leave */}
-        <Card className="p-5" data-tour="me-leave">
-          <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
-          <div className="mt-3 space-y-3">
-            {balances.map((b) => {
-              const pctUsed = b.accrued > 0 ? Math.min(100, (b.taken / b.accrued) * 100) : 0;
-              const pctPending = b.accrued > 0 ? Math.min(100 - pctUsed, (b.pending / b.accrued) * 100) : 0;
-              const tracked = b.accrued > 0 || b.balance > 0;
-              return (
-                <div key={b.leaveTypeId}>
-                  <div className="flex items-baseline justify-between text-sm">
-                    <span className="text-muted-foreground">{b.leaveType}</span>
-                    <span className="font-semibold tabular-nums">
-                      {tracked ? (
-                        <>
-                          {b.available}
-                          <span className="font-normal text-muted-foreground"> / {b.accrued}</span>
-                        </>
-                      ) : (
-                        <span className="font-normal text-muted-foreground">—</span>
-                      )}
-                    </span>
-                  </div>
-                  {tracked && (
-                    /* Usage bar: solid = used, translucent = pending approval. */
-                    <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-l-full bg-primary" style={{ width: `${pctUsed}%` }} />
-                      <div className="h-full bg-primary/40" style={{ width: `${pctPending}%` }} />
-                    </div>
-                  )}
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {t('leaveUsed', { count: b.taken })}
-                    {b.pending > 0 ? ` · ${t('leavePending', { count: b.pending })}` : ''}
-                    {tracked ? ` · ${t('leaveAvailable', { count: b.available })}` : ''}
-                  </div>
-                  {breakdownByType.get(b.leaveTypeId) && (
-                    <EntitlementBreakdown
-                      data={breakdownByType.get(b.leaveTypeId)!}
-                      asOf={breakdownAsOf}
-                      action="/me"
-                    />
-                  )}
-                </div>
-              );
-            })}
-            {balances.length === 0 && <p className="text-sm text-muted-foreground">{t('noBalances')}</p>}
-          </div>
-
-          <form action={myRequestLeave} className="mt-4 space-y-3 border-t border-border pt-4">
-            <LeaveDurationFields
-              layout="stack"
-              types={leaveTypes.map((lt) => ({
-                id: lt.id,
-                label: lt.requiresDocument ? `${lt.name} · ${t('documentRequired')}` : lt.name,
-                durations: lt.durations ?? null,
-                code: lt.code,
-              }))}
-              previewAction={myPreviewLeaveDeduction}
-            />
-            <Field label={t('documentLabel')}>
-              <input
-                type="file"
-                name="document"
-                accept="image/jpeg,image/png,application/pdf"
-                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{t('documentHint')}</p>
-            </Field>
-            {/* Supporting-document config: employee remark. Always rendered; required-ness is enforced
-                server-side per the selected leave type's employeeRemarkRequired flag. */}
-            <Field label={t('employeeRemarkLabel')}>
-              <textarea name="employeeRemark" rows={2} className={inputCls} />
-              <p className="mt-1 text-xs text-muted-foreground">{t('employeeRemarkRequiredHint')}</p>
-            </Field>
-            {/* Emergency Leave (0106): neutral, balance-safe hint — EL auto-decomposes into Annual (first)
-                then Unpaid for any remainder. Always shown so the applicant understands the cascade before
-                picking the type; it never promises pay (true even when Annual is zero). */}
-            <p className="text-xs text-muted-foreground">{tLeave('emergency.formHint')}</p>
-            <Button type="submit" size="sm">
-              {t('requestLeave')}
-            </Button>
-          </form>
-
-          <div className="mt-4 border-t border-border pt-4">
-            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              {t('requests')}
-            </div>
-            <ul className="space-y-1.5 text-sm">
-              {requests.slice(0, 5).map((r) => (
-                <li key={r.id} className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="block truncate text-muted-foreground">
-                      {r.leaveType} · {r.startDate}
-                      {durationLabel(tLeave, r.durationType, r.hours) && (
-                        <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
-                          {durationLabel(tLeave, r.durationType, r.hours)}
-                        </span>
-                      )}
-                      {/* Hourly-leave time window (0129): the employee's own window on hourly rows; slice-
-                          guarded for the Postgres seconds, gated so non-hourly rows never render a stray time. */}
-                      {r.durationType === 'hourly' && r.fromTime && r.toTime && (
-                        <span className="ml-1 text-xs font-medium text-foreground/60">
-                          {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
-                        </span>
-                      )}
-                      {/* Emergency Leave (0106): the two ANNUAL/UNPAID child rows of one EL submission share
-                          a parent_group_id — tag each so the applicant sees them as one Emergency Leave. */}
-                      {r.parentGroupId && (
-                        <span className="ml-1 text-[10px] font-medium uppercase text-foreground/60">
-                          {tLeave('emergency.groupLabel')}
-                        </span>
-                      )}
-                    </span>
-                    {r.status === 'pending' && r.stepCount > 0 && (
-                      <span className="text-xs text-muted-foreground/80">
-                        {r.currentStepKind === 'hr_admin' ? t('stageHr') : t('stageManager')}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {r.hasDocument && (
-                      <a
-                        href={`/me/leave/attachment/${r.id}?inline=1`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-xs text-primary underline-offset-2 hover:underline"
-                      >
-                        {t('viewDocument')}
-                      </a>
-                    )}
-                    <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
-                  </div>
-                </li>
-              ))}
-              {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}
-            </ul>
-          </div>
-        </Card>
-
         {/* My positions (concurrent multi-company, ADR-0009) */}
         <Card className="p-5">
           <h2 className="text-sm font-semibold">
@@ -564,11 +400,10 @@ export default async function MePage({
             })}
           </ul>
         </Card>
-      </div>
-          </section>
-
-          <section id="profile" className="scroll-mt-4">
-      {/* My details — contact self-edit (direct) + pay-affecting changes (approval-gated, ADR-0012) */}
+            </div>
+          ),
+          profile: (
+      /* My details — contact self-edit (direct) + pay-affecting changes (approval-gated, ADR-0012) */
       <Card className="p-5">
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div data-tour="me-contact">
@@ -754,16 +589,18 @@ export default async function MePage({
           </div>
         </div>
       </Card>
-          </section>
-
-          <section id="pay" className="scroll-mt-4">
+          ),
+          pay: (
+            <>
       {/* Payslips */}
       <Card className="overflow-hidden" data-tour="me-payslips">
         <SectionHeader title={t('myPayslips')} count={payslips.length} />
         {payslipMonths.length > 0 && (
           // Select by payroll month + pay cycle (server component, GET round-trip — no client JS).
           // Mirrors app/payroll/reports/page.tsx: <form method="get"> + native <select> + submit.
+          // 311ad7ba: `tab=pay` so the full-document GET reload lands back on this tab.
           <form method="get" className="grid grid-cols-1 items-end gap-3 border-b border-border p-4 sm:grid-cols-3">
+            <input type="hidden" name="tab" value="pay" />
             <Field label={t('selectMonth')}>
               <select name="month" defaultValue={selectedMonth} className={inputCls}>
                 {payslipMonths.map((m) => (
@@ -945,9 +782,10 @@ export default async function MePage({
           </table>
         </Card>
       )}
-          </section>
-
-          <section id="performance" className="scroll-mt-4 space-y-6">
+            </>
+          ),
+          performance: (
+            <>
       {/* Performance reviews */}
       {reviews.length > 0 && (
         <Card className="overflow-hidden">
@@ -1172,9 +1010,10 @@ export default async function MePage({
           </ul>
         </Card>
       )}
-          </section>
-
-          <section id="documents" className="scroll-mt-4">
+            </>
+          ),
+          documents: (
+            <>
       {/* Annual tax statement (EA / C.P.8A) — self-serve for personal tax filing */}
       <Card className="p-5">
         <SectionHeader title={t('taxStatementEa')} />
@@ -1273,9 +1112,157 @@ export default async function MePage({
           </form>
         )}
       </Card>
-          </section>
-        </div>
-      </div>
+            </>
+          ),
+          leave: (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Left column: balance summary + entitlement breakdown + request history. */}
+              <Card className="p-5" data-tour="me-leave">
+                <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
+                <div className="mt-3 space-y-3">
+                  {balances.map((b) => {
+                    const pctUsed = b.accrued > 0 ? Math.min(100, (b.taken / b.accrued) * 100) : 0;
+                    const pctPending = b.accrued > 0 ? Math.min(100 - pctUsed, (b.pending / b.accrued) * 100) : 0;
+                    const tracked = b.accrued > 0 || b.balance > 0;
+                    return (
+                      <div key={b.leaveTypeId}>
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span className="text-muted-foreground">{b.leaveType}</span>
+                          <span className="font-semibold tabular-nums">
+                            {tracked ? (
+                              <>
+                                {b.available}
+                                <span className="font-normal text-muted-foreground"> / {b.accrued}</span>
+                              </>
+                            ) : (
+                              <span className="font-normal text-muted-foreground">—</span>
+                            )}
+                          </span>
+                        </div>
+                        {tracked && (
+                          /* Usage bar: solid = used, translucent = pending approval. */
+                          <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div className="h-full rounded-l-full bg-primary" style={{ width: `${pctUsed}%` }} />
+                            <div className="h-full bg-primary/40" style={{ width: `${pctPending}%` }} />
+                          </div>
+                        )}
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t('leaveUsed', { count: b.taken })}
+                          {b.pending > 0 ? ` · ${t('leavePending', { count: b.pending })}` : ''}
+                          {tracked ? ` · ${t('leaveAvailable', { count: b.available })}` : ''}
+                        </div>
+                        {breakdownByType.get(b.leaveTypeId) && (
+                          <EntitlementBreakdown
+                            data={breakdownByType.get(b.leaveTypeId)!}
+                            asOf={breakdownAsOf}
+                            action="/me"
+                            hiddenParams={{ tab: 'leave' }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                  {balances.length === 0 && <p className="text-sm text-muted-foreground">{t('noBalances')}</p>}
+                </div>
+
+                <div className="mt-4 border-t border-border pt-4">
+                  <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {t('requests')}
+                  </div>
+                  <ul className="space-y-1.5 text-sm">
+                    {requests.slice(0, 5).map((r) => (
+                      <li key={r.id} className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="block truncate text-muted-foreground">
+                            {r.leaveType} · {r.startDate}
+                            {durationLabel(tLeave, r.durationType, r.hours) && (
+                              <span className="ml-1 text-xs font-medium uppercase text-foreground/70">
+                                {durationLabel(tLeave, r.durationType, r.hours)}
+                              </span>
+                            )}
+                            {/* Hourly-leave time window (0129): the employee's own window on hourly rows; slice-
+                                guarded for the Postgres seconds, gated so non-hourly rows never render a stray time. */}
+                            {r.durationType === 'hourly' && r.fromTime && r.toTime && (
+                              <span className="ml-1 text-xs font-medium text-foreground/60">
+                                {r.fromTime.slice(0, 5)}–{r.toTime.slice(0, 5)}
+                              </span>
+                            )}
+                            {/* Emergency Leave (0106): the two ANNUAL/UNPAID child rows of one EL submission share
+                                a parent_group_id — tag each so the applicant sees them as one Emergency Leave. */}
+                            {r.parentGroupId && (
+                              <span className="ml-1 text-[10px] font-medium uppercase text-foreground/60">
+                                {tLeave('emergency.groupLabel')}
+                              </span>
+                            )}
+                          </span>
+                          {r.status === 'pending' && r.stepCount > 0 && (
+                            <span className="text-xs text-muted-foreground/80">
+                              {r.currentStepKind === 'hr_admin' ? t('stageHr') : t('stageManager')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {r.hasDocument && (
+                            <a
+                              href={`/me/leave/attachment/${r.id}?inline=1`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-primary underline-offset-2 hover:underline"
+                            >
+                              {t('viewDocument')}
+                            </a>
+                          )}
+                          <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
+                        </div>
+                      </li>
+                    ))}
+                    {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}
+                  </ul>
+                </div>
+              </Card>
+
+              {/* Right column: leave application form incl. supporting-document upload. */}
+              <Card className="p-5">
+                <h2 className="text-sm font-semibold">{t('requestLeave')}</h2>
+                <form action={myRequestLeave} className="mt-4 space-y-3">
+                  <LeaveDurationFields
+                    layout="stack"
+                    types={leaveTypes.map((lt) => ({
+                      id: lt.id,
+                      label: lt.requiresDocument ? `${lt.name} · ${t('documentRequired')}` : lt.name,
+                      durations: lt.durations ?? null,
+                      code: lt.code,
+                    }))}
+                    previewAction={myPreviewLeaveDeduction}
+                  />
+                  <Field label={t('documentLabel')}>
+                    <input
+                      type="file"
+                      name="document"
+                      accept="image/jpeg,image/png,application/pdf"
+                      className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">{t('documentHint')}</p>
+                  </Field>
+                  {/* Supporting-document config: employee remark. Always rendered; required-ness is enforced
+                      server-side per the selected leave type's employeeRemarkRequired flag. */}
+                  <Field label={t('employeeRemarkLabel')}>
+                    <textarea name="employeeRemark" rows={2} className={inputCls} />
+                    <p className="mt-1 text-xs text-muted-foreground">{t('employeeRemarkRequiredHint')}</p>
+                  </Field>
+                  {/* Emergency Leave (0106): neutral, balance-safe hint — EL auto-decomposes into Annual (first)
+                      then Unpaid for any remainder. Always shown so the applicant understands the cascade before
+                      picking the type; it never promises pay (true even when Annual is zero). */}
+                  <p className="text-xs text-muted-foreground">{tLeave('emergency.formHint')}</p>
+                  <Button type="submit" size="sm">
+                    {t('requestLeave')}
+                  </Button>
+                </form>
+              </Card>
+            </div>
+          ),
+        }}
+      />
     </div>
   );
 }

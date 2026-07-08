@@ -1082,6 +1082,7 @@
     "secPay": "Pay",
     "secPerformance": "Performance",
     "secDocuments": "Documents",
+    "secLeave": "Leave",
     "genderLabel": "Gender",
     "gender_male": "Male",
     "gender_female": "Female",
@@ -1155,7 +1156,9 @@
     "countryLabel": "Country",
     "emergencyRelationshipLabel": "Relationship",
     "emergencyPhone2Label": "Emergency phone 2",
-    "emergencyAddressLabel": "Emergency contact address"
+    "emergencyAddressLabel": "Emergency contact address",
+    "tabsEmpty": "Nothing to show here.",
+    "viewAttendanceHistory": "View my full attendance history"
   },
   "approvals": {
     "title": "Approvals",
@@ -3197,7 +3200,7 @@
         },
         "attendance": {
           "title": "Attendance summary",
-          "body": "Check in and out for today, and review your recent days. You can also request a fix for a missed punch."
+          "body": "Check in and out for today from here. For your full attendance history, open the Attendance page. You can also request a fix for a missed punch."
         },
         "leave": {
           "title": "Leave balances and requests",

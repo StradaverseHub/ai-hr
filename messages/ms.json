@@ -1082,6 +1082,7 @@
     "secPay": "Gaji",
     "secPerformance": "Prestasi",
     "secDocuments": "Dokumen",
+    "secLeave": "Cuti",
     "genderLabel": "Jantina",
     "gender_male": "Lelaki",
     "gender_female": "Perempuan",
@@ -1155,7 +1156,9 @@
     "countryLabel": "Negara",
     "emergencyRelationshipLabel": "Hubungan",
     "emergencyPhone2Label": "Telefon kecemasan 2",
-    "emergencyAddressLabel": "Alamat hubungan kecemasan"
+    "emergencyAddressLabel": "Alamat hubungan kecemasan",
+    "tabsEmpty": "Tiada apa-apa untuk dipaparkan.",
+    "viewAttendanceHistory": "Lihat sejarah kehadiran penuh saya"
   },
   "approvals": {
     "title": "Kelulusan",
@@ -3197,7 +3200,7 @@
         },
         "attendance": {
           "title": "Ringkasan kehadiran",
-          "body": "Daftar masuk dan keluar untuk hari ini, dan semak hari-hari terkini anda. Anda juga boleh memohon pembetulan bagi rekod masa yang terlepas."
+          "body": "Daftar masuk dan keluar untuk hari ini di sini. Untuk sejarah kehadiran penuh anda, buka halaman Kehadiran. Anda juga boleh memohon pembetulan untuk ketukan yang tertinggal."
         },
         "leave": {
           "title": "Baki dan permohonan cuti",

@@ -1,39 +1,74 @@
 'use client';
 
 /**
- * Client tab shell for the admin Employee Detail page (feedback f2904eeb). The page is a server
- * component that pre-loads every section's data, so this shell takes the already-rendered section
- * JSX as per-tab `panels` and just shows/hides them on click — no data fetching moves client-side and
- * every existing server-action <form> stays wired exactly as it was on the long-scroll page.
+ * Client tab shell — originally the admin Employee Detail page (feedback f2904eeb), now also the
+ * employee ESS "My Workspace" page (feedback 311ad7ba). The page is a server component that pre-loads
+ * every section's data, so this shell takes the already-rendered section JSX as per-tab `panels` and
+ * just shows/hides them on click — no data fetching moves client-side and every existing server-action
+ * <form> stays wired exactly as it was on the long-scroll page.
  *
- * Why client `useState` rather than route segments: the ticket requires "maintain user position when
- * switching tabs" and the whole record is already in memory, so switching is instant with no reload
- * and no scroll jump. Adding a future tab = one more `{ key, label }` + one more panel; existing tabs
- * are untouched (the scalability requirement). The responsive strip styling mirrors the proven
- * `section-jump-nav.tsx` rail (horizontal, scrollable on narrow screens).
+ * Why client `useState` rather than route segments: switching tabs must keep in-progress form state
+ * and server-action bindings alive (a leave application half-typed, an unsaved contact edit), and the
+ * whole record is already in memory, so switching is instant with no reload and no scroll jump. Adding
+ * a future tab = one more `{ key, label }` + one more panel; existing tabs are untouched (the
+ * scalability requirement). The responsive strip styling mirrors the proven `section-jump-nav.tsx`
+ * rail (horizontal, scrollable on narrow screens).
+ *
+ * Deep links / reload survival: `defaultTab` lets the server pick the initial tab from a `?tab=` param,
+ * so a native GET round-trip (payslip month selector, leave as-at date) that reloads the whole document
+ * can land back on the tab it came from instead of resetting to the first tab.
+ *
+ * Guided tour: the shell listens for a `tour:reveal` window event carrying a CSS selector. If a panel
+ * inside this shell contains the target, it activates that panel so the tour spotlight can measure a
+ * visible element (panels stay mounted-but-hidden, so `querySelector` finds targets in hidden tabs).
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+
+/** Window event a tour engine dispatches with a CSS selector to make the tab holding it visible. */
+export const TOUR_REVEAL_EVENT = 'tour:reveal';
 
 export type PersonnelTabKey = 'profile' | 'family' | 'job' | 'payroll' | 'leave' | 'documents' | 'others';
 
-export function PersonnelTabs({
+export function ClientTabs<K extends string>({
   tabs,
   panels,
   emptyLabel,
+  defaultTab,
+  ariaLabel = 'Sections',
 }: {
-  tabs: { key: PersonnelTabKey; label: string }[];
-  panels: Partial<Record<PersonnelTabKey, ReactNode>>;
+  tabs: { key: K; label: string }[];
+  panels: Partial<Record<K, ReactNode>>;
   // Shown when a tab's panel resolves to nothing (e.g. Documents for an employee with no records,
   // or any admin-only tab viewed by a non-admin). Keeps a switched-to tab from looking broken.
   emptyLabel: string;
+  // Initial tab (deep-link / reload survival). Falls back to the first tab when absent/unknown.
+  defaultTab?: K;
+  ariaLabel?: string;
 }) {
-  const [active, setActive] = useState<PersonnelTabKey>(tabs[0]?.key ?? 'profile');
+  const initial = defaultTab && tabs.some((tab) => tab.key === defaultTab) ? defaultTab : tabs[0]?.key;
+  const [active, setActive] = useState<K | undefined>(initial);
+
+  // Guided tour: when a step targets an element inside a currently-hidden panel, reveal that panel so
+  // its spotlight can measure a laid-out (non-zero) rect. We match by walking up from the target to the
+  // nearest `[data-tabpanel]` and, if it belongs to this shell, switch to it.
+  useEffect(() => {
+    const onReveal = (e: Event) => {
+      const selector = (e as CustomEvent<string>).detail;
+      if (!selector) return;
+      const el = document.querySelector(selector);
+      const panelEl = el?.closest('[data-tabpanel]') as HTMLElement | null;
+      const key = panelEl?.dataset.tabpanel as K | undefined;
+      if (key && tabs.some((tab) => tab.key === key)) setActive(key);
+    };
+    window.addEventListener(TOUR_REVEAL_EVENT, onReveal as EventListener);
+    return () => window.removeEventListener(TOUR_REVEAL_EVENT, onReveal as EventListener);
+  }, [tabs]);
 
   return (
     <div className="space-y-6">
       <nav
-        aria-label="Employee sections"
+        aria-label={ariaLabel}
         className="flex gap-1 overflow-x-auto rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]"
       >
         {tabs.map((tab) => (
@@ -65,6 +100,7 @@ export function PersonnelTabs({
           <div
             key={tab.key}
             role="tabpanel"
+            data-tabpanel={tab.key}
             hidden={active !== tab.key}
             className={active === tab.key ? 'space-y-6' : undefined}
           >
@@ -81,3 +117,6 @@ export function PersonnelTabs({
     </div>
   );
 }
+
+// Back-compat alias: the admin Employee Detail page imports `PersonnelTabs` with `PersonnelTabKey`.
+export const PersonnelTabs = ClientTabs;

@@ -1082,6 +1082,7 @@
     "secPay": "Lương",
     "secPerformance": "Hiệu suất",
     "secDocuments": "Tài liệu",
+    "secLeave": "Nghỉ phép",
     "genderLabel": "Giới tính",
     "gender_male": "Nam",
     "gender_female": "Nữ",
@@ -1155,7 +1156,9 @@
     "countryLabel": "Quốc gia",
     "emergencyRelationshipLabel": "Mối quan hệ",
     "emergencyPhone2Label": "Điện thoại khẩn cấp 2",
-    "emergencyAddressLabel": "Địa chỉ liên hệ khẩn cấp"
+    "emergencyAddressLabel": "Địa chỉ liên hệ khẩn cấp",
+    "tabsEmpty": "Không có gì để hiển thị.",
+    "viewAttendanceHistory": "Xem toàn bộ lịch sử chấm công của tôi"
   },
   "approvals": {
     "title": "Phê duyệt",
@@ -3197,7 +3200,7 @@
         },
         "attendance": {
           "title": "Tóm tắt chấm công",
-          "body": "Vào ca và tan ca cho hôm nay, và xem lại những ngày gần đây của bạn. Bạn cũng có thể yêu cầu sửa một lần chấm công bị bỏ lỡ."
+          "body": "Chấm công vào/ra cho hôm nay tại đây. Để xem toàn bộ lịch sử chấm công, hãy mở trang Chấm công. Bạn cũng có thể yêu cầu sửa lần chấm công bị thiếu."
         },
         "leave": {
           "title": "Số dư và yêu cầu nghỉ phép",

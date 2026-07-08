@@ -1082,6 +1082,7 @@
     "secPay": "薪资",
     "secPerformance": "绩效",
     "secDocuments": "文档",
+    "secLeave": "假期",
     "genderLabel": "性别",
     "gender_male": "男",
     "gender_female": "女",
@@ -1155,7 +1156,9 @@
     "countryLabel": "国家",
     "emergencyRelationshipLabel": "关系",
     "emergencyPhone2Label": "紧急电话 2",
-    "emergencyAddressLabel": "紧急联系人地址"
+    "emergencyAddressLabel": "紧急联系人地址",
+    "tabsEmpty": "这里暂无内容。",
+    "viewAttendanceHistory": "查看我的完整考勤记录"
   },
   "approvals": {
     "title": "审批",
@@ -3197,7 +3200,7 @@
         },
         "attendance": {
           "title": "考勤摘要",
-          "body": "为今天签到和签退，并查看你最近的考勤。你也可以为漏打卡申请补正。"
+          "body": "在此处进行今日的上下班打卡。如需查看完整考勤记录，请打开考勤页面。您也可以申请更正漏打卡。"
         },
         "leave": {
           "title": "休假余额与申请",
