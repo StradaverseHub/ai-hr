@@ -54,9 +54,26 @@ describe('2.1.1 cleanPayrollPolicyConfig — validation + s.60A floor', () => {
     expect(cleanPayrollPolicyConfig({ overtime: { multiplier: 2.0 } })).toEqual({ overtime: { multiplier: 2.0 } });
   });
 
-  it('rejects carry_forward (gated follow-up) ⇒ falls back to retain (today\'s behaviour)', () => {
-    expect(cleanPayrollPolicyConfig({ negativeNet: 'carry_forward' })).toBeNull();
+  it('f3148da1 Step 2 — accepts carry_forward (an unknown value still falls back to retain ⇒ dropped)', () => {
+    expect(cleanPayrollPolicyConfig({ negativeNet: 'carry_forward' })).toEqual({ negativeNet: 'carry_forward' });
     expect(cleanPayrollPolicyConfig({ negativeNet: 'set_zero' })).toEqual({ negativeNet: 'set_zero' });
+    expect(cleanPayrollPolicyConfig({ negativeNet: 'bogus' })).toBeNull(); // ⇒ retain ⇒ dropped
+  });
+
+  it('f3148da1 Step 3 — keeps independently-configurable new-hire / resigned proration overrides', () => {
+    // A custom_days hire override + a working-day-basis resign override are both persisted independently.
+    expect(
+      cleanPayrollPolicyConfig({
+        prorationHire: { divisor: 'custom_days', customDays: 26 },
+        prorationResign: { includeSaturday: true },
+      }),
+    ).toEqual({
+      prorationHire: { divisor: 'custom_days', customDays: 26 },
+      prorationResign: { includeSaturday: true },
+    });
+    // An all-default (calendar) override collapses to null (byte-identical ⇒ inherits the shared proration).
+    expect(cleanPayrollPolicyConfig({ prorationHire: { divisor: 'calendar_month' } })).toBeNull();
+    expect(cleanPayrollPolicyConfig({ prorationResign: {} })).toBeNull();
   });
 
   it('keeps a proper-subset OT eligible-day restriction', () => {

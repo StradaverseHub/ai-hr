@@ -24,6 +24,7 @@ import type {
   PayslipRelease,
   PayslipReleaseMode,
   ProrationDivisor,
+  ProrationSettings,
   RoundingMode,
 } from '../db/schema';
 
@@ -48,7 +49,7 @@ export const CUT_OFF_ANCHOR_MAX = 28;
 const ROUNDING_MODES: RoundingMode[] = ['none', 'up', 'down', 'nearest'];
 const PRORATION_DIVISORS: ProrationDivisor[] = ['calendar_month', 'custom_days'];
 const OT_DAY_TYPES: OtDayType[] = ['workday', 'rest_day', 'holiday'];
-const NEGATIVE_NET_MODES: NegativeNetMode[] = ['retain', 'set_zero'];
+const NEGATIVE_NET_MODES: NegativeNetMode[] = ['retain', 'set_zero', 'carry_forward'];
 const LEAVE_DIVISORS: LeaveDivisor[] = [
   'calendar_month',
   'custom_days',
@@ -67,8 +68,8 @@ const cleanProrationDivisor = (v: unknown): ProrationDivisor =>
 const cleanLeaveDivisor = (v: unknown): LeaveDivisor =>
   LEAVE_DIVISORS.includes(v as LeaveDivisor) ? (v as LeaveDivisor) : 'calendar_month';
 
-// `carry_forward` is rejected here (ADR-0064 §1d gated follow-up): any value that is not a known mode (incl.
-// 'carry_forward') falls back to 'retain' = today's behaviour.
+// f3148da1 Step 2 — 'retain' | 'set_zero' | 'carry_forward' are all accepted; any unknown value falls back to
+// 'retain' (today's behaviour). 'carry_forward' holds a negative net at 0 this cycle and recovers it next cycle.
 const cleanNegativeNet = (v: unknown): NegativeNetMode =>
   NEGATIVE_NET_MODES.includes(v as NegativeNetMode) ? (v as NegativeNetMode) : 'retain';
 
@@ -87,6 +88,29 @@ const cleanNonNegNum = (v: unknown): number | undefined => {
   const n = Number(v);
   return Number.isFinite(n) && n >= 0 ? n : undefined;
 };
+
+/**
+ * f3148da1 Step 3 — coerce + clamp ONE proration formula (divisor + working-day basis). Returns null when it
+ * collapses to the calendar-month default (byte-identical). Used for the shared `proration` and both per-event
+ * overrides (`prorationHire` / `prorationResign`). A 'custom_days' divisor without a valid 1..31 customDays is
+ * a silent no-op ⇒ dropped. Working-day basis flags are keyed off PRESENCE (the kernel switches to working-day
+ * counting when any flag is set), so they are only carried when the raw object actually contains them.
+ */
+function cleanProrationSettings(raw: unknown): ProrationSettings | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const pRaw = raw as Record<string, unknown>;
+  const divisor = cleanProrationDivisor(pRaw.divisor);
+  const customDays = cleanPosInt(pRaw.customDays, 1, 31);
+  const out: ProrationSettings = {};
+  if (divisor === 'custom_days' && customDays !== undefined) {
+    out.divisor = 'custom_days';
+    out.customDays = customDays;
+  }
+  if ('includeSaturday' in pRaw) out.includeSaturday = cleanBool(pRaw.includeSaturday);
+  if ('includeSunday' in pRaw) out.includeSunday = cleanBool(pRaw.includeSunday);
+  if ('includeHoliday' in pRaw) out.includeHoliday = cleanBool(pRaw.includeHoliday);
+  return Object.keys(out).length ? out : null;
+}
 
 const cleanDayTypes = (v: unknown): OtDayType[] | undefined => {
   if (!Array.isArray(v)) return undefined;
@@ -119,21 +143,14 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   if (Object.keys(rounding).length) out.rounding = rounding;
 
   // 1b proration — divisor + working-day basis. Only persisted when divisor is non-default OR a basis flag is
-  // set, so the legacy calendar_month default drops out.
-  const pRaw = (r.proration ?? {}) as Record<string, unknown>;
-  const divisor = cleanProrationDivisor(pRaw.divisor);
-  const customDays = cleanPosInt(pRaw.customDays, 1, 31);
-  const proration: NonNullable<PayrollPolicyConfig['proration']> = {};
-  // A 'custom_days' divisor is meaningless without a valid customDays — drop it back to the calendar default
-  // (a custom_days divisor with no count would be a silent no-op, so never persist it).
-  if (divisor === 'custom_days' && customDays !== undefined) {
-    proration.divisor = 'custom_days';
-    proration.customDays = customDays;
-  }
-  if ('includeSaturday' in pRaw) proration.includeSaturday = cleanBool(pRaw.includeSaturday);
-  if ('includeSunday' in pRaw) proration.includeSunday = cleanBool(pRaw.includeSunday);
-  if ('includeHoliday' in pRaw) proration.includeHoliday = cleanBool(pRaw.includeHoliday);
-  if (Object.keys(proration).length) out.proration = proration;
+  // set, so the legacy calendar_month default drops out. f3148da1 Step 3: the same cleaner also validates the
+  // per-event overrides (prorationHire / prorationResign).
+  const proration = cleanProrationSettings(r.proration);
+  if (proration) out.proration = proration;
+  const prorationHire = cleanProrationSettings(r.prorationHire);
+  if (prorationHire) out.prorationHire = prorationHire;
+  const prorationResign = cleanProrationSettings(r.prorationResign);
+  if (prorationResign) out.prorationResign = prorationResign;
 
   // 1c salary-increment proration — only persisted when true (false = legacy single-row read).
   if (cleanBool(r.salaryIncrementProration)) out.salaryIncrementProration = true;
@@ -229,18 +246,16 @@ export function applyRounding(n: number, mode: RoundingMode | undefined): number
  * calendar days (legacy).
  */
 export function prorationDivisorDays(
-  config: PayrollPolicyConfig | null,
+  p: ProrationSettings | null | undefined,
   calendarDaysInMonth: number,
 ): number {
-  const p = config?.proration;
   if (!p || p.divisor !== 'custom_days') return calendarDaysInMonth;
   return p.customDays && p.customDays > 0 ? p.customDays : calendarDaysInMonth;
 }
 
 /** True when the proration should count WORKING days (a basis flag is present) rather than plain calendar
  *  days. Absent/empty ⇒ false (legacy calendar-day counting). */
-export function usesWorkingDayProration(config: PayrollPolicyConfig | null): boolean {
-  const p = config?.proration;
+export function usesWorkingDayProration(p: ProrationSettings | null | undefined): boolean {
   if (!p) return false;
   return (
     p.includeSaturday !== undefined ||
@@ -251,12 +266,27 @@ export function usesWorkingDayProration(config: PayrollPolicyConfig | null): boo
 
 /** The ISO-weekday roster (1=Mon … 7=Sun) implied by the working-day basis flags, defaulting to Mon–Fri.
  *  includeSaturday adds 6, includeSunday adds 7. */
-export function workingDayRoster(config: PayrollPolicyConfig | null): number[] {
-  const p = config?.proration;
+export function workingDayRoster(p: ProrationSettings | null | undefined): number[] {
   const roster = [1, 2, 3, 4, 5];
   if (p?.includeSaturday) roster.push(6);
   if (p?.includeSunday) roster.push(7);
   return roster;
+}
+
+/**
+ * f3148da1 Step 3 — resolve the effective proration formula for one employee event. A RESIGNED partial month
+ * (terminated mid-period) uses `prorationResign`; a NEW-HIRE partial month uses `prorationHire`; each falls
+ * back to the shared `proration` when its override is absent. A full month uses `proration` (the factor is 1
+ * regardless, so the choice is inert). Resignation takes precedence when an employee is both hired AND
+ * terminated within the same period (the leaving event governs the final pay).
+ */
+export function resolveProrationSettings(
+  config: PayrollPolicyConfig | null,
+  ev: { isHire: boolean; isResign: boolean },
+): ProrationSettings | undefined {
+  if (ev.isResign && config?.prorationResign) return config.prorationResign;
+  if (ev.isHire && config?.prorationHire) return config.prorationHire;
+  return config?.proration;
 }
 
 /** 1f — the divisor DAYS used to value one unpaid-leave day, given the policy config + the calendar facts of

@@ -50,6 +50,27 @@ const numOrUndef = (fd: FormData, k: string): number | undefined => {
 const checked = (fd: FormData, k: string): boolean => fd.get(k) === 'on';
 
 /**
+ * f3148da1 Step 3 — build ONE per-event proration formula from the form fields prefixed `${prefix}Divisor` /
+ * `${prefix}CustomDays` / `${prefix}Include{Saturday,Sunday,Holiday}`. Returns undefined when the event is left
+ * at "default (inherit)" with no working-day basis, so the kernel falls back to the shared proration (nothing
+ * persisted ⇒ byte-identical). A 'default' divisor is omitted (the cleaner then defaults to calendar_month);
+ * basis flags are only sent when at least one is checked (their PRESENCE flips the kernel to working-day
+ * counting). cleanProrationSettings clamps + drops it back to null if it collapses to the calendar default. */
+function prorationFromForm(fd: FormData, prefix: string): Record<string, unknown> | undefined {
+  const divisor = String(fd.get(`${prefix}Divisor`) ?? 'default');
+  const sat = checked(fd, `${prefix}IncludeSaturday`);
+  const sun = checked(fd, `${prefix}IncludeSunday`);
+  const hol = checked(fd, `${prefix}IncludeHoliday`);
+  const anyBasis = sat || sun || hol;
+  if (divisor === 'default' && !anyBasis) return undefined; // inherit the shared proration
+  return {
+    ...(divisor !== 'default' ? { divisor } : {}),
+    customDays: numOrUndef(fd, `${prefix}CustomDays`),
+    ...(anyBasis ? { includeSaturday: sat, includeSunday: sun, includeHoliday: hol } : {}),
+  };
+}
+
+/**
  * f3148da1 (Steps 2–5) — build the full General-Settings `config` blob from the submitted form for ANY policy
  * type. The service's `cleanPayrollPolicyConfig` coerces + clamps every field and drops all-default groups
  * back to NULL, so a form left at its defaults persists as NULL (byte-identical to today). Passed on BOTH
@@ -75,12 +96,17 @@ function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
   const sun = checked(fd, 'includeSunday');
   const hol = checked(fd, 'includeHoliday');
   const anyBasis = sat || sun || hol;
+  const prorationHire = prorationFromForm(fd, 'hire');
+  const prorationResign = prorationFromForm(fd, 'resign');
   const raw: Record<string, unknown> = {
     proration: {
       divisor: String(fd.get('prorationDivisor') ?? 'calendar_month'),
       customDays: numOrUndef(fd, 'prorationCustomDays'),
       ...(anyBasis ? { includeSaturday: sat, includeSunday: sun, includeHoliday: hol } : {}),
     },
+    // f3148da1 Step 3 — the New-Hire / Resigned per-event overrides (omitted ⇒ inherit `proration`).
+    ...(prorationHire ? { prorationHire } : {}),
+    ...(prorationResign ? { prorationResign } : {}),
     salaryIncrementProration: checked(fd, 'salaryIncrementProration'),
     negativeNet: String(fd.get('negativeNet') ?? 'retain'),
     overtime: {

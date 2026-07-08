@@ -1047,7 +1047,11 @@ export const leaveApprovalPolicy = pgTable(
 export type RoundingMode = 'none' | 'up' | 'down' | 'nearest';
 export type ProrationDivisor = 'calendar_month' | 'custom_days';
 export type OtDayType = 'workday' | 'rest_day' | 'holiday';
-export type NegativeNetMode = 'retain' | 'set_zero'; // carry_forward is a gated follow-up (ADR-0064 §1d)
+// 'carry_forward' (f3148da1 Step 2) holds a negative net at 0 THIS cycle and remembers the shortfall as a
+// running per-employee balance that is recovered from the next cycle's positive net. The balance is DERIVED
+// (no mutable table) from each employment's closed payslips' `statutory.carryForward` stamps, so a rolled-back
+// batch drops out of the balance automatically. 'retain'/'set_zero' behave exactly as before.
+export type NegativeNetMode = 'retain' | 'set_zero' | 'carry_forward';
 export type LeaveDivisor =
   | 'calendar_month'
   | 'custom_days'
@@ -1062,17 +1066,27 @@ export type LeaveDivisor =
 // window only — applying it to OT/attendance/leave input selection is a deferred follow-up gated on the kernel
 // seam, so a custom cut-off changes no payslip numbers yet.
 export type CutOffMode = 'calendar' | 'custom';
+// f3148da1 Step 3 — one basic-salary proration formula: the divisor + optional working-day basis. Shared as
+// the default (`proration`) and overridable per employee event (`prorationHire`/`prorationResign`).
+export type ProrationSettings = {
+  divisor?: ProrationDivisor;
+  customDays?: number; //                     used when divisor='custom_days'
+  includeSaturday?: boolean; //               working-day basis (only when a working-day divisor is chosen)
+  includeSunday?: boolean;
+  includeHoliday?: boolean;
+};
 export type PayrollPolicyConfig = {
   // 1a — earnings / deductions / net-pay rounding (default 'none' on each = byte-identical).
   rounding?: { earnings?: RoundingMode; deductions?: RoundingMode; netPay?: RoundingMode };
   // 1b — basic-salary proration divisor + working-day basis (default calendar_month = EA s.18A daysInMonth).
-  proration?: {
-    divisor?: ProrationDivisor;
-    customDays?: number; //                     used when divisor='custom_days'
-    includeSaturday?: boolean; //               working-day basis (only when a working-day divisor is chosen)
-    includeSunday?: boolean;
-    includeHoliday?: boolean;
-  };
+  // This is the SHARED/default proration formula, used for any employee event without its own override below.
+  proration?: ProrationSettings;
+  // f3148da1 Step 3 — per-event basic-salary formulas. When present, `prorationHire` overrides `proration` for
+  // a NEW-HIRE partial month (hired mid-period) and `prorationResign` overrides it for a RESIGNED/terminated
+  // partial month (terminated mid-period), so the two events are independently configurable ("New Hire Basic
+  // Salary Formula" / "Resigned Employee Basic Salary Formula"). Absent ⇒ inherit `proration` (byte-identical).
+  prorationHire?: ProrationSettings;
+  prorationResign?: ProrationSettings;
   // 1c — split a mid-period salary increment across the two straddling comp rows (default false = single row).
   salaryIncrementProration?: boolean;
   // 1d — negative-net handling after the net-pay computation (default 'retain' = today's s.24 clamp behaviour).

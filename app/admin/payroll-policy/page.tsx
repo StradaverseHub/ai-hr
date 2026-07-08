@@ -64,6 +64,9 @@ export default async function PayrollPolicyPage({
   const dayChecked = (d: 'workday' | 'rest_day' | 'holiday') => (otDayTypes ? otDayTypes.includes(d) : true);
   const cfgLeave = cfg?.leave;
   const cfgPror = cfg?.proration;
+  // f3148da1 Step 3 — the three per-event basic-salary formulas (new hire / resigned / increment).
+  const cfgHire = cfg?.prorationHire;
+  const cfgResign = cfg?.prorationResign;
   const cfgRound = cfg?.rounding;
   const otExceedConvert = cfgOt?.exceedHandling?.action === 'convert';
   const ROUNDING_OPTS = ['none', 'up', 'down', 'nearest'] as const;
@@ -314,7 +317,7 @@ export default async function PayrollPolicyPage({
                   Every field defaults to today's behaviour; cleanPayrollPolicyConfig clamps + collapses an
                   all-default blob back to NULL so an untouched form stays byte-identical. ───────── */}
 
-              {/* Step 2/3 — Proration + working-day reference */}
+              {/* Step 2 — Working-day reference / default proration basis (shared fallback for every event) */}
               <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
                 <p className="mb-2 text-sm font-medium text-foreground dark:text-foreground">{t('config.prorationTitle')}</p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -333,8 +336,58 @@ export default async function PayrollPolicyPage({
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="includeSunday" defaultChecked={cfgPror?.includeSunday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSunday')}</label>
                   <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="includeHoliday" defaultChecked={cfgPror?.includeHoliday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeHoliday')}</label>
                 </div>
-                <label className="mt-2 flex items-center gap-2 text-sm"><input type="checkbox" name="salaryIncrementProration" defaultChecked={cfg?.salaryIncrementProration ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.salaryIncrementProration')}</label>
                 <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.prorationHint')}</p>
+              </div>
+
+              {/* Step 3 — Salary Configuration: the three per-event basic-salary formulas (each independently
+                  configurable; an event left at "default" inherits the Step-2 basis above ⇒ byte-identical). */}
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-3 sm:col-span-2 dark:border-border dark:bg-muted/20">
+                <p className="mb-1 text-sm font-medium text-foreground dark:text-foreground">{t('config.salaryConfigTitle')}</p>
+                <p className="mb-3 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.salaryConfigHint')}</p>
+
+                {/* New Hire Basic Salary Formula */}
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('config.hireFormula')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('config.prorationDivisor')}>
+                    <select name="hireDivisor" defaultValue={cfgHire?.divisor ?? 'default'} className={inputCls}>
+                      <option value="default">{t('config.divisorInherit')}</option>
+                      <option value="calendar_month">{t('config.divisorCalendar')}</option>
+                      <option value="custom_days">{t('config.divisorCustom')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('config.prorationCustomDays')}>
+                    <input name="hireCustomDays" type="number" min={1} max={31} step="1" inputMode="numeric" defaultValue={cfgHire?.customDays ?? ''} placeholder="26" className={inputCls} />
+                  </Field>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="hireIncludeSaturday" defaultChecked={cfgHire?.includeSaturday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSaturday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="hireIncludeSunday" defaultChecked={cfgHire?.includeSunday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSunday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="hireIncludeHoliday" defaultChecked={cfgHire?.includeHoliday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeHoliday')}</label>
+                </div>
+
+                {/* Resigned Employee Basic Salary Formula */}
+                <p className="mb-1.5 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('config.resignFormula')}</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field label={t('config.prorationDivisor')}>
+                    <select name="resignDivisor" defaultValue={cfgResign?.divisor ?? 'default'} className={inputCls}>
+                      <option value="default">{t('config.divisorInherit')}</option>
+                      <option value="calendar_month">{t('config.divisorCalendar')}</option>
+                      <option value="custom_days">{t('config.divisorCustom')}</option>
+                    </select>
+                  </Field>
+                  <Field label={t('config.prorationCustomDays')}>
+                    <input name="resignCustomDays" type="number" min={1} max={31} step="1" inputMode="numeric" defaultValue={cfgResign?.customDays ?? ''} placeholder="26" className={inputCls} />
+                  </Field>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="resignIncludeSaturday" defaultChecked={cfgResign?.includeSaturday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSaturday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="resignIncludeSunday" defaultChecked={cfgResign?.includeSunday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeSunday')}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="resignIncludeHoliday" defaultChecked={cfgResign?.includeHoliday ?? false} className="h-4 w-4 rounded border-border text-primary focus:ring-primary" />{t('config.includeHoliday')}</label>
+                </div>
+
+                {/* Salary Increment Basic Salary Formula */}
+                <p className="mb-1.5 mt-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('config.incrementFormula')}</p>
+                <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="salaryIncrementProration" defaultChecked={cfg?.salaryIncrementProration ?? false} className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary" /><span>{t('config.salaryIncrementProration')}<span className="mt-0.5 block text-xs text-muted-foreground">{t('config.incrementHint')}</span></span></label>
               </div>
 
               {/* Step 2 — Negative net pay */}
@@ -344,6 +397,7 @@ export default async function PayrollPolicyPage({
                   <select name="negativeNet" defaultValue={cfg?.negativeNet ?? 'retain'} className={inputCls}>
                     <option value="retain">{t('config.negativeRetain')}</option>
                     <option value="set_zero">{t('config.negativeSetZero')}</option>
+                    <option value="carry_forward">{t('config.negativeCarryForward')}</option>
                   </select>
                 </Field>
                 <p className="mt-2 text-xs text-muted-foreground dark:text-muted-foreground">{t('config.negativeNetHint')}</p>

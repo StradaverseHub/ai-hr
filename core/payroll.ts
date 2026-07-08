@@ -64,6 +64,7 @@ import {
   leaveDivisorDays,
   payslipReleaseAt,
   prorationDivisorDays,
+  resolveProrationSettings,
   usesWorkingDayProration,
   workingDayRoster,
 } from './payroll-policy-config';
@@ -1705,15 +1706,21 @@ export async function generatePayslips(
       const policy = await resolveAssignedPolicy(tx, e.employmentId);
       const cfg = policy?.config ?? null;
       policyConfigByEmp.set(e.employmentId, cfg);
-      // 1b — proration divisor + working-day basis, resolved once per employee.
-      const divisorDays = prorationDivisorDays(cfg, dim);
+      // 1b / Step 3 (f3148da1) — proration divisor + working-day basis, resolved once per employee. The formula
+      // is PER-EVENT: a resigned partial month uses the "Resigned Employee Basic Salary Formula", a new-hire
+      // partial month uses the "New Hire Basic Salary Formula", each falling back to the shared proration. A
+      // full month (neither) uses the shared default (inert — the factor is 1 regardless).
+      const isHire = e.hiredOn > periodStart;
+      const isResign = !!(e.terminatedOn && e.terminatedOn < periodEnd);
+      const prorationSettings = resolveProrationSettings(cfg, { isHire, isResign });
+      const divisorDays = prorationDivisorDays(prorationSettings, dim);
       const opts: { divisorDays?: number; workingDayBasis?: { roster: number[]; holidays: Set<string> } } = {};
       if (divisorDays !== dim) opts.divisorDays = divisorDays;
-      if (usesWorkingDayProration(cfg)) {
-        const holidays = (cfg?.proration?.includeHoliday ?? false)
+      if (usesWorkingDayProration(prorationSettings)) {
+        const holidays = (prorationSettings?.includeHoliday ?? false)
           ? new Set<string>() //              holidays count as worked days ⇒ empty exclusion set
           : await holidayDatesFor(tx, { employmentId: e.employmentId, startDate: periodStart, endDate: periodEnd });
-        opts.workingDayBasis = { roster: workingDayRoster(cfg), holidays };
+        opts.workingDayBasis = { roster: workingDayRoster(prorationSettings), holidays };
       }
       if (opts.divisorDays !== undefined || opts.workingDayBasis) prorationOptsByEmp.set(e.employmentId, opts);
       // 2.1.2 daily branch — only when the resolved policy is daily AND carries a per_day rate. Eligible days
@@ -1775,6 +1782,39 @@ export async function generatePayslips(
         if (eh?.action === 'convert') {
           const found = byId.get(eh.componentId);
           if (found) otConvertByEmp.set(e.employmentId, found);
+        }
+      }
+    }
+
+    // Step 2 carry_forward (f3148da1) — the outstanding negative-net balance carried from PRIOR CLOSED cycles,
+    // DERIVED (no mutable balance table, mirroring the PCB accumulator replay) by summing each employment's
+    // closed payslips' carry-forward stamps: balance = Σ(added − applied), positive = the employee still owes.
+    // Computed ONLY for employments whose policy sets negativeNet='carry_forward' and ONLY on a regular run (an
+    // additional/off-cycle run neither recovers nor defers). A rolled-back batch (status ≠ 'closed') drops out
+    // automatically, so the balance always reflects finalized history. Default (no carry_forward policy) ⇒ the
+    // map is empty and the legacy net path is byte-identical.
+    const carryForwardByEmp = new Map<string, number>();
+    if (batch.runType === 'regular') {
+      const cfEmpIds = emps
+        .filter((e) => policyConfigByEmp.get(e.employmentId)?.negativeNet === 'carry_forward')
+        .map((e) => e.employmentId);
+      if (cfEmpIds.length) {
+        const cfRows = await tx
+          .select({ employmentId: payslip.employmentId, statutory: payslip.statutory })
+          .from(payslip)
+          .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+          .where(
+            and(
+              inArray(payslip.employmentId, cfEmpIds),
+              eq(payrollBatch.status, 'closed'),
+              lt(payrollBatch.payPeriod, payPeriod),
+            ),
+          );
+        for (const r of cfRows) {
+          const cf = (r.statutory as { carryForward?: { applied?: number; added?: number } } | null)?.carryForward;
+          if (!cf) continue;
+          const delta = round2(Number(cf.added ?? 0) - Number(cf.applied ?? 0));
+          carryForwardByEmp.set(r.employmentId, round2((carryForwardByEmp.get(r.employmentId) ?? 0) + delta));
         }
       }
     }
@@ -2367,12 +2407,38 @@ export async function generatePayslips(
       // reconciles, then net-rounding (if any) applies last.
       const roundedGross = applyRounding(grossPay, cfg?.rounding?.earnings);
       const totalDeductionsRaw = round2(statDeductions + slipUnpaid + slipExtraDeduct + slipLoan);
-      const totalDeductions = applyRounding(totalDeductionsRaw, cfg?.rounding?.deductions);
+      let totalDeductions = applyRounding(totalDeductionsRaw, cfg?.rounding?.deductions);
       let net = applyRounding(round2(roundedGross - totalDeductions), cfg?.rounding?.netPay);
       // 1d — negative-net handling. 'set_zero' floors a negative net at 0; 'retain'/null leaves it (the s.24
       // clamp above already keeps net ≥ 0 on the standard path, so 'retain' is a no-op there — byte-identical).
-      // 'carry_forward' is a gated follow-up (cleanPayrollPolicyConfig coerces it to 'retain').
-      if (cfg?.negativeNet === 'set_zero' && net < 0) net = 0;
+      // Step 2 'carry_forward' (f3148da1): holds a negative net at 0 THIS cycle and recovers a PRIOR carried
+      // balance from this cycle's positive net — the running balance is DERIVED (carryForwardByEmp) from earlier
+      // closed cycles and re-stamped below for the next cycle to read. Both adjustments are folded into
+      // totalDeductions so the payslip invariant net = gross − totalDeductions still holds.
+      let carryForward: { applied: number; added: number; balanceBefore: number } | null = null;
+      if (cfg?.negativeNet === 'set_zero' && net < 0) {
+        net = 0;
+      } else if (cfg?.negativeNet === 'carry_forward' && !isAdditionalRun) {
+        const owed = round2(carryForwardByEmp.get(e.employmentId) ?? 0); // >0 ⇒ carried from prior cycle(s)
+        let applied = 0;
+        let added = 0;
+        // Recover the prior balance from this cycle's positive net (never pushing net below 0 in one hit).
+        if (owed > 0 && net > 0) {
+          applied = Math.min(owed, net);
+          net = round2(net - applied);
+        }
+        // A still-negative net (statutory + unpaid exceeded gross) is deferred: raise it to 0 and carry the
+        // shortfall forward. (Mutually exclusive with `applied` — net can't be both > 0 and < 0.)
+        if (net < 0) {
+          added = round2(-net);
+          net = 0;
+        }
+        if (applied > 0 || added > 0) {
+          // Recovery rides deductions (net ↓); a deferred shortfall is a negative deduction (net ↑).
+          totalDeductions = round2(totalDeductions + applied - added);
+          carryForward = { applied, added, balanceBefore: owed };
+        }
+      }
       const employerCost = isAdditionalRun
         ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
         // Step 4 (f3148da1) — the converted OT excess is real employer outlay (paid to the employee), so it
@@ -2399,8 +2465,16 @@ export async function generatePayslips(
           ...(slipOvertime > 0 && otSourceByEmp.get(e.employmentId)
             ? { otSource: otSourceByEmp.get(e.employmentId) }
             : {}),
+          // Step 2 carry_forward (f3148da1) — the recovered/deferred amounts + the balance before this cycle.
+          // Only stamped when non-zero (byte-identical to today for every other path); the NEXT cycle's balance
+          // derivation replays these stamps (Σ added − applied) off closed payslips.
+          ...(carryForward ? { carryForward } : {}),
         }, // `version` + (when source=pack) packVersion/signedKeyId snapshot + (when OT paid) otSource
-        otherDeductions: round2(slipUnpaid + slipExtraDeduct + slipLoan).toFixed(2),
+        // Carry-forward recovery/deferral rides otherDeductions too, so the invariant
+        // totalDeductions = statDeductions + otherDeductions holds (0 for every non-carry_forward path).
+        otherDeductions: round2(
+          slipUnpaid + slipExtraDeduct + slipLoan + (carryForward ? carryForward.applied - carryForward.added : 0),
+        ).toFixed(2),
         totalDeductions: totalDeductions.toFixed(2),
         netPay: net.toFixed(2),
         employerCost: employerCost.toFixed(2),
