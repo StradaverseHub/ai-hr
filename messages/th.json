@@ -743,7 +743,17 @@
       "exportExcel": "Excel",
       "sortAria": "เรียงตาม {column}",
       "employeeId": "รหัสพนักงาน",
-      "reference": "อ้างอิง"
+      "reference": "อ้างอิง",
+      "pendingWith": "รอการอนุมัติจาก",
+      "approvedBy": "อนุมัติโดย",
+      "anyStage": "ทุกขั้นตอน",
+      "anyApprover": "ผู้อนุมัติทุกคน",
+      "stage": {
+        "direct_manager": "ผู้จัดการ",
+        "hr_admin": "ผู้ดูแล HR"
+      },
+      "decidedByLine": "ตัดสินใจโดย {name}",
+      "pendingWithLine": "รออยู่ที่ {stage}"
     }
   },
   "attendance": {

@@ -743,7 +743,17 @@
       "exportExcel": "Excel",
       "sortAria": "Sắp xếp theo {column}",
       "employeeId": "Mã nhân viên",
-      "reference": "Tham chiếu"
+      "reference": "Tham chiếu",
+      "pendingWith": "Đang chờ",
+      "approvedBy": "Được duyệt bởi",
+      "anyStage": "Mọi giai đoạn",
+      "anyApprover": "Mọi người duyệt",
+      "stage": {
+        "direct_manager": "Quản lý",
+        "hr_admin": "Quản trị HR"
+      },
+      "decidedByLine": "Quyết định bởi {name}",
+      "pendingWithLine": "Đang chờ {stage}"
     }
   },
   "attendance": {

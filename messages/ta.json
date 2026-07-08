@@ -743,7 +743,17 @@
       "exportExcel": "Excel",
       "sortAria": "{column} வாரியாக வரிசைப்படுத்து",
       "employeeId": "பணியாளர் ஐடி",
-      "reference": "குறிப்பு"
+      "reference": "குறிப்பு",
+      "pendingWith": "நிலுவையில் உள்ளவர்",
+      "approvedBy": "அங்கீகரித்தவர்",
+      "anyStage": "எந்த நிலை",
+      "anyApprover": "எந்த அங்கீகரிப்பாளர்",
+      "stage": {
+        "direct_manager": "மேலாளர்",
+        "hr_admin": "HR நிர்வாகி"
+      },
+      "decidedByLine": "{name} தீர்மானித்தார்",
+      "pendingWithLine": "{stage} இடம் நிலுவையில்"
     }
   },
   "attendance": {

@@ -10,6 +10,7 @@ import {
   listLeaveTypes,
   listLeaveRequests,
   listLeaveRequestsPage,
+  listLeaveApprovers,
 } from '@/core/read';
 import { listBusinessUnits } from '@/core/admin';
 import { listLocations } from '@/core/location';
@@ -31,6 +32,9 @@ const REQ_STATUS: Record<string, string> = {
 // Admin search/filter/sort page size — mirrors /personnel (feedback 0773bda9).
 const PAGE = 25;
 const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+// Approval Information — "Pending with" stages (feedback 0773bda9). The approval chain stores a ROLE
+// (approver_kind), not a named person, so this filter narrows by the stage a pending request awaits.
+const PENDING_STAGES = ['direct_manager', 'hr_admin'] as const;
 
 // Self-service Leave page (consultant feedback #8/#10): Balance + History + Apply only. Team
 // availability lives on the Dashboard (the "Planned absences" timeline); approvals live in the
@@ -62,6 +66,10 @@ export default async function LeavePage({
     to?: string;
     appliedFrom?: string;
     appliedTo?: string;
+    // Approval Information (feedback 0773bda9): approvedBy = final decider employment id; pendingWith =
+    // the stage a pending request currently awaits (direct_manager | hr_admin).
+    approvedBy?: string;
+    pendingWith?: string;
     sort?: string;
     dir?: string;
   }>;
@@ -95,11 +103,28 @@ export default async function LeavePage({
   const to = sp.to || undefined;
   const appliedFrom = sp.appliedFrom || undefined;
   const appliedTo = sp.appliedTo || undefined;
+  const approvedBy = sp.approvedBy || undefined;
+  const pendingWith =
+    sp.pendingWith && (PENDING_STAGES as readonly string[]).includes(sp.pendingWith) ? sp.pendingWith : undefined;
   const sort = sp.sort || undefined;
   const dir: 'asc' | 'desc' = sp.dir === 'asc' ? 'asc' : 'desc';
   const hasFilters =
     admin &&
-    !!(q || company || bu || dept || loc || typeIds.length || statuses.length || from || to || appliedFrom || appliedTo);
+    !!(
+      q ||
+      company ||
+      bu ||
+      dept ||
+      loc ||
+      typeIds.length ||
+      statuses.length ||
+      from ||
+      to ||
+      appliedFrom ||
+      appliedTo ||
+      approvedBy ||
+      pendingWith
+    );
 
   const [employees, leaveTypes, balances] = await Promise.all([
     listEmployees(session, scopeIds),
@@ -118,9 +143,10 @@ export default async function LeavePage({
     businessUnits,
     departments,
     locations,
+    approvers,
   } = admin
     ? await (async () => {
-        const [pageData, companies, businessUnits, departments, locations] = await Promise.all([
+        const [pageData, companies, businessUnits, departments, locations, approvers] = await Promise.all([
           listLeaveRequestsPage(session, {
             companyIds: scopeIds,
             q,
@@ -134,6 +160,8 @@ export default async function LeavePage({
             to,
             appliedFrom,
             appliedTo,
+            approvedBy,
+            pendingWith,
             sort,
             dir,
             limit: PAGE,
@@ -143,13 +171,14 @@ export default async function LeavePage({
           listBusinessUnits(session, { companyIds: scopeIds }),
           listDepartments(session, { companyIds: scopeIds }),
           listLocations(session, scopeIds),
+          listLeaveApprovers(session, scopeIds),
         ]);
-        return { rows: pageData.rows, total: pageData.total, companies, businessUnits, departments, locations };
+        return { rows: pageData.rows, total: pageData.total, companies, businessUnits, departments, locations, approvers };
       })()
     : await (async () => {
         const requests = await listLeaveRequests(session, scopeIds);
         const mine = requests.filter((r) => session.personId != null && r.personId === session.personId);
-        return { rows: mine, total: mine.length, companies: [], businessUnits: [], departments: [], locations: [] };
+        return { rows: mine, total: mine.length, companies: [], businessUnits: [], departments: [], locations: [], approvers: [] };
       })();
 
   // Balances are personal: admins see everyone in scope; everyone else sees ONLY their own.
@@ -182,6 +211,8 @@ export default async function LeavePage({
     if (to) p.set('to', to);
     if (appliedFrom) p.set('appliedFrom', appliedFrom);
     if (appliedTo) p.set('appliedTo', appliedTo);
+    if (approvedBy) p.set('approvedBy', approvedBy);
+    if (pendingWith) p.set('pendingWith', pendingWith);
     return p;
   };
   const withSort = (p: URLSearchParams) => {
@@ -298,6 +329,27 @@ export default async function LeavePage({
       ariaLabel: t('filters.appliedTo'),
       removeAriaLabel: t('filters.removeFilter', { label: t('filters.appliedTo') }),
     },
+    // Approval Information (feedback 0773bda9). "Pending with" = the stage a pending request awaits (the
+    // chain stores a ROLE, not a named person, so this is a two-value stage picker). "Approved by" = the
+    // stored final decider (a named person), sourced from requests that have actually been decided.
+    {
+      kind: 'select',
+      name: 'pendingWith',
+      label: t('filters.pendingWith'),
+      ariaLabel: t('filters.pendingWith'),
+      allLabel: t('filters.anyStage'),
+      options: PENDING_STAGES.map((s) => ({ value: s, label: t(`filters.stage.${s}`) })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.pendingWith') }),
+    },
+    {
+      kind: 'select',
+      name: 'approvedBy',
+      label: t('filters.approvedBy'),
+      ariaLabel: t('filters.approvedBy'),
+      allLabel: t('filters.anyApprover'),
+      options: approvers.map((a) => ({ value: a.id, label: a.name })),
+      removeAriaLabel: t('filters.removeFilter', { label: t('filters.approvedBy') }),
+    },
   ];
   const filterValues: Record<string, string | string[] | undefined> = {
     q,
@@ -311,9 +363,11 @@ export default async function LeavePage({
     to,
     appliedFrom,
     appliedTo,
+    pendingWith,
+    approvedBy,
   };
   const activeFilterCount =
-    [q, company, bu, dept, loc, from, to, appliedFrom, appliedTo].filter(Boolean).length +
+    [q, company, bu, dept, loc, from, to, appliedFrom, appliedTo, approvedBy, pendingWith].filter(Boolean).length +
     (typeIds.length ? 1 : 0) +
     (statuses.length ? 1 : 0);
   const filterLabels = {
@@ -594,6 +648,23 @@ export default async function LeavePage({
                       {r.pendingCancellationId && (
                         <span className="ml-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
                           {t('cancelPendingBadge')}
+                        </span>
+                      )}
+                      {/* Approval Information (feedback 0773bda9): decided rows show the final decider; a
+                          still-pending row shows the stage it awaits. Admin history only. */}
+                      {admin && r.decidedByName && (
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                          {t('filters.decidedByLine', { name: r.decidedByName })}
+                        </span>
+                      )}
+                      {admin && r.status === 'pending' && r.currentStepKind && (
+                        <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                          {t('filters.pendingWithLine', {
+                            stage:
+                              r.currentStepKind === 'direct_manager' || r.currentStepKind === 'hr_admin'
+                                ? t(`filters.stage.${r.currentStepKind}`)
+                                : r.currentStepKind,
+                          })}
                         </span>
                       )}
                     </td>

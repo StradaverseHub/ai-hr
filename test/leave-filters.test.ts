@@ -92,6 +92,18 @@ beforeAll(async () => {
   reqB = await insertReq({ employmentId: empB.employmentId, leaveTypeId: sickTypeId, status: 'approved', start: '2026-06-28', end: '2026-07-01' });
   reqC = await insertReq({ employmentId: empC.employmentId, leaveTypeId: b.annualLeaveTypeId, status: 'rejected', start: '2026-08-10', end: '2026-08-12' });
   reqD = await insertReq({ employmentId: empD.employmentId, leaveTypeId: b.annualLeaveTypeId, status: 'pending', start: '2026-07-05', end: '2026-07-07' });
+
+  // Approval Information (feedback 0773bda9 gap-close): stamp reqB's final decider (empC) so the
+  // "Approved by" filter has a named person to match; leave reqA's decider unset (still pending).
+  await owner.db
+    .update(schema.leaveRequest)
+    .set({ decidedByEmploymentId: empC.employmentId })
+    .where(eq(schema.leaveRequest.id, reqB));
+  // "Pending with" is by stage — reqA currently awaits the direct manager; reqD awaits HR.
+  await owner.db.insert(schema.leaveApprovalStep).values([
+    { tenantId: b.tenantId, leaveRequestId: reqA, subjectEmploymentId: empA.employmentId, stepIndex: 0, approverKind: 'direct_manager', status: 'pending' },
+    { tenantId: b.tenantId, leaveRequestId: reqD, subjectEmploymentId: empD.employmentId, stepIndex: 0, approverKind: 'hr_admin', status: 'pending' },
+  ]);
 });
 afterAll(async () => {
   await closeAll();
@@ -157,6 +169,29 @@ describe('0773bda9 — leave advanced search & filter (data layer)', () => {
     // Fence = [company1], but companyId asks for company2 → AND yields the empty set.
     const fenced = await page({ companyIds: [b.companyId], companyId: company2, limit: 200, offset: 0 });
     expect(fenced.rows.length).toBe(0);
+  });
+
+  it('Approval Information — "Approved by" narrows to the request that named decider decided', async () => {
+    const r = await page({ approvedBy: empC.employmentId, limit: 200, offset: 0 });
+    expect(ids(r.rows).has(reqB)).toBe(true); // decided by empC
+    expect(ids(r.rows).has(reqA)).toBe(false); // still pending, no decider
+    expect(r.rows.every((x) => x.decidedByEmploymentId === empC.employmentId)).toBe(true);
+    // The decider name is projected for display.
+    expect(r.rows.find((x) => x.id === reqB)!.decidedByName).toBeTruthy();
+  });
+
+  it('Approval Information — "Pending with" narrows by the awaiting stage (role, not a named person)', async () => {
+    const mgr = await page({ pendingWith: 'direct_manager', limit: 200, offset: 0 });
+    expect(ids(mgr.rows).has(reqA)).toBe(true); // awaits manager
+    expect(ids(mgr.rows).has(reqD)).toBe(false); // awaits HR
+    const hr = await page({ pendingWith: 'hr_admin', limit: 200, offset: 0 });
+    expect(ids(hr.rows).has(reqD)).toBe(true);
+    expect(ids(hr.rows).has(reqA)).toBe(false);
+    // An unknown stage is whitelisted away in the read layer → the filter is simply not applied (no
+    // throw, no SQL injection); the result is the unfiltered set rather than a crash.
+    const bogus = await page({ pendingWith: "x' or '1'='1", limit: 200, offset: 0 });
+    expect(bogus.rows.length).toBeGreaterThan(0);
+    expect(ids(bogus.rows).has(reqA)).toBe(true);
   });
 
   it('paginates with a stable total', async () => {

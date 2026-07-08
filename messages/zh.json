@@ -743,7 +743,17 @@
       "exportExcel": "Excel",
       "sortAria": "按{column}排序",
       "employeeId": "员工编号",
-      "reference": "参考号"
+      "reference": "参考号",
+      "pendingWith": "待审批人",
+      "approvedBy": "审批人",
+      "anyStage": "任何阶段",
+      "anyApprover": "任何审批人",
+      "stage": {
+        "direct_manager": "经理",
+        "hr_admin": "HR 管理员"
+      },
+      "decidedByLine": "由 {name} 决定",
+      "pendingWithLine": "待 {stage} 审批"
     }
   },
   "attendance": {

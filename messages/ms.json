@@ -743,7 +743,17 @@
       "exportExcel": "Excel",
       "sortAria": "Isih mengikut {column}",
       "employeeId": "ID pekerja",
-      "reference": "Rujukan"
+      "reference": "Rujukan",
+      "pendingWith": "Menunggu kelulusan",
+      "approvedBy": "Diluluskan oleh",
+      "anyStage": "Mana-mana peringkat",
+      "anyApprover": "Mana-mana pelulus",
+      "stage": {
+        "direct_manager": "Pengurus",
+        "hr_admin": "Pentadbir HR"
+      },
+      "decidedByLine": "Diputuskan oleh {name}",
+      "pendingWithLine": "Menunggu {stage}"
     }
   },
   "attendance": {

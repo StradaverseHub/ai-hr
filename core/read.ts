@@ -509,6 +509,11 @@ const leaveRequestSelection = {
   hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
   currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
   currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+  // Approval Information (feedback 0773bda9): the final decider's employment id + name, so the admin
+  // history table can show "Approved by" and the advanced filter can narrow by approver. NULL until a
+  // request is decided (pending rows). Kept in the SHARED projection so the flat + paginated reads agree.
+  decidedByEmploymentId: leaveRequest.decidedByEmploymentId,
+  decidedByName: sql<string | null>`(select p.full_name from employment de join person p on p.id = de.person_id where de.id = leave_request.decided_by_employment_id)`,
   stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
   // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
   // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
@@ -595,6 +600,13 @@ export function listLeaveRequestsPage(
     locationId?: string;
     leaveTypeIds?: string[]; // multi
     statuses?: string[]; // multi — validated against pending|approved|rejected|cancelled
+    // Approval Information (feedback 0773bda9). `approvedBy` = the FINAL decider's employment id
+    // (leave_request.decided_by_employment_id — a stored named person, so this is exact). `pendingWith`
+    // = the ROLE the request is currently awaiting (the first pending approval step's approver_kind:
+    // 'direct_manager' | 'hr_admin'); the chain stores a role, not a named person, so this filter is by
+    // stage, which is the finest granularity the data supports.
+    approvedBy?: string;
+    pendingWith?: string;
     from?: string;
     to?: string; // leave-date window (overlap semantics)
     appliedFrom?: string;
@@ -630,6 +642,14 @@ export function listLeaveRequestsPage(
       p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
       p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
       validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
+      // Approval Information — "Approved by" is the stored final decider (exact match on a named person).
+      p.approvedBy ? eq(leaveRequest.decidedByEmploymentId, p.approvedBy) : undefined,
+      // "Pending with" narrows to rows whose CURRENT (first) pending approval step awaits this role. The
+      // value is whitelisted against the two approver kinds; an unknown value matches nothing rather than
+      // interpolating raw input. NB: only pending rows have a pending step, so this implicitly scopes to them.
+      p.pendingWith && (p.pendingWith === 'direct_manager' || p.pendingWith === 'hr_admin')
+        ? sql`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1) = ${p.pendingWith}`
+        : undefined,
       // Leave-date window uses OVERLAP semantics so "July 2026" catches leave spanning a month boundary:
       // startDate <= to AND endDate >= from.
       p.to ? lte(leaveRequest.startDate, p.to) : undefined,
@@ -677,6 +697,30 @@ export function listLeaveRequestsPage(
       .where(where);
     const withDates = await resolveLeaveWorkingDates(tx, rows);
     return { rows: withDates, total: Number(count) };
+  });
+}
+
+/**
+ * Approval Information filter — distinct people who have DECIDED (final approver/rejecter) at least one
+ * leave request in scope, so the /leave admin "Approved by" filter can offer a named-person picker.
+ * Scoped by the REQUESTER's company (the same `companyIds` fence the history uses), and RLS trims further.
+ * Read-only (feedback 0773bda9). "Pending with" is by role (approver_kind), not a named person, so it needs
+ * no options query — the two stage values are fixed in the page.
+ */
+export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const decider = alias(employment, 'decider_emp');
+    const deciderPerson = alias(person, 'decider_person');
+    const rows = await tx
+      .selectDistinct({ id: decider.id, name: deciderPerson.fullName })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(decider, eq(decider.id, leaveRequest.decidedByEmploymentId))
+      .innerJoin(deciderPerson, eq(deciderPerson.id, decider.personId))
+      .where(
+        companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+      );
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
   });
 }
 

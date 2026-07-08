@@ -41,6 +41,10 @@ export async function GET(req: Request) {
     to: one('to'),
     appliedFrom: one('appliedFrom'),
     appliedTo: one('appliedTo'),
+    // Approval Information (feedback 0773bda9): pass the same approver filters the page uses so the export
+    // matches exactly. pendingWith is whitelisted server-side in listLeaveRequestsPage.
+    approvedBy: one('approvedBy'),
+    pendingWith: one('pendingWith'),
     sort: one('sort'),
     dir,
     limit: 10_000,
@@ -60,6 +64,8 @@ export async function GET(req: Request) {
       t('filters.dateTo'),
       t('colDays'),
       t('colApplied'),
+      // Approval Information (feedback 0773bda9): the final decider on the exported row.
+      t('filters.approvedBy'),
     ],
     rows: rows.map((r) => [
       r.employee,
@@ -71,6 +77,7 @@ export async function GET(req: Request) {
       r.endDate,
       `${Number(r.days)}${durationLabel(t, r.durationType, r.hours) ? ` ${durationLabel(t, r.durationType, r.hours)}` : ''}`,
       r.appliedOn ? new Date(r.appliedOn).toISOString().slice(0, 10) : '',
+      r.decidedByName ?? '',
     ]),
   };
 

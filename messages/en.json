@@ -743,7 +743,17 @@
       "exportExcel": "Excel",
       "sortAria": "Sort by {column}",
       "employeeId": "Employee ID",
-      "reference": "Reference"
+      "reference": "Reference",
+      "pendingWith": "Pending with",
+      "approvedBy": "Approved by",
+      "anyStage": "Any stage",
+      "anyApprover": "Any approver",
+      "stage": {
+        "direct_manager": "Manager",
+        "hr_admin": "HR admin"
+      },
+      "decidedByLine": "Decided by {name}",
+      "pendingWithLine": "Pending with {stage}"
     }
   },
   "attendance": {

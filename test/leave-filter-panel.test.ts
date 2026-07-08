@@ -37,11 +37,23 @@ describe('leave filter panel: /leave admin surface', () => {
       'to?: string',
       'appliedFrom?: string',
       'appliedTo?: string',
+      // Approval Information (feedback 0773bda9 gap-close).
+      'approvedBy?: string',
+      'pendingWith?: string',
       'sort?: string',
       'dir?: string',
     ]) {
       expect(src.includes(param), param).toBe(true);
     }
+  });
+
+  it('exposes the Approval Information filters (Approved by + Pending with)', () => {
+    // Both filter fields are wired into the panel and their query params flow to the read.
+    expect(src.includes("name: 'approvedBy'")).toBe(true);
+    expect(src.includes("name: 'pendingWith'")).toBe(true);
+    expect(src.includes('listLeaveApprovers')).toBe(true);
+    expect(src.includes('approvedBy,')).toBe(true);
+    expect(src.includes('pendingWith,')).toBe(true);
   });
 
   it('gates the search/filter/export UI behind the admin check', () => {
@@ -120,8 +132,23 @@ describe('leave filter panel: i18n keys exist in en.json', () => {
       'exportCsv',
       'exportExcel',
       'sortAria',
+      // Approval Information (feedback 0773bda9 gap-close).
+      'pendingWith',
+      'approvedBy',
+      'anyStage',
+      'anyApprover',
+      'decidedByLine',
+      'pendingWithLine',
     ]) {
       expect(en.leave.filters[key], `leave.filters.${key}`).toBeTruthy();
     }
+  });
+
+  it('leave.filters.stage carries both approver-kind labels', () => {
+    const en = JSON.parse(read('messages/en.json')) as {
+      leave: { filters: { stage: Record<string, string> } };
+    };
+    expect(en.leave.filters.stage.direct_manager).toBeTruthy();
+    expect(en.leave.filters.stage.hr_admin).toBeTruthy();
   });
 });
