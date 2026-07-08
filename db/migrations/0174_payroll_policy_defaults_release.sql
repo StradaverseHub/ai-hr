@@ -22,5 +22,10 @@ ALTER TABLE "payroll_batch"
 -- created_at so the ESS payslip-release gate (released_at <= now) treats them as long-released. The gate is
 -- computed at CLOSE TIME going forward (closeBatch, admin session — the ESS employee session cannot read the
 -- company release config, so it must not be re-read at read time). Draft/processed batches stay NULL.
-UPDATE "payroll_batch" SET "closed_at" = "created_at" WHERE "status" = 'closed' AND "closed_at" IS NULL;
-UPDATE "payroll_batch" SET "released_at" = "created_at" WHERE "status" = 'closed' AND "released_at" IS NULL;
+-- The closed-batch immutability guard (0011) would reject these UPDATEs on already-closed batches — the very
+-- rows this backfill targets — so disable it for this one-time backfill only, then re-enable (0066 precedent).
+-- Caught on the demo DB: the clean-room gate migrates an EMPTY database, so no closed batch ever tripped it.
+ALTER TABLE "payroll_batch" DISABLE TRIGGER "batch_immutable_when_closed";--> statement-breakpoint
+UPDATE "payroll_batch" SET "closed_at" = "created_at" WHERE "status" = 'closed' AND "closed_at" IS NULL;--> statement-breakpoint
+UPDATE "payroll_batch" SET "released_at" = "created_at" WHERE "status" = 'closed' AND "released_at" IS NULL;--> statement-breakpoint
+ALTER TABLE "payroll_batch" ENABLE TRIGGER "batch_immutable_when_closed";
