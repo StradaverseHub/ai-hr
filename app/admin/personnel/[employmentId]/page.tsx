@@ -806,77 +806,86 @@ export default async function EmployeePage({
     </Card>
   );
 
-  const compAndStatutoryCards = admin ? (
-    <div id="section-compensation" className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <SectionHeader title={t('compensation')} />
-          <div className="p-4">
-            {comp ? (
-              <div className="flex flex-wrap items-baseline gap-2">
-                <span className="text-2xl font-semibold tabular-nums">
-                  {comp.currency} {Number(comp.basicSalary).toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {Number(comp.monthlyAllowance) > 0
-                    ? t('compMetaWithAllowance', {
-                        allowance: Number(comp.monthlyAllowance).toLocaleString(),
-                        validFrom: comp.validFrom,
-                      })
-                    : t('compMeta', { validFrom: comp.validFrom })}
-                </span>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
-            )}
+  // Compensation card (unchanged content). Kept in its old Payroll slot at the BOTTOM of the tab.
+  // The `section-compensation` anchor stays here for fragment-URL safety (self-referenced only).
+  const compensationCard = admin ? (
+    <Card id="section-compensation">
+      <SectionHeader title={t('compensation')} />
+      <div className="p-4">
+        {comp ? (
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="text-2xl font-semibold tabular-nums">
+              {comp.currency} {Number(comp.basicSalary).toLocaleString()}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {Number(comp.monthlyAllowance) > 0
+                ? t('compMetaWithAllowance', {
+                    allowance: Number(comp.monthlyAllowance).toLocaleString(),
+                    validFrom: comp.validFrom,
+                  })
+                : t('compMeta', { validFrom: comp.validFrom })}
+            </span>
           </div>
-          {!emp.terminatedOn && (
-            <form
-              action={setCompensationAction}
-              className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3"
-            >
-              <input type="hidden" name="employmentId" value={emp.employmentId} />
-              <Field label={t('effectiveDate')}>
-                <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
-              </Field>
-              <Field label={t('basicSalaryMyr')}>
-                <input
-                  name="basicSalary"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  required
-                  defaultValue={comp ? Number(comp.basicSalary) : ''}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={t('allowance')}>
-                <input
-                  name="monthlyAllowance"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue={comp ? Number(comp.monthlyAllowance) : 0}
-                  className={inputCls}
-                />
-              </Field>
-              <button className={btnPrimary}>{t('updatePay')}</button>
-            </form>
-          )}
-        </Card>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
+        )}
+      </div>
+      {!emp.terminatedOn && (
+        <form
+          action={setCompensationAction}
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <Field label={t('effectiveDate')}>
+            <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
+          </Field>
+          <Field label={t('basicSalaryMyr')}>
+            <input
+              name="basicSalary"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              defaultValue={comp ? Number(comp.basicSalary) : ''}
+              className={inputCls}
+            />
+          </Field>
+          <Field label={t('allowance')}>
+            <input
+              name="monthlyAllowance"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={comp ? Number(comp.monthlyAllowance) : 0}
+              className={inputCls}
+            />
+          </Field>
+          <button className={btnPrimary}>{t('updatePay')}</button>
+        </form>
+      )}
+    </Card>
+  ) : null;
 
-        <Card>
-          <SectionHeader title={t('statutoryMalaysia')} />
-          <form action={setStatutoryAction} className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <input type="hidden" name="personId" value={emp.personId} />
+  // Statutory (Malaysia) card — relocated to the TOP of the Payroll tab and redesigned as a full-width
+  // card (feedback 7524eda1). The layout is regrouped into clearly-labelled sections for readability
+  // and future headroom. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
+  // action is a full-row overwrite, so every named input MUST stay mounted at all times (no accordions /
+  // conditional unmounting) or an absent field silently wipes stored data. No server logic changed.
+  const statutoryCard = admin ? (
+    <Card>
+      <SectionHeader title={t('statutoryMalaysia')} />
+      <form action={setStatutoryAction} className="flex flex-col gap-6 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+
+        {/* Group 1 — Identification & tax */}
+        <fieldset className="flex flex-col gap-3">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('statutoryGroupIdentity')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label={t('icNumber')}>
               <input name="icNumber" required defaultValue={statutory?.icNumber ?? ''} placeholder="900101011234" className={inputCls} />
-            </Field>
-            <Field label={t('epfNumber')}>
-              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('socsoNumber')}>
-              <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
             </Field>
             <Field label={t('taxNumber')}>
               <input name="taxNumber" defaultValue={statutory?.taxNumber ?? ''} className={inputCls} />
@@ -898,26 +907,24 @@ export default async function EmployeePage({
                 className={inputCls}
               />
             </Field>
-            <Field label={t('bank')}>
-              <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('bankAccount')}>
-              <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
-            </Field>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
-              {t('eisEligible')}
-            </label>
-            <label className="flex items-center gap-2 text-sm" title={t('taxResidentHint')}>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm" title={t('taxResidentHint')}>
               <input type="checkbox" name="isResident" defaultChecked={statutory ? statutory.isResident : true} className="size-4 rounded" />
               {t('taxResident')}
             </label>
-            <div className="sm:col-span-2 border-t border-border pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t('epfContribTitle')}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{t('epfElectionHint')}</p>
-            </div>
+          </div>
+        </fieldset>
+
+        {/* Group 2 — EPF. Kept at sm:grid-cols-2 because <EpfElection> renders an internal sm:col-span-2
+            rate row; leaving that island's grid assumptions untouched is the safe play. */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('epfContribTitle')}
+          </legend>
+          <p className="text-xs text-muted-foreground">{t('epfElectionHint')}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('epfNumber')}>
+              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
+            </Field>
             <Field label={t('epfCitizenship')}>
               <select name="epfCitizenship" defaultValue={statutory?.epfCitizenship ?? 'citizen'} className={inputCls}>
                 <option value="citizen">{t('epfCitizenshipCitizen')}</option>
@@ -931,14 +938,47 @@ export default async function EmployeePage({
               employeeRate={statutory?.epfEmployeeRate ? Number(statutory.epfEmployeeRate) * 100 : null}
               employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
             />
-            <div className="sm:col-span-2 border-t border-border pt-3">
-              <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {t('tp3SectionTitle')}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {t('tp3SectionDescription')}
-              </p>
-            </div>
+          </div>
+        </fieldset>
+
+        {/* Group 3 — SOCSO & EIS */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('statutoryGroupSocsoEis')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label={t('socsoNumber')}>
+              <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
+            </Field>
+            <label className="flex items-center gap-2 self-end pb-2 text-sm">
+              <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
+              {t('eisEligible')}
+            </label>
+          </div>
+        </fieldset>
+
+        {/* Group 4 — Salary payment (bank) */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('statutoryGroupBank')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label={t('bank')}>
+              <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('bankAccount')}>
+              <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
+            </Field>
+          </div>
+        </fieldset>
+
+        {/* Group 5 — Previous employment / TP3 (opening balances) */}
+        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
+          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('tp3SectionTitle')}
+          </legend>
+          <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label={t('appliesToYear')}>
               <input name="tp3Year" type="number" min="2020" max="2100" defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
             </Field>
@@ -951,26 +991,27 @@ export default async function EmployeePage({
             <Field label={t('tp3PcbPaid')}>
               <input name="tp3PcbPaid" type="number" min="0" step="0.01" defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
             </Field>
+          </div>
+        </fieldset>
 
-            {/* Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260 — Module
-                Separation Rule): Personnel no longer edits it. The pointer below keeps admins oriented;
-                setStatutoryAction passes the current election through unchanged so this form can't wipe it. */}
-            <p className="sm:col-span-2 border-t border-border pt-3 text-xs text-muted-foreground">
-              {t('zakatMoved')}{' '}
-              <Link
-                href="/payroll/transactions/zakat"
-                className="font-medium text-primary underline-offset-2 hover:underline"
-              >
-                {t('zakatMovedLink')}
-              </Link>
-            </p>
+        {/* Zakat election RELOCATED to Payroll > Transactions > Zakat (feedback 58755260 — Module
+            Separation Rule): Personnel no longer edits it. The pointer below keeps admins oriented;
+            setStatutoryAction passes the current election through unchanged so this form can't wipe it. */}
+        <p className="border-t border-border pt-4 text-xs text-muted-foreground">
+          {t('zakatMoved')}{' '}
+          <Link
+            href="/payroll/transactions/zakat"
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('zakatMovedLink')}
+          </Link>
+        </p>
 
-            <div className="flex items-end justify-end sm:col-span-2">
-              <button className={btnPrimary}>{t('saveStatutory')}</button>
-            </div>
-          </form>
-        </Card>
-    </div>
+        <div className="flex items-end justify-end">
+          <button className={btnPrimary}>{t('saveStatutory')}</button>
+        </div>
+      </form>
+    </Card>
   ) : null;
 
   // ── DOCUMENTS ──────────────────────────────────────────────────────────────
@@ -1352,13 +1393,16 @@ export default async function EmployeePage({
         {transferTerminateCards}
       </>
     ),
+    // Statutory (Malaysia) pinned to the TOP of the Payroll tab (feedback 7524eda1); Compensation keeps
+    // its old slot at the bottom. Every other card retains its relative order.
     payroll: (
       <>
+        {statutoryCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
         {payrollPolicyCard}
-        {compAndStatutoryCards}
+        {compensationCard}
       </>
     ),
     // Leave Information (feedback d085c6fc): the Leave Balance card — including its entitlement
