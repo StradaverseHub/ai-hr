@@ -615,8 +615,8 @@
     "fieldDurationType": "ระยะเวลา",
     "duration": {
       "full_day": "เต็มวัน",
-      "half_day_am": "ครึ่งวัน (เช้า)",
-      "half_day_pm": "ครึ่งวัน (บ่าย)",
+      "half_day_am": "ครึ่งวันแรก",
+      "half_day_pm": "ครึ่งวันหลัง",
       "hourly": "รายชั่วโมง"
     },
     "fieldHours": "ชั่วโมง",
@@ -2479,8 +2479,8 @@
       "allowedDurationsLabel": "ระยะเวลาที่อนุญาต",
       "allowedDurationsHelp": "เลือกระยะเวลาที่พนักงานสามารถเลือกได้สำหรับการลาประเภทนี้ เต็มวันใช้ได้เสมอ",
       "duration_full_day": "เต็มวัน",
-      "duration_half_day_am": "ครึ่งวัน (เช้า)",
-      "duration_half_day_pm": "ครึ่งวัน (บ่าย)",
+      "duration_half_day_am": "ครึ่งวันแรก",
+      "duration_half_day_pm": "ครึ่งวันหลัง",
       "duration_hourly": "รายชั่วโมง",
       "documentSectionTitle": "เอกสารประกอบ",
       "requireAttachmentLabel": "ต้องแนบไฟล์",

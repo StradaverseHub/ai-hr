@@ -615,8 +615,8 @@
     "fieldDurationType": "Tempoh",
     "duration": {
       "full_day": "Sehari penuh",
-      "half_day_am": "Separuh hari (Pagi)",
-      "half_day_pm": "Separuh hari (Petang)",
+      "half_day_am": "Separuh hari pertama",
+      "half_day_pm": "Separuh hari kedua",
       "hourly": "Mengikut jam"
     },
     "fieldHours": "Jam",
@@ -2479,8 +2479,8 @@
       "allowedDurationsLabel": "Tempoh dibenarkan",
       "allowedDurationsHelp": "Pilih tempoh yang boleh dipilih pekerja untuk jenis cuti ini. Sehari penuh sentiasa tersedia.",
       "duration_full_day": "Sehari penuh",
-      "duration_half_day_am": "Separuh hari (Pagi)",
-      "duration_half_day_pm": "Separuh hari (Petang)",
+      "duration_half_day_am": "Separuh hari pertama",
+      "duration_half_day_pm": "Separuh hari kedua",
       "duration_hourly": "Mengikut jam",
       "documentSectionTitle": "Dokumen sokongan",
       "requireAttachmentLabel": "Wajib lampiran",

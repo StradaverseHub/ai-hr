@@ -615,8 +615,8 @@
     "fieldDurationType": "Thời lượng",
     "duration": {
       "full_day": "Cả ngày",
-      "half_day_am": "Nửa ngày (sáng)",
-      "half_day_pm": "Nửa ngày (chiều)",
+      "half_day_am": "Nửa ngày đầu",
+      "half_day_pm": "Nửa ngày sau",
       "hourly": "Theo giờ"
     },
     "fieldHours": "Số giờ",
@@ -2479,8 +2479,8 @@
       "allowedDurationsLabel": "Thời lượng được phép",
       "allowedDurationsHelp": "Chọn thời lượng nhân viên có thể chọn cho loại nghỉ này. Cả ngày luôn khả dụng.",
       "duration_full_day": "Cả ngày",
-      "duration_half_day_am": "Nửa ngày (sáng)",
-      "duration_half_day_pm": "Nửa ngày (chiều)",
+      "duration_half_day_am": "Nửa ngày đầu",
+      "duration_half_day_pm": "Nửa ngày sau",
       "duration_hourly": "Theo giờ",
       "documentSectionTitle": "Tài liệu hỗ trợ",
       "requireAttachmentLabel": "Yêu cầu tệp đính kèm",

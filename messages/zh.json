@@ -615,8 +615,8 @@
     "fieldDurationType": "时长",
     "duration": {
       "full_day": "全天",
-      "half_day_am": "半天（上午）",
-      "half_day_pm": "半天（下午）",
+      "half_day_am": "上半天",
+      "half_day_pm": "下半天",
       "hourly": "按小时"
     },
     "fieldHours": "小时",
@@ -2479,8 +2479,8 @@
       "allowedDurationsLabel": "允许的时长",
       "allowedDurationsHelp": "选择员工可为此假期类型选择的时长。全天始终可用。",
       "duration_full_day": "全天",
-      "duration_half_day_am": "半天（上午）",
-      "duration_half_day_pm": "半天（下午）",
+      "duration_half_day_am": "上半天",
+      "duration_half_day_pm": "下半天",
       "duration_hourly": "按小时",
       "documentSectionTitle": "证明文件",
       "requireAttachmentLabel": "要求附件",
