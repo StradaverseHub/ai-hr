@@ -2614,7 +2614,7 @@
       "importAction": "Import",
       "import": {
         "title": "Import leave data",
-        "description": "Paste leave transactions (opening balances, carry-forward, historical leave, ad-hoc credits), preview each row, then import only the valid ones.",
+        "description": "Upload a CSV or Excel file of leave transactions (opening balances, carry-forward, historical leave, ad-hoc credits) — or paste them — preview each row, then import only the valid ones.",
         "backLabel": "Back to leave settings",
         "csvData": "Leave data (CSV)",
         "csvPlaceholder": "employee_id,leave_type,transaction_type,days,effective_date\nE1001,ANNUAL,adjustment,5,2026-01-01",
@@ -2645,7 +2645,18 @@
         "alreadyImportedWarning": "Already imported — will be skipped",
         "terminatedEmployeeWarning": "Terminated employee",
         "notAuthorizedError": "Not authorized for this employee's company",
-        "toilNotSupportedError": "TOIL import not supported — use the TOIL grant tool"
+        "toilNotSupportedError": "TOIL import not supported — use the TOIL grant tool",
+        "uploadFile": "Upload file",
+        "uploadHint": "Accepts CSV, XLSX or XLS. The first worksheet is read.",
+        "dropHere": "Drop a file here or click to browse",
+        "reading": "Reading file…",
+        "fileLoaded": "{name} — {rows} row(s) loaded",
+        "fileReadError": "Could not read that file. Check the format and try again.",
+        "unsupportedFileType": "Unsupported file type. Upload a CSV, XLSX or XLS file.",
+        "fileTooLarge": "File is too large. Split it into smaller batches and try again.",
+        "emptySheet": "The first worksheet is empty.",
+        "pasteToggle": "Or paste CSV instead",
+        "downloadTemplateXlsx": "Download Excel template"
       },
       "expirySectionTitle": "Leave expiry",
       "expiryValueLabel": "Leave expiry",
