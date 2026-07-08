@@ -289,7 +289,9 @@ export async function setCompensationAction(formData: FormData) {
     await setCompensation(s, {
       employmentId,
       basicSalary: Number(formData.get('basicSalary')),
-      monthlyAllowance: Number(formData.get('monthlyAllowance') || 0),
+      // Allowance is no longer maintained on the Basic Salary screen (feedback 87c82b18) — allowances
+      // belong to Pay Components. Omitting it CARRIES the existing figure forward (never wipes it).
+      remarks: String(formData.get('remarks') ?? '').trim() || undefined,
       effectiveFrom: String(formData.get('effectiveFrom')),
     });
   } catch (e) {

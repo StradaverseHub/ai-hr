@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
 import { computeProvisionalEndOn, hireEmployee, resolveProbationMonths } from '@/core/org';
+import { setCompensation } from '@/core/comp';
 import { listLeaveTypes } from '@/core/read';
 import { getPayrollConfig } from '@/core/payroll-config';
 import { decideProfileChange } from '@/core/profile';
@@ -40,7 +41,7 @@ export async function hireAction(formData: FormData) {
     } else {
       provisionalEndOn = rawEnd ?? null;
     }
-    await hireEmployee(session, {
+    const { employmentId } = await hireEmployee(session, {
       person: {
         fullName: String(formData.get('fullName') ?? '').trim(),
         primaryEmail: String(formData.get('primaryEmail') ?? '').trim(),
@@ -58,6 +59,18 @@ export async function hireAction(formData: FormData) {
         .filter((t) => STANDING_GRANTS.has(t.code))
         .map((t) => ({ id: t.id, code: t.code })),
     });
+    // Optional initial basic salary (feedback 87c82b18, Create Initial Basic Salary flow): when the admin
+    // supplies it, seed the first salary-history record with the JOIN DATE as its effective date. The
+    // service CLOSEs/INSERTs, appends the compensation.set event, and marks it active — no extra plumbing.
+    const initialBasicSalary = Number(formData.get('initialBasicSalary') ?? 0);
+    if (Number.isFinite(initialBasicSalary) && initialBasicSalary > 0) {
+      await setCompensation(session, {
+        employmentId,
+        basicSalary: initialBasicSalary,
+        effectiveFrom: hiredOn,
+        remarks: str('initialSalaryRemarks'),
+      });
+    }
   } catch (e) {
     redirect(`/admin/personnel?error=${encodeURIComponent((e as Error).message)}`);
   }

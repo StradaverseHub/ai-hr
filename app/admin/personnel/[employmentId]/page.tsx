@@ -34,7 +34,8 @@ import {
   terminateAction,
   transferAction,
 } from './actions';
-import { currentCompensation } from '@/core/comp';
+import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
+import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS } from '@/core/dependents';
@@ -124,7 +125,7 @@ export default async function EmployeePage({
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
-  const comp = admin ? await currentCompensation(s, employmentId) : null;
+  const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
@@ -806,61 +807,168 @@ export default async function EmployeePage({
     </Card>
   );
 
-  // Compensation card (unchanged content). Kept in its old Payroll slot at the BOTTOM of the tab.
-  // The `section-compensation` anchor stays here for fragment-URL safety (self-referenced only).
+  // Basic Salary card (feedback 87c82b18 — "Compensation" renamed & rebuilt as salary history). The
+  // salary engine (effective-dated CLOSE+INSERT, payroll picks the row in effect per period) already
+  // exists in core/comp.ts; this surfaces the FULL history: summary, increment maths, status colours,
+  // remarks, and who created each record. Kept in its old Payroll slot; `section-compensation` anchor
+  // stays for fragment-URL safety. Stays a server-rendered <Card>/<form> (f2904eeb) — the only
+  // interactivity (live increment preview + confirm) is the SalaryRevisionConfirm client island.
+  const fmtMoney = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // salaryHistory is newest-first. previous = the next-older row's basic; status is derived from the dates.
+  const salaryRows = salaryHistory.map((row: CompensationHistoryRow, i: number) => {
+    const basic = Number(row.basicSalary);
+    const prevRow = salaryHistory[i + 1];
+    const previous = prevRow ? Number(prevRow.basicSalary) : null;
+    const incrementAmount = previous != null ? basic - previous : null;
+    const incrementPct =
+      incrementAmount != null && previous != null && previous > 0 ? (incrementAmount / previous) * 100 : null;
+    const isFuture = row.validFrom > today;
+    const isActive = !isFuture && (row.validTo == null || row.validTo > today);
+    const status: 'active' | 'future' | 'historical' = isFuture ? 'future' : isActive ? 'active' : 'historical';
+    return { row, basic, previous, incrementAmount, incrementPct, status };
+  });
+  // The summary shows the row in effect TODAY (active) — NOT the open row, which may be a future revision.
+  const activeDerived = salaryRows.find((r) => r.status === 'active') ?? null;
+  const hasFuture = salaryRows.some((r) => r.status === 'future');
+  const statusBadge: Record<'active' | 'future' | 'historical', { variant: 'success' | 'warning' | 'default'; label: string }> = {
+    active: { variant: 'success', label: t('salaryStatusActive') },
+    future: { variant: 'warning', label: t('salaryStatusFuture') },
+    historical: { variant: 'default', label: t('salaryStatusHistorical') },
+  };
   const compensationCard = admin ? (
     <Card id="section-compensation">
       <SectionHeader title={t('compensation')} />
-      <div className="p-4">
-        {comp ? (
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="text-2xl font-semibold tabular-nums">
-              {comp.currency} {Number(comp.basicSalary).toLocaleString()}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {Number(comp.monthlyAllowance) > 0
-                ? t('compMetaWithAllowance', {
-                    allowance: Number(comp.monthlyAllowance).toLocaleString(),
-                    validFrom: comp.validFrom,
-                  })
-                : t('compMeta', { validFrom: comp.validFrom })}
-            </span>
+      {/* Summary strip — current active basic, effective-since, latest increment, future chip. */}
+      <div className="border-b border-border p-4">
+        {activeDerived ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums">
+                {activeDerived.row.currency} {fmtMoney(activeDerived.basic)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t('compMeta', { validFrom: activeDerived.row.validFrom })}
+              </span>
+            </div>
+            {activeDerived.incrementAmount != null && activeDerived.incrementAmount !== 0 && (
+              <span
+                className={`text-xs font-medium ${
+                  activeDerived.incrementAmount > 0
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-red-700 dark:text-red-400'
+                }`}
+              >
+                {t('salaryLatestIncrement', {
+                  amount: `${activeDerived.row.currency} ${fmtMoney(activeDerived.incrementAmount)}`,
+                  pct: activeDerived.incrementPct != null ? activeDerived.incrementPct.toFixed(2) : '—',
+                })}
+              </span>
+            )}
+            {hasFuture && <Badge variant="warning">{t('salaryFutureChip')}</Badge>}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
         )}
       </div>
+
+      {/* History table — every revision, newest first. */}
+      {salaryRows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs text-muted-foreground">
+                <th className="px-4 py-2 font-medium">{t('effectiveDate')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('basicSalaryMyr')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('salaryColPrevious')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('salaryColIncrement')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('salaryColIncrementPct')}</th>
+                <th className="px-4 py-2 font-medium">{t('status')}</th>
+                <th className="px-4 py-2 font-medium">{t('salaryColRemarks')}</th>
+                <th className="px-4 py-2 font-medium">{t('salaryColCreatedBy')}</th>
+                <th className="px-4 py-2 font-medium">{t('salaryColCreatedOn')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {salaryRows.map((r) => (
+                <tr
+                  key={r.row.id}
+                  className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}
+                >
+                  <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.row.validFrom}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
+                    {r.row.currency} {fmtMoney(r.basic)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    {r.previous != null ? `${r.row.currency} ${fmtMoney(r.previous)}` : '—'}
+                  </td>
+                  <td
+                    className={`whitespace-nowrap px-4 py-2 text-right tabular-nums ${
+                      r.incrementAmount == null || r.incrementAmount === 0
+                        ? 'text-muted-foreground'
+                        : r.incrementAmount > 0
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-red-700 dark:text-red-400'
+                    }`}
+                  >
+                    {r.incrementAmount != null ? fmtMoney(r.incrementAmount) : '—'}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
+                    {r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '—'}
+                  </td>
+                  <td className="px-4 py-2">
+                    <Badge variant={statusBadge[r.status].variant}>{statusBadge[r.status].label}</Badge>
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground">{r.row.remarks || '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{r.row.createdByName || '—'}</td>
+                  <td className="whitespace-nowrap px-4 py-2 tabular-nums text-muted-foreground">
+                    {new Date(r.row.recordedAt).toISOString().slice(0, 10)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Add salary revision — the initial record defaults its effective date to the join date. Allowance
+          is no longer maintained here (moved to Pay Components); the action carries it forward. */}
       {!emp.terminatedOn && (
         <form
           action={setCompensationAction}
-          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3"
+          className="space-y-3 border-t border-border p-4"
         >
           <input type="hidden" name="employmentId" value={emp.employmentId} />
-          <Field label={t('effectiveDate')}>
-            <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
-          </Field>
-          <Field label={t('basicSalaryMyr')}>
-            <input
-              name="basicSalary"
-              type="number"
-              min="0"
-              step="0.01"
-              required
-              defaultValue={comp ? Number(comp.basicSalary) : ''}
-              className={inputCls}
-            />
-          </Field>
-          <Field label={t('allowance')}>
-            <input
-              name="monthlyAllowance"
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue={comp ? Number(comp.monthlyAllowance) : 0}
-              className={inputCls}
-            />
-          </Field>
-          <button className={btnPrimary}>{t('updatePay')}</button>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('effectiveDate')}>
+              <input
+                name="effectiveFrom"
+                type="date"
+                required
+                defaultValue={salaryRows.length ? today : emp.hiredOn}
+                className={inputCls}
+              />
+              {salaryRows.length === 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
+              )}
+            </Field>
+            <Field label={t('basicSalaryMyr')}>
+              <input name="basicSalary" type="number" min="0" step="0.01" required className={inputCls} />
+            </Field>
+            <Field label={t('salaryColRemarks')}>
+              <input
+                name="remarks"
+                type="text"
+                placeholder={t('salaryRemarksPlaceholder')}
+                className={inputCls}
+              />
+            </Field>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
+          <SalaryRevisionConfirm
+            currentBasic={activeDerived ? activeDerived.basic : null}
+            currency={activeDerived ? activeDerived.row.currency : 'MYR'}
+          />
         </form>
       )}
     </Card>

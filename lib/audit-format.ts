@@ -55,7 +55,7 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string }
   'profile-change': { label: 'Profile change' },
   'payroll-batch': { label: 'Payroll batch', href: (id) => `/payroll/${id}` },
   payslip: { label: 'Payslip' },
-  compensation: { label: 'Compensation' },
+  compensation: { label: 'Basic salary' },
   'employee-statutory-my': { label: 'Statutory profile' },
   'company-statutory-my': { label: 'Company statutory' },
   'role-assignment': { label: 'Role assignment' },

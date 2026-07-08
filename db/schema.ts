@@ -1189,6 +1189,9 @@ export const compensation = pgTable(
     monthlyAllowance: numeric('monthly_allowance', { precision: 12, scale: 2 }).notNull().default('0'),
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
+    // Free-text reason for the change (e.g. "annual increment", "merit adjustment"). Nullable — historical
+    // rows and system/import writes leave it NULL (feedback 87c82b18, migration 0162).
+    remarks: text('remarks'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),

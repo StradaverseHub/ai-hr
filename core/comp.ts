@@ -5,13 +5,24 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { compensation, tenantCounter } from '../db/schema';
+import { appUser, compensation, domainEvent, person, tenantCounter } from '../db/schema';
 
 const money = (n: number | string): string => (typeof n === 'number' ? n.toFixed(2) : String(n));
 
 export async function setCompensation(
   ctx: SessionContext,
-  p: { employmentId: string; basicSalary: number; currency?: string; monthlyAllowance?: number; effectiveFrom: string },
+  p: {
+    employmentId: string;
+    basicSalary: number;
+    currency?: string;
+    /** Omit to CARRY FORWARD the current record's allowance — a basic-salary-only revision must NOT wipe
+     *  the monthly allowance (it feeds the OT ORP wage basis). Pass an explicit number (including 0) to set
+     *  it; import / backfill paths pass explicit values. Allowances are now maintained via Pay Components. */
+    monthlyAllowance?: number;
+    /** Free-text reason for the change (Basic Salary screen, feedback 87c82b18). */
+    remarks?: string;
+    effectiveFrom: string;
+  },
   /** Optional caller transaction — pass it to make this write participate in an enclosing
    *  transaction (e.g. the performance pay-seam enact) so it commits/rolls back atomically. */
   outerTx?: Tx,
@@ -31,6 +42,12 @@ export async function setCompensation(
     if (cur) {
       await tx.update(compensation).set({ validTo: p.effectiveFrom }).where(eq(compensation.id, cur.id));
     }
+    // Carry-forward semantics: undefined allowance keeps the prior figure (or 0 for a brand-new record);
+    // an explicit value (incl. 0) sets it. This stops a basic-only revision from silently zeroing allowance.
+    const allowanceProvided = p.monthlyAllowance !== undefined;
+    const effectiveAllowance = allowanceProvided
+      ? (p.monthlyAllowance as number)
+      : Number(cur?.monthlyAllowance ?? 0);
     const [row] = await tx
       .insert(compensation)
       .values({
@@ -38,11 +55,15 @@ export async function setCompensation(
         employmentId: p.employmentId,
         basicSalary: money(p.basicSalary),
         currency: p.currency ?? 'MYR',
-        monthlyAllowance: money(p.monthlyAllowance ?? 0),
+        monthlyAllowance: money(effectiveAllowance),
+        remarks: p.remarks ?? null,
         validFrom: p.effectiveFrom,
         validTo: null,
       })
       .returning({ id: compensation.id });
+    const fieldsChanged = ['basicSalary'];
+    if (allowanceProvided) fieldsChanged.push('monthlyAllowance');
+    if (p.remarks) fieldsChanged.push('remarks');
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'compensation',
@@ -50,9 +71,10 @@ export async function setCompensation(
       eventType: 'compensation.set',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      // PDPA redact-to-reference (ADR-0030 Layer 0): the salary lives on compensation[aggregateId];
-      // the event keeps who/what/when + a reference, never cleartext pay in the append-only log.
-      payload: { employmentId: p.employmentId, effectiveFrom: p.effectiveFrom, fieldsChanged: ['basicSalary', 'monthlyAllowance'] },
+      // PDPA redact-to-reference (ADR-0030 Layer 0): the salary AND the remarks text live on
+      // compensation[aggregateId]; the event keeps who/what/when + a reference, never cleartext pay or
+      // remark text in the append-only log.
+      payload: { employmentId: p.employmentId, effectiveFrom: p.effectiveFrom, fieldsChanged },
     });
     return { compensationId: row.id };
   };
@@ -84,6 +106,55 @@ export function compensationHistory(ctx: SessionContext, employmentId: string) {
       .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt)))
       .orderBy(desc(compensation.validFrom)),
   );
+}
+
+export type CompensationHistoryRow = {
+  id: string;
+  basicSalary: string;
+  currency: string;
+  monthlyAllowance: string;
+  remarks: string | null;
+  validFrom: string;
+  validTo: string | null;
+  recordedAt: Date;
+  /** Full name of the user who created the record (from the compensation.set event); null for
+   *  SYSTEM / import / agent writes (rendered as '—' in the UI). */
+  createdByName: string | null;
+};
+
+/**
+ * Basic Salary history for the screen (feedback 87c82b18): every non-superseded revision, newest first,
+ * LEFT JOINed to its `compensation.set` DomainEvent → appUser → person to surface **Created By** (mirrors
+ * `employeeAudit`'s actor join in core/read.ts). Read-only; RLS scopes compensation to admin-or-self.
+ * Increment amount/%/status are derived at render time from `validFrom`/`validTo` (no stored columns).
+ */
+export function compensationHistoryDetailed(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<CompensationHistoryRow[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: compensation.id,
+        basicSalary: compensation.basicSalary,
+        currency: compensation.currency,
+        monthlyAllowance: compensation.monthlyAllowance,
+        remarks: compensation.remarks,
+        validFrom: compensation.validFrom,
+        validTo: compensation.validTo,
+        recordedAt: compensation.recordedAt,
+        createdByName: person.fullName,
+      })
+      .from(compensation)
+      .leftJoin(
+        domainEvent,
+        and(eq(domainEvent.aggregateId, compensation.id), eq(domainEvent.eventType, 'compensation.set')),
+      )
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(and(eq(compensation.employmentId, employmentId), isNull(compensation.supersededAt)))
+      .orderBy(desc(compensation.validFrom)),
+  ) as Promise<CompensationHistoryRow[]>;
 }
 
 /** Next per-tenant employee code. Call INSIDE an existing transaction (e.g. during hire). */
