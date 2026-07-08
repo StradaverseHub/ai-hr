@@ -21,7 +21,7 @@ export type ReportData = {
   rows: (string | number | null)[][];
 };
 
-export type ReportFormat = 'csv' | 'xlsx' | 'pdf';
+export type ReportFormat = 'csv' | 'xlsx' | 'pdf' | 'docx';
 export type SerializedReport = { bytes: Uint8Array; contentType: string; ext: string };
 
 const enc = new TextEncoder();
@@ -152,9 +152,48 @@ export async function toPdfReport(d: ReportData): Promise<SerializedReport> {
   return { bytes, contentType: 'application/pdf', ext: 'pdf' };
 }
 
+// ── Word (.doc — zero-dep HTML that Word opens) ──────────────────────────────
+// Same zero-dep posture as the XLSX serializer (ADR-0047 §6): a Word-flavoured HTML document with the
+// application/msword MIME + .doc extension. Word/Pages/LibreOffice open it natively as an editable doc,
+// preserving the AI-designed layout (title + tabular grid + alignment) as far as .doc HTML supports.
+// A true binary .docx would need a multi-MB dependency; this keeps the codebase dependency-free.
+export function toDocReport(d: ReportData): SerializedReport {
+  const head = d.columns
+    .map((c) => `<th style="border:1px solid #999;background:#eee;text-align:left;padding:3px 6px">${xmlEsc(c)}</th>`)
+    .join('');
+  const body =
+    d.rows.length === 0
+      ? `<tr><td colspan="${Math.max(d.columns.length, 1)}" style="padding:6px;color:#666">No records</td></tr>`
+      : d.rows
+          .map(
+            (r) =>
+              '<tr>' +
+              r
+                .map((c) => {
+                  const txt = xmlEsc(cell(c));
+                  return isNumeric(c)
+                    ? `<td style="border:1px solid #ccc;text-align:right;padding:3px 6px">${txt}</td>`
+                    : `<td style="border:1px solid #ccc;padding:3px 6px">${txt}</td>`;
+                })
+                .join('') +
+              '</tr>',
+          )
+          .join('');
+  const html =
+    `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" ` +
+    `xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"/>` +
+    `<title>${xmlEsc(d.title)}</title></head>` +
+    `<body style="font-family:Calibri,Arial,sans-serif;font-size:11pt">` +
+    `<h2 style="margin:0 0 8px">${xmlEsc(d.title)}</h2>` +
+    `<table style="border-collapse:collapse;width:100%"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>` +
+    `</body></html>`;
+  return { bytes: enc.encode(html), contentType: 'application/msword; charset=utf-8', ext: 'doc' };
+}
+
 /** Dispatch a neutral report to the requested format. */
 export function serializeReport(d: ReportData, format: ReportFormat): SerializedReport | Promise<SerializedReport> {
   if (format === 'xlsx') return toXlsxReport(d);
   if (format === 'pdf') return toPdfReport(d);
+  if (format === 'docx') return toDocReport(d);
   return toCsvReport(d);
 }

@@ -12,6 +12,7 @@ import {
   CalendarDays,
   CalendarRange,
   Clock,
+  FileBarChart,
   FileUp,
   HandCoins,
   Hourglass,
@@ -82,6 +83,24 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   ],
 };
 
+// Reports node (c440b365) — the single "Report" parent that centralises all reporting. Its six children
+// map to the reporter's categories; each opens the Reports hub filtered to that category, where the
+// predefined reports AND the custom report builder live. Admin-only (every report surface is admin-gated).
+const REPORTS_NODE: CollapsibleGroupItem = {
+  collapsible: true,
+  labelKey: 'reports',
+  icon: FileBarChart,
+  cookieKey: 'nav_reports_open',
+  children: [
+    { href: '/reports?cat=master', labelKey: 'reportMaster', icon: Users, adminOnly: true },
+    { href: '/reports?cat=attendance', labelKey: 'reportAttendance', icon: Clock, adminOnly: true },
+    { href: '/reports?cat=leave', labelKey: 'reportLeave', icon: CalendarDays, adminOnly: true },
+    { href: '/reports?cat=payroll', labelKey: 'reportPayroll', icon: Wallet, adminOnly: true },
+    { href: '/reports?cat=claim', labelKey: 'reportClaim', icon: Receipt, adminOnly: true },
+    { href: '/reports?cat=performance', labelKey: 'reportPerformance', icon: Target, adminOnly: true },
+  ],
+};
+
 const GROUPS: Group[] = [
   {
     items: [
@@ -120,6 +139,7 @@ const GROUPS: Group[] = [
       { href: '/admin/claims', labelKey: 'claimsConfig', icon: Receipt },
       { href: '/payroll', labelKey: 'payroll', icon: Wallet },
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
+      REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       { href: '/admin/privacy', labelKey: 'dataPrivacy', icon: Lock },
       { href: '/admin/ai', labelKey: 'aiConfig', icon: Sparkles },

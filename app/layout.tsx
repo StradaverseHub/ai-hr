@@ -82,7 +82,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // Per-group open state for collapsible nav sections (b3dc0f78); read SSR-side to avoid a flash.
-  const openGroups = { nav_attendance_open: cookieStore.get('nav_attendance_open')?.value === '1' };
+  const openGroups = {
+    nav_attendance_open: cookieStore.get('nav_attendance_open')?.value === '1',
+    nav_reports_open: cookieStore.get('nav_reports_open')?.value === '1',
+  };
   const onboarded = await getOnboardingStatus(session);
   const tours = toursForRoles(session.roles);
   // Notification bell shows the approvals queue — only managers/admins have one.

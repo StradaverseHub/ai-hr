@@ -2962,6 +2962,47 @@ export const aiProviderConfig = pgTable(
   (t) => [uniqueIndex('ai_provider_config_tenant_provider_uq').on(t.tenantId, t.provider)],
 );
 
+// ─────────────────────── Custom Report Builder (ADR-0074, c440b365) ───────────────────────
+// A user-defined report: a name + a chosen dataset from the CLOSED registry (core/report-registry.ts)
+// + a declarative `spec` (columns / filters / sort / grouping / layout properties). No free-form SQL —
+// the spec only names dataset/field ids the registry exposes, and every underlying read enforces
+// tenant RLS + company scope. RLS + grants live in migration 0163.
+export type CustomReportSpec = {
+  datasetId: string;
+  columns: string[];
+  filters?: Record<string, string | number | null>;
+  sort?: { field: string; dir: 'asc' | 'desc' } | null;
+  groupBy?: string | null;
+  // Layout / presentation properties (AI-designer output + manual overrides). Non-structural: they only
+  // affect how the report is rendered/exported, never which rows/columns are read.
+  layout?: {
+    title?: string | null;
+    subtitle?: string | null;
+    description?: string | null;
+    orientation?: 'portrait' | 'landscape';
+    align?: Record<string, 'left' | 'center' | 'right'>;
+    summary?: string[]; // field ids to total in a summary row
+  } | null;
+};
+
+export const customReport = pgTable(
+  'custom_report',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    category: text('category').notNull(),
+    datasetId: text('dataset_id').notNull(),
+    spec: jsonb('spec').$type<CustomReportSpec>().notNull(),
+    isFavourite: boolean('is_favourite').notNull().default(false),
+    shared: boolean('shared').notNull().default(false),
+    createdByUserId: uuid('created_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('custom_report_tenant_category_idx').on(t.tenantId, t.category)],
+);
+
 // ─────────────────────── Knowledge Base (ADR-0017) ───────────────────────
 // A tenant-shared repository of documents. Two content kinds in one table: 'article' = Markdown
 // authored/edited in-app; 'file' = an uploaded binary (bytes in `content`). The seeded module user
