@@ -454,6 +454,13 @@ export async function updateJobGrade(
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
   return withTenant(ctx, async (tx) => {
+    // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
+    // events that predate this change keep their new-values-only payload; the log is append-only).
+    const [prev] = await tx
+      .select({ name: jobGrade.name, rank: jobGrade.rank })
+      .from(jobGrade)
+      .where(eq(jobGrade.id, p.id))
+      .limit(1);
     await tx.update(jobGrade).set({ name, rank }).where(eq(jobGrade.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -461,7 +468,10 @@ export async function updateJobGrade(
       aggregateId: p.id,
       eventType: 'job-grade.updated',
       actor: actorOf(ctx),
-      payload: { name, rank },
+      payload: {
+        before: prev ? { name: prev.name, rank: prev.rank } : null,
+        after: { name, rank },
+      },
     });
   });
 }
@@ -869,13 +879,19 @@ export async function updateLeavePolicy(
       eventType: 'leave-policy.updated',
       actor: actorOf(ctx),
       payload: {
-        annualDays: p.annualDays,
-        carryForwardMax,
-        companyId,
-        validFrom: p.validFrom,
-        ...expiry,
-        ...carryFlags,
-        ...bandsAccrual,
+        // 4ec5a940 — before/after snapshot so the Audit tab shows old → new (the prior row is already
+        // loaded as `current` above — no extra read). Config values (days, caps, accrual) are tenant
+        // configuration, not personal data, so cleartext is allowed (ADR-0030 Layer-0).
+        before: {
+          ...(((current.accrual ?? {}) as Record<string, unknown>) ?? {}),
+          companyId: current.companyId,
+          validFrom: current.validFrom,
+        },
+        after: {
+          ...accrual,
+          companyId,
+          validFrom: p.validFrom,
+        },
         // Feedback 49809272: the correction's blast radius — this event is the recalc SUMMARY (the
         // per-employee `leave.entitlement.recalculated` events are the per-row audit).
         recalc,

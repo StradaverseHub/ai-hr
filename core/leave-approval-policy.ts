@@ -239,9 +239,17 @@ export async function setLeaveApprovalPolicy(
   const levels = sanitizeLevels(p.levels);
   if (p.enabled && levels.length === 0) throw new Error('An enabled approval chain needs at least one level');
   return withTenant(ctx, async (tx) => {
+    // 4ec5a940 — capture the prior enabled flag + chain BEFORE the writes, so the audit event carries a
+    // real before→after comparison (forward-only). The company row holds the toggle; the default rule row
+    // holds the chain.
+    const [priorCompany] = await tx
+      .select({ enabled: company.leaveMultiApproval })
+      .from(company)
+      .where(eq(company.id, p.companyId))
+      .limit(1);
     await tx.update(company).set({ leaveMultiApproval: p.enabled }).where(eq(company.id, p.companyId));
     const [existing] = await tx
-      .select({ id: leaveApprovalPolicy.id })
+      .select({ id: leaveApprovalPolicy.id, levels: leaveApprovalPolicy.levels })
       .from(leaveApprovalPolicy)
       .where(and(eq(leaveApprovalPolicy.companyId, p.companyId), isNull(leaveApprovalPolicy.leaveTypeId), defaultRuleFilter()))
       .limit(1);
@@ -265,7 +273,13 @@ export async function setLeaveApprovalPolicy(
       aggregateId: id,
       eventType: existing ? 'leave-approval-policy.updated' : 'leave-approval-policy.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, enabled: p.enabled, levels },
+      payload: {
+        companyId: p.companyId,
+        before: existing
+          ? { enabled: priorCompany?.enabled ?? false, levels: sanitizeLevels(existing.levels) }
+          : null,
+        after: { enabled: p.enabled, levels },
+      },
     });
     return { id };
   });
@@ -418,6 +432,23 @@ export async function updateLeaveApprovalRule(
   const c = cleanRuleInput(p);
   return withTenant(ctx, async (tx) => {
     await assertNoDuplicateRule(tx, p.companyId, c, ruleId);
+    // 4ec5a940 — snapshot the prior rule scope + chain BEFORE the update, for a real before→after audit diff.
+    const [prev] = await tx
+      .select({
+        ruleName: leaveApprovalPolicy.ruleName,
+        leaveTypeId: leaveApprovalPolicy.leaveTypeId,
+        businessUnitId: leaveApprovalPolicy.businessUnitId,
+        departmentId: leaveApprovalPolicy.departmentId,
+        positionId: leaveApprovalPolicy.positionId,
+        gradeId: leaveApprovalPolicy.gradeId,
+        employmentType: leaveApprovalPolicy.employmentType,
+        minDays: leaveApprovalPolicy.minDays,
+        maxDays: leaveApprovalPolicy.maxDays,
+        levels: leaveApprovalPolicy.levels,
+      })
+      .from(leaveApprovalPolicy)
+      .where(and(eq(leaveApprovalPolicy.id, ruleId), eq(leaveApprovalPolicy.companyId, p.companyId)))
+      .limit(1);
     await tx
       .update(leaveApprovalPolicy)
       .set({
@@ -440,7 +471,24 @@ export async function updateLeaveApprovalRule(
       aggregateId: ruleId,
       eventType: 'leave-approval-rule.updated',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, ...c },
+      payload: {
+        companyId: p.companyId,
+        before: prev
+          ? {
+              ruleName: prev.ruleName,
+              leaveTypeId: prev.leaveTypeId,
+              businessUnitId: prev.businessUnitId,
+              departmentId: prev.departmentId,
+              positionId: prev.positionId,
+              gradeId: prev.gradeId,
+              employmentType: prev.employmentType,
+              minDays: prev.minDays,
+              maxDays: prev.maxDays,
+              levels: sanitizeLevels(prev.levels),
+            }
+          : null,
+        after: { ...c },
+      },
     });
     return { id: ruleId };
   });

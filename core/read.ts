@@ -1867,6 +1867,15 @@ export type AuditFilters = {
   aggregateTypes?: string[];
   eventQuery?: string; // matches event type / aggregate type
   actorId?: string;
+  /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
+   *  caller passes a validated slug from an allowlist; used as `event_type ilike '%.'||action`. */
+  action?: string;
+  /** 4ec5a940 — company filter: matches events whose payload records a `companyId` scope. Documented
+   *  limitation: group-level events that carry no company scope won't match. */
+  companyId?: string;
+  /** 4ec5a940 — leave-type filter: the leave-type aggregate itself, or any event whose payload carries
+   *  a `leaveTypeId` (e.g. a scoped approval rule). */
+  leaveTypeId?: string;
   from?: string; // ISO date (inclusive)
   to?: string; // ISO date (exclusive next day applied by caller)
   limit?: number;
@@ -1900,6 +1909,15 @@ export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<
             ? inArray(domainEvent.aggregateType, f.aggregateTypes)
             : undefined,
           f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
+          // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
+          // caller's allowlist + this bound param double-guard against injection.
+          f.action ? sql`${domainEvent.eventType} ilike ${'%.' + f.action}` : undefined,
+          // 4ec5a940 — company scope drawn from the payload (events that record `companyId`).
+          f.companyId ? sql`${domainEvent.payload}->>'companyId' = ${f.companyId}` : undefined,
+          // 4ec5a940 — the leave-type aggregate row itself, or any event scoped to it via payload.
+          f.leaveTypeId
+            ? sql`((${domainEvent.aggregateType} = 'leave-type' and ${domainEvent.aggregateId}::text = ${f.leaveTypeId}) or ${domainEvent.payload}->>'leaveTypeId' = ${f.leaveTypeId})`
+            : undefined,
           f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
           f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
           f.eventQuery
@@ -1921,6 +1939,28 @@ export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateTyp
       .from(domainEvent)
       .orderBy(domainEvent.aggregateType),
   );
+}
+
+/** 4ec5a940 — the distinct actors who appear in the log (optionally within a set of aggregate types,
+ *  e.g. the leave module for the Leave Audit tab), with their resolved display name — drives the User
+ *  filter dropdown. SYSTEM/AGENT/unlinked principals surface as a null name (the UI labels them). */
+export function auditActors(
+  ctx: SessionContext,
+  aggregateTypes?: string[],
+): Promise<{ actorId: string | null; actorName: string | null }[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .selectDistinct({ actorId: domainEvent.actorId, actorName: person.fullName })
+      .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(
+        aggregateTypes && aggregateTypes.length
+          ? inArray(domainEvent.aggregateType, aggregateTypes)
+          : undefined,
+      )
+      .orderBy(person.fullName),
+  ) as Promise<{ actorId: string | null; actorName: string | null }[]>;
 }
 
 /** Change history for one employee — every event touching their employment, person, statutory
