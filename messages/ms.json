@@ -1611,7 +1611,12 @@
       "colEpfEmployer": "Majikan (RM)",
       "addBand": "Tambah jalur",
       "removeBand": "Buang jalur",
-      "colActions": "Tindakan"
+      "colActions": "Tindakan",
+      "tabOverview": "Gambaran Keseluruhan",
+      "secHrdf": "HRDF",
+      "hrdfNote": "Kadar levi HRD Corp (Akta PSMB 2001) dikenakan kepada majikan yang layak.",
+      "advancedEdit": "Suntingan lanjutan (jadual band)",
+      "viewBody": "Buka"
     },
     "batch": {
       "back": "Gaji",

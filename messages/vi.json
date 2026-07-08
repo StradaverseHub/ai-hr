@@ -1611,7 +1611,12 @@
       "colEpfEmployer": "Chủ lao động (RM)",
       "addBand": "Thêm bậc",
       "removeBand": "Xóa bậc",
-      "colActions": "Thao tác"
+      "colActions": "Thao tác",
+      "tabOverview": "Tổng quan",
+      "secHrdf": "HRDF",
+      "hrdfNote": "Mức thu HRD Corp (Đạo luật PSMB 2001) áp dụng cho người sử dụng lao động đủ điều kiện.",
+      "advancedEdit": "Chỉnh sửa nâng cao (bảng bậc)",
+      "viewBody": "Mở"
     },
     "batch": {
       "back": "Bảng lương",

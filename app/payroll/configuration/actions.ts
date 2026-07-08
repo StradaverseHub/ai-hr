@@ -15,6 +15,13 @@ export async function saveStatutoryAction(formData: FormData) {
   const pack = packFor('MY');
   if (!pack) redirect(`${BASE}?error=${encodeURIComponent('No localization pack for MY.')}`);
 
+  // Optional same-origin return path (31646c85 — per-body sub-menu redesign): the advanced band-table
+  // editor now launches from each body tab (/payroll/configuration/{epf,socso,eis,pcb}), so a publish
+  // should return to the tab it was launched from, not always the index. Same allow-list regex as
+  // setStatutoryComponentAction so it can't be turned into an open redirect. Defaults to BASE.
+  const returnToRaw = String(formData.get('returnTo') ?? '').trim();
+  const returnTo = /^\/[A-Za-z0-9/_-]*$/.test(returnToRaw) ? returnToRaw : BASE;
+
   const version = String(formData.get('version') ?? '').trim();
   const effectiveFrom = String(formData.get('effectiveFrom') ?? '');
   const notes = String(formData.get('notes') ?? '').trim() || null;
@@ -23,17 +30,20 @@ export async function saveStatutoryAction(formData: FormData) {
   try {
     data = JSON.parse(String(formData.get('data') ?? '')) as StatutoryRuleset;
   } catch {
-    redirect(`${BASE}?edit=1&error=${encodeURIComponent('Malformed configuration payload.')}`);
+    redirect(`${returnTo}?edit=1&error=${encodeURIComponent('Malformed configuration payload.')}`);
   }
 
   try {
     await pack!.statutoryConfig.save(s, { version, effectiveFrom, data, notes });
   } catch (e) {
     const msg = e instanceof StatutoryRulesetInvalidError ? e.problems.join('; ') : (e as Error).message;
-    redirect(`${BASE}?edit=1&error=${encodeURIComponent(msg)}`);
+    redirect(`${returnTo}?edit=1&error=${encodeURIComponent(msg)}`);
   }
-  revalidatePath(BASE);
-  redirect(`${BASE}?toast=${encodeURIComponent('Statutory version published')}`);
+  // Revalidate both the return tab AND the index (the overview banner/history/versions grid reflect the
+  // new whole-ruleset version regardless of which tab published it).
+  revalidatePath(returnTo);
+  if (returnTo !== BASE) revalidatePath(BASE);
+  redirect(`${returnTo}?toast=${encodeURIComponent('Statutory version published')}`);
 }
 
 /**

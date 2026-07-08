@@ -1611,7 +1611,12 @@
       "colEpfEmployer": "นายจ้าง (RM)",
       "addBand": "เพิ่มช่วง",
       "removeBand": "ลบช่วง",
-      "colActions": "การดำเนินการ"
+      "colActions": "การดำเนินการ",
+      "tabOverview": "ภาพรวม",
+      "secHrdf": "HRDF",
+      "hrdfNote": "อัตราเงินสมทบ HRD Corp (พ.ร.บ. PSMB 2001) ที่ใช้กับนายจ้างที่มีคุณสมบัติ",
+      "advancedEdit": "แก้ไขขั้นสูง (ตารางขั้น)",
+      "viewBody": "เปิด"
     },
     "batch": {
       "back": "เงินเดือน",

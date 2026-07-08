@@ -1611,7 +1611,12 @@
       "colEpfEmployer": "雇主（RM）",
       "addBand": "添加档次",
       "removeBand": "移除档次",
-      "colActions": "操作"
+      "colActions": "操作",
+      "tabOverview": "概览",
+      "secHrdf": "HRDF",
+      "hrdfNote": "适用于符合条件雇主的 HRD Corp（2001年人力资源发展基金法令）征费率。",
+      "advancedEdit": "高级编辑（分级表）",
+      "viewBody": "打开"
     },
     "batch": {
       "back": "薪资",

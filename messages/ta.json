@@ -1611,7 +1611,12 @@
       "colEpfEmployer": "முதலாளர் (RM)",
       "addBand": "பட்டை சேர்",
       "removeBand": "பட்டை நீக்கு",
-      "colActions": "செயல்கள்"
+      "colActions": "செயல்கள்",
+      "tabOverview": "மேலோட்டம்",
+      "secHrdf": "HRDF",
+      "hrdfNote": "தகுதியான முதலாளிகளுக்குப் பொருந்தும் HRD Corp (PSMB சட்டம் 2001) வரி விகிதங்கள்.",
+      "advancedEdit": "மேம்பட்ட திருத்தம் (பட்டியல் அட்டவணைகள்)",
+      "viewBody": "திற"
     },
     "batch": {
       "back": "ஊதியம்",

@@ -1759,7 +1759,12 @@
       "colEpfEmployer": "Employer (RM)",
       "addBand": "Add band",
       "removeBand": "Remove band",
-      "colActions": "Actions"
+      "colActions": "Actions",
+      "tabOverview": "Overview",
+      "secHrdf": "HRDF",
+      "hrdfNote": "HRD Corp (PSMB Act 2001) levy rates applied to eligible employers.",
+      "advancedEdit": "Advanced edit (band tables)",
+      "viewBody": "Open"
     },
     "transactions": {
       "title": "Transactions",

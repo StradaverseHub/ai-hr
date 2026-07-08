@@ -216,6 +216,13 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll',
       '/payroll/[batchId]',
       '/payroll/configuration',
+      // R17 31646c85: Statutory Configuration split into per-body sub-menus (EPF/SOCSO/EIS/PCB/HRDF),
+      // each a real sub-route under the same scopedAdmin guard as the index.
+      '/payroll/configuration/epf',
+      '/payroll/configuration/socso',
+      '/payroll/configuration/eis',
+      '/payroll/configuration/pcb',
+      '/payroll/configuration/hrdf',
       '/payroll/history-import',
       '/payroll/process',
       '/payroll/process/result',
