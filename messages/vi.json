@@ -249,7 +249,10 @@
       "hireInitialSalary": "Lương cơ bản ban đầu (MYR)",
       "hireInitialSalaryHint": "Bắt buộc — có hiệu lực từ ngày gia nhập.",
       "salaryColRemarks": "Ghi chú",
-      "salaryRemarksPlaceholder": "vd. tăng lương hàng năm"
+      "salaryRemarksPlaceholder": "vd. tăng lương hàng năm",
+      "employeeIdLabel": "Mã nhân viên",
+      "employeeIdPlaceholder": "vd. EMP-0001",
+      "employeeIdHint": "Chữ cái, số và dấu gạch ngang; tối đa 9 ký tự."
     },
     "detail": {
       "backToPeople": "Nhân sự",
@@ -551,7 +554,9 @@
       "salaryEdit": "Chỉnh sửa",
       "salaryEditConfirmTitle": "Lưu thay đổi cho bản ghi lương này?",
       "salaryEditConfirmDescription": "Thao tác này chỉnh sửa trực tiếp bản ghi lương mới nhất và lưu nhật ký kiểm toán về thay đổi.",
-      "salaryNoResults": "Không có bản ghi lương nào khớp với tìm kiếm của bạn."
+      "salaryNoResults": "Không có bản ghi lương nào khớp với tìm kiếm của bạn.",
+      "employeeIdLabel": "Mã nhân viên",
+      "employeeIdPlaceholder": "vd. EMP-0001"
     },
     "import": {
       "title": "Nhập nhân viên",

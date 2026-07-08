@@ -240,6 +240,16 @@ export default async function PeoplePage({
           <Card>
             <form action={hireAction} className="space-y-6 p-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Field label={t('employeeIdLabel')}>
+                  <input
+                    name="employeeCode"
+                    required
+                    maxLength={9}
+                    className={inputCls}
+                    placeholder={t('employeeIdPlaceholder')}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">{t('employeeIdHint')}</p>
+                </Field>
                 <Field label={t('fullName')}>
                   <input name="fullName" required className={inputCls} placeholder={t('fullNamePlaceholder')} />
                 </Field>

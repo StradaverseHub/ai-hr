@@ -67,8 +67,9 @@ export default async function PayslipPage({ params }: { params: Promise<{ paysli
           <div>
             <h1 className="text-lg font-semibold tracking-tight">{t('title', { payPeriod: p.payPeriod })}</h1>
             <p className="text-sm text-muted-foreground">
+              {/* Employee ID left-of-name (feedback 38668d9b) */}
+              {p.employeeCode ? `${p.employeeCode} · ` : ''}
               {p.employee} · {p.company}
-              {p.employeeCode && ` · ${t('employeeCodeLabel')} ${p.employeeCode}`}
             </p>
           </div>
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium capitalize text-muted-foreground">

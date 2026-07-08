@@ -249,7 +249,10 @@
       "hireInitialSalary": "初始基本薪资 (MYR)",
       "hireInitialSalaryHint": "必填 — 自入职日期起生效。",
       "salaryColRemarks": "备注",
-      "salaryRemarksPlaceholder": "例如：年度加薪"
+      "salaryRemarksPlaceholder": "例如：年度加薪",
+      "employeeIdLabel": "员工编号",
+      "employeeIdPlaceholder": "例如 EMP-0001",
+      "employeeIdHint": "字母、数字和连字符；最多 9 个字符。"
     },
     "detail": {
       "backToPeople": "员工",
@@ -551,7 +554,9 @@
       "salaryEdit": "编辑",
       "salaryEditConfirmTitle": "保存对此薪资记录的更改？",
       "salaryEditConfirmDescription": "这将直接编辑最新的薪资记录，并保留更改的审计日志。",
-      "salaryNoResults": "没有符合搜索条件的薪资记录。"
+      "salaryNoResults": "没有符合搜索条件的薪资记录。",
+      "employeeIdLabel": "员工编号",
+      "employeeIdPlaceholder": "例如 EMP-0001"
     },
     "import": {
       "title": "导入员工",

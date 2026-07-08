@@ -249,7 +249,10 @@
       "hireInitialSalary": "Initial basic salary (MYR)",
       "hireInitialSalaryHint": "Required — effective from the join date.",
       "salaryColRemarks": "Remarks",
-      "salaryRemarksPlaceholder": "e.g. annual increment"
+      "salaryRemarksPlaceholder": "e.g. annual increment",
+      "employeeIdLabel": "Employee ID",
+      "employeeIdPlaceholder": "e.g. EMP-0001",
+      "employeeIdHint": "Letters, numbers and dashes; up to 9 characters."
     },
     "detail": {
       "backToPeople": "People",
@@ -551,7 +554,9 @@
       "salaryEdit": "Edit",
       "salaryEditConfirmTitle": "Save changes to this salary record?",
       "salaryEditConfirmDescription": "This edits the latest salary record in place and keeps an audit log of the change.",
-      "salaryNoResults": "No salary records match your search."
+      "salaryNoResults": "No salary records match your search.",
+      "employeeIdLabel": "Employee ID",
+      "employeeIdPlaceholder": "e.g. EMP-0001"
     },
     "import": {
       "title": "Import employees",

@@ -218,7 +218,7 @@ export default async function MePage({
       <div data-tour="me-intro">
         <PageHeader
           title={t('title')}
-          description={`${me.name}${me.employeeCode ? ` · ${me.employeeCode}` : ''} · ${me.position ?? '—'}, ${me.department ?? '—'}`}
+          description={`${me.employeeCode ? `${me.employeeCode} · ` : ''}${me.name} · ${me.position ?? '—'}, ${me.department ?? '—'}`}
         />
       </div>
 

@@ -3,7 +3,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listIndividualTxns, TXN_KINDS, TXN_UNITS } from '@/core/payroll-individual-txn';
-import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { Badge, Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { TxnGrid, type WizardBatch, type WizardEmployee } from './txn-grid';
@@ -158,7 +158,7 @@ export default async function IndividualTransactionPage({
                 {txns.map((tx) => (
                   <tr key={tx.id}>
                     <td className="whitespace-nowrap px-4 py-2.5">{tx.txnDate}</td>
-                    <td className="px-4 py-2.5 font-medium">{tx.name}</td>
+                    <td className="px-4 py-2.5 font-medium"><EmployeeName code={tx.employeeCode} name={tx.name} /></td>
                     <td className="px-4 py-2.5">
                       <Badge>{t(`individual.kindLabel.${tx.kind}`)}</Badge>
                     </td>

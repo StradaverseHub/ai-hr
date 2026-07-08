@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
+import { endReportingLine, setEmployeeCode, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation, updateCompensation } from '@/core/comp';
 import { assignDefaultShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -345,6 +345,12 @@ export async function setPersonAction(formData: FormData) {
       fullName: String(formData.get('fullName') ?? ''),
       primaryEmail: String(formData.get('primaryEmail') ?? ''),
       phone: (formData.get('phone') as string) || null,
+    });
+    // Employee ID (feedback 38668d9b): HR keys/corrects the company's real staff ID on the identity card.
+    // The service validates + tenant-uniqueness-checks and no-ops when unchanged (no spurious event).
+    await setEmployeeCode(s, {
+      employmentId,
+      employeeCode: String(formData.get('employeeCode') ?? ''),
     });
     // Holiday calendar (state OR HR-defined group) — the SINGLE unified input that replaces the standalone
     // work-state field, so the two assignment columns can never disagree.

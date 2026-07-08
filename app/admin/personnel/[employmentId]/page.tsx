@@ -212,6 +212,16 @@ export default async function EmployeePage({
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <input type="hidden" name="personId" value={emp.personId} />
+            <Field label={t('employeeIdLabel')}>
+              <input
+                name="employeeCode"
+                required
+                maxLength={9}
+                defaultValue={emp.employeeCode ?? ''}
+                placeholder={t('employeeIdPlaceholder')}
+                className={inputCls}
+              />
+            </Field>
             <Field label={t('fullName')}>
               <input name="fullName" required defaultValue={emp.name} className={inputCls} />
             </Field>

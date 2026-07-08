@@ -29,7 +29,7 @@ export type ImportResult = {
 
 /** Columns the importer recognises. Required ones must be present and non-empty per row. */
 export const IMPORT_COLUMNS = {
-  required: ['full_name', 'email', 'department', 'hired_on', 'ic_number', 'basic_salary'],
+  required: ['employee_code', 'full_name', 'email', 'department', 'hired_on', 'ic_number', 'basic_salary'],
   optional: [
     'phone',
     'position',

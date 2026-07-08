@@ -488,7 +488,11 @@ export default async function ApprovalsPage({
             <tbody className="divide-y divide-border">
               {pendingTravel.map((tr) => (
                 <tr key={tr.id}>
-                  <td className="px-4 py-2.5 font-medium">{tr.employee}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    {/* Employee ID left-of-name (feedback 38668d9b) */}
+                    <EmployeeCode code={tr.employeeCode} className="mr-1.5" />
+                    {tr.employee}
+                  </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {tr.travelFrom} → {tr.travelTo}
                   </td>
@@ -519,8 +523,9 @@ export default async function ApprovalsPage({
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium">
+                      {/* Employee ID left-of-name (feedback 38668d9b) */}
+                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                       {r.employee}
-                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       {Object.entries((r.proposed ?? {}) as Record<string, unknown>)
@@ -621,10 +626,11 @@ export default async function ApprovalsPage({
               <li key={r.id} className="px-4 py-3">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="flex items-center">
+                    {/* Employee ID left-of-name (feedback 38668d9b) */}
+                    {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                     <Link href={`/personnel/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
                       {r.employee}
                     </Link>
-                    {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')} · {tReview('dueDate')} {r.dueDate}
@@ -663,10 +669,11 @@ export default async function ApprovalsPage({
                 <li key={r.id} className="px-4 py-3">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="flex items-center">
+                      {/* Employee ID left-of-name (feedback 38668d9b) */}
+                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="mr-1.5" />}
                       <Link href={`/personnel/${r.employmentId}`} className="font-medium underline-offset-2 hover:text-primary hover:underline">
                         {r.employee}
                       </Link>
-                      {r.employeeCode && <EmployeeCode code={r.employeeCode} className="ml-2" />}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {tReview(`reviewType.${r.reviewType}` as 'reviewType.probation')}

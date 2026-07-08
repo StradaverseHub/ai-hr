@@ -6,6 +6,7 @@ import { employeeDetail, listEmployees } from '@/core/read';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { employeeLabel } from '@/lib/employee-code';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { saveZakatAction } from '../deductions-actions';
 import { saveZakatElectionAction } from './election-actions';
@@ -84,8 +85,8 @@ export default async function ZakatTransactionPage({
               <option value="">—</option>
               {employees.map((e) => (
                 <option key={e.employmentId} value={e.employmentId}>
-                  {e.name}
-                  {e.employeeCode ? ` · ${e.employeeCode}` : ''} · {e.company}
+                  {/* Employee ID left-of-name (feedback 38668d9b) */}
+                  {employeeLabel(e.employeeCode, e.name)} · {e.company}
                 </option>
               ))}
             </select>

@@ -7,6 +7,7 @@ import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { appendEvent, actorOf, subjectEmploymentForPerson } from '../db/events';
 import { nextEmployeeCode } from './comp';
+import { requireEmployeeCode } from '../lib/employee-code';
 import { isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import {
@@ -53,6 +54,12 @@ export type HireParams = {
   costCenterId?: string;
   employmentType: EmploymentType;
   hiredOn: string; // 'YYYY-MM-DD'
+  /** Employee ID keyed in by HR (feedback 38668d9b). The hire form and the bulk import both REQUIRE a
+   *  value; it is validated (alphanumeric + dash, max 9 chars) and must be unique within the tenant. Left
+   *  optional on the type only so the demo seed and the large test corpus keep compiling — when omitted the
+   *  system falls back to the auto counter (EMP-####). Every HR-facing path passes an explicit code, so HR
+   *  owns the ID in production. */
+  employeeCode?: string;
   /** Seniority grade (ADR-0041 2E) — drives grade-scoped leave entitlements. Optional; null = ungraded. */
   gradeId?: string | null;
   /** Hiring enhancement: the administrative manager this new hire reports to (an employment id). When
@@ -150,7 +157,16 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
     }
 
     const provisionalEndOn = p.provisionalEndOn ?? null;
-    const employeeCode = await nextEmployeeCode(tx, ctx.tenantId);
+    // Employee ID (feedback 38668d9b): HR keys it in (hire form + bulk import always pass one). Validate +
+    // normalize + tenant-uniqueness pre-check. Only when no code is supplied (seed / test corpus) do we fall
+    // back to the auto counter, so HR owns the ID everywhere it is user-driven.
+    let employeeCode: string;
+    if (p.employeeCode != null && p.employeeCode.trim() !== '') {
+      employeeCode = requireEmployeeCode(p.employeeCode);
+      await assertEmployeeCodeUnique(tx, ctx.tenantId, employeeCode);
+    } else {
+      employeeCode = await nextEmployeeCode(tx, ctx.tenantId);
+    }
     const [emp] = await tx
       .insert(employment)
       .values({ tenantId: ctx.tenantId, personId, companyId: p.companyId, hiredOn: p.hiredOn, employeeCode, gradeId: p.gradeId ?? null, provisionalEndOn })
@@ -292,6 +308,8 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams) {
         employmentType: p.employmentType,
         assignmentStatus,
         provisionalEndOn,
+        // Additive only (feedback 38668d9b) — original keys above are preserved for CP22/audit readers.
+        employeeCode,
       },
     });
 
@@ -739,6 +757,74 @@ export async function updatePerson(
       payload: { before, after },
     });
     return { id: p.personId };
+  });
+}
+
+/**
+ * Employee ID uniqueness pre-check (feedback 38668d9b). Throws a clear, user-facing error if `code`
+ * (already normalized) is used by another employment in the same tenant. `excludeEmploymentId` skips the
+ * employment being edited so re-saving its own unchanged code is not a false collision. The DB unique
+ * index (employment_employee_code_uq on tenant + code) is the race-safety net; this gives the friendly
+ * message instead of a raw 23505.
+ */
+async function assertEmployeeCodeUnique(
+  tx: Tx,
+  tenantId: string,
+  code: string,
+  excludeEmploymentId?: string,
+): Promise<void> {
+  const rows = await tx
+    .select({ id: employment.id })
+    .from(employment)
+    .where(and(eq(employment.tenantId, tenantId), eq(employment.employeeCode, code)))
+    .limit(2);
+  const clash = rows.find((r) => r.id !== excludeEmploymentId);
+  if (clash) throw new Error(`Employee ID "${code}" is already in use`);
+}
+
+/** Map a Postgres unique-violation on the employee-code index to the same friendly message. */
+function isEmployeeCodeUniqueViolation(e: unknown): boolean {
+  const err = e as { code?: string; constraint?: string } | undefined;
+  return err?.code === '23505' && (err?.constraint?.includes('employee_code') ?? true);
+}
+
+/**
+ * Set / correct an employment's Employee ID (feedback 38668d9b). HR keys the company's real staff ID on
+ * the admin detail page; legacy null rows get filled in here. Validates + normalizes (alphanumeric + dash,
+ * max 9), pre-checks tenant-uniqueness (excluding this employment), and catches the DB unique violation as
+ * the race net. No-ops when the value is unchanged so a Save that didn't touch the ID emits no event.
+ * Substrate discipline: appends `employment.employee-code.set` with a before/after payload.
+ */
+export async function setEmployeeCode(
+  ctx: SessionContext,
+  p: { employmentId: string; employeeCode: string },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({ employeeCode: employment.employeeCode })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+    const code = requireEmployeeCode(p.employeeCode);
+    if (before.employeeCode === code) return { id: p.employmentId, changed: false };
+    await assertEmployeeCodeUnique(tx, ctx.tenantId, code, p.employmentId);
+    try {
+      await tx.update(employment).set({ employeeCode: code }).where(eq(employment.id, p.employmentId));
+    } catch (e) {
+      if (isEmployeeCodeUniqueViolation(e)) throw new Error(`Employee ID "${code}" is already in use`);
+      throw e;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.employee-code.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { before: { employeeCode: before.employeeCode }, after: { employeeCode: code } },
+    });
+    return { id: p.employmentId, changed: true };
   });
 }
 

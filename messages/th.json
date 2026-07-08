@@ -249,7 +249,10 @@
       "hireInitialSalary": "เงินเดือนพื้นฐานเริ่มต้น (MYR)",
       "hireInitialSalaryHint": "จำเป็น — มีผลตั้งแต่วันที่เริ่มงาน",
       "salaryColRemarks": "หมายเหตุ",
-      "salaryRemarksPlaceholder": "เช่น การปรับขึ้นประจำปี"
+      "salaryRemarksPlaceholder": "เช่น การปรับขึ้นประจำปี",
+      "employeeIdLabel": "รหัสพนักงาน",
+      "employeeIdPlaceholder": "เช่น EMP-0001",
+      "employeeIdHint": "ตัวอักษร ตัวเลข และขีดกลาง สูงสุด 9 อักขระ"
     },
     "detail": {
       "backToPeople": "พนักงาน",
@@ -551,7 +554,9 @@
       "salaryEdit": "แก้ไข",
       "salaryEditConfirmTitle": "บันทึกการเปลี่ยนแปลงบันทึกเงินเดือนนี้หรือไม่?",
       "salaryEditConfirmDescription": "การดำเนินการนี้จะแก้ไขบันทึกเงินเดือนล่าสุดโดยตรงและเก็บบันทึกการตรวจสอบการเปลี่ยนแปลง",
-      "salaryNoResults": "ไม่มีบันทึกเงินเดือนที่ตรงกับการค้นหาของคุณ"
+      "salaryNoResults": "ไม่มีบันทึกเงินเดือนที่ตรงกับการค้นหาของคุณ",
+      "employeeIdLabel": "รหัสพนักงาน",
+      "employeeIdPlaceholder": "เช่น EMP-0001"
     },
     "import": {
       "title": "นำเข้าพนักงาน",

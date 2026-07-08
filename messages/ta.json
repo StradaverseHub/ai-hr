@@ -249,7 +249,10 @@
       "hireInitialSalary": "தொடக்க அடிப்படை சம்பளம் (MYR)",
       "hireInitialSalaryHint": "தேவை — சேரும் தேதியிலிருந்து அமலுக்கு வரும்.",
       "salaryColRemarks": "குறிப்புகள்",
-      "salaryRemarksPlaceholder": "எ.கா. வருடாந்திர உயர்வு"
+      "salaryRemarksPlaceholder": "எ.கா. வருடாந்திர உயர்வு",
+      "employeeIdLabel": "பணியாளர் ஐடி",
+      "employeeIdPlaceholder": "எ.கா. EMP-0001",
+      "employeeIdHint": "எழுத்துகள், எண்கள் மற்றும் கோடுகள்; அதிகபட்சம் 9 எழுத்துகள்."
     },
     "detail": {
       "backToPeople": "பணியாளர்கள்",
@@ -551,7 +554,9 @@
       "salaryEdit": "திருத்து",
       "salaryEditConfirmTitle": "இந்த சம்பள பதிவின் மாற்றங்களைச் சேமிக்கவா?",
       "salaryEditConfirmDescription": "இது சமீபத்திய சம்பள பதிவை நேரடியாகத் திருத்தி, மாற்றத்தின் தணிக்கைப் பதிவை வைத்திருக்கும்.",
-      "salaryNoResults": "உங்கள் தேடலுக்குப் பொருந்தும் சம்பள பதிவுகள் இல்லை."
+      "salaryNoResults": "உங்கள் தேடலுக்குப் பொருந்தும் சம்பள பதிவுகள் இல்லை.",
+      "employeeIdLabel": "பணியாளர் ஐடி",
+      "employeeIdPlaceholder": "எ.கா. EMP-0001"
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",

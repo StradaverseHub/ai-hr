@@ -109,6 +109,7 @@ export type IndividualTxnRow = {
   id: string;
   employmentId: string;
   name: string;
+  employeeCode: string | null;
   kind: PayrollTxnKind;
   txnDate: string;
   amount: string;
@@ -164,6 +165,7 @@ export function listIndividualTxns(ctx: SessionContext, p: { batchId: string }):
         id: payrollIndividualTxn.id,
         employmentId: payrollIndividualTxn.employmentId,
         name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
         kind: payrollIndividualTxn.kind,
         txnDate: payrollIndividualTxn.txnDate,
         amount: payrollIndividualTxn.amount,

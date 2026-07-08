@@ -215,7 +215,7 @@ export default async function RosterPage({
           ) : (
             <RosterGrid
               weekDates={weekDates}
-              employees={activeEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name }))}
+              employees={activeEmployees.map((e) => ({ employmentId: e.employmentId, name: e.name, code: e.employeeCode }))}
               shifts={shifts.map((sh) => ({ id: sh.id, name: sh.name, startTime: sh.startTime, endTime: sh.endTime }))}
               initial={initial}
             />

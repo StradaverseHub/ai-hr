@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { Button, Card, Field, inputCls } from '@/components/ui';
+import { Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
 import { saveIndividualTxnGridAction, type SaveGridResult } from './actions';
 
 /** Client-side mirror of TXN_KINDS (core/payroll-individual-txn.ts). Kept as a literal here so this client
@@ -312,9 +312,10 @@ export function TxnGrid({
                     }`}
                   >
                     <span className="min-w-0">
-                      <span className="block truncate font-medium text-foreground">{e.name}</span>
+                      {/* Employee ID left-of-name (feedback 38668d9b) */}
+                      <EmployeeName code={e.employeeCode} name={e.name} className="block truncate font-medium text-foreground" />
                       <span className="block truncate text-xs text-muted-foreground">
-                        {e.company} · {e.employeeCode ?? '—'} · {e.department ?? '—'} · {e.position ?? '—'}
+                        {e.company} · {e.department ?? '—'} · {e.position ?? '—'}
                       </span>
                     </span>
                     {active && <span className="shrink-0 text-primary">✓</span>}

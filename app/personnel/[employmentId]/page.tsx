@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { employeeDetail, assignmentHistory } from '@/core/read';
-import { Avatar, Card, PageHeader, StatusBadge } from '@/components/ui';
+import { Avatar, Card, EmployeeName, PageHeader, StatusBadge } from '@/components/ui';
 
 /**
  * Read-only staff-directory profile (People→Personnel split). Shows only directory-safe fields —
@@ -66,12 +66,10 @@ export default async function PersonnelDetailPage({
           <Avatar name={emp.name} className="size-12 text-base" />
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-lg font-semibold">{emp.name}</span>
+              {/* Employee ID left-of-name (feedback 38668d9b) */}
+              <EmployeeName code={emp.employeeCode} name={emp.name} className="text-lg font-semibold" codeClassName="text-sm" />
               <StatusBadge status={emp.terminatedOn ? 'terminated' : 'active'} />
             </div>
-            {emp.employeeCode && (
-              <div className="font-mono text-xs text-muted-foreground">{emp.employeeCode}</div>
-            )}
             <div className="text-sm text-muted-foreground">{emp.company}</div>
           </div>
         </div>

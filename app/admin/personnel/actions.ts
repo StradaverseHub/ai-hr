@@ -53,6 +53,9 @@ export async function hireAction(formData: FormData) {
         fullName: String(formData.get('fullName') ?? '').trim(),
         primaryEmail: String(formData.get('primaryEmail') ?? '').trim(),
       },
+      // Employee ID (feedback 38668d9b): HR keys it in. hireEmployee validates format + tenant-uniqueness
+      // and surfaces a clear error (caught below → redirect error param) on a bad/duplicate value.
+      employeeCode: String(formData.get('employeeCode') ?? '').trim(),
       companyId,
       departmentId: String(formData.get('departmentId')),
       positionId: str('positionId'),

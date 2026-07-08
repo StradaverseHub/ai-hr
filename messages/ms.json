@@ -249,7 +249,10 @@
       "hireInitialSalary": "Gaji asas permulaan (MYR)",
       "hireInitialSalaryHint": "Diperlukan — berkuat kuasa dari tarikh menyertai.",
       "salaryColRemarks": "Catatan",
-      "salaryRemarksPlaceholder": "cth. kenaikan tahunan"
+      "salaryRemarksPlaceholder": "cth. kenaikan tahunan",
+      "employeeIdLabel": "ID Pekerja",
+      "employeeIdPlaceholder": "cth. EMP-0001",
+      "employeeIdHint": "Huruf, nombor dan sengkang; sehingga 9 aksara."
     },
     "detail": {
       "backToPeople": "Kakitangan",
@@ -551,7 +554,9 @@
       "salaryEdit": "Sunting",
       "salaryEditConfirmTitle": "Simpan perubahan pada rekod gaji ini?",
       "salaryEditConfirmDescription": "Ini menyunting rekod gaji terkini secara langsung dan menyimpan log audit perubahan.",
-      "salaryNoResults": "Tiada rekod gaji sepadan dengan carian anda."
+      "salaryNoResults": "Tiada rekod gaji sepadan dengan carian anda.",
+      "employeeIdLabel": "ID Pekerja",
+      "employeeIdPlaceholder": "cth. EMP-0001"
     },
     "import": {
       "title": "Import pekerja",
