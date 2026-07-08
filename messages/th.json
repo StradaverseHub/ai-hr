@@ -163,7 +163,20 @@
     "joinedYesterday": "เข้าร่วมเมื่อวานนี้",
     "joinedDaysAgo": "เข้าร่วมเมื่อ {d, plural, one {# วัน} other {# วัน}} ที่แล้ว",
     "joinedWeeksAgo": "เข้าร่วมเมื่อ {w, plural, one {# สัปดาห์} other {# สัปดาห์}} ที่แล้ว",
-    "joinedMonthsAgo": "เข้าร่วมเมื่อ {m, plural, one {# เดือน} other {# เดือน}} ที่แล้ว"
+    "joinedMonthsAgo": "เข้าร่วมเมื่อ {m, plural, one {# เดือน} other {# เดือน}} ที่แล้ว",
+    "leaveBalance": "ยอดวันลาคงเหลือ",
+    "daysRemaining": "เหลือ {d, plural, other {# วัน}}",
+    "selectLeaveType": "เลือกประเภทการลา",
+    "noLeaveTypes": "ไม่มีประเภทการลา",
+    "nextHoliday": "วันหยุดถัดไป",
+    "myPendingRequests": "คำขอที่รอดำเนินการของฉัน",
+    "awaitingDecision": "รอการอนุมัติ",
+    "teamAwayToday": "สมาชิกทีมที่ลาวันนี้",
+    "onApprovedLeaveToday": "ลาที่อนุมัติแล้ววันนี้",
+    "onboardingThisWeek": "พนักงานใหม่สัปดาห์นี้",
+    "startedLast7Days": "เริ่มงานใน 7 วันที่ผ่านมา",
+    "approvalRequests": "คำขออนุมัติ",
+    "awaitingYourAction": "รอการดำเนินการของคุณ"
   },
   "people": {
     "list": {

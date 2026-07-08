@@ -163,7 +163,20 @@
     "joinedYesterday": "menyertai semalam",
     "joinedDaysAgo": "menyertai {d, plural, one {# hari} other {# hari}} lalu",
     "joinedWeeksAgo": "menyertai {w, plural, one {# minggu} other {# minggu}} lalu",
-    "joinedMonthsAgo": "menyertai {m, plural, one {# bulan} other {# bulan}} lalu"
+    "joinedMonthsAgo": "menyertai {m, plural, one {# bulan} other {# bulan}} lalu",
+    "leaveBalance": "Baki cuti",
+    "daysRemaining": "{d, plural, one {# hari} other {# hari}} berbaki",
+    "selectLeaveType": "Pilih jenis cuti",
+    "noLeaveTypes": "Tiada jenis cuti",
+    "nextHoliday": "Cuti umum seterusnya",
+    "myPendingRequests": "Permohonan saya yang belum selesai",
+    "awaitingDecision": "Menunggu keputusan",
+    "teamAwayToday": "Pasukan bercuti hari ini",
+    "onApprovedLeaveToday": "Bercuti yang diluluskan hari ini",
+    "onboardingThisWeek": "Pengambilan baharu minggu ini",
+    "startedLast7Days": "Bermula dalam 7 hari lepas",
+    "approvalRequests": "Permohonan kelulusan",
+    "awaitingYourAction": "Menunggu tindakan anda"
   },
   "people": {
     "list": {
