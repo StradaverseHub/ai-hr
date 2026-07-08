@@ -64,7 +64,12 @@ export type TemplateManagerLabels = {
   chain: string;
   empty: string;
   manager: string;
+  departmentHead: string;
+  businessUnitHead: string;
   hr: string;
+  hrManager: string;
+  payroll: string;
+  customRole: string;
   add: string;
   moveUp: string;
   moveDown: string;
@@ -113,14 +118,37 @@ export function ApprovalTemplateManager({
     chain: labels.chain,
     empty: labels.empty,
     manager: labels.manager,
+    departmentHead: labels.departmentHead,
+    businessUnitHead: labels.businessUnitHead,
     hr: labels.hr,
+    hrManager: labels.hrManager,
+    payroll: labels.payroll,
+    customRole: labels.customRole,
     add: labels.add,
     moveUp: labels.moveUp,
     moveDown: labels.moveDown,
     remove: labels.remove,
     dragToReorder: labels.dragToReorder,
   };
-  const kindLabel = (k: string) => (k === 'hr_admin' ? labels.hr : labels.manager);
+  // 6fadb036 (gap-close): full 7-role vocabulary preview labels.
+  const kindLabel = (k: string): string => {
+    switch (k) {
+      case 'department_head':
+        return labels.departmentHead;
+      case 'business_unit_head':
+        return labels.businessUnitHead;
+      case 'hr_admin':
+        return labels.hr;
+      case 'hr_manager':
+        return labels.hrManager;
+      case 'payroll':
+        return labels.payroll;
+      case 'custom_role':
+        return labels.customRole;
+      default:
+        return labels.manager;
+    }
+  };
   const stepsPreview = (levels: string[]) => levels.map(kindLabel).join(' → ');
   const nameOf = (opts: Option[], id: string | null) => (id ? (opts.find((o) => o.id === id)?.label ?? id) : '—');
   const templateName = (id: string) => templates.find((t) => t.id === id)?.name ?? id;

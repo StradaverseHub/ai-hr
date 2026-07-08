@@ -29,7 +29,7 @@ import {
  *  server-side guard (positions & cost-centers carry company_id; departments carry it via hierarchy).
  *  job_grade is tenant-wide (no company_id) so it is intentionally NOT checked. */
 export class CrossCompanyError extends Error {
-  constructor(entity: 'position' | 'cost-center' | 'department' | 'location' | 'business-unit') {
+  constructor(entity: 'position' | 'cost-center' | 'department' | 'location' | 'business-unit' | 'employment') {
     super(`The selected ${entity} does not belong to the hiring company`);
     this.name = 'CrossCompanyError';
   }

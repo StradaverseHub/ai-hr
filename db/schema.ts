@@ -425,6 +425,9 @@ export const businessUnit = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Approval vocabulary (6fadb036, migration 0164): the business-unit head — the employment a
+    // `business_unit_head` approval step routes to. Nullable; a head step is dropped at generation when unset.
+    headEmploymentId: uuid('head_employment_id').references((): AnyPgColumn => employment.id, { onDelete: 'set null' }),
     // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
     isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
@@ -448,6 +451,9 @@ export const department = pgTable(
     name: text('name').notNull(),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
+    // Approval vocabulary (6fadb036, migration 0164): the department head — the employment a
+    // `department_head` approval step routes to. Nullable; a head step is dropped at generation when unset.
+    headEmploymentId: uuid('head_employment_id').references((): AnyPgColumn => employment.id, { onDelete: 'set null' }),
     // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
     isGlobal: boolean('is_global').notNull().default(false),
     archivedAt: timestamp('archived_at', { withTimezone: true }),

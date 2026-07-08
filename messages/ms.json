@@ -2255,6 +2255,8 @@
       "businessUnitsCount": "Unit perniagaan ({count})",
       "fieldBusinessUnit": "Unit perniagaan",
       "businessUnitNone": "— Tiada —",
+      "fieldHead": "Ketua (pelulus cuti)",
+      "headNone": "— Tiada —",
       "businessUnitCodePlaceholder": "UP1",
       "businessUnitNamePlaceholder": "cth. Runcit",
       "logoSection": "Logo",
@@ -3702,7 +3704,12 @@
     "chain": "Susunan kelulusan",
     "empty": "Tiada langkah lagi — tambah sekurang-kurangnya satu.",
     "manager": "Pengurus langsung",
+    "departmentHead": "Ketua Jabatan",
+    "businessUnitHead": "Ketua Unit Perniagaan",
     "hr": "HR",
+    "hrManager": "Pengurus HR",
+    "payroll": "Payroll",
+    "customRole": "Peranan Tersuai",
     "add": "Tambah langkah",
     "moveUp": "Alih ke atas",
     "moveDown": "Alih ke bawah",
@@ -3765,7 +3772,7 @@
     "unassignConfirm": "Buang penetapan ini? Jenis cuti akan kembali kepada rantaian lalai.",
     "multiApprovalOff": "Kelulusan berbilang langkah dimatikan",
     "enableMultiApproval": "Aktifkan kelulusan berbilang langkah",
-    "rolesGatedNote": "Templat menggunakan peranan Pengurus langsung dan HR. Peranan tambahan (Ketua Jabatan, Ketua Unit Perniagaan, Pengurus HR, Payroll, Peranan Tersuai) adalah susulan yang dirancang."
+    "rolesGatedNote": "Langkah diarahkan seperti berikut: Ketua Jabatan / Ketua Unit Perniagaan pergi kepada ketua yang ditetapkan untuk unit itu di bawah Tetapan → Label Sistem (langkah ketua dilangkau apabila tiada ketua ditetapkan); HR dan Pengurus HR pergi kepada pentadbir HR; Payroll pergi kepada rakan payroll; Peranan Tersuai pergi kepada pentadbir HR. Pentadbir HR juga boleh meluluskan mana-mana langkah supaya rantaian sentiasa selesai."
   },
   "feedback": {
     "title": "Maklum Balas",

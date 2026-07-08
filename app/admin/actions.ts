@@ -242,11 +242,14 @@ export async function updateDepartmentAction(formData: FormData) {
   // businessUnitId is present on the edit row (a select). Empty string clears the link; a value sets it.
   // If the field is absent entirely (undefined), leave the BU untouched (tri-state in the service).
   const buRaw = formData.get('businessUnitId');
+  // 6fadb036: headEmploymentId is present on the edit row (a select). Absent field ⇒ untouched; empty ⇒ clear.
+  const headRaw = formData.get('headEmploymentId');
   try {
     await updateDepartment(s, {
       id: String(formData.get('id')),
       name: String(formData.get('name') ?? '').trim(),
       businessUnitId: buRaw === null ? undefined : String(buRaw).trim() || null,
+      headEmploymentId: headRaw === null ? undefined : String(headRaw).trim() || null,
     });
   } catch (e) {
     fail(ORG, e);
@@ -834,8 +837,15 @@ export async function createBusinessUnitAction(fd: FormData) {
 }
 export async function updateBusinessUnitAction(fd: FormData) {
   const s = await getSession();
+  // 6fadb036: headEmploymentId tri-state (absent ⇒ untouched; empty ⇒ clear).
+  const headRaw = fd.get('headEmploymentId');
   try {
-    await updateBusinessUnit(s, { id: String(fd.get('id')), code: String(fd.get('code') ?? '').trim(), name: String(fd.get('name') ?? '').trim() });
+    await updateBusinessUnit(s, {
+      id: String(fd.get('id')),
+      code: String(fd.get('code') ?? '').trim(),
+      name: String(fd.get('name') ?? '').trim(),
+      headEmploymentId: headRaw === null ? undefined : String(headRaw).trim() || null,
+    });
   } catch (e) { fail(ORG, e); }
   ok(ORG);
 }

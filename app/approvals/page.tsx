@@ -170,8 +170,10 @@ export default async function ApprovalsPage({
   const pendingCancellations = leaveCancellations.filter((c) => !mine(c.personId));
   // 2B-1: a request may sit at a manager step or an HR step. A manager step is decidable by the
   // viewer the list already scoped to (manager/admin); an HR step only by an admin.
+  // 6fadb036: a manager step reads "Manager review"; every other kind (HR, HR Manager, Payroll, Dept/BU
+  // Head, Custom Role) is an admin/role-authority step and reads under the generic HR-review stage label.
   const stageLabel = (kind: string | null) =>
-    kind === 'hr_admin' ? t('stageHr') : kind === 'direct_manager' ? t('stageManager') : '';
+    kind === 'direct_manager' ? t('stageManager') : t('stageHr');
   // ADR-0069: travel can be self-filed, so self-exclude the viewer's own from the actionable count.
   const pendingTravel = travel.filter((tr) => !mine(tr.personId));
   const total =
@@ -300,7 +302,9 @@ export default async function ApprovalsPage({
                   <td className="px-4 py-2.5">
                     {mine(r.personId) ? (
                       <span className="flex justify-end text-xs text-muted-foreground">{decideLabels.yourRequest}</span>
-                    ) : r.currentStepKind === 'hr_admin' && !admin ? (
+                    ) : r.currentStepKind && r.currentStepKind !== 'direct_manager' && !admin ? (
+                      // 6fadb036: any non-manager step (HR / HR Manager / Payroll / Dept-BU Head / Custom Role)
+                      // is an admin/role-authority gate — a plain manager viewer sees the stage, not buttons.
                       <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
                     ) : (breakdowns.get(r.id)?.length ?? 0) > 0 ? (
                       // Partial Leave Approval — single-request model (ADR-0068): this request has per-date

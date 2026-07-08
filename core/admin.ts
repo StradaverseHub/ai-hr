@@ -209,6 +209,24 @@ async function resolveDepartmentBusinessUnitId(
   return id;
 }
 
+/** 6fadb036 — validate an org-head employment (department / business-unit head) belongs to the SAME company
+ *  as the unit it heads (same-company guard, ADR-0071 §i). Blank ⇒ null (clears the head). */
+async function resolveHeadEmploymentId(
+  tx: Tx,
+  headEmploymentId: string | null | undefined,
+  companyId: string,
+): Promise<string | null> {
+  const id = (headEmploymentId ?? '').trim();
+  if (!id) return null;
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, id))
+    .limit(1);
+  if (!emp || emp.companyId !== companyId) throw new CrossCompanyError('employment');
+  return id;
+}
+
 export async function createDepartment(
   ctx: SessionContext,
   p: { companyId: string; name: string; parentDepartmentId?: string; businessUnitId?: string | null; description?: string },
@@ -1032,6 +1050,8 @@ export function listDepartmentsForLabels(
         companyId: department.companyId,
         name: department.name,
         businessUnitId: department.businessUnitId,
+        // 6fadb036: the department head an approval `department_head` step routes to (nullable).
+        headEmploymentId: department.headEmploymentId,
         description: department.description,
         archivedAt: department.archivedAt,
         inUse: sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
@@ -1101,6 +1121,8 @@ export function listBusinessUnitsForLabels(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        // 6fadb036: the BU head an approval `business_unit_head` step routes to (nullable).
+        headEmploymentId: businessUnit.headEmploymentId,
         description: businessUnit.description,
         archivedAt: businessUnit.archivedAt,
         inUse: sql<boolean>`exists (select 1 from department d where d.business_unit_id = business_unit.id)`,
@@ -1562,24 +1584,36 @@ export function listUsers(ctx: SessionContext) {
 
 export async function updateDepartment(
   ctx: SessionContext,
-  p: { id: string; name: string; businessUnitId?: string | null; description?: string },
+  p: { id: string; name: string; businessUnitId?: string | null; headEmploymentId?: string | null; description?: string },
 ) {
   const name = cleanName(p.name, 'Department name');
   // description always overwrites (like name), stored null when blank — no tri-state.
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    // businessUnitId is tri-state: undefined → leave the column untouched (a name-only rename must NOT wipe
-    // the BU); null/'' → clear it; an id → set it (validated to the department's own company). Fetch the
-    // department's company for the cross-company guard when a non-empty id is supplied.
-    const setValues: { name: string; description: string | null; businessUnitId?: string | null } = { name, description };
-    if (p.businessUnitId !== undefined) {
+    // businessUnitId + headEmploymentId are tri-state: undefined → leave the column untouched (a name-only
+    // rename must NOT wipe them); null/'' → clear it; an id → set it (validated to the department's own
+    // company). Fetch the department's company once when either is supplied.
+    const setValues: {
+      name: string;
+      description: string | null;
+      businessUnitId?: string | null;
+      headEmploymentId?: string | null;
+    } = { name, description };
+    if (p.businessUnitId !== undefined || p.headEmploymentId !== undefined) {
       const [dep] = await tx
         .select({ companyId: department.companyId })
         .from(department)
         .where(eq(department.id, p.id))
         .limit(1);
       if (!dep) throw new Error('Department not found');
-      setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+      if (p.businessUnitId !== undefined) {
+        setValues.businessUnitId = await resolveDepartmentBusinessUnitId(tx, p.businessUnitId, dep.companyId);
+      }
+      if (p.headEmploymentId !== undefined) {
+        // 6fadb036: the head (a `department_head` approval decider) must be an employment in the SAME
+        // company as the department (mirrors ADR-0071 §i same-company guard for org-chart approvers).
+        setValues.headEmploymentId = await resolveHeadEmploymentId(tx, p.headEmploymentId, dep.companyId);
+      }
     }
     await tx.update(department).set(setValues).where(eq(department.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A department named “${name}” already exists in this company.`);
@@ -1665,12 +1699,30 @@ export async function deleteCostCenter(ctx: SessionContext, p: { id: string }) {
   });
 }
 
-export async function updateBusinessUnit(ctx: SessionContext, p: { id: string; code: string; name: string; description?: string }) {
+export async function updateBusinessUnit(
+  ctx: SessionContext,
+  p: { id: string; code: string; name: string; headEmploymentId?: string | null; description?: string },
+) {
   const code = cleanName(p.code, 'Business-unit code');
   const name = cleanName(p.name, 'Business-unit name');
   const description = p.description?.trim() || null;
   return withTenant(ctx, async (tx) => {
-    await tx.update(businessUnit).set({ code, name, description }).where(eq(businessUnit.id, p.id)).catch((e) => {
+    // headEmploymentId is tri-state (undefined ⇒ untouched; blank ⇒ clear; id ⇒ set, same-company-validated).
+    const setValues: { code: string; name: string; description: string | null; headEmploymentId?: string | null } = {
+      code,
+      name,
+      description,
+    };
+    if (p.headEmploymentId !== undefined) {
+      const [bu] = await tx
+        .select({ companyId: businessUnit.companyId })
+        .from(businessUnit)
+        .where(eq(businessUnit.id, p.id))
+        .limit(1);
+      if (!bu) throw new Error('Business unit not found');
+      setValues.headEmploymentId = await resolveHeadEmploymentId(tx, p.headEmploymentId, bu.companyId);
+    }
+    await tx.update(businessUnit).set(setValues).where(eq(businessUnit.id, p.id)).catch((e) => {
       if (isUniqueViolation(e)) throw new DuplicateError(`A business unit with code “${code}” already exists in this company.`);
       throw e;
     });

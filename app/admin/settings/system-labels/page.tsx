@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies } from '@/core/read';
+import { listCompanies, listEmployees } from '@/core/read';
 import {
   listBusinessUnitsForLabels,
   listCostCentersForLabels,
@@ -37,12 +37,13 @@ export default async function SystemLabelsPage({
   const t = await getTranslations('admin.systemLabels');
   const to = await getTranslations('admin.organization');
 
-  const [companies, departments, positions, costCenters, businessUnits] = await Promise.all([
+  const [companies, departments, positions, costCenters, businessUnits, employees] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
     listDepartmentsForLabels(s),
     listPositionsForLabels(s),
     listCostCentersForLabels(s),
     listBusinessUnitsForLabels(s),
+    listEmployees(s),
   ]);
 
   const scoped = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
@@ -55,6 +56,15 @@ export default async function SystemLabelsPage({
       .map((bu) => ({ value: bu.id, label: `${bu.code} — ${bu.name}` })),
   ];
 
+  // 6fadb036: approver-head options — this company's employees + a "None" clear option. Used to set the
+  // department / business-unit head that department_head / business_unit_head approval steps route to.
+  const headOptions = (companyId: string) => [
+    { value: '', label: to('headNone') },
+    ...employees
+      .filter((e) => e.companyId === companyId)
+      .map((e) => ({ value: e.employmentId, label: e.employeeCode ? `${e.name} (${e.employeeCode})` : e.name })),
+  ];
+
   const deptRows = (companyId: string): LabelRow[] =>
     departments
       .filter((d) => d.companyId === companyId)
@@ -65,6 +75,7 @@ export default async function SystemLabelsPage({
         fields: [
           { name: 'name', label: to('fieldName'), value: d.name },
           { name: 'businessUnitId', label: to('fieldBusinessUnit'), value: d.businessUnitId ?? '', options: buOptions(companyId) },
+          { name: 'headEmploymentId', label: to('fieldHead'), value: d.headEmploymentId ?? '', options: headOptions(companyId) },
           { name: 'description', label: t('fieldDescription'), value: d.description ?? '', wide: true },
         ],
         inUse: d.inUse,
@@ -110,6 +121,7 @@ export default async function SystemLabelsPage({
         fields: [
           { name: 'code', label: to('fieldCode'), value: bu.code },
           { name: 'name', label: to('fieldName'), value: bu.name },
+          { name: 'headEmploymentId', label: to('fieldHead'), value: bu.headEmploymentId ?? '', options: headOptions(companyId) },
           { name: 'description', label: t('fieldDescription'), value: bu.description ?? '', wide: true },
         ],
         inUse: bu.inUse,

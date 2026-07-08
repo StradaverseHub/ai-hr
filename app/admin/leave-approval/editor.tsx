@@ -10,7 +10,12 @@ type Labels = {
   chain: string;
   empty: string;
   manager: string;
+  departmentHead: string;
+  businessUnitHead: string;
   hr: string;
+  hrManager: string;
+  payroll: string;
+  customRole: string;
   add: string;
   moveUp: string;
   moveDown: string;

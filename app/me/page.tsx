@@ -511,7 +511,7 @@ export default async function MePage({
                     </span>
                     {r.status === 'pending' && r.stepCount > 0 && (
                       <span className="text-xs text-muted-foreground/80">
-                        {r.currentStepKind === 'hr_admin' ? t('stageHr') : t('stageManager')}
+                        {r.currentStepKind === 'direct_manager' ? t('stageManager') : t('stageHr')}
                       </span>
                     )}
                   </div>

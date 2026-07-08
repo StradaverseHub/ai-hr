@@ -3,13 +3,27 @@
 import { useState } from 'react';
 import { Button, inputCls } from '@/components/ui';
 
-const KIND_OPTIONS = ['direct_manager', 'hr_admin'] as const;
+// 6fadb036 (R17 gap-close): the reporter's full 7-role approver vocabulary (list C), ordered as requested.
+const KIND_OPTIONS = [
+  'direct_manager',
+  'department_head',
+  'business_unit_head',
+  'hr_admin',
+  'hr_manager',
+  'payroll',
+  'custom_role',
+] as const;
 
 export type StepListLabels = {
   chain: string;
   empty: string;
   manager: string;
+  departmentHead: string;
+  businessUnitHead: string;
   hr: string;
+  hrManager: string;
+  payroll: string;
+  customRole: string;
   add: string;
   moveUp: string;
   moveDown: string;
@@ -22,8 +36,9 @@ export type StepListLabels = {
  * editor.tsx and rule-builder.tsx so all three surfaces (company default, scoped rule, template) share one
  * implementation, and so DRAG-AND-DROP reordering (native HTML5 drag events) is delivered everywhere at
  * once. The ↑/↓ buttons stay for keyboard/accessibility. Controlled: the parent owns `levels` and submits
- * it as a CSV hidden field. Approver vocabulary is still the two supported kinds (direct_manager, hr_admin);
- * the extra roles the reporter listed remain gated (ADR-0071 §i).
+ * it as a CSV hidden field. The gap-close cut offers the reporter's full 7-role vocabulary (Direct Manager,
+ * Department Head, Business Unit Head, HR, HR Manager, Payroll, Custom Role); each kind's decision-time
+ * resolution lives in core/leave.ts (assertCanDecideLeaveStep).
  */
 export function StepListEditor({
   levels,
@@ -39,7 +54,24 @@ export function StepListEditor({
   const [addKind, setAddKind] = useState<string>('hr_admin');
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  const kindLabel = (k: string) => (k === 'hr_admin' ? labels.hr : labels.manager);
+  const kindLabel = (k: string): string => {
+    switch (k) {
+      case 'department_head':
+        return labels.departmentHead;
+      case 'business_unit_head':
+        return labels.businessUnitHead;
+      case 'hr_admin':
+        return labels.hr;
+      case 'hr_manager':
+        return labels.hrManager;
+      case 'payroll':
+        return labels.payroll;
+      case 'custom_role':
+        return labels.customRole;
+      default:
+        return labels.manager;
+    }
+  };
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= levels.length) return;

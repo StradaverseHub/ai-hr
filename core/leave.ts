@@ -68,6 +68,7 @@ export {
 import {
   assignment,
   attendancePolicy,
+  businessUnit,
   company,
   department,
   employment,
@@ -1640,7 +1641,34 @@ async function generateApprovalSteps(
     businessUnitId: attr?.businessUnitId ?? null,
     days,
   });
-  const kinds = chain.filter((k) => k !== 'direct_manager' || hasManager);
+  // 6fadb036 (gap-close): head-kind steps route to an org-chart head. Resolve the subject's department and
+  // business-unit heads once; a head step is DROPPED when its head is unset, mirroring the direct_manager
+  // drop (no dead step nobody can clear). HR / HR Manager / Payroll / Custom Role steps are role-based and
+  // are never dropped here — they resolve to role authority at decision time.
+  let deptHead: string | null = null;
+  if (attr?.departmentId) {
+    const [d] = await tx
+      .select({ head: department.headEmploymentId })
+      .from(department)
+      .where(eq(department.id, attr.departmentId))
+      .limit(1);
+    deptHead = d?.head ?? null;
+  }
+  let buHead: string | null = null;
+  if (attr?.businessUnitId) {
+    const [b] = await tx
+      .select({ head: businessUnit.headEmploymentId })
+      .from(businessUnit)
+      .where(eq(businessUnit.id, attr.businessUnitId))
+      .limit(1);
+    buHead = b?.head ?? null;
+  }
+  const kinds = chain.filter((k) => {
+    if (k === 'direct_manager') return hasManager;
+    if (k === 'department_head') return !!deptHead;
+    if (k === 'business_unit_head') return !!buHead;
+    return true;
+  });
   if (kinds.length === 0) return;
   await tx.insert(leaveApprovalStep).values(
     kinds.map((approverKind, stepIndex) => ({
@@ -1741,6 +1769,116 @@ async function assertIsHrAdmin(tx: Tx, ctx: SessionContext, subjectEmploymentId:
       .limit(1);
     if (subj?.personId === ctx.personId) throw new Error(`You cannot decide your own ${label}`);
   }
+}
+
+/** 6fadb036 (gap-close) — dispatch a leave approval step to the right decider-authority check for its kind.
+ *  Each kind's semantics are documented on LEVEL_KINDS (core/leave-approval-policy.ts). The self-approval
+ *  ban applies to every kind (super_admin keeps the sole-admin escape hatch), matching assertCanDecide. */
+async function assertCanDecideLeaveStep(
+  tx: Tx,
+  ctx: SessionContext,
+  subjectEmploymentId: string,
+  kind: string,
+  label: string,
+) {
+  const roles = ctx.roles ?? [];
+  const isSuper = roles.includes('super_admin');
+  // HR admins hold full leave visibility + authority, so they can clear ANY step — this guarantees every
+  // chain completes even when the designated role-holder/head lacks RLS visibility to the request (a payroll
+  // partner or a dept/BU head who is not also the subject's admin manager cannot see it). The designated
+  // decider still clears their own step when they DO have access (checked below). Documented in the
+  // approver-vocabulary note (ADR-0071 §i follow-up: dedicated approver-role visibility).
+  const isAdminRole = isSuper || roles.includes('hr_admin');
+  // Shared self-approval ban (skipped for super_admin, like assertCanDecide / assertIsHrAdmin).
+  const banSelf = async () => {
+    if (isSuper || ctx.personId == null) return;
+    const [subj] = await tx
+      .select({ personId: employment.personId })
+      .from(employment)
+      .where(eq(employment.id, subjectEmploymentId))
+      .limit(1);
+    if (subj?.personId === ctx.personId) throw new Error(`You cannot decide your own ${label}`);
+  };
+
+  switch (kind) {
+    case 'direct_manager':
+      return assertCanDecide(tx, ctx, subjectEmploymentId, label);
+    // HR-tier / generic-admin gates. hr_manager and custom_role are cleared by HR/admins today; a distinct
+    // ranked hr_manager role and a per-step bound custom role are documented follow-ups (ADR-0071 §i).
+    case 'hr_admin':
+    case 'hr_manager':
+    case 'custom_role':
+      return assertIsHrAdmin(tx, ctx, subjectEmploymentId, label);
+    case 'payroll': {
+      await banSelf();
+      if (isAdminRole) return; // HR/super clears it (guaranteed visibility)
+      const [subj] = await tx
+        .select({ companyId: employment.companyId })
+        .from(employment)
+        .where(eq(employment.id, subjectEmploymentId))
+        .limit(1);
+      const ok = (ctx.grants ?? []).some(
+        (g) => g.role === 'payroll_partner' && (g.companyId == null || g.companyId === subj?.companyId),
+      );
+      if (!ok) throw new Error(`Only Payroll or HR can decide this ${label}`);
+      return;
+    }
+    case 'department_head':
+    case 'business_unit_head': {
+      await banSelf();
+      if (isAdminRole) return; // HR/super clears it (guaranteed visibility)
+      const head = await resolveSubjectHead(tx, subjectEmploymentId, kind);
+      const roleLabel = kind === 'department_head' ? 'department head' : 'business unit head';
+      if (head == null) throw new Error(`No ${roleLabel} is set for this employee — an admin must decide or assign one`);
+      const [h] = await tx
+        .select({ personId: employment.personId })
+        .from(employment)
+        .where(eq(employment.id, head))
+        .limit(1);
+      if (ctx.personId != null && h?.personId === ctx.personId) return;
+      throw new Error(`Only the ${roleLabel} or HR can decide this ${label}`);
+    }
+    default:
+      throw new Error(`Unknown approver step for this ${label}`);
+  }
+}
+
+/** Resolve the subject's current department-head or business-unit-head employment id (null when unset).
+ *  Uses the subject's CURRENT assignment (validTo/supersededAt null), the same predicate as elsewhere. */
+async function resolveSubjectHead(
+  tx: Tx,
+  subjectEmploymentId: string,
+  kind: 'department_head' | 'business_unit_head',
+): Promise<string | null> {
+  if (kind === 'department_head') {
+    const [row] = await tx
+      .select({ head: department.headEmploymentId })
+      .from(assignment)
+      .innerJoin(department, eq(department.id, assignment.departmentId))
+      .where(
+        and(
+          eq(assignment.employmentId, subjectEmploymentId),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .limit(1);
+    return row?.head ?? null;
+  }
+  const [row] = await tx
+    .select({ head: businessUnit.headEmploymentId })
+    .from(assignment)
+    .innerJoin(department, eq(department.id, assignment.departmentId))
+    .innerJoin(businessUnit, eq(businessUnit.id, department.businessUnitId))
+    .where(
+      and(
+        eq(assignment.employmentId, subjectEmploymentId),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    )
+    .limit(1);
+  return row?.head ?? null;
 }
 
 // endDate is widened in (alongside days/startDate) for the on-approval payroll-impact enrichment below. At
@@ -1903,8 +2041,10 @@ export async function decideLeave(
 
     // Multi-step chain: decide the current step.
     if (steps.length > 0 && current) {
-      if (current.approverKind === 'hr_admin') await assertIsHrAdmin(tx, ctx, req.employmentId, 'leave request');
-      else await assertCanDecide(tx, ctx, req.employmentId, 'leave request'); // direct_manager
+      // 6fadb036 (gap-close): dispatch to the right decider-authority for the step's kind (the full
+      // 7-role vocabulary). direct_manager / department_head / business_unit_head / hr_admin / hr_manager /
+      // payroll / custom_role each have their own resolver in assertCanDecideLeaveStep.
+      await assertCanDecideLeaveStep(tx, ctx, req.employmentId, current.approverKind, 'leave request');
       await tx
         .update(leaveApprovalStep)
         .set({ status: p.decision, decidedByEmploymentId: p.deciderEmploymentId ?? null, decidedAt: sql`now()` })

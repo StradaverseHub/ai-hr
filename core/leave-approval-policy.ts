@@ -10,8 +10,32 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
 
-export const LEVEL_KINDS = ['direct_manager', 'hr_admin'] as const;
+// 6fadb036 (R17 gap-close) — the reporter's full approver-step vocabulary (list C). Ordered as the
+// request lists them; `hr_admin` is the internal id for the "HR" label. Each kind has a concrete
+// decision-time resolver in core/leave.ts (assertCanDecideLeaveStep) and a generation-time drop rule:
+//   direct_manager      → the subject's active administrative manager         (dropped when none)
+//   department_head     → department.head_employment_id of the subject's dept (dropped when unset)
+//   business_unit_head  → business_unit.head_employment_id of the subject's BU (dropped when unset)
+//   hr_admin ("HR")     → hr_admin / super_admin role                          (never dropped)
+//   hr_manager          → HR-tier authority (hr_admin / super_admin) — a distinct gate; a ranked
+//                         hr_manager sub-role is a documented follow-up (ADR-0071 §i)                (never dropped)
+//   payroll             → payroll_partner (subject's company) / super_admin    (never dropped)
+//   custom_role         → an admin gate (hr_admin / super_admin); binding a specific named role per
+//                         step is a documented follow-up (ADR-0071 §i custom_position guard)         (never dropped)
+export const LEVEL_KINDS = [
+  'direct_manager',
+  'department_head',
+  'business_unit_head',
+  'hr_admin',
+  'hr_manager',
+  'payroll',
+  'custom_role',
+] as const;
 export type LeaveLevelKind = (typeof LEVEL_KINDS)[number];
+
+/** Kinds that route to an org-chart HEAD (department / business unit). A step of these kinds is generated
+ *  only when the subject's dept/BU actually has a head set — otherwise dropped (no dead step). */
+export const HEAD_LEVEL_KINDS: readonly LeaveLevelKind[] = ['department_head', 'business_unit_head'];
 
 /** The chain an opted-in company gets when no rule matches — identical to 2B-1. */
 const FALLBACK_CHAIN: LeaveLevelKind[] = ['direct_manager', 'hr_admin'];

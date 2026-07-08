@@ -2255,6 +2255,8 @@
       "businessUnitsCount": "业务单位（{count}）",
       "fieldBusinessUnit": "业务单位",
       "businessUnitNone": "— 无 —",
+      "fieldHead": "负责人（请假审批人）",
+      "headNone": "— 无 —",
       "businessUnitCodePlaceholder": "BU1",
       "businessUnitNamePlaceholder": "例如：零售",
       "logoSection": "徽标",
@@ -3702,7 +3704,12 @@
     "chain": "审批顺序",
     "empty": "暂无步骤 — 请至少添加一个。",
     "manager": "直属经理",
+    "departmentHead": "部门主管",
+    "businessUnitHead": "业务单元主管",
     "hr": "人力资源",
+    "hrManager": "人力资源经理",
+    "payroll": "薪资",
+    "customRole": "自定义角色",
     "add": "添加步骤",
     "moveUp": "上移",
     "moveDown": "下移",
@@ -3765,7 +3772,7 @@
     "unassignConfirm": "移除此分配？该假期类型将回退到默认审批链。",
     "multiApprovalOff": "多级审批已关闭",
     "enableMultiApproval": "启用多级审批",
-    "rolesGatedNote": "模板使用直属经理和人力资源审批角色。其他角色（部门主管、业务单元主管、人力资源经理、薪资、自定义角色）为计划中的后续功能。"
+    "rolesGatedNote": "步骤的审批人如下：部门主管／业务单元主管由该单元在 设置 → 系统标签 中设置的负责人审批（未设置负责人时跳过该步骤）；HR 和人力资源经理由 HR 管理员审批；薪资由薪资合作方审批；自定义角色由 HR 管理员审批。HR 管理员也可审批任何步骤，因此审批链始终能完成。"
   },
   "feedback": {
     "title": "反馈",

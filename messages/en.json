@@ -2255,6 +2255,8 @@
       "businessUnitsCount": "Business units ({count})",
       "fieldBusinessUnit": "Business unit",
       "businessUnitNone": "— None —",
+      "fieldHead": "Head (leave approver)",
+      "headNone": "— None —",
       "businessUnitCodePlaceholder": "BU1",
       "businessUnitNamePlaceholder": "e.g. Retail",
       "logoSection": "Logo",
@@ -3702,7 +3704,12 @@
     "chain": "Approval order",
     "empty": "No steps yet — add at least one.",
     "manager": "Direct manager",
+    "departmentHead": "Department Head",
+    "businessUnitHead": "Business Unit Head",
     "hr": "HR",
+    "hrManager": "HR Manager",
+    "payroll": "Payroll",
+    "customRole": "Custom Role",
     "add": "Add step",
     "moveUp": "Move up",
     "moveDown": "Move down",
@@ -3765,7 +3772,7 @@
     "unassignConfirm": "Remove this assignment? The leave type falls back to the default chain.",
     "multiApprovalOff": "Multi-step approval is off",
     "enableMultiApproval": "Enable multi-step approval",
-    "rolesGatedNote": "Templates use the Direct manager and HR approver roles. Additional roles (Department Head, Business Unit Head, HR Manager, Payroll, Custom Role) are a planned follow-up."
+    "rolesGatedNote": "Steps route as follows: Department Head / Business Unit Head go to the head set for that unit under Settings → System Labels (a head step is skipped when no head is set); HR and HR Manager go to HR admins; Payroll goes to payroll partners; Custom Role goes to an HR admin. An HR admin can also clear any step, so a chain always completes."
   },
   "feedback": {
     "title": "Feedback",
