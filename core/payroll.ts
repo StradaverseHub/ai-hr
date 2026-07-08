@@ -61,6 +61,8 @@ import {
   applyOvertimeCaps,
   applyOvertimeCapsDetailed,
   applyRounding,
+  encashmentDivisorDays,
+  ENCASHMENT_ORP_DIVISOR,
   leaveDivisorDays,
   payslipReleaseAt,
   prorationDivisorDays,
@@ -1741,7 +1743,7 @@ export async function generatePayslips(
     const wdEmpIds = emps
       .filter((e) => {
         const l = policyConfigByEmp.get(e.employmentId)?.leave;
-        return l?.unpaidLeaveDivisor === 'working_days' || l?.unpaidTimeOffDivisor === 'working_days' || l?.encashmentDivisor === 'working_days';
+        return l?.unpaidLeaveDivisor === 'working_days' || l?.encashmentDivisor === 'working_days';
       })
       .map((e) => e.employmentId);
     for (const employmentId of wdEmpIds) {
@@ -3372,7 +3374,9 @@ export type LeaverAdvisoryRow = {
  * Final-pay ADVISORY for employees terminating within a draft batch's period: unused annual
  * leave × ORP daily rate, per EA 1955 s.60E pay-in-lieu. Deliberately NO auto-pay — the
  * EPF/PCB treatment of encashment is not yet sourced, so the admin keys the amount into the
- * bonus input consciously (documented in STATUTORY-SOURCES.md).
+ * bonus input consciously (documented in STATUTORY-SOURCES.md). f3148da1 Step 5: the ORP day-divisor
+ * used for the `suggested` figure is policy-configurable (`leave.encashmentDivisor`), defaulting to the
+ * statutory 26-day divisor — see encashmentDivisorDays.
  */
 export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<LeaverAdvisoryRow[]> {
   return withTenant(ctx, async (tx) => {
@@ -3429,6 +3433,24 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       const encashment = await encashableDaysForEmployment(tx, l.employmentId);
       const effectiveBalance = encashment ? encashment.days : balance;
       const basic = Number(l.basic);
+      // f3148da1 Step 5 — the leave-encashment ORP day-divisor is policy-configurable (default = the statutory
+      // 26-day ordinary-rate divisor, so `basic / 26` is byte-identical when no policy overrides it). Resolve
+      // the employment's assigned policy (and, only for a `working_days` divisor, count the pay-month working
+      // days) LAZILY — a zero balance keeps the legacy 0 with no extra query.
+      let encDivisor = ENCASHMENT_ORP_DIVISOR;
+      if (effectiveBalance > 0) {
+        const encCfg = (await resolveAssignedPolicy(tx, l.employmentId))?.config ?? null;
+        let workingDays = 0;
+        if (encCfg?.leave?.encashmentDivisor === 'working_days') {
+          const holidays = await holidayDatesFor(tx, { employmentId: l.employmentId, startDate: start, endDate: end });
+          for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
+            const d = new Date(t).toISOString().slice(0, 10);
+            const iso = ((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7) + 1; // 1=Mon … 7=Sun
+            if (iso <= 5 && !holidays.has(d)) workingDays++; // Mon–Fri working-day basis, less holidays
+          }
+        }
+        encDivisor = encashmentDivisorDays(encCfg, { workingDays });
+      }
       out.push({
         employmentId: l.employmentId,
         name: l.name,
@@ -3436,7 +3458,7 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
         terminatedOn: l.terminatedOn!,
         basic,
         annualBalance: effectiveBalance,
-        suggested: effectiveBalance > 0 ? round2((basic / 26) * effectiveBalance) : 0,
+        suggested: effectiveBalance > 0 ? round2((basic / encDivisor) * effectiveBalance) : 0,
         encashmentSource: encashment ? 'frozen_snapshot' : 'live_balance',
         ...(encashment ? { frozenAsOf: encashment.calculatedAsOf, overridden: encashment.overridden } : {}),
       });

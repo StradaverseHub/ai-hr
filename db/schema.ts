@@ -1052,13 +1052,15 @@ export type OtDayType = 'workday' | 'rest_day' | 'holiday';
 // (no mutable table) from each employment's closed payslips' `statutory.carryForward` stamps, so a rolled-back
 // batch drops out of the balance automatically. 'retain'/'set_zero' behave exactly as before.
 export type NegativeNetMode = 'retain' | 'set_zero' | 'carry_forward';
+// f3148da1 Step 5 — the divisor basis used to value one unpaid-leave / leave-encashment day. Only the four
+// modes below actually change a monthly-payroll figure. The former 'custom_hours' / 'custom_minutes' modes
+// were removed (R17 gap-fix): on the Monthly path they both fell back to the calendar-day divisor, so they
+// were inert selectors — a Daily/Hourly per-hour valuation is a separate deferred concern, not a divisor mode.
 export type LeaveDivisor =
   | 'calendar_month'
   | 'custom_days'
   | 'cutoff_days'
-  | 'working_days'
-  | 'custom_hours'
-  | 'custom_minutes';
+  | 'working_days';
 // 2.1.4 (Custom period) — the cut-off WINDOW mode. 'calendar' (default/absent) = the statutory calendar month
 // (1st→last), today's exact behaviour. 'custom' anchors a non-calendar operational window on `anchorDay`: for a
 // statutory month M, the window is [anchorDay of M-1 .. (anchorDay-1) of M]. STATUTORY contributions
@@ -1104,14 +1106,16 @@ export type PayrollPolicyConfig = {
     // with a UUID componentId; the kernel re-validates it belongs to the employment's company).
     exceedHandling?: { action: 'convert'; componentId: string };
   };
-  // 1f — divisor selector for unpaid-leave / unpaid-time-off / leave-encashment (default calendar_month).
+  // 1f — divisor selector for unpaid-leave deduction + leave-encashment valuation (default calendar_month).
+  // `unpaidLeaveDivisor` values every unpaid-leave day (full OR partial — a fractional unpaid day is already
+  // deducted through this same path, so there is no separate "unpaid time off" line to configure; the former
+  // `unpaidTimeOffDivisor` selector was removed in the R17 gap-fix as it drove no distinct figure).
+  // `encashmentDivisor` sets the ORP day-divisor used to value encashed annual leave in the leaver advisory
+  // (default = the statutory 26-day ordinary-rate divisor; see encashmentDivisorDays).
   leave?: {
     unpaidLeaveDivisor?: LeaveDivisor;
-    unpaidTimeOffDivisor?: LeaveDivisor;
     encashmentDivisor?: LeaveDivisor;
     customDays?: number; //                     used when a *_Divisor is 'custom_days'
-    customHours?: number; //                    used when a *_Divisor is 'custom_hours'
-    customMinutes?: number; //                  used when a *_Divisor is 'custom_minutes'
   };
   // 2.1.4 (Custom period) — the operational cut-off WINDOW. Default (absent / mode='calendar') = the statutory
   // calendar month, byte-identical to today. mode='custom' records an anchor day so the window runs

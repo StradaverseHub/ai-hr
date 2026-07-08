@@ -50,14 +50,7 @@ const ROUNDING_MODES: RoundingMode[] = ['none', 'up', 'down', 'nearest'];
 const PRORATION_DIVISORS: ProrationDivisor[] = ['calendar_month', 'custom_days'];
 const OT_DAY_TYPES: OtDayType[] = ['workday', 'rest_day', 'holiday'];
 const NEGATIVE_NET_MODES: NegativeNetMode[] = ['retain', 'set_zero', 'carry_forward'];
-const LEAVE_DIVISORS: LeaveDivisor[] = [
-  'calendar_month',
-  'custom_days',
-  'cutoff_days',
-  'working_days',
-  'custom_hours',
-  'custom_minutes',
-];
+const LEAVE_DIVISORS: LeaveDivisor[] = ['calendar_month', 'custom_days', 'cutoff_days', 'working_days'];
 
 const CUT_OFF_MODES: CutOffMode[] = ['calendar', 'custom'];
 const cleanCutOffMode = (v: unknown): CutOffMode => (CUT_OFF_MODES.includes(v as CutOffMode) ? (v as CutOffMode) : 'calendar');
@@ -183,21 +176,16 @@ export function cleanPayrollPolicyConfig(raw: unknown): PayrollPolicyConfig | nu
   }
   if (Object.keys(overtime).length) out.overtime = overtime;
 
-  // 1f leave divisors — only persisted when at least one divisor is non-default.
+  // 1f leave divisors — only persisted when at least one divisor is non-default. `unpaidLeaveDivisor` values
+  // every unpaid-leave day (full/partial); `encashmentDivisor` sets the leave-encashment ORP day-divisor.
   const lRaw = (r.leave ?? {}) as Record<string, unknown>;
   const leave: NonNullable<PayrollPolicyConfig['leave']> = {};
   const ul = cleanLeaveDivisor(lRaw.unpaidLeaveDivisor);
-  const uto = cleanLeaveDivisor(lRaw.unpaidTimeOffDivisor);
   const enc = cleanLeaveDivisor(lRaw.encashmentDivisor);
   if (ul !== 'calendar_month') leave.unpaidLeaveDivisor = ul;
-  if (uto !== 'calendar_month') leave.unpaidTimeOffDivisor = uto;
   if (enc !== 'calendar_month') leave.encashmentDivisor = enc;
   const lcd = cleanPosInt(lRaw.customDays, 1, 31);
   if (lcd !== undefined) leave.customDays = lcd;
-  const lch = cleanNonNegNum(lRaw.customHours);
-  if (lch !== undefined && lch > 0) leave.customHours = lch;
-  const lcm = cleanNonNegNum(lRaw.customMinutes);
-  if (lcm !== undefined && lcm > 0) leave.customMinutes = lcm;
   if (Object.keys(leave).length) out.leave = leave;
 
   // 2.1.4 (Custom period) — the cut-off WINDOW. Only persisted when mode='custom' AND anchorDay is a valid
@@ -308,11 +296,37 @@ export function leaveDivisorDays(
       return facts.workingDays > 0 ? facts.workingDays : facts.calendarDaysInMonth;
     case 'calendar_month':
     default:
-      // custom_hours / custom_minutes resolve to a calendar-day divisor for the per-DAY deduction the kernel
-      // computes (those modes value per hour/minute, a Daily/Hourly concern deferred to later builds); for the
-      // Monthly path they conservatively fall back to the calendar-month divisor (no number change).
       return facts.calendarDaysInMonth;
   }
+}
+
+// EA s.60E leave-encashment ORP day-divisor. The statutory ordinary-rate-of-pay divisor is 26 (working days
+// in a month per EA 1955); this is the leave-encashment default and reproduces the legacy `basic / 26`
+// valuation exactly when no policy divisor is configured.
+export const ENCASHMENT_ORP_DIVISOR = 26;
+
+/**
+ * f3148da1 Step 5 — the divisor DAYS used to value one encashed leave day in the leaver advisory (EA s.60E
+ * pay-in-lieu). Absent/default (calendar_month, cutoff_days, or no config) ⇒ the statutory 26-day ORP divisor,
+ * so `suggested = (basic / 26) × days` is byte-identical to before this feature. A configured divisor lets the
+ * org value encashment on a different basis:
+ *   - `custom_days`  → the configured fixed divisor (e.g. 22), falling back to 26 when unset
+ *   - `working_days` → the actual working days in the reference month, falling back to 26 when zero
+ * `calendar_month` / `cutoff_days` keep the statutory 26 (the encashment ORP is a fixed working-day divisor,
+ * not the calendar-day count the unpaid-leave path uses).
+ */
+export function encashmentDivisorDays(
+  config: PayrollPolicyConfig | null,
+  facts: { workingDays: number },
+): number {
+  const d = config?.leave?.encashmentDivisor;
+  if (d === 'custom_days') {
+    return config?.leave?.customDays && config.leave.customDays > 0 ? config.leave.customDays : ENCASHMENT_ORP_DIVISOR;
+  }
+  if (d === 'working_days') {
+    return facts.workingDays > 0 ? facts.workingDays : ENCASHMENT_ORP_DIVISOR;
+  }
+  return ENCASHMENT_ORP_DIVISOR;
 }
 
 /**

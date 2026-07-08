@@ -120,11 +120,8 @@ function configFromForm(fd: FormData, policyType: string): PayrollPolicyConfig {
     },
     leave: {
       unpaidLeaveDivisor: String(fd.get('unpaidLeaveDivisor') ?? 'calendar_month'),
-      unpaidTimeOffDivisor: String(fd.get('unpaidTimeOffDivisor') ?? 'calendar_month'),
       encashmentDivisor: String(fd.get('encashmentDivisor') ?? 'calendar_month'),
       customDays: numOrUndef(fd, 'leaveCustomDays'),
-      customHours: numOrUndef(fd, 'leaveCustomHours'),
-      customMinutes: numOrUndef(fd, 'leaveCustomMinutes'),
     },
     rounding: {
       earnings: String(fd.get('roundingEarnings') ?? 'none'),
