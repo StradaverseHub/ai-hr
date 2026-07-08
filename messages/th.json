@@ -1920,7 +1920,20 @@
         "saving": "กำลังบันทึก…",
         "saveAll": "บันทึกทั้งหมด",
         "otherTools": "เครื่องมืออื่น ๆ",
-        "back": "ย้อนกลับ"
+        "back": "ย้อนกลับ",
+        "selectedCount": "เลือกแล้ว {count} คน",
+        "clearSelection": "ล้างทั้งหมด",
+        "removeEmployee": "นำ {name} ออก",
+        "deptFilter": "แผนก",
+        "allDepartments": "ทุกแผนก",
+        "statusFilter": "สถานะ",
+        "allStatuses": "ทุกสถานะ",
+        "showingCapped": "แสดง {cap} รายการแรกจาก {total}",
+        "applyAllHint": "แต่ละแถวจะถูกบันทึกให้พนักงานที่เลือกทั้งหมด {count} คน",
+        "coverageGapHint": "พนักงานที่เลือกบางคนไม่อยู่ในรอบนี้: {names}",
+        "reviewEmployees": "พนักงาน ({count})",
+        "noSharedDraft": "ไม่มีรอบฉบับร่างที่ครอบคลุมพนักงานที่เลือกทั้งหมด",
+        "noEmployeesSelected": "โปรดเลือกพนักงานอย่างน้อยหนึ่งคน"
       },
       "tp1": {
         "title": "การลดหย่อน TP1",
@@ -1998,7 +2011,8 @@
         },
         "history": {
           "empty": "ไม่มีผลเงินเดือนที่ประมวลผลแล้วที่ตรงกับตัวกรองที่เลือก"
-        }
+        },
+        "exportCsv": "ส่งออก CSV"
       }
     },
     "setup": {

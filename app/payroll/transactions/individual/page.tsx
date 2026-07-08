@@ -50,6 +50,8 @@ export default async function IndividualTransactionPage({
     position: e.position,
     company: e.company,
     companyId: e.companyId,
+    // Derive employment status from termination (matches the View page convention) — the Step-1 status filter.
+    status: e.terminatedOn == null ? 'active' : 'ended',
   }));
   const wizardBatches: WizardBatch[] = draftBatches.map((b) => ({
     id: b.id,

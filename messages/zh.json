@@ -1920,7 +1920,20 @@
         "saving": "保存中…",
         "saveAll": "全部保存",
         "otherTools": "其他工具",
-        "back": "返回"
+        "back": "返回",
+        "selectedCount": "已选 {count} 人",
+        "clearSelection": "全部清除",
+        "removeEmployee": "移除 {name}",
+        "deptFilter": "部门",
+        "allDepartments": "所有部门",
+        "statusFilter": "状态",
+        "allStatuses": "所有状态",
+        "showingCapped": "显示前 {cap} 条，共 {total} 条",
+        "applyAllHint": "每一行都会记录到所选的全部 {count} 位员工。",
+        "coverageGapHint": "部分所选员工不在此批次中：{names}",
+        "reviewEmployees": "员工（{count}）",
+        "noSharedDraft": "没有草稿批次涵盖所有所选员工。",
+        "noEmployeesSelected": "请至少选择一位员工。"
       },
       "tp1": {
         "title": "TP1 减免",
@@ -1998,7 +2011,8 @@
         },
         "history": {
           "empty": "没有符合所选筛选条件的已处理薪资结果。"
-        }
+        },
+        "exportCsv": "导出 CSV"
       }
     },
     "setup": {

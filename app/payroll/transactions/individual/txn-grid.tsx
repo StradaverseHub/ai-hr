@@ -27,6 +27,8 @@ export type WizardEmployee = {
   position: string | null;
   company: string;
   companyId: string;
+  /** Derived employment status ('active' when not terminated, else 'ended') — the Step-1 status filter. */
+  status: 'active' | 'ended';
 };
 
 export type WizardBatch = {
@@ -78,10 +80,14 @@ export function TxnGrid({
   processHref: string;
 }) {
   const t = useTranslations('payroll.transactions.individual');
+  const tFixed = useTranslations('payroll.transactions.fixed');
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
   const [companyId, setCompanyId] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  // Multi-employee: the wizard now records the same grid for one OR many employees, all in one atomic save.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [period, setPeriod] = useState('');
   const [runType, setRunType] = useState('');
   const [batchId, setBatchId] = useState('');
@@ -91,13 +97,23 @@ export function TxnGrid({
   const [savedCount, setSavedCount] = useState<number | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const employee = useMemo(() => employees.find((e) => e.employmentId === employeeId) ?? null, [employees, employeeId]);
+  const byId = useMemo(() => new Map(employees.map((e) => [e.employmentId, e])), [employees]);
+  const selectedEmployees = useMemo(
+    () => selectedIds.map((id) => byId.get(id)).filter((e): e is WizardEmployee => e != null),
+    [selectedIds, byId],
+  );
+  // The whole selection is constrained to ONE company (a batch belongs to one company). The company of the
+  // first-selected employee anchors the selection; the list disables out-of-company rows below.
+  const selectionCompanyId = selectedEmployees[0]?.companyId ?? null;
 
-  // Draft batches in the employee's company that also include the employee in their scope (C3 + C4 UI filter).
+  // Draft batches in the selection's company that include EVERY selected employee in their scope
+  // (intersection — C3 + C4 UI filter). With ≥1 employee selected this is the batches all of them share.
   const eligibleBatches = useMemo(() => {
-    if (!employee) return [];
-    return batches.filter((b) => b.companyId === employee.companyId && batchIncludesEmployee(b, employee));
-  }, [batches, employee]);
+    if (selectedEmployees.length === 0 || selectionCompanyId == null) return [];
+    return batches.filter(
+      (b) => b.companyId === selectionCompanyId && selectedEmployees.every((e) => batchIncludesEmployee(b, e)),
+    );
+  }, [batches, selectedEmployees, selectionCompanyId]);
 
   const periods = useMemo(
     () => [...new Set(eligibleBatches.map((b) => b.payPeriod))].sort().reverse(),
@@ -113,19 +129,36 @@ export function TxnGrid({
     [eligibleBatches, period, runType],
   );
 
-  const searchResults = useMemo(() => {
+  // The chosen batch and any selected employees NOT covered by it (a coverage-gap hint on Step 2). A batch
+  // is only shown as eligible when it covers ALL selected employees, so with the guardrails this is empty;
+  // it is a defensive backstop that names anyone a stale selection would exclude.
+  const chosenBatch = useMemo(() => eligibleBatches.find((b) => b.id === batchId) ?? null, [eligibleBatches, batchId]);
+  const uncoveredEmployees = useMemo(
+    () => (chosenBatch ? selectedEmployees.filter((e) => !batchIncludesEmployee(chosenBatch, e)) : []),
+    [chosenBatch, selectedEmployees],
+  );
+
+  // Department options derive from the currently-visible (in-company) employee set — no extra query.
+  const departmentOptions = useMemo(() => {
+    const src = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
+    const seen = new Map<string, string>();
+    for (const e of src) if (e.departmentId && e.department) seen.set(e.departmentId, e.department);
+    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [employees, companyId]);
+
+  const CAP = 25;
+  const filteredEmployees = useMemo(() => {
     const q = query.trim().toLowerCase();
-    // Narrow to the chosen company BEFORE the name/number match and BEFORE the 25-row slice, so the cap
-    // counts only in-company rows — a large first company must never fill all 25 slots and hide a small
-    // selected company's people. This is view-only narrowing; the set is already access-fenced upstream.
-    const inCompany = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
-    const base = q
-      ? inCompany.filter(
-          (e) => e.name.toLowerCase().includes(q) || (e.employeeCode ?? '').toLowerCase().includes(q),
-        )
-      : inCompany;
-    return base.slice(0, 25);
-  }, [employees, query, companyId]);
+    // Narrow to company → department → status BEFORE the name/number match, then cap. The cap counts only
+    // rows that already pass every filter, so a large company never hides a small filtered result set.
+    let base = companyId ? employees.filter((e) => e.companyId === companyId) : employees;
+    if (deptFilter) base = base.filter((e) => e.departmentId === deptFilter);
+    if (statusFilter) base = base.filter((e) => e.status === statusFilter);
+    if (q) base = base.filter((e) => e.name.toLowerCase().includes(q) || (e.employeeCode ?? '').toLowerCase().includes(q));
+    return base;
+  }, [employees, query, companyId, deptFilter, statusFilter]);
+  const searchResults = useMemo(() => filteredEmployees.slice(0, CAP), [filteredEmployees]);
+  const capped = filteredEmployees.length > CAP;
 
   // Pre-select the sole company so single-company admins see no change (their one company is chosen for
   // them and the search behaves exactly as before).
@@ -133,19 +166,21 @@ export function TxnGrid({
     if (companies.length === 1) setCompanyId(companies[0].id);
   }, [companies]);
 
-  // Reset the selected employee when the company changes so a stale pick from another company can't carry
-  // forward. The employeeId effect below then unwinds period/run/batch, so this one line clears the chain.
+  // Reset the employee selection + dept filter when the company changes so stale picks from another company
+  // can't carry forward. The selection effect below then unwinds period/run/batch.
   useEffect(() => {
-    setEmployeeId('');
+    setSelectedIds([]);
+    setDeptFilter('');
   }, [companyId]);
 
-  // Reset every downstream selection when the chosen employee changes — a stale period/run/batch from a
-  // different employee (possibly a different company) must never leak forward.
+  // Reset every downstream selection when the chosen employee SET changes — a stale period/run/batch from a
+  // different selection (possibly a different company) must never leak forward.
+  const selectionKey = selectedIds.join(',');
   useEffect(() => {
     setPeriod('');
     setRunType('');
     setBatchId('');
-  }, [employeeId]);
+  }, [selectionKey]);
 
   // Reset the run/batch when the period changes; auto-resolve a single run.
   useEffect(() => {
@@ -167,8 +202,15 @@ export function TxnGrid({
     return { min: `${period}-01`, max: `${period}-${String(daysInMonth(y, m)).padStart(2, '0')}` };
   }, [period]);
 
-  const step1Valid = !!employeeId;
+  const step1Valid = selectedIds.length > 0;
   const step2Valid = !!batchId;
+
+  // Toggle one employee in/out of the selection. The whole selection is pinned to one company: once at least
+  // one employee is picked, employees in a different company are disabled in the list below.
+  const toggleEmployee = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const removeEmployee = (id: string) => setSelectedIds((prev) => prev.filter((x) => x !== id));
 
   const setRow = (i: number, patch: Partial<GridRow>) => {
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -227,7 +269,7 @@ export function TxnGrid({
       .map((r) => ({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, notes: r.notes }));
     const fd = new FormData();
     fd.set('batchId', batchId);
-    fd.set('employmentId', employeeId);
+    fd.set('employmentIds', JSON.stringify(selectedIds));
     fd.set('rows', JSON.stringify(payload));
     startTransition(async () => {
       const res: SaveGridResult = await saveIndividualTxnGridAction(fd);
@@ -272,21 +314,40 @@ export function TxnGrid({
       </div>
 
       <div className="p-4">
-        {/* ── Step 1 — Employee ── */}
+        {/* ── Step 1 — Employees (multi-select) ── */}
         {step === 0 && (
           <div className="space-y-4">
-            {/* Company pre-filter — narrows the employee list to one company before search. A leading
-                placeholder only when there's a real choice; a single company is auto-selected above. */}
-            <Field label={t('company')}>
-              <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={inputCls}>
-                {companies.length > 1 && <option value="">—</option>}
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {/* Filters — company / department / employment status narrow the list before the name/ID search.
+                A single company is auto-selected above; department options derive from the visible set. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label={t('company')}>
+                <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className={inputCls}>
+                  {companies.length > 1 && <option value="">—</option>}
+                  {companies.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('deptFilter')}>
+                <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className={inputCls}>
+                  <option value="">{t('allDepartments')}</option>
+                  {departmentOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('statusFilter')}>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={inputCls}>
+                  <option value="">{t('allStatuses')}</option>
+                  <option value="active">{tFixed('statusActive')}</option>
+                  <option value="ended">{tFixed('statusEnded')}</option>
+                </select>
+              </Field>
+            </div>
             <Field label={t('employeeSearch')}>
               <input
                 type="search"
@@ -296,52 +357,74 @@ export function TxnGrid({
                 className={inputCls}
               />
             </Field>
+
+            {/* Selected-employee chips (removable) — a running summary of the payees the grid will apply to. */}
+            {selectedEmployees.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {t('selectedCount', { count: selectedEmployees.length })}
+                </span>
+                {selectedEmployees.map((e) => (
+                  <span
+                    key={e.employmentId}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs text-foreground"
+                  >
+                    {e.name}
+                    <button
+                      type="button"
+                      onClick={() => removeEmployee(e.employmentId)}
+                      aria-label={t('removeEmployee', { name: e.name })}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds([])}
+                  className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  {t('clearSelection')}
+                </button>
+              </div>
+            )}
+
             <div className="max-h-72 divide-y divide-border overflow-y-auto rounded-md border border-border">
               {searchResults.length === 0 && (
                 <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noEmployees')}</p>
               )}
               {searchResults.map((e) => {
-                const active = e.employmentId === employeeId;
+                const checked = selectedIds.includes(e.employmentId);
+                // Once a company is anchored by the first pick (and no company filter is set), employees in a
+                // different company can't be added — a batch belongs to exactly one company.
+                const otherCompany =
+                  !checked && selectionCompanyId != null && e.companyId !== selectionCompanyId;
                 return (
-                  <button
+                  <label
                     key={e.employmentId}
-                    type="button"
-                    onClick={() => setEmployeeId(e.employmentId)}
-                    className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-muted ${
-                      active ? 'bg-primary/10' : ''
-                    }`}
+                    className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${
+                      otherCompany ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-muted'
+                    } ${checked ? 'bg-primary/10' : ''}`}
                   >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={otherCompany}
+                      onChange={() => toggleEmployee(e.employmentId)}
+                      className="size-4 shrink-0 accent-[var(--primary)]"
+                    />
                     <span className="min-w-0">
                       <span className="block truncate font-medium text-foreground">{e.name}</span>
                       <span className="block truncate text-xs text-muted-foreground">
                         {e.company} · {e.employeeCode ?? '—'} · {e.department ?? '—'} · {e.position ?? '—'}
                       </span>
                     </span>
-                    {active && <span className="shrink-0 text-primary">✓</span>}
-                  </button>
+                  </label>
                 );
               })}
             </div>
-            {employee && (
-              <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-4">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('empId')}</div>
-                  <div className="font-medium">{employee.employeeCode ?? '—'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('employee')}</div>
-                  <div className="font-medium">{employee.name}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('dept')}</div>
-                  <div className="font-medium">{employee.department ?? '—'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('position')}</div>
-                  <div className="font-medium">{employee.position ?? '—'}</div>
-                </div>
-              </div>
-            )}
+            {capped && <p className="text-xs text-muted-foreground">{t('showingCapped', { cap: CAP, total: filteredEmployees.length })}</p>}
           </div>
         )}
 
@@ -397,10 +480,15 @@ export function TxnGrid({
             )}
             {eligibleBatches.length === 0 && (
               <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                {t('noDraftForSelection')}{' '}
+                {selectedEmployees.length > 1 ? t('noSharedDraft') : t('noDraftForSelection')}{' '}
                 <a href={processHref} className="font-medium underline underline-offset-2">
                   {t('noDraftForSelectionLink')}
                 </a>
+              </p>
+            )}
+            {uncoveredEmployees.length > 0 && (
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                {t('coverageGapHint', { names: uncoveredEmployees.map((e) => e.name).join(', ') })}
               </p>
             )}
           </div>
@@ -410,6 +498,9 @@ export function TxnGrid({
         {step === 2 && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">{t('txnIntro')}</p>
+            {selectedEmployees.length > 1 && (
+              <p className="text-xs text-muted-foreground">{t('applyAllHint', { count: selectedEmployees.length })}</p>
+            )}
             <div className="overflow-x-auto rounded-md border border-border">
               <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -489,9 +580,13 @@ export function TxnGrid({
         {step === 3 && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 rounded-md border border-border bg-muted/30 p-3 text-sm sm:grid-cols-3">
-              <div>
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('employee')}</div>
-                <div className="font-medium">{employee?.name ?? '—'}</div>
+              <div className="col-span-2 sm:col-span-1">
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {t('reviewEmployees', { count: selectedEmployees.length })}
+                </div>
+                <div className="font-medium">
+                  {selectedEmployees.length ? selectedEmployees.map((e) => e.name).join(', ') : '—'}
+                </div>
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{t('monthLabel')}</div>
@@ -508,7 +603,9 @@ export function TxnGrid({
               </div>
             </div>
             <p className="text-sm text-muted-foreground">
-              {t('reviewCount', { count: rows.filter((r) => !isEmptyRow(r)).length })}
+              {t('reviewCount', {
+                count: rows.filter((r) => !isEmptyRow(r)).length * Math.max(selectedEmployees.length, 1),
+              })}
             </p>
             {saveError && (
               <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">

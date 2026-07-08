@@ -1920,7 +1920,20 @@
         "saving": "Saving…",
         "saveAll": "Save all",
         "otherTools": "Other tools",
-        "back": "Back"
+        "back": "Back",
+        "selectedCount": "{count} selected",
+        "clearSelection": "Clear all",
+        "removeEmployee": "Remove {name}",
+        "deptFilter": "Department",
+        "allDepartments": "All departments",
+        "statusFilter": "Status",
+        "allStatuses": "All statuses",
+        "showingCapped": "Showing first {cap} of {total}",
+        "applyAllHint": "Each row will be recorded for all {count} selected employees.",
+        "coverageGapHint": "Some selected employees are not in this run: {names}",
+        "reviewEmployees": "Employees ({count})",
+        "noSharedDraft": "No draft run covers all the selected employees.",
+        "noEmployeesSelected": "Select at least one employee."
       },
       "tp1": {
         "title": "TP1 Relief",
@@ -1998,7 +2011,8 @@
         },
         "history": {
           "empty": "No processed payroll results match the selected filters."
-        }
+        },
+        "exportCsv": "Export CSV"
       }
     },
     "setup": {

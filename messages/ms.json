@@ -1920,7 +1920,20 @@
         "saving": "Menyimpan…",
         "saveAll": "Simpan semua",
         "otherTools": "Alat lain",
-        "back": "Kembali"
+        "back": "Kembali",
+        "selectedCount": "{count} dipilih",
+        "clearSelection": "Kosongkan semua",
+        "removeEmployee": "Buang {name}",
+        "deptFilter": "Jabatan",
+        "allDepartments": "Semua jabatan",
+        "statusFilter": "Status",
+        "allStatuses": "Semua status",
+        "showingCapped": "Memaparkan {cap} pertama daripada {total}",
+        "applyAllHint": "Setiap baris akan direkodkan untuk kesemua {count} pekerja yang dipilih.",
+        "coverageGapHint": "Sesetengah pekerja yang dipilih tiada dalam larian ini: {names}",
+        "reviewEmployees": "Pekerja ({count})",
+        "noSharedDraft": "Tiada larian draf yang meliputi semua pekerja yang dipilih.",
+        "noEmployeesSelected": "Pilih sekurang-kurangnya seorang pekerja."
       },
       "tp1": {
         "title": "Pelepasan TP1",
@@ -1998,7 +2011,8 @@
         },
         "history": {
           "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih."
-        }
+        },
+        "exportCsv": "Eksport CSV"
       }
     },
     "setup": {

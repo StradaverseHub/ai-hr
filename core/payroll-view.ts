@@ -12,17 +12,22 @@
  *     self-scoped). A payslip row only exists AFTER generation, so draft batches are excluded by
  *     construction — no status predicate needed (same reasoning as core/read.ts taxRelief).
  *
- * SUBSTRATE NOTE (deliberate skip): every function in this module is a pure SELECT — read-only,
- * no domain event (CLAUDE.md substrate rule: events follow state-changing writes; there are none
- * here, and none should be added).
+ * SUBSTRATE NOTE (deliberate skip, WITH ONE CARVE-OUT): the three list* functions are pure SELECTs —
+ * read-only, no domain event (CLAUDE.md substrate rule: events follow state-changing writes; there are
+ * none there, and none should be added). The ONE exception is `exportIndividualTxnsCsv` below: an export
+ * is an auditable data egress (mirroring core/payroll.ts paymentSummaryForBatch), so it DOES append a
+ * `payroll.individual-txn.exported` DomainEvent recording who exported what filter set + row count.
  *
  * SCOPE FENCING: every function takes the caller's authorised `companyIds` (from scopedAdmin())
  * and applies `inArray(companyId, companyIds)` — the same application-level company fence
  * listEmployees uses. RLS isolates tenants only; company scope is an application concern, so an
  * EMPTY companyIds set fails CLOSED (returns no rows) rather than falling back to "all".
  */
+import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, inArray, isNull, like, lt, or } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { toCsv } from '../lib/csv';
 import {
   company,
   employment,
@@ -273,4 +278,110 @@ export function listProcessedPayslipsAcross(
       )
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName)),
   );
+}
+
+// ───────────────────── Individual Transaction History — CSV export ─────────────────────
+
+/**
+ * Export the Individual Transaction View (dated one-offs across all batches) as a CSV, honouring the same
+ * scope-guarded filters the on-screen inquiry uses (`listIndividualTxnsAcross`). The file opens cleanly in
+ * Excel. Admin/scope fencing is enforced by the route (scopedAdmin) + the fail-closed `companyIds` set here.
+ *
+ * SUBSTRATE: an export is auditable data egress, so this appends ONE `payroll.individual-txn.exported`
+ * DomainEvent (mirroring core/payroll.ts paymentSummaryForBatch). The aggregate is VIRTUAL (there is no
+ * report row), so `aggregateId` is a fresh UUID (domain_event.aggregate_id is UUID-typed) and the applied
+ * filter set + row count live in the payload. ADR-0030 Layer 0: references + counts only, no cleartext
+ * amounts in the event payload.
+ */
+export function exportIndividualTxnsCsv(
+  ctx: SessionContext,
+  p: { companyIds: string[]; year?: number; month?: number; employmentId?: string },
+): Promise<{ content: string; filename: string; rowCount: number }> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        batchStatus: payrollBatch.status,
+        txnDate: payrollIndividualTxn.txnDate,
+        employeeName: person.fullName,
+        employeeCode: employment.employeeCode,
+        company: company.legalName,
+        kind: payrollIndividualTxn.kind,
+        amount: payrollIndividualTxn.amount,
+        quantity: payrollIndividualTxn.quantity,
+        unit: payrollIndividualTxn.unit,
+        notes: payrollIndividualTxn.notes,
+      })
+      .from(payrollIndividualTxn)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        p.companyIds.length === 0
+          ? // fail closed — no scope, no rows (still emits a header-only CSV + a 0-row export event)
+            eq(payrollBatch.companyId, '00000000-0000-0000-0000-000000000000')
+          : and(
+              inArray(payrollBatch.companyId, p.companyIds),
+              periodFilter(p.year, p.month),
+              p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
+            ),
+      )
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+
+    const header = [
+      'Payroll Period',
+      'Cycle',
+      'Run',
+      'Batch Status',
+      'Transaction Date',
+      'Employee',
+      'Employee Code',
+      'Company',
+      'Item',
+      'Amount',
+      'Quantity',
+      'Unit',
+      'Remarks',
+    ];
+    const body = rows.map((r) => [
+      r.payPeriod,
+      r.runType,
+      r.runSeq,
+      r.batchStatus,
+      r.txnDate,
+      r.employeeName,
+      r.employeeCode ?? '',
+      r.company,
+      r.kind,
+      Number(r.amount).toFixed(2),
+      r.quantity ?? '',
+      r.unit ?? '',
+      r.notes ?? '',
+    ]);
+    const content = toCsv([header, ...body]);
+    const filename = `individual-transactions_${new Date().toISOString().slice(0, 10)}.csv`;
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-report',
+      aggregateId: randomUUID(),
+      eventType: 'payroll.individual-txn.exported',
+      actor: actorOf(ctx),
+      payload: {
+        report: 'individual-transaction-history',
+        rowCount: rows.length,
+        filters: {
+          companyIds: p.companyIds,
+          year: p.year ?? null,
+          month: p.month ?? null,
+          employmentId: p.employmentId ?? null,
+        },
+      },
+    });
+
+    return { content, filename, rowCount: rows.length };
+  });
 }

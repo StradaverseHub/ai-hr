@@ -1920,7 +1920,20 @@
         "saving": "Đang lưu…",
         "saveAll": "Lưu tất cả",
         "otherTools": "Công cụ khác",
-        "back": "Quay lại"
+        "back": "Quay lại",
+        "selectedCount": "Đã chọn {count}",
+        "clearSelection": "Xóa tất cả",
+        "removeEmployee": "Bỏ {name}",
+        "deptFilter": "Phòng ban",
+        "allDepartments": "Tất cả phòng ban",
+        "statusFilter": "Trạng thái",
+        "allStatuses": "Tất cả trạng thái",
+        "showingCapped": "Hiển thị {cap} đầu tiên trong tổng số {total}",
+        "applyAllHint": "Mỗi dòng sẽ được ghi cho tất cả {count} nhân viên đã chọn.",
+        "coverageGapHint": "Một số nhân viên đã chọn không có trong đợt này: {names}",
+        "reviewEmployees": "Nhân viên ({count})",
+        "noSharedDraft": "Không có đợt nháp nào bao gồm tất cả nhân viên đã chọn.",
+        "noEmployeesSelected": "Vui lòng chọn ít nhất một nhân viên."
       },
       "tp1": {
         "title": "Miễn giảm TP1",
@@ -1998,7 +2011,8 @@
         },
         "history": {
           "empty": "Không có kết quả lương đã xử lý nào khớp với bộ lọc đã chọn."
-        }
+        },
+        "exportCsv": "Xuất CSV"
       }
     },
     "setup": {

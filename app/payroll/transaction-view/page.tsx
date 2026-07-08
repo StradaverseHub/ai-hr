@@ -290,7 +290,21 @@ export default async function TransactionViewPage({
       {/* ── 2. Individual Transaction View (all batches, any status) ── */}
       {tab === 'individual' && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
+          <div className="flex items-center justify-between gap-3 pr-4">
+            <SectionHeader title={t('view.tabs.individual')} count={individualRows.length} />
+            {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
+            <a
+              href={`/payroll/transaction-view/export?${new URLSearchParams({
+                ...(companyId ? { companyId } : {}),
+                ...(employmentId ? { employmentId } : {}),
+                ...(year != null ? { year: String(year) } : {}),
+                ...(month != null ? { month: String(month) } : {}),
+              }).toString()}`}
+              className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              {t('view.exportCsv')}
+            </a>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
