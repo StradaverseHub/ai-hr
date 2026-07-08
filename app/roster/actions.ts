@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { assignShift, assignShiftBulk, clearRoster, generateRosterFromTemplate, setRestDay } from '@/core/roster';
+import { assignShift, assignShiftBulk, clearRoster, copyRoster, generateRosterFromTemplate, setRestDay } from '@/core/roster';
 import { accrueToil, ToilFirstScheduleConsentRequiredError } from '@/core/toil';
 
 export type CellResult = { ok: true } | { ok: false; error: string };
@@ -103,4 +103,28 @@ export async function generateRosterAction(formData: FormData) {
   redirect(
     `/roster?companyId=${companyId}&week=${from}&generated=${summary.employments}.${summary.workingRows}.${summary.restRows}`,
   );
+}
+
+/** R17 3e8350db — "Copy roster schedules from previous weeks or months". Copies every roster row from a
+ *  source window forward onto a target window that starts at `targetFrom`, preserving each row's day-offset.
+ *  Scope is the whole company's active employees (posted as employmentIds) so a manager copies exactly the
+ *  team they see on the grid; RLS still gates each write. Success lands on the target week with a banner. */
+export async function copyRosterAction(formData: FormData) {
+  const s = await getSession();
+  const companyId = String(formData.get('companyId') ?? '');
+  const targetFrom = String(formData.get('targetFrom') ?? '');
+  const employmentIds = formData.getAll('employmentIds').map(String).filter(Boolean);
+  let summary: { copied: number; sourceRows: number };
+  try {
+    summary = await copyRoster(s, {
+      sourceFrom: String(formData.get('sourceFrom') ?? ''),
+      sourceTo: String(formData.get('sourceTo') ?? ''),
+      targetFrom,
+      ...(employmentIds.length > 0 ? { employmentIds } : {}),
+    });
+  } catch (e) {
+    redirect(`/roster?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath('/roster');
+  redirect(`/roster?companyId=${companyId}&week=${targetFrom}&copied=${summary.copied}`);
 }

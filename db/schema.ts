@@ -571,6 +571,12 @@ export const employment = pgTable(
     defaultShiftId: uuid('default_shift_id').references((): AnyPgColumn => shift.id, {
       onDelete: 'set null',
     }),
+    // R17 3e8350db — the reporter's "Shift Type" field. 'fixed' = the person follows their profile Default
+    // shift (default_shift_id) every working day; 'roster' = no permanent shift on the profile, scheduled
+    // purely from /roster. The invariant (enforced in core/roster.ts assignEmployeeShift): fixed ⇒
+    // default_shift_id is set, roster ⇒ default_shift_id is null. Backfilled from default_shift_id in
+    // migration 0162; default 'roster' == today's "no default shift" behaviour. CHECK in ('fixed','roster').
+    shiftType: text('shift_type').$type<'fixed' | 'roster'>().notNull().default('roster'),
     terminatedOn: date('terminated_on'),
     // Termination classification (Wave 4A). Captured at termination for turnover analytics.
     terminationType: terminationTypeEnum('termination_type'),
@@ -1670,6 +1676,18 @@ export const travelRequest = pgTable(
 // is employer policy; the value feeds a typed pay-component (C5), never a sourced statutory rate.
 export type ShiftDifferential = { kind: 'percent' | 'flat_hourly' | 'flat_per_shift'; value: number };
 
+// R17 3e8350db — per-shift OT rule. The reporter's "OT Rules" template field. This is DELIBERATELY NOT a
+// per-shift multiplier: the 1.5×/2×/3× rates + the RM4,000 wage ceiling are statutory (EA 1955 s.60A) and
+// stay company-level (#overtime-rates) so a shift can never pay below the law. What a shift CAN configure is
+// the shape of its WORKDAY overtime accrual:
+//   • eligible=false      ⇒ this shift accrues no workday OT at all (e.g. a flexi/management shift).
+//   • minMinutes          ⇒ workday OT only starts counting once it exceeds this many minutes past normal
+//                           (a per-shift OT "block"; below it, no OT).
+//   • dailyCapMinutes     ⇒ cap on the workday OT minutes credited per day.
+// Rest-day / public-holiday premium (statutory) is untouched by this rule. NULL column ⇒ legacy behaviour
+// (eligible, no minimum, no cap).
+export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinutes?: number };
+
 // R7 Multi-Shift Phase 1: one break window inside a shift. 'HH:MM:SS', start < end (lexicographic order is
 // chronological), so a single break can never cross midnight — Phase 1 excludes overnight breaks. STORAGE-
 // ONLY this phase: the engine keeps reading the canonical break_minutes scalar (= Σ durations).
@@ -1727,6 +1745,16 @@ export const shift = pgTable(
     // drive generateRosterFromTemplate and behaves exactly as before.
     weeklyPattern: integer('weekly_pattern').array(),
     crossesMidnight: boolean('crosses_midnight').notNull().default(false),
+    // R17 3e8350db — per-shift grace windows (minutes). NULL ⇒ inherit the company-policy behaviour
+    // (core/attendance.ts scheduleFor): late = policy grace applied to the shift start, early-leave = the
+    // shift midpoint. When set, lateness is measured from start + lateGraceMinutes and early-leave from
+    // end − earlyLeaveGraceMinutes. CHECK ≥ 0 lives in migration 0162.
+    lateGraceMinutes: integer('late_grace_minutes'),
+    earlyLeaveGraceMinutes: integer('early_leave_grace_minutes'),
+    // R17 3e8350db — the reporter's per-shift "OT Rules". Shapes WORKDAY overtime accrual (eligibility /
+    // minimum block / daily cap); statutory multipliers stay company-level. NULL ⇒ legacy behaviour. See the
+    // ShiftOtRule type above.
+    otRule: jsonb('ot_rule').$type<ShiftOtRule | null>(),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),

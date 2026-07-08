@@ -6,7 +6,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation } from '@/core/comp';
-import { assignDefaultShift } from '@/core/roster';
+import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
@@ -172,16 +172,19 @@ export async function setLocationAction(formData: FormData) {
   redirect(`/admin/personnel/${employmentId}?toast=Saved`);
 }
 
-/** ec4cbf63 — assign (or clear, when shiftId is empty) the employee's DEFAULT shift. Mirrors the payroll-
- *  policy assignPolicyAction shape: admin-gated, real actor via the session, localized toast on success and
- *  the raw service message via ?error= on failure. The engine uses the default shift on any date without a
- *  dated roster row (roster row → default shift → company policy). */
+/** R17 3e8350db — set the employee's shift ARRANGEMENT (the reporter's "Shift Type"): Fixed (a default
+ *  shift is required and followed every working day) or Roster (no default shift; scheduled from /roster).
+ *  Admin-gated, real actor via the session; assignEmployeeShift enforces the fixed⇒shift-required /
+ *  roster⇒shift-cleared invariant so shift_type and default_shift_id never contradict. Localized toast on
+ *  success, raw service message via ?error= on failure. */
 export async function setDefaultShiftAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  const rawType = String(formData.get('shiftType') ?? '').trim();
+  const shiftType: 'fixed' | 'roster' = rawType === 'fixed' ? 'fixed' : 'roster';
   const rawShift = String(formData.get('shiftId') ?? '').trim();
   try {
-    await assignDefaultShift(s, { employmentId, shiftId: rawShift || null });
+    await assignEmployeeShift(s, { employmentId, shiftType, shiftId: rawShift || null });
   } catch (e) {
     redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
   }

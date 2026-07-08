@@ -65,7 +65,14 @@
     "generated": "已为 {employees} 名员工生成排班——{working} 条工作日记录和 {rest} 条休息日记录。",
     "generateHint": "按班次的每周模式填满范围内的每一天：工作日写入班次记录，其余日期写入明确的休息日，公司政策不会悄悄覆盖该模式。重复生成会覆盖相同日期。",
     "manageShiftsHint": "班次排班在考勤政策中管理；员工的常规班次在其个人档案中设置为默认班次。特定日期的例外请使用排班表。",
-    "manageShiftsLink": "管理班次排班"
+    "manageShiftsLink": "管理班次排班",
+    "copyTitle": "复制排班",
+    "copySource": "复制自",
+    "copyTargetStart": "粘贴起始",
+    "copyButton": "复制排班",
+    "copyHint": "将源日期的每个班次和休息日复制到目标日期，保持每天的位置。重新运行会覆盖相同的目标日期。",
+    "copiedDone": "已将 {rows} 条排班记录复制到目标日期。",
+    "copiedEmpty": "源日期中没有可复制的排班记录。"
   },
   "common": {
     "appName": "AI HR",
@@ -104,7 +111,7 @@
     "aiConfig": "AI",
     "notifications": "通知",
     "analytics": "分析",
-    "attendancePolicy": "考勤政策",
+    "attendancePolicy": "班次设置",
     "toilPolicy": "调休",
     "leaveApproval": "审批链",
     "feedback": "反馈",
@@ -115,9 +122,9 @@
     "personnelAdmin": "员工（管理）",
     "securityPermission": "安全与权限",
     "attendanceAllowance": "出勤津贴",
-    "attendanceRecords": "考勤记录",
+    "attendanceRecords": "记录",
     "clockingLocation": "打卡地点",
-    "attendanceImport": "考勤导入"
+    "attendanceImport": "导入"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -518,7 +525,13 @@
       "defaultShiftNone": "无 — 使用公司默认排班",
       "defaultShiftSave": "保存",
       "defaultShiftHint": "该员工通常工作的班次。用于没有特定排班记录的日期 — 排班表可按日期覆盖此班次；加班按该班次的工时计算。",
-      "defaultShiftAssigned": "默认班次已保存"
+      "defaultShiftAssigned": "默认班次已保存",
+      "shiftTypeTitle": "班次安排",
+      "shiftTypeLabel": "班次类型",
+      "shiftTypeFixed": "固定班次",
+      "shiftTypeRoster": "轮班",
+      "shiftTypeHint": "固定班次：员工每个工作日都遵循所选的默认班次。轮班：此处不设固定班次——员工完全由排班表安排。带日期的排班始终优先于默认班次；加班和迟到按当天适用的班次计算。",
+      "defaultShiftChoose": "选择班次…"
     },
     "import": {
       "title": "导入员工",
@@ -1590,7 +1603,7 @@
       "otRestDayExcessMultiplier": "休息日加班超时费率（× 时薪）",
       "otHolidayExcessMultiplier": "公共假期加班超时费率（× 时薪）",
       "secCeilings": "缴费上限",
-      "ceilingsNote": "加班费率在考勤模块中配置（考勤政策 → 加班费率），而非此处。",
+      "ceilingsNote": "加班费率在考勤模块中配置（班次设置 → 加班费率），而非此处。",
       "bandsEditWarning": "已核实的 PERKESO 缴费表 — 仅在已知的法定变更时才编辑。工资区间必须递增且不得有断层，金额为固定的令吉数值，而非百分比。若编辑有误，可将此版本归档以恢复内置缴费表。",
       "socsoCat1": "第 1 类 — 工伤 + 残疾（60 岁以下）",
       "socsoCat2": "第 2 类 — 仅工伤（60 岁及以上／外籍，雇主承担）",
@@ -2512,7 +2525,7 @@
       "customMessagePlaceholder": "留空则使用默认消息",
       "customMessageHelp": "当此假期类型因回溯天数过多被拦截时向员工显示。最多 500 个字符。留空则保留标准消息。仅适用于此假期类型。",
       "halfDayDeductionTitle": "半天扣除",
-      "halfDayDeductionHelp": "控制员工在“半天”工作日程日（在考勤政策页面设置）请假时扣除多少天。关闭：扣除 0.5 天。开启：扣除 1.0 天。全天工作日不受影响。",
+      "halfDayDeductionHelp": "控制员工在“半天”工作日程日（在班次设置页面设置）请假时扣除多少天。关闭：扣除 0.5 天。开启：扣除 1.0 天。全天工作日不受影响。",
       "halfDayDeductionFrozenNote": "仅适用于新申请 — 已提交或已批准的请假将保留提交时显示的扣除金额。",
       "halfDayDeductionOn": "当前已开启 — 扣除 1.0 天",
       "halfDayDeductionOff": "当前已关闭 — 扣除 0.5 天",
@@ -2785,8 +2798,8 @@
       "turnOff": "关闭 AI 起草"
     },
     "attendancePolicy": {
-      "pageTitle": "考勤政策",
-      "pageDescription": "当员工某天没有排班时，各公司采用的默认工作时间表。加班按此排定工时之上计算；已保存的排班优先。",
+      "pageTitle": "班次设置",
+      "pageDescription": "维护贵机构的班次模板，以及当员工某日期没有排班时各公司回退使用的默认工作时间表。加班按超出排定工时计算；已保存的排班优先。",
       "noCompanies": "范围内没有公司。",
       "usingDefaults": "使用默认值",
       "netScheduled": "净排定 {hours}",
@@ -2859,7 +2872,24 @@
       "otNotes": "备注",
       "otPublish": "发布加班费率",
       "otCancel": "取消",
-      "colCompany": "公司"
+      "colCompany": "公司",
+      "createInCompanies": "创建到公司",
+      "duplicateTo": "复制到…",
+      "duplicateToTitle": "将此班次复制到公司",
+      "duplicateToConfirm": "复制到所选",
+      "lateGraceLabel": "迟到宽限（分钟）",
+      "earlyLeaveGraceLabel": "早退宽限（分钟）",
+      "graceInherit": "使用政策默认",
+      "lateGraceBadge": "迟到宽限 {minutes} 分钟",
+      "earlyLeaveGraceBadge": "早退宽限 {minutes} 分钟",
+      "otRulesLabel": "加班规则",
+      "otEligibleLabel": "可计加班",
+      "otMinLabel": "最低加班（分钟）",
+      "otCapLabel": "每日加班上限（分钟）",
+      "otNone": "无",
+      "otRulesHint": "设定此班次工作日的加班方式：取消勾选可停用加班，或设定计入加班前的最低时长及每日上限。法定倍率（1.5×/2×/3× 及 RM4,000 上限）仍在上方的加班费率中设定。",
+      "deleteShift": "删除",
+      "deleteShiftHint": "永久删除未使用的班次。被排班或员工默认班次引用的班次须改为归档。"
     },
     "toilPolicy": {
       "pageTitle": "调休",

@@ -910,6 +910,9 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         payrollPolicyStatus: payrollPolicy.status,
         // ec4cbf63: the employee's DEFAULT shift (null = company default schedule) — profile assignment.
         defaultShiftId: employment.defaultShiftId,
+        // R17 3e8350db: the shift ARRANGEMENT — 'fixed' (follows defaultShiftId) or 'roster' (scheduled
+        // from /roster only). Kept in lockstep with defaultShiftId by assignEmployeeShift.
+        shiftType: employment.shiftType,
         // ADR-0054: the location on the employee's CURRENT open assignment (null = none).
         locationId: location.id,
         locationCode: location.code,
