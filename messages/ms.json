@@ -2794,7 +2794,32 @@
       "itemNameLabel": "Nama item",
       "itemArchiveConfirmTitle": "Arkibkan item tuntutan?",
       "itemArchiveConfirmDescription": "Ia tidak lagi boleh dipilih untuk tuntutan baharu. Tuntutan sedia ada mengekalkannya.",
-      "itemArchiveConfirmLabel": "Arkib"
+      "itemArchiveConfirmLabel": "Arkib",
+      "descriptionLabel": "Penerangan",
+      "maxReceiptAgeLabel": "Umur maksimum resit (hari)",
+      "maxReceiptAgeHint": "45 (lalai)",
+      "itemCount": "{count} item",
+      "delete": "Padam",
+      "deleteConfirmTitle": "Padam jenis tuntutan?",
+      "deleteConfirmDescription": "Ini memadam jenis tuntutan serta sub-kategori dan hadnya secara kekal. Hanya boleh jika tiada tuntutan pernah menggunakannya — jika tidak, arkibkan sebaliknya.",
+      "deleteConfirmLabel": "Padam",
+      "limitsTitle": "Had Tuntutan",
+      "limitsSubtitle": "Konfigurasi kelayakan dan had tuntutan mengikut Gred Jawatan — menggunakan semula gred yang diselenggara untuk Cuti.",
+      "limitsMovedHint": "Had tuntutan (mengikut Gred Jawatan) dikonfigurasi pada tab Had Tuntutan.",
+      "gradeLabel": "Gred Jawatan",
+      "allGrades": "Semua gred (lalai)",
+      "claimTypeLabel": "Jenis Tuntutan",
+      "monthlyLimitLabel": "Had bulanan",
+      "lifetimeLimitLabel": "Had seumur hidup",
+      "maxClaimsPerYearLabel": "Tuntutan / tahun",
+      "unlimitedToggle": "Tanpa had (tiada had untuk gred ini)",
+      "approvalRequiredLabel": "Kelulusan diperlukan",
+      "approvalAlwaysYes": "Ya",
+      "saveLimit": "Simpan had",
+      "noLimitRows": "Tiada had tuntutan dikonfigurasi lagi.",
+      "unlimitedBadge": "Tanpa had",
+      "newLimitTitle": "Tetapkan had tuntutan",
+      "newLimitHint": "Pilih gred dan jenis tuntutan, kemudian tetapkan had. Menyimpan merekod versi baharu berkuat kuasa."
     },
     "reimbursements": {
       "back": "Konfigurasi tuntutan",
@@ -2998,6 +3023,11 @@
       "approval": "Aliran Kelulusan",
       "payroll": "Berkaitan Gaji",
       "audit": "Audit"
+    },
+    "claimsTabs": {
+      "types": "Jenis Tuntutan",
+      "limits": "Had Tuntutan",
+      "reimbursements": "Bayaran Balik"
     }
   },
   "topbar": {
@@ -3410,7 +3440,16 @@
     "distanceLabel": "Jarak (km)",
     "computedAmount": "Jumlah dikira",
     "attachmentHint": "PDF/JPG/PNG, maks 10MB",
-    "remarksLabel": "Catatan"
+    "remarksLabel": "Catatan",
+    "balanceTitle": "Baki anda",
+    "annualLimit": "Had tahunan",
+    "alreadyClaimed": "Sudah dituntut",
+    "remainingBalance": "Baki berbaki",
+    "balanceAfter": "Baki selepas tuntutan ini",
+    "monthlyRemaining": "Baki bulan ini",
+    "perClaimCap": "Had setiap tuntutan",
+    "claimsLeftThisYear": "Tuntutan berbaki tahun ini",
+    "unlimitedBadge": "Tiada had"
   },
   "analytics": {
     "title": "Analitik HR",

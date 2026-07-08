@@ -2794,7 +2794,32 @@
       "itemNameLabel": "Tên hạng mục",
       "itemArchiveConfirmTitle": "Lưu trữ hạng mục yêu cầu?",
       "itemArchiveConfirmDescription": "Sẽ không thể chọn cho yêu cầu mới. Các yêu cầu hiện có vẫn giữ nó.",
-      "itemArchiveConfirmLabel": "Lưu trữ"
+      "itemArchiveConfirmLabel": "Lưu trữ",
+      "descriptionLabel": "Mô tả",
+      "maxReceiptAgeLabel": "Tuổi hóa đơn tối đa (ngày)",
+      "maxReceiptAgeHint": "45 (mặc định)",
+      "itemCount": "{count} mục",
+      "delete": "Xóa",
+      "deleteConfirmTitle": "Xóa loại yêu cầu?",
+      "deleteConfirmDescription": "Thao tác này xóa vĩnh viễn loại yêu cầu cùng các danh mục con và hạn mức. Chỉ có thể thực hiện khi chưa từng có yêu cầu nào sử dụng — nếu không hãy lưu trữ thay thế.",
+      "deleteConfirmLabel": "Xóa",
+      "limitsTitle": "Hạn mức yêu cầu",
+      "limitsSubtitle": "Cấu hình điều kiện và hạn mức yêu cầu theo Bậc công việc — tái sử dụng các bậc đã duy trì cho Nghỉ phép.",
+      "limitsMovedHint": "Hạn mức yêu cầu (theo Bậc công việc) được cấu hình trong tab Hạn mức yêu cầu.",
+      "gradeLabel": "Bậc công việc",
+      "allGrades": "Tất cả các bậc (mặc định)",
+      "claimTypeLabel": "Loại yêu cầu",
+      "monthlyLimitLabel": "Hạn mức hàng tháng",
+      "lifetimeLimitLabel": "Hạn mức trọn đời",
+      "maxClaimsPerYearLabel": "Số yêu cầu / năm",
+      "unlimitedToggle": "Không giới hạn (không có hạn mức cho bậc này)",
+      "approvalRequiredLabel": "Cần phê duyệt",
+      "approvalAlwaysYes": "Có",
+      "saveLimit": "Lưu hạn mức",
+      "noLimitRows": "Chưa cấu hình hạn mức yêu cầu nào.",
+      "unlimitedBadge": "Không giới hạn",
+      "newLimitTitle": "Đặt hạn mức yêu cầu",
+      "newLimitHint": "Chọn bậc và loại yêu cầu, rồi đặt hạn mức. Việc lưu sẽ ghi lại một phiên bản có hiệu lực mới."
     },
     "reimbursements": {
       "back": "Cấu hình khoản chi",
@@ -2998,6 +3023,11 @@
       "approval": "Quy trình phê duyệt",
       "payroll": "Liên quan bảng lương",
       "audit": "Kiểm toán"
+    },
+    "claimsTabs": {
+      "types": "Loại yêu cầu",
+      "limits": "Hạn mức yêu cầu",
+      "reimbursements": "Hoàn trả"
     }
   },
   "topbar": {
@@ -3410,7 +3440,16 @@
     "distanceLabel": "Quãng đường (km)",
     "computedAmount": "Số tiền tính toán",
     "attachmentHint": "PDF/JPG/PNG, tối đa 10MB",
-    "remarksLabel": "Ghi chú"
+    "remarksLabel": "Ghi chú",
+    "balanceTitle": "Số dư của bạn",
+    "annualLimit": "Hạn mức hàng năm",
+    "alreadyClaimed": "Đã yêu cầu",
+    "remainingBalance": "Số dư còn lại",
+    "balanceAfter": "Số dư sau yêu cầu này",
+    "monthlyRemaining": "Còn lại tháng này",
+    "perClaimCap": "Hạn mức mỗi yêu cầu",
+    "claimsLeftThisYear": "Số yêu cầu còn lại năm nay",
+    "unlimitedBadge": "Không giới hạn"
   },
   "analytics": {
     "title": "Phân tích nhân sự",

@@ -13,26 +13,24 @@ const badge = {
   muted:
     'rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground',
 };
-const rm = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
 
-type RateConfig =
-  | { kind: 'receipt' }
-  | { kind: 'mileage_flat'; ratePerKm: number }
-  | { kind: 'fixed_allowance'; amount: number };
-
-/** One claim type as an expandable row: rename + taxable/receipt toggles + effective-dated budget + rate
- *  config + the dependent Claim Items sub-list. */
+/**
+ * One claim type as an expandable row — MASTER DATA ONLY (ccbd0508): rename, description, receipt rules
+ * (required + per-type max receipt age), the dependent Claim Items sub-list, and Archive / Delete. All limit
+ * and rate configuration moved to the Claim Limits tab (per Job-Grade), so this panel is a clean catalog.
+ */
 export function ClaimTypePanel({
   id,
   code,
   name,
+  description,
   defaultTaxable,
   requiresReceipt,
-  policy,
+  maxReceiptAgeDays,
   items,
   updateAction,
   archiveAction,
-  setPolicyAction,
+  deleteAction,
   createItemAction,
   updateItemAction,
   archiveItemAction,
@@ -40,23 +38,20 @@ export function ClaimTypePanel({
   id: string;
   code: string;
   name: string;
+  description: string | null;
   defaultTaxable: boolean;
   requiresReceipt: boolean;
-  policy: { annualBudget: number | null; perClaimCap: number | null; rateConfig: RateConfig | null; validFrom: string } | null;
+  maxReceiptAgeDays: number | null;
   items: { id: string; code: string; name: string }[];
   updateAction: Action;
   archiveAction: Action;
-  setPolicyAction: Action;
+  deleteAction: Action;
   createItemAction: Action;
   updateItemAction: Action;
   archiveItemAction: Action;
 }) {
   const t = useTranslations('admin.claims');
   const [expanded, setExpanded] = useState(false);
-  const [rateKind, setRateKind] = useState<RateConfig['kind']>(policy?.rateConfig?.kind ?? 'receipt');
-  const today = new Date().toISOString().slice(0, 10);
-  const ratePerKm = policy?.rateConfig?.kind === 'mileage_flat' ? policy.rateConfig.ratePerKm : '';
-  const fixedAmount = policy?.rateConfig?.kind === 'fixed_allowance' ? policy.rateConfig.amount : '';
 
   return (
     <li>
@@ -74,61 +69,36 @@ export function ClaimTypePanel({
           <span className="font-mono text-xs text-muted-foreground">{code}</span>
           <span className={defaultTaxable ? badge.amber : badge.muted}>{defaultTaxable ? t('taxable') : t('nonTaxable')}</span>
           {requiresReceipt && <span className={badge.muted}>{t('receipt')}</span>}
+          {items.length > 0 && <span className={badge.muted}>{t('itemCount', { count: items.length })}</span>}
         </button>
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {policy?.annualBudget != null ? `${t('budget')} ${rm(policy.annualBudget)}/yr` : t('noBudget')}
-        </span>
       </div>
 
       {expanded && (
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
-          {/* type-level edit */}
-          <form action={updateAction} className="flex flex-wrap items-end gap-3 rounded-lg bg-background p-3">
+          {/* type-level edit — master data only (no limits) */}
+          <form action={updateAction} className="grid gap-3 rounded-lg bg-background p-3 sm:grid-cols-2">
             <input type="hidden" name="id" value={id} />
             <Field label={t('nameLabel')}>
-              <input name="name" defaultValue={name} className={`${inputCls} w-52`} />
+              <input name="name" defaultValue={name} className={`${inputCls} w-full`} />
             </Field>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="defaultTaxable" defaultChecked={defaultTaxable} className="size-4" />
-              {t('defaultTaxableLabel')}
+            <Field label={t('maxReceiptAgeLabel')}>
+              <input name="maxReceiptAgeDays" type="number" min="1" step="1" placeholder={t('maxReceiptAgeHint')} defaultValue={maxReceiptAgeDays ?? ''} className={`${inputCls} w-full`} />
+            </Field>
+            <label className="flex flex-col gap-1.5 sm:col-span-2">
+              <span className="text-xs font-medium text-muted-foreground">{t('descriptionLabel')}</span>
+              <textarea name="description" rows={2} defaultValue={description ?? ''} className={inputCls} />
             </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="requiresReceipt" defaultChecked={requiresReceipt} className="size-4" />
-              {t('requiresReceiptLabel')}
-            </label>
-            <Button type="submit" size="sm">{t('save')}</Button>
-          </form>
-
-          {/* budget + rate config (effective-dated — one append-only policy version) */}
-          <form action={setPolicyAction} className="flex flex-wrap items-end gap-3 rounded-lg bg-background p-3">
-            <input type="hidden" name="claimTypeId" value={id} />
-            <Field label={t('annualBudgetLabel')}>
-              <input name="annualBudget" type="number" min="0" step="0.01" placeholder={t('unlimited')} defaultValue={policy?.annualBudget ?? ''} className={`${inputCls} w-32`} />
-            </Field>
-            <Field label={t('perClaimCapLabel')}>
-              <input name="perClaimCap" type="number" min="0" step="0.01" placeholder={t('noCap')} defaultValue={policy?.perClaimCap ?? ''} className={`${inputCls} w-32`} />
-            </Field>
-            <Field label={t('effectiveFromLabel')}>
-              <input name="effectiveFrom" type="date" required defaultValue={today} className={inputCls} />
-            </Field>
-            <Field label={t('rateKindLabel')}>
-              <select name="rateKind" value={rateKind} onChange={(e) => setRateKind(e.target.value as RateConfig['kind'])} className={`${inputCls} w-44`}>
-                <option value="receipt">{t('rateReceipt')}</option>
-                <option value="mileage_flat">{t('rateMileageFlat')}</option>
-                <option value="fixed_allowance">{t('rateFixed')}</option>
-              </select>
-            </Field>
-            {rateKind === 'mileage_flat' && (
-              <Field label={t('ratePerKmLabel')}>
-                <input name="ratePerKm" type="number" min="0" step="0.01" defaultValue={ratePerKm} className={`${inputCls} w-28`} />
-              </Field>
-            )}
-            {rateKind === 'fixed_allowance' && (
-              <Field label={t('fixedAmountLabel')}>
-                <input name="fixedAmount" type="number" min="0" step="0.01" defaultValue={fixedAmount} className={`${inputCls} w-28`} />
-              </Field>
-            )}
-            <Button type="submit" size="sm">{t('setBudget')}</Button>
+            <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="defaultTaxable" defaultChecked={defaultTaxable} className="size-4" />
+                {t('defaultTaxableLabel')}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="requiresReceipt" defaultChecked={requiresReceipt} className="size-4" />
+                {t('requiresReceiptLabel')}
+              </label>
+              <Button type="submit" size="sm" className="ml-auto">{t('save')}</Button>
+            </div>
           </form>
 
           {/* dependent Claim Items sub-list */}
@@ -168,12 +138,18 @@ export function ClaimTypePanel({
             </form>
           </div>
 
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{t('typeLabel')}</span>
             <form action={archiveAction}>
               <input type="hidden" name="id" value={id} />
               <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('archiveConfirmTitle')} description={t('archiveConfirmDescription')} confirmLabel={t('archiveConfirmLabel')}>
                 {t('archive')}
+              </ConfirmSubmit>
+            </form>
+            <form action={deleteAction}>
+              <input type="hidden" name="id" value={id} />
+              <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('deleteConfirmTitle')} description={t('deleteConfirmDescription')} confirmLabel={t('deleteConfirmLabel')}>
+                {t('delete')}
               </ConfirmSubmit>
             </form>
           </div>

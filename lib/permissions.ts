@@ -212,7 +212,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/claims',
     labelKey: 'nav.claimsConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/claims', '/admin/claims/reimbursements'],
+    // ccbd0508: Claim config split into route-based tabs — Types (/admin/claims), Limits (per Job-Grade),
+    // Reimbursements. All requireAdmin (the same guard the single page used before).
+    routes: ['/admin/claims', '/admin/claims/limits', '/admin/claims/reimbursements'],
   },
   { screenKey: 'loans', href: '/admin/loans', labelKey: 'admin.users.screen.loans', guard: 'requireAdmin', routes: ['/admin/loans'] },
   // ── Payroll (scopedAdmin/requireAdmin → hr_admin + super_admin; partners are redirected today) ──

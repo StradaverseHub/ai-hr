@@ -2,6 +2,7 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { listReimbursementsDue } from '@/core/claims';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
+import { ClaimsTabs } from '@/components/claims-tabs';
 import { markReimbursementsPaidAction } from './actions';
 
 /** Approved NON-taxable claims awaiting an off-cycle reimbursement: review, export a bank-upload CSV,
@@ -38,6 +39,7 @@ export default async function ReimbursementsPage({
           ) : undefined
         }
       />
+      <ClaimsTabs active="reimbursements" />
       <ErrorBanner message={error} />
 
       <Card className="overflow-hidden">

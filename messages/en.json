@@ -2794,7 +2794,32 @@
       "itemNameLabel": "Item name",
       "itemArchiveConfirmTitle": "Archive claim item?",
       "itemArchiveConfirmDescription": "It will no longer be selectable on new claims. Existing claims keep it.",
-      "itemArchiveConfirmLabel": "Archive"
+      "itemArchiveConfirmLabel": "Archive",
+      "descriptionLabel": "Description",
+      "maxReceiptAgeLabel": "Max receipt age (days)",
+      "maxReceiptAgeHint": "45 (default)",
+      "itemCount": "{count} items",
+      "delete": "Delete",
+      "deleteConfirmTitle": "Delete claim type?",
+      "deleteConfirmDescription": "This permanently deletes the claim type and its sub-categories and limits. Only possible when no claims have ever used it — otherwise archive it instead.",
+      "deleteConfirmLabel": "Delete",
+      "limitsTitle": "Claim Limits",
+      "limitsSubtitle": "Configure claim eligibility and limits per Job Grade — reusing the grades already maintained for Leave.",
+      "limitsMovedHint": "Claim limits (per Job Grade) are configured on the Claim Limits tab.",
+      "gradeLabel": "Job Grade",
+      "allGrades": "All grades (default)",
+      "claimTypeLabel": "Claim Type",
+      "monthlyLimitLabel": "Monthly limit",
+      "lifetimeLimitLabel": "Lifetime limit",
+      "maxClaimsPerYearLabel": "Claims / year",
+      "unlimitedToggle": "Unlimited (no limits for this grade)",
+      "approvalRequiredLabel": "Approval required",
+      "approvalAlwaysYes": "Yes",
+      "saveLimit": "Save limit",
+      "noLimitRows": "No claim limits configured yet.",
+      "unlimitedBadge": "Unlimited",
+      "newLimitTitle": "Set a claim limit",
+      "newLimitHint": "Choose a grade and claim type, then set the limits. Saving records a new effective-dated version."
     },
     "reimbursements": {
       "back": "Claims configuration",
@@ -2998,6 +3023,11 @@
       "approval": "Approval Workflow",
       "payroll": "Payroll Related",
       "audit": "Audit"
+    },
+    "claimsTabs": {
+      "types": "Claim Types",
+      "limits": "Claim Limits",
+      "reimbursements": "Reimbursements"
     }
   },
   "topbar": {
@@ -3410,7 +3440,16 @@
     "distanceLabel": "Distance (km)",
     "computedAmount": "Computed amount",
     "attachmentHint": "PDF/JPG/PNG, max 10MB",
-    "remarksLabel": "Remarks"
+    "remarksLabel": "Remarks",
+    "balanceTitle": "Your balance",
+    "annualLimit": "Annual limit",
+    "alreadyClaimed": "Already claimed",
+    "remainingBalance": "Remaining balance",
+    "balanceAfter": "Balance after this claim",
+    "monthlyRemaining": "Remaining this month",
+    "perClaimCap": "Per-claim cap",
+    "claimsLeftThisYear": "Claims left this year",
+    "unlimitedBadge": "No limit"
   },
   "analytics": {
     "title": "HR analytics",

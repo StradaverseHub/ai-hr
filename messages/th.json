@@ -2794,7 +2794,32 @@
       "itemNameLabel": "ชื่อรายการ",
       "itemArchiveConfirmTitle": "เก็บรายการเบิกเข้าคลังหรือไม่?",
       "itemArchiveConfirmDescription": "จะไม่สามารถเลือกในการเบิกใหม่ได้อีก รายการเบิกเดิมยังคงไว้",
-      "itemArchiveConfirmLabel": "เก็บเข้าคลัง"
+      "itemArchiveConfirmLabel": "เก็บเข้าคลัง",
+      "descriptionLabel": "คำอธิบาย",
+      "maxReceiptAgeLabel": "อายุใบเสร็จสูงสุด (วัน)",
+      "maxReceiptAgeHint": "45 (ค่าเริ่มต้น)",
+      "itemCount": "{count} รายการ",
+      "delete": "ลบ",
+      "deleteConfirmTitle": "ลบประเภทการเบิก?",
+      "deleteConfirmDescription": "การดำเนินการนี้จะลบประเภทการเบิกพร้อมหมวดหมู่ย่อยและวงเงินอย่างถาวร ทำได้เฉพาะเมื่อไม่เคยมีการเบิกใช้ประเภทนี้เท่านั้น — มิฉะนั้นให้เก็บถาวรแทน",
+      "deleteConfirmLabel": "ลบ",
+      "limitsTitle": "วงเงินการเบิก",
+      "limitsSubtitle": "กำหนดสิทธิ์และวงเงินการเบิกตามระดับตำแหน่ง — โดยใช้ระดับที่ดูแลไว้สำหรับการลา",
+      "limitsMovedHint": "วงเงินการเบิก (ตามระดับตำแหน่ง) กำหนดในแท็บวงเงินการเบิก",
+      "gradeLabel": "ระดับตำแหน่ง",
+      "allGrades": "ทุกระดับ (ค่าเริ่มต้น)",
+      "claimTypeLabel": "ประเภทการเบิก",
+      "monthlyLimitLabel": "วงเงินรายเดือน",
+      "lifetimeLimitLabel": "วงเงินตลอดชีพ",
+      "maxClaimsPerYearLabel": "จำนวนครั้ง/ปี",
+      "unlimitedToggle": "ไม่จำกัด (ไม่มีวงเงินสำหรับระดับนี้)",
+      "approvalRequiredLabel": "ต้องอนุมัติ",
+      "approvalAlwaysYes": "ใช่",
+      "saveLimit": "บันทึกวงเงิน",
+      "noLimitRows": "ยังไม่ได้กำหนดวงเงินการเบิก",
+      "unlimitedBadge": "ไม่จำกัด",
+      "newLimitTitle": "ตั้งค่าวงเงินการเบิก",
+      "newLimitHint": "เลือกระดับและประเภทการเบิก จากนั้นตั้งวงเงิน การบันทึกจะสร้างเวอร์ชันที่มีผลใหม่"
     },
     "reimbursements": {
       "back": "ตั้งค่า Claims",
@@ -2998,6 +3023,11 @@
       "approval": "ขั้นตอนการอนุมัติ",
       "payroll": "เกี่ยวข้องกับเงินเดือน",
       "audit": "การตรวจสอบ"
+    },
+    "claimsTabs": {
+      "types": "ประเภทการเบิก",
+      "limits": "วงเงินการเบิก",
+      "reimbursements": "การจ่ายคืน"
     }
   },
   "topbar": {
@@ -3410,7 +3440,16 @@
     "distanceLabel": "ระยะทาง (กม.)",
     "computedAmount": "จำนวนที่คำนวณได้",
     "attachmentHint": "PDF/JPG/PNG สูงสุด 10MB",
-    "remarksLabel": "หมายเหตุ"
+    "remarksLabel": "หมายเหตุ",
+    "balanceTitle": "ยอดคงเหลือของคุณ",
+    "annualLimit": "วงเงินต่อปี",
+    "alreadyClaimed": "เบิกไปแล้ว",
+    "remainingBalance": "ยอดคงเหลือ",
+    "balanceAfter": "ยอดคงเหลือหลังการเบิกนี้",
+    "monthlyRemaining": "คงเหลือเดือนนี้",
+    "perClaimCap": "วงเงินต่อครั้ง",
+    "claimsLeftThisYear": "จำนวนครั้งคงเหลือปีนี้",
+    "unlimitedBadge": "ไม่จำกัด"
   },
   "analytics": {
     "title": "การวิเคราะห์ HR",

@@ -2794,7 +2794,32 @@
       "itemNameLabel": "项目名称",
       "itemArchiveConfirmTitle": "归档报销项目？",
       "itemArchiveConfirmDescription": "新报销将无法选择该项目。现有报销仍保留。",
-      "itemArchiveConfirmLabel": "归档"
+      "itemArchiveConfirmLabel": "归档",
+      "descriptionLabel": "说明",
+      "maxReceiptAgeLabel": "收据最长天数",
+      "maxReceiptAgeHint": "45（默认）",
+      "itemCount": "{count} 个子项",
+      "delete": "删除",
+      "deleteConfirmTitle": "删除报销类型？",
+      "deleteConfirmDescription": "这将永久删除该报销类型及其子类别和限额。仅当从未有报销使用过它时才可删除——否则请改为归档。",
+      "deleteConfirmLabel": "删除",
+      "limitsTitle": "报销限额",
+      "limitsSubtitle": "按职级配置报销资格和限额——复用为休假维护的职级。",
+      "limitsMovedHint": "报销限额（按职级）在“报销限额”标签页中配置。",
+      "gradeLabel": "职级",
+      "allGrades": "所有职级（默认）",
+      "claimTypeLabel": "报销类型",
+      "monthlyLimitLabel": "每月限额",
+      "lifetimeLimitLabel": "终身限额",
+      "maxClaimsPerYearLabel": "每年报销次数",
+      "unlimitedToggle": "无限额（此职级不设限）",
+      "approvalRequiredLabel": "需要审批",
+      "approvalAlwaysYes": "是",
+      "saveLimit": "保存限额",
+      "noLimitRows": "尚未配置任何报销限额。",
+      "unlimitedBadge": "无限额",
+      "newLimitTitle": "设置报销限额",
+      "newLimitHint": "选择职级和报销类型，然后设置限额。保存会记录一个新的生效版本。"
     },
     "reimbursements": {
       "back": "报销配置",
@@ -2998,6 +3023,11 @@
       "approval": "审批流程",
       "payroll": "薪资相关",
       "audit": "审计"
+    },
+    "claimsTabs": {
+      "types": "报销类型",
+      "limits": "报销限额",
+      "reimbursements": "报销支付"
     }
   },
   "topbar": {
@@ -3410,7 +3440,16 @@
     "distanceLabel": "里程 (公里)",
     "computedAmount": "计算金额",
     "attachmentHint": "PDF/JPG/PNG，最大 10MB",
-    "remarksLabel": "备注"
+    "remarksLabel": "备注",
+    "balanceTitle": "您的余额",
+    "annualLimit": "年度限额",
+    "alreadyClaimed": "已报销",
+    "remainingBalance": "剩余额度",
+    "balanceAfter": "本次报销后余额",
+    "monthlyRemaining": "本月剩余",
+    "perClaimCap": "单次报销上限",
+    "claimsLeftThisYear": "本年剩余次数",
+    "unlimitedBadge": "无限额"
   },
   "analytics": {
     "title": "人力分析",

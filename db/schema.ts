@@ -3165,9 +3165,13 @@ export const claimType = pgTable(
     tenantId: tenantId(),
     code: text('code').notNull(), // e.g. 'MEDICAL', 'TRAVEL', 'MEALS'
     name: text('name').notNull(),
+    /** Free-text description of the claim category (ccbd0508 — claim-type basic info). */
+    description: text('description'),
     /** Seeds each new claim's `taxable`; the approver confirms/overrides per claim (flat tax, ADR-0021). */
     defaultTaxable: boolean('default_taxable').notNull().default(false),
     requiresReceipt: boolean('requires_receipt').notNull().default(true),
+    /** Per-type receipt-backdate window (days). NULL ⇒ the global RECEIPT_BACKDATE_DAYS default. (ccbd0508) */
+    maxReceiptAgeDays: integer('max_receipt_age_days'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
@@ -3209,10 +3213,22 @@ export const claimPolicy = pgTable(
     claimTypeId: uuid('claim_type_id')
       .notNull()
       .references(() => claimType.id),
+    /**
+     * Job-grade dimension (ccbd0508). NULL ⇒ applies to ALL grades (the default row); a grade-matched row
+     * wins over the null-grade default at resolution time (mirrors leave_policy's grade tiering). Reuses the
+     * same job_grade master maintained for Leave — no duplicate grade setup.
+     */
+    gradeId: uuid('grade_id').references(() => jobGrade.id),
     /** NULL = unlimited. Annual cap on approved claims of this type per employee. */
     annualBudget: numeric('annual_budget', { precision: 12, scale: 2 }),
     /** NULL = no cap. Max amount of a single claim. */
     perClaimCap: numeric('per_claim_cap', { precision: 12, scale: 2 }),
+    /** NULL = no monthly cap. Max total (pending+approved+paid) of this type per calendar month. (ccbd0508) */
+    monthlyLimit: numeric('monthly_limit', { precision: 12, scale: 2 }),
+    /** NULL = no lifetime cap. Max total of this type ever (all-time). (ccbd0508) */
+    lifetimeLimit: numeric('lifetime_limit', { precision: 12, scale: 2 }),
+    /** NULL = no count cap. Max number of claims of this type per calendar year. (ccbd0508) */
+    maxClaimsPerYear: integer('max_claims_per_year'),
     /**
      * Per-type rate/calculation config (discriminated union; nullable/absent ⇒ default 'receipt').
      *   { kind: 'receipt' }                                — amount entered by the employee (current behaviour).
@@ -3225,7 +3241,10 @@ export const claimPolicy = pgTable(
     validTo: date('valid_to'),
     createdAt: createdAt(),
   },
-  (t) => [index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom)],
+  (t) => [
+    index('claim_policy_type_idx').on(t.claimTypeId, t.validFrom),
+    index('claim_policy_type_grade_idx').on(t.claimTypeId, t.gradeId, t.validFrom),
+  ],
 );
 
 export type ClaimRateConfig =

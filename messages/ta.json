@@ -2794,7 +2794,32 @@
       "itemNameLabel": "உருப்படி பெயர்",
       "itemArchiveConfirmTitle": "கோரிக்கை உருப்படியை காப்பகப்படுத்தவா?",
       "itemArchiveConfirmDescription": "புதிய கோரிக்கைகளில் இது தேர்ந்தெடுக்க முடியாது. தற்போதைய கோரிக்கைகள் அதை வைத்திருக்கும்.",
-      "itemArchiveConfirmLabel": "காப்பகம்"
+      "itemArchiveConfirmLabel": "காப்பகம்",
+      "descriptionLabel": "விளக்கம்",
+      "maxReceiptAgeLabel": "அதிகபட்ச ரசீது வயது (நாட்கள்)",
+      "maxReceiptAgeHint": "45 (இயல்பு)",
+      "itemCount": "{count} உருப்படிகள்",
+      "delete": "நீக்கு",
+      "deleteConfirmTitle": "உரிமைகோரல் வகையை நீக்கவா?",
+      "deleteConfirmDescription": "இது உரிமைகோரல் வகையையும் அதன் துணை வகைகள் மற்றும் வரம்புகளையும் நிரந்தரமாக நீக்கும். எந்த உரிமைகோரலும் இதைப் பயன்படுத்தாதபோது மட்டுமே சாத்தியம் — இல்லையெனில் காப்பகப்படுத்தவும்.",
+      "deleteConfirmLabel": "நீக்கு",
+      "limitsTitle": "உரிமைகோரல் வரம்புகள்",
+      "limitsSubtitle": "வேலை தரத்தின் அடிப்படையில் உரிமைகோரல் தகுதி மற்றும் வரம்புகளை அமைக்கவும் — விடுப்புக்கு பராமரிக்கப்படும் தரங்களை மீண்டும் பயன்படுத்தி.",
+      "limitsMovedHint": "உரிமைகோரல் வரம்புகள் (வேலை தரத்தின்படி) 'உரிமைகோரல் வரம்புகள்' தாவலில் அமைக்கப்படுகின்றன.",
+      "gradeLabel": "வேலை தரம்",
+      "allGrades": "அனைத்து தரங்கள் (இயல்பு)",
+      "claimTypeLabel": "உரிமைகோரல் வகை",
+      "monthlyLimitLabel": "மாதாந்திர வரம்பு",
+      "lifetimeLimitLabel": "வாழ்நாள் வரம்பு",
+      "maxClaimsPerYearLabel": "ஆண்டுக்கு உரிமைகோரல்கள்",
+      "unlimitedToggle": "வரம்பற்றது (இந்த தரத்திற்கு வரம்பு இல்லை)",
+      "approvalRequiredLabel": "ஒப்புதல் தேவை",
+      "approvalAlwaysYes": "ஆம்",
+      "saveLimit": "வரம்பைச் சேமி",
+      "noLimitRows": "இதுவரை உரிமைகோரல் வரம்புகள் அமைக்கப்படவில்லை.",
+      "unlimitedBadge": "வரம்பற்றது",
+      "newLimitTitle": "உரிமைகோரல் வரம்பை அமைக்கவும்",
+      "newLimitHint": "ஒரு தரத்தையும் உரிமைகோரல் வகையையும் தேர்ந்தெடுத்து, வரம்புகளை அமைக்கவும். சேமித்தல் ஒரு புதிய நடைமுறை பதிப்பை பதிவு செய்கிறது."
     },
     "reimbursements": {
       "back": "கோரிக்கைகள் கட்டமைப்பு",
@@ -2998,6 +3023,11 @@
       "approval": "ஒப்புதல் பணிப்பாய்வு",
       "payroll": "ஊதியம் தொடர்பானவை",
       "audit": "தணிக்கை"
+    },
+    "claimsTabs": {
+      "types": "உரிமைகோரல் வகைகள்",
+      "limits": "உரிமைகோரல் வரம்புகள்",
+      "reimbursements": "திருப்பிச் செலுத்துதல்"
     }
   },
   "topbar": {
@@ -3410,7 +3440,16 @@
     "distanceLabel": "தூரம் (கி.மீ)",
     "computedAmount": "கணக்கிடப்பட்ட தொகை",
     "attachmentHint": "PDF/JPG/PNG, அதிகபட்சம் 10MB",
-    "remarksLabel": "குறிப்புகள்"
+    "remarksLabel": "குறிப்புகள்",
+    "balanceTitle": "உங்கள் இருப்பு",
+    "annualLimit": "ஆண்டு வரம்பு",
+    "alreadyClaimed": "ஏற்கனவே கோரப்பட்டது",
+    "remainingBalance": "மீதமுள்ள இருப்பு",
+    "balanceAfter": "இந்த உரிமைகோரலுக்குப் பிறகு இருப்பு",
+    "monthlyRemaining": "இந்த மாதம் மீதம்",
+    "perClaimCap": "ஒவ்வொரு உரிமைகோரல் வரம்பு",
+    "claimsLeftThisYear": "இந்த ஆண்டு மீதமுள்ள உரிமைகோரல்கள்",
+    "unlimitedBadge": "வரம்பு இல்லை"
   },
   "analytics": {
     "title": "HR பகுப்பாய்வு",
