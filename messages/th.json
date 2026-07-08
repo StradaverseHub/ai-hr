@@ -247,7 +247,7 @@
       "createNewEmployee": "สร้างพนักงานใหม่",
       "emptyNoEmployeesAdmin": "ยังไม่มีพนักงาน — คลิก \"สร้างพนักงานใหม่\" ด้านบนเพื่อเพิ่ม",
       "hireInitialSalary": "เงินเดือนพื้นฐานเริ่มต้น (MYR)",
-      "hireInitialSalaryHint": "ไม่บังคับ — มีผลตั้งแต่วันที่เริ่มงาน",
+      "hireInitialSalaryHint": "จำเป็น — มีผลตั้งแต่วันที่เริ่มงาน",
       "salaryColRemarks": "หมายเหตุ",
       "salaryRemarksPlaceholder": "เช่น การปรับขึ้นประจำปี"
     },
@@ -542,7 +542,16 @@
       "salaryRevisionConfirmDescription": "การดำเนินการนี้จะเพิ่มบันทึกเงินเดือนใหม่และเก็บประวัติทั้งหมดไว้ โดยจะกลายเป็นเงินเดือนที่ใช้งานตั้งแต่วันที่มีผล",
       "salaryRemarksPlaceholder": "เช่น การปรับขึ้นประจำปี",
       "salaryAllowanceMovedHint": "ค่าเบี้ยเลี้ยงจัดการในส่วนองค์ประกอบเงินเดือนภายใต้โมดูลเงินเดือน ไม่ใช่ในหน้านี้",
-      "salaryInitialEffectiveHint": "บันทึกแรกมีผลตั้งแต่วันที่เริ่มงาน"
+      "salaryInitialEffectiveHint": "บันทึกแรกมีผลตั้งแต่วันที่เริ่มงาน",
+      "salaryColLastUpdatedBy": "อัปเดตล่าสุดโดย",
+      "salaryColLastUpdatedOn": "อัปเดตล่าสุดเมื่อ",
+      "salarySearchPlaceholder": "ค้นหาประวัติเงินเดือน",
+      "salaryFilterAll": "ทุกสถานะ",
+      "salaryExport": "ส่งออก CSV",
+      "salaryEdit": "แก้ไข",
+      "salaryEditConfirmTitle": "บันทึกการเปลี่ยนแปลงบันทึกเงินเดือนนี้หรือไม่?",
+      "salaryEditConfirmDescription": "การดำเนินการนี้จะแก้ไขบันทึกเงินเดือนล่าสุดโดยตรงและเก็บบันทึกการตรวจสอบการเปลี่ยนแปลง",
+      "salaryNoResults": "ไม่มีบันทึกเงินเดือนที่ตรงกับการค้นหาของคุณ"
     },
     "import": {
       "title": "นำเข้าพนักงาน",

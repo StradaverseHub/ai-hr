@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { endReportingLine, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
-import { setCompensation } from '@/core/comp';
+import { setCompensation, updateCompensation } from '@/core/comp';
 import { assignDefaultShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
@@ -293,6 +293,31 @@ export async function setCompensationAction(formData: FormData) {
       // belong to Pay Components. Omitting it CARRIES the existing figure forward (never wipes it).
       remarks: String(formData.get('remarks') ?? '').trim() || undefined,
       effectiveFrom: String(formData.get('effectiveFrom')),
+    });
+  } catch (e) {
+    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+}
+
+/**
+ * Edit Salary Record (feedback 87c82b18, flow #4). Corrects the basic salary / remarks of an existing
+ * OPEN salary row (latest active or future-effective). The service enforces immutability of historical
+ * rows and appends the compensation.updated audit event; the screen re-derives increment/status.
+ */
+export async function editCompensationAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    const rawBasic = formData.get('basicSalary');
+    const rawBasicStr = String(rawBasic ?? '').trim();
+    await updateCompensation(s, {
+      compensationId: String(formData.get('compensationId')),
+      employmentId,
+      basicSalary: rawBasicStr !== '' ? Number(rawBasicStr) : undefined,
+      // Remarks always submitted (possibly empty → cleared to NULL).
+      remarks: String(formData.get('remarks') ?? '').trim() || null,
     });
   } catch (e) {
     redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);

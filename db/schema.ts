@@ -1193,6 +1193,9 @@ export const compensation = pgTable(
     // rows and system/import writes leave it NULL (feedback 87c82b18, migration 0162).
     remarks: text('remarks'),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+    // Last in-place edit of this row (Edit Salary Record flow, feedback 87c82b18, migration 0163). NULL
+    // until the row is edited; "Last Updated By" is derived from the latest compensation.updated event.
+    updatedAt: timestamp('updated_at', { withTimezone: true }),
     supersededAt: timestamp('superseded_at', { withTimezone: true }),
     createdAt: createdAt(),
   },

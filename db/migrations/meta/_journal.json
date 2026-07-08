@@ -1142,6 +1142,13 @@
       "when": 1781862161000,
       "tag": "0162_compensation_remarks",
       "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "7",
+      "when": 1781862162000,
+      "tag": "0163_compensation_updated_at",
+      "breakpoints": true
     }
   ]
 }

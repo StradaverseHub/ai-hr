@@ -247,7 +247,7 @@
       "createNewEmployee": "Create new employee",
       "emptyNoEmployeesAdmin": "No employees yet — click \"Create new employee\" above to add one.",
       "hireInitialSalary": "Initial basic salary (MYR)",
-      "hireInitialSalaryHint": "Optional — effective from the join date.",
+      "hireInitialSalaryHint": "Required — effective from the join date.",
       "salaryColRemarks": "Remarks",
       "salaryRemarksPlaceholder": "e.g. annual increment"
     },
@@ -542,7 +542,16 @@
       "salaryRevisionConfirmDescription": "This adds a new salary record and keeps the full history. It becomes the active salary from the effective date.",
       "salaryRemarksPlaceholder": "e.g. annual increment",
       "salaryAllowanceMovedHint": "Allowances are managed in Pay Components under the Payroll module — not on this screen.",
-      "salaryInitialEffectiveHint": "The first record is effective from the join date."
+      "salaryInitialEffectiveHint": "The first record is effective from the join date.",
+      "salaryColLastUpdatedBy": "Last updated by",
+      "salaryColLastUpdatedOn": "Last updated on",
+      "salarySearchPlaceholder": "Search salary history",
+      "salaryFilterAll": "All statuses",
+      "salaryExport": "Export CSV",
+      "salaryEdit": "Edit",
+      "salaryEditConfirmTitle": "Save changes to this salary record?",
+      "salaryEditConfirmDescription": "This edits the latest salary record in place and keeps an audit log of the change.",
+      "salaryNoResults": "No salary records match your search."
     },
     "import": {
       "title": "Import employees",

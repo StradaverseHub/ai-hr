@@ -247,7 +247,7 @@
       "createNewEmployee": "Tạo nhân viên mới",
       "emptyNoEmployeesAdmin": "Chưa có nhân viên nào — nhấp \"Tạo nhân viên mới\" ở trên để thêm.",
       "hireInitialSalary": "Lương cơ bản ban đầu (MYR)",
-      "hireInitialSalaryHint": "Tùy chọn — có hiệu lực từ ngày vào làm.",
+      "hireInitialSalaryHint": "Bắt buộc — có hiệu lực từ ngày gia nhập.",
       "salaryColRemarks": "Ghi chú",
       "salaryRemarksPlaceholder": "vd. tăng lương hàng năm"
     },
@@ -542,7 +542,16 @@
       "salaryRevisionConfirmDescription": "Thao tác này thêm một bản ghi lương mới và giữ toàn bộ lịch sử. Nó trở thành lương đang áp dụng kể từ ngày hiệu lực.",
       "salaryRemarksPlaceholder": "vd. tăng lương hàng năm",
       "salaryAllowanceMovedHint": "Phụ cấp được quản lý trong Thành phần lương thuộc mô-đun Bảng lương — không phải ở màn hình này.",
-      "salaryInitialEffectiveHint": "Bản ghi đầu tiên có hiệu lực từ ngày vào làm."
+      "salaryInitialEffectiveHint": "Bản ghi đầu tiên có hiệu lực từ ngày vào làm.",
+      "salaryColLastUpdatedBy": "Cập nhật lần cuối bởi",
+      "salaryColLastUpdatedOn": "Cập nhật lần cuối vào",
+      "salarySearchPlaceholder": "Tìm kiếm lịch sử lương",
+      "salaryFilterAll": "Tất cả trạng thái",
+      "salaryExport": "Xuất CSV",
+      "salaryEdit": "Chỉnh sửa",
+      "salaryEditConfirmTitle": "Lưu thay đổi cho bản ghi lương này?",
+      "salaryEditConfirmDescription": "Thao tác này chỉnh sửa trực tiếp bản ghi lương mới nhất và lưu nhật ký kiểm toán về thay đổi.",
+      "salaryNoResults": "Không có bản ghi lương nào khớp với tìm kiếm của bạn."
     },
     "import": {
       "title": "Nhập nhân viên",

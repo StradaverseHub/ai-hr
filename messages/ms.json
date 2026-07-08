@@ -247,7 +247,7 @@
       "createNewEmployee": "Cipta pekerja baharu",
       "emptyNoEmployeesAdmin": "Belum ada pekerja — klik \"Cipta pekerja baharu\" di atas untuk menambah.",
       "hireInitialSalary": "Gaji asas permulaan (MYR)",
-      "hireInitialSalaryHint": "Pilihan — berkuat kuasa dari tarikh mula bekerja.",
+      "hireInitialSalaryHint": "Diperlukan — berkuat kuasa dari tarikh menyertai.",
       "salaryColRemarks": "Catatan",
       "salaryRemarksPlaceholder": "cth. kenaikan tahunan"
     },
@@ -542,7 +542,16 @@
       "salaryRevisionConfirmDescription": "Ini menambah rekod gaji baharu dan mengekalkan sejarah penuh. Ia menjadi gaji aktif dari tarikh berkuat kuasa.",
       "salaryRemarksPlaceholder": "cth. kenaikan tahunan",
       "salaryAllowanceMovedHint": "Elaun diuruskan dalam Komponen Gaji di bawah modul Penggajian — bukan pada skrin ini.",
-      "salaryInitialEffectiveHint": "Rekod pertama berkuat kuasa dari tarikh mula bekerja."
+      "salaryInitialEffectiveHint": "Rekod pertama berkuat kuasa dari tarikh mula bekerja.",
+      "salaryColLastUpdatedBy": "Dikemas kini oleh",
+      "salaryColLastUpdatedOn": "Dikemas kini pada",
+      "salarySearchPlaceholder": "Cari sejarah gaji",
+      "salaryFilterAll": "Semua status",
+      "salaryExport": "Eksport CSV",
+      "salaryEdit": "Sunting",
+      "salaryEditConfirmTitle": "Simpan perubahan pada rekod gaji ini?",
+      "salaryEditConfirmDescription": "Ini menyunting rekod gaji terkini secara langsung dan menyimpan log audit perubahan.",
+      "salaryNoResults": "Tiada rekod gaji sepadan dengan carian anda."
     },
     "import": {
       "title": "Import pekerja",

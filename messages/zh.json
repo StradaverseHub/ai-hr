@@ -247,7 +247,7 @@
       "createNewEmployee": "创建新员工",
       "emptyNoEmployeesAdmin": "暂无员工 — 点击上方“创建新员工”添加。",
       "hireInitialSalary": "初始基本薪资 (MYR)",
-      "hireInitialSalaryHint": "可选 — 自入职日期起生效。",
+      "hireInitialSalaryHint": "必填 — 自入职日期起生效。",
       "salaryColRemarks": "备注",
       "salaryRemarksPlaceholder": "例如：年度加薪"
     },
@@ -542,7 +542,16 @@
       "salaryRevisionConfirmDescription": "这将新增一条薪资记录并保留完整历史。自生效日期起成为当前薪资。",
       "salaryRemarksPlaceholder": "例如：年度加薪",
       "salaryAllowanceMovedHint": "津贴在薪资模块的薪资组件中管理，不在此屏幕。",
-      "salaryInitialEffectiveHint": "首条记录自入职日期起生效。"
+      "salaryInitialEffectiveHint": "首条记录自入职日期起生效。",
+      "salaryColLastUpdatedBy": "最后更新人",
+      "salaryColLastUpdatedOn": "最后更新日期",
+      "salarySearchPlaceholder": "搜索薪资历史",
+      "salaryFilterAll": "所有状态",
+      "salaryExport": "导出 CSV",
+      "salaryEdit": "编辑",
+      "salaryEditConfirmTitle": "保存对此薪资记录的更改？",
+      "salaryEditConfirmDescription": "这将直接编辑最新的薪资记录，并保留更改的审计日志。",
+      "salaryNoResults": "没有符合搜索条件的薪资记录。"
     },
     "import": {
       "title": "导入员工",

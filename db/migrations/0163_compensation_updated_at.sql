@@ -1,0 +1,13 @@
+-- Basic Salary redesign — Edit Salary Record flow (feedback 87c82b18, gap-close). The ticket's
+-- "Edit Salary Record" flow lets an admin correct the latest/future (open) salary record in place; the
+-- History table must then surface a "Last Updated By / Last Updated Date" pair alongside "Created By /
+-- Created On". Created-by/on already come from the compensation.set event + recordedAt; this column
+-- records WHEN the row was last edited. The WHO is derived from the latest compensation.updated event
+-- (same actor-join pattern as Created By), so no denormalised name column is stored.
+--
+-- Additive, nullable timestamptz — every existing row keeps updated_at = NULL (never edited → rendered
+-- as "—"). No backfill.
+--
+-- No RLS change: compensation already has admin-or-self read (migration 0060) + admin write policies that
+-- are table-level and cover the new column (same pattern as 0162 remarks).
+ALTER TABLE compensation ADD COLUMN IF NOT EXISTS updated_at timestamptz;

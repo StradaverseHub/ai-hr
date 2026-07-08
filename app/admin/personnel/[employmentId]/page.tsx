@@ -36,6 +36,7 @@ import {
 } from './actions';
 import { compensationHistoryDetailed, type CompensationHistoryRow } from '@/core/comp';
 import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
+import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { listDependents, DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS } from '@/core/dependents';
@@ -826,16 +827,33 @@ export default async function EmployeePage({
     const isFuture = row.validFrom > today;
     const isActive = !isFuture && (row.validTo == null || row.validTo > today);
     const status: 'active' | 'future' | 'historical' = isFuture ? 'future' : isActive ? 'active' : 'historical';
-    return { row, basic, previous, incrementAmount, incrementPct, status };
+    // Only the OPEN row (validTo null; already non-superseded from the query) is editable — the latest
+    // active OR a future-effective record. Historical (closed) rows stay immutable (Edit flow #4).
+    const editable = !emp.terminatedOn && row.validTo == null;
+    return { row, basic, previous, incrementAmount, incrementPct, status, editable };
   });
+  // Serialized rows for the client history table (search / filter / sort / export / edit). Salary math is
+  // derived here on the server; the island only presents + filters (f2904eeb-safe, no client fetch).
+  const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
+    id: r.row.id,
+    employmentId: emp.employmentId,
+    effectiveDate: r.row.validFrom,
+    currency: r.row.currency,
+    basic: r.basic,
+    previous: r.previous,
+    incrementAmount: r.incrementAmount,
+    incrementPct: r.incrementPct,
+    status: r.status,
+    remarks: r.row.remarks,
+    createdByName: r.row.createdByName,
+    createdOn: new Date(r.row.recordedAt).toISOString().slice(0, 10),
+    updatedByName: r.row.updatedByName,
+    updatedOn: r.row.updatedAt ? new Date(r.row.updatedAt).toISOString().slice(0, 10) : null,
+    editable: r.editable,
+  }));
   // The summary shows the row in effect TODAY (active) — NOT the open row, which may be a future revision.
   const activeDerived = salaryRows.find((r) => r.status === 'active') ?? null;
   const hasFuture = salaryRows.some((r) => r.status === 'future');
-  const statusBadge: Record<'active' | 'future' | 'historical', { variant: 'success' | 'warning' | 'default'; label: string }> = {
-    active: { variant: 'success', label: t('salaryStatusActive') },
-    future: { variant: 'warning', label: t('salaryStatusFuture') },
-    historical: { variant: 'default', label: t('salaryStatusHistorical') },
-  };
   const compensationCard = admin ? (
     <Card id="section-compensation">
       <SectionHeader title={t('compensation')} />
@@ -872,64 +890,9 @@ export default async function EmployeePage({
         )}
       </div>
 
-      {/* History table — every revision, newest first. */}
-      {salaryRows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                <th className="px-4 py-2 font-medium">{t('effectiveDate')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('basicSalaryMyr')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('salaryColPrevious')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('salaryColIncrement')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('salaryColIncrementPct')}</th>
-                <th className="px-4 py-2 font-medium">{t('status')}</th>
-                <th className="px-4 py-2 font-medium">{t('salaryColRemarks')}</th>
-                <th className="px-4 py-2 font-medium">{t('salaryColCreatedBy')}</th>
-                <th className="px-4 py-2 font-medium">{t('salaryColCreatedOn')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {salaryRows.map((r) => (
-                <tr
-                  key={r.row.id}
-                  className={`border-b border-border/60 ${r.status === 'active' ? 'bg-primary/5' : ''}`}
-                >
-                  <td className="whitespace-nowrap px-4 py-2 tabular-nums">{r.row.validFrom}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">
-                    {r.row.currency} {fmtMoney(r.basic)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
-                    {r.previous != null ? `${r.row.currency} ${fmtMoney(r.previous)}` : '—'}
-                  </td>
-                  <td
-                    className={`whitespace-nowrap px-4 py-2 text-right tabular-nums ${
-                      r.incrementAmount == null || r.incrementAmount === 0
-                        ? 'text-muted-foreground'
-                        : r.incrementAmount > 0
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-red-700 dark:text-red-400'
-                    }`}
-                  >
-                    {r.incrementAmount != null ? fmtMoney(r.incrementAmount) : '—'}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums text-muted-foreground">
-                    {r.incrementPct != null ? `${r.incrementPct.toFixed(2)}%` : '—'}
-                  </td>
-                  <td className="px-4 py-2">
-                    <Badge variant={statusBadge[r.status].variant}>{statusBadge[r.status].label}</Badge>
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">{r.row.remarks || '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-2 text-muted-foreground">{r.row.createdByName || '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-2 tabular-nums text-muted-foreground">
-                    {new Date(r.row.recordedAt).toISOString().slice(0, 10)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* History table — every revision, with search / status filter / column sort / CSV export, plus an
+          inline edit affordance on the latest (open) record. Interactive client island (f2904eeb-safe). */}
+      {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
 
       {/* Add salary revision — the initial record defaults its effective date to the join date. Allowance
           is no longer maintained here (moved to Pay Components); the action carries it forward. */}

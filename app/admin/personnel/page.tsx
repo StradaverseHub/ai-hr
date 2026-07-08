@@ -366,7 +366,14 @@ export default async function PeoplePage({
                     <p className="mt-1 text-xs text-muted-foreground">{t('provisionalEndHint')}</p>
                   </Field>
                   <Field label={t('hireInitialSalary')}>
-                    <input name="initialBasicSalary" type="number" min="0" step="0.01" className={inputCls} />
+                    <input
+                      name="initialBasicSalary"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                      className={inputCls}
+                    />
                     <p className="mt-1 text-xs text-muted-foreground">{t('hireInitialSalaryHint')}</p>
                   </Field>
                   <Field label={t('salaryColRemarks')}>
