@@ -117,7 +117,8 @@
     "attendanceAllowance": "出勤津贴",
     "attendanceRecords": "考勤记录",
     "clockingLocation": "打卡地点",
-    "attendanceImport": "考勤导入"
+    "attendanceImport": "考勤导入",
+    "mobilePreview": "移动应用预览"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -4202,6 +4203,82 @@
       "saved": "政策已保存",
       "statusChanged": "政策状态已更新",
       "archived": "政策已归档"
+    }
+  },
+  "mobilePreview": {
+    "title": "移动应用 UI/UX 预览",
+    "subtitle": "即将推出的移动应用的可视化预览——在手机框架内点击浏览各个屏幕。",
+    "previewOnly": "仅为设计预览。这些屏幕模拟未来的移动应用；显示的数据仅供参考。",
+    "back": "返回",
+    "resetToHome": "返回主页",
+    "feature": {
+      "attendance": "考勤",
+      "leave": "请假",
+      "claim": "报销",
+      "payroll": "薪资",
+      "performance": "绩效",
+      "setting": "设置"
+    },
+    "home": {
+      "greeting": "早上好"
+    },
+    "attendance": {
+      "statusIn": "已打卡",
+      "statusOut": "未打卡",
+      "clockIn": "上班打卡",
+      "clockOut": "下班打卡",
+      "hint": "位置已验证"
+    },
+    "leave": {
+      "balance": "假期余额",
+      "calendar": "请假日历",
+      "application": "请假申请"
+    },
+    "leaveBalance": {
+      "annual": "年假",
+      "sick": "病假",
+      "unpaid": "无薪假",
+      "daysUnit": "天"
+    },
+    "leaveCalendar": {
+      "legend": "已批准的假期"
+    },
+    "leaveApp": {
+      "type": "假期类型",
+      "from": "开始",
+      "to": "结束",
+      "reason": "原因",
+      "submit": "提交申请"
+    },
+    "claim": {
+      "application": "报销申请"
+    },
+    "claimApp": {
+      "type": "报销类型",
+      "amount": "金额",
+      "receipt": "收据",
+      "attach": "附上收据",
+      "submit": "提交报销"
+    },
+    "payroll": {
+      "latest": "最新实发工资",
+      "viewPayslip": "查看工资单",
+      "history": "工资单历史"
+    },
+    "payslip": {
+      "title": "工资单",
+      "earnings": "收入",
+      "deductions": "扣除",
+      "net": "实发工资",
+      "basic": "基本工资",
+      "allowance": "津贴",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "敬请期待",
+      "body": "此功能将在未来版本中提供。"
     }
   }
 }

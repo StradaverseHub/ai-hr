@@ -117,7 +117,8 @@
     "attendanceAllowance": "เบี้ยขยันการเข้างาน",
     "attendanceRecords": "บันทึกการเข้างาน",
     "clockingLocation": "สถานที่ลงเวลา",
-    "attendanceImport": "นำเข้าการเข้างาน"
+    "attendanceImport": "นำเข้าการเข้างาน",
+    "mobilePreview": "ตัวอย่างแอปมือถือ"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -4202,6 +4203,82 @@
       "saved": "บันทึกนโยบายแล้ว",
       "statusChanged": "อัปเดตสถานะนโยบายแล้ว",
       "archived": "เก็บนโยบายถาวรแล้ว"
+    }
+  },
+  "mobilePreview": {
+    "title": "ตัวอย่าง UI/UX แอปมือถือ",
+    "subtitle": "ตัวอย่างภาพของแอปมือถือที่กำลังจะมา — แตะดูหน้าจอต่าง ๆ ภายในกรอบโทรศัพท์",
+    "previewOnly": "เป็นเพียงตัวอย่างการออกแบบ หน้าจอเหล่านี้จำลองแอปมือถือในอนาคต ข้อมูลที่แสดงเป็นเพียงตัวอย่าง",
+    "back": "ย้อนกลับ",
+    "resetToHome": "กลับสู่หน้าหลัก",
+    "feature": {
+      "attendance": "การลงเวลา",
+      "leave": "การลา",
+      "claim": "การเบิก",
+      "payroll": "เงินเดือน",
+      "performance": "ผลงาน",
+      "setting": "ตั้งค่า"
+    },
+    "home": {
+      "greeting": "สวัสดีตอนเช้า"
+    },
+    "attendance": {
+      "statusIn": "ลงเวลาเข้าแล้ว",
+      "statusOut": "ยังไม่ลงเวลาเข้า",
+      "clockIn": "ลงเวลาเข้า",
+      "clockOut": "ลงเวลาออก",
+      "hint": "ยืนยันตำแหน่งแล้ว"
+    },
+    "leave": {
+      "balance": "ยอดวันลาคงเหลือ",
+      "calendar": "ปฏิทินการลา",
+      "application": "ใบลา"
+    },
+    "leaveBalance": {
+      "annual": "ลาพักร้อน",
+      "sick": "ลาป่วย",
+      "unpaid": "ลาไม่รับค่าจ้าง",
+      "daysUnit": "วัน"
+    },
+    "leaveCalendar": {
+      "legend": "การลาที่อนุมัติแล้ว"
+    },
+    "leaveApp": {
+      "type": "ประเภทการลา",
+      "from": "ตั้งแต่",
+      "to": "ถึง",
+      "reason": "เหตุผล",
+      "submit": "ส่งใบลา"
+    },
+    "claim": {
+      "application": "ใบเบิก"
+    },
+    "claimApp": {
+      "type": "ประเภทการเบิก",
+      "amount": "จำนวนเงิน",
+      "receipt": "ใบเสร็จ",
+      "attach": "แนบใบเสร็จ",
+      "submit": "ส่งการเบิก"
+    },
+    "payroll": {
+      "latest": "เงินสุทธิล่าสุด",
+      "viewPayslip": "ดูสลิปเงินเดือน",
+      "history": "ประวัติสลิปเงินเดือน"
+    },
+    "payslip": {
+      "title": "สลิปเงินเดือน",
+      "earnings": "รายได้",
+      "deductions": "รายการหัก",
+      "net": "เงินสุทธิ",
+      "basic": "เงินเดือนพื้นฐาน",
+      "allowance": "เบี้ยเลี้ยง",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "เร็ว ๆ นี้",
+      "body": "ฟีเจอร์นี้จะพร้อมใช้งานในรุ่นถัดไป"
     }
   }
 }

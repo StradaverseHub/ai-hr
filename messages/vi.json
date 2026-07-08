@@ -117,7 +117,8 @@
     "attendanceAllowance": "Phụ cấp chuyên cần",
     "attendanceRecords": "Hồ sơ chấm công",
     "clockingLocation": "Địa điểm chấm công",
-    "attendanceImport": "Nhập dữ liệu chấm công"
+    "attendanceImport": "Nhập dữ liệu chấm công",
+    "mobilePreview": "Xem trước ứng dụng di động"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -4202,6 +4203,82 @@
       "saved": "Đã lưu chính sách",
       "statusChanged": "Đã cập nhật trạng thái chính sách",
       "archived": "Đã lưu trữ chính sách"
+    }
+  },
+  "mobilePreview": {
+    "title": "Xem trước UI/UX ứng dụng di động",
+    "subtitle": "Bản xem trước trực quan của ứng dụng di động sắp ra mắt — chạm để xem các màn hình trong khung điện thoại.",
+    "previewOnly": "Chỉ là bản xem trước thiết kế. Các màn hình này mô phỏng ứng dụng di động trong tương lai; dữ liệu hiển thị chỉ mang tính minh họa.",
+    "back": "Quay lại",
+    "resetToHome": "Về trang chủ",
+    "feature": {
+      "attendance": "Chấm công",
+      "leave": "Nghỉ phép",
+      "claim": "Yêu cầu hoàn tiền",
+      "payroll": "Lương",
+      "performance": "Hiệu suất",
+      "setting": "Cài đặt"
+    },
+    "home": {
+      "greeting": "Chào buổi sáng"
+    },
+    "attendance": {
+      "statusIn": "Đã chấm công vào",
+      "statusOut": "Chưa chấm công vào",
+      "clockIn": "Chấm công vào",
+      "clockOut": "Chấm công ra",
+      "hint": "Đã xác minh vị trí"
+    },
+    "leave": {
+      "balance": "Số ngày phép còn lại",
+      "calendar": "Lịch nghỉ phép",
+      "application": "Đơn xin nghỉ phép"
+    },
+    "leaveBalance": {
+      "annual": "Nghỉ phép năm",
+      "sick": "Nghỉ ốm",
+      "unpaid": "Nghỉ không lương",
+      "daysUnit": "ngày"
+    },
+    "leaveCalendar": {
+      "legend": "Nghỉ phép đã duyệt"
+    },
+    "leaveApp": {
+      "type": "Loại nghỉ phép",
+      "from": "Từ",
+      "to": "Đến",
+      "reason": "Lý do",
+      "submit": "Gửi đơn"
+    },
+    "claim": {
+      "application": "Yêu cầu hoàn tiền"
+    },
+    "claimApp": {
+      "type": "Loại yêu cầu",
+      "amount": "Số tiền",
+      "receipt": "Biên lai",
+      "attach": "Đính kèm biên lai",
+      "submit": "Gửi yêu cầu"
+    },
+    "payroll": {
+      "latest": "Lương thực nhận gần nhất",
+      "viewPayslip": "Xem phiếu lương",
+      "history": "Lịch sử phiếu lương"
+    },
+    "payslip": {
+      "title": "Phiếu lương",
+      "earnings": "Thu nhập",
+      "deductions": "Khoản khấu trừ",
+      "net": "Lương thực nhận",
+      "basic": "Lương cơ bản",
+      "allowance": "Phụ cấp",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "Sắp ra mắt",
+      "body": "Tính năng này sẽ có trong bản phát hành sau."
     }
   }
 }

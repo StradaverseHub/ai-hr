@@ -109,6 +109,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/attendance'],
     hasScopeNote: true,
   },
+  // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so
+  // every role reaches the showcase; it fetches no data, so there is no scope note.
+  {
+    screenKey: 'mobilePreview',
+    href: '/mobile-preview',
+    labelKey: 'nav.mobilePreview',
+    guard: 'scopedSession',
+    routes: ['/mobile-preview'],
+  },
   // ── Manage screens (scopedSession, but nav-shown to managers up; visibility follows reporting lines) ──
   {
     screenKey: 'approvals',

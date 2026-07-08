@@ -27,6 +27,7 @@ import {
   Lock,
   ScrollText,
   ShieldCheck,
+  Smartphone,
   Tags,
   Target,
   SlidersHorizontal,
@@ -93,6 +94,8 @@ const GROUPS: Group[] = [
       { href: '/claims', labelKey: 'claims', icon: Receipt },
       { href: '/feedback', labelKey: 'feedback', icon: MessageSquareText },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
+      // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
+      { href: '/mobile-preview', labelKey: 'mobilePreview', icon: Smartphone },
     ],
   },
   {

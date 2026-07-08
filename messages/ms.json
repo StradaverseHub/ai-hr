@@ -117,7 +117,8 @@
     "attendanceAllowance": "Elaun kehadiran",
     "attendanceRecords": "Rekod kehadiran",
     "clockingLocation": "Lokasi merekod masa",
-    "attendanceImport": "Import kehadiran"
+    "attendanceImport": "Import kehadiran",
+    "mobilePreview": "Pratonton Apl Mudah Alih"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -4202,6 +4203,82 @@
       "saved": "Polisi disimpan",
       "statusChanged": "Status polisi dikemas kini",
       "archived": "Polisi diarkibkan"
+    }
+  },
+  "mobilePreview": {
+    "title": "Pratonton UI/UX Apl Mudah Alih",
+    "subtitle": "Pratonton visual apl mudah alih akan datang — ketik skrin dalam bingkai telefon.",
+    "previewOnly": "Pratonton reka bentuk sahaja. Skrin ini mensimulasikan apl mudah alih masa depan; data yang dipaparkan adalah ilustrasi.",
+    "back": "Kembali",
+    "resetToHome": "Kembali ke laman utama",
+    "feature": {
+      "attendance": "Kehadiran",
+      "leave": "Cuti",
+      "claim": "Tuntutan",
+      "payroll": "Gaji",
+      "performance": "Prestasi",
+      "setting": "Tetapan"
+    },
+    "home": {
+      "greeting": "Selamat pagi"
+    },
+    "attendance": {
+      "statusIn": "Telah masuk",
+      "statusOut": "Belum masuk",
+      "clockIn": "Daftar Masuk",
+      "clockOut": "Daftar Keluar",
+      "hint": "Lokasi disahkan"
+    },
+    "leave": {
+      "balance": "Baki Cuti",
+      "calendar": "Kalendar Cuti",
+      "application": "Permohonan Cuti"
+    },
+    "leaveBalance": {
+      "annual": "Cuti Tahunan",
+      "sick": "Cuti Sakit",
+      "unpaid": "Cuti Tanpa Gaji",
+      "daysUnit": "hari"
+    },
+    "leaveCalendar": {
+      "legend": "Cuti diluluskan"
+    },
+    "leaveApp": {
+      "type": "Jenis cuti",
+      "from": "Dari",
+      "to": "Hingga",
+      "reason": "Sebab",
+      "submit": "Hantar permohonan"
+    },
+    "claim": {
+      "application": "Permohonan Tuntutan"
+    },
+    "claimApp": {
+      "type": "Jenis tuntutan",
+      "amount": "Jumlah",
+      "receipt": "Resit",
+      "attach": "Lampirkan resit",
+      "submit": "Hantar tuntutan"
+    },
+    "payroll": {
+      "latest": "Gaji bersih terkini",
+      "viewPayslip": "Lihat slip gaji",
+      "history": "Sejarah slip gaji"
+    },
+    "payslip": {
+      "title": "Slip Gaji",
+      "earnings": "Pendapatan",
+      "deductions": "Potongan",
+      "net": "Gaji bersih",
+      "basic": "Gaji pokok",
+      "allowance": "Elaun",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "Akan Datang",
+      "body": "Ciri ini akan tersedia dalam keluaran masa depan."
     }
   }
 }

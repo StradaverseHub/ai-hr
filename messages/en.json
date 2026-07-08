@@ -117,7 +117,8 @@
     "attendanceAllowance": "Attendance allowance",
     "attendanceRecords": "Attendance records",
     "clockingLocation": "Clocking location",
-    "attendanceImport": "Attendance import"
+    "attendanceImport": "Attendance import",
+    "mobilePreview": "Mobile App Preview"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -4202,6 +4203,82 @@
       "saved": "Policy saved",
       "statusChanged": "Policy status updated",
       "archived": "Policy archived"
+    }
+  },
+  "mobilePreview": {
+    "title": "Mobile App UI/UX Preview",
+    "subtitle": "A visual preview of the upcoming mobile app — tap through the screens inside the phone frame.",
+    "previewOnly": "Design preview only. These screens simulate the future mobile app; the data shown is illustrative.",
+    "back": "Back",
+    "resetToHome": "Back to home",
+    "feature": {
+      "attendance": "Attendance",
+      "leave": "Leave",
+      "claim": "Claim",
+      "payroll": "Payroll",
+      "performance": "Performance",
+      "setting": "Setting"
+    },
+    "home": {
+      "greeting": "Good morning"
+    },
+    "attendance": {
+      "statusIn": "Clocked in",
+      "statusOut": "Not clocked in",
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "hint": "Location verified"
+    },
+    "leave": {
+      "balance": "Leave Balance",
+      "calendar": "Leave Calendar",
+      "application": "Leave Application"
+    },
+    "leaveBalance": {
+      "annual": "Annual Leave",
+      "sick": "Sick Leave",
+      "unpaid": "Unpaid Leave",
+      "daysUnit": "days"
+    },
+    "leaveCalendar": {
+      "legend": "Approved leave"
+    },
+    "leaveApp": {
+      "type": "Leave type",
+      "from": "From",
+      "to": "To",
+      "reason": "Reason",
+      "submit": "Submit application"
+    },
+    "claim": {
+      "application": "Claim Application"
+    },
+    "claimApp": {
+      "type": "Claim type",
+      "amount": "Amount",
+      "receipt": "Receipt",
+      "attach": "Attach receipt",
+      "submit": "Submit claim"
+    },
+    "payroll": {
+      "latest": "Latest net pay",
+      "viewPayslip": "View payslip",
+      "history": "Payslip history"
+    },
+    "payslip": {
+      "title": "Payslip",
+      "earnings": "Earnings",
+      "deductions": "Deductions",
+      "net": "Net pay",
+      "basic": "Basic salary",
+      "allowance": "Allowance",
+      "epf": "EPF",
+      "socso": "SOCSO",
+      "pcb": "PCB"
+    },
+    "comingSoon": {
+      "title": "Coming Soon",
+      "body": "This feature will be available in a future release."
     }
   }
 }
