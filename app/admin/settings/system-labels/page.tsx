@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { isGroupAdmin } from '@/lib/authz';
-import { listCompanies } from '@/core/read';
+import { listCompanies, listEmployees } from '@/core/read';
 import {
   listBusinessUnitsForLabels,
   listCostCentersForLabels,
@@ -29,7 +29,7 @@ export default async function SystemLabelsPage({
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
 
-  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign] =
+  const [companies, departments, positions, costCenters, businessUnits, deptAssign, posAssign, ccAssign, buAssign, employees] =
     await Promise.all([
       listCompanies(s, { includeArchived: true }),
       listDepartmentsForLabels(s),
@@ -40,6 +40,7 @@ export default async function SystemLabelsPage({
       listLabelAssignments(s, 'position'),
       listLabelAssignments(s, 'cost_center'),
       listLabelAssignments(s, 'business_unit'),
+      listEmployees(s),
     ]);
 
   const scopedCompanies = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
@@ -70,6 +71,7 @@ export default async function SystemLabelsPage({
       title?: string;
       jobFamily?: string | null;
       businessUnitId?: string | null;
+      headEmploymentId?: string | null;
       description?: string | null;
       isGlobal: boolean;
       archivedAt: Date | null;
@@ -87,6 +89,7 @@ export default async function SystemLabelsPage({
     title: r.title ?? '',
     jobFamily: r.jobFamily ?? '',
     businessUnitId: r.businessUnitId ?? null,
+    headEmploymentId: r.headEmploymentId ?? null,
     description: r.description ?? '',
     isGlobal: r.isGlobal,
     archived: !!r.archivedAt,
@@ -113,6 +116,17 @@ export default async function SystemLabelsPage({
     (buByCompany[bu.companyId] ??= []).push({ id: bu.id, label: `${bu.code} — ${bu.name}` });
   }
 
+  // 6fadb036: approver-head options — this company's employees, for the department / business-unit Head
+  // select (the head that department_head / business_unit_head approval steps route to). The "None" clear
+  // option is rendered by the grid itself.
+  const headByCompany: Record<string, { id: string; label: string }[]> = {};
+  for (const e of employees) {
+    (headByCompany[e.companyId] ??= []).push({
+      id: e.employmentId,
+      label: e.employeeCode ? `${e.name} (${e.employeeCode})` : e.name,
+    });
+  }
+
   const gridCompanies = scopedCompanies.map((c) => ({ id: c.id, name: c.name, sharedSystemLabels: c.sharedSystemLabels }));
 
   const actions = {
@@ -134,7 +148,7 @@ export default async function SystemLabelsPage({
           <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
         </Card>
       ) : (
-        <SystemLabelsGrid data={data} companies={gridCompanies} buByCompany={buByCompany} isGroupAdmin={isGroupAdmin(s)} actions={actions} />
+        <SystemLabelsGrid data={data} companies={gridCompanies} buByCompany={buByCompany} headByCompany={headByCompany} isGroupAdmin={isGroupAdmin(s)} actions={actions} />
       )}
     </div>
   );

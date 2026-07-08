@@ -4,6 +4,7 @@ import { getSession } from '@/lib/session';
 import {
   leaveBalances,
   leaveEntitlementBreakdown,
+  leaveRequestDateBreakdown,
   leaveRequestsFor,
   listEligibleLeaveTypesFor,
   myAttendance,
@@ -26,6 +27,7 @@ import { AttendanceClockButton, LocationNotice } from './attendance-clock';
 import { ClientTabs } from '@/components/personnel-tabs';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { durationLabel } from '@/lib/leave-duration';
 import {
   myCheckIn,
@@ -56,6 +58,9 @@ const LEAVE_STATUS: Record<string, string> = {
   pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
   approved: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   rejected: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
+  // R17 600be8ac ask #4: derived display for an approved request that had some dates rejected — amber, distinct
+  // from a clean green "Approved". The DB status stays 'approved'; this is display-only.
+  partial: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
 };
 const ATT_STATUS: Record<string, string> = {
   present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
@@ -164,6 +169,17 @@ export default async function MePage({
     balances.map((b) => leaveEntitlementBreakdown(s, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
   );
   const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
+
+  // R17 600be8ac ask #6: for each request shown in the list, fetch its per-date rows (if any) so the employee
+  // sees the same date-by-date outcome — which dates were approved / rejected and why — that the approver
+  // decided. RLS self-branch (can_see_employment) admits the subject to their own date rows. Empty ⇒ ordinary
+  // whole-request row (no expander rendered).
+  const shownRequests = requests.slice(0, 5);
+  const requestDateBreakdowns = new Map(
+    await Promise.all(
+      shownRequests.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
+    ),
+  );
 
   // EA (annual tax statement) rows — derived from the principal's REAL payslips across ALL their
   // employments incl. terminated ones (leavers must reach their prior employer's EA). `myEmploymentIdsAll`
@@ -1172,8 +1188,16 @@ export default async function MePage({
                     {t('requests')}
                   </div>
                   <ul className="space-y-1.5 text-sm">
-                    {requests.slice(0, 5).map((r) => (
-                      <li key={r.id} className="flex items-center justify-between gap-2">
+                    {shownRequests.map((r) => {
+                      // R17 600be8ac ask #4: an approved request with ≥1 rejected date renders the amber
+                      // "Partially approved" badge instead of a flat green "Approved" (display-derived, no status enum).
+                      const isPartial = r.status === 'approved' && r.hasRejectedDates;
+                      const pillStatus = isPartial ? 'partial' : r.status;
+                      const pillLabel = isPartial ? t('leaveStatus.partiallyApproved') : t(`leaveStatus.${r.status}`);
+                      const dateRows = requestDateBreakdowns.get(r.id) ?? [];
+                      return (
+                      <li key={r.id} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
                           <span className="block truncate text-muted-foreground">
                             {r.leaveType} · {r.startDate}
@@ -1199,7 +1223,7 @@ export default async function MePage({
                           </span>
                           {r.status === 'pending' && r.stepCount > 0 && (
                             <span className="text-xs text-muted-foreground/80">
-                              {r.currentStepKind === 'hr_admin' ? t('stageHr') : t('stageManager')}
+                              {r.currentStepKind === 'direct_manager' ? t('stageManager') : t('stageHr')}
                             </span>
                           )}
                         </div>
@@ -1214,10 +1238,25 @@ export default async function MePage({
                               {t('viewDocument')}
                             </a>
                           )}
-                          <Pill status={r.status} map={LEAVE_STATUS} label={t(`leaveStatus.${r.status}`)} />
+                          <Pill status={pillStatus} map={LEAVE_STATUS} label={pillLabel} />
                         </div>
+                      </div>
+                      {dateRows.length > 0 && (
+                        <LeaveDateOutcome
+                          dates={dateRows}
+                          locale={locale}
+                          labels={{
+                            title: t('dateBreakdown.title'),
+                            approved: t('dateBreakdown.approved'),
+                            rejected: t('dateBreakdown.rejected'),
+                            pending: t('dateBreakdown.pending'),
+                            reason: t('dateBreakdown.reason'),
+                          }}
+                        />
+                      )}
                       </li>
-                    ))}
+                      );
+                    })}
                     {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}
                   </ul>
                 </div>
@@ -1234,6 +1273,8 @@ export default async function MePage({
                       label: lt.requiresDocument ? `${lt.name} · ${t('documentRequired')}` : lt.name,
                       durations: lt.durations ?? null,
                       code: lt.code,
+                      // Feedback 9d8cf621: HR-authored apply-time notice for this leave type (shown under the select).
+                      applyNotice: (lt.customMessages as Record<string, string> | null)?.applyNotice ?? null,
                     }))}
                     previewAction={myPreviewLeaveDeduction}
                   />

@@ -1847,6 +1847,8 @@ export type LabelCreateInput = {
   title?: string;
   jobFamily?: string;
   businessUnitId?: string | null;
+  // 6fadb036: department / business-unit head (approval routing target). Ignored for other kinds.
+  headEmploymentId?: string | null;
   description?: string;
 };
 /** One existing row to update. `archived` toggles the soft-archive; scope (isGlobal) is applied too. */
@@ -1860,6 +1862,8 @@ export type LabelUpdateInput = {
   title?: string;
   jobFamily?: string;
   businessUnitId?: string | null;
+  // 6fadb036: department / business-unit head (approval routing target). Ignored for other kinds.
+  headEmploymentId?: string | null;
   description?: string;
 };
 export type LabelRowError = { key: string; field?: string; message: string };
@@ -1924,9 +1928,11 @@ export async function bulkSaveLabels(
           const name = clean(c.key, c.name, 'name', 'Department name', true);
           if (!name) continue;
           const businessUnitId = await resolveDepartmentBusinessUnitId(tx, c.businessUnitId, c.companyId);
+          // 6fadb036: same-company-validated head (blank ⇒ null).
+          const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
           const [row] = await tx
             .insert(department)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, headEmploymentId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: department.id });
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false } });
@@ -1953,9 +1959,11 @@ export async function bulkSaveLabels(
           const code = clean(c.key, c.code, 'code', 'Business-unit code', true);
           const name = clean(c.key, c.name, 'name', 'Business-unit name', true);
           if (!code || !name) continue;
+          // 6fadb036: same-company-validated head (blank ⇒ null).
+          const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
           const [row] = await tx
             .insert(businessUnit)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, headEmploymentId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: businessUnit.id });
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
@@ -1964,7 +1972,8 @@ export async function bulkSaveLabels(
       } catch (e) {
         if (isUniqueViolation(e)) errors.push({ key: c.key, field: kind === 'department' || kind === 'position' ? (kind === 'department' ? 'name' : 'title') : 'code', message: 'A label with this code / name already exists in the company.' });
         else if (isPrivilegeError(e)) errors.push({ key: c.key, field: 'scope', message: 'Only a group admin can make a label global.' });
-        else if (e instanceof CrossCompanyError) errors.push({ key: c.key, field: 'businessUnitId', message: e.message });
+        // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
+        else if (e instanceof CrossCompanyError) errors.push({ key: c.key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message });
         else throw e;
       }
     }
@@ -1974,11 +1983,15 @@ export async function bulkSaveLabels(
         if (kind === 'department') {
           const name = clean(u.key, u.name, 'name', 'Department name', true);
           if (!name) continue;
-          const set: { name: string; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, description: u.description?.trim() || null };
+          const set: { name: string; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, description: u.description?.trim() || null };
           if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
-          if (u.businessUnitId !== undefined) {
+          if (u.businessUnitId !== undefined || u.headEmploymentId !== undefined) {
             const [dep] = await tx.select({ companyId: department.companyId }).from(department).where(eq(department.id, u.id)).limit(1);
-            if (dep) set.businessUnitId = await resolveDepartmentBusinessUnitId(tx, u.businessUnitId, dep.companyId);
+            if (dep) {
+              if (u.businessUnitId !== undefined) set.businessUnitId = await resolveDepartmentBusinessUnitId(tx, u.businessUnitId, dep.companyId);
+              // 6fadb036: tri-state head — undefined ⇒ untouched; blank ⇒ clear; id ⇒ same-company-validated.
+              if (u.headEmploymentId !== undefined) set.headEmploymentId = await resolveHeadEmploymentId(tx, u.headEmploymentId, dep.companyId);
+            }
           }
           if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
           await tx.update(department).set(set).where(eq(department.id, u.id));
@@ -2004,8 +2017,13 @@ export async function bulkSaveLabels(
           const code = clean(u.key, u.code, 'code', 'Business-unit code', true);
           const name = clean(u.key, u.name, 'name', 'Business-unit name', true);
           if (!code || !name) continue;
-          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
           if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
+          // 6fadb036: tri-state head — undefined ⇒ untouched; blank ⇒ clear; id ⇒ same-company-validated.
+          if (u.headEmploymentId !== undefined) {
+            const [bu] = await tx.select({ companyId: businessUnit.companyId }).from(businessUnit).where(eq(businessUnit.id, u.id)).limit(1);
+            if (bu) set.headEmploymentId = await resolveHeadEmploymentId(tx, u.headEmploymentId, bu.companyId);
+          }
           if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
           await tx.update(businessUnit).set(set).where(eq(businessUnit.id, u.id));
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: u.id, eventType: 'business-unit.updated', actor: actorOf(ctx), payload: { code, isGlobal: u.isGlobal, archived: u.archived } });
@@ -2014,7 +2032,8 @@ export async function bulkSaveLabels(
       } catch (e) {
         if (isUniqueViolation(e)) errors.push({ key: u.key, field: kind === 'department' ? 'name' : kind === 'position' ? 'title' : 'code', message: 'A label with this code / name already exists in the company.' });
         else if (isPrivilegeError(e)) errors.push({ key: u.key, field: 'scope', message: 'Only a group admin can make a label global.' });
-        else if (e instanceof CrossCompanyError) errors.push({ key: u.key, field: 'businessUnitId', message: e.message });
+        // 6fadb036: CrossCompanyError('employment') comes from the head guard — highlight the Head cell.
+        else if (e instanceof CrossCompanyError) errors.push({ key: u.key, field: e.message.includes('employment') ? 'headEmploymentId' : 'businessUnitId', message: e.message });
         else throw e;
       }
     }

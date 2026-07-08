@@ -32,6 +32,9 @@ export type GridRecord = {
   title: string;
   jobFamily: string;
   businessUnitId: string | null;
+  // 6fadb036: the department / business-unit head an approval `department_head` / `business_unit_head`
+  // step routes to (nullable). Only meaningful for the department + business_unit kinds.
+  headEmploymentId: string | null;
   description: string;
   isGlobal: boolean;
   archived: boolean;
@@ -61,6 +64,7 @@ export type GridActions = {
         title?: string;
         jobFamily?: string;
         businessUnitId?: string | null;
+        headEmploymentId?: string | null;
         description?: string;
       }[];
       updates: {
@@ -73,6 +77,7 @@ export type GridActions = {
         title?: string;
         jobFamily?: string;
         businessUnitId?: string | null;
+        headEmploymentId?: string | null;
         description?: string;
       }[];
     },
@@ -105,6 +110,7 @@ function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState
     title: '',
     jobFamily: '',
     businessUnitId: null,
+    headEmploymentId: null,
     description: '',
     isGlobal,
     archived: false,
@@ -122,6 +128,7 @@ export function SystemLabelsGrid({
   data,
   companies,
   buByCompany,
+  headByCompany,
   isGroupAdmin,
   actions,
 }: {
@@ -129,10 +136,15 @@ export function SystemLabelsGrid({
   companies: GridCompany[];
   /** Active business units per company, for the department BU-link select. */
   buByCompany: Record<string, { id: string; label: string }[]>;
+  /** 6fadb036: employees per company, for the department / business-unit Head select. */
+  headByCompany: Record<string, { id: string; label: string }[]>;
   isGroupAdmin: boolean;
   actions: GridActions;
 }) {
   const t = useTranslations('admin.systemLabels');
+  // 6fadb036: the Head column reuses the org-settings labels (fieldHead / headNone) that shipped with the
+  // approval-routing feature — no new i18n keys.
+  const to = useTranslations('admin.organization');
   const [kind, setKind] = useState<GridKind>('department');
   const [rowsByKind, setRowsByKind] = useState<Record<GridKind, RowState[]>>(() => {
     const seed = {} as Record<GridKind, RowState[]>;
@@ -176,7 +188,7 @@ export function SystemLabelsGrid({
     draftSeq.current += 1;
     patchRows([
       ...rows,
-      { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, businessUnitId: src.businessUnitId, description: src.description },
+      { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description },
     ]);
   }
   function removeDraft(key: string) {
@@ -204,6 +216,7 @@ export function SystemLabelsGrid({
       title: r.title,
       jobFamily: r.jobFamily,
       businessUnitId: r.businessUnitId,
+      headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
     // NB: scope (isGlobal) is NEVER sent from a text-edit Save — it is owned exclusively by the
@@ -219,6 +232,7 @@ export function SystemLabelsGrid({
       title: r.title,
       jobFamily: r.jobFamily,
       businessUnitId: r.businessUnitId,
+      headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
     const updatedKeys = new Set(updates.map((u) => u.key));
@@ -549,6 +563,9 @@ export function SystemLabelsGrid({
                   </th>
                 ))}
                 {kind === 'department' && <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.businessUnit')}</th>}
+                {(kind === 'department' || kind === 'business_unit') && (
+                  <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{to('fieldHead')}</th>
+                )}
                 <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.scope')}</th>
                 <th className={headerCls} onClick={() => toggleSort('archived')}>{t('col.status')}</th>
                 <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.lastUpdated')}</th>
@@ -602,6 +619,24 @@ export function SystemLabelsGrid({
                         >
                           <option value="">{t('businessUnitNone')}</option>
                           {(buByCompany[r.companyId] ?? []).map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    )}
+                    {/* 6fadb036: Head — this company's employees + a "None" clear option. The head is who a
+                        department_head / business_unit_head approval step routes to. */}
+                    {(kind === 'department' || kind === 'business_unit') && (
+                      <td className="px-1.5 py-1">
+                        <select
+                          value={r.headEmploymentId ?? ''}
+                          onChange={(e) => updateCell(r.key, 'headEmploymentId', e.target.value || null)}
+                          className={`${cellInput} ${err?.field === 'headEmploymentId' ? 'border-destructive' : ''}`}
+                        >
+                          <option value="">{to('headNone')}</option>
+                          {(headByCompany[r.companyId] ?? []).map((o) => (
                             <option key={o.id} value={o.id}>
                               {o.label}
                             </option>
