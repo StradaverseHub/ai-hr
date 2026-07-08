@@ -11,6 +11,7 @@ import {
   duplicateCustomReport,
   runCustomReport,
   saveCustomReport,
+  saveReportAsTemplate,
   setShared,
   toggleFavourite,
   updateCustomReport,
@@ -149,15 +150,15 @@ export async function draftReport(
   }
 }
 
-/** Save-as-Template (c440b365 gap-9): duplicate the given saved report as a fresh, shared template copy. */
+/** Save-as-Template (c440b365 gap-9): duplicate the given saved report as a fresh, shared template copy.
+ *  Gated in the service by the 'manageTemplates' verb of the source report's permission grid. */
 export async function saveAsTemplateAction(formData: FormData) {
   const s = await getSession();
   const id = String(formData.get('id') ?? '');
   let newId: string | null = null;
   try {
-    const r = await duplicateCustomReport(s, id);
+    const r = await saveReportAsTemplate(s, id);
     newId = r?.id ?? null;
-    if (newId) await setShared(s, { id: newId, shared: true });
   } catch (e) {
     redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
   }

@@ -3,7 +3,7 @@
  * single contract shared by the builder UI, the runner and the AI designer. No DB access.
  */
 import { describe, it, expect } from 'vitest';
-import { validateReportSpec, REPORT_DATASETS, getDataset } from '../core/report-registry';
+import { validateReportSpec, REPORT_DATASETS, getDataset, datasetsForCategory, reportVerbAllowed } from '../core/report-registry';
 import type { CustomReportSpec } from '../db/schema';
 
 const base = (over: Partial<CustomReportSpec> = {}): CustomReportSpec => ({
@@ -89,8 +89,21 @@ describe('validateReportSpec', () => {
     const ds = getDataset('attendance_daily');
     expect(ds).toBeDefined();
     const ids = new Set(ds!.fields.map((f) => f.id));
-    for (const id of ['branch', 'position', 'shift', 'clockIn', 'clockOut', 'lateMinutes', 'attendanceStatus', 'clockingLocation', 'geofencingStatus', 'remarks'])
+    for (const id of ['branch', 'position', 'shift', 'clockIn', 'clockOut', 'lateMinutes', 'attendanceStatus', 'attendanceAllowance', 'replacementLeave', 'clockingLocation', 'geofencingStatus', 'remarks'])
       expect(ids.has(id)).toBe(true);
+  });
+
+  it('the Performance category carries real datasets (reviews + goals)', () => {
+    const list = datasetsForCategory('performance');
+    expect(list.map((d) => d.id).sort()).toEqual(['performance_goals', 'performance_reviews']);
+    const reviews = getDataset('performance_reviews')!;
+    const rIds = new Set(reviews.fields.map((f) => f.id));
+    for (const id of ['employeeCode', 'name', 'cycleName', 'cycleStatus', 'reviewStatus', 'selfRating', 'managerRating', 'overallRating', 'reviewer', 'periodStart', 'periodEnd'])
+      expect(rIds.has(id)).toBe(true);
+    const goals = getDataset('performance_goals')!;
+    const gIds = new Set(goals.fields.map((f) => f.id));
+    for (const id of ['employeeCode', 'name', 'goalTitle', 'goalStatus', 'progress', 'approvalStatus', 'dueOn'])
+      expect(gIds.has(id)).toBe(true);
   });
 
   it('default alignment follows the reporter rule (names left, dates/status center, numbers/currency right)', async () => {
@@ -112,5 +125,40 @@ describe('validateReportSpec', () => {
   it('getDataset resolves known ids and rejects unknown', () => {
     expect(getDataset('master')?.id).toBe('master');
     expect(getDataset('nope')).toBeUndefined();
+  });
+});
+
+describe('reportVerbAllowed (7-verb per-report permission grid)', () => {
+  const grid = { manager: ['view'], hr_admin: ['view', 'export', 'edit'] };
+
+  it('empty/absent grid allows everyone the route guard let in', () => {
+    expect(reportVerbAllowed(undefined, ['employee'], ['delete'])).toBe(true);
+    expect(reportVerbAllowed({}, ['employee'], ['delete'])).toBe(true);
+  });
+
+  it('super_admin is the always-allowed superrole', () => {
+    expect(reportVerbAllowed(grid, ['super_admin'], ['delete'])).toBe(true);
+    expect(reportVerbAllowed(grid, ['super_admin'], ['manageTemplates'])).toBe(true);
+  });
+
+  it('grants are verb-exact: view does not imply export or edit', () => {
+    expect(reportVerbAllowed(grid, ['manager'], ['view'])).toBe(true);
+    expect(reportVerbAllowed(grid, ['manager'], ['export'])).toBe(false);
+    expect(reportVerbAllowed(grid, ['manager'], ['edit'])).toBe(false);
+    expect(reportVerbAllowed(grid, ['hr_admin'], ['edit'])).toBe(true);
+    expect(reportVerbAllowed(grid, ['hr_admin'], ['delete'])).toBe(false);
+    expect(reportVerbAllowed(grid, ['hr_admin'], ['share'])).toBe(false);
+    expect(reportVerbAllowed(grid, ['hr_admin'], ['manageTemplates'])).toBe(false);
+    expect(reportVerbAllowed(grid, ['hr_admin'], ['create'])).toBe(false);
+  });
+
+  it('an any-of verb list passes when any requested verb is granted', () => {
+    expect(reportVerbAllowed(grid, ['manager'], ['view', 'edit'])).toBe(true);
+    expect(reportVerbAllowed(grid, ['manager'], ['delete', 'share'])).toBe(false);
+  });
+
+  it('ungranted roles are denied every verb when a grid is set', () => {
+    expect(reportVerbAllowed(grid, ['employee'], ['view'])).toBe(false);
+    expect(reportVerbAllowed(grid, [], ['view'])).toBe(false);
   });
 });

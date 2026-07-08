@@ -4497,7 +4497,7 @@
     "pagesApprox": "Số trang (ước tính)",
     "averagesRow": "Trung bình",
     "permissions": "Quyền báo cáo",
-    "permissionsHint": "Các vai trò được cấp quyền Xem hoặc Xuất có thể mở báo cáo đã lưu này; để trống nếu chỉ dành cho quản trị viên.",
+    "permissionsHint": "Mỗi quyền được thực thi theo vai trò: Xem và Xuất kiểm soát việc chạy báo cáo, Tạo kiểm soát việc nhân bản, cùng với Sửa, Xóa, Chia sẻ và Quản lý mẫu. Để trống nếu chỉ dành cho quản trị viên; Super Admin luôn có quyền truy cập.",
     "role": "Vai trò",
     "recommendations": "Đề xuất thông minh",
     "suggestedColumns": "Cột đề xuất",

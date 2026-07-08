@@ -4497,7 +4497,7 @@
     "pagesApprox": "Halaman (anggaran)",
     "averagesRow": "Purata",
     "permissions": "Kebenaran laporan",
-    "permissionsHint": "Peranan yang diberi Lihat atau Eksport boleh membuka laporan tersimpan ini; biarkan kosong untuk pentadbir sahaja.",
+    "permissionsHint": "Setiap kata kerja dikuatkuasakan mengikut peranan: Lihat dan Eksport mengawal menjalankan laporan, Cipta mengawal pendua, serta Sunting, Padam, Kongsi dan Urus templat. Biarkan kosong untuk pentadbir sahaja; Super Admin sentiasa mempunyai akses.",
     "role": "Peranan",
     "recommendations": "Cadangan pintar",
     "suggestedColumns": "Lajur dicadangkan",

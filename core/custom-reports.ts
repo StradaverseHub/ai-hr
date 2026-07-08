@@ -7,12 +7,12 @@
  * only structural metadata (name, dataset id, column count) — never report row data. `runCustomReport` is
  * a pure read, so it deliberately appends NO event (documented skip).
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { customReport, type CustomReportSpec } from '../db/schema';
+import { customReport, type CustomReportSpec, type ReportPermissionVerb } from '../db/schema';
 import type { ReportData } from '../lib/report-export';
-import { getDataset, runReportSpec, validateReportSpec, type ReportCategory } from './report-registry';
+import { getDataset, reportVerbAllowed, runReportSpec, validateReportSpec, type ReportCategory } from './report-registry';
 
 export type CustomReportRow = {
   id: string;
@@ -31,29 +31,31 @@ function assertValid(spec: CustomReportSpec): void {
   if (!v.ok) throw new Error(`Invalid report definition: ${v.reason}`);
 }
 
-/** Raised when a saved report's per-report permission grid denies the acting role View/Export. */
+/** Raised when a saved report's per-report permission grid denies the acting role the attempted verb. */
 export class ReportAccessError extends Error {
-  constructor() {
-    super('report-access-denied');
+  constructor(public readonly verb: ReportPermissionVerb) {
+    super(`report-access-denied:${verb}`);
     this.name = 'ReportAccessError';
   }
 }
 
 /**
- * Enforce the report's per-role permission grid (c440b365 gap-7) for a read/export. The grid is ADVISORY
- * metadata layered on top of the coarse admin route-guard: an EMPTY/absent grid keeps today's behaviour
- * (admin-only, already enforced by the route). When a grid IS set, super_admin always passes; otherwise the
- * acting session must hold a role granted `view` or `export`. Structural admin writes remain route-gated.
+ * Enforce the report's per-role permission grid (c440b365 — the reporter's full 7-verb model:
+ * View / Create / Edit / Delete / Export / Share / Manage Templates). The grid is layered ON TOP of the
+ * coarse admin route-guard: an EMPTY/absent grid keeps today's behaviour (admin-only, enforced by the
+ * route). When a grid IS set, super_admin always passes (the always-allowed superrole); otherwise the
+ * acting session must hold a role granted at least one of the requested verbs. `verbs` accepts a list so
+ * surfaces that legitimately serve two verbs (e.g. opening the builder = view OR edit) stay usable.
  */
-function enforceReportView(ctx: SessionContext, spec: CustomReportSpec): void {
-  const perms = spec.layout?.permissions;
-  if (!perms || Object.keys(perms).length === 0) return;
-  const roles = new Set(ctx.roles ?? []);
-  if (roles.has('super_admin')) return;
-  const ok = Object.entries(perms).some(
-    ([role, verbs]) => roles.has(role) && (verbs.includes('view') || verbs.includes('export')),
-  );
-  if (!ok) throw new ReportAccessError();
+export function enforceReportVerb(
+  ctx: SessionContext,
+  spec: CustomReportSpec,
+  verbs: ReportPermissionVerb | ReportPermissionVerb[],
+): void {
+  const wanted = Array.isArray(verbs) ? verbs : [verbs];
+  if (!reportVerbAllowed(spec.layout?.permissions, ctx.roles ?? [], wanted)) {
+    throw new ReportAccessError(wanted[0]);
+  }
 }
 
 /** List saved reports, optionally narrowed to a category. RLS already restricts to owner/shared/admin. */
@@ -107,6 +109,9 @@ export async function saveCustomReport(
   if (!ds) throw new Error('Unknown dataset');
   const spec: CustomReportSpec = { ...p.spec, datasetId: p.datasetId };
   assertValid(spec);
+  // 'create' verb: a new report has no stored grid yet, so the INCOMING grid is checked — an author who
+  // sets a grid that excludes their own role from Create is denied (self-consistent with the 7-verb model).
+  enforceReportVerb(ctx, spec, 'create');
   return withTenant(ctx, async (tx) => {
     const [row] = await tx
       .insert(customReport)
@@ -144,6 +149,15 @@ export async function updateCustomReport(
   const spec: CustomReportSpec = { ...p.spec };
   assertValid(spec);
   await withTenant(ctx, async (tx) => {
+    // 'edit' verb is checked against the STORED grid (not the incoming one), so a caller cannot strip the
+    // grid in the payload to escape it.
+    const [existing] = await tx
+      .select({ spec: customReport.spec })
+      .from(customReport)
+      .where(eq(customReport.id, p.id))
+      .limit(1);
+    if (!existing) return;
+    enforceReportVerb(ctx, existing.spec, 'edit');
     const [row] = await tx
       .update(customReport)
       .set({ name, spec, category: ds.category, datasetId: ds.id, shared: p.shared ?? false, updatedAt: new Date() })
@@ -166,6 +180,8 @@ export async function duplicateCustomReport(ctx: SessionContext, id: string): Pr
   return withTenant(ctx, async (tx) => {
     const [src] = await tx.select().from(customReport).where(eq(customReport.id, id)).limit(1);
     if (!src) return null;
+    // Duplicating mints a NEW report from the source — the 'create' verb, checked on the source's grid.
+    enforceReportVerb(ctx, src.spec, 'create');
     const [row] = await tx
       .insert(customReport)
       .values({
@@ -192,6 +208,14 @@ export async function duplicateCustomReport(ctx: SessionContext, id: string): Pr
 
 export async function deleteCustomReport(ctx: SessionContext, id: string): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    // 'delete' verb: checked against the stored grid BEFORE the row is removed.
+    const [existing] = await tx
+      .select({ spec: customReport.spec })
+      .from(customReport)
+      .where(eq(customReport.id, id))
+      .limit(1);
+    if (!existing) return;
+    enforceReportVerb(ctx, existing.spec, 'delete');
     const [row] = await tx.delete(customReport).where(eq(customReport.id, id)).returning({ id: customReport.id, name: customReport.name });
     if (!row) return;
     await appendEvent(tx, {
@@ -206,6 +230,8 @@ export async function deleteCustomReport(ctx: SessionContext, id: string): Promi
 }
 
 export async function toggleFavourite(ctx: SessionContext, p: { id: string; isFavourite: boolean }): Promise<void> {
+  // Favourite is a personal bookmark, not one of the reporter's 7 permission verbs — deliberately NOT
+  // grid-gated (the admin route-guard is the only gate, matching the empty-grid default).
   await withTenant(ctx, async (tx) => {
     const [row] = await tx
       .update(customReport)
@@ -226,6 +252,14 @@ export async function toggleFavourite(ctx: SessionContext, p: { id: string; isFa
 
 export async function setShared(ctx: SessionContext, p: { id: string; shared: boolean }): Promise<void> {
   await withTenant(ctx, async (tx) => {
+    // 'share' verb: sharing/unsharing a report is checked against its stored grid.
+    const [existing] = await tx
+      .select({ spec: customReport.spec })
+      .from(customReport)
+      .where(eq(customReport.id, p.id))
+      .limit(1);
+    if (!existing) return;
+    enforceReportVerb(ctx, existing.spec, 'share');
     const [row] = await tx
       .update(customReport)
       .set({ shared: p.shared, updatedAt: new Date() })
@@ -244,13 +278,48 @@ export async function setShared(ctx: SessionContext, p: { id: string; shared: bo
 }
 
 /**
+ * Save-as-Template (c440b365): duplicate a saved report as a fresh SHARED template copy in one unit of
+ * work. Gated by the 'manageTemplates' verb of the source report's grid — the reporter's seventh verb.
+ */
+export async function saveReportAsTemplate(ctx: SessionContext, id: string): Promise<{ id: string } | null> {
+  return withTenant(ctx, async (tx) => {
+    const [src] = await tx.select().from(customReport).where(eq(customReport.id, id)).limit(1);
+    if (!src) return null;
+    enforceReportVerb(ctx, src.spec, 'manageTemplates');
+    const [row] = await tx
+      .insert(customReport)
+      .values({
+        tenantId: ctx.tenantId,
+        name: `${src.name} (template)`,
+        category: src.category,
+        datasetId: src.datasetId,
+        spec: src.spec,
+        shared: true,
+        createdByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: customReport.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'custom-report',
+      aggregateId: row.id,
+      eventType: 'custom-report.template-saved',
+      actor: actorOf(ctx),
+      payload: { name: `${src.name} (template)`, sourceId: id, datasetId: src.datasetId },
+    });
+    return { id: row.id };
+  });
+}
+
+/**
  * Run a saved report (by id) or an ad-hoc spec (preview) → neutral ReportData. Pure READ — no DomainEvent
  * (documented skip, consistent with the analytics export route and overtimeReport).
+ * `verb` distinguishes the reporter's View vs Export grants on the saved-report path: on-screen preview of
+ * a saved report checks 'view'; a file download checks 'export'.
  */
 export async function runCustomReport(
   ctx: SessionContext,
   scopeIds: string[],
-  p: { id?: string; spec?: CustomReportSpec },
+  p: { id?: string; spec?: CustomReportSpec; verb?: Extract<ReportPermissionVerb, 'view' | 'export'> },
 ): Promise<ReportData> {
   let spec = p.spec;
   if (!spec && p.id) {
@@ -259,7 +328,7 @@ export async function runCustomReport(
     spec = r.spec;
     // Saved-report path: honour the per-report permission grid. Ad-hoc spec (preview/export-before-save) is
     // the admin editing the report, so it is not grid-gated (the route's admin guard already applies).
-    enforceReportView(ctx, spec);
+    enforceReportVerb(ctx, spec, p.verb ?? 'view');
   }
   if (!spec) throw new Error('No report spec');
   assertValid(spec);

@@ -11,7 +11,7 @@ import { getSession } from '@/lib/session';
 import { isAdmin } from '@/lib/authz';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
-import { runCustomReport } from '@/core/custom-reports';
+import { ReportAccessError, runCustomReport } from '@/core/custom-reports';
 import { validateReportSpec } from '@/core/report-registry';
 import { serializeReport, type ReportData, type ReportFormat } from '@/lib/report-export';
 import type { CustomReportSpec } from '@/db/schema';
@@ -48,9 +48,11 @@ export async function GET(req: Request) {
   const allowed = await allowedCompanies(s);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   try {
-    const data = await runCustomReport(s, scopeIds, { id });
+    // Downloading a saved report is the reporter's 'export' verb — enforced against the report's grid.
+    const data = await runCustomReport(s, scopeIds, { id, verb: 'export' });
     return serve(data, format);
   } catch (e) {
+    if (e instanceof ReportAccessError) return new Response('Forbidden', { status: 403 });
     console.error('custom report export failed', e);
     return new Response('Could not generate the report — please try again.', { status: 500 });
   }

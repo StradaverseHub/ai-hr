@@ -5,11 +5,13 @@
  * (audit / idempotency / reproducibility). Filed per legal entity — RLS gates on is_admin_for.
  */
 import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
   attendance,
+  attendanceAllowancePolicy,
   attendanceCorrection,
   attendancePolicy,
   clockingLocation,
@@ -17,10 +19,15 @@ import {
   compensation,
   department,
   employment,
+  performanceGoal,
+  performanceReview,
   person,
   position,
+  reviewCycle,
   statutoryReport,
+  toilAccrual,
 } from '../db/schema';
+import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { packFor } from '../localization/registry';
 import type { EaStatement, ReportDef, ReportResult } from '../localization/my/reports';
 import type { ReportData } from '../lib/report-export';
@@ -550,7 +557,7 @@ export async function attendanceDailyReport(
   ctx: SessionContext,
   p: { month: string; companyIds?: string[] },
 ): Promise<AttendanceDailyRow[]> {
-  return withTenant(ctx, async (tx) => {
+  const base = await withTenant(ctx, async (tx) => {
     const monthStart = `${p.month}-01`;
     const [y, m] = p.month.split('-').map(Number);
     const monthEnd = `${p.month}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
@@ -563,6 +570,7 @@ export async function attendanceDailyReport(
 
     const rows = await tx
       .select({
+        employmentId: employment.id,
         name: person.fullName,
         employeeCode: employment.employeeCode,
         position: position.title,
@@ -579,6 +587,9 @@ export async function attendanceDailyReport(
         remarks: attendance.remarks,
         geofenceStatus: attendance.checkInGeofenceStatus,
         clockingLocationName: clockingLocation.name,
+        // Replacement leave (TOIL, ADR-0033): at most one accrual per employee+worked-date (unique index),
+        // so the left join cannot multiply rows. daysCredited = replacement-leave days banked for THIS day.
+        toilDaysCredited: toilAccrual.daysCredited,
       })
       .from(attendance)
       .innerJoin(employment, eq(employment.id, attendance.employmentId))
@@ -592,6 +603,10 @@ export async function attendanceDailyReport(
       .leftJoin(department, eq(department.id, assignment.departmentId))
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(clockingLocation, eq(clockingLocation.id, attendance.checkInClockingLocationId))
+      .leftJoin(
+        toilAccrual,
+        and(eq(toilAccrual.employmentId, attendance.employmentId), eq(toilAccrual.workedDate, attendance.attendanceDate)),
+      )
       .where(
         and(
           p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
@@ -610,6 +625,7 @@ export async function attendanceDailyReport(
       const lateMinutes = ci != null && lateAfter != null && ci > lateAfter ? ci - lateAfter : 0;
       const earlyOut = co != null && workEnd != null && co < workEnd ? workEnd - co : 0;
       return {
+        employmentId: r.employmentId,
         name: r.name,
         employeeCode: r.employeeCode ?? null,
         branch: r.companyName,
@@ -627,7 +643,183 @@ export async function attendanceDailyReport(
         clockingLocation: r.clockingLocationName ?? null,
         geofencingStatus: r.geofenceStatus ?? null,
         remarks: r.remarks ?? null,
+        // Replacement leave (TOIL / leave-in-lieu): days credited for this specific worked date; null = none.
+        replacementLeave: r.toilDaysCredited == null ? null : Number(r.toilDaysCredited),
       };
     });
+  });
+
+  // ── Attendance Allowance (c440b365 — reporter field) ─────────────────────────────────────────
+  // The allowance engine (ADR-0072) is MONTHLY-only: qualification is decided per employee per MONTH
+  // against the active policies' criteria, never per day. The closest correct per-day representation is
+  // therefore the month's qualified allowance total repeated on each of the employee's day rows:
+  //   • an amount ("120.00")  ⇒ the employee is in scope of ≥1 active policy and qualified for that total
+  //   • "0.00"                ⇒ in scope but NOT qualified this month
+  //   • null                  ⇒ no active attendance-allowance policy covers this employee.
+  // Evaluation is the same pure read the admin evaluation screen uses (evaluateAllowancesForPeriod), run
+  // in its own session-scoped tx — RLS-fenced like every other dataset read.
+  const activePolicies = await withTenant(ctx, (tx) =>
+    tx
+      .select({ id: attendanceAllowancePolicy.id })
+      .from(attendanceAllowancePolicy)
+      .where(
+        and(
+          eq(attendanceAllowancePolicy.status, 'active'),
+          isNull(attendanceAllowancePolicy.archivedAt),
+          p.companyIds && p.companyIds.length
+            ? inArray(attendanceAllowancePolicy.companyId, p.companyIds)
+            : undefined,
+        ),
+      ),
+  );
+  const covered = new Set<string>();
+  const qualifiedTotal = new Map<string, number>();
+  for (const pol of activePolicies) {
+    const ev = await evaluateAllowancesForPeriod(ctx, { policyId: pol.id, month: p.month });
+    for (const r of ev.rows) {
+      covered.add(r.employmentId);
+      if (r.qualified) qualifiedTotal.set(r.employmentId, (qualifiedTotal.get(r.employmentId) ?? 0) + Number(r.amount));
+    }
+  }
+
+  return base.map(({ employmentId, ...row }) => ({
+    ...row,
+    attendanceAllowance: covered.has(String(employmentId))
+      ? (qualifiedTotal.get(String(employmentId)) ?? 0).toFixed(2)
+      : null,
+  }));
+}
+
+// ─────────────────────────── Performance reports (c440b365 gap fix) ───────────────────────────
+// Flat, admin-facing tabular reads over the performance module (ADR-0013/0022) for the custom-report
+// registry: one row per review (cycle + ratings + reviewer) and one row per goal (title/status/progress).
+// PURE READS (no DomainEvent — read-only surfaces, deliberate skip). RLS on performance_review /
+// performance_goal (can_see_employment) still fences the rows inside the session-scoped tx; company scope
+// comes from the caller's scopeIds like every other dataset read.
+
+const _d10 = (t: Date | null): string | null => (t ? t.toISOString().slice(0, 10) : null);
+
+export type PerformanceReportRow = Record<string, string | number | null>;
+
+/** One row per performance review: subject, cycle, statuses, ratings, reviewer, key dates. */
+export async function performanceReviewReport(
+  ctx: SessionContext,
+  p: { companyIds?: string[] },
+): Promise<PerformanceReportRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const reviewerEmp = alias(employment, 'reviewer_emp');
+    const reviewerPerson = alias(person, 'reviewer_person');
+    const rows = await tx
+      .select({
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        companyName: company.legalName,
+        departmentName: department.name,
+        positionTitle: position.title,
+        cycleName: reviewCycle.name,
+        cycleStatus: reviewCycle.status,
+        periodStart: reviewCycle.periodStart,
+        periodEnd: reviewCycle.periodEnd,
+        reviewStatus: performanceReview.status,
+        reviewerName: reviewerPerson.fullName,
+        selfRating: performanceReview.selfRating,
+        managerRating: performanceReview.managerRating,
+        overallRating: performanceReview.overallRating,
+        finalScore: performanceReview.finalScore,
+        abcClass: performanceReview.abcClass,
+        submittedAt: performanceReview.submittedAt,
+        acknowledgedAt: performanceReview.acknowledgedAt,
+      })
+      .from(performanceReview)
+      .innerJoin(reviewCycle, eq(reviewCycle.id, performanceReview.cycleId))
+      .innerJoin(employment, eq(employment.id, performanceReview.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      // Current assignment (validTo/supersededAt null) → department + position.
+      .leftJoin(
+        assignment,
+        and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(reviewerEmp, eq(reviewerEmp.id, performanceReview.reviewerEmploymentId))
+      .leftJoin(reviewerPerson, eq(reviewerPerson.id, reviewerEmp.personId))
+      .where(p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined)
+      .orderBy(desc(reviewCycle.periodStart), person.fullName);
+    return rows.map((r) => ({
+      employeeCode: r.employeeCode ?? null,
+      name: r.name,
+      company: r.companyName,
+      department: r.departmentName ?? null,
+      position: r.positionTitle ?? null,
+      cycleName: r.cycleName,
+      cycleStatus: r.cycleStatus,
+      periodStart: r.periodStart,
+      periodEnd: r.periodEnd,
+      reviewStatus: r.reviewStatus,
+      reviewer: r.reviewerName ?? null,
+      selfRating: r.selfRating,
+      managerRating: r.managerRating,
+      overallRating: r.overallRating,
+      finalScore: r.finalScore == null ? null : Number(r.finalScore),
+      abcClass: r.abcClass ?? null,
+      submittedAt: _d10(r.submittedAt),
+      acknowledgedAt: _d10(r.acknowledgedAt),
+    }));
+  });
+}
+
+/** One row per performance goal/OKR: owner, goal, approval + progress, cycle binding, due date. */
+export async function performanceGoalReport(
+  ctx: SessionContext,
+  p: { companyIds?: string[] },
+): Promise<PerformanceReportRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        companyName: company.legalName,
+        departmentName: department.name,
+        title: performanceGoal.title,
+        metric: performanceGoal.metric,
+        target: performanceGoal.target,
+        weight: performanceGoal.weight,
+        progress: performanceGoal.progress,
+        status: performanceGoal.status,
+        approvalStatus: performanceGoal.approvalStatus,
+        dueOn: performanceGoal.dueOn,
+        cycleName: reviewCycle.name,
+        updatedAt: performanceGoal.updatedAt,
+      })
+      .from(performanceGoal)
+      .innerJoin(employment, eq(employment.id, performanceGoal.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      // cycle_id nullable — a continuous goal has no cycle (renders null).
+      .leftJoin(reviewCycle, eq(reviewCycle.id, performanceGoal.cycleId))
+      .where(p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined)
+      .orderBy(person.fullName, desc(performanceGoal.updatedAt));
+    return rows.map((r) => ({
+      employeeCode: r.employeeCode ?? null,
+      name: r.name,
+      company: r.companyName,
+      department: r.departmentName ?? null,
+      goalTitle: r.title,
+      metric: r.metric ?? null,
+      target: r.target ?? null,
+      weight: r.weight == null ? null : Number(r.weight),
+      progress: r.progress,
+      goalStatus: r.status,
+      approvalStatus: r.approvalStatus,
+      dueOn: r.dueOn ?? null,
+      cycleName: r.cycleName ?? null,
+      updatedAt: _d10(r.updatedAt),
+    }));
   });
 }

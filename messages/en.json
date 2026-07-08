@@ -4497,7 +4497,7 @@
     "pagesApprox": "Pages (approx.)",
     "averagesRow": "Averages",
     "permissions": "Report permissions",
-    "permissionsHint": "Roles granted View or Export can open this saved report; leave empty for admin-only.",
+    "permissionsHint": "Every verb is enforced per role: View and Export gate running the report, Create gates duplicating it, plus Edit, Delete, Share and Manage templates. Leave empty for admin-only; Super Admin always has access.",
     "role": "Role",
     "recommendations": "Smart recommendations",
     "suggestedColumns": "Suggested columns",

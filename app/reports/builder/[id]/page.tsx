@@ -9,7 +9,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { isAiConfigured } from '@/core/ai-config';
-import { getCustomReport } from '@/core/custom-reports';
+import { getCustomReport, ReportAccessError, enforceReportVerb } from '@/core/custom-reports';
 import { datasetsForCategory, getDataset, type ReportDataset } from '@/core/report-registry';
 import { REPORT_PERMISSION_VERBS, type CustomReportSpec } from '@/db/schema';
 import { MATRIX_ROLES } from '@/lib/permissions';
@@ -44,6 +44,14 @@ export default async function ReportBuilderPage({
   } else {
     const r = await getCustomReport(s, id);
     if (!r) notFound();
+    // Opening a saved report in the builder serves both reading and editing it — allowed when the acting
+    // role holds 'view' OR 'edit' on the report's permission grid (empty grid ⇒ admin route-guard only).
+    try {
+      enforceReportVerb(s, r.spec, ['view', 'edit']);
+    } catch (e) {
+      if (e instanceof ReportAccessError) redirect(`/reports?error=${encodeURIComponent('You do not have permission to view this report')}`);
+      throw e;
+    }
     existing = { id: r.id, name: r.name, spec: r.spec, shared: r.shared };
     dataset = getDataset(r.datasetId);
     if (!dataset) notFound();

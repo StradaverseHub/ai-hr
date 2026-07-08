@@ -16,7 +16,7 @@ import type { SessionContext } from '../db/client';
 import type { CustomReportSpec } from '../db/schema';
 import type { ReportData } from '../lib/report-export';
 import { masterDataExport, leaveBalancesSummary, type ReportFilter } from './analytics';
-import { overtimeReport, attendanceDailyReport } from './reporting';
+import { overtimeReport, attendanceDailyReport, performanceGoalReport, performanceReviewReport } from './reporting';
 import { listProcessedPayslipsAcross } from './payroll-view';
 import { listClaimTypes } from './claims';
 
@@ -174,6 +174,13 @@ const ATTENDANCE_DAILY: ReportDataset = {
     { id: 'lateMinutes', label: 'Late Minutes', type: 'number', group: 'Hours' },
     { id: 'earlyOutMinutes', label: 'Early Out (min)', type: 'number', group: 'Hours' },
     { id: 'attendanceStatus', label: 'Attendance Status', type: 'status', group: 'Attendance' },
+    // Attendance Allowance (ADR-0072) is a MONTHLY qualification, never per-day: the value is the month's
+    // qualified allowance total repeated on each of the employee's day rows (amount / "0.00" when in scope
+    // but disqualified / blank when no active policy covers the employee). See attendanceDailyReport.
+    { id: 'attendanceAllowance', label: 'Attendance Allowance', type: 'currency', group: 'Entitlements' },
+    // Replacement Leave = TOIL / leave-in-lieu (ADR-0033): days credited for THIS worked date (at most one
+    // accrual per employee+date). Blank = no replacement leave banked for the day.
+    { id: 'replacementLeave', label: 'Replacement Leave', type: 'number', group: 'Entitlements' },
     { id: 'clockingLocation', label: 'Clocking Location', type: 'text', group: 'Location' },
     { id: 'geofencingStatus', label: 'Geofencing Status', type: 'status', group: 'Location' },
     { id: 'remarks', label: 'Remarks', type: 'text', group: 'Attendance' },
@@ -283,6 +290,69 @@ const CLAIM_TYPES: ReportDataset = {
   },
 };
 
+// ─────────────────────────────── Performance ───────────────────────────────
+const PERFORMANCE_REVIEWS: ReportDataset = {
+  id: 'performance_reviews',
+  category: 'performance',
+  label: 'Performance reviews',
+  fields: [
+    { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Identity' },
+    { id: 'name', label: 'Employee Name', type: 'text', group: 'Identity' },
+    { id: 'company', label: 'Company', type: 'text', group: 'Organisation' },
+    { id: 'department', label: 'Department', type: 'text', group: 'Organisation' },
+    { id: 'position', label: 'Position', type: 'text', group: 'Organisation' },
+    { id: 'cycleName', label: 'Review Cycle', type: 'text', group: 'Cycle' },
+    { id: 'cycleStatus', label: 'Cycle Status', type: 'status', group: 'Cycle' },
+    { id: 'periodStart', label: 'Period Start', type: 'date', group: 'Cycle' },
+    { id: 'periodEnd', label: 'Period End', type: 'date', group: 'Cycle' },
+    { id: 'reviewStatus', label: 'Review Status', type: 'status', group: 'Review' },
+    { id: 'reviewer', label: 'Reviewer', type: 'text', group: 'Review' },
+    { id: 'selfRating', label: 'Self Rating', type: 'number', group: 'Ratings' },
+    { id: 'managerRating', label: 'Manager Rating', type: 'number', group: 'Ratings' },
+    { id: 'overallRating', label: 'Overall Rating', type: 'number', group: 'Ratings' },
+    { id: 'finalScore', label: 'Final Score', type: 'number', group: 'Ratings' },
+    { id: 'abcClass', label: 'ABC Class', type: 'status', group: 'Ratings' },
+    { id: 'submittedAt', label: 'Submitted On', type: 'date', group: 'Dates' },
+    { id: 'acknowledgedAt', label: 'Acknowledged On', type: 'date', group: 'Dates' },
+  ],
+  filters: [
+    { id: 'name', label: 'Employee Name contains', kind: 'text' },
+    { id: 'cycleName', label: 'Review Cycle contains', kind: 'text' },
+    { id: 'department', label: 'Department contains', kind: 'text' },
+  ],
+  defaultColumns: ['employeeCode', 'name', 'cycleName', 'reviewStatus', 'selfRating', 'managerRating', 'overallRating', 'reviewer'],
+  run: async (ctx, scopeIds) => performanceReviewReport(ctx, { companyIds: scopeIds }),
+};
+
+const PERFORMANCE_GOALS: ReportDataset = {
+  id: 'performance_goals',
+  category: 'performance',
+  label: 'Goals & OKRs',
+  fields: [
+    { id: 'employeeCode', label: 'Employee ID', type: 'text', group: 'Identity' },
+    { id: 'name', label: 'Employee Name', type: 'text', group: 'Identity' },
+    { id: 'company', label: 'Company', type: 'text', group: 'Organisation' },
+    { id: 'department', label: 'Department', type: 'text', group: 'Organisation' },
+    { id: 'goalTitle', label: 'Goal Title', type: 'text', group: 'Goal' },
+    { id: 'metric', label: 'Metric', type: 'text', group: 'Goal' },
+    { id: 'target', label: 'Target', type: 'text', group: 'Goal' },
+    { id: 'weight', label: 'Weight', type: 'number', group: 'Goal' },
+    { id: 'progress', label: 'Progress (%)', type: 'number', group: 'Progress' },
+    { id: 'goalStatus', label: 'Goal Status', type: 'status', group: 'Progress' },
+    { id: 'approvalStatus', label: 'Approval Status', type: 'status', group: 'Progress' },
+    { id: 'cycleName', label: 'Review Cycle', type: 'text', group: 'Cycle' },
+    { id: 'dueOn', label: 'Due On', type: 'date', group: 'Dates' },
+    { id: 'updatedAt', label: 'Last Updated', type: 'date', group: 'Dates' },
+  ],
+  filters: [
+    { id: 'name', label: 'Employee Name contains', kind: 'text' },
+    { id: 'goalTitle', label: 'Goal Title contains', kind: 'text' },
+    { id: 'department', label: 'Department contains', kind: 'text' },
+  ],
+  defaultColumns: ['employeeCode', 'name', 'goalTitle', 'goalStatus', 'progress', 'dueOn'],
+  run: async (ctx, scopeIds) => performanceGoalReport(ctx, { companyIds: scopeIds }),
+};
+
 /** The closed dataset registry, keyed by id. */
 export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [MASTER.id]: MASTER,
@@ -291,10 +361,12 @@ export const REPORT_DATASETS: Record<string, ReportDataset> = {
   [LEAVE_BALANCES.id]: LEAVE_BALANCES,
   [PAYROLL_HISTORY.id]: PAYROLL_HISTORY,
   [CLAIM_TYPES.id]: CLAIM_TYPES,
+  [PERFORMANCE_REVIEWS.id]: PERFORMANCE_REVIEWS,
+  [PERFORMANCE_GOALS.id]: PERFORMANCE_GOALS,
 };
 
-/** The six report categories the reporter asked for, in nav order. Performance has no dataset yet
- *  (no tabular performance read exists) — it renders an honest empty state rather than a fake dataset. */
+/** The six report categories the reporter asked for, in nav order — every category now carries at least
+ *  one dataset, so each renders a "New custom report" entry (no more empty states). */
 export const REPORT_CATEGORIES: ReportCategory[] = [
   'master',
   'attendance',
@@ -356,6 +428,28 @@ export function validateReportSpec(spec: unknown): ValidateResult {
     if (L.pageBreakOn != null && !fieldIds.has(L.pageBreakOn)) return { ok: false, reason: 'bad-page-break' };
   }
   return { ok: true };
+}
+
+/**
+ * Pure check for the per-report role→verb grid (the reporter's 7-verb permission model:
+ * View / Create / Edit / Delete / Export / Share / Manage Templates).
+ *   • Empty/absent grid ⇒ allowed (the coarse admin route-guard is the only gate — today's default).
+ *   • super_admin is the always-allowed superrole.
+ *   • Otherwise the acting session must hold ≥1 role granted ≥1 of the requested verbs.
+ * Shared by every service mutation/read in core/custom-reports.ts — kept here (pure module) so it is
+ * unit-testable without a DB.
+ */
+export function reportVerbAllowed(
+  permissions: Record<string, string[]> | null | undefined,
+  roles: readonly string[],
+  verbs: readonly string[],
+): boolean {
+  if (!permissions || Object.keys(permissions).length === 0) return true;
+  const held = new Set(roles);
+  if (held.has('super_admin')) return true;
+  return Object.entries(permissions).some(
+    ([role, granted]) => held.has(role) && verbs.some((v) => granted.includes(v)),
+  );
 }
 
 const contains = (v: string | number | null, needle: string): boolean =>

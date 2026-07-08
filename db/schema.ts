@@ -2994,9 +2994,11 @@ export type CustomReportSpec = {
     freeze?: string[]; // field ids to freeze (kept as the leading, non-scrolling columns)
     summary?: string[]; // field ids to total in a summary row
     averages?: string[]; // field ids to average in a second summary row
-    // Per-report role→verb grid (Create/Edit/Delete/Export/Share/View/ManageTemplates). Advisory metadata
-    // layered ON TOP of the coarse admin route-guard: it records the intended granular permissions and is
-    // enforced for View/Export at the run path. Empty/absent ⇒ admin-only (today's behaviour).
+    // Per-report role→verb grid (Create/Edit/Delete/Export/Share/View/ManageTemplates). Layered ON TOP of
+    // the coarse admin route-guard and enforced per verb in core/custom-reports.ts: view/export on the run
+    // paths, create on save/duplicate, edit on update, delete on delete, share on setShared and
+    // manageTemplates on save-as-template. super_admin always passes; empty/absent grid ⇒ admin-only
+    // (today's behaviour, the route guard alone).
     permissions?: Record<string, string[]>;
   } | null;
 };

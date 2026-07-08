@@ -4497,7 +4497,7 @@
     "pagesApprox": "页数（约）",
     "averagesRow": "平均值",
     "permissions": "报表权限",
-    "permissionsHint": "被授予查看或导出权限的角色可以打开此已保存的报表；留空则仅限管理员。",
+    "permissionsHint": "每个操作按角色强制执行：查看和导出控制运行报表，创建控制复制报表，另有编辑、删除、共享和管理模板。留空则仅限管理员；超级管理员始终拥有权限。",
     "role": "角色",
     "recommendations": "智能建议",
     "suggestedColumns": "建议列",
