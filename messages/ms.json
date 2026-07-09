@@ -536,7 +536,7 @@
       "tabs": {
         "profile": "Profil",
         "family": "Keluarga",
-        "job": "Jawatan",
+        "job": "Pekerjaan",
         "payroll": "Gaji",
         "documents": "Dokumen",
         "others": "Lain-lain",
@@ -3230,7 +3230,7 @@
       "daySun": "Ahd",
       "save": "Simpan dasar",
       "lateHint": "Daftar masuk selepas “lewat selepas” ditanda lewat; daftar keluar sebelum “setengah hari sebelum” ialah setengah hari.",
-      "rosterNote": "Syif biasa seseorang ditetapkan sebagai Syif lalai pada profil mereka (Kakitangan → tab Kerja); skrin Roster adalah untuk pengecualian tarikh tertentu. Hari yang diroster mengatasi syif lalai; pekerja tanpa kedua-duanya kembali kepada jadual lalai ini.",
+      "rosterNote": "Syif biasa seseorang ditetapkan sebagai Syif lalai pada profil mereka (Kakitangan → tab Pekerjaan); skrin Roster adalah untuk pengecualian tarikh tertentu. Hari yang diroster mengatasi syif lalai; pekerja tanpa kedua-duanya kembali kepada jadual lalai ini.",
       "dayTypeHint": "Penuh = hari bekerja biasa. Separuh = hari bekerja yang lebih pendek (cth. Sabtu 9:00–12:00) — cuti yang diambil pada hari ini menolak 0.5 hari secara lalai, atau 1.0 hari jika tetapan potongan separuh hari dihidupkan. Rehat = bukan hari bekerja.",
       "dayTypeFull": "Penuh",
       "dayTypeHalf": "Separuh",

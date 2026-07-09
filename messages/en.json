@@ -536,7 +536,7 @@
       "tabs": {
         "profile": "Profile",
         "family": "Family",
-        "job": "Job",
+        "job": "Employment",
         "payroll": "Payroll",
         "documents": "Documents",
         "others": "Others",
@@ -3230,7 +3230,7 @@
       "daySun": "Sun",
       "save": "Save policy",
       "lateHint": "Check-in after “late after” is flagged late; check-out before “half-day before” is a half-day.",
-      "rosterNote": "A person's usual shift is set as their Default shift on their profile (Personnel → Job tab); the Roster screen is for date-specific exceptions. A rostered day overrides the default shift; employees with neither fall back to this default schedule.",
+      "rosterNote": "A person's usual shift is set as their Default shift on their profile (Personnel → Employment tab); the Roster screen is for date-specific exceptions. A rostered day overrides the default shift; employees with neither fall back to this default schedule.",
       "dayTypeHint": "Full = a normal working day. Half = a shorter working day (e.g. Saturday 9:00–12:00) — leave taken on it deducts 0.5 day by default, or 1.0 day if the half-day deduction setting is switched on. Rest = not a working day.",
       "dayTypeFull": "Full",
       "dayTypeHalf": "Half",
