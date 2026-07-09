@@ -2956,6 +2956,12 @@ export const payrollIndividualTxn = pgTable(
       .notNull()
       .references(() => employment.id),
     kind: payrollTxnKindEnum('kind').notNull(),
+    // f1564110 Phase 3 (0176) — the picked Payroll Item Master component. NULLABLE; only earning/deduction
+    // rows may carry one (app-enforced). With INDIVIDUAL_TXN_PAY_ENABLED the kernel folds a component row
+    // through the typed-pay-component fold (the catalog's statutory flags/rounding apply); a componentless
+    // legacy row folds with conservative defaults; NEW payable rows require a component (service-enforced).
+    // Flag off (the default) ⇒ the ledger stays record-only, byte-identical to the pre-Phase-3 kernel.
+    componentId: uuid('component_id').references(() => payComponent.id),
     // The per-entry transaction date; validated app-side to fall within the batch's pay-period month.
     txnDate: date('txn_date').notNull(),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),

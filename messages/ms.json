@@ -2159,7 +2159,10 @@
         "unattachedTitle": "Transaksi belum dilampirkan",
         "unattachedHint": "Entri ini dimasukkan sebelum larian gaji wujud untuk bulannya. Setiap satu akan dilampirkan secara automatik pada larian biasa bulan tersebut apabila gaji dijana.",
         "unattachedEmpty": "Tiada transaksi belum dilampirkan.",
-        "periodInvalid": "Pilih bulan yang sah."
+        "periodInvalid": "Pilih bulan yang sah.",
+        "componentRequired": "Pilih item gaji untuk setiap baris pendapatan atau potongan — item sekali sahaja dibayar melalui penggajian, jadi layanan statutorinya mesti ditakrifkan.",
+        "componentInvalid": "Item gaji yang dipilih tidak sah untuk baris ini (tidak wujud, telah diarkibkan, atau jenis yang salah).",
+        "componentRequiredHint": "Pendapatan dan potongan dibayar melalui penggajian: pilih item gaji bernama daripada senarai (layanan KWSP/PERKESO/PCB item itu digunakan). Entri kerja lebih masa, tanpa gaji dan cuti tidak memerlukannya."
       },
       "tp1": {
         "title": "Pelepasan TP1",

@@ -1233,6 +1233,13 @@
       "when": 1781862176000,
       "tag": "0175_individual_txn_period_keyed",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1781862179000,
+      "tag": "0176_individual_txn_component",
+      "breakpoints": true
     }
   ]
 }

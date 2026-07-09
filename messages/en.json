@@ -2159,7 +2159,10 @@
         "unattachedTitle": "Unattached transactions",
         "unattachedHint": "These entries were keyed in before a payroll run existed for their month. Each one attaches automatically to its month’s regular run when payroll is generated.",
         "unattachedEmpty": "No unattached transactions.",
-        "periodInvalid": "Choose a valid month."
+        "periodInvalid": "Choose a valid month.",
+        "componentRequired": "Pick a pay item for each earning or deduction row — one-off pay items are paid through payroll, so the item's statutory treatment must be defined.",
+        "componentInvalid": "The selected pay item is not valid for this row (unknown, archived, or the wrong type).",
+        "componentRequiredHint": "Earnings and deductions are paid through payroll: pick a named pay item from the list (its EPF/SOCSO/PCB treatment applies). Overtime, unpaid and leave entries do not need one."
       },
       "tp1": {
         "title": "TP1 Relief",

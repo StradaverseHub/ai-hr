@@ -81,3 +81,37 @@ calculated LAST. Migration `0175` therefore re-homes the row on the (company_id,
 
 The "Explicit deferral" above still stands: the ledger remains INERT w.r.t. computed pay (the byte-identical
 test now also covers the attach step). Kernel consumption is Phase 3, flag-gated, with its own sign-off.
+
+## Amendment (2026-07, feedback f1564110 Phase 3) — flag-gated kernel consumption
+
+The "Explicit deferral" above is now closed **behind `INDIVIDUAL_TXN_PAY_ENABLED` (default OFF)**. Flag off,
+the ledger stays record-only and every payslip is byte-identical — the original inert byte-identical test is
+retained verbatim as the flag-off guard. Flag on, `generatePayslips` folds the batch's (post-attach) ledger
+rows into pay:
+
+1. **Component-carrying earning/deduction rows** (migration `0176` adds `component_id` → `pay_component`;
+   the wizard now PERSISTS the picked Payroll Item Master item instead of flattening it to
+   kind+label-in-notes) are pushed into the existing `batchCompByEmp` typed-component fold, so the
+   catalog's statutory flags (EPF/SOCSO/PCB/HRDF), rounding, prorates and non-payable treatment apply
+   identically to a one-off batch component. The keyed amount is authoritative — the catalog `rule` is
+   deliberately not applied (it would replace the keyed figure).
+2. **Componentless legacy rows** fold with conservative defaults: an earning is EPF+SOCSO-liable wages (and
+   in the PCB base via the wage figure); a deduction is post-statutory (net-only, EA s.24-clamped like a
+   manual deduction). **New** payable rows require a component while the flag is on
+   (`ComponentRequiredError`; the wizard hides the generic earning/deduction options).
+3. **Overtime rows** add to the OT figure BEFORE the policy OT caps, with `otSource: 'individual-txn'`
+   provenance when no manual/attendance figure contributes. **Unpaid rows** add their keyed RM amount to
+   the unpaid deduction (pre-statutory, like derived unpaid leave). Both regular-run-only, matching the
+   existing additional-run semantics.
+4. **Leave rows are RECORD-ONLY in v1 (documented skip):** leave pay flows through the leave module
+   (unpaid-leave derivation / entitlements); folding a raw leave amount here would double-count. The row
+   still appears on the payslip as a named record line.
+5. **Payslip provenance:** every consumed row appends a NAMED `statutory.recordLines` entry
+   (deductions negative), so the payslip shows the one-off items by name.
+6. **Dependency (documented):** the earning/deduction fold rides `TYPED_PAY_COMPONENTS_ENABLED`. With typed
+   components off, a batch carrying payable one-off rows FAILS CLOSED at generation
+   (`IndividualTxnRequiresTypedComponentsError`) rather than silently leaving them unpaid. The anchor
+   deployment and the demo (`deploy/enable-demo-flags.sh`) run both flags on.
+
+Consumption happens only at draft→processed generation — closed-batch immutability (0011) is untouched, and
+a draft reset detaches the rows (Phase 2) so a re-generation re-attaches and re-consumes them exactly once.

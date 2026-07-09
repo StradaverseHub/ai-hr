@@ -36,6 +36,10 @@ export default async function IndividualTransactionPage({
   const t = await getTranslations('payroll.transactions');
   const { batchId, error } = await searchParams;
   const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  // f1564110 Phase 3 — with the kernel consuming this ledger, a NEW payable (earning/deduction) row must
+  // name a Payroll Item Master item (its statutory flags drive the treatment). The wizard hides the generic
+  // earning/deduction options accordingly; the service re-enforces (ComponentRequiredError).
+  const individualTxnPayOn = process.env.INDIVIDUAL_TXN_PAY_ENABLED === 'true';
 
   const [allBatches, employees, companies, payComponents] = await Promise.all([
     listBatches(s, scopeIds),
@@ -106,6 +110,9 @@ export default async function IndividualTransactionPage({
     'rowIncomplete',
     'duplicateRow',
     'periodInvalid',
+    // f1564110 Phase 3 — component required/invalid on payable rows (kernel-consumed ledger).
+    'componentRequired',
+    'componentInvalid',
   ]);
   const errorMessage = error && errorKeys.has(error) ? t(`individual.${error}`) : error;
 
@@ -134,6 +141,7 @@ export default async function IndividualTransactionPage({
         companies={scopedCompanies}
         payItems={wizardPayItems}
         processHref="/payroll/process"
+        requireComponent={individualTxnPayOn}
       />
       {/* ── The resulting ledger: per-draft-batch view, or the UNATTACHED view (period-keyed rows awaiting
           the month's regular run — f1564110 Phase 2). Edit / delete inline in both views. ── */}

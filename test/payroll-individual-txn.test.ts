@@ -9,8 +9,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { and, eq, inArray } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
@@ -32,10 +32,13 @@ import {
   DuplicateTxnRowError,
   InvalidPayPeriodError,
   MissingTxnTargetError,
+  ComponentRequiredError,
+  InvalidTxnComponentError,
   TXN_KINDS,
   TXN_UNITS,
 } from '../core/payroll-individual-txn';
-import { BatchNotDraftError, createAdditionalRun } from '../core/payroll';
+import { BatchNotDraftError, IndividualTxnRequiresTypedComponentsError, createAdditionalRun } from '../core/payroll';
+import { backfillEmploymentComponentsFromCompensation, seedPayComponentCatalog } from '../core/pay-components';
 import { exportIndividualTxnsCsv } from '../core/payroll-view';
 import {
   adminCtx,
@@ -57,6 +60,10 @@ describe('1.2.2 Individual Transaction', () => {
   beforeEach(async () => {
     await resetDb();
     base = await seedBase();
+    // f1564110 Phase 3 — every test in this file starts FLAG OFF (the codebase default); the Phase-3
+    // describe below sets the flags per test and clears them again in its afterEach.
+    delete process.env.INDIVIDUAL_TXN_PAY_ENABLED;
+    delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
   });
   afterAll(async () => {
     await closeAll();
@@ -198,7 +205,10 @@ describe('1.2.2 Individual Transaction', () => {
 
   // ───────────────────── byte-identical invariant ─────────────────────
 
-  it('individual-txn rows are INERT w.r.t. computed pay (payslip figures identical with vs without rows)', async () => {
+  it('FLAG-OFF GUARD: with INDIVIDUAL_TXN_PAY_ENABLED off (default) the rows are INERT w.r.t. computed pay', async () => {
+    // f1564110 Phase 3 repurposed this byte-identical invariant as the FLAG-OFF guard: kernel consumption
+    // exists behind INDIVIDUAL_TXN_PAY_ENABLED, and with the flag off (deleted in beforeEach) the payslip
+    // figures must remain identical with vs without ledger rows — proving flag-off payroll is untouched.
     // Two equivalent employees in two equivalent batches; one batch gets a full set of individual-txn rows.
     // The generated payslip figures must be identical — proving the ledger does not fold into pay in this slice.
     // Same period (so the period-derived statutory metadata is identical) but two separate companies in the
@@ -949,5 +959,179 @@ describe('1.2.2 Individual Transaction', () => {
         expect(ind.cycle[rt], key).not.toBe(en.cycle[rt]);
       }
     }
+  });
+  // ───────────────────── f1564110 Phase 3 — flag-gated kernel consumption ─────────────────────
+  // Golden per-kind fixtures with INDIVIDUAL_TXN_PAY_ENABLED + TYPED_PAY_COMPONENTS_ENABLED on (the anchor
+  // configuration). Each test builds a BASELINE employee (no ledger rows) and a WITH-ROWS employee in
+  // separate fresh companies (same tenant, same period — the inert-test pattern) and compares payslips, so
+  // the assertions are deltas, robust to statutory-pack changes. Flag-off byte-identity is guarded by the
+  // FLAG-OFF GUARD test above.
+  describe('Phase 3 — kernel consumption (INDIVIDUAL_TXN_PAY_ENABLED)', () => {
+    afterEach(() => {
+      delete process.env.INDIVIDUAL_TXN_PAY_ENABLED;
+      delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+    });
+
+    let seq = 0;
+    /** Hire one employee (comp 5000 / allowance 0 + statutory profile) in a FRESH company with its own
+     *  draft batch for 2026-05; seed the component catalog + backfill BASIC/ALLOWANCE (typed substrate). */
+    async function setupEmployee() {
+      seq += 1;
+      const a = adminCtx(base);
+      const [c] = await owner.db
+        .insert(schema.company)
+        .values({ tenantId: base.tenantId, legalName: `P3 Co ${seq} ${randomUUID().slice(0, 8)}` })
+        .returning({ id: schema.company.id });
+      const [d] = await owner.db
+        .insert(schema.department)
+        .values({ tenantId: base.tenantId, companyId: c.id, name: 'Ops' })
+        .returning({ id: schema.department.id });
+      const e = await hireEmployee(a, {
+        person: { fullName: `P3 Emp ${seq}`, primaryEmail: `p3-${randomUUID()}@acme.test` },
+        companyId: c.id,
+        departmentId: d.id,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      });
+      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+      // IC is tenant-unique - derive one per employee from the sequence.
+      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `900101${String(seq).padStart(6, '0')}` });
+      await seedPayComponentCatalog(a); // idempotent (tenant-level catalog)
+      await backfillEmploymentComponentsFromCompensation(a);
+      const { batchId } = await createBatch(a, { companyId: c.id, payPeriod: '2026-05' });
+      return { a, employmentId: e.employmentId, batchId };
+    }
+
+    type Stat = Record<string, number> & { recordLines?: { code: string; name: string; amount: number }[]; otSource?: string };
+    async function generateAndRead(a: SessionContext, batchId: string) {
+      process.env.TYPED_PAY_COMPONENTS_ENABLED = 'true';
+      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true';
+      await generatePayslips(a, { batchId });
+      const [ps] = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+      return { ps, st: ps.statutory as Stat };
+    }
+
+    async function componentIdByCode(code: string): Promise<string> {
+      const [row] = await owner.db
+        .select({ id: schema.payComponent.id })
+        .from(schema.payComponent)
+        .where(and(eq(schema.payComponent.tenantId, base.tenantId), eq(schema.payComponent.code, code)));
+      return row.id;
+    }
+
+    it('componentless LEGACY earning folds with conservative defaults (EPF/SOCSO/PCB-liable wages) + named record line', async () => {
+      const b = await setupEmployee();
+      const w = await setupEmployee();
+      // Created while the flag is OFF (beforeEach) ⇒ a legacy componentless payable row.
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 500, notes: 'Spot award' });
+      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay) + 500, 2); // paid
+      expect(Number(wp.allowance)).toBeCloseTo(Number(bp.allowance) + 500, 2); // wage-allowance bucket
+      expect(ws.epfEmployee).toBeGreaterThan(bs.epfEmployee); // EPF base includes it (5500 vs 5000)
+      expect(ws.socsoEmployee).toBeGreaterThan(bs.socsoEmployee); // SOCSO base includes it (under the ceiling)
+      expect((ws.recordLines ?? []).some((l) => l.code === 'TXN_EARNING' && l.name === 'Spot award' && l.amount === 500)).toBe(true);
+    });
+
+    it('componentless LEGACY deduction is POST-statutory: net −amount, statutory identical', async () => {
+      const b = await setupEmployee();
+      const w = await setupEmployee();
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'deduction', txnDate: '2026-05-12', amount: 300, notes: 'Damage recovery' });
+      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay), 2); // gross untouched
+      expect(Number(wp.netPay)).toBeCloseTo(Number(bp.netPay) - 300, 2);
+      expect(Number(wp.totalDeductions)).toBeCloseTo(Number(bp.totalDeductions) + 300, 2);
+      expect(Number(wp.otherDeductions)).toBeCloseTo(Number(bp.otherDeductions) + 300, 2);
+      for (const k of ['epfEmployee', 'socsoEmployee', 'eisEmployee', 'pcb'] as const) {
+        expect(ws[k]).toBeCloseTo(bs[k], 2); // post-statutory: no base changes
+      }
+      expect((ws.recordLines ?? []).some((l) => l.code === 'TXN_DEDUCTION' && l.amount === -300)).toBe(true);
+    });
+
+    it('component-carrying earning rides the catalog statutory flags (BONUS: EPF yes, SOCSO no)', async () => {
+      const b = await setupEmployee();
+      const w = await setupEmployee();
+      const bonusId = await componentIdByCode('BONUS');
+      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true'; // component required (and provided) on a new payable row
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', componentId: bonusId, txnDate: '2026-05-15', amount: 1000, notes: 'Ad-hoc bonus' });
+      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      expect(Number(wp.bonus)).toBeCloseTo(Number(bp.bonus) + 1000, 2); // (EPF && !SOCSO) ⇒ the bonus bucket
+      expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay) + 1000, 2);
+      expect(ws.epfEmployee).toBeGreaterThan(bs.epfEmployee); // EPF-liable per the catalog flag
+      expect(ws.socsoEmployee).toBeCloseTo(bs.socsoEmployee, 2); // SOCSO excludes bonus per the catalog flag
+      expect((ws.recordLines ?? []).some((l) => l.code === 'BONUS' && l.name === 'Ad-hoc bonus' && l.amount === 1000)).toBe(true);
+    });
+
+    it("overtime kind adds to the OT figure with otSource='individual-txn' provenance", async () => {
+      const b = await setupEmployee();
+      const w = await setupEmployee();
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'overtime', txnDate: '2026-05-08', amount: 200, notes: 'Ad-hoc OT' });
+      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      expect(Number(wp.overtimePay)).toBeCloseTo(Number(bp.overtimePay) + 200, 2);
+      expect(ws.otSource).toBe('individual-txn');
+      expect(ws.epfEmployee).toBeCloseTo(bs.epfEmployee, 2); // EPF excludes overtime
+      expect(ws.socsoEmployee).toBeGreaterThan(bs.socsoEmployee); // SOCSO/EIS include overtime
+    });
+
+    it('unpaid kind adds its RM amount to the unpaid deduction (pre-statutory)', async () => {
+      const b = await setupEmployee();
+      const w = await setupEmployee();
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'unpaid', txnDate: '2026-05-20', amount: 150, notes: 'Absent day' });
+      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      // The unpaid figure rides otherDeductions (slipUnpaid) on the payslip.
+      expect(Number(wp.otherDeductions)).toBeCloseTo(Number(bp.otherDeductions) + 150, 2);
+      expect(Number(wp.netPay)).toBeLessThan(Number(bp.netPay));
+      expect(ws.epfEmployee).toBeLessThan(bs.epfEmployee); // PRE-statutory: wage base reduced (4850 vs 5000)
+      expect((ws.recordLines ?? []).some((l) => l.code === 'TXN_UNPAID' && l.amount === -150)).toBe(true);
+    });
+
+    it('leave kind is RECORD-ONLY (documented v1 skip): money identical, named record line present', async () => {
+      const b = await setupEmployee();
+      const w = await setupEmployee();
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'leave', txnDate: '2026-05-21', amount: 99, notes: 'Comp leave note' });
+      const { ps: bp, st: bs } = await generateAndRead(b.a, b.batchId);
+      const { ps: wp, st: ws } = await generateAndRead(w.a, w.batchId);
+      expect(Number(wp.grossPay)).toBeCloseTo(Number(bp.grossPay), 2);
+      expect(Number(wp.netPay)).toBeCloseTo(Number(bp.netPay), 2);
+      expect(Number(wp.totalDeductions)).toBeCloseTo(Number(bp.totalDeductions), 2);
+      for (const k of ['epfEmployee', 'socsoEmployee', 'eisEmployee', 'pcb'] as const) {
+        expect(ws[k]).toBeCloseTo(bs[k], 2);
+      }
+      expect((ws.recordLines ?? []).some((l) => l.code === 'TXN_LEAVE' && l.name === 'Comp leave note')).toBe(true);
+    });
+
+    it('flag on: a NEW payable row REQUIRES a component (create + bulk); non-payable kinds do not; component on a non-payable kind is rejected', async () => {
+      const { a, employmentId, batchId } = await setupEmployee();
+      const bonusId = await componentIdByCode('BONUS');
+      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true';
+      await expect(
+        createIndividualTxn(a, { batchId, employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 50 }),
+      ).rejects.toBeInstanceOf(ComponentRequiredError);
+      await expect(
+        createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'deduction', txnDate: '2026-05-10', amount: 50 }] }),
+      ).rejects.toBeInstanceOf(ComponentRequiredError);
+      await expect(
+        createIndividualTxn(a, { batchId, employmentId, kind: 'overtime', txnDate: '2026-05-10', amount: 50 }),
+      ).resolves.toMatchObject({ id: expect.any(String) });
+      await expect(
+        createIndividualTxn(a, { batchId, employmentId, kind: 'overtime', componentId: bonusId, txnDate: '2026-05-11', amount: 50 }),
+      ).rejects.toBeInstanceOf(InvalidTxnComponentError);
+      // Kind-mismatch: a deduction row cannot carry an allowance-kind component.
+      await expect(
+        createIndividualTxn(a, { batchId, employmentId, kind: 'deduction', componentId: bonusId, txnDate: '2026-05-11', amount: 50 }),
+      ).rejects.toBeInstanceOf(InvalidTxnComponentError);
+    });
+
+    it('FAIL-CLOSED: flag on + typed components OFF + payable rows present ⇒ generation throws (documented dependency)', async () => {
+      const w = await setupEmployee();
+      await createIndividualTxn(w.a, { batchId: w.batchId, employmentId: w.employmentId, kind: 'earning', txnDate: '2026-05-10', amount: 100 });
+      process.env.INDIVIDUAL_TXN_PAY_ENABLED = 'true';
+      delete process.env.TYPED_PAY_COMPONENTS_ENABLED;
+      await expect(generatePayslips(w.a, { batchId: w.batchId })).rejects.toBeInstanceOf(IndividualTxnRequiresTypedComponentsError);
+    });
   });
 });

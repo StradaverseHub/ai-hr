@@ -11,9 +11,11 @@ import {
   TxnDateOutOfPeriodError,
   AmountNotPositiveError,
   CompanyMismatchError,
+  ComponentRequiredError,
   EmploymentNotInBatchScopeError,
   EmptyEmployeeSelectionError,
   DuplicateTxnRowError,
+  InvalidTxnComponentError,
   InvalidTxnKindError,
   InvalidTxnUnitError,
   InvalidPayPeriodError,
@@ -44,13 +46,17 @@ const txnErrorKey = (e: unknown): string =>
             ? 'noEmployeesSelected'
             : e instanceof DuplicateTxnRowError
               ? 'duplicateRow'
-              : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
-                ? 'rowIncomplete'
-                : e instanceof InvalidPayPeriodError || e instanceof MissingTxnTargetError
-                  ? 'periodInvalid'
-                  : e instanceof BatchNotDraftError
-                    ? 'notDraft'
-                    : (e as Error).message;
+              : e instanceof ComponentRequiredError
+                ? 'componentRequired'
+                : e instanceof InvalidTxnComponentError
+                  ? 'componentInvalid'
+                  : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
+                    ? 'rowIncomplete'
+                    : e instanceof InvalidPayPeriodError || e instanceof MissingTxnTargetError
+                      ? 'periodInvalid'
+                      : e instanceof BatchNotDraftError
+                        ? 'notDraft'
+                        : (e as Error).message;
 
 const num = (v: FormDataEntryValue | null): number | undefined => {
   if (v == null || v === '') return undefined;
@@ -118,6 +124,8 @@ export async function saveIndividualTxnGridAction(formData: FormData): Promise<S
       txnDate,
       amount: Number.isNaN(amount) ? -1 : amount, // -1 ⇒ fails amount>0 guard for an incomplete row
       notes: notes || null,
+      // Phase 3 — the picked Payroll Item Master item (validated + required-when-flag-on in the service).
+      componentId: typeof raw.componentId === 'string' && raw.componentId !== '' ? raw.componentId : null,
     });
   }
   if (rows.length === 0) return { ok: false, error: 'rowIncomplete' };
