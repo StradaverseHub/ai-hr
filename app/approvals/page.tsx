@@ -62,7 +62,7 @@ function DecideButtons({
 /** Leave-specific whole-request decide controls. Reject requires a reason — the reject form carries a
  *  `required` textarea (client-side guard), and decideLeave enforces MissingRejectReasonError server-side.
  *  Approve is unchanged. Used for ORDINARY leave rows (no per-date breakdown); per-date-approval requests use
- *  LeaveDateBreakdown instead (ADR-0068 — one inbox row, per-date decisions in the detail expander). */
+ *  LeaveDateBreakdown instead (ADR-0068 / R18 7e532d23 — one inbox row, per-date decisions in a modal). */
 function LeaveDecideButtons({
   action,
   id,
@@ -147,8 +147,9 @@ export default async function ApprovalsPage({
 
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   // ADR-0068 §6: eagerly fetch the per-date breakdown for each visible PENDING leave row. A non-empty result
-  // means this is a per-date-approval request → render the inline date expander instead of the whole-request
-  // approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown to the viewer.
+  // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
+  // whole-request approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown
+  // to the viewer.
   const breakdowns = new Map(
     await Promise.all(
       pendingLeave.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
@@ -172,6 +173,7 @@ export default async function ApprovalsPage({
     statusApproved: t('dateStatus.approved'),
     statusRejected: t('dateStatus.rejected'),
     employeeRemark: t('employeeRemark'),
+    closeDialog: t('closeDialog'),
   };
   const mine = (personId: string | null) => s.personId != null && personId === s.personId;
   // Partial Leave Cancellation (ADR-0065): exclude the viewer's OWN cancellation requests (self-approval ban).
@@ -324,7 +326,8 @@ export default async function ApprovalsPage({
                       <span className="flex justify-end text-xs text-muted-foreground">{stageLabel(r.currentStepKind)}</span>
                     ) : (breakdowns.get(r.id)?.length ?? 0) > 0 ? (
                       // Partial Leave Approval — single-request model (ADR-0068): this request has per-date
-                      // sub-rows → decide each requested date in the inline detail expander (one inbox row).
+                      // sub-rows → an explicit "Decide each date" action opens the per-date decision MODAL
+                      // (R18 7e532d23 — reporter's expected UX; one inbox row, one batch submit).
                       <div className="flex justify-end">
                         <LeaveDateBreakdown
                           requestId={r.id}

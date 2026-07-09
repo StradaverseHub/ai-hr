@@ -1321,7 +1321,8 @@
     "decisionColumn": "Quyết định",
     "reasonColumn": "Lý do",
     "submitDecisions": "Gửi quyết định",
-    "employeeRemark": "Ghi chú của nhân viên"
+    "employeeRemark": "Ghi chú của nhân viên",
+    "closeDialog": "Đóng"
   },
   "performance": {
     "list": {

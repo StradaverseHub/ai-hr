@@ -1321,7 +1321,8 @@
     "decisionColumn": "முடிவு",
     "reasonColumn": "காரணம்",
     "submitDecisions": "முடிவுகளைச் சமர்ப்பிக்கவும்",
-    "employeeRemark": "பணியாளர் குறிப்பு"
+    "employeeRemark": "பணியாளர் குறிப்பு",
+    "closeDialog": "மூடு"
   },
   "performance": {
     "list": {

@@ -1321,7 +1321,8 @@
     "decisionColumn": "决定",
     "reasonColumn": "原因",
     "submitDecisions": "提交决定",
-    "employeeRemark": "员工备注"
+    "employeeRemark": "员工备注",
+    "closeDialog": "关闭"
   },
   "performance": {
     "list": {
