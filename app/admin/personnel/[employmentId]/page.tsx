@@ -825,7 +825,7 @@ export default async function EmployeePage({
   // ec4cbf63 — Default shift: the shift this person NORMALLY works, set once here instead of painting every
   // date on /roster. The attendance/OT engine uses it on any date WITHOUT a dated roster row (roster row →
   // default shift → company policy), so /roster remains the surface for date-specific exceptions. Admin-only,
-  // mirrors the payroll-policy assignment card; lives in the Job tab (it describes how the person works).
+  // mirrors the payroll-policy assignment card; lives in the Employment tab (it describes how the person works).
   const defaultShiftCard = admin && !emp.terminatedOn ? (
     <Card id="section-default-shift">
       <SectionHeader title={t('shiftTypeTitle')} />

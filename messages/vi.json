@@ -536,7 +536,7 @@
       "tabs": {
         "profile": "Hồ sơ",
         "family": "Gia đình",
-        "job": "Công việc",
+        "job": "Việc làm",
         "payroll": "Lương",
         "documents": "Tài liệu",
         "others": "Khác",
@@ -3230,7 +3230,7 @@
       "daySun": "CN",
       "save": "Lưu chính sách",
       "lateHint": "Chấm vào sau “trễ sau” bị đánh dấu trễ; chấm ra trước “nửa ngày trước” tính là nửa ngày.",
-      "rosterNote": "Ca làm việc thường lệ của nhân viên được đặt làm Ca mặc định trong hồ sơ của họ (Nhân sự → thẻ Công việc); màn hình Lịch trực dành cho các ngoại lệ theo ngày. Ngày có phân công lịch trực sẽ được ưu tiên hơn ca mặc định; nhân viên không có cả hai sẽ dùng lịch mặc định này.",
+      "rosterNote": "Ca làm việc thường lệ của nhân viên được đặt làm Ca mặc định trong hồ sơ của họ (Nhân sự → thẻ Việc làm); màn hình Lịch trực dành cho các ngoại lệ theo ngày. Ngày có phân công lịch trực sẽ được ưu tiên hơn ca mặc định; nhân viên không có cả hai sẽ dùng lịch mặc định này.",
       "dayTypeHint": "Cả ngày = ngày làm việc bình thường. Nửa ngày = ngày làm việc ngắn hơn (ví dụ Thứ Bảy 9:00–12:00) — nghỉ phép vào ngày này sẽ trừ 0.5 ngày theo mặc định, hoặc 1.0 ngày nếu bật cài đặt trừ lương nửa ngày. Nghỉ = không phải ngày làm việc.",
       "dayTypeFull": "Cả ngày",
       "dayTypeHalf": "Nửa ngày",
