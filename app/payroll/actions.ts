@@ -9,10 +9,12 @@ import {
   BatchNotResettableError,
   BatchNotUnlockableError,
   PayrollPermissionDeniedError,
+  PreProcessBlockedError,
   StepUpRequiredError,
   closeBatch,
   deleteDraftBatch,
   generatePayslips,
+  preProcessAdvisory,
   prefillFixedZakat,
   prefillOvertimeFromAttendance,
   prefillShiftDifferentialFromRoster,
@@ -32,14 +34,34 @@ import { transferAllowancesToBatch } from '@/core/attendance-allowance';
 // createAdditionalRun remain in core/payroll.ts unchanged; this file keeps only the draft-batch actions
 // (prefill/generate/close) that operate on an existing batch id.
 
+/**
+ * Generate (process) a draft run — now behind the pre-processing gate (feedback f1564110, Phase 1):
+ * validation runs BEFORE calculation, matching the reporter's "maintain → validate → process" workflow.
+ * Blockers (employees with no current salary record — previously silently dropped from the run) always
+ * stop generation; the kernel re-asserts this server-side (PreProcessBlockedError), so the gate holds
+ * even if this action is bypassed. Warning-class gaps (missing statutory profile / bank details) require
+ * the operator's explicit confirmation — the page's ConfirmSubmit dialog posts ackWarnings=1; a submit
+ * without it is bounced back with an error so the confirm can never be skipped client-side.
+ */
 export async function generateAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
+  const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
+  const t = await getTranslations('payroll.batch');
+  let errMsg: string | null = null;
   try {
-    await generatePayslips(s, { batchId });
+    const checks = await preProcessAdvisory(s, batchId);
+    if (checks.missingCompensation.length > 0) {
+      errMsg = t('preChecksBlockedError', { n: checks.missingCompensation.length });
+    } else if (checks.missingStatutory.length + checks.missingBank.length > 0 && !acknowledged) {
+      errMsg = t('preChecksConfirmRequired', { n: checks.missingStatutory.length + checks.missingBank.length });
+    } else {
+      await generatePayslips(s, { batchId });
+    }
   } catch (e) {
-    redirect(`/payroll/${batchId}?error=${encodeURIComponent((e as Error).message)}`);
+    errMsg = e instanceof PreProcessBlockedError ? t('preChecksBlockedError', { n: e.count }) : (e as Error).message;
   }
+  if (errMsg) redirect(`/payroll/${batchId}?error=${encodeURIComponent(errMsg)}`);
   revalidatePath(`/payroll/${batchId}`);
   redirect(`/payroll/${batchId}?toast=Payslips generated`);
 }

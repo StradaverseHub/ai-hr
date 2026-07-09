@@ -95,6 +95,19 @@ export class BatchNotResettableError extends Error {
   }
 }
 
+/** Pre-processing validation (feedback f1564110, Phase 1): one or more in-scope, period-active
+ *  employees have NO current compensation row. Before this check they were SILENTLY dropped from the
+ *  run (the generation employee query inner-joins compensation) — now generation fails closed until
+ *  the employee profiles are completed (or the batch scope is narrowed to exclude them). */
+export class PreProcessBlockedError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `Payroll cannot be processed: ${count} employee${count === 1 ? '' : 's'} in scope ${count === 1 ? 'has' : 'have'} no current salary record`,
+    );
+    this.name = 'PreProcessBlockedError';
+  }
+}
+
 /** A typed pay component that v1 cannot compute correctly (a non-payable/BIK or PCB-only taxable
  *  earning) reached payroll generation. Fail-closed rather than silently under-tax (ADR-0025 §5). */
 export class UnsupportedPayComponentError extends Error {
@@ -1731,6 +1744,17 @@ export async function generatePayslips(
       if (batch.status !== 'processed') throw new BatchNotResettableError();
     } else if (batch.status !== 'draft') {
       throw new BatchNotDraftError();
+    }
+
+    // Pre-processing validation (feedback f1564110, Phase 1): a full draft→processed generation is
+    // BLOCKED while any scoped, period-active employee has no current compensation row — previously
+    // those employees were silently dropped by the inner join below. Fails closed BEFORE any write,
+    // so there is deliberately no DomainEvent (nothing changed state). Warning-class gaps (missing
+    // statutory profile / bank details) do not block here — the operator confirms them explicitly in
+    // generateAction. A subset reprocess targets a processed run that already passed this gate.
+    if (!subset) {
+      const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope });
+      if (checks.missingCompensation.length > 0) throw new PreProcessBlockedError(checks.missingCompensation.length);
     }
 
     const [co] = await tx
@@ -3847,6 +3871,89 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       });
     }
     return out;
+  });
+}
+
+// ── Pre-processing checks (feedback f1564110, Phase 1) ────────────────────────────────────────────
+// Validates employee master data BEFORE the run is calculated, per the reporter's proposed workflow
+// ("maintain employee info → validate → process as the final step"). Three classes:
+//   • missingCompensation — BLOCKER. No current compensation row: the generation employee query
+//     inner-joins compensation, so these employees were previously dropped from the run with no
+//     warning at all. Generation now fails closed (PreProcessBlockedError) until fixed.
+//   • missingStatutory — WARNING. No employee_statutory_my row: EPF/SOCSO/PCB fall back to defaults.
+//     The operator must explicitly confirm to proceed (enforced in generateAction).
+//   • missingBank — WARNING. Statutory profile exists but bank name/account is incomplete: the
+//     payment file cannot carry this employee. Confirm-to-proceed like missingStatutory.
+
+export type PreProcessCheckRow = { employmentId: string; name: string; employeeCode: string | null };
+
+export type PreProcessAdvisory = {
+  missingCompensation: PreProcessCheckRow[];
+  missingStatutory: PreProcessCheckRow[];
+  missingBank: PreProcessCheckRow[];
+};
+
+/** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
+ *  query (hired ≤ period end, not terminated before period start, batch scope applied) but with
+ *  compensation/statutory LEFT-joined so the gaps are visible instead of silently dropped. */
+async function preProcessChecksTx(
+  tx: Tx,
+  batch: { companyId: string; payPeriod: string; scope: unknown },
+): Promise<PreProcessAdvisory> {
+  const [y, m] = batch.payPeriod.split('-').map(Number);
+  const periodStart = `${batch.payPeriod}-01`;
+  const periodEnd = `${batch.payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+  const { filter: scopeFilter } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
+  const rows = await tx
+    .select({
+      employmentId: employment.id,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+      compId: compensation.id,
+      statPersonId: employeeStatutoryMy.personId,
+      bankName: employeeStatutoryMy.bankName,
+      bankAccountNo: employeeStatutoryMy.bankAccountNo,
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .leftJoin(
+      compensation,
+      and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+    )
+    .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+    .where(
+      and(
+        eq(employment.companyId, batch.companyId),
+        lte(employment.hiredOn, periodEnd),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        scopeFilter,
+      ),
+    )
+    .orderBy(person.fullName);
+  const out: PreProcessAdvisory = { missingCompensation: [], missingStatutory: [], missingBank: [] };
+  for (const r of rows) {
+    const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
+    if (!r.compId) out.missingCompensation.push(row);
+    if (!r.statPersonId) out.missingStatutory.push(row);
+    // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
+    // covers the row above — listing it twice would be noise, not signal).
+    else if (!r.bankName?.trim() || !r.bankAccountNo?.trim()) out.missingBank.push(row);
+  }
+  return out;
+}
+
+/** Read-only pre-processing advisory for a batch (no events.append per the CLAUDE.md skip rule —
+ *  derived read, nothing written). Rendered as the "Pre-processing checks" card on a draft run and
+ *  re-asserted server-side in generateAction/generatePayslips before calculation. */
+export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promise<PreProcessAdvisory> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, scope: payrollBatch.scope })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, batchId))
+      .limit(1);
+    if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
+    return preProcessChecksTx(tx, batch);
   });
 }
 

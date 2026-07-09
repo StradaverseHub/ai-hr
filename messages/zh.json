@@ -1956,7 +1956,24 @@
       "unlockDoneWarned": "薪资流程已解锁。注意：付款和/或法定申报此前已发生——请核实是否需要提交修订申报。",
       "unlockNotClosed": "只有已关闭的薪资流程才能解锁。",
       "unlockOtpInvalid": "确认码无效或已过期——请重新申请。",
-      "unlockPermissionDenied": "您无权解锁已关闭的薪资流程。"
+      "unlockPermissionDenied": "您无权解锁已关闭的薪资流程。",
+      "preChecksTitle": "处理前检查",
+      "preChecksAllClear": "所有检查已通过——本次运行的员工信息完整。",
+      "preChecksBlockerHint": "{n} 名员工没有当前薪资记录。此前他们会被悄悄排除在运行之外——必须先解决此问题（或将其排除在运行范围之外）才能处理薪资。",
+      "preChecksWarningHint": "{n} 项检查需要您注意。您仍可处理薪资，但需要确认。",
+      "preChecksBlockerBadge": "阻止处理",
+      "preChecksWarningBadge": "警告",
+      "preChecks": {
+        "missingCompensation": "无当前薪资记录",
+        "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
+        "missingBank": "银行资料不完整"
+      },
+      "preChecksOpenProfile": "打开档案",
+      "preChecksBlockedError": "无法处理薪资：{n} 名员工没有当前薪资记录。请先解决处理前检查问题。",
+      "preChecksConfirmRequired": "生成工资单前，请先确认处理前检查警告。",
+      "preConfirmTitle": "带警告处理薪资？",
+      "preConfirmDescription": "{n} 项处理前检查未解决（缺少法定资料或银行资料）。相关员工可能按默认法定方式处理，并可能不在付款文件中。",
+      "preConfirmLabel": "仍然处理"
     },
     "transactions": {
       "title": "交易",

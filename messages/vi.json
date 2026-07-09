@@ -1956,7 +1956,24 @@
       "unlockDoneWarned": "Đã mở khóa quy trình lương. Lưu ý: việc thanh toán và/hoặc nộp tờ khai theo luật đã diễn ra — hãy kiểm tra xem có cần nộp tờ khai điều chỉnh không.",
       "unlockNotClosed": "Chỉ quy trình lương đã đóng mới có thể mở khóa.",
       "unlockOtpInvalid": "Mã xác nhận không hợp lệ hoặc đã hết hạn — hãy yêu cầu mã mới.",
-      "unlockPermissionDenied": "Bạn không có quyền mở khóa quy trình lương đã đóng."
+      "unlockPermissionDenied": "Bạn không có quyền mở khóa quy trình lương đã đóng.",
+      "preChecksTitle": "Kiểm tra trước khi xử lý",
+      "preChecksAllClear": "Tất cả kiểm tra đã đạt — thông tin nhân viên đầy đủ cho kỳ chạy này.",
+      "preChecksBlockerHint": "{n} nhân viên không có hồ sơ lương hiện tại. Trước đây họ sẽ bị âm thầm loại khỏi kỳ chạy — không thể xử lý lương cho đến khi khắc phục (hoặc phạm vi kỳ chạy loại trừ họ).",
+      "preChecksWarningHint": "{n} mục kiểm tra cần bạn chú ý. Bạn vẫn có thể xử lý lương nhưng sẽ được yêu cầu xác nhận.",
+      "preChecksBlockerBadge": "Chặn xử lý",
+      "preChecksWarningBadge": "Cảnh báo",
+      "preChecks": {
+        "missingCompensation": "Không có hồ sơ lương hiện tại",
+        "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+      },
+      "preChecksOpenProfile": "Mở hồ sơ",
+      "preChecksBlockedError": "Không thể xử lý lương: {n} nhân viên không có hồ sơ lương hiện tại. Vui lòng khắc phục các mục kiểm tra trước khi xử lý.",
+      "preChecksConfirmRequired": "Vui lòng xác nhận các cảnh báo kiểm tra trước khi tạo phiếu lương.",
+      "preConfirmTitle": "Xử lý lương dù có cảnh báo?",
+      "preConfirmDescription": "{n} mục kiểm tra trước khi xử lý chưa được giải quyết (thiếu hồ sơ pháp định hoặc thông tin ngân hàng). Nhân viên liên quan có thể bị áp dụng mặc định pháp định và thiếu trong tệp thanh toán.",
+      "preConfirmLabel": "Vẫn xử lý"
     },
     "transactions": {
       "title": "Giao dịch",

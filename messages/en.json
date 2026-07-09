@@ -1731,7 +1731,24 @@
       "unlockDoneWarned": "Payroll process unlocked. Note: payment and/or statutory submissions had already occurred — review whether an amended filing is needed.",
       "unlockNotClosed": "Only a closed payroll process can be unlocked.",
       "unlockOtpInvalid": "The confirmation code is invalid or expired — request a new one.",
-      "unlockPermissionDenied": "You do not have permission to unlock a closed payroll process."
+      "unlockPermissionDenied": "You do not have permission to unlock a closed payroll process.",
+      "preChecksTitle": "Pre-processing checks",
+      "preChecksAllClear": "All checks passed — employee information is complete for this run.",
+      "preChecksBlockerHint": "{n} employee(s) have no current salary record. Previously they would have been silently left out of the run — payroll cannot be processed until this is fixed (or the run scope excludes them).",
+      "preChecksWarningHint": "{n} check(s) need your attention. You can still process payroll, but you will be asked to confirm.",
+      "preChecksBlockerBadge": "Blocks processing",
+      "preChecksWarningBadge": "Warning",
+      "preChecks": {
+        "missingCompensation": "No current salary record",
+        "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
+        "missingBank": "Bank details incomplete"
+      },
+      "preChecksOpenProfile": "Open profile",
+      "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksConfirmRequired": "Please confirm the pre-processing warnings before generating payslips.",
+      "preConfirmTitle": "Process payroll with warnings?",
+      "preConfirmDescription": "{n} pre-processing check(s) are unresolved (missing statutory profile or bank details). Affected employees may get default statutory treatment and be missing from the payment file.",
+      "preConfirmLabel": "Process anyway"
     },
     "reports": {
       "pageTitle": "Payroll",
