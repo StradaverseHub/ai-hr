@@ -1321,7 +1321,8 @@
     "decisionColumn": "Decision",
     "reasonColumn": "Reason",
     "submitDecisions": "Submit decisions",
-    "employeeRemark": "Employee remark"
+    "employeeRemark": "Employee remark",
+    "closeDialog": "Close"
   },
   "performance": {
     "list": {

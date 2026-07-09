@@ -1321,7 +1321,8 @@
     "decisionColumn": "Keputusan",
     "reasonColumn": "Sebab",
     "submitDecisions": "Hantar keputusan",
-    "employeeRemark": "Catatan pekerja"
+    "employeeRemark": "Catatan pekerja",
+    "closeDialog": "Tutup"
   },
   "performance": {
     "list": {

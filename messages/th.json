@@ -1321,7 +1321,8 @@
     "decisionColumn": "การตัดสิน",
     "reasonColumn": "เหตุผล",
     "submitDecisions": "ส่งการตัดสิน",
-    "employeeRemark": "หมายเหตุพนักงาน"
+    "employeeRemark": "หมายเหตุพนักงาน",
+    "closeDialog": "ปิด"
   },
   "performance": {
     "list": {
