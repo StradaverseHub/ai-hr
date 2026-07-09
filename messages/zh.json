@@ -2993,7 +2993,8 @@
       "scope": {
         "national": "全国",
         "state": "州属",
-        "group": "业务集团"
+        "group": "业务集团",
+        "holidayGroup": "假期分组"
       },
       "scopeLabel": "范围",
       "scopeBadge": "{label}：{name}",
@@ -3009,7 +3010,20 @@
         "extended": "扩展",
         "custom": "自定义"
       },
-      "archetypeHint": "标准 = 仅官方公布的假日（全国 + 该组的州属假日）。扩展 = 官方假日加上公司自定的额外日期。自定义 = 仅限你手动挑选加入本组的假日；包括全国假日在内的其他日期一律视为正常工作日。将某个组分配给员工的档案（或映射到某个地点），他们就会完全按照这些规则执行。"
+      "archetypeHint": "标准 = 仅官方公布的假日（全国 + 该组的州属假日）。扩展 = 官方假日加上公司自定的额外日期。自定义 = 仅限你手动挑选加入本组的假日；包括全国假日在内的其他日期一律视为正常工作日。将某个组分配给员工的档案（或映射到某个地点），他们就会完全按照这些规则执行。",
+      "parentGroupLabel": "上级分组",
+      "parentGroupNone": "无（基础分组）",
+      "inheritsFrom": "继承自 {name}",
+      "viewCalendar": "查看日历",
+      "parentGroupHint": "设有上级分组的假期分组会自动继承上级的全部日历——包括其州属假日、类型及额外假日——并在上级变更时保持同步。要添加仅适用于本组的假日，请以“假期分组”范围添加。仅允许一层继承：上级分组不能再继承其他分组。",
+      "calendarTitle": "生效日历 — {name}",
+      "calendarEmpty": "此日历暂无假日。",
+      "ownBadge": "本组",
+      "inheritedBadge": "继承",
+      "calendarHint": "继承的假日在此为只读——请在其来源（上级分组、公共假期列表或所属公司）编辑。添加到本组的假日仅适用于使用此日历的员工。",
+      "calendarBack": "返回全部假日",
+      "holidayGroupLabel": "假期分组",
+      "holidayGroupPlaceholder": "选择假期分组…"
     },
     "users": {
       "title": "用户与角色",
