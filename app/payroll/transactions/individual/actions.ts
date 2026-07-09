@@ -16,11 +16,18 @@ import {
   DuplicateTxnRowError,
   InvalidTxnKindError,
   InvalidTxnUnitError,
+  InvalidPayPeriodError,
+  MissingTxnTargetError,
+  isPayPeriod,
   type BulkTxnRow,
 } from '@/core/payroll-individual-txn';
 
 const back = (batchId: string, qs: string) =>
-  redirect(`/payroll/transactions/individual?batchId=${encodeURIComponent(batchId)}&${qs}`);
+  redirect(
+    batchId
+      ? `/payroll/transactions/individual?batchId=${encodeURIComponent(batchId)}&${qs}`
+      : `/payroll/transactions/individual?${qs}`,
+  );
 
 /** Map a typed individual-transaction error to a friendly query/result key; otherwise its raw message. The
  *  key set is mirrored in page.tsx (server) + the wizard (client) so the same message resolves everywhere. */
@@ -39,9 +46,11 @@ const txnErrorKey = (e: unknown): string =>
               ? 'duplicateRow'
               : e instanceof InvalidTxnKindError || e instanceof InvalidTxnUnitError
                 ? 'rowIncomplete'
-                : e instanceof BatchNotDraftError
-                  ? 'notDraft'
-                  : (e as Error).message;
+                : e instanceof InvalidPayPeriodError || e instanceof MissingTxnTargetError
+                  ? 'periodInvalid'
+                  : e instanceof BatchNotDraftError
+                    ? 'notDraft'
+                    : (e as Error).message;
 
 const num = (v: FormDataEntryValue | null): number | undefined => {
   if (v == null || v === '') return undefined;
@@ -56,16 +65,20 @@ const str = (v: FormDataEntryValue | null): string | undefined => {
 export type SaveGridResult = { ok: true; count: number } | { ok: false; error: string };
 
 /**
- * 1.2.2 — Save the whole Step-3 grid of one-off transactions for ONE OR MANY employees against ONE draft
- * batch, in a SINGLE transaction (createIndividualTxnsBulk). The same grid is recorded for every selected
- * employee. Returns a plain result (NOT a redirect) so the client wizard can PRESERVE the entered rows and
- * show an inline error on failure — a stale-batch / company / scope / date / amount failure must never
- * discard a spreadsheet of work (C10). The grid rows AND the selected employmentIds arrive as JSON hidden
- * fields; the resolved batchId comes from the client's wizard state.
+ * 1.2.2 — Save the whole Step-3 grid of one-off transactions for ONE OR MANY employees, in a SINGLE
+ * transaction (createIndividualTxnsBulk). The target is EITHER one draft batch (batchId) OR — since
+ * f1564110 Phase 2 — a (companyId, payPeriod) month when no draft run exists yet: the rows are saved
+ * UNATTACHED and picked up automatically when the month's regular run is generated. The same grid is
+ * recorded for every selected employee. Returns a plain result (NOT a redirect) so the client wizard can
+ * PRESERVE the entered rows and show an inline error on failure — a stale-batch / company / scope / date /
+ * amount failure must never discard a spreadsheet of work (C10). The grid rows AND the selected
+ * employmentIds arrive as JSON hidden fields; the resolved target comes from the client's wizard state.
  */
 export async function saveIndividualTxnGridAction(formData: FormData): Promise<SaveGridResult> {
   const s = await requireAdmin();
   const batchId = String(formData.get('batchId') ?? '');
+  const companyId = String(formData.get('companyId') ?? '');
+  const payPeriod = String(formData.get('payPeriod') ?? '');
 
   let employmentIds: string[];
   try {
@@ -76,7 +89,9 @@ export async function saveIndividualTxnGridAction(formData: FormData): Promise<S
   } catch {
     return { ok: false, error: 'noEmployeesSelected' };
   }
-  if (!batchId || employmentIds.length === 0) return { ok: false, error: 'noEmployeesSelected' };
+  if (employmentIds.length === 0) return { ok: false, error: 'noEmployeesSelected' };
+  // Target validation mirrors the service's MissingTxnTargetError, caught before parsing the grid.
+  if (!batchId && !(companyId && isPayPeriod(payPeriod))) return { ok: false, error: 'periodInvalid' };
 
   let parsed: unknown;
   try {
@@ -108,7 +123,10 @@ export async function saveIndividualTxnGridAction(formData: FormData): Promise<S
   if (rows.length === 0) return { ok: false, error: 'rowIncomplete' };
 
   try {
-    const { ids } = await createIndividualTxnsBulk(s, { batchId, employmentIds, rows });
+    const { ids } = await createIndividualTxnsBulk(
+      s,
+      batchId ? { batchId, employmentIds, rows } : { companyId, payPeriod, employmentIds, rows },
+    );
     revalidatePath('/payroll/transactions/individual');
     return { ok: true, count: ids.length };
   } catch (e) {

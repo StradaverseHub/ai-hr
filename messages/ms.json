@@ -1569,7 +1569,8 @@
       "status": {
         "draft": "Draf",
         "processed": "Diproses",
-        "closed": "Ditutup"
+        "closed": "Ditutup",
+        "unattached": "Belum dilampirkan"
       },
       "importHistory": "Import sejarah gaji",
       "periodContext": "Tempoh gaji",
@@ -2151,7 +2152,14 @@
         "duplicateRow": "Baris pendua tidak dibenarkan — dua entri mempunyai item, tarikh, jumlah dan catatan yang sama.",
         "itemGroupGeneral": "Umum",
         "itemGroupEarnings": "Pendapatan (Induk Item Gaji)",
-        "itemGroupDeductions": "Potongan (Induk Item Gaji)"
+        "itemGroupDeductions": "Potongan (Induk Item Gaji)",
+        "noDraftYetNotice": "Belum ada larian gaji draf untuk {period}. Entri akan disimpan untuk bulan ini dan diambil secara automatik apabila larian biasa dijana.",
+        "pendingRun": "Menunggu larian gaji",
+        "unattachedOption": "Belum dilampirkan — menunggu larian gaji",
+        "unattachedTitle": "Transaksi belum dilampirkan",
+        "unattachedHint": "Entri ini dimasukkan sebelum larian gaji wujud untuk bulannya. Setiap satu akan dilampirkan secara automatik pada larian biasa bulan tersebut apabila gaji dijana.",
+        "unattachedEmpty": "Tiada transaksi belum dilampirkan.",
+        "periodInvalid": "Pilih bulan yang sah."
       },
       "tp1": {
         "title": "Pelepasan TP1",

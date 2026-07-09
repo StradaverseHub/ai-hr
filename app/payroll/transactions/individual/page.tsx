@@ -3,7 +3,16 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
-import { listIndividualTxns, TXN_KINDS, TXN_UNITS } from '@/core/payroll-individual-txn';
+import {
+  listIndividualTxns,
+  listUnattachedIndividualTxns,
+  TXN_KINDS,
+  TXN_UNITS,
+  type UnattachedTxnRow,
+} from '@/core/payroll-individual-txn';
+
+/** Alias used by the ledger's dual-view row map below (batch rows lack the month/company columns). */
+type UnattachedRow = UnattachedTxnRow;
 import { Badge, Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { PayrollTabs } from '@/components/payroll-tabs';
@@ -66,10 +75,22 @@ export default async function IndividualTransactionPage({
     scope: (b as { scope?: WizardBatch['scope'] }).scope ?? null,
   }));
 
-  // The batch-scoped ledger below the wizard: an explicit ?batchId= selection wins; else the first draft.
-  const selected = batchId && draftBatches.some((b) => b.id === batchId) ? batchId : draftBatches[0]?.id ?? null;
+  // The ledger below the wizard has two views (f1564110 Phase 2): per-draft-batch (as before) and
+  // "unattached" — period-keyed rows awaiting the month's regular run (?batchId=unattached). An explicit
+  // ?batchId= selection wins; else the first draft; else the unattached view when only unattached rows exist.
+  const unattachedTxns = await listUnattachedIndividualTxns(s);
+  const unattachedView =
+    batchId === 'unattached' || (!batchId && draftBatches.length === 0 && unattachedTxns.length > 0);
+  const selected =
+    !unattachedView && batchId && draftBatches.some((b) => b.id === batchId)
+      ? batchId
+      : unattachedView
+        ? null
+        : draftBatches[0]?.id ?? null;
   const selectedBatch = selected ? draftBatches.find((b) => b.id === selected) ?? null : null;
   const txns = selected ? await listIndividualTxns(s, { batchId: selected }) : [];
+  // The rows the ledger table renders — the unattached (period-keyed) set or the selected batch's set.
+  const ledgerRows = unattachedView ? unattachedTxns : txns;
   const multiCycleOn = process.env.MULTI_CYCLE_PAYROLL_ENABLED === 'true';
   const periodRunCount = new Map<string, number>();
   for (const b of draftBatches) periodRunCount.set(b.payPeriod, (periodRunCount.get(b.payPeriod) ?? 0) + 1);
@@ -84,6 +105,7 @@ export default async function IndividualTransactionPage({
     'employeeNotInScope',
     'rowIncomplete',
     'duplicateRow',
+    'periodInvalid',
   ]);
   const errorMessage = error && errorKeys.has(error) ? t(`individual.${error}`) : error;
 
@@ -113,35 +135,42 @@ export default async function IndividualTransactionPage({
         payItems={wizardPayItems}
         processHref="/payroll/process"
       />
-      {draftBatches.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t('individual.noBatches')}</p>
-      )}
-
-      {/* ── The resulting ledger for the selected draft batch (edit / delete inline) ── */}
-      {selected && (
+      {/* ── The resulting ledger: per-draft-batch view, or the UNATTACHED view (period-keyed rows awaiting
+          the month's regular run — f1564110 Phase 2). Edit / delete inline in both views. ── */}
+      {(selected || unattachedView || unattachedTxns.length > 0) && (
         <Card className="overflow-hidden">
-          <SectionHeader title={t('individual.txnTitle')} count={txns.length} />
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 pt-3 text-xs text-muted-foreground">
-            <span>
-              {t('individual.monthLabel')}:{' '}
-              <span className="font-medium text-foreground">{selectedBatch?.payPeriod}</span>
-            </span>
-            <span>
-              {t('individual.cycleLabel')}:{' '}
-              <span className="font-medium text-foreground">{selectedBatch ? cycleLabel(selectedBatch) : '—'}</span>
-            </span>
-          </div>
+          <SectionHeader
+            title={unattachedView ? t('individual.unattachedTitle') : t('individual.txnTitle')}
+            count={ledgerRows.length}
+          />
+          {unattachedView ? (
+            <p className="px-4 pt-3 text-xs text-muted-foreground">{t('individual.unattachedHint')}</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-4 pt-3 text-xs text-muted-foreground">
+              <span>
+                {t('individual.monthLabel')}:{' '}
+                <span className="font-medium text-foreground">{selectedBatch?.payPeriod}</span>
+              </span>
+              <span>
+                {t('individual.cycleLabel')}:{' '}
+                <span className="font-medium text-foreground">{selectedBatch ? cycleLabel(selectedBatch) : '—'}</span>
+              </span>
+            </div>
+          )}
 
-          {/* Batch picker for the ledger below (the wizard resolves its own batch; this only scopes the list). */}
+          {/* View picker: the draft batches + the unattached view (the wizard resolves its own target). */}
           <form method="GET" className="flex flex-wrap items-end gap-3 px-4 pt-3">
             <Field label={t('individual.pickBatch')}>
-              <select name="batchId" defaultValue={selected ?? ''} className={inputCls}>
+              <select name="batchId" defaultValue={unattachedView ? 'unattached' : selected ?? ''} className={inputCls}>
                 {draftBatches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.payPeriod} · {b.company}
                     {multiCycleOn && (periodRunCount.get(b.payPeriod) ?? 0) > 1 ? ` · ${cycleLabel(b)}` : ''}
                   </option>
                 ))}
+                <option value="unattached">
+                  {t('individual.unattachedOption')} ({unattachedTxns.length})
+                </option>
               </select>
             </Field>
             <Button type="submit" variant="secondary">
@@ -153,8 +182,10 @@ export default async function IndividualTransactionPage({
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
+                  {unattachedView && <th className="px-4 py-2 font-medium">{t('individual.monthLabel')}</th>}
                   <th className="px-4 py-2 font-medium">{t('individual.txnDate')}</th>
                   <th className="px-4 py-2 font-medium">{t('individual.employee')}</th>
+                  {unattachedView && <th className="px-4 py-2 font-medium">{t('individual.company')}</th>}
                   <th className="px-4 py-2 font-medium">{t('individual.kind')}</th>
                   <th className="px-4 py-2 text-right font-medium">{t('individual.amount')}</th>
                   <th className="px-4 py-2 font-medium">{t('individual.quantity')}</th>
@@ -163,10 +194,19 @@ export default async function IndividualTransactionPage({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {txns.map((tx) => (
+                {ledgerRows.map((tx) => {
+                  // Date bounds for the inline edit: the owning batch's month, or the row's own pay month.
+                  const rowPeriod = unattachedView ? (tx as UnattachedRow).payPeriod : selectedBatch?.payPeriod;
+                  return (
                   <tr key={tx.id}>
+                    {unattachedView && (
+                      <td className="whitespace-nowrap px-4 py-2.5 font-medium">{(tx as UnattachedRow).payPeriod}</td>
+                    )}
                     <td className="whitespace-nowrap px-4 py-2.5">{tx.txnDate}</td>
                     <td className="px-4 py-2.5 font-medium"><EmployeeName code={tx.employeeCode} name={tx.name} /></td>
+                    {unattachedView && (
+                      <td className="px-4 py-2.5 text-muted-foreground">{(tx as UnattachedRow).companyName}</td>
+                    )}
                     <td className="px-4 py-2.5">
                       <Badge>{t(`individual.kindLabel.${tx.kind}`)}</Badge>
                     </td>
@@ -185,7 +225,8 @@ export default async function IndividualTransactionPage({
                             action={updateIndividualTxnAction}
                             className="mt-2 grid grid-cols-2 gap-2 rounded-md border border-border bg-muted/30 p-3"
                           >
-                            <input type="hidden" name="batchId" value={selected} />
+                            {/* 'unattached' keeps the redirect on this view; a real id scopes back to the batch. */}
+                            <input type="hidden" name="batchId" value={unattachedView ? 'unattached' : selected ?? ''} />
                             <input type="hidden" name="id" value={tx.id} />
                             <label className="text-[10px] uppercase text-muted-foreground">
                               {t('individual.kind')}
@@ -203,8 +244,8 @@ export default async function IndividualTransactionPage({
                                 name="txnDate"
                                 type="date"
                                 defaultValue={tx.txnDate}
-                                min={selectedBatch ? `${selectedBatch.payPeriod}-01` : undefined}
-                                max={selectedBatch ? `${selectedBatch.payPeriod}-31` : undefined}
+                                min={rowPeriod ? `${rowPeriod}-01` : undefined}
+                                max={rowPeriod ? `${rowPeriod}-31` : undefined}
                                 className={inputCls}
                               />
                             </label>
@@ -238,7 +279,7 @@ export default async function IndividualTransactionPage({
                           </form>
                         </details>
                         <form action={deleteIndividualTxnAction}>
-                          <input type="hidden" name="batchId" value={selected} />
+                          <input type="hidden" name="batchId" value={unattachedView ? 'unattached' : selected ?? ''} />
                           <input type="hidden" name="id" value={tx.id} />
                           <ConfirmSubmit
                             size="sm"
@@ -252,11 +293,12 @@ export default async function IndividualTransactionPage({
                       </div>
                     </td>
                   </tr>
-                ))}
-                {txns.length === 0 && (
+                  );
+                })}
+                {ledgerRows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                      {t('individual.txnEmpty')}
+                    <td colSpan={unattachedView ? 9 : 7} className="px-4 py-8 text-center text-muted-foreground">
+                      {unattachedView ? t('individual.unattachedEmpty') : t('individual.txnEmpty')}
                     </td>
                   </tr>
                 )}

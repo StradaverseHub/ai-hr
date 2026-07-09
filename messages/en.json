@@ -1569,7 +1569,8 @@
       "status": {
         "draft": "Draft",
         "processed": "Processed",
-        "closed": "Closed"
+        "closed": "Closed",
+        "unattached": "Unattached"
       },
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
@@ -2151,7 +2152,14 @@
         "duplicateRow": "Duplicate rows are not allowed — two entries have the same item, date, amount, and remarks.",
         "itemGroupGeneral": "General",
         "itemGroupEarnings": "Earnings (Pay Item Master)",
-        "itemGroupDeductions": "Deductions (Pay Item Master)"
+        "itemGroupDeductions": "Deductions (Pay Item Master)",
+        "noDraftYetNotice": "No draft payroll run exists for {period} yet. Entries will be saved for this month and picked up automatically when the regular run is generated.",
+        "pendingRun": "Awaiting payroll run",
+        "unattachedOption": "Unattached — awaiting payroll run",
+        "unattachedTitle": "Unattached transactions",
+        "unattachedHint": "These entries were keyed in before a payroll run existed for their month. Each one attaches automatically to its month’s regular run when payroll is generated.",
+        "unattachedEmpty": "No unattached transactions.",
+        "periodInvalid": "Choose a valid month."
       },
       "tp1": {
         "title": "TP1 Relief",

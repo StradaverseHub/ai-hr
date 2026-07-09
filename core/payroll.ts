@@ -813,12 +813,15 @@ export async function updateBatchScope(
  *      loan state (`appliedBatchId` / status='applied') is deliberately untouched: it only exists on a
  *      processed batch, which every draft-only caller refuses; unwinding it is the processed→draft
  *      Reset's mechanic (sibling feedback a03b2d9b).
- *   2. Draft-stage child rows are deleted: payroll_input, payroll_individual_txn,
- *      payroll_batch_component, and — defensively — payslip (expected empty for a draft, since
- *      generation flips the batch off 'draft'; deleting-if-any keeps the teardown total).
+ *   2. Draft-stage child rows are deleted: payroll_input, payroll_batch_component, and — defensively —
+ *      payslip (expected empty for a draft, since generation flips the batch off 'draft'; deleting-if-any
+ *      keeps the teardown total).
  *   3. Claims stamped onto this batch are DETACHED (payroll_batch_id → null), not deleted — the claim
  *      is an approved business record that must survive and become re-queueable; one
  *      `claim-request.unqueued-from-payroll` event per claim (mirrors claim-request.queued-for-payroll).
+ *   4. Individual one-off transactions are likewise DETACHED (batch_id → null; f1564110 Phase 2, amending
+ *      ADR-0056) — they keep their (company_id, pay_period) home and re-attach automatically when the
+ *      month's regular run is next generated; one `payroll.individual-txn.detached` event per row.
  *
  * Shared seam: deleteDraftBatch calls this before removing the batch row, and the processed→draft
  * Reset (a03b2d9b) can reuse it for its final draft-cleanup step. Events are appended HERE so no
@@ -843,10 +846,35 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
   }
 
   const inputs = await tx.delete(payrollInput).where(eq(payrollInput.batchId, batchId)).returning({ id: payrollInput.id });
-  const individualTxns = await tx
-    .delete(payrollIndividualTxn)
+  // f1564110 Phase 2 (amends ADR-0056): individual one-off transactions are DETACHED (batch_id → NULL),
+  // not deleted — like claims, they are keyed-in business records that must survive a draft delete/reset
+  // and re-attach automatically when the month's regular run is next generated. Their (company_id,
+  // pay_period) home was stamped at write time (backfilled by 0175 for older rows), so the 0175 CHECK
+  // holds through the detach. One event per row (cross-aggregate state change, same as the claim detach).
+  // Stamp (company, pay month) from the batch during the detach — the service stamps them on every write
+  // and 0175 backfilled old rows, but a defensively-inserted row without them must still satisfy the 0175
+  // CHECK (batch_id OR company+period) once batch_id goes NULL. The batch row still exists here.
+  const [teardownBatch] = await tx
+    .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+    .from(payrollBatch)
+    .where(eq(payrollBatch.id, batchId))
+    .limit(1);
+  const detachedIndividualTxns = await tx
+    .update(payrollIndividualTxn)
+    .set({ batchId: null, companyId: teardownBatch?.companyId, payPeriod: teardownBatch?.payPeriod })
     .where(eq(payrollIndividualTxn.batchId, batchId))
-    .returning({ id: payrollIndividualTxn.id });
+    .returning({ id: payrollIndividualTxn.id, employmentId: payrollIndividualTxn.employmentId, payPeriod: payrollIndividualTxn.payPeriod });
+  for (const t of detachedIndividualTxns) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-individual-txn',
+      aggregateId: t.id,
+      eventType: 'payroll.individual-txn.detached',
+      actor: actorOf(ctx),
+      subjectEmploymentId: t.employmentId,
+      payload: { batchId, payPeriod: t.payPeriod, reason: 'draft-batch-teardown' },
+    });
+  }
   const components = await tx
     .delete(payrollBatchComponent)
     .where(eq(payrollBatchComponent.batchId, batchId))
@@ -876,9 +904,9 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
   return {
     releasedLoanRepaymentIds: releasedRepayments.map((r) => r.id),
     detachedClaimIds: detachedClaims.map((c) => c.id),
+    detachedIndividualTxnIds: detachedIndividualTxns.map((t) => t.id),
     deletedChildCounts: {
       inputs: inputs.length,
-      individualTxns: individualTxns.length,
       components: components.length,
       payslips: payslips.length,
     },
@@ -1813,6 +1841,51 @@ export async function generatePayslips(
       scopeDeptIds.length || scopeExplicitIds.length
         ? inArray(employment.id, scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'])
         : undefined;
+    const scopeConstrained = scopeDeptIds.length > 0 || scopeExplicitIds.length > 0;
+
+    // f1564110 Phase 2 — attach-on-generate (amends ADR-0056). One-off individual transactions keyed in
+    // BEFORE this run existed (batch_id NULL, matching company + pay month) are stamped onto this batch now,
+    // inside the same transaction, so the ledger they belong to is the run that pays the month. REGULAR run
+    // only: in multi-cycle months the off-cycle/bonus/adjustment runs keep explicit-batch targeting via the
+    // wizard, so an unattached row can never be double-collected by a sibling run. Full draft→processed
+    // generation only (a subset reprocess recomputes a processed run whose ledger is already attached).
+    // Scope-constrained runs collect only in-scope employees' rows; the rest stay unattached for a later
+    // (re)generation or a widened scope. Kernel consumption of the attached rows is Phase 3 (flag-gated);
+    // attaching here is the substrate that makes that fold — and the payslip-side audit trail — possible.
+    if (!subset && batch.runType === 'regular') {
+      const attachedTxns = await tx
+        .update(payrollIndividualTxn)
+        .set({ batchId: p.batchId })
+        .where(
+          and(
+            isNull(payrollIndividualTxn.batchId),
+            eq(payrollIndividualTxn.companyId, batch.companyId),
+            eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+            scopeConstrained
+              ? inArray(
+                  payrollIndividualTxn.employmentId,
+                  scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'],
+                )
+              : undefined,
+          ),
+        )
+        .returning({
+          id: payrollIndividualTxn.id,
+          employmentId: payrollIndividualTxn.employmentId,
+          kind: payrollIndividualTxn.kind,
+        });
+      for (const t of attachedTxns) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'payroll-individual-txn',
+          aggregateId: t.id,
+          eventType: 'payroll.individual-txn.attached',
+          actor: actorOf(ctx),
+          subjectEmploymentId: t.employmentId,
+          payload: { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod, kind: t.kind },
+        });
+      }
+    }
 
     // Anyone employed for at least part of the period: hired on/before period end AND not
     // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.

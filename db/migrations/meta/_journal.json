@@ -1226,6 +1226,13 @@
       "when": 1781862173000,
       "tag": "0174_payroll_policy_defaults_release",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1781862176000,
+      "tag": "0175_individual_txn_period_keyed",
+      "breakpoints": true
     }
   ]
 }

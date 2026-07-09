@@ -1569,7 +1569,8 @@
       "status": {
         "draft": "草稿",
         "processed": "已处理",
-        "closed": "已关闭"
+        "closed": "已关闭",
+        "unattached": "未挂接"
       },
       "importHistory": "导入薪资历史",
       "periodContext": "发薪周期",
@@ -2151,7 +2152,14 @@
         "duplicateRow": "不允许重复行——有两条记录的项目、日期、金额和备注相同。",
         "itemGroupGeneral": "通用",
         "itemGroupEarnings": "收入（薪资项目主档）",
-        "itemGroupDeductions": "扣除（薪资项目主档）"
+        "itemGroupDeductions": "扣除（薪资项目主档）",
+        "noDraftYetNotice": "{period} 尚无草稿薪资批次。条目将按月份保存，并在生成常规批次时自动纳入。",
+        "pendingRun": "等待薪资批次",
+        "unattachedOption": "未挂接 — 等待薪资批次",
+        "unattachedTitle": "未挂接交易",
+        "unattachedHint": "这些条目是在该月份尚无薪资批次时录入的。生成薪资时，每条将自动挂接到该月的常规批次。",
+        "unattachedEmpty": "暂无未挂接交易。",
+        "periodInvalid": "请选择有效的月份。"
       },
       "tp1": {
         "title": "TP1 减免",

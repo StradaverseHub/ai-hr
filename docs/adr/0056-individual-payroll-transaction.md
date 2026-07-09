@@ -50,3 +50,34 @@ byte-identical test guards this invariant). Kernel consumption is a separate fut
 (emp, component) into one aggregate (`setPayrollBatchComponent` overwrites, so pre-summing is mandatory),
 reconcile `unpaid` against leave-ledger-derived unpaid days, and add a flag-on zero-txn byte-identical guard.
 That slice needs its own ADR and sign-off; no prose is pre-committed to its design here.
+
+## Amendment (2026-07, feedback f1564110 Phase 2) — period-keyed rows; batch attachment is derived
+
+The original decision required an existing DRAFT `payroll_batch` for every write (batch_id NOT NULL), which
+dead-ended the keying screen when no run existed for the month, and a draft-batch delete destroyed the
+keyed-in rows. Standard payroll practice is the reverse: one-off transactions are entered FIRST, the run is
+calculated LAST. Migration `0175` therefore re-homes the row on the (company_id, pay_period) pair:
+
+1. **`batch_id` is now NULLABLE.** A row with `batch_id NULL` is *unattached*: keyed in before any run
+   exists, editable/deletable freely, and listed under an "Unattached" view on the keying screen and a
+   dedicated 'unattached' status in the Transaction View inquiry. A CHECK guarantees every row carries
+   either a batch reference or the (company_id, pay_period) pair; the service stamps company/pay-period on
+   EVERY write (both shapes), and 0175 backfills all pre-existing rows from their batch.
+2. **Attach-on-generate.** Inside `generatePayslips`' transaction (full draft→processed generation of the
+   month's **REGULAR run only** — off-cycle/bonus/adjustment runs keep explicit-batch targeting via the
+   wizard, so a row can never be double-collected in a multi-cycle month), unattached rows matching
+   (company, pay month, employment ∈ batch scope) are stamped with the batch id, with one
+   `payroll.individual-txn.attached` event per row.
+3. **Detach, not delete, on draft teardown.** `teardownDraftChildren` now sets `batch_id := NULL` (one
+   `payroll.individual-txn.detached` event per row) instead of deleting — deleting or resetting a draft run
+   no longer destroys keyed-in one-offs; they re-attach at the next generation. This mirrors the claim
+   detach that already existed.
+4. **"No carry-forward" is re-keyed.** The invariant moves from "by the batch FK" to "by `pay_period`": a
+   row belongs to exactly one month (date-in-period is validated against that month's calendar bounds) and
+   nothing copies it forward. The sibling/next-month-empty test still holds.
+5. **RLS** gains a second branch: unattached rows authorise on their own `company_id` via
+   `app.can_admin_payroll_for()`; attached rows keep the original batch-derived check. Both branches appear
+   in USING and WITH CHECK so attach/detach updates pass on old and new row images.
+
+The "Explicit deferral" above still stands: the ledger remains INERT w.r.t. computed pay (the byte-identical
+test now also covers the attach step). Kernel consumption is Phase 3, flag-gated, with its own sign-off.

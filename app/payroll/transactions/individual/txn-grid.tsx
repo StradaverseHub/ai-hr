@@ -158,6 +158,16 @@ export function TxnGrid({
     () => [...new Set(eligibleBatches.filter((b) => b.payPeriod === period).map((b) => b.runType))],
     [eligibleBatches, period],
   );
+  // f1564110 Phase 2 — the month is now a FREE month picker, not limited to months that already have a
+  // draft run. A valid month with no eligible draft batch enters "period-keyed" mode: the grid is saved
+  // UNATTACHED for that (company, month) and picked up automatically when the month's regular run is
+  // generated. This removes the old dead-end ("create a run first").
+  const periodIsValid = /^\d{4}-\d{2}$/.test(period);
+  const batchCountForPeriod = useMemo(
+    () => eligibleBatches.filter((b) => b.payPeriod === period).length,
+    [eligibleBatches, period],
+  );
+  const periodKeyed = periodIsValid && batchCountForPeriod === 0;
   // When a (period, runType) maps to >1 draft batch, expose a run selector (label mirrors the batch listing).
   const runsForSelection = useMemo(
     () => eligibleBatches.filter((b) => b.payPeriod === period && b.runType === runType).sort((a, b) => a.runSeq - b.runSeq),
@@ -238,7 +248,8 @@ export function TxnGrid({
   }, [period]);
 
   const step1Valid = selectedIds.length > 0;
-  const step2Valid = !!batchId;
+  // Step 2 is satisfied by a resolved draft batch OR a valid period-keyed target (month + anchored company).
+  const step2Valid = !!batchId || (periodKeyed && selectionCompanyId != null);
 
   // Toggle one employee in/out of the selection. The whole selection is pinned to one company: once at least
   // one employee is picked, employees in a different company are disabled in the list below.
@@ -335,6 +346,12 @@ export function TxnGrid({
       });
     const fd = new FormData();
     fd.set('batchId', batchId);
+    // Period-keyed target (no draft run yet): the rows are saved unattached for (company, month) and picked
+    // up automatically when the month's regular run is generated (f1564110 Phase 2).
+    if (!batchId) {
+      fd.set('companyId', selectionCompanyId ?? '');
+      fd.set('payPeriod', period);
+    }
     fd.set('employmentIds', JSON.stringify(selectedIds));
     fd.set('rows', JSON.stringify(payload));
     startTransition(async () => {
@@ -495,35 +512,43 @@ export function TxnGrid({
           </div>
         )}
 
-        {/* ── Step 2 — Period + Cycle (+ Run) ── */}
+        {/* ── Step 2 — Period + Cycle (+ Run). The month is a FREE picker (f1564110 Phase 2): a month with
+            no draft run is a valid target — the grid is saved unattached and auto-attached later. ── */}
         {step === 1 && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field label={t('monthLabel')}>
-                <select value={period} onChange={(e) => setPeriod(e.target.value)} className={inputCls}>
-                  <option value="">—</option>
-                  {periods.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('cycleLabel')}>
-                <select
-                  value={runType}
-                  onChange={(e) => setRunType(e.target.value)}
-                  disabled={!period}
+                <input
+                  type="month"
+                  value={period}
+                  onChange={(e) => setPeriod(e.target.value)}
+                  list="txn-grid-draft-months"
                   className={inputCls}
-                >
-                  <option value="">—</option>
-                  {runTypesForPeriod.map((rt) => (
-                    <option key={rt} value={rt}>
-                      {t(`cycle.${rt}`)}
-                    </option>
+                />
+                {/* Months that already have an eligible draft run, offered as suggestions. */}
+                <datalist id="txn-grid-draft-months">
+                  {periods.map((p) => (
+                    <option key={p} value={p} />
                   ))}
-                </select>
+                </datalist>
               </Field>
+              {batchCountForPeriod > 0 && (
+                <Field label={t('cycleLabel')}>
+                  <select
+                    value={runType}
+                    onChange={(e) => setRunType(e.target.value)}
+                    disabled={!period}
+                    className={inputCls}
+                  >
+                    <option value="">—</option>
+                    {runTypesForPeriod.map((rt) => (
+                      <option key={rt} value={rt}>
+                        {t(`cycle.${rt}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               {runsForSelection.length > 1 && (
                 <Field label={t('pickRun')}>
                   <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className={inputCls}>
@@ -537,17 +562,9 @@ export function TxnGrid({
                 </Field>
               )}
             </div>
-            {period && runType && runsForSelection.length === 0 && (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                {t('noDraftForSelection')}{' '}
-                <a href={processHref} className="font-medium underline underline-offset-2">
-                  {t('noDraftForSelectionLink')}
-                </a>
-              </p>
-            )}
-            {eligibleBatches.length === 0 && (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                {selectedEmployees.length > 1 ? t('noSharedDraft') : t('noDraftForSelection')}{' '}
+            {periodKeyed && (
+              <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                {t('noDraftYetNotice', { period })}{' '}
                 <a href={processHref} className="font-medium underline underline-offset-2">
                   {t('noDraftForSelectionLink')}
                 </a>
@@ -684,7 +701,8 @@ export function TxnGrid({
                 <div className="font-medium">
                   {(() => {
                     const b = eligibleBatches.find((x) => x.id === batchId);
-                    return b ? cycleLabel(b) : '—';
+                    // Period-keyed save (no draft run yet): mark the target as pending the month's regular run.
+                    return b ? cycleLabel(b) : periodKeyed ? t('pendingRun') : '—';
                   })()}
                 </div>
               </div>

@@ -2943,11 +2943,15 @@ export const payrollIndividualTxn = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    // The resolved month+cycle target. A row belongs to exactly one batch — this FK IS the no-carry-forward
-    // guarantee (nothing copies a row into a sibling/next-month batch).
-    batchId: uuid('batch_id')
-      .notNull()
-      .references(() => payrollBatch.id),
+    // The resolved month+cycle target. NULLABLE since 0175 (f1564110 Phase 2): a row with batch_id NULL is
+    // "unattached" — keyed in before any payroll run exists for the month, then stamped onto the month's
+    // REGULAR run inside generatePayslips (attach-on-generate). "No carry-forward" is keyed by pay_period
+    // (below): a row belongs to exactly one month and nothing copies it forward (ADR-0056 amendment).
+    batchId: uuid('batch_id').references(() => payrollBatch.id),
+    // The row's true home: (company, 'YYYY-MM' pay month). Always stamped by the service (attached rows get
+    // them from the owning batch); a DB CHECK (0175) guarantees batch_id OR (company_id AND pay_period).
+    companyId: uuid('company_id').references(() => company.id),
+    payPeriod: text('pay_period'),
     employmentId: uuid('employment_id')
       .notNull()
       .references(() => employment.id),
@@ -2966,6 +2970,8 @@ export const payrollIndividualTxn = pgTable(
     // No unique constraint — multiple dated entries per (batch, employment) are allowed by design.
     index('payroll_individual_txn_batch_emp_idx').on(t.batchId, t.employmentId),
     index('payroll_individual_txn_tenant_batch_idx').on(t.tenantId, t.batchId),
+    // Attach-on-generate lookup (0175); the SQL migration creates it partial (WHERE batch_id IS NULL).
+    index('payroll_individual_txn_unattached_idx').on(t.tenantId, t.companyId, t.payPeriod),
   ],
 );
 

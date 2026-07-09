@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
@@ -21,6 +21,7 @@ import {
   createIndividualTxn,
   createIndividualTxnsBulk,
   listIndividualTxns,
+  listUnattachedIndividualTxns,
   updateIndividualTxn,
   deleteIndividualTxn,
   TxnDateOutOfPeriodError,
@@ -29,6 +30,8 @@ import {
   EmploymentNotInBatchScopeError,
   EmptyEmployeeSelectionError,
   DuplicateTxnRowError,
+  InvalidPayPeriodError,
+  MissingTxnTargetError,
   TXN_KINDS,
   TXN_UNITS,
 } from '../core/payroll-individual-txn';
@@ -643,6 +646,206 @@ describe('1.2.2 Individual Transaction', () => {
     await expect(
       createIndividualTxnsBulk(a, { batchId, employmentIds: [employmentId], rows: [{ kind: 'earning', txnDate: '2026-02-28', amount: 1 }] }),
     ).resolves.toMatchObject({ ids: [expect.any(String)] });
+  });
+
+  // ─────────── f1564110 Phase 2 — period-keyed (unattached) entry + attach-on-generate ───────────
+
+  /** Hire one employee with comp + statutory profile but NO batch (the pre-run entry scenario). */
+  async function hireNoBatch() {
+    const a = adminCtx(base);
+    const e = await hireEmployee(a, {
+      person: { fullName: 'Pre Run', primaryEmail: `prerun${randomUUID()}@acme.test` },
+      companyId: base.companyId,
+      departmentId: base.deptA,
+      employmentType: 'full_time',
+      hiredOn: '2026-01-01',
+    });
+    await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+    await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101011234' });
+    return { a, personId: e.personId, employmentId: e.employmentId };
+  }
+
+  it('period-keyed entry: rows save UNATTACHED before any run exists; listed, editable, deletable', async () => {
+    const { a, employmentId } = await hireNoBatch();
+
+    // Bulk save with NO batch — the reporter’s core ask: entry before payroll processing exists.
+    const { ids } = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 100 }],
+    });
+    expect(ids).toHaveLength(1);
+
+    // Single-row create supports the period-keyed shape too.
+    const { id: singleId } = await createIndividualTxn(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentId,
+      kind: 'deduction',
+      txnDate: '2026-05-20',
+      amount: 30,
+    });
+
+    const un = await listUnattachedIndividualTxns(a);
+    expect(un.filter((r) => [ids[0], singleId].includes(r.id))).toHaveLength(2);
+    expect(un.find((r) => r.id === ids[0])).toMatchObject({ payPeriod: '2026-05', companyId: base.companyId });
+
+    // Rows persisted with batch_id NULL + the (company, month) home stamped.
+    const [raw] = await owner.db
+      .select()
+      .from(schema.payrollIndividualTxn)
+      .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+    expect(raw.batchId).toBeNull();
+    expect(raw.companyId).toBe(base.companyId);
+    expect(raw.payPeriod).toBe('2026-05');
+
+    // Unattached rows are editable / deletable with NO draft-batch gate; the date is still bounded by
+    // the row's own pay month.
+    await updateIndividualTxn(a, { id: ids[0], amount: 120, txnDate: '2026-05-12' });
+    await expect(updateIndividualTxn(a, { id: ids[0], txnDate: '2026-06-01' })).rejects.toBeInstanceOf(
+      TxnDateOutOfPeriodError,
+    );
+    await deleteIndividualTxn(a, { id: singleId });
+    expect((await listUnattachedIndividualTxns(a)).some((r) => r.id === singleId)).toBe(false);
+
+    const events = await eventTypesFor(base.tenantId, ids[0]);
+    expect(events).toContain('payroll.individual-txn.created');
+    expect(events).toContain('payroll.individual-txn.updated');
+  });
+
+  it('period-keyed validation: malformed month, missing target, out-of-month date, wrong company', async () => {
+    const { a, employmentId } = await hireNoBatch();
+    const row = [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }];
+
+    await expect(
+      createIndividualTxnsBulk(a, { companyId: base.companyId, payPeriod: '2026-5', employmentIds: [employmentId], rows: row }),
+    ).rejects.toBeInstanceOf(InvalidPayPeriodError);
+    await expect(
+      createIndividualTxnsBulk(a, { employmentIds: [employmentId], rows: row }),
+    ).rejects.toBeInstanceOf(MissingTxnTargetError);
+    await expect(
+      createIndividualTxnsBulk(a, {
+        companyId: base.companyId,
+        payPeriod: '2026-04', // date below is outside this month
+        employmentIds: [employmentId],
+        rows: row,
+      }),
+    ).rejects.toBeInstanceOf(TxnDateOutOfPeriodError);
+
+    // C3 on the unattached path: the employment must belong to the target company.
+    const [otherCo] = await owner.db
+      .insert(schema.company)
+      .values({ tenantId: base.tenantId, legalName: 'Other Co (period-keyed C3)' })
+      .returning({ id: schema.company.id });
+    await expect(
+      createIndividualTxnsBulk(a, { companyId: otherCo.id, payPeriod: '2026-05', employmentIds: [employmentId], rows: row }),
+    ).rejects.toBeInstanceOf(CompanyMismatchError);
+
+    expect(await listUnattachedIndividualTxns(a)).toHaveLength(0); // nothing persisted by any failure
+  });
+
+  it("attach-on-generate: unattached rows are stamped onto the month's REGULAR run — that month only", async () => {
+    const { a, employmentId } = await hireNoBatch();
+
+    // Two rows for May, one for June — keyed in before ANY run exists.
+    const may = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [employmentId],
+      rows: [
+        { kind: 'earning', txnDate: '2026-05-10', amount: 100 },
+        { kind: 'deduction', txnDate: '2026-05-15', amount: 25 },
+      ],
+    });
+    const jun = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-06',
+      employmentIds: [employmentId],
+      rows: [{ kind: 'earning', txnDate: '2026-06-05', amount: 77 }],
+    });
+
+    // The month's regular run is created LAST and calculated — the reporter's proposed workflow.
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
+    await generatePayslips(a, { batchId });
+
+    // May rows are attached to the run (visible in its ledger), each with an 'attached' event.
+    const attached = await listIndividualTxns(a, { batchId });
+    expect(attached.map((r) => r.id).sort()).toEqual([...may.ids].sort());
+    for (const id of may.ids) {
+      expect(await eventTypesFor(base.tenantId, id)).toContain('payroll.individual-txn.attached');
+    }
+
+    // The June row is untouched — no cross-month carry, still unattached.
+    const un = await listUnattachedIndividualTxns(a);
+    expect(un.map((r) => r.id)).toEqual(jun.ids);
+  });
+
+  it('attach-on-generate targets the REGULAR run only: an off-cycle generation leaves rows unattached', async () => {
+    process.env.MULTI_CYCLE_PAYROLL_ENABLED = 'true';
+    try {
+      const { a, employmentId, batchId: regularId } = await hireWithBatch('2026-05');
+      const { ids } = await createIndividualTxnsBulk(a, {
+        companyId: base.companyId,
+        payPeriod: '2026-05',
+        employmentIds: [employmentId],
+        rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 42 }],
+      });
+
+      const off = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-05', runType: 'off_cycle' });
+      await generatePayslips(a, { batchId: off.batchId });
+      const [afterOff] = await owner.db
+        .select()
+        .from(schema.payrollIndividualTxn)
+        .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+      expect(afterOff.batchId).toBeNull(); // NOT collected by the off-cycle run
+
+      await generatePayslips(a, { batchId: regularId });
+      const [afterRegular] = await owner.db
+        .select()
+        .from(schema.payrollIndividualTxn)
+        .where(eq(schema.payrollIndividualTxn.id, ids[0]));
+      expect(afterRegular.batchId).toBe(regularId); // collected exactly once, by the regular run
+    } finally {
+      delete process.env.MULTI_CYCLE_PAYROLL_ENABLED;
+    }
+  });
+
+  it('attach-on-generate honours batch scope: out-of-scope unattached rows stay unattached', async () => {
+    const a = adminCtx(base);
+    const mk = async (name: string, ic: string) => {
+      const e = await hireEmployee(a, {
+        person: { fullName: name, primaryEmail: `scope${randomUUID()}@acme.test` },
+        companyId: base.companyId,
+        departmentId: base.deptA,
+        employmentType: 'full_time',
+        hiredOn: '2026-01-01',
+      });
+      await setCompensation(a, { employmentId: e.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
+      await setStatutoryProfileMY(a, { personId: e.personId, icNumber: ic }); // distinct ICs — IC is unique
+      return e.employmentId;
+    };
+    const inScope = await mk('Scope In', '900101011234');
+    const outScope = await mk('Scope Out', '900101015678');
+    const { ids } = await createIndividualTxnsBulk(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      employmentIds: [inScope, outScope],
+      rows: [{ kind: 'earning', txnDate: '2026-05-10', amount: 10 }],
+    });
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-05',
+      scope: { employmentIds: [inScope] },
+    });
+    await generatePayslips(a, { batchId });
+
+    const rows = await owner.db
+      .select()
+      .from(schema.payrollIndividualTxn)
+      .where(inArray(schema.payrollIndividualTxn.id, ids));
+    expect(rows.find((r) => r.employmentId === inScope)?.batchId).toBe(batchId);
+    expect(rows.find((r) => r.employmentId === outScope)?.batchId).toBeNull();
   });
 
   it('RLS: a non-admin employee cannot bulk-save', async () => {

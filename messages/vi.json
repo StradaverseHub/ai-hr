@@ -1569,7 +1569,8 @@
       "status": {
         "draft": "Nháp",
         "processed": "Đã xử lý",
-        "closed": "Đã đóng"
+        "closed": "Đã đóng",
+        "unattached": "Chưa gắn đợt"
       },
       "importHistory": "Nhập lịch sử bảng lương",
       "periodContext": "Kỳ lương",
@@ -2151,7 +2152,14 @@
         "duplicateRow": "Không cho phép dòng trùng lặp — hai mục có cùng khoản mục, ngày, số tiền và ghi chú.",
         "itemGroupGeneral": "Chung",
         "itemGroupEarnings": "Thu nhập (Danh mục khoản lương)",
-        "itemGroupDeductions": "Khấu trừ (Danh mục khoản lương)"
+        "itemGroupDeductions": "Khấu trừ (Danh mục khoản lương)",
+        "noDraftYetNotice": "Chưa có đợt lương nháp cho {period}. Các mục sẽ được lưu cho tháng này và tự động được đưa vào khi đợt thường kỳ được tạo.",
+        "pendingRun": "Đang chờ đợt lương",
+        "unattachedOption": "Chưa gắn đợt — đang chờ đợt lương",
+        "unattachedTitle": "Giao dịch chưa gắn đợt",
+        "unattachedHint": "Các mục này được nhập trước khi tháng đó có đợt lương. Mỗi mục sẽ tự động gắn vào đợt thường kỳ của tháng khi tính lương.",
+        "unattachedEmpty": "Không có giao dịch chưa gắn đợt.",
+        "periodInvalid": "Chọn tháng hợp lệ."
       },
       "tp1": {
         "title": "Miễn giảm TP1",

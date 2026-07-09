@@ -122,15 +122,19 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
     await prefillLoansForBatch(a, { batchId });
     await setPayrollInput(a, { batchId, employmentId: e1.employmentId, overtimeAmount: 123 });
 
-    // A dated individual transaction on the draft (deleted with the batch).
-    await owner.db.insert(schema.payrollIndividualTxn).values({
-      tenantId: base.tenantId,
-      batchId,
-      employmentId: e1.employmentId,
-      kind: 'earning',
-      txnDate: '2026-05-10',
-      amount: '150.00',
-    });
+    // A dated individual transaction on the draft — since f1564110 Phase 2 it must SURVIVE the delete
+    // DETACHED (batch_id → null, keeping its (company, pay month) home), not be deleted with the batch.
+    const [indivTxn] = await owner.db
+      .insert(schema.payrollIndividualTxn)
+      .values({
+        tenantId: base.tenantId,
+        batchId,
+        employmentId: e1.employmentId,
+        kind: 'earning',
+        txnDate: '2026-05-10',
+        amount: '150.00',
+      })
+      .returning({ id: schema.payrollIndividualTxn.id });
 
     // An approved taxable claim STAMPED onto the draft (as prefillClaimsForBatch does) — must survive
     // the delete DETACHED, not be deleted with the batch.
@@ -167,9 +171,16 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
     expect(
       await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batchId)),
     ).toHaveLength(0);
-    expect(
-      await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.batchId, batchId)),
-    ).toHaveLength(0);
+    // The individual transaction SURVIVES the delete, detached back to its (company, pay month) home
+    // (f1564110 Phase 2 — draft teardown detaches instead of deleting; ADR-0056 amendment).
+    const [indivAfter] = await owner.db
+      .select()
+      .from(schema.payrollIndividualTxn)
+      .where(eq(schema.payrollIndividualTxn.id, indivTxn.id));
+    expect(indivAfter).toBeTruthy();
+    expect(indivAfter.batchId).toBeNull();
+    expect(indivAfter.companyId).toBe(base.companyId);
+    expect(indivAfter.payPeriod).toBe('2026-05');
 
     // The loan reservation is RELEASED, not stranded: back to 'scheduled', reservedBatchId cleared.
     const [repaymentAfter] = await owner.db
@@ -193,19 +204,21 @@ describe('Payroll draft delete — deleteDraftBatch (DB)', () => {
     const payload = (await latestEventPayload(base.tenantId, batchId, 'payroll-batch.deleted')) as {
       payPeriodId: string;
       payPeriodDeleted: boolean;
-      deletedChildCounts: { inputs: number; individualTxns: number; components: number; payslips: number };
+      deletedChildCounts: { inputs: number; components: number; payslips: number };
       releasedLoanRepaymentIds: string[];
       detachedClaimIds: string[];
+      detachedIndividualTxnIds: string[];
     };
     expect(payload.payPeriodDeleted).toBe(true);
     expect(payload.deletedChildCounts.inputs).toBeGreaterThanOrEqual(1);
-    expect(payload.deletedChildCounts.individualTxns).toBe(1);
     expect(payload.deletedChildCounts.payslips).toBe(0); // a draft has no payslips — defensive delete found none
     expect(payload.releasedLoanRepaymentIds).toEqual([reservedBefore.id]);
     expect(payload.detachedClaimIds).toEqual([claim.id]);
+    expect(payload.detachedIndividualTxnIds).toEqual([indivTxn.id]); // detached, not deleted (f1564110 Phase 2)
     // …and the per-row cross-aggregate events landed on their own aggregates.
     expect(await eventTypesFor(base.tenantId, reservedBefore.id)).toContain('loan.instalment.reservation-released');
     expect(await eventTypesFor(base.tenantId, claim.id)).toContain('claim-request.unqueued-from-payroll');
+    expect(await eventTypesFor(base.tenantId, indivTxn.id)).toContain('payroll.individual-txn.detached');
     expect(await eventTypesFor(base.tenantId, payload.payPeriodId)).toContain('pay-period.deleted');
 
     // Reporter's objective: the mistaken draft can be re-created cleanly for the SAME company+period.
