@@ -2992,7 +2992,8 @@
       "scope": {
         "national": "Kebangsaan",
         "state": "Negeri",
-        "group": "Kumpulan perniagaan"
+        "group": "Kumpulan perniagaan",
+        "holidayGroup": "Kumpulan cuti"
       },
       "scopeLabel": "Skop",
       "scopeBadge": "{label}: {name}",
@@ -3008,7 +3009,20 @@
         "extended": "Diperluas",
         "custom": "Tersuai"
       },
-      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kumpulan). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = hanya cuti yang anda pilih sendiri ke dalam kumpulan ini; setiap tarikh lain, termasuk cuti kebangsaan, ialah hari bekerja biasa. Berikan kumpulan kepada pekerja pada profil mereka (atau petakan ke lokasi) dan mereka akan mengikut peraturan ini dengan tepat."
+      "archetypeHint": "Standard = cuti rasmi yang diwartakan sahaja (kebangsaan + negeri kumpulan). Diperluas = cuti rasmi serta hari tambahan yang ditetapkan syarikat. Tersuai = hanya cuti yang anda pilih sendiri ke dalam kumpulan ini; setiap tarikh lain, termasuk cuti kebangsaan, ialah hari bekerja biasa. Berikan kumpulan kepada pekerja pada profil mereka (atau petakan ke lokasi) dan mereka akan mengikut peraturan ini dengan tepat.",
+      "parentGroupLabel": "Kumpulan induk",
+      "parentGroupNone": "Tiada (kumpulan asas)",
+      "inheritsFrom": "Mewarisi daripada {name}",
+      "viewCalendar": "Lihat kalendar",
+      "parentGroupHint": "Kumpulan yang mempunyai induk mewarisi keseluruhan kalendar induk secara automatik — negeri warta, jenis dan hari tambahannya — dan kekal selari apabila induk berubah. Tambah hari yang hanya terpakai untuk kumpulan ini dengan menambah cuti berskop “Kumpulan cuti”. Hanya satu peringkat pewarisan: kumpulan induk tidak boleh mewarisi daripada kumpulan lain.",
+      "calendarTitle": "Kalendar berkuat kuasa — {name}",
+      "calendarEmpty": "Belum ada cuti dalam kalendar ini.",
+      "ownBadge": "Kumpulan ini",
+      "inheritedBadge": "Diwarisi",
+      "calendarHint": "Hari yang diwarisi adalah baca sahaja di sini — sunting di sumbernya (kumpulan induk, senarai cuti umum atau syarikat pemiliknya). Hari yang ditambah pada kumpulan ini hanya terpakai kepada kakitangan pada kalendar ini.",
+      "calendarBack": "Kembali ke semua cuti",
+      "holidayGroupLabel": "Kumpulan cuti",
+      "holidayGroupPlaceholder": "Pilih kumpulan cuti…"
     },
     "users": {
       "title": "Pengguna & peranan",

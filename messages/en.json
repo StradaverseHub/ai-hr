@@ -2992,7 +2992,8 @@
       "scope": {
         "national": "National",
         "state": "State",
-        "group": "Business group"
+        "group": "Business group",
+        "holidayGroup": "Holiday group"
       },
       "scopeLabel": "Scope",
       "scopeBadge": "{label}: {name}",
@@ -3008,7 +3009,20 @@
         "extended": "Extended",
         "custom": "Custom"
       },
-      "archetypeHint": "Standard = official gazetted holidays only (national + the group’s states). Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick into this group; every other date, including national holidays, is a normal working day. Assign a group to staff on their profile (or map it to a location) and they follow exactly these rules."
+      "archetypeHint": "Standard = official gazetted holidays only (national + the group’s states). Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick into this group; every other date, including national holidays, is a normal working day. Assign a group to staff on their profile (or map it to a location) and they follow exactly these rules.",
+      "parentGroupLabel": "Parent group",
+      "parentGroupNone": "None (base group)",
+      "inheritsFrom": "Inherits from {name}",
+      "viewCalendar": "View calendar",
+      "parentGroupHint": "A group with a parent automatically inherits the parent’s whole calendar — its gazette states, kind and extra days — and stays in sync when the parent changes. Add days that apply only to this group by adding a holiday with the “Holiday group” scope. One level of inheritance only: a parent cannot itself inherit from another group.",
+      "calendarTitle": "Effective calendar — {name}",
+      "calendarEmpty": "No holidays in this calendar yet.",
+      "ownBadge": "This group",
+      "inheritedBadge": "Inherited",
+      "calendarHint": "Inherited days are read-only here — edit them at their source (the parent group, the public holiday list or the owning company). Days added to this group apply only to staff on this calendar.",
+      "calendarBack": "Back to all holidays",
+      "holidayGroupLabel": "Holiday group",
+      "holidayGroupPlaceholder": "Select a holiday group…"
     },
     "users": {
       "title": "Users & roles",

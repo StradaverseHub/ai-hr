@@ -3,7 +3,8 @@
  * Each mutation runs via withTenant and appends a domain event (substrate discipline,
  * ADR-0006). RLS (migration 0002) requires an admin role for these writes.
  */
-import { and, desc, eq, getTableName, inArray, isNull, sql, type AnyColumn } from 'drizzle-orm';
+import { and, desc, eq, getTableName, inArray, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
@@ -1299,13 +1300,14 @@ export function listAdHocLeaveGrants(ctx: SessionContext, limit = 10) {
  *  so the UI can build a scope label from the static i18n key map (National / State:X / Group:<name>). */
 export function listHolidays(
   ctx: SessionContext,
-  opts: { country?: string; year?: number; companyId?: string } = {},
+  opts: { country?: string; year?: number; companyId?: string; holidayGroupId?: string } = {},
 ) {
   return withTenant(ctx, (tx) => {
     const filters = [
       opts.country ? eq(holiday.country, opts.country) : undefined,
       opts.year ? sql`extract(year from ${holiday.holidayDate}) = ${opts.year}` : undefined,
       opts.companyId ? eq(holiday.companyId, opts.companyId) : undefined,
+      opts.holidayGroupId ? eq(holiday.holidayGroupId, opts.holidayGroupId) : undefined,
     ].filter(Boolean);
     return tx
       .select({
@@ -1314,6 +1316,9 @@ export function listHolidays(
         state: holiday.state,
         companyId: holiday.companyId,
         companyName: company.legalName,
+        // R18 a519a96e: group-scoped "additional day" rows carry their owning group so the UI can badge them.
+        holidayGroupId: holiday.holidayGroupId,
+        holidayGroupName: holidayGroup.name,
         holidayDate: holiday.holidayDate,
         name: holiday.name,
         // Follow-on #15b (ADR-0063): surface the provisional marker so the UI can render a Tentative badge.
@@ -1321,6 +1326,7 @@ export function listHolidays(
       })
       .from(holiday)
       .leftJoin(company, eq(company.id, holiday.companyId))
+      .leftJoin(holidayGroup, eq(holidayGroup.id, holiday.holidayGroupId))
       .where(filters.length ? and(...filters) : undefined)
       .orderBy(holiday.holidayDate);
   });
@@ -1346,6 +1352,9 @@ export async function createHoliday(
     name: string;
     state?: string | null;
     companyId?: string | null;
+    // R18 a519a96e: set = a GROUP-scoped "additional day" that applies only to staff resolving through
+    // that holiday group (or a child group inheriting from it) — the per-office extra.
+    holidayGroupId?: string | null;
     // Follow-on #15b (ADR-0063): provisional date for a not-yet-gazetted holiday. Still counts as a holiday.
     tentative?: boolean;
   },
@@ -1355,10 +1364,12 @@ export async function createHoliday(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) throw new Error('Holiday date must be YYYY-MM-DD');
   const state = p.state?.trim() || null; // 2C: null = national (applies everywhere)
   const companyId = p.companyId?.trim() || null; // ADR-0055: set = business-group (company-subtree) scope
+  const holidayGroupId = p.holidayGroupId?.trim() || null; // R18 a519a96e: set = holiday-group scope
   const tentative = p.tentative ?? false;
-  // Scope is single-axis: national, state, OR business-group — never two at once (mirrors the DB CHECK
-  // holiday_scope_excl; thrown here so the user gets a clear message before hitting the constraint).
-  if (state && companyId) throw new Error('A holiday is either state-scoped or company-scoped, not both.');
+  // Scope is single-axis: national, state, business-group, OR holiday-group — never two at once (mirrors
+  // the DB CHECK holiday_scope_excl; thrown here so the user gets a clear message before the constraint).
+  if ([state, companyId, holidayGroupId].filter(Boolean).length > 1)
+    throw new Error('A holiday is scoped to a state, a company, or a holiday group — pick at most one.');
   return withTenant(ctx, async (tx) => {
     let companyName: string | null = null;
     if (companyId) {
@@ -1372,13 +1383,39 @@ export async function createHoliday(
       if (!c) throw new Error('Unknown company for this holiday scope.');
       companyName = c.name;
     }
+    let groupName: string | null = null;
+    if (holidayGroupId) {
+      // Same cross-tenant FK guard for the group scope (mirrors the company check above).
+      const [g] = await tx
+        .select({ name: holidayGroup.name })
+        .from(holidayGroup)
+        .where(and(eq(holidayGroup.id, holidayGroupId), eq(holidayGroup.tenantId, ctx.tenantId)))
+        .limit(1);
+      if (!g) throw new Error('Unknown holiday group for this holiday scope.');
+      groupName = g.name;
+    }
     const [row] = await tx
       .insert(holiday)
-      .values({ tenantId: ctx.tenantId, country, state, companyId, holidayDate: p.holidayDate, name, tentative })
+      .values({
+        tenantId: ctx.tenantId,
+        country,
+        state,
+        companyId,
+        holidayGroupId,
+        holidayDate: p.holidayDate,
+        name,
+        tentative,
+      })
       .returning({ id: holiday.id })
       .catch((e) => {
         if (isUniqueViolation(e)) {
-          const scope = companyId ? `group ${companyName} ` : state ? `${state} ` : '';
+          const scope = companyId
+            ? `group ${companyName} `
+            : holidayGroupId
+              ? `${groupName} calendar `
+              : state
+                ? `${state} `
+                : '';
           throw new DuplicateError(`A ${country} ${scope}holiday on ${p.holidayDate} already exists.`);
         }
         throw e;
@@ -1389,8 +1426,8 @@ export async function createHoliday(
       aggregateId: row.id,
       eventType: 'holiday.created',
       actor: actorOf(ctx),
-      // Scope-in-audit (ADR-0055 acceptance goal): carry state AND companyId, not just country/date/name.
-      payload: { country, holidayDate: p.holidayDate, name, state, companyId, tentative },
+      // Scope-in-audit (ADR-0055 acceptance goal): carry the FULL scope, not just country/date/name.
+      payload: { country, holidayDate: p.holidayDate, name, state, companyId, holidayGroupId, tentative },
     });
     return row;
   });
@@ -1419,6 +1456,7 @@ export async function updateHoliday(
         country: holiday.country,
         state: holiday.state,
         companyId: holiday.companyId,
+        holidayGroupId: holiday.holidayGroupId,
         holidayDate: holiday.holidayDate,
         name: holiday.name,
         tentative: holiday.tentative,
@@ -1440,7 +1478,13 @@ export async function updateHoliday(
       .catch((e) => {
         if (isUniqueViolation(e)) {
           // Scope is immutable here, so reuse the BEFORE scope for the message (mirrors create).
-          const scope = before.companyId ? 'group ' : before.state ? `${before.state} ` : '';
+          const scope = before.companyId
+            ? 'group '
+            : before.holidayGroupId
+              ? 'calendar '
+              : before.state
+                ? `${before.state} `
+                : '';
           throw new DuplicateError(`A ${before.country} ${scope}holiday on ${after.holidayDate} already exists.`);
         }
         throw e;
@@ -1460,12 +1504,14 @@ export async function updateHoliday(
           country: before.country,
           state: before.state,
           companyId: before.companyId,
+          holidayGroupId: before.holidayGroupId,
         },
         after: {
           ...after,
           country: before.country,
           state: before.state,
           companyId: before.companyId,
+          holidayGroupId: before.holidayGroupId,
         },
       },
     });
@@ -1485,6 +1531,7 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
         // Echo full scope so the holiday.deleted payload mirrors holiday.created (ADR-0055).
         state: holiday.state,
         companyId: holiday.companyId,
+        holidayGroupId: holiday.holidayGroupId,
       });
     if (!deleted) return;
     await appendEvent(tx, {
@@ -1507,11 +1554,16 @@ export async function deleteHoliday(ctx: SessionContext, p: { id: string }) {
 /** Sanitise + validate a group's member states: each ∈ MY_STATES, de-duplicated. For a 'custom' calendar
  *  states supply nothing (national is NOT auto-added) so an empty list is allowed; for 'standard'/'extended'
  *  the states[] ARE the gazette state source, so at least one is required (a zero-state non-custom group ==
- *  national, which already exists). */
-function cleanHolidayGroupStates(states: string[] | undefined, archetype: HolidayGroupArchetype): string[] {
+ *  national, which already exists) — UNLESS the group has a PARENT (R18 a519a96e): then the parent's
+ *  archetype + states[] are the gazette source and the child may carry zero states of its own. */
+function cleanHolidayGroupStates(
+  states: string[] | undefined,
+  archetype: HolidayGroupArchetype,
+  hasParent = false,
+): string[] {
   const valid = new Set<string>(MY_STATES);
   const out = [...new Set((states ?? []).map((s) => (s ?? '').trim()).filter(Boolean))];
-  if (archetype !== 'custom' && out.length === 0)
+  if (archetype !== 'custom' && out.length === 0 && !hasParent)
     throw new Error('A standard or extended holiday calendar must include at least one state.');
   for (const s of out) {
     if (!valid.has(s)) throw new Error(`Unknown state “${s}”.`);
@@ -1519,8 +1571,27 @@ function cleanHolidayGroupStates(states: string[] | undefined, archetype: Holida
   return out;
 }
 
-/** All holiday groups for the tenant (id, name, states, archetype), ordered by name. Read-only — no event. */
+/** R18 a519a96e — validate a prospective PARENT group inside the tx: it must exist in THIS tenant (the FK
+ *  alone would accept a cross-tenant id) and must itself be parentless (single-level nesting only: base
+ *  group → office groups; no chains, so no cycles are possible without recursive writes). Returns the
+ *  parent's name for events/messages. */
+async function assertValidParentGroup(tx: Tx, tenantId: string, parentGroupId: string): Promise<string> {
+  const [parent] = await tx
+    .select({ name: holidayGroup.name, parentGroupId: holidayGroup.parentGroupId })
+    .from(holidayGroup)
+    .where(and(eq(holidayGroup.id, parentGroupId), eq(holidayGroup.tenantId, tenantId)))
+    .limit(1);
+  if (!parent) throw new Error('Unknown parent holiday group.');
+  if (parent.parentGroupId)
+    throw new Error('A parent holiday group cannot itself inherit from another group (one level only).');
+  return parent.name;
+}
+
+/** All holiday groups for the tenant (id, name, states, archetype, parent), ordered by name. The parent's
+ *  name is joined via a self-alias so the UI can render the "Inherits from {name}" badge. Read-only — no
+ *  event. */
 export function listHolidayGroups(ctx: SessionContext) {
+  const parentGroup = alias(holidayGroup, 'parent_group');
   return withTenant(ctx, (tx) =>
     tx
       .select({
@@ -1528,23 +1599,29 @@ export function listHolidayGroups(ctx: SessionContext) {
         name: holidayGroup.name,
         states: holidayGroup.states,
         archetype: holidayGroup.archetype,
+        parentGroupId: holidayGroup.parentGroupId,
+        parentName: parentGroup.name,
       })
       .from(holidayGroup)
+      .leftJoin(parentGroup, eq(parentGroup.id, holidayGroup.parentGroupId))
       .orderBy(holidayGroup.name),
   );
 }
 
 export async function createHolidayGroup(
   ctx: SessionContext,
-  p: { name: string; states: string[]; archetype?: string },
+  p: { name: string; states: string[]; archetype?: string; parentGroupId?: string | null },
 ) {
   const name = cleanName(p.name, 'Group name');
   const archetype = cleanArchetype(p.archetype);
-  const states = cleanHolidayGroupStates(p.states, archetype);
+  const parentGroupId = p.parentGroupId?.trim() || null;
+  const states = cleanHolidayGroupStates(p.states, archetype, !!parentGroupId);
   return withTenant(ctx, async (tx) => {
+    let parentName: string | null = null;
+    if (parentGroupId) parentName = await assertValidParentGroup(tx, ctx.tenantId, parentGroupId);
     const [row] = await tx
       .insert(holidayGroup)
-      .values({ tenantId: ctx.tenantId, name, states, archetype })
+      .values({ tenantId: ctx.tenantId, name, states, archetype, parentGroupId })
       .returning({ id: holidayGroup.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
@@ -1556,7 +1633,7 @@ export async function createHolidayGroup(
       aggregateId: row.id,
       eventType: 'holiday-group.created',
       actor: actorOf(ctx),
-      payload: { name, states, archetype },
+      payload: { name, states, archetype, parentGroupId, parentName },
     });
     return row;
   });
@@ -1564,24 +1641,52 @@ export async function createHolidayGroup(
 
 export async function updateHolidayGroup(
   ctx: SessionContext,
-  p: { id: string; name?: string; states?: string[]; archetype?: string },
+  p: { id: string; name?: string; states?: string[]; archetype?: string; parentGroupId?: string | null },
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
-      .select({ name: holidayGroup.name, states: holidayGroup.states, archetype: holidayGroup.archetype })
+      .select({
+        name: holidayGroup.name,
+        states: holidayGroup.states,
+        archetype: holidayGroup.archetype,
+        parentGroupId: holidayGroup.parentGroupId,
+      })
       .from(holidayGroup)
       .where(eq(holidayGroup.id, p.id))
       .limit(1);
     if (!before) throw new Error('Holiday group not found');
     const name = p.name !== undefined ? cleanName(p.name, 'Group name') : before.name;
     const archetype = p.archetype !== undefined ? cleanArchetype(p.archetype) : (before.archetype as HolidayGroupArchetype);
-    const states = p.states !== undefined ? cleanHolidayGroupStates(p.states, archetype) : (before.states as string[]);
-    // A standard/extended calendar still needs ≥1 gazette state even if only the archetype changed.
-    if (archetype !== 'custom' && states.length === 0)
+    // parentGroupId is tri-state: undefined → keep, ''/null → clear, an id → set (validated below).
+    const parentGroupId =
+      p.parentGroupId !== undefined ? p.parentGroupId?.trim() || null : before.parentGroupId;
+    if (parentGroupId === p.id) throw new Error('A holiday group cannot be its own parent.');
+    const states =
+      p.states !== undefined
+        ? cleanHolidayGroupStates(p.states, archetype, !!parentGroupId)
+        : (before.states as string[]);
+    // A standard/extended calendar still needs ≥1 gazette state even if only the archetype changed —
+    // unless a parent supplies the gazette source (R18 a519a96e).
+    if (archetype !== 'custom' && states.length === 0 && !parentGroupId)
       throw new Error('A standard or extended holiday calendar must include at least one state.');
+    let parentName: string | null = null;
+    if (parentGroupId && parentGroupId !== before.parentGroupId) {
+      parentName = await assertValidParentGroup(tx, ctx.tenantId, parentGroupId);
+      // Single-level nesting the other way round too: a group that already has CHILDREN cannot itself
+      // become a child (locked so a concurrent createHolidayGroup pointing at us can't slip through).
+      const children = await tx
+        .select({ id: holidayGroup.id })
+        .from(holidayGroup)
+        .where(eq(holidayGroup.parentGroupId, p.id))
+        .for('update');
+      if (children.length > 0)
+        throw new Error(
+          `This group is the parent of ${children.length} other group${children.length === 1 ? '' : 's'} and cannot inherit from another group (one level only).`,
+        );
+    }
     await tx
       .update(holidayGroup)
-      .set({ name, states, archetype })
+      .set({ name, states, archetype, parentGroupId })
       .where(eq(holidayGroup.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
@@ -1594,8 +1699,13 @@ export async function updateHolidayGroup(
       eventType: 'holiday-group.updated',
       actor: actorOf(ctx),
       payload: {
-        before: { name: before.name, states: before.states, archetype: before.archetype },
-        after: { name, states, archetype },
+        before: {
+          name: before.name,
+          states: before.states,
+          archetype: before.archetype,
+          parentGroupId: before.parentGroupId,
+        },
+        after: { name, states, archetype, parentGroupId, parentName },
       },
     });
     return { id: p.id };
@@ -1604,6 +1714,20 @@ export async function updateHolidayGroup(
 
 export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string }) {
   return withTenant(ctx, async (tx) => {
+    // R18 a519a96e: block deleting a PARENT while child groups still inherit from it (lock the children so
+    // a concurrent re-parent can't race the guard). The ON DELETE SET NULL FK is the backstop — a bypassed
+    // delete detaches children rather than orphaning them — but the friendly path is to re-parent first.
+    const childRefs = await tx
+      .select({ id: holidayGroup.id })
+      .from(holidayGroup)
+      .where(eq(holidayGroup.parentGroupId, p.id))
+      .for('update');
+    if (childRefs.length > 0) {
+      throw new InUseError(
+        'holiday group',
+        `This holiday group is the parent of ${childRefs.length} other group${childRefs.length === 1 ? '' : 's'}. Detach or delete them before deleting it.`,
+      );
+    }
     // Lock the referencing employments inside the tx so the count can't change under us between the guard
     // and the delete. The ON DELETE SET NULL FK is the DB-level backstop (a lost race can't orphan); this
     // in-tx guard gives the friendly "still assigned to N employees" UX instead of silent reassignment.
@@ -1632,10 +1756,17 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
         `This holiday calendar is still assigned to ${locRefs.length} location${locRefs.length === 1 ? '' : 's'}. Unassign it there before deleting it.`,
       );
     }
+    // R18 a519a96e: the group's OWN group-scoped "additional day" holiday rows are removed by the
+    // ON DELETE CASCADE FK on holiday.holiday_group_id — deliberate (extras have no meaning without the
+    // group), covered by the holiday-group.deleted event below rather than per-row holiday.deleted events.
     const [deleted] = await tx
       .delete(holidayGroup)
       .where(eq(holidayGroup.id, p.id))
-      .returning({ name: holidayGroup.name, states: holidayGroup.states });
+      .returning({
+        name: holidayGroup.name,
+        states: holidayGroup.states,
+        parentGroupId: holidayGroup.parentGroupId,
+      });
     if (!deleted) return;
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -1643,8 +1774,115 @@ export async function deleteHolidayGroup(ctx: SessionContext, p: { id: string })
       aggregateId: p.id,
       eventType: 'holiday-group.deleted',
       actor: actorOf(ctx),
-      payload: { name: deleted.name, states: deleted.states },
+      payload: { name: deleted.name, states: deleted.states, parentGroupId: deleted.parentGroupId },
     });
+  });
+}
+
+/** R18 a519a96e — one row of a group's EFFECTIVE calendar as shown on the admin Holidays screen.
+ *  `source` drives the UI: 'own' rows belong to the group itself (editable); 'inherited' rows come from
+ *  the parent group's extras, the gazette, or company ad-hoc days (read-only, "Inherited" badge). */
+export type EffectiveGroupHolidayRow = {
+  id: string;
+  country: string;
+  state: string | null;
+  companyId: string | null;
+  companyName: string | null;
+  holidayGroupId: string | null;
+  holidayDate: string;
+  name: string;
+  tentative: boolean;
+  source: 'own' | 'inherited';
+};
+
+/**
+ * R18 a519a96e — the EFFECTIVE calendar of a holiday group, resolved the same way holidayDatesFor
+ * composes it (resolve-at-read; nothing is copied):
+ *
+ *   own group-scoped extras
+ *   ∪ parent group's own extras                       (when a parent is set)
+ *   ∪ gazette: national ∪ base.states                 (base = parent if set, else the group; skipped for
+ *                                                      a 'custom' base — custom ignores the gazette)
+ *   ∪ company ad-hoc rows                             (for an 'extended'/'custom' base — shown so the admin
+ *                                                      sees the full extended calendar; which of these apply
+ *                                                      to a given employee depends on their company chain)
+ *
+ * Because the parent is read LIVE, a holiday added to the parent group appears here (and in every linked
+ * location's resolution) immediately — the reporter's Step-5 auto-sync. Read-only — no event.
+ */
+export function listGroupEffectiveHolidays(ctx: SessionContext, p: { groupId: string; year?: number }) {
+  const parentGroup = alias(holidayGroup, 'parent_group');
+  return withTenant(ctx, async (tx) => {
+    const [g] = await tx
+      .select({
+        id: holidayGroup.id,
+        name: holidayGroup.name,
+        states: holidayGroup.states,
+        archetype: holidayGroup.archetype,
+        parentGroupId: holidayGroup.parentGroupId,
+        parentName: parentGroup.name,
+        parentStates: parentGroup.states,
+        parentArchetype: parentGroup.archetype,
+      })
+      .from(holidayGroup)
+      .leftJoin(parentGroup, eq(parentGroup.id, holidayGroup.parentGroupId))
+      .where(eq(holidayGroup.id, p.groupId))
+      .limit(1);
+    if (!g) throw new Error('Holiday group not found');
+    // With a parent, the parent's archetype + states ARE the gazette source (the child only adds extras).
+    const baseArchetype = (g.parentGroupId ? g.parentArchetype : g.archetype) as HolidayGroupArchetype;
+    const baseStates: string[] = g.parentGroupId
+      ? Array.isArray(g.parentStates)
+        ? (g.parentStates as string[])
+        : []
+      : Array.isArray(g.states)
+        ? (g.states as string[])
+        : [];
+
+    const scopes = [eq(holiday.holidayGroupId, g.id)];
+    if (g.parentGroupId) scopes.push(eq(holiday.holidayGroupId, g.parentGroupId));
+    if (baseArchetype !== 'custom') {
+      // Gazette half: national ∪ the base states (custom deliberately excludes the gazette).
+      scopes.push(
+        and(
+          isNull(holiday.companyId),
+          isNull(holiday.holidayGroupId),
+          baseStates.length ? or(isNull(holiday.state), inArray(holiday.state, baseStates)) : isNull(holiday.state),
+        )!,
+      );
+    }
+    if (baseArchetype !== 'standard') {
+      // Extended/custom calendars union the company-defined ad-hoc days (per-employee the resolver narrows
+      // these to the employee's company chain; the admin view shows them all, labelled with the company).
+      scopes.push(sql`${holiday.companyId} IS NOT NULL`);
+    }
+    const rows = await tx
+      .select({
+        id: holiday.id,
+        country: holiday.country,
+        state: holiday.state,
+        companyId: holiday.companyId,
+        companyName: company.legalName,
+        holidayGroupId: holiday.holidayGroupId,
+        holidayDate: holiday.holidayDate,
+        name: holiday.name,
+        tentative: holiday.tentative,
+      })
+      .from(holiday)
+      .leftJoin(company, eq(company.id, holiday.companyId))
+      .where(
+        and(
+          or(...scopes),
+          p.year ? sql`extract(year from ${holiday.holidayDate}) = ${p.year}` : undefined,
+        ),
+      )
+      .orderBy(holiday.holidayDate);
+    return {
+      group: { id: g.id, name: g.name, parentGroupId: g.parentGroupId, parentName: g.parentName },
+      rows: rows.map(
+        (r): EffectiveGroupHolidayRow => ({ ...r, source: r.holidayGroupId === g.id ? 'own' : 'inherited' }),
+      ),
+    };
   });
 }
 

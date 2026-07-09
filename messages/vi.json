@@ -2992,7 +2992,8 @@
       "scope": {
         "national": "Toàn quốc",
         "state": "Bang",
-        "group": "Nhóm doanh nghiệp"
+        "group": "Nhóm doanh nghiệp",
+        "holidayGroup": "Nhóm ngày lễ"
       },
       "scopeLabel": "Phạm vi",
       "scopeBadge": "{label}: {name}",
@@ -3008,7 +3009,20 @@
         "extended": "Mở rộng",
         "custom": "Tùy chỉnh"
       },
-      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của nhóm). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = chỉ những ngày lễ bạn tự chọn vào nhóm này; mọi ngày khác, kể cả ngày lễ quốc gia, đều là ngày làm việc bình thường. Gán một nhóm cho nhân viên trên hồ sơ của họ (hoặc ánh xạ vào một địa điểm) và họ sẽ tuân theo đúng các quy tắc này."
+      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố (quốc gia + bang của nhóm). Mở rộng = ngày lễ chính thức cộng các ngày do công ty quy định thêm. Tùy chỉnh = chỉ những ngày lễ bạn tự chọn vào nhóm này; mọi ngày khác, kể cả ngày lễ quốc gia, đều là ngày làm việc bình thường. Gán một nhóm cho nhân viên trên hồ sơ của họ (hoặc ánh xạ vào một địa điểm) và họ sẽ tuân theo đúng các quy tắc này.",
+      "parentGroupLabel": "Nhóm cha",
+      "parentGroupNone": "Không (nhóm cơ sở)",
+      "inheritsFrom": "Kế thừa từ {name}",
+      "viewCalendar": "Xem lịch",
+      "parentGroupHint": "Nhóm có nhóm cha sẽ tự động kế thừa toàn bộ lịch của nhóm cha — các bang công bố, loại và các ngày bổ sung — và luôn đồng bộ khi nhóm cha thay đổi. Để thêm ngày chỉ áp dụng cho nhóm này, hãy thêm ngày lễ với phạm vi “Nhóm ngày lễ”. Chỉ cho phép một cấp kế thừa: nhóm cha không thể kế thừa từ nhóm khác.",
+      "calendarTitle": "Lịch hiệu lực — {name}",
+      "calendarEmpty": "Chưa có ngày lễ nào trong lịch này.",
+      "ownBadge": "Nhóm này",
+      "inheritedBadge": "Kế thừa",
+      "calendarHint": "Các ngày kế thừa chỉ đọc tại đây — hãy chỉnh sửa tại nguồn (nhóm cha, danh sách ngày lễ công cộng hoặc công ty sở hữu). Ngày được thêm vào nhóm này chỉ áp dụng cho nhân viên dùng lịch này.",
+      "calendarBack": "Quay lại tất cả ngày lễ",
+      "holidayGroupLabel": "Nhóm ngày lễ",
+      "holidayGroupPlaceholder": "Chọn nhóm ngày lễ…"
     },
     "users": {
       "title": "Người dùng & vai trò",

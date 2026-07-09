@@ -609,13 +609,16 @@ export async function deleteLeavePolicyAction(formData: FormData) {
 }
 
 // ── Public holidays ──
-/** Preserve the active country/year filter across the redirect so the admin stays in context. */
+/** Preserve the active country/year/group filter across the redirect so the admin stays in context.
+ *  (R18 a519a96e: `group` keeps the per-group effective-calendar view open across row edits.) */
 function holidaysPath(formData: FormData): string {
   const sp = new URLSearchParams();
   const country = String(formData.get('filterCountry') ?? '').trim();
   const year = String(formData.get('filterYear') ?? '').trim();
+  const group = String(formData.get('filterGroup') ?? '').trim();
   if (country) sp.set('country', country);
   if (year) sp.set('year', year);
+  if (group) sp.set('group', group);
   const qs = sp.toString();
   return qs ? `${HOLIDAYS}?${qs}` : HOLIDAYS;
 }
@@ -623,9 +626,10 @@ function holidaysPath(formData: FormData): string {
 export async function createHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
-  // Scope drives which fields the service receives (ADR-0055): national → neither, state → state only,
-  // group → companyId only. Reading the raw select fields directly and zeroing the irrelevant one keeps
-  // the action consistent with the DB CHECK + service validation (single-axis scope).
+  // Scope drives which fields the service receives (ADR-0055 + R18 a519a96e): national → none, state →
+  // state only, group → companyId only, holidayGroup → holidayGroupId only. Reading the raw select fields
+  // directly and zeroing the irrelevant ones keeps the action consistent with the DB CHECK + service
+  // validation (single-axis scope).
   const scope = String(formData.get('scope') ?? 'national');
   try {
     await createHoliday(s, {
@@ -634,6 +638,8 @@ export async function createHolidayAction(formData: FormData) {
       name: String(formData.get('name') ?? ''),
       state: scope === 'state' ? String(formData.get('state') ?? '') || null : null,
       companyId: scope === 'group' ? String(formData.get('companyId') ?? '') || null : null,
+      // R18 a519a96e: a group-scoped "additional day" — applies only to staff on that group's calendar.
+      holidayGroupId: scope === 'holidayGroup' ? String(formData.get('holidayGroupId') ?? '') || null : null,
       // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
       tentative: formData.get('tentative') === 'on',
     });
@@ -679,6 +685,8 @@ export async function createHolidayGroupAction(formData: FormData) {
       name: String(formData.get('name') ?? ''),
       states: formData.getAll('states').map(String),
       archetype: String(formData.get('archetype') ?? '') || undefined,
+      // R18 a519a96e: optional parent group — the child inherits the parent's calendar live.
+      parentGroupId: String(formData.get('parentGroupId') ?? '') || null,
     });
   } catch (e) {
     fail(HOLIDAYS, e);
@@ -694,6 +702,8 @@ export async function updateHolidayGroupAction(formData: FormData) {
       name: String(formData.get('name') ?? ''),
       states: formData.getAll('states').map(String),
       archetype: String(formData.get('archetype') ?? '') || undefined,
+      // R18 a519a96e: the form always posts the select, so '' means "clear the parent" (service tri-state).
+      parentGroupId: String(formData.get('parentGroupId') ?? '') || null,
     });
   } catch (e) {
     fail(HOLIDAYS, e);
