@@ -15,13 +15,17 @@ const KINDS = ['earning', 'deduction', 'overtime', 'unpaid', 'leave'] as const;
  *  dynamically from this catalog (not a hardcoded kind list). Only payable earning/deduction items are passed. */
 export type WizardPayItem = { id: string; code: string; name: string; kind: string };
 
-/** Map a Pay-Item-Master component kind onto one of the five ledger txn kinds. The ledger stores a kind, not a
- *  component id (ADR-0056 kinds-only ledger), so a chosen master item is recorded as its kind + its name in the
- *  remarks. 'allowance' ⇒ earning, 'deduction' ⇒ deduction (the two payable one-off classes). */
+/** Map a Pay-Item-Master component kind onto one of the five ledger txn kinds. A chosen master item is
+ *  recorded as its kind + its name in the remarks AND — since f1564110 Phase 3 — as a persisted componentId,
+ *  so the payroll kernel (INDIVIDUAL_TXN_PAY_ENABLED) can fold the row with the item's statutory flags.
+ *  'allowance' ⇒ earning, 'deduction' ⇒ deduction (the two payable one-off classes). */
 const COMPONENT_KIND_TO_TXN: Record<string, (typeof KINDS)[number]> = { allowance: 'earning', deduction: 'deduction' };
 
 /** A resolved item-picker option: either a generic kind (`k:<kind>`) or a master component (`c:<id>`). */
 type ItemOption = { value: string; label: string; kind: (typeof KINDS)[number]; fromMaster: boolean };
+
+/** The component id behind a `c:<id>` option value; null for generic `k:<kind>` options. */
+const componentIdOf = (value: string): string | null => (value.startsWith('c:') ? value.slice(2) : null);
 
 /** Real days-in-month (leap-year correct) — mirrors core/payroll.ts daysInMonth so the grid's date max is
  *  the true month-end (not a hardcoded -31), matching what the server's assertDateInPeriod enforces (C9). */
@@ -86,35 +90,51 @@ export function TxnGrid({
   companies,
   payItems,
   processHref,
+  requireComponent,
 }: {
   employees: WizardEmployee[];
   batches: WizardBatch[];
   companies: { id: string; name: string }[];
   payItems: WizardPayItem[];
   processHref: string;
+  /** f1564110 Phase 3 — true when INDIVIDUAL_TXN_PAY_ENABLED: the kernel pays/deducts these rows, so a NEW
+   *  payable (earning/deduction) row must name a master item (its statutory flags drive the treatment). The
+   *  generic earning/deduction options are removed; the server re-enforces (ComponentRequiredError). */
+  requireComponent: boolean;
 }) {
   const t = useTranslations('payroll.transactions.individual');
   const tFixed = useTranslations('payroll.transactions.fixed');
 
-  // Item picker options, sourced dynamically from the Payroll Item Master (feedback 7b2d4228). The five generic
-  // kinds are always offered (they cover overtime / unpaid / leave, which are not component-catalog kinds); the
-  // master's active payable earning/deduction components are added as specific, named items above them.
+  // Item picker options, sourced dynamically from the Payroll Item Master (feedback 7b2d4228). The generic
+  // kinds are always offered for overtime / unpaid / leave (not component-catalog kinds); the generic
+  // earning/deduction entries are offered ONLY while the pay flag is off (requireComponent hides them — a
+  // paid one-off must name a master item so its statutory treatment is defined). The master's active payable
+  // earning/deduction components are added as specific, named items.
+  const genericKinds = useMemo<readonly (typeof KINDS)[number][]>(
+    () => (requireComponent ? KINDS.filter((k) => k !== 'earning' && k !== 'deduction') : [...KINDS]),
+    [requireComponent],
+  );
   const itemOptions = useMemo<ItemOption[]>(() => {
-    const generic: ItemOption[] = KINDS.map((k) => ({ value: `k:${k}`, label: t(`kindLabel.${k}`), kind: k, fromMaster: false }));
+    const generic: ItemOption[] = genericKinds.map((k) => ({ value: `k:${k}`, label: t(`kindLabel.${k}`), kind: k, fromMaster: false }));
     const master: ItemOption[] = payItems
       .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null)
       .map((c) => ({ value: `c:${c.id}`, label: `${c.code} — ${c.name}`, kind: COMPONENT_KIND_TO_TXN[c.kind], fromMaster: true }));
     return [...generic, ...master];
-  }, [payItems, t]);
+  }, [payItems, t, genericKinds]);
   const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
   const masterEarnings = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'earning'), [itemOptions]);
   const masterDeductions = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'deduction'), [itemOptions]);
-  /** Resolve a grid row into the record that will be persisted: the chosen item → its kind, and (for a named
-   *  master item) its label defaulted into the remarks so the specific pay item is recorded in the ledger. */
+  // A fresh row's default item: the generic earning normally; with requireComponent the first master earning
+  // (falling back to the first offered option) so the default select value always exists in the option list.
+  const defaultItemValue = requireComponent ? (masterEarnings[0]?.value ?? itemOptions[0]?.value ?? 'k:overtime') : 'k:earning';
+  const makeRow = (): GridRow => ({ ...blankRow(), item: defaultItemValue });
+  /** Resolve a grid row into the record that will be persisted: the chosen item → its kind + componentId
+   *  (Phase 3 — the master item is persisted, not just flattened into the remarks), and (for a named master
+   *  item) its label defaulted into the remarks so the specific pay item is readable in the ledger. */
   const resolveRow = (r: GridRow) => {
     const opt = itemByValue.get(r.item) ?? itemOptions[0];
     const notes = r.notes.trim() || (opt.fromMaster ? opt.label : '');
-    return { kind: opt.kind, txnDate: r.txnDate, amount: r.amount, notes };
+    return { kind: opt.kind, componentId: opt.fromMaster ? componentIdOf(opt.value) : null, txnDate: r.txnDate, amount: r.amount, notes };
   };
   const [step, setStep] = useState(0);
   const [query, setQuery] = useState('');
@@ -126,7 +146,7 @@ export function TxnGrid({
   const [period, setPeriod] = useState('');
   const [runType, setRunType] = useState('');
   const [batchId, setBatchId] = useState('');
-  const [rows, setRows] = useState<GridRow[]>([blankRow()]);
+  const [rows, setRows] = useState<GridRow[]>(() => [makeRow()]);
   const [rowErrors, setRowErrors] = useState<Set<number>>(new Set());
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedCount, setSavedCount] = useState<number | null>(null);
@@ -158,6 +178,16 @@ export function TxnGrid({
     () => [...new Set(eligibleBatches.filter((b) => b.payPeriod === period).map((b) => b.runType))],
     [eligibleBatches, period],
   );
+  // f1564110 Phase 2 — the month is now a FREE month picker, not limited to months that already have a
+  // draft run. A valid month with no eligible draft batch enters "period-keyed" mode: the grid is saved
+  // UNATTACHED for that (company, month) and picked up automatically when the month's regular run is
+  // generated. This removes the old dead-end ("create a run first").
+  const periodIsValid = /^\d{4}-\d{2}$/.test(period);
+  const batchCountForPeriod = useMemo(
+    () => eligibleBatches.filter((b) => b.payPeriod === period).length,
+    [eligibleBatches, period],
+  );
+  const periodKeyed = periodIsValid && batchCountForPeriod === 0;
   // When a (period, runType) maps to >1 draft batch, expose a run selector (label mirrors the batch listing).
   const runsForSelection = useMemo(
     () => eligibleBatches.filter((b) => b.payPeriod === period && b.runType === runType).sort((a, b) => a.runSeq - b.runSeq),
@@ -238,7 +268,8 @@ export function TxnGrid({
   }, [period]);
 
   const step1Valid = selectedIds.length > 0;
-  const step2Valid = !!batchId;
+  // Step 2 is satisfied by a resolved draft batch OR a valid period-keyed target (month + anchored company).
+  const step2Valid = !!batchId || (periodKeyed && selectionCompanyId != null);
 
   // Toggle one employee in/out of the selection. The whole selection is pinned to one company: once at least
   // one employee is picked, employees in a different company are disabled in the list below.
@@ -257,11 +288,11 @@ export function TxnGrid({
     });
     setSaveError(null);
   };
-  const addRow = () => setRows((rs) => [...rs, blankRow()]);
+  const addRow = () => setRows((rs) => [...rs, makeRow()]);
   const deleteRow = (i: number) =>
     setRows((rs) => {
       const next = rs.filter((_, idx) => idx !== i);
-      return next.length ? next : [blankRow()];
+      return next.length ? next : [makeRow()];
     });
 
   /** A row is "empty" (ignored) when no date, amount, or remarks is filled. The item select always carries a
@@ -270,6 +301,10 @@ export function TxnGrid({
   const rowIsValid = (r: GridRow): boolean => {
     if (isEmptyRow(r)) return true; // ignored on save
     if (!itemByValue.has(r.item)) return false;
+    // Phase 3 defensive backstop: with requireComponent the generic earning/deduction options are not even
+    // offered, but a stale row value must still fail validation (the server enforces ComponentRequiredError).
+    const opt0 = itemByValue.get(r.item)!;
+    if (requireComponent && !opt0.fromMaster && (opt0.kind === 'earning' || opt0.kind === 'deduction')) return false;
     if (!r.txnDate) return false;
     if (monthBounds && (r.txnDate < monthBounds.min || r.txnDate > monthBounds.max)) return false;
     const amt = Number(r.amount);
@@ -282,7 +317,7 @@ export function TxnGrid({
   const rowSignature = (r: GridRow): string => {
     const p = resolveRow(r);
     const amt = Number(p.amount);
-    return [p.kind, p.txnDate, Number.isFinite(amt) ? amt.toFixed(2) : p.amount, p.notes.trim().toLowerCase()].join('|');
+    return [p.kind, p.componentId ?? '', p.txnDate, Number.isFinite(amt) ? amt.toFixed(2) : p.amount, p.notes.trim().toLowerCase()].join('|');
   };
 
   const validate = (): boolean => {
@@ -331,10 +366,16 @@ export function TxnGrid({
       .filter((r) => !isEmptyRow(r))
       .map((r) => {
         const p = resolveRow(r);
-        return { kind: p.kind, txnDate: p.txnDate, amount: p.amount, notes: p.notes };
+        return { kind: p.kind, componentId: p.componentId, txnDate: p.txnDate, amount: p.amount, notes: p.notes };
       });
     const fd = new FormData();
     fd.set('batchId', batchId);
+    // Period-keyed target (no draft run yet): the rows are saved unattached for (company, month) and picked
+    // up automatically when the month's regular run is generated (f1564110 Phase 2).
+    if (!batchId) {
+      fd.set('companyId', selectionCompanyId ?? '');
+      fd.set('payPeriod', period);
+    }
     fd.set('employmentIds', JSON.stringify(selectedIds));
     fd.set('rows', JSON.stringify(payload));
     startTransition(async () => {
@@ -343,7 +384,7 @@ export function TxnGrid({
         setSavedCount(res.count);
         setSaveError(null);
         setRowErrors(new Set());
-        setRows([blankRow()]);
+        setRows([makeRow()]);
         toast.success(t('saveSuccess', { count: res.count }));
       } else {
         // PRESERVE the entered rows; surface the friendly error inline (C10). A row-level failure highlights
@@ -495,35 +536,43 @@ export function TxnGrid({
           </div>
         )}
 
-        {/* ── Step 2 — Period + Cycle (+ Run) ── */}
+        {/* ── Step 2 — Period + Cycle (+ Run). The month is a FREE picker (f1564110 Phase 2): a month with
+            no draft run is a valid target — the grid is saved unattached and auto-attached later. ── */}
         {step === 1 && (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field label={t('monthLabel')}>
-                <select value={period} onChange={(e) => setPeriod(e.target.value)} className={inputCls}>
-                  <option value="">—</option>
-                  {periods.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={t('cycleLabel')}>
-                <select
-                  value={runType}
-                  onChange={(e) => setRunType(e.target.value)}
-                  disabled={!period}
+                <input
+                  type="month"
+                  value={period}
+                  onChange={(e) => setPeriod(e.target.value)}
+                  list="txn-grid-draft-months"
                   className={inputCls}
-                >
-                  <option value="">—</option>
-                  {runTypesForPeriod.map((rt) => (
-                    <option key={rt} value={rt}>
-                      {t(`cycle.${rt}`)}
-                    </option>
+                />
+                {/* Months that already have an eligible draft run, offered as suggestions. */}
+                <datalist id="txn-grid-draft-months">
+                  {periods.map((p) => (
+                    <option key={p} value={p} />
                   ))}
-                </select>
+                </datalist>
               </Field>
+              {batchCountForPeriod > 0 && (
+                <Field label={t('cycleLabel')}>
+                  <select
+                    value={runType}
+                    onChange={(e) => setRunType(e.target.value)}
+                    disabled={!period}
+                    className={inputCls}
+                  >
+                    <option value="">—</option>
+                    {runTypesForPeriod.map((rt) => (
+                      <option key={rt} value={rt}>
+                        {t(`cycle.${rt}`)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               {runsForSelection.length > 1 && (
                 <Field label={t('pickRun')}>
                   <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className={inputCls}>
@@ -537,17 +586,9 @@ export function TxnGrid({
                 </Field>
               )}
             </div>
-            {period && runType && runsForSelection.length === 0 && (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                {t('noDraftForSelection')}{' '}
-                <a href={processHref} className="font-medium underline underline-offset-2">
-                  {t('noDraftForSelectionLink')}
-                </a>
-              </p>
-            )}
-            {eligibleBatches.length === 0 && (
-              <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-                {selectedEmployees.length > 1 ? t('noSharedDraft') : t('noDraftForSelection')}{' '}
+            {periodKeyed && (
+              <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                {t('noDraftYetNotice', { period })}{' '}
                 <a href={processHref} className="font-medium underline underline-offset-2">
                   {t('noDraftForSelectionLink')}
                 </a>
@@ -565,6 +606,8 @@ export function TxnGrid({
         {step === 2 && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">{t('txnIntro')}</p>
+            {/* Phase 3 — the kernel pays these rows: a paid one-off must name a master item. */}
+            {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
             {selectedEmployees.length > 1 && (
               <p className="text-xs text-muted-foreground">{t('applyAllHint', { count: selectedEmployees.length })}</p>
             )}
@@ -585,7 +628,7 @@ export function TxnGrid({
                       <td className="px-3 py-1.5">
                         <select value={r.item} onChange={(e) => setRow(i, { item: e.target.value })} className={inputCls}>
                           <optgroup label={t('itemGroupGeneral')}>
-                            {KINDS.map((k) => (
+                            {genericKinds.map((k) => (
                               <option key={k} value={`k:${k}`}>
                                 {t(`kindLabel.${k}`)}
                               </option>
@@ -684,7 +727,8 @@ export function TxnGrid({
                 <div className="font-medium">
                   {(() => {
                     const b = eligibleBatches.find((x) => x.id === batchId);
-                    return b ? cycleLabel(b) : '—';
+                    // Period-keyed save (no draft run yet): mark the target as pending the month's regular run.
+                    return b ? cycleLabel(b) : periodKeyed ? t('pendingRun') : '—';
                   })()}
                 </div>
               </div>

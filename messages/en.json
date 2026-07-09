@@ -536,7 +536,7 @@
       "tabs": {
         "profile": "Profile",
         "family": "Family",
-        "job": "Job",
+        "job": "Employment",
         "payroll": "Payroll",
         "documents": "Documents",
         "others": "Others",
@@ -1321,7 +1321,8 @@
     "decisionColumn": "Decision",
     "reasonColumn": "Reason",
     "submitDecisions": "Submit decisions",
-    "employeeRemark": "Employee remark"
+    "employeeRemark": "Employee remark",
+    "closeDialog": "Close"
   },
   "performance": {
     "list": {
@@ -1569,7 +1570,8 @@
       "status": {
         "draft": "Draft",
         "processed": "Processed",
-        "closed": "Closed"
+        "closed": "Closed",
+        "unattached": "Unattached"
       },
       "importHistory": "Import payroll history",
       "periodContext": "Pay period",
@@ -1731,7 +1733,24 @@
       "unlockDoneWarned": "Payroll process unlocked. Note: payment and/or statutory submissions had already occurred — review whether an amended filing is needed.",
       "unlockNotClosed": "Only a closed payroll process can be unlocked.",
       "unlockOtpInvalid": "The confirmation code is invalid or expired — request a new one.",
-      "unlockPermissionDenied": "You do not have permission to unlock a closed payroll process."
+      "unlockPermissionDenied": "You do not have permission to unlock a closed payroll process.",
+      "preChecksTitle": "Pre-processing checks",
+      "preChecksAllClear": "All checks passed — employee information is complete for this run.",
+      "preChecksBlockerHint": "{n} employee(s) have no current salary record. Previously they would have been silently left out of the run — payroll cannot be processed until this is fixed (or the run scope excludes them).",
+      "preChecksWarningHint": "{n} check(s) need your attention. You can still process payroll, but you will be asked to confirm.",
+      "preChecksBlockerBadge": "Blocks processing",
+      "preChecksWarningBadge": "Warning",
+      "preChecks": {
+        "missingCompensation": "No current salary record",
+        "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
+        "missingBank": "Bank details incomplete"
+      },
+      "preChecksOpenProfile": "Open profile",
+      "preChecksBlockedError": "Cannot process payroll: {n} employee(s) have no current salary record. Fix the pre-processing checks first.",
+      "preChecksConfirmRequired": "Please confirm the pre-processing warnings before generating payslips.",
+      "preConfirmTitle": "Process payroll with warnings?",
+      "preConfirmDescription": "{n} pre-processing check(s) are unresolved (missing statutory profile or bank details). Affected employees may get default statutory treatment and be missing from the payment file.",
+      "preConfirmLabel": "Process anyway"
     },
     "reports": {
       "pageTitle": "Payroll",
@@ -2134,7 +2153,17 @@
         "duplicateRow": "Duplicate rows are not allowed — two entries have the same item, date, amount, and remarks.",
         "itemGroupGeneral": "General",
         "itemGroupEarnings": "Earnings (Pay Item Master)",
-        "itemGroupDeductions": "Deductions (Pay Item Master)"
+        "itemGroupDeductions": "Deductions (Pay Item Master)",
+        "noDraftYetNotice": "No draft payroll run exists for {period} yet. Entries will be saved for this month and picked up automatically when the regular run is generated.",
+        "pendingRun": "Awaiting payroll run",
+        "unattachedOption": "Unattached — awaiting payroll run",
+        "unattachedTitle": "Unattached transactions",
+        "unattachedHint": "These entries were keyed in before a payroll run existed for their month. Each one attaches automatically to its month’s regular run when payroll is generated.",
+        "unattachedEmpty": "No unattached transactions.",
+        "periodInvalid": "Choose a valid month.",
+        "componentRequired": "Pick a pay item for each earning or deduction row — one-off pay items are paid through payroll, so the item's statutory treatment must be defined.",
+        "componentInvalid": "The selected pay item is not valid for this row (unknown, archived, or the wrong type).",
+        "componentRequiredHint": "Earnings and deductions are paid through payroll: pick a named pay item from the list (its EPF/SOCSO/PCB treatment applies). Overtime, unpaid and leave entries do not need one."
       },
       "tp1": {
         "title": "TP1 Relief",
@@ -2992,7 +3021,8 @@
       "scope": {
         "national": "National",
         "state": "State",
-        "group": "Business group"
+        "group": "Business group",
+        "holidayGroup": "Holiday group"
       },
       "scopeLabel": "Scope",
       "scopeBadge": "{label}: {name}",
@@ -3008,7 +3038,20 @@
         "extended": "Extended",
         "custom": "Custom"
       },
-      "archetypeHint": "Standard = official gazetted holidays only (national + the group’s states). Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick into this group; every other date, including national holidays, is a normal working day. Assign a group to staff on their profile (or map it to a location) and they follow exactly these rules."
+      "archetypeHint": "Standard = official gazetted holidays only (national + the group’s states). Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick into this group; every other date, including national holidays, is a normal working day. Assign a group to staff on their profile (or map it to a location) and they follow exactly these rules.",
+      "parentGroupLabel": "Parent group",
+      "parentGroupNone": "None (base group)",
+      "inheritsFrom": "Inherits from {name}",
+      "viewCalendar": "View calendar",
+      "parentGroupHint": "A group with a parent automatically inherits the parent’s whole calendar — its gazette states, kind and extra days — and stays in sync when the parent changes. Add days that apply only to this group by adding a holiday with the “Holiday group” scope. One level of inheritance only: a parent cannot itself inherit from another group.",
+      "calendarTitle": "Effective calendar — {name}",
+      "calendarEmpty": "No holidays in this calendar yet.",
+      "ownBadge": "This group",
+      "inheritedBadge": "Inherited",
+      "calendarHint": "Inherited days are read-only here — edit them at their source (the parent group, the public holiday list or the owning company). Days added to this group apply only to staff on this calendar.",
+      "calendarBack": "Back to all holidays",
+      "holidayGroupLabel": "Holiday group",
+      "holidayGroupPlaceholder": "Select a holiday group…"
     },
     "users": {
       "title": "Users & roles",
@@ -3230,7 +3273,7 @@
       "daySun": "Sun",
       "save": "Save policy",
       "lateHint": "Check-in after “late after” is flagged late; check-out before “half-day before” is a half-day.",
-      "rosterNote": "A person's usual shift is set as their Default shift on their profile (Personnel → Job tab); the Roster screen is for date-specific exceptions. A rostered day overrides the default shift; employees with neither fall back to this default schedule.",
+      "rosterNote": "A person's usual shift is set as their Default shift on their profile (Personnel → Employment tab); the Roster screen is for date-specific exceptions. A rostered day overrides the default shift; employees with neither fall back to this default schedule.",
       "dayTypeHint": "Full = a normal working day. Half = a shorter working day (e.g. Saturday 9:00–12:00) — leave taken on it deducts 0.5 day by default, or 1.0 day if the half-day deduction setting is switched on. Rest = not a working day.",
       "dayTypeFull": "Full",
       "dayTypeHalf": "Half",

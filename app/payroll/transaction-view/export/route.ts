@@ -10,7 +10,7 @@ import { listEmployees } from '@/core/read';
 import { exportIndividualTxnsCsv } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 
-const TXN_STATUSES = ['draft', 'processed', 'closed'] as const;
+const TXN_STATUSES = ['unattached', 'draft', 'processed', 'closed'] as const; // 'unattached' = no run yet (f1564110 Phase 2)
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */

@@ -1226,6 +1226,27 @@
       "when": 1781862173000,
       "tag": "0174_payroll_policy_defaults_release",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1781862174000,
+      "tag": "0175_holiday_group_inheritance",
+      "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1781862175000,
+      "tag": "0176_individual_txn_period_keyed",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1781862176000,
+      "tag": "0177_individual_txn_component",
+      "breakpoints": true
     }
   ]
 }

@@ -52,6 +52,12 @@ import { assignment, company, employment, holiday, holidayGroup, location } from
 // ADR-0067 — the LOCATION's named holiday calendar is a holiday_group row joined a SECOND time (the first
 // holidayGroup join is the per-employee assigned group, ADR-0040). Aliased so the two joins don't collide.
 const locationCalendar = alias(holidayGroup, 'location_calendar');
+// R18 a519a96e — group INHERITANCE: each of the two group joins above may point at a PARENT group
+// (holiday_group.parent_group_id, single level). The parent is joined LIVE (strictly 1:1 — parent_group_id
+// → PK) so parent edits propagate instantly with no sync. When a parent exists it supplies the gazette
+// source (archetype + states); the child contributes only its own group-scoped extra days.
+const locationCalendarParent = alias(holidayGroup, 'location_calendar_parent');
+const empGroupParent = alias(holidayGroup, 'emp_group_parent');
 
 export type HolidayWindow = { employmentId: string; startDate: string; endDate: string };
 
@@ -95,6 +101,7 @@ export async function loadedHolidayCount(
       and(
         eq(holiday.country, country),
         isNull(holiday.companyId), // public gazette only — not a company-subtree override calendar
+        isNull(holiday.holidayGroupId), // …nor a group-scoped extra day (R18 a519a96e)
         sql`extract(year from ${holiday.holidayDate}) = ${year}`,
         state ? or(isNull(holiday.state), eq(holiday.state, state)) : isNull(holiday.state),
       ),
@@ -151,37 +158,55 @@ export async function effectiveHolidayState(
       // holidayDatesFor for a custom/extended group assigned DIRECTLY on the profile. Reuses the holidayGroup
       // join already present at line 157.
       empGroupArchetype: holidayGroup.archetype,
+      // R18 a519a96e: the assigned group's PARENT (single level). When set, the PARENT's archetype/states
+      // are the gazette source — keeps this guard in agreement with holidayDatesFor's inheritance.
+      empGroupParentId: holidayGroup.parentGroupId,
+      empGroupParentArchetype: empGroupParent.archetype,
+      empGroupParentStates: empGroupParent.states,
       locationState: location.state,
       // ADR-0067: the location-CALENDAR (mapped on the open assignment's location), its archetype + states.
       calArchetype: locationCalendar.archetype,
       calStates: locationCalendar.states,
+      // R18 a519a96e: the location calendar's PARENT (single level), same substitution rule as above.
+      calParentId: locationCalendar.parentGroupId,
+      calParentArchetype: locationCalendarParent.archetype,
+      calParentStates: locationCalendarParent.states,
       mappedCalendar: location.holidayGroupId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
     .leftJoin(
       assignment,
       and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
     )
     .leftJoin(location, eq(location.id, assignment.locationId))
     .leftJoin(locationCalendar, eq(locationCalendar.id, location.holidayGroupId))
+    .leftJoin(locationCalendarParent, eq(locationCalendarParent.id, locationCalendar.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
   if (!emp) return null;
+  // R18 a519a96e — inheritance substitution: with a parent set, the parent's archetype + states ARE the
+  // gazette source for the child (the child only adds group-scoped extras, which never affect this guard).
+  // Parentless groups keep their own values, so every existing path is unchanged.
+  const effCalArchetype = emp.calParentId ? emp.calParentArchetype : emp.calArchetype;
+  const effCalStates = emp.calParentId ? emp.calParentStates : emp.calStates;
+  const effEmpGroupArchetype = emp.empGroupParentId ? emp.empGroupParentArchetype : emp.empGroupArchetype;
+  const effEmpGroupStates = emp.empGroupParentId ? emp.empGroupParentStates : emp.groupStates;
   // A mapped Custom calendar is hand-managed and ignores the gazette → suppress the s.60D warning.
-  if (emp.calArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };
+  if (effCalArchetype === 'custom') return { country: emp.country, state: null, skipCompleteness: true };
   // ADR-0067 (direct-assign): a Custom group assigned DIRECTLY on the profile (no location calendar mapped)
   // is likewise hand-managed and ignores the gazette in holidayDatesFor — so the "gazette < 11" warning would
   // be false noise. Suppress it to keep effectiveHolidayState and holidayDatesFor in agreement. Extended is
   // deliberately NOT suppressed here: an extended group still includes the gazette, so the warning stays
   // meaningful (matching how the location 'extended' path is treated).
-  if (!emp.mappedCalendar && emp.empGroupArchetype === 'custom')
+  if (!emp.mappedCalendar && effEmpGroupArchetype === 'custom')
     return { country: emp.country, state: null, skipCompleteness: true };
   // Standard/Extended: the location-calendar's own states[] are the gazette source (they win over a bare
   // location.state, §3). Fall back to today's precedence when no calendar is mapped.
-  const calFirst = Array.isArray(emp.calStates) ? (emp.calStates as string[])[0] : undefined;
-  const groupFirst = Array.isArray(emp.groupStates) ? (emp.groupStates as string[])[0] : undefined;
+  const calFirst = Array.isArray(effCalStates) ? (effCalStates as string[])[0] : undefined;
+  const groupFirst = Array.isArray(effEmpGroupStates) ? (effEmpGroupStates as string[])[0] : undefined;
   const state = calFirst ?? emp.locationState ?? groupFirst ?? emp.ws ?? emp.cds ?? null;
   return { country: emp.country, state };
 }
@@ -252,6 +277,11 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
       // state UNION. Reuses the existing holidayGroup join at line 250 — one extra 1:1 column, .limit(1)-safe.
       empGroupArchetype: holidayGroup.archetype,
       empHolidayGroupId: employment.holidayGroupId,
+      // R18 a519a96e: the assigned group's PARENT (single level, strictly 1:1 self-join). When set, the
+      // parent supplies the gazette source (archetype + states); the child adds only group-scoped extras.
+      empGroupParentId: holidayGroup.parentGroupId,
+      empGroupParentArchetype: empGroupParent.archetype,
+      empGroupParentStates: empGroupParent.states,
       // ADR-0054: location.state overlay from the employee's OPEN assignment row — the top of the
       // precedence so leave matches attendance (which resolves the same order in core/attendance.ts).
       locationState: location.state,
@@ -261,27 +291,68 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
       // NOT fan out the .limit(1) employment select.
       calArchetype: locationCalendar.archetype,
       calStates: locationCalendar.states,
+      // R18 a519a96e: the location calendar's PARENT (single level, strictly 1:1 self-join).
+      calParentId: locationCalendar.parentGroupId,
+      calParentArchetype: locationCalendarParent.archetype,
+      calParentStates: locationCalendarParent.states,
       mappedCalendar: location.holidayGroupId,
     })
     .from(employment)
     .innerJoin(company, eq(company.id, employment.companyId))
     .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+    .leftJoin(empGroupParent, eq(empGroupParent.id, holidayGroup.parentGroupId))
     .leftJoin(
       assignment,
       and(eq(assignment.employmentId, employment.id), isNull(assignment.validTo), isNull(assignment.supersededAt)),
     )
     .leftJoin(location, eq(location.id, assignment.locationId))
     .leftJoin(locationCalendar, eq(locationCalendar.id, location.holidayGroupId))
+    .leftJoin(locationCalendarParent, eq(locationCalendarParent.id, locationCalendar.parentGroupId))
     .where(eq(employment.id, employmentId))
     .limit(1);
   if (!emp) return new Set<string>();
+
+  // ── R18 a519a96e — group INHERITANCE + group-scoped "additional days" ─────────────────────────────
+  // Effective substitution: when the ACTIVE group (location calendar or directly-assigned group) has a
+  // PARENT, the parent's archetype + states[] become the gazette source. Parentless groups keep their own
+  // values, so every predicate below is byte-identical to before for existing data (all parents NULL).
+  const effCalArchetype = emp.calParentId ? emp.calParentArchetype : emp.calArchetype;
+  const effCalStates = emp.calParentId ? emp.calParentStates : emp.calStates;
+  const effEmpGroupArchetype = emp.empGroupParentId ? emp.empGroupParentArchetype : emp.empGroupArchetype;
+  const effEmpGroupStates = emp.empGroupParentId ? emp.empGroupParentStates : emp.groupStates;
+  // The active calendar CHAIN (group + its parent) contributes group-scoped extra rows. Extras are
+  // ADDITIVE to every resolution path below — never replacement — so a per-office "Company Family Day"
+  // stacks on top of whatever calendar the office resolves to, and a parent's extra day reaches every
+  // child location instantly (resolve-at-read; nothing is copied). Location calendar wins over the
+  // directly-assigned group, mirroring the archetype precedence.
+  const chainIds: string[] = emp.mappedCalendar
+    ? [emp.mappedCalendar, ...(emp.calParentId ? [emp.calParentId] : [])]
+    : emp.empHolidayGroupId
+      ? [emp.empHolidayGroupId, ...(emp.empGroupParentId ? [emp.empGroupParentId] : [])]
+      : [];
+  const chainExtras: string[] = chainIds.length
+    ? (
+        await tx
+          .select({ d: holiday.holidayDate })
+          .from(holiday)
+          .where(
+            and(
+              gte(holiday.holidayDate, startDate),
+              lte(holiday.holidayDate, endDate),
+              eq(holiday.country, emp.country),
+              inArray(holiday.holidayGroupId, chainIds),
+            ),
+          )
+      ).map((h) => h.d)
+    : [];
 
   // ── ADR-0067 archetype pre-check — runs ONLY when the open assignment's location maps to a CALENDAR.
   // When unmapped (mappedCalendar IS NULL) we fall through to the Step 1 / Step 2 SQL *untouched*, which is
   // what guarantees the "byte-identical when unmapped" regression claim. 'standard' deliberately does NOT
   // branch here either — a standard calendar IS the existing gazette path, just named (its states[] feed
   // Step 2 below), so it falls through too. Only 'custom' and 'extended' need distinct resolution.
-  if (emp.mappedCalendar && (emp.calArchetype === 'custom' || emp.calArchetype === 'extended')) {
+  // R18 a519a96e: the EFFECTIVE archetype (the parent's, when the calendar inherits) drives the branch.
+  if (emp.mappedCalendar && (effCalArchetype === 'custom' || effCalArchetype === 'extended')) {
     // The company-scoped ad-hoc rows for this employee's company chain in the window (existing Step-1 query).
     const adHocRows = await tx
       .select({ d: holiday.holidayDate })
@@ -295,14 +366,14 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
           sql`app.is_company_descendant(${emp.companyId}, ${holiday.companyId})`,
         ),
       );
-    if (emp.calArchetype === 'custom') {
-      // CUSTOM = exactly what HR loaded: ONLY the company-scoped ad-hoc rows, no gazette. A national date the
-      // custom calendar omits is therefore a normal working day for this location's staff.
-      return new Set(adHocRows.map((h) => h.d));
+    if (effCalArchetype === 'custom') {
+      // CUSTOM = exactly what HR loaded: ONLY the company-scoped ad-hoc rows (∪ the chain's group-scoped
+      // extras), no gazette. A national date the custom calendar omits is a normal working day here.
+      return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);
     }
     // EXTENDED = official gazette ∪ company ad-hoc. The gazette half is keyed on the CALENDAR's states[]
     // (national ∪ group.states), not location.state (§3: the named calendar is the explicit override).
-    const calStates: string[] = Array.isArray(emp.calStates) ? (emp.calStates as string[]) : [];
+    const calStates: string[] = Array.isArray(effCalStates) ? (effCalStates as string[]) : [];
     const gazetteRows = await tx
       .select({ d: holiday.holidayDate })
       .from(holiday)
@@ -312,10 +383,11 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
           lte(holiday.holidayDate, endDate),
           eq(holiday.country, emp.country),
           isNull(holiday.companyId),
+          isNull(holiday.holidayGroupId), // group extras are chain-gated, not part of the public gazette
           calStates.length ? or(isNull(holiday.state), inArray(holiday.state, calStates)) : isNull(holiday.state),
         ),
       );
-    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d)]);
+    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d), ...chainExtras]);
   }
 
   // Step 1 — business-group override: any company-scoped row in the window matching the company chain
@@ -332,7 +404,8 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
         sql`app.is_company_descendant(${emp.companyId}, ${holiday.companyId})`,
       ),
     );
-  if (groupRows.length > 0) return new Set(groupRows.map((h) => h.d));
+  // R18 a519a96e: the chain's group-scoped extras stack on top of the override (additive, never replaced).
+  if (groupRows.length > 0) return new Set([...groupRows.map((h) => h.d), ...chainExtras]);
 
   // ── ADR-0067 (direct-assign) — per-employee-group archetype branch. Mirrors the location-calendar
   // pre-check above, but for a custom/extended group assigned DIRECTLY on the profile
@@ -348,7 +421,7 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
   if (
     !emp.mappedCalendar &&
     emp.empHolidayGroupId &&
-    (emp.empGroupArchetype === 'custom' || emp.empGroupArchetype === 'extended')
+    (effEmpGroupArchetype === 'custom' || effEmpGroupArchetype === 'extended')
   ) {
     // The company-scoped ad-hoc rows for this employee's company chain in the window (same query as Step-1).
     const adHocRows = await tx
@@ -363,15 +436,16 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
           sql`app.is_company_descendant(${emp.companyId}, ${holiday.companyId})`,
         ),
       );
-    if (emp.empGroupArchetype === 'custom') {
-      // CUSTOM = exactly the hand-picked list: ONLY the company-scoped ad-hoc rows, no gazette. A national
-      // date the custom group omits is therefore a normal working day for that staff member — the reporter's
-      // "pick which holidays, leave out Wesak" model, verbatim.
-      return new Set(adHocRows.map((h) => h.d));
+    if (effEmpGroupArchetype === 'custom') {
+      // CUSTOM = exactly the hand-picked list: ONLY the company-scoped ad-hoc rows (∪ the chain's
+      // group-scoped extras), no gazette. A national date the custom group omits is therefore a normal
+      // working day for that staff member — the reporter's "pick which holidays" model, verbatim.
+      return new Set([...adHocRows.map((h) => h.d), ...chainExtras]);
     }
     // EXTENDED = official gazette ∪ company ad-hoc. The gazette half is keyed on the ASSIGNED group's
-    // states[] (national ∪ group.states), mirroring the location-calendar extended path above.
-    const groupStates: string[] = Array.isArray(emp.groupStates) ? (emp.groupStates as string[]) : [];
+    // states[] (national ∪ group.states; the PARENT's when the group inherits), mirroring the
+    // location-calendar extended path above.
+    const groupStates: string[] = Array.isArray(effEmpGroupStates) ? (effEmpGroupStates as string[]) : [];
     const gazetteRows = await tx
       .select({ d: holiday.holidayDate })
       .from(holiday)
@@ -381,25 +455,27 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
           lte(holiday.holidayDate, endDate),
           eq(holiday.country, emp.country),
           isNull(holiday.companyId),
+          isNull(holiday.holidayGroupId), // group extras are chain-gated, not part of the public gazette
           groupStates.length ? or(isNull(holiday.state), inArray(holiday.state, groupStates)) : isNull(holiday.state),
         ),
       );
-    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d)]);
+    return new Set([...adHocRows.map((h) => h.d), ...gazetteRows.map((h) => h.d), ...chainExtras]);
   }
 
   // Step 2 — 2C fallback: national ∪ effState. A mapped STANDARD calendar contributes its states[] as the
   // gazette state source (the named override wins over a bare location.state, §3); otherwise the existing
-  // precedence (location.state → group → work_state → company default → national).
+  // precedence (location.state → group → work_state → company default → national). R18 a519a96e: a group
+  // that INHERITS contributes its PARENT's states[] (the effective values computed above).
   const standardCalStates: string[] | undefined =
-    emp.mappedCalendar && emp.calArchetype === 'standard' && Array.isArray(emp.calStates)
-      ? (emp.calStates as string[])
+    emp.mappedCalendar && effCalArchetype === 'standard' && Array.isArray(effCalStates)
+      ? (effCalStates as string[])
       : undefined;
   const states: string[] = standardCalStates
     ? standardCalStates
     : emp.locationState
       ? [emp.locationState]
-      : emp.groupStates
-        ? (emp.groupStates as string[])
+      : effEmpGroupStates
+        ? (effEmpGroupStates as string[])
         : emp.ws
           ? [emp.ws]
           : emp.cds
@@ -414,8 +490,10 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
         lte(holiday.holidayDate, endDate),
         eq(holiday.country, emp.country),
         isNull(holiday.companyId),
+        isNull(holiday.holidayGroupId), // group-scoped extras never leak into the gazette path (chain-gated)
         states.length ? or(isNull(holiday.state), inArray(holiday.state, states)) : isNull(holiday.state),
       ),
     );
-  return new Set(baseRows.map((h) => h.d));
+  // The chain's group-scoped extras stack on the gazette result (empty chain → no-op, byte-identical).
+  return new Set([...baseRows.map((h) => h.d), ...chainExtras]);
 }

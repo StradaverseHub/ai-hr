@@ -1,22 +1,29 @@
 /**
- * 1.2.2 Individual Transaction (ADR-0056) — a pure dated one-off payroll transaction ledger.
+ * 1.2.2 Individual Transaction (ADR-0056, amended by f1564110 Phase 2) — a pure dated one-off payroll
+ * transaction ledger.
  *
  * Per-employee, non-recurring transactions of five kinds (earning / deduction / overtime / unpaid / leave),
- * each tied to a transaction date and belonging to exactly one month+cycle batch (payroll_batch). The screen
- * records / views / edits / deletes these before the batch is finalized.
+ * each tied to a transaction date and belonging to exactly one (company, pay month). A row is EITHER
+ * attached to a month+cycle batch (batchId set — the original shape) OR unattached (batchId NULL,
+ * companyId + payPeriod set): keyed in BEFORE any payroll run exists for the month, then stamped onto the
+ * month's REGULAR run automatically inside generatePayslips (attach-on-generate, core/payroll.ts). Deleting
+ * a draft run DETACHES its rows back to unattached instead of destroying them (teardownDraftChildren).
  *
- * Scope (deliberate): this is a LEDGER only. Nothing here folds the rows into computed pay — `quantity`/`unit`
- * are descriptive and no kernel math reads them in this slice. Kernel consumption is a separate deferred slice
- * modeled on `prefillClaimsForBatch` (see ADR-0056). "No carry-forward" is satisfied by construction by the
- * `batchId` FK: a row belongs to a single batch and nothing copies it forward.
+ * Scope: the LEDGER lives here; kernel consumption (f1564110 Phase 3) lives in core/payroll.ts behind
+ * INDIVIDUAL_TXN_PAY_ENABLED (default OFF ⇒ the ledger stays record-only, byte-identical). Flag on, the
+ * generate fold pays/deducts the batch's rows: earning/deduction rows ride the typed-pay-component fold
+ * (component statutory flags; componentless legacy rows use conservative defaults), overtime adds to the OT
+ * figure, unpaid adds to the unpaid deduction, leave stays record-only (v1). `quantity`/`unit` remain
+ * descriptive. "No carry-forward" is keyed by `payPeriod`: a row belongs to a single month and nothing
+ * copies it forward.
  *
  * Substrate discipline: every write appends a DomainEvent. Payloads are redaction-safe (reference ids + kind,
  * no cleartext amounts — ADR-0030 Layer-0 precedent, mirroring setEmploymentPayComponent).
  */
-import { asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { employment, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
+import { company, employment, payComponent, payrollBatch, payrollIndividualTxn, person, type PayrollTxnKind } from '../db/schema';
 import { BatchNotDraftError, daysInMonth, resolveBatchScopeFilter, type BatchScope } from './payroll';
 
 const money = (v: number) => Number(v).toFixed(2);
@@ -126,9 +133,126 @@ export class DuplicateTxnRowError extends Error {
   }
 }
 
-/** Canonical signature of a grid row for duplicate detection (kind + date + normalised amount + remarks). */
-function txnRowSignature(r: { kind: string; txnDate: string; amount: number; notes?: string | null }): string {
-  return [r.kind, r.txnDate, money(r.amount), (r.notes ?? '').trim().toLowerCase()].join('|');
+/** Canonical signature of a grid row for duplicate detection (kind + component + date + normalised amount +
+ *  remarks). The component id participates (Phase 3): two same-amount rows on DIFFERENT master items are two
+ *  legitimate distinct entries, not a double paste. */
+function txnRowSignature(r: { kind: string; txnDate: string; amount: number; notes?: string | null; componentId?: string | null }): string {
+  return [r.kind, r.componentId ?? '', r.txnDate, money(r.amount), (r.notes ?? '').trim().toLowerCase()].join('|');
+}
+
+/** Thrown when a period-keyed (unattached) write carries a malformed pay period (must be 'YYYY-MM'). */
+export class InvalidPayPeriodError extends Error {
+  constructor(public readonly payPeriod: string) {
+    super(`"${payPeriod}" is not a valid pay period (expected YYYY-MM).`);
+    this.name = 'InvalidPayPeriodError';
+  }
+}
+
+/** Thrown when a write names NEITHER a batch NOR a (company, pay period) pair — the row would be
+ *  unaddressable (the 0175 CHECK enforces the same invariant at the DB layer). */
+export class MissingTxnTargetError extends Error {
+  constructor() {
+    super('Either a batchId or a (companyId, payPeriod) pair is required.');
+    this.name = 'MissingTxnTargetError';
+  }
+}
+
+/** 'YYYY-MM' shape check for period-keyed writes (mirrors the 0175 format CHECK). */
+export const isPayPeriod = (v: unknown): v is string => typeof v === 'string' && /^\d{4}-\d{2}$/.test(v);
+
+// ───────────────────── f1564110 Phase 3 — component-carrying payable rows ─────────────────────
+
+/** True when the payroll kernel consumes this ledger (INDIVIDUAL_TXN_PAY_ENABLED). Read per call, not at
+ *  module load, so tests (and a restarted server) see the live env value — mirrors the kernel's own read. */
+export const individualTxnPayEnabled = (): boolean => process.env.INDIVIDUAL_TXN_PAY_ENABLED === 'true';
+
+/** The two payable ledger kinds — the only kinds that may (and, flag-on, must) carry a component. */
+export const PAYABLE_TXN_KINDS: readonly TxnKind[] = ['earning', 'deduction'];
+
+/** Thrown when a NEW payable (earning/deduction) row is keyed without a Payroll Item Master component while
+ *  INDIVIDUAL_TXN_PAY_ENABLED is on. With the kernel consuming the ledger, the component supplies the
+ *  statutory flags (EPF/SOCSO/PCB/HRDF) — requiring the pick prevents silently mis-taxed one-offs. Legacy
+ *  componentless rows (keyed before the flag) still fold with conservative defaults; only NEW writes are
+ *  gated. Create-paths only — an edit of a legacy row is not a new payable row. */
+export class ComponentRequiredError extends Error {
+  constructor(public readonly kind: string) {
+    super(`A pay item (component) is required for a new "${kind}" transaction while individual-transaction pay is enabled.`);
+    this.name = 'ComponentRequiredError';
+  }
+}
+
+/** Thrown when a row's component pick is invalid: unknown/archived component, a component on a
+ *  non-payable kind (overtime/unpaid/leave never carry one), or a catalog kind that does not match the
+ *  row kind (an 'allowance' component belongs on an earning row; a 'deduction' component on a deduction). */
+export class InvalidTxnComponentError extends Error {
+  constructor(public readonly reason: 'not_found' | 'archived' | 'kind_mismatch' | 'not_payable_kind') {
+    super(`Invalid pay-item component for this transaction (${reason}).`);
+    this.name = 'InvalidTxnComponentError';
+  }
+}
+
+/** Map a Payroll Item Master catalog kind onto the ledger txn kind it may attach to. 'non_payable' (BIK)
+ *  components ride an earning row — the kernel folds them into an informational record line, never cash. */
+const COMPONENT_KIND_TO_TXN_KIND: Record<string, TxnKind | undefined> = {
+  allowance: 'earning',
+  non_payable: 'earning',
+  deduction: 'deduction',
+};
+
+/** Validate a batch of (componentId, txnKind) pairs in ONE query. Throws InvalidTxnComponentError /
+ *  ComponentRequiredError per the Phase-3 rules; returns silently when every pair is valid. */
+async function assertTxnComponents(
+  tx: Tx,
+  rows: Array<{ kind: TxnKind; componentId?: string | null }>,
+  // Create paths require a component on payable rows when the pay flag is on; the EDIT path passes false
+  // (patching a legacy componentless row is not a NEW payable row — it keeps folding with defaults).
+  requireForPayable: boolean = individualTxnPayEnabled(),
+): Promise<void> {
+  const requirePayableComponent = requireForPayable && individualTxnPayEnabled();
+  for (const r of rows) {
+    const payable = PAYABLE_TXN_KINDS.includes(r.kind);
+    if (r.componentId != null && !payable) throw new InvalidTxnComponentError('not_payable_kind');
+    if (r.componentId == null && payable && requirePayableComponent) throw new ComponentRequiredError(r.kind);
+  }
+  const ids = [...new Set(rows.map((r) => r.componentId).filter((v): v is string => v != null))];
+  if (ids.length === 0) return;
+  const comps = await tx
+    .select({ id: payComponent.id, kind: payComponent.kind, archivedAt: payComponent.archivedAt })
+    .from(payComponent)
+    .where(inArray(payComponent.id, ids));
+  const byId = new Map(comps.map((c) => [c.id, c]));
+  for (const r of rows) {
+    if (r.componentId == null) continue;
+    const c = byId.get(r.componentId);
+    if (!c) throw new InvalidTxnComponentError('not_found');
+    if (c.archivedAt != null) throw new InvalidTxnComponentError('archived');
+    if (COMPONENT_KIND_TO_TXN_KIND[c.kind] !== r.kind) throw new InvalidTxnComponentError('kind_mismatch');
+  }
+}
+
+/**
+ * The write target of a create: EITHER an existing DRAFT batch (attached — the original flow) OR a
+ * (company, pay month) pair (unattached — f1564110 Phase 2: entry before any run exists). Resolution
+ * returns the uniform tuple every guard below consumes; `batchId` is null for the unattached case, and
+ * `scope` is null too (an unattached row is month-wide — scope membership is applied at attach-on-generate,
+ * which only stamps in-scope employments).
+ */
+export type TxnTarget = { batchId: string } | { companyId: string; payPeriod: string };
+
+async function resolveTxnTarget(
+  tx: Tx,
+  p: { batchId?: string | null; companyId?: string | null; payPeriod?: string | null },
+): Promise<{ batchId: string | null; companyId: string; payPeriod: string; scope: BatchScope | null }> {
+  if (p.batchId) {
+    const { payPeriod, companyId, scope } = await loadDraftBatch(tx, p.batchId);
+    return { batchId: p.batchId, companyId, payPeriod, scope };
+  }
+  if (!p.companyId || !p.payPeriod) throw new MissingTxnTargetError();
+  if (!isPayPeriod(p.payPeriod)) throw new InvalidPayPeriodError(p.payPeriod);
+  // The company must exist in-tenant (RLS also scopes it); fail loudly rather than insert a dangling FK.
+  const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
+  if (!co) throw new MissingTxnTargetError();
+  return { batchId: null, companyId: p.companyId, payPeriod: p.payPeriod, scope: null };
 }
 
 export type IndividualTxnRow = {
@@ -208,14 +332,17 @@ export function listIndividualTxns(ctx: SessionContext, p: { batchId: string }):
 }
 
 /**
- * Record a dated one-off transaction on a draft batch for one employee. Draft-only, date-in-period validated.
- * `amount` is the persisted money figure; `quantity`/`unit` are descriptive (any qty×rate resolution is a
- * UI/action concern, not stored semantics in this slice).
+ * Record a dated one-off transaction for one employee — EITHER on a draft batch (batchId; draft-only) OR
+ * unattached against a (companyId, payPeriod) month when no run exists yet (f1564110 Phase 2). Date-in-period
+ * validated against the resolved month either way. `amount` is the persisted money figure; `quantity`/`unit`
+ * are descriptive (any qty×rate resolution is a UI/action concern, not stored semantics in this slice).
  */
 export function createIndividualTxn(
   ctx: SessionContext,
   p: {
-    batchId: string;
+    batchId?: string;
+    companyId?: string;
+    payPeriod?: string;
     employmentId: string;
     kind: string;
     txnDate: string;
@@ -223,20 +350,37 @@ export function createIndividualTxn(
     quantity?: number | null;
     unit?: string | null;
     notes?: string | null;
+    componentId?: string | null;
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     if (!isTxnKind(p.kind)) throw new InvalidTxnKindError(p.kind);
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
-    const { payPeriod } = await loadDraftBatch(tx, p.batchId);
-    assertDateInPeriod(p.txnDate, payPeriod);
+    // Phase 3 — component pick: validated (exists / not archived / kind match), and REQUIRED for a new
+    // payable (earning/deduction) row while INDIVIDUAL_TXN_PAY_ENABLED is on.
+    await assertTxnComponents(tx, [{ kind: p.kind, componentId: p.componentId }]);
+    const target = await resolveTxnTarget(tx, p);
+    assertDateInPeriod(p.txnDate, target.payPeriod);
+    // C3 backstop on the unattached path too: the employment must belong to the target company (the batch
+    // path's bulk wrapper enforces it; this single-row path now always does, both shapes).
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp || emp.companyId !== target.companyId) {
+      throw new CompanyMismatchError(emp?.companyId ?? 'unknown', target.companyId);
+    }
     const [row] = await tx
       .insert(payrollIndividualTxn)
       .values({
         tenantId: ctx.tenantId,
-        batchId: p.batchId,
+        batchId: target.batchId,
+        companyId: target.companyId,
+        payPeriod: target.payPeriod,
         employmentId: p.employmentId,
         kind: p.kind,
+        componentId: p.componentId ?? null,
         txnDate: p.txnDate,
         amount: money(p.amount),
         quantity: p.quantity != null ? money(p.quantity) : null,
@@ -252,13 +396,22 @@ export function createIndividualTxn(
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
       // ADR-0030 Layer 0: amount lives on the aggregate row; payload carries references + kind, not cleartext.
-      payload: { batchId: p.batchId, employmentId: p.employmentId, kind: p.kind, txnDate: p.txnDate },
+      payload: {
+        batchId: target.batchId,
+        companyId: target.companyId,
+        payPeriod: target.payPeriod,
+        employmentId: p.employmentId,
+        kind: p.kind,
+        componentId: p.componentId ?? null,
+        txnDate: p.txnDate,
+      },
     });
     return { id: row.id };
   });
 }
 
-/** One editable grid row for the bulk save (Step 3 of the wizard). */
+/** One editable grid row for the bulk save (Step 3 of the wizard). `componentId` (Phase 3) is the picked
+ *  Payroll Item Master item — persisted so the kernel fold can apply its statutory flags. */
 export type BulkTxnRow = {
   kind: string;
   txnDate: string;
@@ -266,6 +419,7 @@ export type BulkTxnRow = {
   quantity?: number | null;
   unit?: string | null;
   notes?: string | null;
+  componentId?: string | null;
 };
 
 /**
@@ -292,17 +446,19 @@ export type BulkTxnRow = {
  */
 export function createIndividualTxnsBulk(
   ctx: SessionContext,
-  p: { batchId: string; employmentIds: string[]; rows: BulkTxnRow[] },
+  p: { batchId?: string; companyId?: string; payPeriod?: string; employmentIds: string[]; rows: BulkTxnRow[] },
 ): Promise<{ ids: string[] }> {
   return withTenant(ctx, async (tx) => {
     // De-dupe the selection defensively (a repeated employee would double-post the grid) and require ≥1 payee.
     const employmentIds = [...new Set(p.employmentIds)];
     if (employmentIds.length === 0) throw new EmptyEmployeeSelectionError();
 
-    // Load + validate the draft batch ONCE inside the transaction (C5/C8: the draft re-check happens here).
-    const { payPeriod, companyId: batchCompanyId, scope } = await loadDraftBatch(tx, p.batchId);
+    // Resolve the write target ONCE inside the transaction: a DRAFT batch (draft re-check happens here —
+    // C5/C8) or, since f1564110 Phase 2, an unattached (company, pay month) pair when no run exists yet.
+    const target = await resolveTxnTarget(tx, p);
+    const { payPeriod, companyId: targetCompanyId, scope } = target;
 
-    // C3 (per employee) — every chosen employment must belong to the batch's company. One `inArray` query
+    // C3 (per employee) — every chosen employment must belong to the target company. One `inArray` query
     // fetches them all; a missing / mismatched employment fails the whole transaction (nothing persists).
     const emps = await tx
       .select({ id: employment.id, companyId: employment.companyId })
@@ -311,24 +467,25 @@ export function createIndividualTxnsBulk(
     const companyById = new Map(emps.map((e) => [e.id, e.companyId]));
     for (const eid of employmentIds) {
       const cid = companyById.get(eid);
-      if (cid == null || cid !== batchCompanyId) {
-        throw new CompanyMismatchError(cid ?? 'unknown', batchCompanyId);
+      if (cid == null || cid !== targetCompanyId) {
+        throw new CompanyMismatchError(cid ?? 'unknown', targetCompanyId);
       }
     }
 
     // C4 (per employee) — every employment must be within the batch's scope (departments ∪ explicit
     // employments). A null/empty scope means "whole company" (already company-matched above), so no
-    // membership check is needed then.
+    // membership check is needed then. Unattached writes have no batch scope (target.scope is null);
+    // attach-on-generate only stamps in-scope employments onto the eventual run.
     const { employmentIds: scopeIds } = await resolveBatchScopeFilter(tx, scope);
-    if (scopeIds !== null) {
+    if (scopeIds !== null && target.batchId != null) {
       for (const eid of employmentIds) {
-        if (!scopeIds.includes(eid)) throw new EmploymentNotInBatchScopeError(eid, p.batchId);
+        if (!scopeIds.includes(eid)) throw new EmploymentNotInBatchScopeError(eid, target.batchId);
       }
     }
 
     // Validate every row BEFORE inserting any (fail fast) into a typed set — the transaction still guarantees
     // all-or-nothing if a later insert fails (e.g. numeric overflow), which the real-rollback test exercises (C8).
-    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null }> = [];
+    const validated: Array<{ kind: TxnKind; txnDate: string; amount: number; quantity?: number | null; unit?: string | null; notes?: string | null; componentId?: string | null }> = [];
     const seenSignatures = new Set<string>();
     for (const r of p.rows) {
       if (!isTxnKind(r.kind)) throw new InvalidTxnKindError(r.kind);
@@ -341,8 +498,11 @@ export function createIndividualTxnsBulk(
       const sig = txnRowSignature(r);
       if (seenSignatures.has(sig)) throw new DuplicateTxnRowError(sig);
       seenSignatures.add(sig);
-      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes });
+      validated.push({ kind: r.kind, txnDate: r.txnDate, amount: r.amount, quantity: r.quantity, unit: r.unit, notes: r.notes, componentId: r.componentId });
     }
+    // Phase 3 — component picks validated in ONE query (exists / not archived / kind match); a new payable
+    // (earning/deduction) row REQUIRES a component while INDIVIDUAL_TXN_PAY_ENABLED is on.
+    await assertTxnComponents(tx, validated);
 
     // Cartesian insert: the validated grid is recorded once per selected employee. Outer loop = employees so
     // each row's subjectEmploymentId / payload employmentId names the right payee.
@@ -353,9 +513,12 @@ export function createIndividualTxnsBulk(
           .insert(payrollIndividualTxn)
           .values({
             tenantId: ctx.tenantId,
-            batchId: p.batchId,
+            batchId: target.batchId,
+            companyId: targetCompanyId,
+            payPeriod,
             employmentId: eid,
             kind: r.kind,
+            componentId: r.componentId ?? null,
             txnDate: r.txnDate,
             amount: money(r.amount),
             quantity: r.quantity != null ? money(r.quantity) : null,
@@ -372,7 +535,15 @@ export function createIndividualTxnsBulk(
           actor: actorOf(ctx),
           subjectEmploymentId: eid,
           // ADR-0030 Layer 0: references + kind, no cleartext amount.
-          payload: { batchId: p.batchId, employmentId: eid, kind: r.kind, txnDate: r.txnDate },
+          payload: {
+            batchId: target.batchId,
+            companyId: targetCompanyId,
+            payPeriod,
+            employmentId: eid,
+            kind: r.kind,
+            componentId: r.componentId ?? null,
+            txnDate: r.txnDate,
+          },
         });
         ids.push(row.id);
       }
@@ -382,8 +553,9 @@ export function createIndividualTxnsBulk(
 }
 
 /**
- * Patch a dated one-off transaction. Draft-only; re-validates date-in-period against the (unchanged) batch
- * period. A patch may change any of kind / txnDate / amount / quantity / unit / notes.
+ * Patch a dated one-off transaction. Editable while UNATTACHED (no run exists yet — f1564110 Phase 2) or
+ * attached to a DRAFT batch; re-validates date-in-period against the row's (unchanged) pay month. A patch
+ * may change any of kind / txnDate / amount / quantity / unit / notes.
  */
 export function updateIndividualTxn(
   ctx: SessionContext,
@@ -395,21 +567,27 @@ export function updateIndividualTxn(
     quantity?: number | null;
     unit?: string | null;
     notes?: string | null;
+    componentId?: string | null;
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
       .select({
         batchId: payrollIndividualTxn.batchId,
+        payPeriod: payrollIndividualTxn.payPeriod,
         employmentId: payrollIndividualTxn.employmentId,
         kind: payrollIndividualTxn.kind,
+        componentId: payrollIndividualTxn.componentId,
         txnDate: payrollIndividualTxn.txnDate,
       })
       .from(payrollIndividualTxn)
       .where(eq(payrollIndividualTxn.id, p.id))
       .limit(1);
     if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
-    const { payPeriod } = await loadDraftBatch(tx, existing.batchId);
+    // Attached ⇒ the owning batch must still be draft (the batch's payPeriod is authoritative). Unattached ⇒
+    // no batch gate; the row's own stamped payPeriod (0175 CHECK guarantees it) bounds the date.
+    const payPeriod =
+      existing.batchId != null ? (await loadDraftBatch(tx, existing.batchId)).payPeriod : existing.payPeriod!;
     const nextKind = p.kind ?? existing.kind;
     if (!isTxnKind(nextKind)) throw new InvalidTxnKindError(nextKind);
     if (p.unit != null && !isTxnUnit(p.unit)) throw new InvalidTxnUnitError(p.unit);
@@ -418,9 +596,21 @@ export function updateIndividualTxn(
     // C6 — the retained edit path is the OTHER surviving write surface (the create-form path is removed).
     // Enforce the same amount>0 magnitude rule the bulk save enforces, so both write paths agree.
     if (p.amount !== undefined && !(p.amount > 0)) throw new AmountNotPositiveError(p.amount);
+    // Phase 3 — the resulting (kind, component) pair must stay coherent. A kind change AWAY from
+    // earning/deduction drops any stored component; an explicit componentId patch is validated. The
+    // require-component rule is NOT applied here (an edit is not a NEW payable row — legacy componentless
+    // rows stay editable and keep folding with the conservative defaults).
+    const nextComponentId =
+      p.componentId !== undefined
+        ? p.componentId
+        : PAYABLE_TXN_KINDS.includes(nextKind)
+          ? existing.componentId
+          : null;
+    await assertTxnComponents(tx, [{ kind: nextKind, componentId: nextComponentId }], false);
 
     const patch: Record<string, unknown> = {};
     if (p.kind !== undefined) patch.kind = p.kind;
+    if (nextComponentId !== existing.componentId) patch.componentId = nextComponentId;
     if (p.txnDate !== undefined) patch.txnDate = p.txnDate;
     if (p.amount !== undefined) patch.amount = money(p.amount);
     if (p.quantity !== undefined) patch.quantity = p.quantity != null ? money(p.quantity) : null;
@@ -438,24 +628,29 @@ export function updateIndividualTxn(
       subjectEmploymentId: existing.employmentId,
       // References only (no cleartext amount) — ADR-0030 Layer 0.
       payload: {
-        before: { kind: existing.kind, txnDate: existing.txnDate },
-        after: { kind: nextKind, txnDate: nextDate },
+        before: { kind: existing.kind, txnDate: existing.txnDate, componentId: existing.componentId },
+        after: { kind: nextKind, txnDate: nextDate, componentId: nextComponentId },
       },
     });
     return { id: p.id };
   });
 }
 
-/** Delete a dated one-off transaction. Draft-only. */
+/** Delete a dated one-off transaction. Allowed while unattached or attached to a DRAFT batch. */
 export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
-      .select({ batchId: payrollIndividualTxn.batchId, employmentId: payrollIndividualTxn.employmentId, kind: payrollIndividualTxn.kind })
+      .select({
+        batchId: payrollIndividualTxn.batchId,
+        payPeriod: payrollIndividualTxn.payPeriod,
+        employmentId: payrollIndividualTxn.employmentId,
+        kind: payrollIndividualTxn.kind,
+      })
       .from(payrollIndividualTxn)
       .where(eq(payrollIndividualTxn.id, p.id))
       .limit(1);
     if (!existing) throw new TxnNotFoundError(p.id); // distinct from BatchNotDraftError (real non-draft case)
-    await loadDraftBatch(tx, existing.batchId);
+    if (existing.batchId != null) await loadDraftBatch(tx, existing.batchId); // unattached ⇒ no batch gate
     await tx.delete(payrollIndividualTxn).where(eq(payrollIndividualTxn.id, p.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -464,8 +659,59 @@ export function deleteIndividualTxn(ctx: SessionContext, p: { id: string }): Pro
       eventType: 'payroll.individual-txn.deleted',
       actor: actorOf(ctx),
       subjectEmploymentId: existing.employmentId,
-      payload: { batchId: existing.batchId, employmentId: existing.employmentId, kind: existing.kind },
+      payload: {
+        batchId: existing.batchId,
+        payPeriod: existing.payPeriod,
+        employmentId: existing.employmentId,
+        kind: existing.kind,
+      },
     });
     return { id: p.id };
   });
+}
+
+/** One unattached (period-keyed) ledger row for the "awaiting payroll run" view. */
+export type UnattachedTxnRow = IndividualTxnRow & { payPeriod: string; companyId: string; companyName: string };
+
+/**
+ * List UNATTACHED one-off transactions (batch_id IS NULL) — keyed in before any payroll run existed for
+ * their month. Optionally narrowed to one company and/or one 'YYYY-MM' month. Ordered newest month first,
+ * then txn date. Read-only (RLS fences to payroll-admin companies via the row's own company_id).
+ */
+export function listUnattachedIndividualTxns(
+  ctx: SessionContext,
+  p: { companyId?: string; payPeriod?: string } = {},
+): Promise<UnattachedTxnRow[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: payrollIndividualTxn.id,
+        employmentId: payrollIndividualTxn.employmentId,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        kind: payrollIndividualTxn.kind,
+        txnDate: payrollIndividualTxn.txnDate,
+        amount: payrollIndividualTxn.amount,
+        quantity: payrollIndividualTxn.quantity,
+        unit: payrollIndividualTxn.unit,
+        notes: payrollIndividualTxn.notes,
+        // Non-null on every unattached row (0175 CHECK); the cast keeps the row type honest for callers.
+        payPeriod: payrollIndividualTxn.payPeriod,
+        companyId: payrollIndividualTxn.companyId,
+        companyName: company.legalName,
+      })
+      .from(payrollIndividualTxn)
+      .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, payrollIndividualTxn.companyId))
+      .where(
+        and(
+          isNull(payrollIndividualTxn.batchId),
+          p.companyId ? eq(payrollIndividualTxn.companyId, p.companyId) : undefined,
+          p.payPeriod ? eq(payrollIndividualTxn.payPeriod, p.payPeriod) : undefined,
+        ),
+      )
+      .orderBy(desc(payrollIndividualTxn.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id))
+      .then((rows) => rows as UnattachedTxnRow[]),
+  );
 }

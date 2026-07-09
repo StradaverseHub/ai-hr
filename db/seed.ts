@@ -106,6 +106,12 @@ async function main() {
   // falls back to the whole-request flow — so the reachable scenario lives in the single-step `holding`
   // company below (see "Partial Leave Approval demo — single-step" block).
   await owner.db.update(schema.leaveType).set({ perDateApproval: true }).where(eq(schema.leaveType.id, annual.id));
+  // R18 7e532d23: also opt the medical (SICK) type into per-date approval so reseeds demo the admin toggle on
+  // more than one type. NOTE the runtime gate (core/leave.ts requestLeave) additionally requires
+  // counting === 'working_days' — the MY pack counts SICK in calendar days (EA s.60F practice), so a SICK
+  // request only decomposes into per-date rows if an admin also switches its counting. The platform default
+  // (leave_type.per_date_approval = false) is deliberately unchanged.
+  await owner.db.update(schema.leaveType).set({ perDateApproval: true }).where(eq(schema.leaveType.id, leaveTypeIds.SICK));
   // Standing entitlements granted on every hire (EA s.60E / s.60F via the MY pack).
   const standingGrants = [
     { id: leaveTypeIds.ANNUAL, code: 'ANNUAL' },

@@ -1627,6 +1627,14 @@ export const holiday = pgTable(
     // calendar is single-winner — if ANY company row matches the employee's company chain in the window,
     // those rows ARE the calendar; otherwise the engine falls back to national ∪ state (2C behaviour).
     companyId: uuid('company_id').references((): AnyPgColumn => company.id),
+    // R18 a519a96e (group inheritance): when set, this holiday is a GROUP-scoped "additional day" that
+    // applies ONLY to staff whose calendar resolves through that holiday_group — either directly (assigned
+    // group / location-mapped calendar) or via a CHILD group inheriting from it (holiday_group.parent_group_id).
+    // This is the per-office extra ("Company Family Day" for OKR Office only); the company_id axis above
+    // stays the company-subtree-wide extra. ON DELETE CASCADE: deleting a group removes its own extra days.
+    holidayGroupId: uuid('holiday_group_id').references((): AnyPgColumn => holidayGroup.id, {
+      onDelete: 'cascade',
+    }),
     holidayDate: date('holiday_date').notNull(),
     name: text('name').notNull(),
     // Follow-on #15b (ADR-0063): TRUE = a provisional, not-yet-gazetted date (shifting state holidays are
@@ -1645,10 +1653,11 @@ export const holiday = pgTable(
       t.holidayDate,
       sql`coalesce(${t.state}, '')`,
       sql`coalesce(${t.companyId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      sql`coalesce(${t.holidayGroupId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
     ),
     // Mutual exclusivity DB-guaranteed (seed/CSV/import paths bypass the service): a row is at most one of
-    // state-scoped or company-scoped, never both — so the resolver never sees a malformed multi-scope row.
-    check('holiday_scope_excl', sql`num_nonnulls(${t.state}, ${t.companyId}) <= 1`),
+    // state-scoped, company-scoped, or group-scoped — so the resolver never sees a malformed multi-scope row.
+    check('holiday_scope_excl', sql`num_nonnulls(${t.state}, ${t.companyId}, ${t.holidayGroupId}) <= 1`),
   ],
 );
 
@@ -1677,10 +1686,22 @@ export const holidayGroup = pgTable(
     name: text('name').notNull(),
     states: jsonb('states').notNull().default(sql`'[]'::jsonb`), // string[] of MY_STATES labels
     archetype: holidayGroupArchetypeEnum('archetype').notNull().default('standard'),
+    // R18 a519a96e (group inheritance): a group may inherit from ONE parent group. The parent contributes
+    // its gazette source (archetype + states) and its own group-scoped extra days LIVE at resolve time —
+    // adding a holiday to the parent instantly applies to every child, no copy/sync. Single level only
+    // (the parent must itself be parentless — service-enforced; the DB CHECK below blocks self-parenting).
+    // ON DELETE SET NULL: deleting a parent detaches children (deleteHolidayGroup's block-while-children
+    // guard is the friendly primary path; this FK is the backstop).
+    parentGroupId: uuid('parent_group_id').references((): AnyPgColumn => holidayGroup.id, {
+      onDelete: 'set null',
+    }),
     createdAt: createdAt(),
   },
   // Case-insensitive per-tenant name uniqueness (follows the org_catalog_integrity pattern, 0030).
-  (t) => [uniqueIndex('holiday_group_name_uq').on(t.tenantId, sql`lower(${t.name})`)],
+  (t) => [
+    uniqueIndex('holiday_group_name_uq').on(t.tenantId, sql`lower(${t.name})`),
+    check('holiday_group_no_self_parent', sql`${t.parentGroupId} IS NULL OR ${t.parentGroupId} <> ${t.id}`),
+  ],
 );
 
 // ──────────────────────── Attendance (generic) ────────────────────────
@@ -2943,15 +2964,25 @@ export const payrollIndividualTxn = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    // The resolved month+cycle target. A row belongs to exactly one batch — this FK IS the no-carry-forward
-    // guarantee (nothing copies a row into a sibling/next-month batch).
-    batchId: uuid('batch_id')
-      .notNull()
-      .references(() => payrollBatch.id),
+    // The resolved month+cycle target. NULLABLE since 0175 (f1564110 Phase 2): a row with batch_id NULL is
+    // "unattached" — keyed in before any payroll run exists for the month, then stamped onto the month's
+    // REGULAR run inside generatePayslips (attach-on-generate). "No carry-forward" is keyed by pay_period
+    // (below): a row belongs to exactly one month and nothing copies it forward (ADR-0056 amendment).
+    batchId: uuid('batch_id').references(() => payrollBatch.id),
+    // The row's true home: (company, 'YYYY-MM' pay month). Always stamped by the service (attached rows get
+    // them from the owning batch); a DB CHECK (0175) guarantees batch_id OR (company_id AND pay_period).
+    companyId: uuid('company_id').references(() => company.id),
+    payPeriod: text('pay_period'),
     employmentId: uuid('employment_id')
       .notNull()
       .references(() => employment.id),
     kind: payrollTxnKindEnum('kind').notNull(),
+    // f1564110 Phase 3 (0176) — the picked Payroll Item Master component. NULLABLE; only earning/deduction
+    // rows may carry one (app-enforced). With INDIVIDUAL_TXN_PAY_ENABLED the kernel folds a component row
+    // through the typed-pay-component fold (the catalog's statutory flags/rounding apply); a componentless
+    // legacy row folds with conservative defaults; NEW payable rows require a component (service-enforced).
+    // Flag off (the default) ⇒ the ledger stays record-only, byte-identical to the pre-Phase-3 kernel.
+    componentId: uuid('component_id').references(() => payComponent.id),
     // The per-entry transaction date; validated app-side to fall within the batch's pay-period month.
     txnDate: date('txn_date').notNull(),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
@@ -2966,6 +2997,8 @@ export const payrollIndividualTxn = pgTable(
     // No unique constraint — multiple dated entries per (batch, employment) are allowed by design.
     index('payroll_individual_txn_batch_emp_idx').on(t.batchId, t.employmentId),
     index('payroll_individual_txn_tenant_batch_idx').on(t.tenantId, t.batchId),
+    // Attach-on-generate lookup (0175); the SQL migration creates it partial (WHERE batch_id IS NULL).
+    index('payroll_individual_txn_unattached_idx').on(t.tenantId, t.companyId, t.payPeriod),
   ],
 );
 
