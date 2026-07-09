@@ -42,7 +42,7 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
         case 'kind':
           return r.kind;
         case 'batchStatus':
-          return r.batchStatus;
+          return r.batchStatus ?? ''; // unattached rows (no batch yet) sort first/last as a group
         case 'createdBy':
           return (r.createdBy ?? '').toLowerCase();
         case 'createdOn':
@@ -105,8 +105,15 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
             <tr key={r.id}>
               <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
               <td className="px-4 py-2.5">
-                {t(`individual.cycle.${r.runType}`)}
-                {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
+                {/* Unattached rows (f1564110 Phase 2) have no run yet — show the pending marker. */}
+                {r.runType != null ? (
+                  <>
+                    {t(`individual.cycle.${r.runType}`)}
+                    {(r.runSeq ?? 1) > 1 ? ` #${r.runSeq}` : ''}
+                  </>
+                ) : (
+                  t('individual.pendingRun')
+                )}
               </td>
               <td className="whitespace-nowrap px-4 py-2.5 tabular-nums">{r.txnDate}</td>
               <td className="px-4 py-2.5 font-medium">
@@ -123,7 +130,9 @@ export function IndividualTxnTable({ rows }: { rows: IndividualTxnViewRow[] }) {
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{r.notes ?? '—'}</td>
               <td className="px-4 py-2.5">
-                <Badge variant={r.batchStatus === 'draft' ? 'warning' : 'success'}>{tList(`status.${r.batchStatus}`)}</Badge>
+                <Badge variant={r.batchStatus === 'draft' || r.batchStatus == null ? 'warning' : 'success'}>
+                  {tList(`status.${r.batchStatus ?? 'unattached'}`)}
+                </Badge>
               </td>
               <td className="px-4 py-2.5 text-muted-foreground">{r.createdBy ?? '—'}</td>
               <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-muted-foreground">{r.createdOn}</td>

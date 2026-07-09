@@ -2368,8 +2368,14 @@ describe('UC — performance: state machine, authz, pay seam', () => {
       recommendedMeritPct: 10,
       recommendedBonus: 2000,
     });
-    // Make the bonus leg fail: target a PROCESSED (non-draft) batch.
-    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-11' });
+    // Make the bonus leg fail: target a PROCESSED (non-draft) batch. Scoped to E because the manager
+    // has no compensation row and f1564110 Phase 1 now hard-blocks generation on that (previously the
+    // comp-less manager was just silently dropped from the run).
+    const { batchId } = await createBatch(a, {
+      companyId: base.companyId,
+      payPeriod: '2026-11',
+      scope: { employmentIds: [E.employmentId] },
+    });
     await generatePayslips(a, { batchId }); // → processed
     await expect(
       enactCompAction(a, { reviewId, meritEffectiveFrom: '2027-01-01', bonusBatchId: batchId }),

@@ -2964,15 +2964,25 @@ export const payrollIndividualTxn = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    // The resolved month+cycle target. A row belongs to exactly one batch — this FK IS the no-carry-forward
-    // guarantee (nothing copies a row into a sibling/next-month batch).
-    batchId: uuid('batch_id')
-      .notNull()
-      .references(() => payrollBatch.id),
+    // The resolved month+cycle target. NULLABLE since 0175 (f1564110 Phase 2): a row with batch_id NULL is
+    // "unattached" — keyed in before any payroll run exists for the month, then stamped onto the month's
+    // REGULAR run inside generatePayslips (attach-on-generate). "No carry-forward" is keyed by pay_period
+    // (below): a row belongs to exactly one month and nothing copies it forward (ADR-0056 amendment).
+    batchId: uuid('batch_id').references(() => payrollBatch.id),
+    // The row's true home: (company, 'YYYY-MM' pay month). Always stamped by the service (attached rows get
+    // them from the owning batch); a DB CHECK (0175) guarantees batch_id OR (company_id AND pay_period).
+    companyId: uuid('company_id').references(() => company.id),
+    payPeriod: text('pay_period'),
     employmentId: uuid('employment_id')
       .notNull()
       .references(() => employment.id),
     kind: payrollTxnKindEnum('kind').notNull(),
+    // f1564110 Phase 3 (0176) — the picked Payroll Item Master component. NULLABLE; only earning/deduction
+    // rows may carry one (app-enforced). With INDIVIDUAL_TXN_PAY_ENABLED the kernel folds a component row
+    // through the typed-pay-component fold (the catalog's statutory flags/rounding apply); a componentless
+    // legacy row folds with conservative defaults; NEW payable rows require a component (service-enforced).
+    // Flag off (the default) ⇒ the ledger stays record-only, byte-identical to the pre-Phase-3 kernel.
+    componentId: uuid('component_id').references(() => payComponent.id),
     // The per-entry transaction date; validated app-side to fall within the batch's pay-period month.
     txnDate: date('txn_date').notNull(),
     amount: numeric('amount', { precision: 12, scale: 2 }).notNull().default('0'),
@@ -2987,6 +2997,8 @@ export const payrollIndividualTxn = pgTable(
     // No unique constraint — multiple dated entries per (batch, employment) are allowed by design.
     index('payroll_individual_txn_batch_emp_idx').on(t.batchId, t.employmentId),
     index('payroll_individual_txn_tenant_batch_idx').on(t.tenantId, t.batchId),
+    // Attach-on-generate lookup (0175); the SQL migration creates it partial (WHERE batch_id IS NULL).
+    index('payroll_individual_txn_unattached_idx').on(t.tenantId, t.companyId, t.payPeriod),
   ],
 );
 

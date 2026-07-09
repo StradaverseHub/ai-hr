@@ -58,8 +58,9 @@ const INDIVIDUAL_TXN_AGGREGATE = 'payroll-individual-txn';
 /** Coerce untrusted filter values to valid enum/whitelist members (a tampered value must not reach pg). */
 const cleanTxnKind = (v: unknown): PayrollTxnKind | undefined =>
   payrollTxnKindEnum.enumValues.includes(v as PayrollTxnKind) ? (v as PayrollTxnKind) : undefined;
-const cleanBatchStatus = (v: unknown): 'draft' | 'processed' | 'closed' | undefined =>
-  v === 'draft' || v === 'processed' || v === 'closed' ? v : undefined;
+/** 'unattached' (f1564110 Phase 2) = rows with no batch yet (keyed in before the month's run exists). */
+const cleanBatchStatus = (v: unknown): 'draft' | 'processed' | 'closed' | 'unattached' | undefined =>
+  v === 'draft' || v === 'processed' || v === 'closed' || v === 'unattached' ? v : undefined;
 /** A 'YYYY-MM-DD' calendar-date param or undefined (anything malformed is ignored, never cast). */
 const cleanDate = (v: unknown): string | undefined =>
   typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined;
@@ -73,13 +74,14 @@ type RunType = (typeof payrollRunTypeEnum.enumValues)[number];
 const cleanRunType = (v: unknown): RunType | undefined =>
   payrollRunTypeEnum.enumValues.includes(v as RunType) ? (v as RunType) : undefined;
 
-/** Optional period narrowing on payroll_batch.pay_period ('YYYY-MM'): year+month → exact month;
- *  year only → that year; month only → that month across years. */
-function periodFilter(year?: number, month?: number) {
+/** Optional period narrowing on a 'YYYY-MM' pay-period column (default payroll_batch.pay_period; the
+ *  Individual inquiry passes the txn row's own pay_period so unattached rows filter too): year+month →
+ *  exact month; year only → that year; month only → that month across years. */
+function periodFilter(year?: number, month?: number, col: typeof payrollBatch.payPeriod | typeof payrollIndividualTxn.payPeriod = payrollBatch.payPeriod) {
   const mm = month != null ? String(month).padStart(2, '0') : null;
-  if (year != null && mm) return eq(payrollBatch.payPeriod, `${year}-${mm}`);
-  if (year != null) return like(payrollBatch.payPeriod, `${year}-%`);
-  if (mm) return like(payrollBatch.payPeriod, `%-${mm}`);
+  if (year != null && mm) return eq(col, `${year}-${mm}`);
+  if (year != null) return like(col, `${year}-%`);
+  if (mm) return like(col, `%-${mm}`);
   return undefined;
 }
 
@@ -169,9 +171,10 @@ export type IndividualTxnViewRow = {
   companyId: string;
   company: string;
   payPeriod: string;
-  runType: RunType;
-  runSeq: number;
-  batchStatus: string;
+  // Null on UNATTACHED rows (f1564110 Phase 2): keyed in period-first, no batch stamped yet.
+  runType: RunType | null;
+  runSeq: number | null;
+  batchStatus: string | null;
   kind: PayrollTxnKind;
   txnDate: string;
   amount: string;
@@ -234,15 +237,18 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     if (deptEmploymentIds.length === 0) return [];
   }
 
-  return tx
+  // f1564110 Phase 2: the row's OWN (company_id, pay_period) columns are authoritative (stamped on every
+  // write, backfilled by 0175), so the batch join becomes a LEFT join purely for run/status metadata and
+  // UNATTACHED rows (batch_id NULL — keyed in before the month's run exists) stay visible in the inquiry.
+  const rows = await tx
     .select({
       id: payrollIndividualTxn.id,
       employmentId: payrollIndividualTxn.employmentId,
       employeeName: person.fullName,
       employeeCode: employment.employeeCode,
-      companyId: payrollBatch.companyId,
+      companyId: sql<string>`${payrollIndividualTxn.companyId}`,
       company: company.legalName,
-      payPeriod: payrollBatch.payPeriod,
+      payPeriod: sql<string>`${payrollIndividualTxn.payPeriod}`,
       runType: payrollBatch.runType,
       runSeq: payrollBatch.runSeq,
       batchStatus: payrollBatch.status,
@@ -257,8 +263,8 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
       createdBy: creatorPerson.fullName,
     })
     .from(payrollIndividualTxn)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
-    .innerJoin(company, eq(company.id, payrollBatch.companyId))
+    .leftJoin(payrollBatch, eq(payrollBatch.id, payrollIndividualTxn.batchId))
+    .innerJoin(company, eq(company.id, payrollIndividualTxn.companyId))
     .innerJoin(employment, eq(employment.id, payrollIndividualTxn.employmentId))
     .innerJoin(person, eq(person.id, employment.personId))
     // Created-by provenance: the row's 'created' event → the acting app_user → that user's person name.
@@ -274,18 +280,23 @@ async function queryIndividualTxns(tx: Tx, p: IndividualTxnFilter): Promise<Indi
     .leftJoin(creatorPerson, eq(creatorPerson.id, appUser.personId))
     .where(
       and(
-        inArray(payrollBatch.companyId, p.companyIds),
-        periodFilter(p.year, p.month),
+        inArray(payrollIndividualTxn.companyId, p.companyIds),
+        periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
         deptEmploymentIds ? inArray(payrollIndividualTxn.employmentId, deptEmploymentIds) : undefined,
-        batchStatus ? eq(payrollBatch.status, batchStatus) : undefined,
+        batchStatus === 'unattached'
+          ? isNull(payrollIndividualTxn.batchId)
+          : batchStatus
+            ? eq(payrollBatch.status, batchStatus)
+            : undefined,
         p.createdBy ? eq(domainEvent.actorId, p.createdBy) : undefined,
         createdFrom ? gte(sql`${payrollIndividualTxn.createdAt}::date`, createdFrom) : undefined,
         createdTo ? lte(sql`${payrollIndividualTxn.createdAt}::date`, createdTo) : undefined,
       ),
     )
-    .orderBy(desc(payrollBatch.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+    .orderBy(desc(payrollIndividualTxn.payPeriod), asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.id));
+  return rows as IndividualTxnViewRow[];
 }
 
 /**
@@ -445,9 +456,10 @@ export function exportIndividualTxnsCsv(
     ];
     const body = rows.map((r) => [
       r.payPeriod,
-      r.runType,
-      r.runSeq,
-      r.batchStatus,
+      // Unattached rows (f1564110 Phase 2) have no run yet — export a stable 'unattached' marker.
+      r.runType ?? '',
+      r.runSeq ?? '',
+      r.batchStatus ?? 'unattached',
       r.txnDate,
       r.employeeName,
       r.employeeCode ?? '',

@@ -5,8 +5,11 @@
  * to people outside a filtered run, who received no payslip. This suite proves both halves of the fix:
  *   (a) prefill only reserves claims for employments in the batch's scope.
  *   (b) generation marks paid only claims whose employment actually got a payslip in THIS batch; any
- *       linked claim without a payslip here (out-of-scope, or comp-less) reverts to unlinked/approved so
- *       it re-queues on the next batch instead of being stranded.
+ *       linked claim without a payslip here (out-of-scope) reverts to unlinked/approved so it re-queues
+ *       on the next batch instead of being stranded.
+ * f1564110 Phase 1 note: the comp-less variant of (b) can no longer reach generation — an in-scope
+ * employee with no compensation row now HARD-BLOCKS generatePayslips (PreProcessBlockedError; see
+ * payroll-preprocess-advisory.test.ts), so (b) is exercised via a post-prefill scope narrow instead.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -14,7 +17,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { createClaimType, decideClaim, prefillClaimsForBatch, submitClaim } from '../core/claims';
 import { setCompensation } from '../core/comp';
-import { createBatch, generatePayslips } from '../core/payroll';
+import { createBatch, generatePayslips, updateBatchScope } from '../core/payroll';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -75,21 +78,20 @@ describe('Payroll Process wizard — claims scope safety', () => {
     expect(outClaim.status).toBe('approved');
   });
 
-  it('generation marks paid only claims with a payslip in this batch; comp-less linked claims re-queue', async () => {
+  it('generation marks paid only claims with a payslip in this batch; linked claims without a payslip re-queue', async () => {
     const a = adminCtx(base);
     const withPayslip = await hire(a, base, 'WithPayslip', base.deptA);
-    const compLess = await hire(a, base, 'CompLess', base.deptA);
+    const excluded = await hire(a, base, 'Excluded', base.deptA);
     await setCompensation(a, { employmentId: withPayslip.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
-    // compLess deliberately has NO compensation row — generatePayslips' inner join silently drops them.
+    await setCompensation(a, { employmentId: excluded.employmentId, basicSalary: 4000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
 
     const { id: typeId } = await createClaimType(a, { code: 'MEDICAL', name: 'Medical', defaultTaxable: true, requiresReceipt: false });
     const { id: claimA } = await submitClaim(a, { employmentId: withPayslip.employmentId, claimTypeId: typeId, amount: 150, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: claimA, decision: 'approve' });
-    const { id: claimB } = await submitClaim(a, { employmentId: compLess.employmentId, claimTypeId: typeId, amount: 250, incurredOn: recent() });
+    const { id: claimB } = await submitClaim(a, { employmentId: excluded.employmentId, claimTypeId: typeId, amount: 250, incurredOn: recent() });
     await decideClaim(a, { claimRequestId: claimB, decision: 'approve' });
 
-    // Whole-company batch (no scope) so both claims are reserved via the normal unscoped path — the
-    // comp-less exclusion happens at generation, not prefill.
+    // Whole-company batch (no scope) so both claims are reserved via the normal unscoped path.
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
     await prefillClaimsForBatch(a, { batchId });
 
@@ -98,13 +100,18 @@ describe('Payroll Process wizard — claims scope safety', () => {
     expect(beforeA.payrollBatchId).toBe(batchId);
     expect(beforeB.payrollBatchId).toBe(batchId);
 
+    // Narrow the scope AFTER prefill — the excluded employee keeps a linked claim but gets no payslip.
+    // (f1564110 Phase 1: the previous comp-less route to a payslip-less linked claim now hard-blocks
+    // generation instead of silently dropping the employee.)
+    await updateBatchScope(a, { batchId, scope: { employmentIds: [withPayslip.employmentId] } });
+
     await generatePayslips(a, { batchId });
 
     const [afterA] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claimA));
     expect(afterA.status).toBe('paid');
     expect(afterA.payrollBatchId).toBe(batchId);
 
-    // The comp-less employee got no payslip → the linked claim reverts to unlinked/approved so it
+    // The scoped-out employee got no payslip → the linked claim reverts to unlinked/approved so it
     // re-queues on the next batch instead of being stranded forever.
     const [afterB] = await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id, claimB));
     expect(afterB.status).toBe('approved');

@@ -34,4 +34,9 @@ set_flag PAYROLL_RESET_ENABLED true
 # 9bc442bc — Unlock a CLOSED run back to Processed (payroll.unlock permission, step-up OTP + reason,
 # payment/statutory warnings, full status-history audit). Reverses the 0011 freeze via a scoped escape hatch.
 set_flag PAYROLL_UNLOCK_ENABLED true
+# f1564110 Phase 3 — the payroll kernel pays/deducts the Individual (one-off) transaction ledger at
+# generation (component statutory flags / OT figure / unpaid deduction; leave record-only). Default OFF in
+# code; ON here so the consultant demo exercises the full maintain -> validate -> process workflow. Rides
+# TYPED_PAY_COMPONENTS_ENABLED (set above).
+set_flag INDIVIDUAL_TXN_PAY_ENABLED true
 echo "✅ Flags set. Apply with:  sudo systemctl restart aihr"

@@ -95,12 +95,37 @@ export class BatchNotResettableError extends Error {
   }
 }
 
+/** Pre-processing validation (feedback f1564110, Phase 1): one or more in-scope, period-active
+ *  employees have NO current compensation row. Before this check they were SILENTLY dropped from the
+ *  run (the generation employee query inner-joins compensation) — now generation fails closed until
+ *  the employee profiles are completed (or the batch scope is narrowed to exclude them). */
+export class PreProcessBlockedError extends Error {
+  constructor(public readonly count: number) {
+    super(
+      `Payroll cannot be processed: ${count} employee${count === 1 ? '' : 's'} in scope ${count === 1 ? 'has' : 'have'} no current salary record`,
+    );
+    this.name = 'PreProcessBlockedError';
+  }
+}
+
 /** A typed pay component that v1 cannot compute correctly (a non-payable/BIK or PCB-only taxable
  *  earning) reached payroll generation. Fail-closed rather than silently under-tax (ADR-0025 §5). */
 export class UnsupportedPayComponentError extends Error {
   constructor(code: string) {
     super(`Pay component "${code}" is taxable but not supported in this version (non-payable/PCB-only). Remove it from payroll or wait for a later release.`);
     this.name = 'UnsupportedPayComponentError';
+  }
+}
+
+/** f1564110 Phase 3 — INDIVIDUAL_TXN_PAY_ENABLED's earning/deduction fold RIDES the typed-pay-component
+ *  path (the picked component's statutory flags/rounding drive the treatment). With
+ *  TYPED_PAY_COMPONENTS_ENABLED off there is no per-component fold to ride, so a batch that carries
+ *  payable one-off rows FAILS CLOSED at generation instead of silently leaving the rows unpaid
+ *  (documented dependency — the anchor target and the demo run both flags on). */
+export class IndividualTxnRequiresTypedComponentsError extends Error {
+  constructor() {
+    super('Individual-transaction pay requires typed pay components: this run carries one-off earning/deduction rows but TYPED_PAY_COMPONENTS_ENABLED is off. Enable typed components or remove the rows.');
+    this.name = 'IndividualTxnRequiresTypedComponentsError';
   }
 }
 
@@ -800,12 +825,15 @@ export async function updateBatchScope(
  *      loan state (`appliedBatchId` / status='applied') is deliberately untouched: it only exists on a
  *      processed batch, which every draft-only caller refuses; unwinding it is the processed→draft
  *      Reset's mechanic (sibling feedback a03b2d9b).
- *   2. Draft-stage child rows are deleted: payroll_input, payroll_individual_txn,
- *      payroll_batch_component, and — defensively — payslip (expected empty for a draft, since
- *      generation flips the batch off 'draft'; deleting-if-any keeps the teardown total).
+ *   2. Draft-stage child rows are deleted: payroll_input, payroll_batch_component, and — defensively —
+ *      payslip (expected empty for a draft, since generation flips the batch off 'draft'; deleting-if-any
+ *      keeps the teardown total).
  *   3. Claims stamped onto this batch are DETACHED (payroll_batch_id → null), not deleted — the claim
  *      is an approved business record that must survive and become re-queueable; one
  *      `claim-request.unqueued-from-payroll` event per claim (mirrors claim-request.queued-for-payroll).
+ *   4. Individual one-off transactions are likewise DETACHED (batch_id → null; f1564110 Phase 2, amending
+ *      ADR-0056) — they keep their (company_id, pay_period) home and re-attach automatically when the
+ *      month's regular run is next generated; one `payroll.individual-txn.detached` event per row.
  *
  * Shared seam: deleteDraftBatch calls this before removing the batch row, and the processed→draft
  * Reset (a03b2d9b) can reuse it for its final draft-cleanup step. Events are appended HERE so no
@@ -830,10 +858,35 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
   }
 
   const inputs = await tx.delete(payrollInput).where(eq(payrollInput.batchId, batchId)).returning({ id: payrollInput.id });
-  const individualTxns = await tx
-    .delete(payrollIndividualTxn)
+  // f1564110 Phase 2 (amends ADR-0056): individual one-off transactions are DETACHED (batch_id → NULL),
+  // not deleted — like claims, they are keyed-in business records that must survive a draft delete/reset
+  // and re-attach automatically when the month's regular run is next generated. Their (company_id,
+  // pay_period) home was stamped at write time (backfilled by 0175 for older rows), so the 0175 CHECK
+  // holds through the detach. One event per row (cross-aggregate state change, same as the claim detach).
+  // Stamp (company, pay month) from the batch during the detach — the service stamps them on every write
+  // and 0175 backfilled old rows, but a defensively-inserted row without them must still satisfy the 0175
+  // CHECK (batch_id OR company+period) once batch_id goes NULL. The batch row still exists here.
+  const [teardownBatch] = await tx
+    .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod })
+    .from(payrollBatch)
+    .where(eq(payrollBatch.id, batchId))
+    .limit(1);
+  const detachedIndividualTxns = await tx
+    .update(payrollIndividualTxn)
+    .set({ batchId: null, companyId: teardownBatch?.companyId, payPeriod: teardownBatch?.payPeriod })
     .where(eq(payrollIndividualTxn.batchId, batchId))
-    .returning({ id: payrollIndividualTxn.id });
+    .returning({ id: payrollIndividualTxn.id, employmentId: payrollIndividualTxn.employmentId, payPeriod: payrollIndividualTxn.payPeriod });
+  for (const t of detachedIndividualTxns) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-individual-txn',
+      aggregateId: t.id,
+      eventType: 'payroll.individual-txn.detached',
+      actor: actorOf(ctx),
+      subjectEmploymentId: t.employmentId,
+      payload: { batchId, payPeriod: t.payPeriod, reason: 'draft-batch-teardown' },
+    });
+  }
   const components = await tx
     .delete(payrollBatchComponent)
     .where(eq(payrollBatchComponent.batchId, batchId))
@@ -863,9 +916,9 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
   return {
     releasedLoanRepaymentIds: releasedRepayments.map((r) => r.id),
     detachedClaimIds: detachedClaims.map((c) => c.id),
+    detachedIndividualTxnIds: detachedIndividualTxns.map((t) => t.id),
     deletedChildCounts: {
       inputs: inputs.length,
-      individualTxns: individualTxns.length,
       components: components.length,
       payslips: payslips.length,
     },
@@ -1733,6 +1786,17 @@ export async function generatePayslips(
       throw new BatchNotDraftError();
     }
 
+    // Pre-processing validation (feedback f1564110, Phase 1): a full draft→processed generation is
+    // BLOCKED while any scoped, period-active employee has no current compensation row — previously
+    // those employees were silently dropped by the inner join below. Fails closed BEFORE any write,
+    // so there is deliberately no DomainEvent (nothing changed state). Warning-class gaps (missing
+    // statutory profile / bank details) do not block here — the operator confirms them explicitly in
+    // generateAction. A subset reprocess targets a processed run that already passed this gate.
+    if (!subset) {
+      const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope });
+      if (checks.missingCompensation.length > 0) throw new PreProcessBlockedError(checks.missingCompensation.length);
+    }
+
     const [co] = await tx
       .select({ country: company.country })
       .from(company)
@@ -1789,6 +1853,51 @@ export async function generatePayslips(
       scopeDeptIds.length || scopeExplicitIds.length
         ? inArray(employment.id, scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'])
         : undefined;
+    const scopeConstrained = scopeDeptIds.length > 0 || scopeExplicitIds.length > 0;
+
+    // f1564110 Phase 2 — attach-on-generate (amends ADR-0056). One-off individual transactions keyed in
+    // BEFORE this run existed (batch_id NULL, matching company + pay month) are stamped onto this batch now,
+    // inside the same transaction, so the ledger they belong to is the run that pays the month. REGULAR run
+    // only: in multi-cycle months the off-cycle/bonus/adjustment runs keep explicit-batch targeting via the
+    // wizard, so an unattached row can never be double-collected by a sibling run. Full draft→processed
+    // generation only (a subset reprocess recomputes a processed run whose ledger is already attached).
+    // Scope-constrained runs collect only in-scope employees' rows; the rest stay unattached for a later
+    // (re)generation or a widened scope. Kernel consumption of the attached rows is Phase 3 (flag-gated);
+    // attaching here is the substrate that makes that fold — and the payslip-side audit trail — possible.
+    if (!subset && batch.runType === 'regular') {
+      const attachedTxns = await tx
+        .update(payrollIndividualTxn)
+        .set({ batchId: p.batchId })
+        .where(
+          and(
+            isNull(payrollIndividualTxn.batchId),
+            eq(payrollIndividualTxn.companyId, batch.companyId),
+            eq(payrollIndividualTxn.payPeriod, batch.payPeriod),
+            scopeConstrained
+              ? inArray(
+                  payrollIndividualTxn.employmentId,
+                  scopeEmploymentIds.length ? scopeEmploymentIds : ['00000000-0000-0000-0000-000000000000'],
+                )
+              : undefined,
+          ),
+        )
+        .returning({
+          id: payrollIndividualTxn.id,
+          employmentId: payrollIndividualTxn.employmentId,
+          kind: payrollIndividualTxn.kind,
+        });
+      for (const t of attachedTxns) {
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'payroll-individual-txn',
+          aggregateId: t.id,
+          eventType: 'payroll.individual-txn.attached',
+          actor: actorOf(ctx),
+          subjectEmploymentId: t.employmentId,
+          payload: { batchId: p.batchId, companyId: batch.companyId, payPeriod: batch.payPeriod, kind: t.kind },
+        });
+      }
+    }
 
     // Anyone employed for at least part of the period: hired on/before period end AND not
     // terminated before period start. Mid-period joiners/leavers get a prorated (final) payslip.
@@ -1870,7 +1979,9 @@ export async function generatePayslips(
       .from(payrollInput)
       .where(eq(payrollInput.batchId, p.batchId));
     const overtimeByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.overtime)]));
-    const otSourceByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otSource ?? null]));
+    // Widened to string: f1564110 Phase 3 stamps 'individual-txn' provenance when one-off OT rows feed the
+    // figure (the payslip snapshot is plain jsonb, so the wider type is safe end-to-end).
+    const otSourceByEmp = new Map<string, string | null>(inputRows.map((r) => [r.employmentId, r.otSource ?? null]));
     const otBreakdownByEmp = new Map(inputRows.map((r) => [r.employmentId, r.otBreakdown ?? null]));
     const bonusByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.bonus)]));
     const tp1ByEmp = new Map(inputRows.map((r) => [r.employmentId, Number(r.tp1)]));
@@ -2354,6 +2465,119 @@ export async function generatePayslips(
       for (const r of bat) push(batchCompByEmp, r);
     }
 
+    // ── f1564110 Phase 3 — individual (one-off) transaction consumption (amends ADR-0056) ──
+    // GATED by INDIVIDUAL_TXN_PAY_ENABLED (default OFF ⇒ the ledger stays record-only and every payslip is
+    // byte-identical to the pre-Phase-3 kernel — test/payroll-individual-txn.test.ts's inert test is the
+    // flag-off guard). Flag on, the batch's (post-attach-on-generate) ledger rows fold into pay:
+    //   • earning/deduction WITH a component → pushed into the existing batchCompByEmp fold as a CompRow, so
+    //     the catalog's statutory flags (EPF/SOCSO/PCB/HRDF), rounding, prorates and non-payable treatment
+    //     apply IDENTICALLY to a one-off batch component. The keyed amount is authoritative: the catalog
+    //     `rule` is deliberately NOT applied (a per_day/percent rule would REPLACE the keyed figure), so
+    //     rule=null ⇒ stored-amount behaviour.
+    //   • earning/deduction WITHOUT a component (legacy rows keyed before the flag; new writes require a
+    //     component, service-enforced) → conservative statutory defaults: an earning is EPF+SOCSO-liable
+    //     wages (and thereby in the PCB base via wagesExOt); a deduction is post-statutory (reduces net
+    //     only, EA s.24-clamped exactly like a manual deduction). prorates=false — a dated one-off amount
+    //     is an actual, not a contractual monthly figure.
+    //   • overtime / unpaid kinds fold in the payslip loop below (the OT figure with otSource provenance /
+    //     the unpaid deduction); leave is RECORD-ONLY in v1 (documented skip below).
+    // DEPENDENCY (documented): the earning/deduction fold rides TYPED_PAY_COMPONENTS_ENABLED — with typed
+    // components off there is no per-component fold to ride, so payable rows FAIL CLOSED (typed error)
+    // rather than silently staying unpaid. Read-only fold — no DomainEvent (the generated event + payslip
+    // rows are the audit record, as for batch components).
+    const individualTxnPay = process.env.INDIVIDUAL_TXN_PAY_ENABLED === 'true';
+    const txnOtByEmp = new Map<string, number>();
+    const txnUnpaidByEmp = new Map<string, number>();
+    // Named payslip provenance for every consumed row (merged into statutory.recordLines below) so the
+    // payslip shows the one-off items by name; deductions carry a negative sign.
+    const txnRecordLinesByEmp = new Map<string, { code: string; name: string; amount: number }[]>();
+    if (individualTxnPay) {
+      const ledger = await tx
+        .select({
+          employmentId: payrollIndividualTxn.employmentId,
+          kind: payrollIndividualTxn.kind,
+          amount: payrollIndividualTxn.amount,
+          notes: payrollIndividualTxn.notes,
+          componentId: payrollIndividualTxn.componentId,
+          compCode: payComponent.code,
+          compName: payComponent.name,
+          compKind: payComponent.kind,
+          compEpf: payComponent.includedInEpf,
+          compSocso: payComponent.includedInSocsoEis,
+          compPcb: payComponent.includedInPcb,
+          compHrdf: payComponent.includedInHrdfBase,
+          compNonPayable: payComponent.isNonPayable,
+          compProrates: payComponent.prorates,
+          compRounding: payComponent.roundingMethod,
+        })
+        .from(payrollIndividualTxn)
+        .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
+        .where(eq(payrollIndividualTxn.batchId, p.batchId));
+      const pushTxnLine = (empId: string, line: { code: string; name: string; amount: number }) => {
+        const list = txnRecordLinesByEmp.get(empId) ?? [];
+        list.push(line);
+        txnRecordLinesByEmp.set(empId, list);
+      };
+      for (const t of ledger) {
+        const amt = round2(Number(t.amount));
+        if (t.kind === 'overtime') {
+          txnOtByEmp.set(t.employmentId, round2((txnOtByEmp.get(t.employmentId) ?? 0) + amt));
+          pushTxnLine(t.employmentId, { code: 'TXN_OVERTIME', name: t.notes ?? 'Overtime (one-off)', amount: amt });
+          continue;
+        }
+        if (t.kind === 'unpaid') {
+          txnUnpaidByEmp.set(t.employmentId, round2((txnUnpaidByEmp.get(t.employmentId) ?? 0) + amt));
+          pushTxnLine(t.employmentId, { code: 'TXN_UNPAID', name: t.notes ?? 'Unpaid (one-off)', amount: -amt });
+          continue;
+        }
+        if (t.kind === 'leave') {
+          // DOCUMENTED SKIP (v1): a 'leave' row is RECORD-ONLY — leave pay flows through the leave module
+          // (unpaid-leave derivation / entitlements), so folding a raw leave amount here would double-count.
+          // The row still surfaces on the payslip as a named record line (provenance, no cash effect).
+          pushTxnLine(t.employmentId, { code: 'TXN_LEAVE', name: t.notes ?? 'Leave (one-off)', amount: amt });
+          continue;
+        }
+        // earning / deduction — the payable classes ride the typed-component fold (dependency above).
+        if (!typedComponents) throw new IndividualTxnRequiresTypedComponentsError();
+        const row: CompRow =
+          t.componentId != null && t.compCode != null
+            ? {
+                code: t.compCode,
+                name: t.compName ?? t.compCode,
+                kind: t.compKind ?? t.kind,
+                amount: amt,
+                rounding: t.compRounding ?? 'none',
+                epf: t.compEpf ?? false,
+                socso: t.compSocso ?? false,
+                pcb: t.compPcb ?? false,
+                hrdf: t.compHrdf ?? false,
+                nonPayable: t.compNonPayable ?? false,
+                prorates: t.compProrates ?? false,
+                prorateOverride: null,
+                rule: null, // keyed amount is authoritative — never re-derive via a catalog rule
+              }
+            : t.kind === 'earning'
+              ? { code: 'TXN_EARNING', name: t.notes ?? 'One-off earning', kind: 'allowance', amount: amt, rounding: 'none', epf: true, socso: true, pcb: true, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null }
+              : { code: 'TXN_DEDUCTION', name: t.notes ?? 'One-off deduction', kind: 'deduction', amount: amt, rounding: 'none', epf: false, socso: false, pcb: false, hrdf: false, nonPayable: false, prorates: false, prorateOverride: null, rule: null };
+        const list = batchCompByEmp.get(t.employmentId) ?? [];
+        list.push(row);
+        batchCompByEmp.set(t.employmentId, list);
+        // Provenance: a non-payable (BIK) component row already surfaces via the fold's own record line —
+        // skip the duplicate. Every cash row gets a named line (deductions negative).
+        if (!row.nonPayable) {
+          pushTxnLine(t.employmentId, { code: row.code, name: t.notes ?? row.name, amount: row.kind === 'deduction' ? -amt : amt });
+        }
+      }
+      // OT provenance (feedback plan: otSource='individual-txn'): a slip whose OT includes one-off ledger
+      // rows is stamped 'individual-txn' unless a manual/attendance figure also contributes — the earlier
+      // provenance then still names the larger origin (the ledger rows remain visible as record lines).
+      for (const [empId, v] of txnOtByEmp) {
+        if (v <= 0) continue;
+        const existingOt = round2(overtimeByEmp.get(empId) ?? 0);
+        if (!(existingOt > 0) || !otSourceByEmp.get(empId)) otSourceByEmp.set(empId, 'individual-txn');
+      }
+    }
+
     // Payroll Setup — attendance worked HOURS per employment, for `per_hour` rules only. Computed once here
     // (gated on typedComponents) so the per-component resolver reads a map, not a re-query. No attendance
     // rows ⇒ 0 hours, a real, non-erroring outcome (paid by the hour, worked no hours) — there is NO division
@@ -2551,7 +2775,12 @@ export async function generatePayslips(
       const basic = daily ? daily.basic : (incrementBasic !== undefined ? round2(incrementBasic) : en.basicGross);
       // 1e — OT caps: wrap the prefilled/keyed OT figure with the policy's caps (eligible day types, max
       // hours, max amount, floored multiplier). Default (no overtime config) ⇒ the figure is unchanged.
-      const otCap = applyOvertimeCapsForEmp(cfg, e.employmentId, en.overtime);
+      // f1564110 Phase 3 — one-off 'overtime' ledger rows ADD to the OT figure BEFORE the caps (flag off ⇒
+      // txnOt is 0 ⇒ byte-identical). Regular run only: an additional/off-cycle run pays no OT (slipOvertime
+      // is zeroed and its statutory delta reads the regular run's OT), so folding there would distort nothing
+      // but is skipped for clarity.
+      const txnOt = isAdditionalRun ? 0 : round2(txnOtByEmp.get(e.employmentId) ?? 0);
+      const otCap = applyOvertimeCapsForEmp(cfg, e.employmentId, round2(en.overtime + txnOt));
       const overtime = otCap.capped;
       // Step 4 (f3148da1) — OT exceed handling. When the policy configures "convert excess to pay item" AND a
       // valid component was resolved, the amount the HOUR/AMOUNT caps cut off is redirected to that pay item so
@@ -2589,11 +2818,18 @@ export async function generatePayslips(
           : null;
       // 2.1.2 — a daily wage already pays ONLY eligible worked days, so an unpaid-leave day is simply not a
       // worked day (never counted into `basic`); deducting again off basicRaw/divisor would double-count it.
-      const unpaidDeduction = daily
-        ? 0
-        : timeOffRate !== null
-          ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
-          : round2((basicRaw / unpaidDivisor) * unpaidDaysAll);
+      // f1564110 Phase 3 — one-off 'unpaid' ledger rows ADD their keyed RM amount to the unpaid deduction
+      // (pre-statutory: it reduces wagesExOt/hrdfBase like derived unpaid leave). Flag off ⇒ txnUnpaid is 0 ⇒
+      // byte-identical. Regular run only (an additional run charges no unpaid, like cp38/hrdf). Applied even
+      // on the daily path — a keyed amount is an explicit instruction, not the derived not-a-worked-day case.
+      const txnUnpaid = isAdditionalRun ? 0 : round2(txnUnpaidByEmp.get(e.employmentId) ?? 0);
+      const unpaidDeduction = round2(
+        (daily
+          ? 0
+          : timeOffRate !== null
+            ? round2((basicRaw / unpaidDivisor) * (unpaidDaysAll - timeOffDays) + timeOffRate * timeOffDays)
+            : round2((basicRaw / unpaidDivisor) * unpaidDaysAll)) + txnUnpaid,
+      );
       const normalWage = round2(basic + allowance + overtime); // regular monthly remuneration
       // Agency bases differ (STATUTORY-SOURCES §6): EPF EXCLUDES overtime, SOCSO/EIS/PCB
       // include it — so the calculator takes wages ex-OT and the OT separately. The all-false
@@ -2706,7 +2942,12 @@ export async function generatePayslips(
         // do NOT affect gross/net (key present only when there is at least one, to preserve byte-identical
         // parity with the legacy path which never produces record lines). Carried on the regular run only —
         // an additional/off-cycle run pays solely its bonus and would otherwise re-list the same record.
-        ...(!isAdditionalRun && en.recordLines.length ? { recordLines: en.recordLines } : {}),
+        // f1564110 Phase 3 — consumed one-off transactions append NAMED provenance lines (flag off ⇒ the
+        // txn list is empty ⇒ byte-identical): the payslip shows each one-off item by name; deductions
+        // carry a negative sign; 'leave' rows appear here record-only.
+        ...(!isAdditionalRun && (en.recordLines.length || (txnRecordLinesByEmp.get(e.employmentId)?.length ?? 0))
+          ? { recordLines: [...en.recordLines, ...(txnRecordLinesByEmp.get(e.employmentId) ?? [])] }
+          : {}),
       };
 
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,
@@ -3847,6 +4088,89 @@ export function leaverAdvisory(ctx: SessionContext, batchId: string): Promise<Le
       });
     }
     return out;
+  });
+}
+
+// ── Pre-processing checks (feedback f1564110, Phase 1) ────────────────────────────────────────────
+// Validates employee master data BEFORE the run is calculated, per the reporter's proposed workflow
+// ("maintain employee info → validate → process as the final step"). Three classes:
+//   • missingCompensation — BLOCKER. No current compensation row: the generation employee query
+//     inner-joins compensation, so these employees were previously dropped from the run with no
+//     warning at all. Generation now fails closed (PreProcessBlockedError) until fixed.
+//   • missingStatutory — WARNING. No employee_statutory_my row: EPF/SOCSO/PCB fall back to defaults.
+//     The operator must explicitly confirm to proceed (enforced in generateAction).
+//   • missingBank — WARNING. Statutory profile exists but bank name/account is incomplete: the
+//     payment file cannot carry this employee. Confirm-to-proceed like missingStatutory.
+
+export type PreProcessCheckRow = { employmentId: string; name: string; employeeCode: string | null };
+
+export type PreProcessAdvisory = {
+  missingCompensation: PreProcessCheckRow[];
+  missingStatutory: PreProcessCheckRow[];
+  missingBank: PreProcessCheckRow[];
+};
+
+/** Shared tx-level core: the same scoped, period-active population as generatePayslips' employee
+ *  query (hired ≤ period end, not terminated before period start, batch scope applied) but with
+ *  compensation/statutory LEFT-joined so the gaps are visible instead of silently dropped. */
+async function preProcessChecksTx(
+  tx: Tx,
+  batch: { companyId: string; payPeriod: string; scope: unknown },
+): Promise<PreProcessAdvisory> {
+  const [y, m] = batch.payPeriod.split('-').map(Number);
+  const periodStart = `${batch.payPeriod}-01`;
+  const periodEnd = `${batch.payPeriod}-${String(daysInMonth(y, m)).padStart(2, '0')}`;
+  const { filter: scopeFilter } = await resolveBatchScopeFilter(tx, (batch.scope ?? null) as BatchScope | null);
+  const rows = await tx
+    .select({
+      employmentId: employment.id,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+      compId: compensation.id,
+      statPersonId: employeeStatutoryMy.personId,
+      bankName: employeeStatutoryMy.bankName,
+      bankAccountNo: employeeStatutoryMy.bankAccountNo,
+    })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .leftJoin(
+      compensation,
+      and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+    )
+    .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
+    .where(
+      and(
+        eq(employment.companyId, batch.companyId),
+        lte(employment.hiredOn, periodEnd),
+        or(isNull(employment.terminatedOn), gte(employment.terminatedOn, periodStart)),
+        scopeFilter,
+      ),
+    )
+    .orderBy(person.fullName);
+  const out: PreProcessAdvisory = { missingCompensation: [], missingStatutory: [], missingBank: [] };
+  for (const r of rows) {
+    const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
+    if (!r.compId) out.missingCompensation.push(row);
+    if (!r.statPersonId) out.missingStatutory.push(row);
+    // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
+    // covers the row above — listing it twice would be noise, not signal).
+    else if (!r.bankName?.trim() || !r.bankAccountNo?.trim()) out.missingBank.push(row);
+  }
+  return out;
+}
+
+/** Read-only pre-processing advisory for a batch (no events.append per the CLAUDE.md skip rule —
+ *  derived read, nothing written). Rendered as the "Pre-processing checks" card on a draft run and
+ *  re-asserted server-side in generateAction/generatePayslips before calculation. */
+export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promise<PreProcessAdvisory> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ companyId: payrollBatch.companyId, payPeriod: payrollBatch.payPeriod, scope: payrollBatch.scope })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, batchId))
+      .limit(1);
+    if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
+    return preProcessChecksTx(tx, batch);
   });
 }
 

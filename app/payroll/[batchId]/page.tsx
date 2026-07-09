@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, batchInputRows, leaverAdvisory } from '@/core/payroll';
+import { batchDetail, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
 import { loanSummaryForBatch } from '@/core/loans';
 import { listAllowancePolicies, auditEvents } from '@/core/read';
 import { humanizeEvent } from '@/lib/audit-format';
@@ -33,6 +33,15 @@ export default async function BatchPage({
   const totals = (batch.totals ?? {}) as Record<string, number>;
   const inputs = batch.status === 'draft' ? await batchInputRows(s, batchId) : [];
   const leavers = batch.status === 'draft' ? await leaverAdvisory(s, batchId) : [];
+  // Pre-processing checks (feedback f1564110, Phase 1): validate employee master data BEFORE the run
+  // is calculated. Blockers (no salary record) disable Generate outright; warnings (no statutory
+  // profile / no bank details) swap Generate for a ConfirmSubmit that posts ackWarnings=1.
+  const preChecks: PreProcessAdvisory =
+    batch.status === 'draft'
+      ? await preProcessAdvisory(s, batchId)
+      : { missingCompensation: [], missingStatutory: [], missingBank: [] };
+  const preBlockers = preChecks.missingCompensation.length;
+  const preWarnings = preChecks.missingStatutory.length + preChecks.missingBank.length;
   // 1.2.8 (ADR-0060): loan deductions are RESERVED onto a regular draft run only; show the running summary.
   const isRegular = batch.runType === 'regular';
   const loanSummary = batch.status === 'draft' && isRegular ? await loanSummaryForBatch(s, batchId) : { loans: 0, total: 0 };
@@ -98,7 +107,27 @@ export default async function BatchPage({
             {batch.status === 'draft' && (
               <form action={generateAction}>
                 <input type="hidden" name="batchId" value={batch.id} />
-                <Button type="submit">{t('generatePayslips')}</Button>
+                {preBlockers > 0 ? (
+                  // Blocked: employees with no salary record — server re-asserts (PreProcessBlockedError).
+                  <Button type="submit" disabled title={t('preChecksBlockedError', { n: preBlockers })}>
+                    {t('generatePayslips')}
+                  </Button>
+                ) : preWarnings > 0 ? (
+                  // Warnings only: explicit confirm required; the dialog posts ackWarnings=1.
+                  <>
+                    <input type="hidden" name="ackWarnings" value="1" />
+                    <ConfirmSubmit
+                      variant="default"
+                      title={t('preConfirmTitle')}
+                      description={t('preConfirmDescription', { n: preWarnings })}
+                      confirmLabel={t('preConfirmLabel')}
+                    >
+                      {t('generatePayslips')}
+                    </ConfirmSubmit>
+                  </>
+                ) : (
+                  <Button type="submit">{t('generatePayslips')}</Button>
+                )}
               </form>
             )}
             {batch.status === 'processed' && (
@@ -237,6 +266,83 @@ export default async function BatchPage({
           mono: (chunks) => <span className="font-mono">{chunks}</span>,
         })}
       </div>
+
+      {/* Pre-processing checks (feedback f1564110, Phase 1): the validation step of the reporter's
+          "maintain → validate → process" workflow, surfaced on every draft run. Blocker rows stop
+          generation entirely (previously these employees were silently dropped from the run with no
+          warning); warning rows require an explicit confirm on Generate. Each row links to the
+          employee profile so the gap can be fixed in place. */}
+      {batch.status === 'draft' && (
+        <Card
+          className={`overflow-hidden ${
+            preBlockers > 0
+              ? 'border-red-200 dark:border-red-500/30'
+              : preWarnings > 0
+                ? 'border-amber-200 dark:border-amber-500/30'
+                : 'border-emerald-200 dark:border-emerald-500/30'
+          }`}
+        >
+          <SectionHeader title={t('preChecksTitle')} count={preBlockers + preWarnings} />
+          {preBlockers + preWarnings === 0 ? (
+            <p className="px-4 py-4 text-sm text-emerald-700 dark:text-emerald-400">✓ {t('preChecksAllClear')}</p>
+          ) : (
+            <div className="space-y-4 px-4 py-4">
+              {preBlockers > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
+                  {t('preChecksBlockerHint', { n: preBlockers })}
+                </div>
+              )}
+              {preBlockers === 0 && preWarnings > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
+                  {t('preChecksWarningHint', { n: preWarnings })}
+                </div>
+              )}
+              {(
+                [
+                  ['missingCompensation', preChecks.missingCompensation, true],
+                  ['missingStatutory', preChecks.missingStatutory, false],
+                  ['missingBank', preChecks.missingBank, false],
+                ] as const
+              ).map(([key, rows, isBlocker]) =>
+                rows.length === 0 ? null : (
+                  <div key={key}>
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                          isBlocker
+                            ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400'
+                            : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+                        }`}
+                      >
+                        {isBlocker ? t('preChecksBlockerBadge') : t('preChecksWarningBadge')}
+                      </span>
+                      <span className="text-xs font-semibold text-foreground">
+                        {t(`preChecks.${key}`)} · {rows.length}
+                      </span>
+                    </div>
+                    <ul className="divide-y divide-border rounded-lg border border-border">
+                      {rows.map((r) => (
+                        <li key={r.employmentId} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+                          <span className="flex items-center gap-2">
+                            <EmployeeCode code={r.employeeCode} />
+                            <span className="font-medium">{r.name}</span>
+                          </span>
+                          <Link
+                            href={`/people/${r.employmentId}`}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            {t('preChecksOpenProfile')} →
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ),
+              )}
+            </div>
+          )}
+        </Card>
+      )}
 
       {batch.status === 'draft' && leavers.length > 0 && (
         <Card className="overflow-hidden border-blue-200 dark:border-blue-500/30">
