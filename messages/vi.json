@@ -3353,7 +3353,19 @@
       "calendarHint": "Các ngày kế thừa chỉ đọc tại đây — hãy chỉnh sửa tại nguồn (nhóm cha, danh sách ngày lễ công cộng hoặc công ty sở hữu). Ngày được thêm vào nhóm này chỉ áp dụng cho nhân viên dùng lịch này.",
       "calendarBack": "Quay lại tất cả ngày lễ",
       "holidayGroupLabel": "Nhóm ngày lễ",
-      "holidayGroupPlaceholder": "Chọn nhóm ngày lễ…"
+      "holidayGroupPlaceholder": "Chọn nhóm ngày lễ…",
+      "holidayCodeLabel": "Mã ngày lễ",
+      "holidayCodePlaceholder": "Tùy chọn",
+      "holidayTypeLabel": "Loại ngày lễ",
+      "holidayType": {
+        "public": "Ngày lễ công",
+        "company": "Ngày lễ công ty",
+        "optional": "Tùy chọn"
+      },
+      "descriptionLabel": "Mô tả",
+      "descriptionPlaceholder": "Tùy chọn",
+      "activeLabel": "Đang hoạt động",
+      "inactiveBadge": "Ngừng hoạt động"
     },
     "users": {
       "title": "Người dùng & vai trò",
@@ -3791,6 +3803,56 @@
         "country": "Quốc gia",
         "relationship": "Mối quan hệ"
       }
+    },
+    "holidayTabs": {
+      "holidays": "Ngày lễ",
+      "groups": "Nhóm ngày lễ"
+    },
+    "holidayGroups": {
+      "pageTitle": "Nhóm ngày lễ",
+      "pageDescription": "Các bộ ngày lễ tái sử dụng có thể gán cho nhân viên qua hồ sơ của họ",
+      "addNew": "Thêm mới",
+      "empty": "Chưa có nhóm ngày lễ. Tạo một nhóm để gán lịch ngày lễ dùng chung cho nhân viên.",
+      "codeCol": "Mã",
+      "nameCol": "Tên",
+      "statusCol": "Trạng thái",
+      "editAction": "Sửa",
+      "deleteAction": "Xóa",
+      "statusActive": "Đang hoạt động",
+      "statusInactive": "Ngừng hoạt động",
+      "newTitle": "Nhóm ngày lễ mới",
+      "editTitle": "Sửa nhóm ngày lễ",
+      "infoSectionTitle": "Thông tin nhóm ngày lễ",
+      "codeLabel": "Mã nhóm ngày lễ",
+      "codePlaceholder": "Tùy chọn",
+      "nameLabel": "Tên nhóm ngày lễ",
+      "namePlaceholder": "Malaysia Toàn quốc",
+      "descriptionLabel": "Mô tả",
+      "descriptionPlaceholder": "Tùy chọn",
+      "activeLabel": "Đang hoạt động",
+      "statesLabel": "Các bang thành viên",
+      "statesHint": "Nhóm tự động bao gồm các ngày lễ công của các bang Malaysia này. Giữ Ctrl (hoặc Cmd) để chọn nhiều.",
+      "archetypeLabel": "Loại",
+      "archetype": {
+        "standard": "Tiêu chuẩn",
+        "extended": "Mở rộng",
+        "custom": "Tùy chỉnh"
+      },
+      "archetypeHint": "Tiêu chuẩn = chỉ các ngày lễ chính thức được công bố. Mở rộng = ngày lễ chính thức cộng thêm các ngày do công ty định nghĩa. Tùy chỉnh = chỉ các ngày lễ bạn tự chọn.",
+      "parentGroupLabel": "Nhóm cha",
+      "parentGroupNone": "Không (nhóm cơ sở)",
+      "parentGroupHint": "Một nhóm có nhóm cha sẽ kế thừa toàn bộ lịch của nhóm cha và luôn đồng bộ khi nhóm cha thay đổi. Chỉ một cấp kế thừa.",
+      "inheritsFrom": "Kế thừa từ {name}",
+      "holidaysSectionTitle": "Chọn ngày lễ",
+      "holidaysSectionHint": "Đánh dấu các ngày lễ từ danh sách chính thuộc về nhóm này. Các ngày lễ bang Malaysia tự động vẫn áp dụng bên cạnh lựa chọn của bạn.",
+      "selectCol": "Chọn",
+      "dateCol": "Ngày",
+      "holidayNameCol": "Tên ngày lễ",
+      "typeCol": "Loại",
+      "noHolidays": "Chưa có ngày lễ trong danh sách chính. Hãy thêm ngày lễ ở tab Ngày lễ trước.",
+      "save": "Lưu nhóm ngày lễ",
+      "cancel": "Hủy",
+      "back": "Quay lại nhóm ngày lễ"
     }
   },
   "topbar": {

@@ -37,6 +37,7 @@ import {
   employment,
   holiday,
   holidayGroup,
+  holidayGroupHoliday,
   leaveLedger,
   jobGrade,
   leavePolicy,
@@ -57,6 +58,18 @@ function cleanArchetype(v: string | undefined): HolidayGroupArchetype {
   if (!(HOLIDAY_GROUP_ARCHETYPES as readonly string[]).includes(s))
     throw new Error(`Unknown holiday-calendar kind “${s}”.`);
   return s as HolidayGroupArchetype;
+}
+
+/** 66b8f5a8 — Holiday master `holiday_type` (migration 0190): a display/classification tag on the
+ *  centralized holiday record. Public = gazetted public holiday (DEFAULT — existing rows), Company = an
+ *  employer-declared day, Optional = a day staff may opt into. The resolver never reads it; it is metadata
+ *  only, so it never affects working-day / OT arithmetic. */
+export const HOLIDAY_TYPES = ['public', 'company', 'optional'] as const;
+export type HolidayType = (typeof HOLIDAY_TYPES)[number];
+function cleanHolidayType(v: string | undefined): HolidayType {
+  const s = (v ?? 'public').trim();
+  if (!(HOLIDAY_TYPES as readonly string[]).includes(s)) throw new Error(`Unknown holiday type “${s}”.`);
+  return s as HolidayType;
 }
 
 /** Thrown when a hard delete is attempted on a referenced record (archive it instead). Pass `message`
@@ -1450,6 +1463,11 @@ export function listHolidays(
         name: holiday.name,
         // Follow-on #15b (ADR-0063): surface the provisional marker so the UI can render a Tentative badge.
         tentative: holiday.tentative,
+        // 66b8f5a8 — Holiday master fields (migration 0190).
+        holidayCode: holiday.holidayCode,
+        holidayType: holiday.holidayType,
+        description: holiday.description,
+        active: holiday.active,
       })
       .from(holiday)
       .leftJoin(company, eq(company.id, holiday.companyId))
@@ -1484,6 +1502,11 @@ export async function createHoliday(
     holidayGroupId?: string | null;
     // Follow-on #15b (ADR-0063): provisional date for a not-yet-gazetted holiday. Still counts as a holiday.
     tentative?: boolean;
+    // 66b8f5a8 — Holiday master fields (migration 0190). All optional; defaults reproduce today's behaviour.
+    holidayCode?: string | null;
+    holidayType?: string;
+    description?: string | null;
+    active?: boolean;
   },
 ) {
   const country = isoCode(p.country, 'MY', 'Country');
@@ -1493,6 +1516,11 @@ export async function createHoliday(
   const companyId = p.companyId?.trim() || null; // ADR-0055: set = business-group (company-subtree) scope
   const holidayGroupId = p.holidayGroupId?.trim() || null; // R18 a519a96e: set = holiday-group scope
   const tentative = p.tentative ?? false;
+  // 66b8f5a8 — master fields. Empty strings ⇒ null (never store ""); type defaults to 'public'.
+  const holidayCode = p.holidayCode?.trim() || null;
+  const holidayType = cleanHolidayType(p.holidayType);
+  const description = p.description?.trim() || null;
+  const active = p.active ?? true;
   // Scope is single-axis: national, state, business-group, OR holiday-group — never two at once (mirrors
   // the DB CHECK holiday_scope_excl; thrown here so the user gets a clear message before the constraint).
   if ([state, companyId, holidayGroupId].filter(Boolean).length > 1)
@@ -1532,6 +1560,10 @@ export async function createHoliday(
         holidayDate: p.holidayDate,
         name,
         tentative,
+        holidayCode,
+        holidayType,
+        description,
+        active,
       })
       .returning({ id: holiday.id })
       .catch((e) => {
@@ -1554,7 +1586,19 @@ export async function createHoliday(
       eventType: 'holiday.created',
       actor: actorOf(ctx),
       // Scope-in-audit (ADR-0055 acceptance goal): carry the FULL scope, not just country/date/name.
-      payload: { country, holidayDate: p.holidayDate, name, state, companyId, holidayGroupId, tentative },
+      payload: {
+        country,
+        holidayDate: p.holidayDate,
+        name,
+        state,
+        companyId,
+        holidayGroupId,
+        tentative,
+        holidayCode,
+        holidayType,
+        description,
+        active,
+      },
     });
     return row;
   });
@@ -1570,13 +1614,25 @@ export async function createHoliday(
  */
 export async function updateHoliday(
   ctx: SessionContext,
-  p: { id: string; holidayDate?: string; name?: string; tentative?: boolean },
+  // 66b8f5a8: the master fields (holidayCode/holidayType/description/active) are EDITABLE here (unlike scope,
+  // which stays immutable). Each is tri-state via `undefined` = leave untouched.
+  p: {
+    id: string;
+    holidayDate?: string;
+    name?: string;
+    tentative?: boolean;
+    holidayCode?: string | null;
+    holidayType?: string;
+    description?: string | null;
+    active?: boolean;
+  },
 ) {
   // Validate up front (before any DB work), reusing create's guards so update is no laxer than create.
   if (p.holidayDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(p.holidayDate)) {
     throw new Error('Holiday date must be YYYY-MM-DD');
   }
   const nextName = p.name !== undefined ? cleanName(p.name, 'Holiday name') : undefined;
+  const nextType = p.holidayType !== undefined ? cleanHolidayType(p.holidayType) : undefined;
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
@@ -1587,6 +1643,10 @@ export async function updateHoliday(
         holidayDate: holiday.holidayDate,
         name: holiday.name,
         tentative: holiday.tentative,
+        holidayCode: holiday.holidayCode,
+        holidayType: holiday.holidayType,
+        description: holiday.description,
+        active: holiday.active,
       })
       .from(holiday)
       .where(eq(holiday.id, p.id))
@@ -1597,10 +1657,22 @@ export async function updateHoliday(
       holidayDate: p.holidayDate ?? before.holidayDate,
       name: nextName ?? before.name,
       tentative: p.tentative ?? before.tentative,
+      holidayCode: p.holidayCode !== undefined ? p.holidayCode?.trim() || null : before.holidayCode,
+      holidayType: nextType ?? before.holidayType,
+      description: p.description !== undefined ? p.description?.trim() || null : before.description,
+      active: p.active ?? before.active,
     };
     await tx
       .update(holiday)
-      .set({ holidayDate: after.holidayDate, name: after.name, tentative: after.tentative })
+      .set({
+        holidayDate: after.holidayDate,
+        name: after.name,
+        tentative: after.tentative,
+        holidayCode: after.holidayCode,
+        holidayType: after.holidayType,
+        description: after.description,
+        active: after.active,
+      })
       .where(eq(holiday.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) {
@@ -1628,6 +1700,10 @@ export async function updateHoliday(
           holidayDate: before.holidayDate,
           name: before.name,
           tentative: before.tentative,
+          holidayCode: before.holidayCode,
+          holidayType: before.holidayType,
+          description: before.description,
+          active: before.active,
           country: before.country,
           state: before.state,
           companyId: before.companyId,
@@ -1724,6 +1800,10 @@ export function listHolidayGroups(ctx: SessionContext) {
       .select({
         id: holidayGroup.id,
         name: holidayGroup.name,
+        // 66b8f5a8 — Holiday Group master fields (migration 0190).
+        code: holidayGroup.code,
+        description: holidayGroup.description,
+        active: holidayGroup.active,
         states: holidayGroup.states,
         archetype: holidayGroup.archetype,
         parentGroupId: holidayGroup.parentGroupId,
@@ -1735,20 +1815,134 @@ export function listHolidayGroups(ctx: SessionContext) {
   );
 }
 
+/** 66b8f5a8 — a single holiday group by id (for the dedicated edit page), including the master fields and
+ *  parent name. Read-only — no event. Returns null when not found (or not visible under RLS). */
+export function getHolidayGroup(ctx: SessionContext, p: { id: string }) {
+  const parentGroup = alias(holidayGroup, 'parent_group');
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: holidayGroup.id,
+        name: holidayGroup.name,
+        code: holidayGroup.code,
+        description: holidayGroup.description,
+        active: holidayGroup.active,
+        states: holidayGroup.states,
+        archetype: holidayGroup.archetype,
+        parentGroupId: holidayGroup.parentGroupId,
+        parentName: parentGroup.name,
+      })
+      .from(holidayGroup)
+      .leftJoin(parentGroup, eq(parentGroup.id, holidayGroup.parentGroupId))
+      .where(eq(holidayGroup.id, p.id))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/** 66b8f5a8 — the ids of the holidays explicitly TICKED into a group via the holiday_group_holiday junction.
+ *  Drives the tick-list on the dedicated group page. Read-only — no event. */
+export function listGroupHolidayIds(ctx: SessionContext, p: { groupId: string }) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({ holidayId: holidayGroupHoliday.holidayId })
+      .from(holidayGroupHoliday)
+      .where(eq(holidayGroupHoliday.holidayGroupId, p.groupId));
+    return rows.map((r) => r.holidayId);
+  });
+}
+
+/** 66b8f5a8 — replace a group's ticked-holiday set with `holidayIds` (the reporter's tick-list). Computes
+ *  the add/remove delta, applies it, and appends ONE holiday-group-holiday.set event carrying the before /
+ *  after id sets (not a per-row event — the group is the aggregate). A cross-tenant/unknown holiday id is
+ *  rejected (the FK + RLS backstop, but we validate for a friendly error). Idempotent: an unchanged set is a
+ *  no-op that still records the (empty-delta) event for audit completeness. Runs inside the caller's tx when
+ *  provided so it composes atomically with createHolidayGroup / updateHolidayGroup. */
+async function setGroupHolidaysTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { groupId: string; holidayIds: string[] },
+): Promise<void> {
+  const desired = [...new Set(p.holidayIds.map((s) => s.trim()).filter(Boolean))];
+  // Validate every desired id belongs to THIS tenant's holiday set (RLS already scopes, but a clear error
+  // beats a raw FK violation). Skip the query when nothing is desired.
+  if (desired.length) {
+    const found = await tx
+      .select({ id: holiday.id })
+      .from(holiday)
+      .where(inArray(holiday.id, desired));
+    const foundIds = new Set(found.map((r) => r.id));
+    for (const id of desired) if (!foundIds.has(id)) throw new Error('Unknown holiday selected for this group.');
+  }
+  const existing = (
+    await tx
+      .select({ holidayId: holidayGroupHoliday.holidayId })
+      .from(holidayGroupHoliday)
+      .where(eq(holidayGroupHoliday.holidayGroupId, p.groupId))
+  ).map((r) => r.holidayId);
+  const existingSet = new Set(existing);
+  const desiredSet = new Set(desired);
+  const toAdd = desired.filter((id) => !existingSet.has(id));
+  const toRemove = existing.filter((id) => !desiredSet.has(id));
+  if (toRemove.length) {
+    await tx
+      .delete(holidayGroupHoliday)
+      .where(
+        and(
+          eq(holidayGroupHoliday.holidayGroupId, p.groupId),
+          inArray(holidayGroupHoliday.holidayId, toRemove),
+        ),
+      );
+  }
+  if (toAdd.length) {
+    await tx
+      .insert(holidayGroupHoliday)
+      .values(toAdd.map((holidayId) => ({ tenantId: ctx.tenantId, holidayGroupId: p.groupId, holidayId })))
+      .onConflictDoNothing();
+  }
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'holiday-group-holiday',
+    aggregateId: p.groupId,
+    eventType: 'holiday-group.holidays.set',
+    actor: actorOf(ctx),
+    payload: { before: existing, after: desired, added: toAdd, removed: toRemove },
+  });
+}
+
+/** 66b8f5a8 — public wrapper: set a group's ticked holidays in its own transaction. */
+export async function setGroupHolidays(ctx: SessionContext, p: { groupId: string; holidayIds: string[] }) {
+  return withTenant(ctx, (tx) => setGroupHolidaysTx(tx, ctx, p));
+}
+
 export async function createHolidayGroup(
   ctx: SessionContext,
-  p: { name: string; states: string[]; archetype?: string; parentGroupId?: string | null },
+  // 66b8f5a8 — code/description/active are the new master fields (migration 0190); holidayIds is the
+  // reporter's tick-list (persisted to the holiday_group_holiday junction). All optional/backward compatible.
+  p: {
+    name: string;
+    states: string[];
+    archetype?: string;
+    parentGroupId?: string | null;
+    code?: string | null;
+    description?: string | null;
+    active?: boolean;
+    holidayIds?: string[];
+  },
 ) {
   const name = cleanName(p.name, 'Group name');
   const archetype = cleanArchetype(p.archetype);
   const parentGroupId = p.parentGroupId?.trim() || null;
   const states = cleanHolidayGroupStates(p.states, archetype, !!parentGroupId);
+  const code = p.code?.trim() || null;
+  const description = p.description?.trim() || null;
+  const active = p.active ?? true;
   return withTenant(ctx, async (tx) => {
     let parentName: string | null = null;
     if (parentGroupId) parentName = await assertValidParentGroup(tx, ctx.tenantId, parentGroupId);
     const [row] = await tx
       .insert(holidayGroup)
-      .values({ tenantId: ctx.tenantId, name, states, archetype, parentGroupId })
+      .values({ tenantId: ctx.tenantId, name, code, description, active, states, archetype, parentGroupId })
       .returning({ id: holidayGroup.id })
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
@@ -1760,20 +1954,38 @@ export async function createHolidayGroup(
       aggregateId: row.id,
       eventType: 'holiday-group.created',
       actor: actorOf(ctx),
-      payload: { name, states, archetype, parentGroupId, parentName },
+      payload: { name, code, description, active, states, archetype, parentGroupId, parentName },
     });
+    // Persist the ticked-holiday set in the SAME tx (own holiday-group.holidays.set event) so a group and
+    // its selection commit or roll back together.
+    if (p.holidayIds !== undefined) await setGroupHolidaysTx(tx, ctx, { groupId: row.id, holidayIds: p.holidayIds });
     return row;
   });
 }
 
 export async function updateHolidayGroup(
   ctx: SessionContext,
-  p: { id: string; name?: string; states?: string[]; archetype?: string; parentGroupId?: string | null },
+  // 66b8f5a8 — code/description/active (master fields) and holidayIds (tick-list) are all tri-state via
+  // `undefined` = leave untouched. holidayIds present ⇒ replace the junction set in this same tx.
+  p: {
+    id: string;
+    name?: string;
+    states?: string[];
+    archetype?: string;
+    parentGroupId?: string | null;
+    code?: string | null;
+    description?: string | null;
+    active?: boolean;
+    holidayIds?: string[];
+  },
 ) {
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
       .select({
         name: holidayGroup.name,
+        code: holidayGroup.code,
+        description: holidayGroup.description,
+        active: holidayGroup.active,
         states: holidayGroup.states,
         archetype: holidayGroup.archetype,
         parentGroupId: holidayGroup.parentGroupId,
@@ -1783,6 +1995,9 @@ export async function updateHolidayGroup(
       .limit(1);
     if (!before) throw new Error('Holiday group not found');
     const name = p.name !== undefined ? cleanName(p.name, 'Group name') : before.name;
+    const code = p.code !== undefined ? p.code?.trim() || null : before.code;
+    const description = p.description !== undefined ? p.description?.trim() || null : before.description;
+    const active = p.active ?? before.active;
     const archetype = p.archetype !== undefined ? cleanArchetype(p.archetype) : (before.archetype as HolidayGroupArchetype);
     // parentGroupId is tri-state: undefined → keep, ''/null → clear, an id → set (validated below).
     const parentGroupId =
@@ -1813,7 +2028,7 @@ export async function updateHolidayGroup(
     }
     await tx
       .update(holidayGroup)
-      .set({ name, states, archetype, parentGroupId })
+      .set({ name, code, description, active, states, archetype, parentGroupId })
       .where(eq(holidayGroup.id, p.id))
       .catch((e) => {
         if (isUniqueViolation(e)) throw new DuplicateError(`A holiday group named “${name}” already exists.`);
@@ -1828,13 +2043,18 @@ export async function updateHolidayGroup(
       payload: {
         before: {
           name: before.name,
+          code: before.code,
+          description: before.description,
+          active: before.active,
           states: before.states,
           archetype: before.archetype,
           parentGroupId: before.parentGroupId,
         },
-        after: { name, states, archetype, parentGroupId, parentName },
+        after: { name, code, description, active, states, archetype, parentGroupId, parentName },
       },
     });
+    // 66b8f5a8 — replace the ticked-holiday set in the SAME tx when the caller supplied one.
+    if (p.holidayIds !== undefined) await setGroupHolidaysTx(tx, ctx, { groupId: p.id, holidayIds: p.holidayIds });
     return { id: p.id };
   });
 }

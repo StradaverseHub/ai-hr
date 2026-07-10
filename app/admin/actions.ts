@@ -84,6 +84,8 @@ const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
+// 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
+const HOLIDAY_GROUPS = '/admin/holidays/groups';
 const ATTENDANCE_POLICY = '/admin/attendance';
 const TOIL_POLICY = '/admin/toil';
 const LOCATIONS = '/admin/locations';
@@ -661,20 +663,18 @@ function holidaysPath(formData: FormData): string {
 export async function createHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
-  // Scope drives which fields the service receives (ADR-0055 + R18 a519a96e): national → none, state →
-  // state only, group → companyId only, holidayGroup → holidayGroupId only. Reading the raw select fields
-  // directly and zeroing the irrelevant ones keeps the action consistent with the DB CHECK + service
-  // validation (single-axis scope).
-  const scope = String(formData.get('scope') ?? 'national');
+  // 66b8f5a8 — the simplified Holiday-master form no longer collects Scope / State / Business-group /
+  // Holiday-group. Every holiday added here is a plain national-country master record; the scope columns
+  // stay in the DB (backward compatible) but default to null. The form now collects the master fields.
   try {
     await createHoliday(s, {
       country: String(formData.get('country') ?? 'MY'),
       holidayDate: String(formData.get('holidayDate') ?? ''),
       name: String(formData.get('name') ?? ''),
-      state: scope === 'state' ? String(formData.get('state') ?? '') || null : null,
-      companyId: scope === 'group' ? String(formData.get('companyId') ?? '') || null : null,
-      // R18 a519a96e: a group-scoped "additional day" — applies only to staff on that group's calendar.
-      holidayGroupId: scope === 'holidayGroup' ? String(formData.get('holidayGroupId') ?? '') || null : null,
+      holidayCode: String(formData.get('holidayCode') ?? '') || null,
+      holidayType: String(formData.get('holidayType') ?? 'public'),
+      description: String(formData.get('description') ?? '') || null,
+      active: formData.get('active') === 'on',
       // ADR-0063: a provisional date for a not-yet-gazetted holiday (still counts as a holiday).
       tentative: formData.get('tentative') === 'on',
     });
@@ -684,7 +684,8 @@ export async function createHolidayAction(formData: FormData) {
   ok(path);
 }
 
-/** ADR-0063: edit an existing holiday's date + name + tentative flag (scope stays fixed). */
+/** ADR-0063 + 66b8f5a8: edit a holiday's date + name + tentative flag + the master fields (code/type/
+ *  description/active). Scope (state/company/holiday-group) stays fixed on existing rows. */
 export async function updateHolidayAction(formData: FormData) {
   const s = await getSession();
   const path = holidaysPath(formData);
@@ -693,6 +694,10 @@ export async function updateHolidayAction(formData: FormData) {
       id: String(formData.get('id')),
       holidayDate: String(formData.get('holidayDate') ?? ''),
       name: String(formData.get('name') ?? ''),
+      holidayCode: String(formData.get('holidayCode') ?? '') || null,
+      holidayType: String(formData.get('holidayType') ?? 'public'),
+      description: String(formData.get('description') ?? '') || null,
+      active: formData.get('active') === 'on',
       tentative: formData.get('tentative') === 'on',
     });
   } catch (e) {
@@ -712,38 +717,51 @@ export async function deleteHolidayAction(formData: FormData) {
   ok(path);
 }
 
-// ── Holiday groups (named multi-state bundles, assigned per employee) ──
+// ── Holiday groups (66b8f5a8 — dedicated Holiday Group tab + add/edit pages) ──
+// Groups keep their state engine (states/archetype/parentGroupId — MY state auto-resolution + inheritance)
+// AND gain the master fields (code/description/active) plus the reporter's tick-list (holidayIds → the
+// holiday_group_holiday junction). The resolver UNIONs the ticked holidays with the automatic result.
 export async function createHolidayGroupAction(formData: FormData) {
   const s = await getSession();
   try {
     await createHolidayGroup(s, {
       name: String(formData.get('name') ?? ''),
+      code: String(formData.get('code') ?? '') || null,
+      description: String(formData.get('description') ?? '') || null,
+      active: formData.get('active') === 'on',
       states: formData.getAll('states').map(String),
       archetype: String(formData.get('archetype') ?? '') || undefined,
       // R18 a519a96e: optional parent group — the child inherits the parent's calendar live.
       parentGroupId: String(formData.get('parentGroupId') ?? '') || null,
+      // 66b8f5a8: the ticked holidays from the master list.
+      holidayIds: formData.getAll('holidayIds').map(String),
     });
   } catch (e) {
-    fail(HOLIDAYS, e);
+    fail(`${HOLIDAY_GROUPS}/new`, e);
   }
-  ok(HOLIDAYS);
+  ok(HOLIDAY_GROUPS);
 }
 
 export async function updateHolidayGroupAction(formData: FormData) {
   const s = await getSession();
+  const id = String(formData.get('id'));
   try {
     await updateHolidayGroup(s, {
-      id: String(formData.get('id')),
+      id,
       name: String(formData.get('name') ?? ''),
+      code: String(formData.get('code') ?? '') || null,
+      description: String(formData.get('description') ?? '') || null,
+      active: formData.get('active') === 'on',
       states: formData.getAll('states').map(String),
       archetype: String(formData.get('archetype') ?? '') || undefined,
       // R18 a519a96e: the form always posts the select, so '' means "clear the parent" (service tri-state).
       parentGroupId: String(formData.get('parentGroupId') ?? '') || null,
+      holidayIds: formData.getAll('holidayIds').map(String),
     });
   } catch (e) {
-    fail(HOLIDAYS, e);
+    fail(`${HOLIDAY_GROUPS}/${id}`, e);
   }
-  ok(HOLIDAYS);
+  ok(HOLIDAY_GROUPS);
 }
 
 export async function deleteHolidayGroupAction(formData: FormData) {
@@ -751,9 +769,9 @@ export async function deleteHolidayGroupAction(formData: FormData) {
   try {
     await deleteHolidayGroup(s, { id: String(formData.get('id')) });
   } catch (e) {
-    fail(HOLIDAYS, e);
+    fail(HOLIDAY_GROUPS, e);
   }
-  ok(HOLIDAYS);
+  ok(HOLIDAY_GROUPS);
 }
 
 export async function openLeaveYearAction(formData: FormData) {

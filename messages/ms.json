@@ -3353,7 +3353,19 @@
       "calendarHint": "Hari yang diwarisi adalah baca sahaja di sini — sunting di sumbernya (kumpulan induk, senarai cuti umum atau syarikat pemiliknya). Hari yang ditambah pada kumpulan ini hanya terpakai kepada kakitangan pada kalendar ini.",
       "calendarBack": "Kembali ke semua cuti",
       "holidayGroupLabel": "Kumpulan cuti",
-      "holidayGroupPlaceholder": "Pilih kumpulan cuti…"
+      "holidayGroupPlaceholder": "Pilih kumpulan cuti…",
+      "holidayCodeLabel": "Kod cuti",
+      "holidayCodePlaceholder": "Pilihan",
+      "holidayTypeLabel": "Jenis cuti",
+      "holidayType": {
+        "public": "Cuti umum",
+        "company": "Cuti syarikat",
+        "optional": "Pilihan"
+      },
+      "descriptionLabel": "Keterangan",
+      "descriptionPlaceholder": "Pilihan",
+      "activeLabel": "Aktif",
+      "inactiveBadge": "Tidak aktif"
     },
     "users": {
       "title": "Pengguna & peranan",
@@ -3791,6 +3803,56 @@
         "country": "Negara",
         "relationship": "Hubungan"
       }
+    },
+    "holidayTabs": {
+      "holidays": "Cuti",
+      "groups": "Kumpulan Cuti"
+    },
+    "holidayGroups": {
+      "pageTitle": "Kumpulan cuti",
+      "pageDescription": "Koleksi cuti boleh guna semula yang boleh diberikan kepada pekerja melalui profil mereka",
+      "addNew": "Tambah Baharu",
+      "empty": "Belum ada kumpulan cuti. Cipta satu untuk memberikan kalendar cuti berkongsi kepada kakitangan.",
+      "codeCol": "Kod",
+      "nameCol": "Nama",
+      "statusCol": "Status",
+      "editAction": "Sunting",
+      "deleteAction": "Padam",
+      "statusActive": "Aktif",
+      "statusInactive": "Tidak aktif",
+      "newTitle": "Kumpulan cuti baharu",
+      "editTitle": "Sunting kumpulan cuti",
+      "infoSectionTitle": "Maklumat kumpulan cuti",
+      "codeLabel": "Kod kumpulan cuti",
+      "codePlaceholder": "Pilihan",
+      "nameLabel": "Nama kumpulan cuti",
+      "namePlaceholder": "Malaysia Nasional",
+      "descriptionLabel": "Keterangan",
+      "descriptionPlaceholder": "Pilihan",
+      "activeLabel": "Aktif",
+      "statesLabel": "Negeri ahli",
+      "statesHint": "Kumpulan ini secara automatik memasukkan cuti umum negeri-negeri Malaysia ini. Tahan Ctrl (atau Cmd) untuk memilih beberapa.",
+      "archetypeLabel": "Jenis",
+      "archetype": {
+        "standard": "Standard",
+        "extended": "Lanjutan",
+        "custom": "Tersuai"
+      },
+      "archetypeHint": "Standard = cuti umum diwartakan sahaja. Lanjutan = cuti umum tambah hari tambahan yang ditetapkan syarikat. Tersuai = hanya cuti yang anda pilih sendiri.",
+      "parentGroupLabel": "Kumpulan induk",
+      "parentGroupNone": "Tiada (kumpulan asas)",
+      "parentGroupHint": "Kumpulan yang mempunyai induk mewarisi keseluruhan kalendar induk dan sentiasa segerak apabila induk berubah. Satu peringkat pewarisan sahaja.",
+      "inheritsFrom": "Mewarisi daripada {name}",
+      "holidaysSectionTitle": "Pemilihan cuti",
+      "holidaysSectionHint": "Tandakan cuti daripada senarai induk yang tergolong dalam kumpulan ini. Cuti negeri Malaysia automatik masih dikira di atas pilihan anda.",
+      "selectCol": "Pilih",
+      "dateCol": "Tarikh",
+      "holidayNameCol": "Nama cuti",
+      "typeCol": "Jenis",
+      "noHolidays": "Belum ada cuti dalam senarai induk. Tambah cuti pada tab Cuti dahulu.",
+      "save": "Simpan kumpulan cuti",
+      "cancel": "Batal",
+      "back": "Kembali ke kumpulan cuti"
     }
   },
   "topbar": {
