@@ -3464,7 +3464,19 @@
       "calendarHint": "Inherited days are read-only here — edit them at their source (the parent group, the public holiday list or the owning company). Days added to this group apply only to staff on this calendar.",
       "calendarBack": "Back to all holidays",
       "holidayGroupLabel": "Holiday group",
-      "holidayGroupPlaceholder": "Select a holiday group…"
+      "holidayGroupPlaceholder": "Select a holiday group…",
+      "holidayCodeLabel": "Holiday code",
+      "holidayCodePlaceholder": "Optional",
+      "holidayTypeLabel": "Holiday type",
+      "holidayType": {
+        "public": "Public holiday",
+        "company": "Company holiday",
+        "optional": "Optional"
+      },
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional",
+      "activeLabel": "Active",
+      "inactiveBadge": "Inactive"
     },
     "users": {
       "title": "Users & roles",
@@ -3906,6 +3918,56 @@
         "country": "Country",
         "relationship": "Relationship"
       }
+    },
+    "holidayTabs": {
+      "holidays": "Holiday",
+      "groups": "Holiday Group"
+    },
+    "holidayGroups": {
+      "pageTitle": "Holiday groups",
+      "pageDescription": "Reusable holiday collections you can assign to employees on their profile",
+      "addNew": "Add New",
+      "empty": "No holiday groups yet. Create one to assign a shared holiday calendar to staff.",
+      "codeCol": "Code",
+      "nameCol": "Name",
+      "statusCol": "Status",
+      "editAction": "Edit",
+      "deleteAction": "Delete",
+      "statusActive": "Active",
+      "statusInactive": "Inactive",
+      "newTitle": "New holiday group",
+      "editTitle": "Edit holiday group",
+      "infoSectionTitle": "Holiday group information",
+      "codeLabel": "Holiday group code",
+      "codePlaceholder": "Optional",
+      "nameLabel": "Holiday group name",
+      "namePlaceholder": "Malaysia National",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional",
+      "activeLabel": "Active",
+      "statesLabel": "Member states",
+      "statesHint": "The group automatically includes the public holidays of these Malaysian states. Hold Ctrl (or Cmd) to select multiple.",
+      "archetypeLabel": "Kind",
+      "archetype": {
+        "standard": "Standard",
+        "extended": "Extended",
+        "custom": "Custom"
+      },
+      "archetypeHint": "Standard = official gazetted holidays only. Extended = official holidays plus company-defined extra days. Custom = only the holidays you hand-pick.",
+      "parentGroupLabel": "Parent group",
+      "parentGroupNone": "None (base group)",
+      "parentGroupHint": "A group with a parent inherits the parent's whole calendar and stays in sync when the parent changes. One level of inheritance only.",
+      "inheritsFrom": "Inherits from {name}",
+      "holidaysSectionTitle": "Holiday selection",
+      "holidaysSectionHint": "Tick the holidays from the master list that belong to this group. Automatic Malaysian state holidays still apply on top of your selection.",
+      "selectCol": "Select",
+      "dateCol": "Date",
+      "holidayNameCol": "Holiday name",
+      "typeCol": "Type",
+      "noHolidays": "No holidays in the master list yet. Add holidays on the Holiday tab first.",
+      "save": "Save holiday group",
+      "cancel": "Cancel",
+      "back": "Back to holiday groups"
     }
   },
   "topbar": {

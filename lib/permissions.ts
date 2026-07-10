@@ -204,7 +204,15 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/leave/approval'],
     hasScopeNote: true,
   },
-  { screenKey: 'holidays', href: '/admin/holidays', labelKey: 'nav.holidays', guard: 'requireAdmin', routes: ['/admin/holidays'] },
+  {
+    screenKey: 'holidays',
+    href: '/admin/holidays',
+    labelKey: 'nav.holidays',
+    guard: 'requireAdmin',
+    // 66b8f5a8: Holiday split into two tabs — Holiday master (/admin/holidays) + Holiday Group
+    // (/admin/holidays/groups) with dedicated add/edit pages. All requireAdmin (same guard as before).
+    routes: ['/admin/holidays', '/admin/holidays/groups', '/admin/holidays/groups/new', '/admin/holidays/groups/[id]'],
+  },
   {
     screenKey: 'attendancePolicy',
     href: '/admin/attendance',

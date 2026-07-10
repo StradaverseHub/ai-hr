@@ -1758,6 +1758,13 @@ export const holiday = pgTable(
     // gazetted only days ahead). A tentative holiday STILL counts as a holiday everywhere (leave/rest-day/
     // payroll) — the flag is purely a visible "confirm me" marker; excluding it would under-count.
     tentative: boolean('tentative').notNull().default(false),
+    // 66b8f5a8 — Holiday master fields (migration 0190). Self-describing metadata for the centralized
+    // holiday library; the resolver (core/holidays.ts) does NOT read these — they are display /
+    // classification only, so existing resolution is byte-identical.
+    holidayCode: text('holiday_code'), // optional HR-facing short code
+    holidayType: text('holiday_type').notNull().default('public'), // public | company | optional (CHECK 0190)
+    description: text('description'), // optional free text
+    active: boolean('active').notNull().default(true), // inactive rows still exist, flagged in the UI
     createdAt: createdAt(),
   },
   // One holiday per (tenant, country, date, state-or-national, company-or-nil). coalesce keeps the NULL
@@ -1801,6 +1808,10 @@ export const holidayGroup = pgTable(
     id: id(),
     tenantId: tenantId(),
     name: text('name').notNull(),
+    // 66b8f5a8 — Holiday Group master fields (migration 0190) for the dedicated group page's info section.
+    code: text('code'), // optional group code (shown as the first column of the Holiday Group list)
+    description: text('description'), // optional free text
+    active: boolean('active').notNull().default(true),
     states: jsonb('states').notNull().default(sql`'[]'::jsonb`), // string[] of MY_STATES labels
     archetype: holidayGroupArchetypeEnum('archetype').notNull().default('standard'),
     // R18 a519a96e (group inheritance): a group may inherit from ONE parent group. The parent contributes
@@ -1819,6 +1830,28 @@ export const holidayGroup = pgTable(
     uniqueIndex('holiday_group_name_uq').on(t.tenantId, sql`lower(${t.name})`),
     check('holiday_group_no_self_parent', sql`${t.parentGroupId} IS NULL OR ${t.parentGroupId} <> ${t.id}`),
   ],
+);
+
+// 66b8f5a8 — Holiday-group ↔ holiday junction (migration 0190). The reporter's "tick-list" model: HR ticks
+// holidays from the centralized master list into a group. This is layered OVER the existing state engine —
+// the resolver (core/holidays.ts) UNIONs the explicitly-ticked holidays here WITH the automatic
+// state/archetype/inheritance result, so MY state auto-resolution + parent-to-child auto-sync are preserved.
+// Both FKs ON DELETE CASCADE: deleting a group or a holiday removes its memberships. Admin-only writes (RLS
+// 0190), tenant-scoped read for any member (the resolver SELECTs it).
+export const holidayGroupHoliday = pgTable(
+  'holiday_group_holiday',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    holidayGroupId: uuid('holiday_group_id')
+      .notNull()
+      .references((): AnyPgColumn => holidayGroup.id, { onDelete: 'cascade' }),
+    holidayId: uuid('holiday_id')
+      .notNull()
+      .references((): AnyPgColumn => holiday.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('holiday_group_holiday_uq').on(t.holidayGroupId, t.holidayId)],
 );
 
 // ──────────────────────── Attendance (generic) ────────────────────────

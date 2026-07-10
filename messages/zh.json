@@ -3464,7 +3464,19 @@
       "calendarHint": "继承的假日在此为只读——请在其来源（上级分组、公共假期列表或所属公司）编辑。添加到本组的假日仅适用于使用此日历的员工。",
       "calendarBack": "返回全部假日",
       "holidayGroupLabel": "假期分组",
-      "holidayGroupPlaceholder": "选择假期分组…"
+      "holidayGroupPlaceholder": "选择假期分组…",
+      "holidayCodeLabel": "假期代码",
+      "holidayCodePlaceholder": "可选",
+      "holidayTypeLabel": "假期类型",
+      "holidayType": {
+        "public": "公共假期",
+        "company": "公司假期",
+        "optional": "可选假期"
+      },
+      "descriptionLabel": "描述",
+      "descriptionPlaceholder": "可选",
+      "activeLabel": "启用",
+      "inactiveBadge": "停用"
     },
     "users": {
       "title": "用户与角色",
@@ -3906,6 +3918,56 @@
         "country": "国家",
         "relationship": "关系"
       }
+    },
+    "holidayTabs": {
+      "holidays": "假期",
+      "groups": "假期组"
+    },
+    "holidayGroups": {
+      "pageTitle": "假期组",
+      "pageDescription": "可重复使用的假期集合，可在员工档案中分配给员工",
+      "addNew": "新增",
+      "empty": "暂无假期组。创建一个以便为员工分配共享的假期日历。",
+      "codeCol": "代码",
+      "nameCol": "名称",
+      "statusCol": "状态",
+      "editAction": "编辑",
+      "deleteAction": "删除",
+      "statusActive": "启用",
+      "statusInactive": "停用",
+      "newTitle": "新建假期组",
+      "editTitle": "编辑假期组",
+      "infoSectionTitle": "假期组信息",
+      "codeLabel": "假期组代码",
+      "codePlaceholder": "可选",
+      "nameLabel": "假期组名称",
+      "namePlaceholder": "马来西亚全国",
+      "descriptionLabel": "描述",
+      "descriptionPlaceholder": "可选",
+      "activeLabel": "启用",
+      "statesLabel": "成员州属",
+      "statesHint": "该组会自动包含这些马来西亚州属的公共假期。按住 Ctrl（或 Cmd）可多选。",
+      "archetypeLabel": "类型",
+      "archetype": {
+        "standard": "标准",
+        "extended": "扩展",
+        "custom": "自定义"
+      },
+      "archetypeHint": "标准 = 仅官方公布的假期。扩展 = 官方假期加上公司自定义的额外假期。自定义 = 仅您手动挑选的假期。",
+      "parentGroupLabel": "父组",
+      "parentGroupNone": "无（基础组）",
+      "parentGroupHint": "拥有父组的组会继承父组的整个日历，并在父组变动时保持同步。仅支持一级继承。",
+      "inheritsFrom": "继承自 {name}",
+      "holidaysSectionTitle": "假期选择",
+      "holidaysSectionHint": "从主列表中勾选属于该组的假期。自动的马来西亚州属假期仍会在您的选择之外照常生效。",
+      "selectCol": "选择",
+      "dateCol": "日期",
+      "holidayNameCol": "假期名称",
+      "typeCol": "类型",
+      "noHolidays": "主列表中暂无假期。请先在“假期”标签页添加假期。",
+      "save": "保存假期组",
+      "cancel": "取消",
+      "back": "返回假期组"
     }
   },
   "topbar": {

@@ -47,7 +47,7 @@ import { and, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { SessionContext, Tx } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { assignment, company, employment, holiday, holidayGroup, location } from '../db/schema';
+import { assignment, company, employment, holiday, holidayGroup, holidayGroupHoliday, location } from '../db/schema';
 
 // ADR-0067 — the LOCATION's named holiday calendar is a holiday_group row joined a SECOND time (the first
 // holidayGroup join is the per-employee assigned group, ADR-0040). Aliased so the two joins don't collide.
@@ -345,6 +345,34 @@ export async function holidayDatesFor(tx: Tx, { employmentId, startDate, endDate
           )
       ).map((h) => h.d)
     : [];
+
+  // ── 66b8f5a8 — explicitly TICKED holidays (holiday_group_holiday junction) ─────────────────────────
+  // The reporter's tick-list model, delivered as a UNION (NOT a replacement — a replacement would drop MY
+  // state auto-resolution + parent-to-child auto-sync). HR ticks holidays from the centralized master list
+  // into a group; here we pull the dates ticked into the active calendar CHAIN (group + its parent) and
+  // ADD them to whatever the state/archetype/inheritance resolution below produces. Unlike chainExtras
+  // (group-SCOPED "additional day" rows keyed on holiday.holiday_group_id), these reference ANY master
+  // holiday (national/state/company/other-group rows) — so a group can pick up, e.g., another state's
+  // holiday without owning it. Additive to every return path (empty chain ⇒ no-op, byte-identical).
+  const chainTicked: string[] = chainIds.length
+    ? (
+        await tx
+          .select({ d: holiday.holidayDate })
+          .from(holidayGroupHoliday)
+          .innerJoin(holiday, eq(holiday.id, holidayGroupHoliday.holidayId))
+          .where(
+            and(
+              inArray(holidayGroupHoliday.holidayGroupId, chainIds),
+              gte(holiday.holidayDate, startDate),
+              lte(holiday.holidayDate, endDate),
+              eq(holiday.country, emp.country),
+            ),
+          )
+      ).map((h) => h.d)
+    : [];
+  // Fold the ticked dates into chainExtras so EVERY resolution branch below (which already spreads
+  // ...chainExtras into its result Set) unions them without further edits.
+  chainExtras.push(...chainTicked);
 
   // ── ADR-0067 archetype pre-check — runs ONLY when the open assignment's location maps to a CALENDAR.
   // When unmapped (mappedCalendar IS NULL) we fall through to the Step 1 / Step 2 SQL *untouched*, which is
