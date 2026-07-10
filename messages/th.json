@@ -811,7 +811,35 @@
         "debit": "ลาที่ใช้ไป",
         "adjustment": "การปรับปรุง",
         "inLieuAccrual": "สะสมชดเชย"
-      }
+      },
+      "section": {
+        "summary": "สรุปการลา",
+        "entitlement": "รายละเอียดสิทธิ์",
+        "utilization": "การใช้วันลา",
+        "adjustments": "การปรับปรุง",
+        "upcoming": "วันลาที่กำลังจะมาถึง",
+        "transactions": "ประวัติรายการ",
+        "calcBreakdown": "รายละเอียดการคำนวณสิทธิ์"
+      },
+      "field": {
+        "available": "คงเหลือ",
+        "taken": "ใช้ไปแล้ว",
+        "pendingApproval": "รอการอนุมัติ",
+        "ytdEntitled": "สิทธิ์สะสมปีนี้",
+        "entitlementToDate": "สิทธิ์จนถึงปัจจุบัน",
+        "broughtForward": "ยกมา",
+        "expiredBroughtForward": "ยกมาที่หมดอายุ",
+        "carryForwardExpiry": "วันหมดอายุยอดยกมา",
+        "forfeited": "ยอดที่ถูกริบ",
+        "unplanned": "ไม่ได้วางแผน",
+        "overutilized": "ใช้เกิน",
+        "adjustment": "การปรับปรุง"
+      },
+      "panelSubtitle": "ณ วันที่ {date}",
+      "close": "ปิด",
+      "noUpcoming": "ไม่มีวันลาที่อนุมัติที่กำลังจะมาถึง",
+      "daysCount": "{count} วัน",
+      "colBalanceChange": "การเปลี่ยนแปลงยอด"
     },
     "preview": {
       "willDeduct": "จะหัก {days} วัน",

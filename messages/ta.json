@@ -811,7 +811,35 @@
         "debit": "எடுத்த விடுப்பு",
         "adjustment": "சரிசெய்தல்",
         "inLieuAccrual": "ஈடாக சேர்க்கை"
-      }
+      },
+      "section": {
+        "summary": "விடுப்பு சுருக்கம்",
+        "entitlement": "உரிமை விவரம்",
+        "utilization": "விடுப்பு பயன்பாடு",
+        "adjustments": "சரிசெய்தல்கள்",
+        "upcoming": "வரவிருக்கும் விடுப்பு",
+        "transactions": "பரிவர்த்தனை வரலாறு",
+        "calcBreakdown": "உரிமை கணக்கீட்டு விவரம்"
+      },
+      "field": {
+        "available": "கிடைக்கக்கூடியது",
+        "taken": "எடுக்கப்பட்டது",
+        "pendingApproval": "ஒப்புதலுக்கு நிலுவையில்",
+        "ytdEntitled": "இந்த ஆண்டு உரிமை",
+        "entitlementToDate": "இன்றுவரை உரிமை",
+        "broughtForward": "முன்கொணரப்பட்டது",
+        "expiredBroughtForward": "காலாவதியான முன்கொணர்வு",
+        "carryForwardExpiry": "முன்கொணர்வு காலாவதி தேதி",
+        "forfeited": "பறிமுதல் இருப்பு",
+        "unplanned": "திட்டமிடப்படாதது",
+        "overutilized": "அதிகப் பயன்பாடு",
+        "adjustment": "சரிசெய்தல்"
+      },
+      "panelSubtitle": "{date} வரை",
+      "close": "மூடு",
+      "noUpcoming": "வரவிருக்கும் அங்கீகரிக்கப்பட்ட விடுப்பு இல்லை.",
+      "daysCount": "{count} நாட்கள்",
+      "colBalanceChange": "இருப்பு மாற்றம்"
     },
     "preview": {
       "willDeduct": "இது {days} நாள்(கள்) கழிக்கும்",

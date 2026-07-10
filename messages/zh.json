@@ -811,7 +811,35 @@
         "debit": "已休假",
         "adjustment": "调整",
         "inLieuAccrual": "补休累计"
-      }
+      },
+      "section": {
+        "summary": "假期摘要",
+        "entitlement": "应享明细",
+        "utilization": "假期使用情况",
+        "adjustments": "调整",
+        "upcoming": "即将到来的假期",
+        "transactions": "交易记录",
+        "calcBreakdown": "应享计算明细"
+      },
+      "field": {
+        "available": "可用",
+        "taken": "已使用",
+        "pendingApproval": "待批准",
+        "ytdEntitled": "年初至今应享",
+        "entitlementToDate": "截至目前应享",
+        "broughtForward": "结转",
+        "expiredBroughtForward": "已过期结转",
+        "carryForwardExpiry": "结转到期日",
+        "forfeited": "被没收余额",
+        "unplanned": "非计划",
+        "overutilized": "超额使用",
+        "adjustment": "调整"
+      },
+      "panelSubtitle": "截至 {date}",
+      "close": "关闭",
+      "noUpcoming": "没有即将到来的已批准假期。",
+      "daysCount": "{count} 天",
+      "colBalanceChange": "余额变动"
     },
     "preview": {
       "willDeduct": "将扣除 {days} 天",

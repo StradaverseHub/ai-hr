@@ -1200,6 +1200,13 @@ export default async function MePage({
                         {showBreakdown && breakdownByType.get(b.leaveTypeId) && (
                           <EntitlementBreakdown
                             data={breakdownByType.get(b.leaveTypeId)!}
+                            summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                            // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by
+                            // localized name; both sides resolve via the same pickName + locale).
+                            upcoming={requests
+                              .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                              .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                            visual={{ color: b.color, icon: b.icon, code: b.code }}
                             asOf={breakdownAsOf}
                             action="/me"
                             hiddenParams={{ tab: 'leave' }}

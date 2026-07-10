@@ -918,6 +918,12 @@ export default async function EmployeePage({
               {breakdownByType.get(b.leaveTypeId) && (
                 <EntitlementBreakdown
                   data={breakdownByType.get(b.leaveTypeId)!}
+                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                  // §5 Upcoming Approved Leave — approved + future requests for THIS type (name-matched).
+                  upcoming={requests
+                    .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                    .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                  visual={{ color: b.color, icon: b.icon, code: b.code }}
                   asOf={breakdownAsOf}
                   action={`/admin/personnel/${employmentId}`}
                   hiddenParams={from ? { from } : {}}

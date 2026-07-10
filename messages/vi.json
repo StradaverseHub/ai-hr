@@ -811,7 +811,35 @@
         "debit": "Nghỉ đã dùng",
         "adjustment": "Điều chỉnh",
         "inLieuAccrual": "Tích lũy bù"
-      }
+      },
+      "section": {
+        "summary": "Tóm tắt nghỉ phép",
+        "entitlement": "Chi tiết quyền lợi",
+        "utilization": "Sử dụng nghỉ phép",
+        "adjustments": "Điều chỉnh",
+        "upcoming": "Nghỉ phép sắp tới",
+        "transactions": "Lịch sử giao dịch",
+        "calcBreakdown": "Chi tiết tính quyền lợi"
+      },
+      "field": {
+        "available": "Khả dụng",
+        "taken": "Đã dùng",
+        "pendingApproval": "Chờ phê duyệt",
+        "ytdEntitled": "Quyền lợi từ đầu năm",
+        "entitlementToDate": "Quyền lợi đến nay",
+        "broughtForward": "Chuyển sang",
+        "expiredBroughtForward": "Chuyển sang đã hết hạn",
+        "carryForwardExpiry": "Ngày hết hạn chuyển sang",
+        "forfeited": "Số dư bị tịch thu",
+        "unplanned": "Không kế hoạch",
+        "overutilized": "Sử dụng vượt mức",
+        "adjustment": "Điều chỉnh"
+      },
+      "panelSubtitle": "Tính đến {date}",
+      "close": "Đóng",
+      "noUpcoming": "Không có nghỉ phép đã duyệt sắp tới.",
+      "daysCount": "{count} ngày",
+      "colBalanceChange": "Thay đổi số dư"
     },
     "preview": {
       "willDeduct": "Việc này sẽ trừ {days} ngày",

@@ -811,7 +811,35 @@
         "debit": "Cuti diambil",
         "adjustment": "Pelarasan",
         "inLieuAccrual": "Terkumpul ganti"
-      }
+      },
+      "section": {
+        "summary": "Ringkasan cuti",
+        "entitlement": "Pecahan kelayakan",
+        "utilization": "Penggunaan cuti",
+        "adjustments": "Pelarasan",
+        "upcoming": "Cuti akan datang",
+        "transactions": "Sejarah transaksi",
+        "calcBreakdown": "Pecahan pengiraan kelayakan"
+      },
+      "field": {
+        "available": "Tersedia",
+        "taken": "Diambil",
+        "pendingApproval": "Menunggu kelulusan",
+        "ytdEntitled": "Kelayakan setakat ini",
+        "entitlementToDate": "Kelayakan setakat tarikh",
+        "broughtForward": "Bawa ke hadapan",
+        "expiredBroughtForward": "Bawa hadapan luput",
+        "carryForwardExpiry": "Tarikh luput bawa hadapan",
+        "forfeited": "Baki dilucuthak",
+        "unplanned": "Tidak dirancang",
+        "overutilized": "Penggunaan berlebihan",
+        "adjustment": "Pelarasan"
+      },
+      "panelSubtitle": "Setakat {date}",
+      "close": "Tutup",
+      "noUpcoming": "Tiada cuti diluluskan akan datang.",
+      "daysCount": "{count} hari",
+      "colBalanceChange": "Perubahan baki"
     },
     "preview": {
       "willDeduct": "Ini akan menolak {days} hari",

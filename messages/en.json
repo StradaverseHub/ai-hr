@@ -811,7 +811,35 @@
         "debit": "Leave taken",
         "adjustment": "Adjustment",
         "inLieuAccrual": "In-lieu accrual"
-      }
+      },
+      "section": {
+        "summary": "Leave summary",
+        "entitlement": "Entitlement breakdown",
+        "utilization": "Leave utilization",
+        "adjustments": "Adjustments",
+        "upcoming": "Upcoming leave",
+        "transactions": "Transaction history",
+        "calcBreakdown": "Entitlement calculation breakdown"
+      },
+      "field": {
+        "available": "Available",
+        "taken": "Taken",
+        "pendingApproval": "Pending approval",
+        "ytdEntitled": "YTD entitled",
+        "entitlementToDate": "Entitlement to date",
+        "broughtForward": "Brought forward",
+        "expiredBroughtForward": "Expired brought forward",
+        "carryForwardExpiry": "Carry-forward expiry date",
+        "forfeited": "Forfeited balance",
+        "unplanned": "Unplanned",
+        "overutilized": "Overutilized",
+        "adjustment": "Adjustment"
+      },
+      "panelSubtitle": "As at {date}",
+      "close": "Close",
+      "noUpcoming": "No upcoming approved leave.",
+      "daysCount": "{count} days",
+      "colBalanceChange": "Balance change"
     },
     "preview": {
       "willDeduct": "This will deduct {days} day(s)",
