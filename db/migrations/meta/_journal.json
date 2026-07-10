@@ -1289,6 +1289,48 @@
       "when": 1781862182000,
       "tag": "0183_job_grade_name_uq",
       "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "7",
+      "when": 1781862183000,
+      "tag": "0184_employment_info_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1781862184000,
+      "tag": "0185_dependent_family_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1781862185000,
+      "tag": "0186_employee_document",
+      "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1781862186000,
+      "tag": "0187_payroll_policy_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "7",
+      "when": 1781862187000,
+      "tag": "0188_shift_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "7",
+      "when": 1781862188000,
+      "tag": "0189_system_label_short_code",
+      "breakpoints": true
     }
   ]
 }
