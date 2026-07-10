@@ -31,6 +31,7 @@ import {
   setContactAddressAction,
   setEmergencyContactAction,
   setEmploymentComponentAction,
+  setEmploymentInfoAction,
   setLocationAction,
   setPersonAction,
   setPersonPhotoAction,
@@ -44,7 +45,7 @@ import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
 import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, DEPENDENT_RELATIONSHIPS, DEPENDENT_GENDERS } from '@/core/dependents';
+import { listDependents, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
@@ -56,7 +57,8 @@ import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
-import { PersonnelTabs } from '@/components/personnel-tabs';
+import { DocumentsSection } from './documents-section';
+import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
@@ -95,7 +97,14 @@ export default async function EmployeePage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string; asOf?: string; encashmentError?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    from?: string;
+    cp38Error?: string;
+    asOf?: string;
+    encashmentError?: string;
+    tab?: string;
+  }>;
 }) {
   const s = await requireAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.detail');
@@ -103,7 +112,7 @@ export default async function EmployeePage({
   const tc = await getTranslations('people.detail.clocking');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from, cp38Error, asOf: spAsOf, encashmentError } = await searchParams;
+  const { error, from, cp38Error, asOf: spAsOf, encashmentError, tab } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -208,13 +217,39 @@ export default async function EmployeePage({
       default: return '—';
     }
   };
+  // 4535b733 — marriage-status label as a static switch (same i18n-coverage guarantee as above).
+  const marriageStatusLabel = (m: string | null) => {
+    switch (m) {
+      case 'married': return t('family.marriageStatus.married');
+      case 'divorced': return t('family.marriageStatus.divorced');
+      case 'widowed': return t('family.marriageStatus.widowed');
+      case 'separated': return t('family.marriageStatus.separated');
+      default: return '—';
+    }
+  };
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
+    // Career Movement (feedback 5296d984): employment lifecycle events — Assignment History, Transfer
+    // (Effective-Dated) and Terminate — relocated OUT of the Employment tab into a dedicated home. The
+    // Employment tab keeps the "how they work" master data (reporting lines, delegations); the lifecycle
+    // "events that change employment over time" now live here. Same cards, same server actions
+    // (transferAction / terminateAction keep their existing DomainEvents), only regrouped. Positioned
+    // right after Employment so the person's static setup sits next to the actions that move them.
+    { key: 'careerMovement', label: t('tabs.careerMovement') },
+    // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that
+    // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking
+    // Locations & Geofencing) into one dedicated tab. Same cards, same server actions — only regrouped.
+    // Positioned right after Employment so the operational attendance setup sits next to the role/posting.
+    { key: 'attendance', label: t('tabs.attendance') },
+    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — which already co-locates the
+    // salary-payment bank fields alongside EPF/SOCSO/EIS/PCB — is relocated here out of the Payroll tab,
+    // giving all pay-related master data its own clearly-named home. Positioned before Payroll.
+    { key: 'bankStatutory', label: t('tabs.bankStatutory') },
     { key: 'payroll', label: t('tabs.payroll') },
     { key: 'leave', label: t('tabs.leave') },
     { key: 'documents', label: t('tabs.documents') },
@@ -721,127 +756,197 @@ export default async function EmployeePage({
   ) : null;
 
   // ── FAMILY ─────────────────────────────────────────────────────────────────
-  // Personnel — Family & Dependents (phase 1). Per-PERSON benefits/insurance register: name +
-  // relationship + DOB + optional beneficiary flag. Admin-maintained (RLS is_admin write); does NOT
-  // feed the tax num_children figure and is distinct from the emergency contact.
+  // Personnel — Family & Dependents. 4535b733 enhancement: the flat register is partitioned server-side
+  // into three logical, collapsible sections — Spouse / Children / Other Dependants — each with a
+  // full-field Add + Edit + Remove UI. Admin-maintained (RLS is_admin write); does NOT feed the tax
+  // num_children figure and is distinct from the emergency contact. Spouse-only (marriage / spouse
+  // employment) and child-only (student status / school) fields render only in their own section.
+  const spouseDeps = dependents.filter((d) => d.relationship === 'spouse');
+  const childDeps = dependents.filter((d) => d.relationship === 'child');
+  const otherDeps = dependents.filter((d) => d.relationship !== 'spouse' && d.relationship !== 'child');
+  // Multi-line inputs (residential / employer address) — same look as inputCls but taller, auto-height.
+  const taCls = `${inputCls.replace('h-9', 'min-h-16')} py-2`;
+  type FamilySection = 'spouse' | 'child' | 'other';
+
+  // A tri-state checkbox: a hidden `${name}__present` marker lets the server tell "unticked" (posts
+  // nothing) apart from "field absent on this section's form".
+  const familyCheckbox = (name: string, checked: boolean, label: string) => (
+    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <input type="hidden" name={`${name}__present`} value="1" />
+      <input type="checkbox" name={name} defaultChecked={checked} />
+      {label}
+    </label>
+  );
+
+  // Shared field inputs for one dependent form. `section` selects which grouped fields appear; `d` is the
+  // existing row (null on the Add form). Every control is named exactly as its server-side field.
+  const dependentFields = (section: FamilySection, d: DependentRow | null) => (
+    <>
+      <Field label={t('family.name')}>
+        <input name="fullName" required defaultValue={d?.fullName ?? ''} placeholder={t('family.namePlaceholder')} className={inputCls} />
+      </Field>
+      {section === 'other' ? (
+        <Field label={t('family.relationship')}>
+          <select name="relationship" required defaultValue={d?.relationship ?? 'other'} className={inputCls}>
+            {(['parent', 'sibling', 'other'] as const).map((r) => (
+              <option key={r} value={r}>{relationshipLabel(r)}</option>
+            ))}
+          </select>
+        </Field>
+      ) : (
+        <input type="hidden" name="relationship" value={section} />
+      )}
+      <Field label={t('family.genderLabel')}>
+        <select name="gender" defaultValue={d?.gender ?? ''} className={inputCls}>
+          <option value="">{t('family.genderUnset')}</option>
+          {DEPENDENT_GENDERS.map((g) => (<option key={g} value={g}>{genderLabel(g)}</option>))}
+        </select>
+      </Field>
+      <Field label={t('family.dateOfBirth')}>
+        <input name="dateOfBirth" type="date" defaultValue={d?.dateOfBirth ?? ''} className={inputCls} />
+      </Field>
+      <Field label={t('family.contactNumber')}>
+        <input name="phone" type="tel" defaultValue={d?.phone ?? ''} className={inputCls} />
+      </Field>
+      <Field label={section === 'child' ? t('family.icOrBirthCert') : t('family.newIc')}>
+        <input name="icOrPassport" defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
+      </Field>
+      {section !== 'child' && (
+        <Field label={t('family.passportNumber')}>
+          <input name="passportNumber" defaultValue={d?.passportNumber ?? ''} className={inputCls} />
+        </Field>
+      )}
+      {section !== 'child' && (
+        <div className="sm:col-span-2">
+          <Field label={t('family.residentialAddress')}>
+            <textarea name="residentialAddress" rows={2} defaultValue={d?.residentialAddress ?? ''} className={taCls} />
+          </Field>
+        </div>
+      )}
+      {section === 'spouse' && (
+        <>
+          <Field label={t('family.marriageDate')}>
+            <input name="marriageDate" type="date" defaultValue={d?.marriageDate ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('family.marriageStatusLabel')}>
+            <select name="marriageStatus" defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
+              <option value="">{t('family.genderUnset')}</option>
+              {DEPENDENT_MARRIAGE_STATUSES.map((m) => (<option key={m} value={m}>{marriageStatusLabel(m)}</option>))}
+            </select>
+          </Field>
+          <Field label={t('family.occupation')}>
+            <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
+          </Field>
+          <Field label={t('family.companyName')}>
+            <input name="companyName" defaultValue={d?.companyName ?? ''} className={inputCls} />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label={t('family.employerAddress')}>
+              <textarea name="employerAddress" rows={2} defaultValue={d?.employerAddress ?? ''} className={taCls} />
+            </Field>
+          </div>
+        </>
+      )}
+      {section === 'other' && (
+        <Field label={t('family.occupation')}>
+          <input name="occupation" defaultValue={d?.occupation ?? ''} className={inputCls} />
+        </Field>
+      )}
+      {section === 'child' && (
+        <Field label={t('family.schoolName')}>
+          <input name="schoolName" defaultValue={d?.schoolName ?? ''} className={inputCls} />
+        </Field>
+      )}
+      <Field label={t('family.remarks')}>
+        <input name="remarks" type="text" defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
+      </Field>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+        {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
+        {section === 'spouse' && familyCheckbox('spouseWorking', d?.spouseWorking ?? false, t('family.currentlyWorking'))}
+        {section === 'child' && familyCheckbox('isStudent', d?.isStudent ?? false, t('family.studentStatus'))}
+        {familyCheckbox('isDeceased', d?.isDeceased ?? false, t('family.deceasedStatus'))}
+      </div>
+    </>
+  );
+
+  // One existing record: a collapsible card whose body is the full-field edit form + a Remove form.
+  const familyEditCard = (section: FamilySection, d: DependentRow) => (
+    <details key={d.id} className="rounded-md border border-border">
+      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm font-medium">
+        <span>{d.fullName}</span>
+        <span className="text-xs text-muted-foreground">{relationshipLabel(d.relationship)}</span>
+        {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
+        {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
+      </summary>
+      <div className="border-t border-border p-3">
+        <form action={editDependentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="id" value={d.id} />
+          {dependentFields(section, d)}
+          <div className="sm:col-span-2 flex items-center gap-4">
+            <button className={btnPrimary}>{t('family.save')}</button>
+          </div>
+        </form>
+        <form action={archiveDependentAction} className="mt-2">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="id" value={d.id} />
+          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
+            {t('family.delete')}
+          </button>
+        </form>
+      </div>
+    </details>
+  );
+
+  // The Add form for a section (collapsed by default).
+  const familyAddCard = (section: FamilySection, addLabel: string) => (
+    <details className="rounded-md border border-dashed border-border">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-primary">{addLabel}</summary>
+      <div className="border-t border-border p-3">
+        <form action={addDependentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {dependentFields(section, null)}
+          <div className="sm:col-span-2">
+            <button className={btnPrimary}>{t('family.add')}</button>
+          </div>
+        </form>
+      </div>
+    </details>
+  );
+
+  const familySection = (
+    titleKey: string,
+    emptyKey: string,
+    addLabelKey: string,
+    section: FamilySection,
+    rows: DependentRow[],
+  ) => (
+    <details open className="border-t border-border">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+        {t(titleKey)} <span className="font-normal text-muted-foreground">({rows.length})</span>
+      </summary>
+      <div className="space-y-2 px-4 pb-4">
+        {rows.length > 0
+          ? rows.map((d) => familyEditCard(section, d))
+          : <p className="text-sm text-muted-foreground">{t(emptyKey)}</p>}
+        {familyAddCard(section, t(addLabelKey))}
+      </div>
+    </details>
+  );
+
   const familyPanel = admin ? (
     <Card id="section-family" className="overflow-hidden">
       <SectionHeader title={t('family.title')} count={dependents.length} />
-          <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-            {t('family.note')}
-          </p>
-          {dependents.length > 0 ? (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">{t('family.name')}</th>
-                  <th className="px-4 py-2 font-medium">{t('family.relationship')}</th>
-                  <th className="px-4 py-2 font-medium">{t('family.dateOfBirth')}</th>
-                  <th className="px-4 py-2 font-medium">{t('family.genderLabel')}</th>
-                  <th className="px-4 py-2 font-medium">{t('family.beneficiary')}</th>
-                  <th className="px-4 py-2 font-medium">{t('family.actions')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {dependents.map((d) => (
-                  <tr key={d.id}>
-                    <td className="px-4 py-2.5 font-medium">{d.fullName}</td>
-                    <td className="px-4 py-2.5">{relationshipLabel(d.relationship)}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{d.dateOfBirth ?? '—'}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{genderLabel(d.gender)}</td>
-                    <td className="px-4 py-2.5">
-                      {d.isBeneficiary ? (
-                        <Badge variant="success">{t('family.yes')}</Badge>
-                      ) : (
-                        <span className="text-muted-foreground">{t('family.no')}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex flex-wrap items-end gap-3">
-                        <form action={editDependentAction} className="flex flex-wrap items-end gap-1.5">
-                          <input type="hidden" name="employmentId" value={emp.employmentId} />
-                          <input type="hidden" name="id" value={d.id} />
-                          <select
-                            name="relationship"
-                            defaultValue={d.relationship}
-                            className={`${inputCls} w-28`}
-                            aria-label={t('family.relationship')}
-                          >
-                            {DEPENDENT_RELATIONSHIPS.map((r) => (
-                              <option key={r} value={r}>
-                                {relationshipLabel(r)}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            name="dateOfBirth"
-                            type="date"
-                            defaultValue={d.dateOfBirth ?? ''}
-                            className={`${inputCls} w-40`}
-                            aria-label={t('family.dateOfBirth')}
-                          />
-                          <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <input type="checkbox" name="isBeneficiary" defaultChecked={d.isBeneficiary} />
-                            {t('family.beneficiary')}
-                          </label>
-                          <button className="text-xs font-medium text-primary hover:underline">
-                            {t('family.save')}
-                          </button>
-                        </form>
-                        <form action={archiveDependentAction}>
-                          <input type="hidden" name="employmentId" value={emp.employmentId} />
-                          <input type="hidden" name="id" value={d.id} />
-                          <button className="text-xs font-medium text-rose-600 hover:underline dark:text-rose-400">
-                            {t('family.delete')}
-                          </button>
-                        </form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p className="px-4 py-3 text-sm text-muted-foreground">{t('family.none')}</p>
-          )}
-          <form action={addDependentAction} className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-3">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            <input type="hidden" name="personId" value={emp.personId} />
-            <Field label={t('family.name')}>
-              <input name="fullName" required placeholder={t('family.namePlaceholder')} className={inputCls} />
-            </Field>
-            <Field label={t('family.relationship')}>
-              <select name="relationship" required defaultValue="child" className={inputCls}>
-                {DEPENDENT_RELATIONSHIPS.map((r) => (
-                  <option key={r} value={r}>
-                    {relationshipLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('family.dateOfBirth')}>
-              <input name="dateOfBirth" type="date" className={inputCls} />
-            </Field>
-            <Field label={t('family.genderLabel')}>
-              <select name="gender" defaultValue="" className={inputCls}>
-                <option value="">{t('family.genderUnset')}</option>
-                {DEPENDENT_GENDERS.map((g) => (
-                  <option key={g} value={g}>
-                    {genderLabel(g)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label={t('family.remarks')}>
-              <input name="remarks" type="text" placeholder={t('family.remarksPlaceholder')} className={inputCls} />
-            </Field>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm text-muted-foreground">
-              <input type="checkbox" name="isBeneficiary" />
-              {t('family.beneficiary')}
-            </label>
-            <button className={btnPrimary}>{t('family.add')}</button>
-          </form>
-          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('family.hint')}</p>
+      <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        {t('family.note')}
+      </p>
+      <div className="mt-3">
+        {familySection('family.spouseSection', 'family.noSpouse', 'family.addSpouse', 'spouse', spouseDeps)}
+        {familySection('family.childrenSection', 'family.noChildren', 'family.addChild', 'child', childDeps)}
+        {familySection('family.otherSection', 'family.noOther', 'family.addDependant', 'other', otherDeps)}
+      </div>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('family.hint')}</p>
     </Card>
   ) : null;
 
@@ -1112,9 +1217,10 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  // Statutory (Malaysia) card — relocated to the TOP of the Payroll tab and redesigned as a full-width
-  // card (feedback 7524eda1). The layout is regrouped into clearly-labelled sections for readability
-  // and future headroom. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
+  // Statutory (Malaysia) card — now the sole card of the dedicated Bank & Statutory tab (feedback
+  // 40ef71a0; originally pinned to the top of the Payroll tab under 7524eda1). Full-width card whose
+  // layout is regrouped into clearly-labelled sections (identity/tax, EPF, SOCSO/EIS, salary-payment
+  // bank, TP3) for readability. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
   // action is a full-row overwrite, so every named input MUST stay mounted at all times (no accordions /
   // conditional unmounting) or an absent field silently wipes stored data. No server logic changed.
   const statutoryCard = admin ? (
@@ -1261,45 +1367,17 @@ export default async function EmployeePage({
   ) : null;
 
   // ── DOCUMENTS ──────────────────────────────────────────────────────────────
-  // v1 is intentionally thin: there is no general upload-and-store capability yet. We surface the
-  // identification/statutory identifiers that qualify as "documents" today (read-only — the editable
-  // source of truth stays on the Payroll statutory form, so no server action is forked here), plus a
-  // count of the CP38 LHDN instalment records. A true file-attachment store is a separate enhancement.
-  const documentsPanel = admin ? (
-    <Card id="section-documents">
-      <SectionHeader title={t('documents.title')} />
-      <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-        {t('documents.note')}
-      </p>
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2">
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('icNumber')}</dt>
-          <dd className="font-mono">{statutory?.icNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('taxNumber')}</dt>
-          <dd className="font-mono">{statutory?.taxNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('epfNumber')}</dt>
-          <dd className="font-mono">{statutory?.epfNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('socsoNumber')}</dt>
-          <dd className="font-mono">{statutory?.socsoNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('documents.cp38Records')}</dt>
-          <dd className="tabular-nums">{cp38Records.length}</dd>
-        </div>
-      </dl>
-      <p className="px-4 pb-4 text-xs text-muted-foreground">{t('documents.hint')}</p>
-    </Card>
-  ) : null;
+  // f018ce8d — redesigned into a real employee document store (upload / categorize / view / download /
+  // edit / replace / delete, searchable grid + full audit). The old read-only statutory summary is gone;
+  // those identifiers stay editable on the Bank & Statutory tab (unchanged source of truth). The section
+  // component RLS-loads its own data + owns its server actions (see documents-section.tsx).
+  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} /> : null;
 
-  // ── JOB ────────────────────────────────────────────────────────────────────
-  // Assignment (position/department) history, reporting lines, approval delegations, location, and
-  // the transfer/terminate controls. Assignment history is not admin-gated (visible to any viewer).
+  // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
+  // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
+  // ("job") tab, while assignmentHistoryCard and transferTerminateCards now render on the Career
+  // Movement tab (feedback 5296d984). Location + default shift moved to Attendance (feedback 1fbe9891).
+  // Assignment history is not admin-gated (visible to any viewer); transfer/terminate are admin actions.
   const assignmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('assignmentHistory')} count={history.length} />
@@ -1346,6 +1424,138 @@ export default async function EmployeePage({
           {t('dataPrivacyLink')}
         </Link>
       </div>
+    </Card>
+  ) : null;
+
+  // Employment Information enhancement (2323f671) — the Employment tab's primary master-data card. Groups
+  // Employment Dates / Organisation / Job / Reporting into ONE admin-gated <form> → setEmploymentInfoAction.
+  // NEW fields (probation/notice periods, confirmation & resignation dates, org dimensions, category, +
+  // editable Hire Date) are captured here. Effective-dated fields (Company, Department, Position, Employment
+  // Type, Employee Status) are shown READ-ONLY from the current open assignment with a pointer to Career
+  // Movement — editing them here would corrupt assignment history. Job Grade is read-only too (Profile owns
+  // the editable control). The superior (Reporting To) stays the single editable control on the Reporting
+  // Lines card below; this card only points to it, so there is no duplicate superior editor.
+  const employmentInfoCard = admin ? (
+    <Card id="section-employment-info">
+      <SectionHeader title={t('employmentInfo.title')} />
+      {/* Read-only reference block: effective-dated / other-tab-owned fields. Kept visible so this card is a
+          single view of the employment profile, per the CR ("maintain all employment info from one place"). */}
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-b border-border p-4 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.company')}</dt>
+          <dd className="font-medium text-foreground">{emp.company}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.department')}</dt>
+          <dd className="font-medium text-foreground">{current?.department ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.position')}</dt>
+          <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.jobGrade')}</dt>
+          <dd className="font-medium text-foreground">{emp.gradeName ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.employmentType')}</dt>
+          <dd className="font-medium capitalize text-foreground">{current?.employmentType ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.employeeStatus')}</dt>
+          <dd className="font-medium capitalize text-foreground">{current?.status ?? '—'}</dd>
+        </div>
+        <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">{t('employmentInfo.readOnlyNote')}</p>
+      </dl>
+
+      <form action={setEmploymentInfoAction} className="space-y-6 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+
+        {/* ── Employment Dates ── */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.datesGroup')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('employmentInfo.hireDate')}>
+              <input name="hiredOn" type="date" defaultValue={emp.hiredOn ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.confirmationDate')}>
+              <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.resignationDate')}>
+              <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('employmentInfo.probationPeriod')}>
+              <div className="flex gap-2">
+                <input name="probationMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
+                <input name="probationDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.probationDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
+              </div>
+            </Field>
+            <Field label={t('employmentInfo.resignationNoticePeriod')}>
+              <div className="flex gap-2">
+                <input name="resignationNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
+                <input name="resignationNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.resignationNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
+              </div>
+            </Field>
+            <Field label={t('employmentInfo.shortNoticePeriod')}>
+              <div className="flex gap-2">
+                <input name="shortNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
+                <input name="shortNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.shortNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
+              </div>
+            </Field>
+          </div>
+        </fieldset>
+
+        {/* ── Organisation ── */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.orgGroup')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Field label={t('employmentInfo.branch')}>
+              <input name="orgBranch" defaultValue={emp.orgBranch ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.division')}>
+              <input name="orgDivision" defaultValue={emp.orgDivision ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.region')}>
+              <input name="orgRegion" defaultValue={emp.orgRegion ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.line')}>
+              <input name="orgLine" defaultValue={emp.orgLine ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.section')}>
+              <input name="orgSection" defaultValue={emp.orgSection ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.team')}>
+              <input name="orgTeam" defaultValue={emp.orgTeam ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.base')}>
+              <input name="orgBase" defaultValue={emp.orgBase ?? ''} className={inputCls} />
+            </Field>
+          </div>
+        </fieldset>
+
+        {/* ── Job ── (Position / Grade / Type / Status read-only above; Category is new master data) */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.jobGroup')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Field label={t('employmentInfo.category')}>
+              <input name="employmentCategory" defaultValue={emp.employmentCategory ?? ''} className={inputCls} />
+            </Field>
+          </div>
+        </fieldset>
+
+        <p className="text-xs text-muted-foreground">{t('employmentInfo.superiorNote')}</p>
+        <div className="flex justify-end">
+          <button className={btnPrimary}>{t('employmentInfo.save')}</button>
+        </div>
+      </form>
     </Card>
   ) : null;
 
@@ -1635,19 +1845,47 @@ export default async function EmployeePage({
     family: familyPanel,
     job: (
       <>
-        {assignmentHistoryCard}
+        {employmentInfoCard}
         {reportingLinesCard}
         {delegationsCard}
-        {locationCard}
-        {defaultShiftCard}
+      </>
+    ),
+    // Career Movement (feedback 5296d984): the employment-lifecycle cards relocated WHOLE out of the
+    // Employment tab. assignmentHistoryCard (position/department history) and transferTerminateCards —
+    // which already bundles BOTH the Transfer (Effective-Dated) form and the Terminate form — move here
+    // unchanged. The const definitions (assignmentHistoryCard / transferTerminateCards, still defined in
+    // the "── JOB ──" section) are untouched: only their render location moved, so transferAction /
+    // terminateAction keep their existing effective-date rules and DomainEvents and no data is affected.
+    // Order mirrors the lifecycle: past movements (history) first, then the actions that create the next.
+    careerMovement: (
+      <>
+        {assignmentHistoryCard}
         {transferTerminateCards}
       </>
     ),
-    // Statutory (Malaysia) pinned to the TOP of the Payroll tab (feedback 7524eda1); Compensation keeps
-    // its old slot at the bottom. Every other card retains its relative order.
+    // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated
+    // WHOLE from Employment (locationCard, defaultShiftCard) and Others (clockingCard) into one tab.
+    // The const definitions (setLocationAction / setDefaultShiftAction / setEmployeeClockingLocationsAction
+    // + setGeofencingAction) are untouched — only their render location moved, so the full-row-overwrite
+    // <form>s and every mounted input stay byte-identical and no server logic or event emission changed.
+    // Order mirrors an attendance setup flow: Work Location → Shift Arrangement → Clocking & Geofencing.
+    attendance: (
+      <>
+        {locationCard}
+        {defaultShiftCard}
+        {clockingCard}
+      </>
+    ),
+    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single
+    // <form action={setStatutoryAction}> that already co-locates the salary-payment bank fields
+    // (Group 4) alongside EPF/SOCSO/EIS/PCB — relocated WHOLE out of Payroll into its own tab. The
+    // const definition (statutoryCard) is unchanged; only its render location moved, so the
+    // full-row-overwrite form and every mounted input stay byte-identical and no server logic changed.
+    bankStatutory: statutoryCard,
+    // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
+    // statutory/bank card previously pinned to the top (feedback 7524eda1) now lives on Bank & Statutory.
     payroll: (
       <>
-        {statutoryCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
@@ -1662,7 +1900,6 @@ export default async function EmployeePage({
     documents: documentsPanel,
     others: (
       <>
-        {clockingCard}
         {changeHistoryCard}
         {dataPrivacyCard}
         {leaveRequestsCard}
@@ -1768,7 +2005,12 @@ export default async function EmployeePage({
 
       <ErrorBanner message={error} />
 
-      <PersonnelTabs tabs={tabs} panels={panels} emptyLabel={t('tabs.empty')} />
+      <PersonnelTabs
+        tabs={tabs}
+        panels={panels}
+        emptyLabel={t('tabs.empty')}
+        defaultTab={tab as PersonnelTabKey | undefined}
+      />
     </div>
   );
 }

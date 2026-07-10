@@ -1025,6 +1025,159 @@ export async function setEmploymentGrade(
 }
 
 /**
+ * Employment Information enhancement (2323f671) — HR/Admin maintains the employment master-data captured on
+ * the Personnel Employment tab's new "Employment Information" card. This is the single audited writer for
+ * the fields added in migration 0181 plus the editable Hire Date (employment.hiredOn). Effective-dated
+ * fields (department/position/employment-type/status via `assignment`, superior via reporting-line) are NOT
+ * touched here — they stay owned by Transfer / Career Movement / reporting-line to preserve their history.
+ *
+ * Every field is OPTIONAL: `undefined` = leave as-is, so a partial save never clobbers an untouched column.
+ * An explicit `null`/empty clears. Server-side validation (also enforced regardless of what the UI sends):
+ *   • confirmationDate ≥ hiredOn, resignationDate ≥ hiredOn (date relationships)
+ *   • all period components (probation/notice/short-notice months & days) are non-negative integers
+ * Field-capture only per the CR — no downstream business rules fire yet. Admin-gated (defence-in-depth over
+ * the employment RLS admin-write policy); the write appends `employment.info.updated` with a before/after diff.
+ */
+export type EmploymentInfoInput = {
+  employmentId: string;
+  hiredOn?: string;
+  // Period components accept strings (raw HTML number-input values) or numbers; parsed + validated below.
+  probationMonths?: number | string | null;
+  probationDays?: number | string | null;
+  confirmationDate?: string | null;
+  resignationNoticeMonths?: number | string | null;
+  resignationNoticeDays?: number | string | null;
+  resignationDate?: string | null;
+  shortNoticeMonths?: number | string | null;
+  shortNoticeDays?: number | string | null;
+  orgBranch?: string | null;
+  orgDivision?: string | null;
+  orgRegion?: string | null;
+  orgLine?: string | null;
+  orgSection?: string | null;
+  orgTeam?: string | null;
+  orgBase?: string | null;
+  employmentCategory?: string | null;
+};
+
+const EMPLOYMENT_INFO_TEXT_FIELDS = [
+  'orgBranch',
+  'orgDivision',
+  'orgRegion',
+  'orgLine',
+  'orgSection',
+  'orgTeam',
+  'orgBase',
+  'employmentCategory',
+] as const;
+
+const EMPLOYMENT_INFO_PERIOD_FIELDS = [
+  'probationMonths',
+  'probationDays',
+  'resignationNoticeMonths',
+  'resignationNoticeDays',
+  'shortNoticeMonths',
+  'shortNoticeDays',
+] as const;
+
+const EMPLOYMENT_INFO_DATE_FIELDS = ['confirmationDate', 'resignationDate'] as const;
+
+export async function setEmploymentInfo(ctx: SessionContext, p: EmploymentInfoInput) {
+  const roles = ctx.roles ?? [];
+  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+    throw new Error('Only an admin can edit employment information.');
+  }
+
+  // Build the write set: only columns the caller actually provided. `undefined` = untouched; a period/text
+  // field passed as '' or null clears to NULL. Validate + normalise as we go.
+  const set: Record<string, string | number | null> = {};
+
+  if (p.hiredOn !== undefined) {
+    const v = String(p.hiredOn).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Hire date is required and must be a valid date.');
+    set.hiredOn = v;
+  }
+  for (const f of EMPLOYMENT_INFO_DATE_FIELDS) {
+    const raw = p[f];
+    if (raw === undefined) continue;
+    const v = raw == null ? null : String(raw).trim();
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) throw new Error('Enter a valid date (YYYY-MM-DD).');
+    set[f] = v || null;
+  }
+  for (const f of EMPLOYMENT_INFO_PERIOD_FIELDS) {
+    const raw = p[f];
+    if (raw === undefined) continue;
+    if (raw == null || raw === '') {
+      set[f] = null;
+      continue;
+    }
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) throw new Error('Period months/days must be whole numbers of 0 or more.');
+    set[f] = n;
+  }
+  for (const f of EMPLOYMENT_INFO_TEXT_FIELDS) {
+    const raw = p[f];
+    if (raw === undefined) continue;
+    const v = raw == null ? null : String(raw).trim();
+    set[f] = v || null;
+  }
+
+  if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
+
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select({
+        hiredOn: employment.hiredOn,
+        probationMonths: employment.probationMonths,
+        probationDays: employment.probationDays,
+        confirmationDate: employment.confirmationDate,
+        resignationNoticeMonths: employment.resignationNoticeMonths,
+        resignationNoticeDays: employment.resignationNoticeDays,
+        resignationDate: employment.resignationDate,
+        shortNoticeMonths: employment.shortNoticeMonths,
+        shortNoticeDays: employment.shortNoticeDays,
+        orgBranch: employment.orgBranch,
+        orgDivision: employment.orgDivision,
+        orgRegion: employment.orgRegion,
+        orgLine: employment.orgLine,
+        orgSection: employment.orgSection,
+        orgTeam: employment.orgTeam,
+        orgBase: employment.orgBase,
+        employmentCategory: employment.employmentCategory,
+      })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!before) throw new Error('Employment not found');
+
+    // Date-relationship checks resolve against the RESULTING values (incoming override → existing), so a save
+    // that changes only the confirmation date is still validated against the stored hire date, and vice-versa.
+    const hire = (set.hiredOn as string | undefined) ?? before.hiredOn;
+    const confirmation = 'confirmationDate' in set ? (set.confirmationDate as string | null) : before.confirmationDate;
+    const resignation = 'resignationDate' in set ? (set.resignationDate as string | null) : before.resignationDate;
+    if (confirmation && hire && confirmation < hire) {
+      throw new Error('Confirmation date cannot be earlier than the hire date.');
+    }
+    if (resignation && hire && resignation < hire) {
+      throw new Error('Resignation date cannot be earlier than the hire date.');
+    }
+
+    await tx.update(employment).set(set).where(eq(employment.id, p.employmentId));
+    const after = { ...before, ...set };
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.info.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { fields: Object.keys(set), before, after },
+    });
+    return { id: p.employmentId };
+  });
+}
+
+/**
  * ADR-0029 scope-out — designate the single "paymaster" employment through which a person's taxable
  * remuneration runs for PCB when they hold concurrent employments across the group. The paymaster must be
  * one of the person's own ACTIVE employments. Pass `null` to clear. App-validated soft reference (no DB FK).

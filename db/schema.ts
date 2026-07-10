@@ -646,6 +646,33 @@ export const employment = pgTable(
     // meaningful (and required) while enforcement is on — enforced by the CHECK below.
     geofencingEnabled: boolean('geofencing_enabled').notNull().default(false),
     geofenceRadiusM: integer('geofence_radius_m'),
+    // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on the
+    // Employment tab's new Employment Information card. All NULLABLE and additive — an existing employment
+    // with every column NULL behaves exactly as before (field-capture only; business rules follow in a
+    // later CR). Dates are validated (confirmation ≥ hire, resignation ≥ hire) and periods are non-negative
+    // in core/org.ts::setEmploymentInfo; the DB stays permissive so backfills/imports never trip a CHECK.
+    probationMonths: integer('probation_months'),
+    probationDays: integer('probation_days'),
+    confirmationDate: date('confirmation_date'),
+    resignationNoticeMonths: integer('resignation_notice_months'),
+    resignationNoticeDays: integer('resignation_notice_days'),
+    // Manual/administrative resignation date. The self-service resignation workflow (ADR-0042) owns the
+    // lifecycle end date; this column is an audited HR override for master-data capture and does not drive
+    // that workflow. Nullable.
+    resignationDate: date('resignation_date'),
+    shortNoticeMonths: integer('short_notice_months'),
+    shortNoticeDays: integer('short_notice_days'),
+    // Organisation dimensions beyond the effective-dated department/position (which live on `assignment`).
+    // Free-text in v1 — a follow-up CR introduces master tables + validated dropdowns. Nullable text.
+    orgBranch: text('org_branch'),
+    orgDivision: text('org_division'),
+    orgRegion: text('org_region'),
+    orgLine: text('org_line'),
+    orgSection: text('org_section'),
+    orgTeam: text('org_team'),
+    orgBase: text('org_base'),
+    // Employee category (e.g. Management / Executive / Non-executive). Free-text in v1. Nullable.
+    employmentCategory: text('employment_category'),
     createdAt: createdAt(),
   },
   (t) => [
@@ -2406,6 +2433,36 @@ export const reviewDocument = pgTable(
   (t) => [index('review_document_review_idx').on(t.reviewId)],
 );
 
+// f018ce8d — general employee document store (Personnel → Documents tab redesign). Replaces the old
+// read-only statutory summary with a real file repository: HR uploads categorized supporting documents
+// (PDF / Word / Excel / PowerPoint / images / text) against an employee. bytea side-table mirroring
+// claim_attachment / review_document (employment_id denormalized so RLS resolves via can_see_employment
+// directly). Read = subject + administrative-line manager + admin; write = admin only (see 0183 RLS).
+// title is the mandatory display name; category + description are optional metadata. uploaded_by /
+// updated_by capture the audit actors surfaced in the grid; updated_at bumps on meta edits + replacements.
+export const employeeDocument = pgTable(
+  'employee_document',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    title: text('title').notNull(),
+    category: text('category'),
+    description: text('description'),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    updatedByUserId: uuid('updated_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('employee_document_employment_idx').on(t.tenantId, t.employmentId)],
+);
+
 // ADR-0050 (#1.1.3): yearly self-service TP1 personal tax relief. Keyed by `person_id` (TP1 is the
 // employee's own statutory declaration). One scalar `tp1_amount` per assessment year — the single number
 // the PCB kernel consumes (LP). Append-only request-row shape (profile_change_request pattern): the latest
@@ -2480,6 +2537,24 @@ export const employeeDependent = pgTable(
     isBeneficiary: boolean('is_beneficiary').notNull().default(false), // insurance beneficiary flag; NOT tax
     phone: text('phone'),
     remarks: text('remarks'),
+    // 4535b733 — Family Information enhancement (migration 0182). Additional family-member fields grouped
+    // for the Spouse / Children / Other Dependants sections. All nullable → legacy rows unaffected. New
+    // PII (passport_number, residential_address, occupation, company_name, employer_address) is kept OUT
+    // of DomainEvent payloads (ADR-0030 Layer 0) and wired into PDPA erasure (core/pdpa.ts).
+    passportNumber: text('passport_number'), // distinct from ic_or_passport (New IC)
+    residentialAddress: text('residential_address'), // long text
+    isDeceased: boolean('is_deceased').notNull().default(false),
+    deceasedOn: date('deceased_on'),
+    // Spouse-specific (validate-or-ignore when relationship != spouse in-service)
+    marriageDate: date('marriage_date'),
+    marriageStatus: text('marriage_status'), // validated in-service: married|divorced|widowed|separated
+    spouseWorking: boolean('spouse_working'),
+    occupation: text('occupation'), // spouse / other dependant occupation
+    companyName: text('company_name'),
+    employerAddress: text('employer_address'),
+    // Children-specific
+    isStudent: boolean('is_student'),
+    schoolName: text('school_name'),
     archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
