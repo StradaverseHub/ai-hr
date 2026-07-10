@@ -27,6 +27,7 @@ import { AttendanceClockButton, LocationNotice } from './attendance-clock';
 import { ClientTabs } from '@/components/personnel-tabs';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+import { LeaveBalanceTable, deriveBalanceRow } from '@/components/leave/leave-balance-table';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { durationLabel } from '@/lib/leave-duration';
 import { leaveVisual } from '@/lib/leave-visual';
@@ -1140,86 +1141,61 @@ export default async function MePage({
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               {/* Left column: balance summary + entitlement breakdown + request history. */}
               <Card className="p-5" data-tour="me-leave">
-                <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
-                <div className="mt-3 space-y-3">
-                  {balances.map((b) => {
-                    const pctUsed = b.accrued > 0 ? Math.min(100, (b.taken / b.accrued) * 100) : 0;
-                    const pctPending = b.accrued > 0 ? Math.min(100 - pctUsed, (b.pending / b.accrued) * 100) : 0;
-                    const tracked = b.accrued > 0 || b.balance > 0;
-                    // Employee Leave View Configuration (65dec703): HR gates which ESS figures this employee
-                    // sees for this leave type. A missing/true key ⇒ visible (backward compatible). Applies
-                    // to /me only — admin/HR views never consult essView.
-                    const ev = b.essView;
-                    const showAvailable = ev.available !== false;
-                    const showTaken = ev.taken !== false;
-                    const showPending = ev.pendingApproval !== false;
-                    // The whole entitlement-calculation breakdown expander is its own toggle (the 1fedb473
-                    // "Entitlement Calculation Breakdown" component); off ⇒ the expander doesn't mount at all.
-                    const showBreakdown = ev.entitlementCalcBreakdown !== false;
-                    // The usage bar visualizes taken/pending/available; hide it when none of those figures show.
-                    const showBar = tracked && (showAvailable || showTaken || showPending);
-                    // Leave Type Visual Configuration Enhancement (639fdf77): DISPLAY-ONLY icon + colour theme.
-                    // The resolver falls back to a code-keyed icon then a universal default, so an unconfigured
-                    // type keeps today's look (default CalendarDays icon, no colour chip ⇒ system styling).
-                    const visual = leaveVisual({ color: b.color, icon: b.icon, code: b.code });
-                    const VisualIcon = visual.Icon;
-                    return (
-                      <div
-                        key={b.leaveTypeId}
-                        className={visual.hasColor ? `-mx-2 rounded-lg px-2 py-1.5 ${visual.chipClass}` : undefined}
-                      >
-                        <div className="flex items-baseline justify-between text-sm">
-                          <span className={`flex items-center gap-1.5 ${visual.hasColor ? '' : 'text-muted-foreground'}`}>
-                            <VisualIcon className="size-3.5 shrink-0" aria-hidden />
-                            {b.leaveType}
-                          </span>
-                          <span className="font-semibold tabular-nums">
-                            {tracked && showAvailable ? (
-                              <>
-                                {b.available}
-                                <span className="font-normal text-muted-foreground"> / {b.accrued}</span>
-                              </>
-                            ) : (
-                              <span className="font-normal text-muted-foreground">—</span>
-                            )}
-                          </span>
-                        </div>
-                        {showBar && (
-                          /* Usage bar: solid = used, translucent = pending approval. */
-                          <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
-                            <div className="h-full rounded-l-full bg-primary" style={{ width: `${pctUsed}%` }} />
-                            <div className="h-full bg-primary/40" style={{ width: `${pctPending}%` }} />
-                          </div>
-                        )}
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {[
-                            showTaken ? t('leaveUsed', { count: b.taken }) : null,
-                            showPending && b.pending > 0 ? t('leavePending', { count: b.pending }) : null,
-                            tracked && showAvailable ? t('leaveAvailable', { count: b.available }) : null,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </div>
-                        {showBreakdown && breakdownByType.get(b.leaveTypeId) && (
-                          <EntitlementBreakdown
-                            data={breakdownByType.get(b.leaveTypeId)!}
-                            summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
-                            // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by
-                            // localized name; both sides resolve via the same pickName + locale).
-                            upcoming={requests
-                              .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                              .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
-                            visual={{ color: b.color, icon: b.icon, code: b.code }}
-                            asOf={breakdownAsOf}
-                            action="/me"
-                            hiddenParams={{ tab: 'leave' }}
-                            applyEssConfig
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                  {balances.length === 0 && <p className="text-sm text-muted-foreground">{t('noBalances')}</p>}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
+                  {/* Workday-style redesign (483fa7c3): ONE shared as-at date GET form driving the whole table
+                      (was previously one form per per-type expander). One ?asOf= already drives every row's
+                      breakdown; an invalid/empty param falls back to today. Preserves tab=leave across the GET. */}
+                  <form method="GET" action="/me" className="flex items-end gap-2">
+                    <input type="hidden" name="tab" value="leave" />
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      {t('leaveBalanceTable.asAtDate')}
+                      <input
+                        type="date"
+                        name="asOf"
+                        defaultValue={breakdownAsOf}
+                        className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
+                    >
+                      {t('leaveBalanceTable.apply')}
+                    </button>
+                  </form>
+                </div>
+                <div className="mt-3">
+                  <LeaveBalanceTable
+                    rows={balances.map((b) => {
+                      // Employee Leave View Configuration (65dec703): HR gates which ESS figures this employee
+                      // sees. deriveBalanceRow applies available/taken/overutilized gating (missing ⇒ visible)
+                      // and the derived columns. The per-row Entitlement Calculation Breakdown side-sheet is its
+                      // own toggle (1fedb473); off ⇒ the expander (detail) doesn't mount at all.
+                      const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+                      const bd = breakdownByType.get(b.leaveTypeId);
+                      return {
+                        ...deriveBalanceRow(b, bd ?? null),
+                        detail:
+                          showBreakdown && bd ? (
+                            <EntitlementBreakdown
+                              data={bd}
+                              summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                              // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched
+                              // by localized name; both sides resolve via the same pickName + locale).
+                              upcoming={requests
+                                .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                                .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                              visual={{ color: b.color, icon: b.icon, code: b.code }}
+                              asOf={breakdownAsOf}
+                              action="/me"
+                              hiddenParams={{ tab: 'leave' }}
+                              applyEssConfig
+                            />
+                          ) : undefined,
+                      };
+                    })}
+                  />
                 </div>
 
                 <div className="mt-4 border-t border-border pt-4">
