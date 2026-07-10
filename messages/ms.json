@@ -2707,6 +2707,7 @@
       "noLeaveTypes": "Tiada jenis cuti.",
       "codeLabel": "Kod",
       "codeHint": "Huruf, digit atau garis bawah — disimpan huruf besar (cth. ANNUAL)",
+      "codeReadOnlyHint": "Kod cuti adalah tetap. Kod ialah kunci kekal yang dipadankan oleh peraturan cuti berkanun (cth. cuti tahunan EA-1955, bawa ke hadapan, tunai), jadi ia tidak boleh dinamakan semula.",
       "codePlaceholder": "SICK",
       "nameLabel": "Nama",
       "namePlaceholder": "Cuti Sakit",

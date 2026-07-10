@@ -780,6 +780,21 @@ export function LeaveTypePanel({
               {/* Leave Type master page (feedback 097de541): marker tells the action to touch the description
                   column (tri-state guard) — this form edits Name + Description together. */}
               <input type="hidden" name="identity" value="1" />
+              {/* Edit Leave Code (feedback 37a49524): the Leave Code was only shown as small grey text on the
+                  collapsed row and vanished once you opened the edit form. Surface it here as an explicitly
+                  read-only field so users can view the assigned code while editing. It is immutable by design —
+                  the code (e.g. ANNUAL) is the permanent semantic key the leave/payroll engine matches on for
+                  EA-1955 statutory rules, carry-forward and encashment; renaming it would silently switch those
+                  rules off. No `name` attr ⇒ nothing new is posted, so the server action/substrate are untouched. */}
+              <Field label={t('codeLabel')}>
+                <input
+                  value={code}
+                  readOnly
+                  aria-label={t('codeLabel')}
+                  title={t('codeReadOnlyHint')}
+                  className={`${inputCls} w-40 cursor-not-allowed opacity-70`}
+                />
+              </Field>
               <Field label={t('nameLabel')}>
                 <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
               </Field>

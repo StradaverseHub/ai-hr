@@ -2707,6 +2707,7 @@
       "noLeaveTypes": "Không có loại nghỉ phép.",
       "codeLabel": "Mã",
       "codeHint": "Chữ cái, chữ số hoặc gạch dưới — lưu dạng chữ hoa (ví dụ ANNUAL)",
+      "codeReadOnlyHint": "Mã nghỉ phép là cố định. Mã này là khóa vĩnh viễn mà các quy tắc nghỉ phép luật định (ví dụ nghỉ phép năm EA-1955, chuyển tiếp, quy đổi thành tiền) đối chiếu, nên không thể đổi tên.",
       "codePlaceholder": "SICK",
       "nameLabel": "Tên",
       "namePlaceholder": "Nghỉ ốm",

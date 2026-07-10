@@ -2707,6 +2707,7 @@
       "noLeaveTypes": "No leave types.",
       "codeLabel": "Code",
       "codeHint": "Letters, digits or underscores — stored uppercase (e.g. ANNUAL)",
+      "codeReadOnlyHint": "Leave codes are fixed. The code is the permanent key statutory leave rules (e.g. EA-1955 annual leave, carry-forward, encashment) match on, so it cannot be renamed.",
       "codePlaceholder": "SICK",
       "nameLabel": "Name",
       "namePlaceholder": "Sick Leave",

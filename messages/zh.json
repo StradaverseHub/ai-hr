@@ -2707,6 +2707,7 @@
       "noLeaveTypes": "无休假类型。",
       "codeLabel": "代码",
       "codeHint": "字母、数字或下划线 — 以大写存储（例如 ANNUAL）",
+      "codeReadOnlyHint": "请假代码是固定的。该代码是法定请假规则（例如 EA-1955 年假、结转、兑现）匹配所依据的永久键，因此无法重命名。",
       "codePlaceholder": "SICK",
       "nameLabel": "名称",
       "namePlaceholder": "病假",
