@@ -2866,6 +2866,8 @@
       "eligibilityMinServiceSuffix": "เดือน",
       "eligibilitySummaryOnly": "{who} เท่านั้น",
       "eligibilitySummaryService": "อายุงาน ≥ {n} เดือน",
+      "eligibilitySummaryOr": "หรือ",
+      "eligibilityMultiHint": "เลือกอย่างน้อยหนึ่งรายการ เว้นทุกช่องไว้ว่างเพื่ออนุญาตทุกคน",
       "allowedDurationsLabel": "ระยะเวลาที่อนุญาต",
       "allowedDurationsHelp": "เลือกระยะเวลาที่พนักงานสามารถเลือกได้สำหรับการลาประเภทนี้ เต็มวันใช้ได้เสมอ",
       "duration_full_day": "เต็มวัน",

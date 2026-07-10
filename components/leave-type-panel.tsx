@@ -50,12 +50,25 @@ export type EntitlementPolicy = {
 export type GradeOption = { id: string; name: string };
 export type CompanyOption = { id: string; name: string };
 
-/** #25 visibility: who may see + apply for this type. null = open to all. */
+/** #25 visibility: who may see + apply for this type. null = open to all. gender / maritalStatus are
+ *  multi-select (#badc5966): a scalar (legacy single-select rows) OR an array (match ANY selected value). */
 export type LeaveEligibilityRule = {
-  gender?: string;
-  maritalStatus?: string;
+  gender?: string | string[];
+  maritalStatus?: string | string[];
   minServiceMonths?: number;
 };
+
+/** The checkbox options the eligibility rule form renders. Order matches the mockup; extend the marital list
+ *  when 12129e77 adds Divorced/Widowed/Separated to the master enum. */
+const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
+const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'other'] as const;
+
+/** Normalize a scalar-or-array eligibility field to a list (mirrors core asList — kept local so the client
+ *  component has no server import). */
+function asEligList(v: string | string[] | undefined): string[] {
+  if (v == null) return [];
+  return (Array.isArray(v) ? v : [v]).filter((x) => x != null && x !== '');
+}
 
 /** ADR-0048: the four non-full-day durations an admin can enable on a leave type. */
 const DURATION_OPTIONS = ['half_day_am', 'half_day_pm', 'hourly'] as const;
@@ -626,9 +639,9 @@ export function LeaveTypePanel({
 
   // #25 visibility: a composable human summary of the eligibility rule (avoids a key-per-permutation
   // matrix across 6 locales). e.g. "Female only · ≥ 12 months service", or "Open to all employees".
-  const genderLabel = (g?: string) =>
+  const genderLabel = (g: string) =>
     g === 'male' ? t('eligibilityGenderMale') : g === 'female' ? t('eligibilityGenderFemale') : null;
-  const maritalLabel = (m?: string) =>
+  const maritalLabel = (m: string) =>
     m === 'single'
       ? t('eligibilityMaritalSingle')
       : m === 'married'
@@ -636,12 +649,19 @@ export function LeaveTypePanel({
         : m === 'other'
           ? t('eligibilityMaritalOther')
           : null;
+  // Multi-select (#badc5966): join the selected labels for a field with "or" ("Male or Female"), then join
+  // fields with a space ("Married Male or Female only"). asEligList tolerates legacy scalar rows.
+  const orJoin = (labels: (string | null)[]) => labels.filter(Boolean).join(` ${t('eligibilitySummaryOr')} `);
   const eligibilitySummary = () => {
-    if (!eligibility || (!eligibility.gender && !eligibility.maritalStatus && !eligibility.minServiceMonths)) {
+    const genders = asEligList(eligibility?.gender);
+    const maritals = asEligList(eligibility?.maritalStatus);
+    if (!eligibility || (genders.length === 0 && maritals.length === 0 && !eligibility.minServiceMonths)) {
       return t('eligibilityOpenToAll');
     }
     const parts: string[] = [];
-    const who = [maritalLabel(eligibility.maritalStatus), genderLabel(eligibility.gender)].filter(Boolean).join(' ');
+    const maritalText = orJoin(maritals.map(maritalLabel));
+    const genderText = orJoin(genders.map(genderLabel));
+    const who = [maritalText, genderText].filter(Boolean).join(' ');
     if (who) parts.push(t('eligibilitySummaryOnly', { who }));
     if (eligibility.minServiceMonths) parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths }));
     return parts.join(' · ');
@@ -820,24 +840,44 @@ export function LeaveTypePanel({
                 <input type="hidden" name="name" value={name} />
                 {/* marker: tells the action to touch the eligibility column (tri-state guard) */}
                 <input type="hidden" name="eligibility" value="1" />
+                {/* Multi-select (#badc5966): a checkbox group per field posting repeated name="gender" /
+                    name="maritalStatus". An employee qualifies if their attribute matches ANY ticked value.
+                    Leave every box unticked ⇒ no restriction on that field (open to all). */}
                 <Field label={t('eligibilityGenderLabel')}>
-                  <select name="gender" defaultValue={eligibility?.gender ?? ''} className={`${inputCls} w-36`}>
-                    <option value="">{t('eligibilityGenderAny')}</option>
-                    <option value="male">{t('eligibilityGenderMale')}</option>
-                    <option value="female">{t('eligibilityGenderFemale')}</option>
-                  </select>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {ELIGIBILITY_GENDER_OPTIONS.map((g) => (
+                      <label key={g} className="flex items-center gap-1.5 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          name="gender"
+                          value={g}
+                          defaultChecked={asEligList(eligibility?.gender).includes(g)}
+                          className="size-4 accent-primary"
+                        />
+                        {g === 'male' ? t('eligibilityGenderMale') : t('eligibilityGenderFemale')}
+                      </label>
+                    ))}
+                  </div>
                 </Field>
                 <Field label={t('eligibilityMaritalLabel')}>
-                  <select
-                    name="maritalStatus"
-                    defaultValue={eligibility?.maritalStatus ?? ''}
-                    className={`${inputCls} w-36`}
-                  >
-                    <option value="">{t('eligibilityMaritalAny')}</option>
-                    <option value="single">{t('eligibilityMaritalSingle')}</option>
-                    <option value="married">{t('eligibilityMaritalMarried')}</option>
-                    <option value="other">{t('eligibilityMaritalOther')}</option>
-                  </select>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    {ELIGIBILITY_MARITAL_OPTIONS.map((m) => (
+                      <label key={m} className="flex items-center gap-1.5 text-sm text-foreground">
+                        <input
+                          type="checkbox"
+                          name="maritalStatus"
+                          value={m}
+                          defaultChecked={asEligList(eligibility?.maritalStatus).includes(m)}
+                          className="size-4 accent-primary"
+                        />
+                        {m === 'single'
+                          ? t('eligibilityMaritalSingle')
+                          : m === 'married'
+                            ? t('eligibilityMaritalMarried')
+                            : t('eligibilityMaritalOther')}
+                      </label>
+                    ))}
+                  </div>
                 </Field>
                 <Field label={t('eligibilityMinServiceLabel')}>
                   <div className="flex items-center gap-1.5">
@@ -852,6 +892,7 @@ export function LeaveTypePanel({
                     <span className="text-xs text-muted-foreground">{t('eligibilityMinServiceSuffix')}</span>
                   </div>
                 </Field>
+                <p className="w-full text-xs text-muted-foreground">{t('eligibilityMultiHint')}</p>
                 <Button type="submit" size="sm">
                   {t('save')}
                 </Button>

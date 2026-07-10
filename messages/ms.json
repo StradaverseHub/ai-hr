@@ -2866,6 +2866,8 @@
       "eligibilityMinServiceSuffix": "bulan",
       "eligibilitySummaryOnly": "{who} sahaja",
       "eligibilitySummaryService": "≥ {n} bulan perkhidmatan",
+      "eligibilitySummaryOr": "atau",
+      "eligibilityMultiHint": "Tandakan satu atau lebih; biarkan semua kotak tidak bertanda untuk membenarkan semua orang.",
       "allowedDurationsLabel": "Tempoh dibenarkan",
       "allowedDurationsHelp": "Pilih tempoh yang boleh dipilih pekerja untuk jenis cuti ini. Sehari penuh sentiasa tersedia.",
       "duration_full_day": "Sehari penuh",

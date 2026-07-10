@@ -906,10 +906,13 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // rename — which doesn't carry that marker — leaves the rule untouched (tri-state in updateLeaveType).
   const touchEligibility = fd.get('eligibility') === '1';
   const minRaw = String(fd.get('minServiceMonths') ?? '').trim();
+  // Multi-select (#badc5966): the gender / marital checkbox groups post repeated inputs → getAll yields the
+  // selected values as arrays. cleanEligibility de-dupes, validates, and collapses an empty array to "no
+  // restriction". minServiceMonths stays scalar (f88f0a63's turf).
   const eligibility = touchEligibility
     ? {
-        gender: String(fd.get('gender') ?? '') || undefined,
-        maritalStatus: String(fd.get('maritalStatus') ?? '') || undefined,
+        gender: fd.getAll('gender').map(String),
+        maritalStatus: fd.getAll('maritalStatus').map(String),
         minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
       }
     : undefined;

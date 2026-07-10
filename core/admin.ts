@@ -114,19 +114,37 @@ export function normalizeReason(v: string | null | undefined): string | undefine
  * Because requestLeave reads whatever JSONB is stored, validation lives in core (not just the action):
  * a malformed POST can't land arbitrary JSONB or an out-of-range value. Throws on bad input.
  */
+// Allow-lists for the two multi-select eligibility criteria (#badc5966). The gender list matches the master
+// person.gender values that this gate supports (male|female — 'undisclosed' is never a rule value, see
+// eligibilityUndisclosedNote). The marital list mirrors the current master person.maritalStatus enum; adding
+// Divorced/Widowed/Separated is 12129e77's master-data scope — once those enter the enum, extend this array
+// and the rule form renders the new checkboxes for free.
+export const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
+export const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'other'] as const;
+
+/** Normalize a scalar-or-array eligibility field to a de-duped, blank-stripped, validated list. Accepts a
+ *  legacy scalar (single-select rows / in-flight event payloads) or a multi-select array. Empty ⇒ undefined
+ *  (the field carries no restriction). Throws on any value outside `allowed`. */
+function cleanEligList(
+  v: string | string[] | null | undefined,
+  allowed: readonly string[],
+  label: string,
+): string[] | undefined {
+  const arr = (Array.isArray(v) ? v : v == null ? [] : [v]).map((x) => String(x).trim()).filter((x) => x !== '');
+  const deduped = [...new Set(arr)];
+  for (const x of deduped) {
+    if (!allowed.includes(x)) throw new Error(`Eligibility ${label} must be one of: ${allowed.join(', ')}`);
+  }
+  return deduped.length > 0 ? deduped : undefined;
+}
+
 function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibility | null {
   if (e == null) return null;
   const out: LeaveEligibility = {};
-  if (e.gender != null && e.gender !== '') {
-    if (e.gender !== 'male' && e.gender !== 'female') throw new Error('Eligibility gender must be male or female');
-    out.gender = e.gender;
-  }
-  if (e.maritalStatus != null && (e.maritalStatus as string) !== '') {
-    if (!['single', 'married', 'other'].includes(e.maritalStatus)) {
-      throw new Error('Eligibility marital status must be single, married, or other');
-    }
-    out.maritalStatus = e.maritalStatus;
-  }
+  const gender = cleanEligList(e.gender, ELIGIBILITY_GENDER_OPTIONS, 'gender');
+  if (gender) out.gender = gender;
+  const maritalStatus = cleanEligList(e.maritalStatus, ELIGIBILITY_MARITAL_OPTIONS, 'marital status');
+  if (maritalStatus) out.maritalStatus = maritalStatus;
   if (e.minServiceMonths != null && (e.minServiceMonths as unknown) !== '') {
     const n = Number(e.minServiceMonths);
     if (!Number.isInteger(n) || n < 0) throw new Error('Minimum service months must be a non-negative whole number');

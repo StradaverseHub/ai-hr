@@ -2866,6 +2866,8 @@
       "eligibilityMinServiceSuffix": "months",
       "eligibilitySummaryOnly": "{who} only",
       "eligibilitySummaryService": "≥ {n} months service",
+      "eligibilitySummaryOr": "or",
+      "eligibilityMultiHint": "Tick one or more; leave every box unticked to allow everyone.",
       "allowedDurationsLabel": "Allowed durations",
       "allowedDurationsHelp": "Choose which durations employees may pick for this leave type. Full day is always available.",
       "duration_full_day": "Full day",

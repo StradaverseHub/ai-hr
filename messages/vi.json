@@ -2866,6 +2866,8 @@
       "eligibilityMinServiceSuffix": "tháng",
       "eligibilitySummaryOnly": "Chỉ {who}",
       "eligibilitySummaryService": "≥ {n} tháng thâm niên",
+      "eligibilitySummaryOr": "hoặc",
+      "eligibilityMultiHint": "Chọn một hoặc nhiều; để trống tất cả ô để cho phép tất cả mọi người.",
       "allowedDurationsLabel": "Thời lượng được phép",
       "allowedDurationsHelp": "Chọn thời lượng nhân viên có thể chọn cho loại nghỉ này. Cả ngày luôn khả dụng.",
       "duration_full_day": "Cả ngày",

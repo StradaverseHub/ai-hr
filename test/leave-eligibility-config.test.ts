@@ -78,7 +78,8 @@ describe('#25 — updateLeaveType eligibility (write path)', () => {
   it('setting gender:female makes a male request reject and a female resolve', async () => {
     const mat = await leaveType('MATERNITY', null); // starts open
     await updateLeaveType(adminCtx(b), { id: mat, name: 'Maternity', eligibility: { gender: 'female' } });
-    expect(await eligibilityOf(mat)).toEqual({ gender: 'female' });
+    // #badc5966: a single-select still normalizes to the array shape.
+    expect(await eligibilityOf(mat)).toEqual({ gender: ['female'] });
     const female = await hire('female', 'married');
     const male = await hire('male', 'married');
     await expect(req(female.employmentId, mat)).resolves.toMatchObject({ days: 1 });
@@ -100,9 +101,9 @@ describe('#25 — updateLeaveType eligibility (write path)', () => {
   });
 
   it('omitting eligibility on a rename leaves an existing rule untouched (data-loss guard)', async () => {
-    const t = await leaveType('PAT', { gender: 'male', maritalStatus: 'married', minServiceMonths: 12 });
+    const t = await leaveType('PAT', { gender: ['male'], maritalStatus: ['married'], minServiceMonths: 12 });
     await updateLeaveType(adminCtx(b), { id: t, name: 'Paternity (renamed)' }); // no eligibility key
-    expect(await eligibilityOf(t)).toEqual({ gender: 'male', maritalStatus: 'married', minServiceMonths: 12 });
+    expect(await eligibilityOf(t)).toEqual({ gender: ['male'], maritalStatus: ['married'], minServiceMonths: 12 });
   });
 
   it('validates and strips: bad values reject, stray keys are dropped', async () => {
@@ -123,7 +124,7 @@ describe('#25 — updateLeaveType eligibility (write path)', () => {
       name: 'V',
       eligibility: { gender: 'female', department: 'Finance' } as never,
     });
-    expect(await eligibilityOf(t)).toEqual({ gender: 'female' });
+    expect(await eligibilityOf(t)).toEqual({ gender: ['female'] });
   });
 
   it('appends leave-type.updated with { before, after } carrying the eligibility change', async () => {
@@ -132,8 +133,72 @@ describe('#25 — updateLeaveType eligibility (write path)', () => {
     const payload = await latestEventPayload(b.tenantId, t, 'leave-type.updated');
     expect(payload).toMatchObject({
       before: { eligibility: null },
-      after: { eligibility: { gender: 'female' } },
+      after: { eligibility: { gender: ['female'] } },
     });
+  });
+});
+
+describe('#badc5966 — multi-select gender + marital eligibility', () => {
+  it('stores a multi-gender rule and admits ANY selected gender while rejecting others', async () => {
+    const wellness = await leaveType('WELLNESS', null);
+    await updateLeaveType(adminCtx(b), {
+      id: wellness,
+      name: 'Wellness',
+      eligibility: { gender: ['male', 'female'] },
+    });
+    expect(await eligibilityOf(wellness)).toEqual({ gender: ['male', 'female'] });
+    const male = await hire('male', 'single');
+    const female = await hire('female', 'single');
+    const undisclosed = await hire(null, 'single');
+    await expect(req(male.employmentId, wellness)).resolves.toMatchObject({ days: 1 });
+    await expect(req(female.employmentId, wellness)).resolves.toMatchObject({ days: 1 });
+    await expect(req(undisclosed.employmentId, wellness)).rejects.toBeInstanceOf(LeaveIneligibleError);
+  });
+
+  it('stores a multi-marital rule and admits ANY selected status while rejecting others', async () => {
+    const family = await leaveType('FAMILYCARE', null);
+    await updateLeaveType(adminCtx(b), {
+      id: family,
+      name: 'Family Care',
+      eligibility: { maritalStatus: ['single', 'married'] },
+    });
+    expect(await eligibilityOf(family)).toEqual({ maritalStatus: ['single', 'married'] });
+    const single = await hire('female', 'single');
+    const married = await hire('male', 'married');
+    const other = await hire('male', 'other');
+    await expect(req(single.employmentId, family)).resolves.toMatchObject({ days: 1 });
+    await expect(req(married.employmentId, family)).resolves.toMatchObject({ days: 1 });
+    await expect(req(other.employmentId, family)).rejects.toBeInstanceOf(LeaveIneligibleError);
+  });
+
+  it('de-dupes, drops blanks, and rejects out-of-allow-list values', async () => {
+    const t = await leaveType('MULTI', null);
+    const ctx = adminCtx(b);
+    // de-dupe + blank-strip
+    await updateLeaveType(ctx, { id: t, name: 'M', eligibility: { gender: ['male', 'male', ''] } as never });
+    expect(await eligibilityOf(t)).toEqual({ gender: ['male'] });
+    // an array with a bad element throws
+    await expect(
+      updateLeaveType(ctx, { id: t, name: 'M', eligibility: { gender: ['male', 'divorced'] } as never }),
+    ).rejects.toThrow();
+    // an all-blank array collapses to null (open to all), same as the scalar all-blank case
+    await updateLeaveType(ctx, { id: t, name: 'M', eligibility: { gender: [], maritalStatus: [''] } as never });
+    expect(await eligibilityOf(t)).toBeNull();
+  });
+
+  it('BACKWARD-COMPAT: a legacy SCALAR row (pre-multi-select, no backfill) still gates correctly', async () => {
+    // Insert the eligibility exactly as pre-#badc5966 rows stored it — a scalar string, NOT an array.
+    const mat = await leaveType('LEGACYMAT', { gender: 'female' });
+    const female = await hire('female', 'married');
+    const male = await hire('male', 'married');
+    // enforcement path (requestLeave) tolerates the scalar via normalize-on-read
+    await expect(req(female.employmentId, mat)).resolves.toMatchObject({ days: 1 });
+    await expect(req(male.employmentId, mat)).rejects.toBeInstanceOf(LeaveIneligibleError);
+    // visibility path agrees
+    const maleTypes = (await listEligibleLeaveTypesFor(adminCtx(b), male.employmentId)).map((x) => x.id);
+    const femaleTypes = (await listEligibleLeaveTypesFor(adminCtx(b), female.employmentId)).map((x) => x.id);
+    expect(maleTypes).not.toContain(mat);
+    expect(femaleTypes).toContain(mat);
   });
 });
 

@@ -260,7 +260,22 @@ export class LeaveDurationNotAllowedError extends Error {
 // A lawful gate that mirrors what the Act restricts (maternity female-only EA s.37; paternity married-
 // male ≥12mo EA s.60FA). It NEVER blocks a statutory entitlement — types with no restriction carry no
 // eligibility, so everyone can request them.
-export type LeaveEligibility = { gender?: string; maritalStatus?: string; minServiceMonths?: number };
+// gender / maritalStatus accept EITHER a scalar (legacy rows written before multi-select, #badc5966) OR an
+// array (multi-select: qualify if the employee matches ANY selected value). Reads normalize via asList() so
+// no backfill/migration is needed — a pre-existing scalar row behaves exactly as before.
+export type LeaveEligibility = {
+  gender?: string | string[];
+  maritalStatus?: string | string[];
+  minServiceMonths?: number;
+};
+
+/** Normalize a scalar-or-array eligibility field to a de-blanked list. null/undefined → []; scalar → [scalar];
+ *  array → itself (blanks dropped). Used at every chokepoint so legacy scalar rows and new array rows match
+ *  identically without a data migration. */
+export function asList(v: string | string[] | null | undefined): string[] {
+  if (v == null) return [];
+  return (Array.isArray(v) ? v : [v]).filter((x) => x != null && x !== '');
+}
 
 export class LeaveIneligibleError extends Error {
   constructor(message: string) {
@@ -433,11 +448,15 @@ function assertEligible(
   emp: { gender: string | null; marital: string | null; hiredOn: string } | undefined,
   asOf: string,
 ): void {
-  if (elig.gender && emp?.gender !== elig.gender) {
-    throw new LeaveIneligibleError(`This leave type is available to ${elig.gender} employees only.`);
+  // Multi-select (#badc5966): qualify if the employee's attribute matches ANY selected value (OR within a
+  // field, AND across fields). An empty list carries no restriction. asList() normalizes legacy scalar rows.
+  const genders = asList(elig.gender);
+  if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) {
+    throw new LeaveIneligibleError(`This leave type is available to ${genders.join(' or ')} employees only.`);
   }
-  if (elig.maritalStatus && emp?.marital !== elig.maritalStatus) {
-    throw new LeaveIneligibleError(`This leave type requires marital status “${elig.maritalStatus}”.`);
+  const maritals = asList(elig.maritalStatus);
+  if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) {
+    throw new LeaveIneligibleError(`This leave type requires marital status “${maritals.join(' or ')}”.`);
   }
   if (elig.minServiceMonths && (!emp || monthsBetween(emp.hiredOn, asOf) < elig.minServiceMonths)) {
     throw new LeaveIneligibleError(`This leave type requires at least ${elig.minServiceMonths} months of service.`);
@@ -555,8 +574,10 @@ export function isLeaveEligible(
   asOf: string,
 ): boolean {
   if (!elig) return true;
-  if (elig.gender && emp?.gender !== elig.gender) return false;
-  if (elig.maritalStatus && emp?.marital !== elig.maritalStatus) return false;
+  const genders = asList(elig.gender);
+  if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) return false;
+  const maritals = asList(elig.maritalStatus);
+  if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
   if (elig.minServiceMonths && (!emp || monthsBetween(emp.hiredOn, asOf) < elig.minServiceMonths)) return false;
   return true;
 }

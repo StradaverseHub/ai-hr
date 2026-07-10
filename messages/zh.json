@@ -2866,6 +2866,8 @@
       "eligibilityMinServiceSuffix": "个月",
       "eligibilitySummaryOnly": "仅限{who}",
       "eligibilitySummaryService": "服务满 {n} 个月",
+      "eligibilitySummaryOr": "或",
+      "eligibilityMultiHint": "勾选一项或多项；全部不勾选则对所有人开放。",
       "allowedDurationsLabel": "允许的时长",
       "allowedDurationsHelp": "选择员工可为此假期类型选择的时长。全天始终可用。",
       "duration_full_day": "全天",
