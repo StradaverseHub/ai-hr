@@ -1,0 +1,31 @@
+-- Leave Eligibility Rules — Day Type Inclusion Configuration (feedback ef6d7146).
+--
+-- Adds a per-leave-type JSONB vector letting HR decide, INDEPENDENTLY for each day type, whether that kind
+-- of day is COUNTED when calculating the duration of a leave of this type. Surfaced inside the existing
+-- Leave Configuration → Entitlements panel, under Eligibility Rules — no new page or menu.
+--
+-- Keys (closed camelCase allow-list, validated in core/leave.ts normalizeDayTypeInclusion /
+-- core/admin.ts updateLeaveType):
+--   offDay, restDay, publicHoliday, companyHoliday, shutdownDay
+-- Value semantics: true ⇒ that day type IS counted (deducted) inside a leave span; false ⇒ it is skipped.
+--
+-- This REFINES the existing leave_type.counting mode:
+--   * counting='calendar_days' already counts every day — the vector is moot there (all-included).
+--   * counting='working_days' today excludes weekends/rest days AND public holidays. The vector lets a
+--     working_days type SELECTIVELY re-include specific day types (e.g. "skip weekends but DO count public
+--     holidays" — impossible before).
+--
+-- NULLABLE + all-false ≡ today's exact counting behaviour: a null column (every existing row) OR an
+-- all-false vector is treated as "no re-inclusion" and the counting kernel takes its byte-identical legacy
+-- early-return path. The new inclusion-aware path engages ONLY when the vector is non-null with ≥1 true
+-- flag. No backfill.
+--
+-- Phase A note (see the item PLAN): offDay/restDay are collapsed to the single "non-working weekday" bucket
+-- (statutory rest-vs-off weekday designation is Phase B), and companyHoliday/shutdownDay are STORED but do
+-- not yet drive counting (the public-vs-company holiday scope split + the shutdown-day concept are Phase B).
+-- restDay/offDay and publicHoliday are live.
+--
+-- JSONB extension point per CLAUDE.md: no per-key migration. Additive, nullable, backward compatible.
+-- No RLS change: leave_type already has tenant-read + admin-write policies; a new column inherits them
+-- (same as the 0178 ess_view_config and 0147 custom_messages migrations).
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS day_type_inclusion jsonb;

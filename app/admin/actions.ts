@@ -53,6 +53,8 @@ import {
   grantAdHocLeave,
   grantAdHocLeaveMulti,
   todayInKualaLumpur,
+  DAY_TYPE_INCLUSION_KEYS,
+  type DayTypeInclusion,
   type LeaveDurationType,
   type ServiceBand,
 } from '@/core/leave';
@@ -1001,6 +1003,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
+  // Day Type Inclusion (feedback ef6d7146): the "Day Type Inclusion" sub-form posts `dayTypeInclusion=1`
+  // (marker) plus one checkbox per day type (`dayType_<key>`). An unchecked box does not post, so we build the
+  // COMPLETE five-key vector (checked ⇒ true/counted, absent ⇒ false/skipped) and hand it to the service,
+  // which normalises an all-false vector to null (inert). Any other sub-form save omits the marker ⇒
+  // day_type_inclusion stays untouched (same tri-state guard as essView).
+  const touchDayTypeInclusion = fd.get('dayTypeInclusion') === '1';
+  const dayTypeInclusionFields = touchDayTypeInclusion
+    ? {
+        dayTypeInclusion: Object.fromEntries(
+          DAY_TYPE_INCLUSION_KEYS.map((key) => [key, fd.get(`dayType_${key}`) === 'on']),
+        ) as unknown as DayTypeInclusion,
+      }
+    : {};
   // Leave Type Visual Configuration Enhancement (639fdf77): the visual sub-form posts `visual=1` (marker) plus
   // `color` (one of the 7 palette tokens, or '' to clear) + `icon` (an icon-registry key, or '' to clear).
   // OWN tri-state (mirrors essView) — any other sub-form save omits the marker ⇒ color/icon stay untouched.
@@ -1051,6 +1066,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...expiryFields,
       ...partialFields,
       ...essViewFields,
+      ...dayTypeInclusionFields,
       ...visualFields,
       ...customMessageFields,
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.

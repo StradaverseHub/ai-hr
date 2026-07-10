@@ -66,6 +66,9 @@ export type LeaveEligibilityRule = {
  *  server module, so it's duplicated here in the same order; keep the two in sync. */
 const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
 const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
+// Day Type Inclusion (feedback ef6d7146): the five day types, in the order the reporter listed them. Each
+// posts `dayType_<key>` when its toggle is on; the closed set mirrors core/leave.ts DAY_TYPE_INCLUSION_KEYS.
+const DAY_TYPE_INCLUSION_OPTIONS = ['offDay', 'restDay', 'publicHoliday', 'companyHoliday', 'shutdownDay'] as const;
 
 /** Normalize a scalar-or-array eligibility field to a list (mirrors core asList — kept local so the client
  *  component has no server import). */
@@ -530,6 +533,7 @@ export function LeaveTypePanel({
   expiryUnit,
   customMessages,
   essViewConfig,
+  dayTypeInclusion,
   color,
   icon,
   policies,
@@ -583,6 +587,10 @@ export function LeaveTypePanel({
   /** Employee Leave View Configuration (65dec703 / dup 1fedb473): per-component ESS visibility map, threaded
    *  so each checkbox round-trips its stored value. null / missing key ⇒ visible (all-visible default). */
   essViewConfig: Record<string, boolean> | null;
+  /** Day Type Inclusion (ef6d7146): stored { offDay, restDay, publicHoliday, companyHoliday, shutdownDay }
+   *  map, threaded so each toggle round-trips its saved value. null / missing key ⇒ off (day type skipped,
+   *  the counting-mode default). */
+  dayTypeInclusion: Record<string, boolean> | null;
   /** Leave Type Visual Configuration (639fdf77): stored colour token + icon key, threaded so the swatch
    *  radio + icon picker init from what's saved. null ⇒ nothing selected (default styling). */
   color: string | null;
@@ -605,6 +613,8 @@ export function LeaveTypePanel({
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingEligibility, setEditingEligibility] = useState(false);
+  // Day Type Inclusion (ef6d7146): its own edit-mode toggle (a sub-form inside Eligibility Rules).
+  const [editingDayTypes, setEditingDayTypes] = useState(false);
   const [editingPolicyId, setEditingPolicyId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   // Feedback 9d8cf621 — custom apply-time message: the enable checkbox drives whether the textarea is shown.
@@ -679,6 +689,16 @@ export function LeaveTypePanel({
       parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths, unit }));
     }
     return parts.join(' · ');
+  };
+
+  // Day Type Inclusion (ef6d7146): a compact human summary of which day types are counted. When none are on
+  // (null / all-false) we render the "working days only" default line, matching the reporter's Example 1.
+  const dayTypeLabel = (k: string) => t(`dayTypeInclusion.${k}`);
+  const dayTypeInclusionSummary = () => {
+    const on = DAY_TYPE_INCLUSION_OPTIONS.filter((k) => dayTypeInclusion?.[k] === true);
+    if (on.length === 0) return t('dayTypeInclusion.summaryNone');
+    if (on.length === DAY_TYPE_INCLUSION_OPTIONS.length) return t('dayTypeInclusion.summaryAll');
+    return t('dayTypeInclusion.summaryCounts', { list: on.map(dayTypeLabel).join(', ') });
   };
 
   const active = policies.filter((p) => !p.validTo);
@@ -926,6 +946,61 @@ export function LeaveTypePanel({
             )}
             <p className="text-xs text-muted-foreground">{t('eligibilityHelp')}</p>
             <p className="text-xs text-muted-foreground">{t('eligibilityUndisclosedNote')}</p>
+          </div>
+
+          {/* Day Type Inclusion (feedback ef6d7146) — five independent toggles deciding which day types are
+              counted when calculating a leave's duration. Lives inside Eligibility Rules (reporter's request),
+              its own self-contained <form> + `dayTypeInclusion=1` tri-state marker so an unrelated save never
+              resets it. Simple toggle list — no matrix — matching the reporter's UX ask. */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">{t('dayTypeInclusion.sectionTitle')}</span>
+              {!editingDayTypes && (
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingDayTypes(true)}>
+                  {t('eligibilityEdit')}
+                </Button>
+              )}
+            </div>
+            {editingDayTypes ? (
+              <form
+                action={updateTypeAction}
+                className="space-y-2 rounded-lg bg-background p-3"
+                onSubmit={() => setEditingDayTypes(false)}
+              >
+                <input type="hidden" name="id" value={id} />
+                {/* preserve the name — this form does not edit it */}
+                <input type="hidden" name="name" value={name} />
+                {/* marker: tells the action to touch the day_type_inclusion column (tri-state guard) */}
+                <input type="hidden" name="dayTypeInclusion" value="1" />
+                <div className="flex flex-col gap-1.5">
+                  {DAY_TYPE_INCLUSION_OPTIONS.map((k) => (
+                    <label key={k} className="flex items-center gap-2 text-sm text-foreground">
+                      <input
+                        type="checkbox"
+                        name={`dayType_${k}`}
+                        defaultChecked={dayTypeInclusion?.[k] === true}
+                        className="size-4 accent-primary"
+                      />
+                      {dayTypeLabel(k)}
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" size="sm">
+                    {t('save')}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setEditingDayTypes(false)}>
+                    {t('cancel')}
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-lg bg-background px-3 py-2 text-xs text-foreground">
+                {dayTypeInclusionSummary()}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.help')}</p>
+            <p className="text-xs text-muted-foreground">{t('dayTypeInclusion.statutoryNote')}</p>
           </div>
 
           {/* ADR-0048 — allowed leave durations (full day is always available) */}

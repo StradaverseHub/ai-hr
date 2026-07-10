@@ -3048,6 +3048,19 @@
         "transactionHistory": "Lịch sử giao dịch",
         "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
       },
+      "dayTypeInclusion": {
+        "sectionTitle": "Bao gồm loại ngày",
+        "help": "Chọn loại ngày nào được tính khi tính thời lượng của loại nghỉ này. Tắt tất cả chỉ trừ ngày làm việc; bật một mục để tính cả loại ngày đó trong kỳ nghỉ.",
+        "statutoryNote": "Lưu ý: đối với nghỉ phép theo luật (Phép năm, Ốm), Đạo luật Việc làm 1955 (mục 60E) quy định ngày nghỉ và ngày lễ trong kỳ nghỉ phép năm có lương KHÔNG được tính — không bật các mục này cho loại theo luật.",
+        "offDay": "Ngày nghỉ",
+        "restDay": "Ngày nghỉ hàng tuần",
+        "publicHoliday": "Ngày lễ",
+        "companyHoliday": "Ngày nghỉ công ty",
+        "shutdownDay": "Ngày ngừng hoạt động",
+        "summaryNone": "Chỉ tính ngày làm việc (không tính ngày nghỉ, ngày lễ hoặc ngày ngừng hoạt động)",
+        "summaryAll": "Tính tất cả ngày theo lịch (bao gồm ngày nghỉ, ngày lễ và ngày ngừng hoạt động)",
+        "summaryCounts": "Còn tính: {list}"
+      },
       "visual": {
         "sectionTitle": "Cấu hình Hiển thị Loại nghỉ phép",
         "help": "Tùy chọn. Biểu tượng và chủ đề màu sẽ hiển thị bên cạnh loại nghỉ phép này trong tab Hồ sơ của tôi → Nghỉ phép của nhân viên. Chỉ mang tính hiển thị — không ảnh hưởng đến quyền lợi, điều kiện hay tính toán.",

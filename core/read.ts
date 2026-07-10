@@ -414,6 +414,9 @@ export function listLeaveTypes(
         // Employee Leave View Configuration (65dec703): feeds the admin panel's ESS-view checklist (MUST be
         // projected or every checkbox renders at its default on every reload). null ⇒ all-visible default.
         essViewConfig: leaveType.essViewConfig,
+        // Day Type Inclusion (ef6d7146): feeds the admin panel's "Day Type Inclusion" toggles (MUST be
+        // projected or every toggle renders unchecked on every reload). null ⇒ counting-mode default.
+        dayTypeInclusion: leaveType.dayTypeInclusion,
         // Leave Type Visual Configuration (639fdf77): feeds the admin panel's visual sub-form (MUST be
         // projected or the swatch/icon picker render empty on every reload). null ⇒ default styling.
         color: leaveType.color,

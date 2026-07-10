@@ -3048,6 +3048,19 @@
         "transactionHistory": "Sejarah Transaksi",
         "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
       },
+      "dayTypeInclusion": {
+        "sectionTitle": "Kemasukan Jenis Hari",
+        "help": "Pilih jenis hari yang dikira semasa mengira tempoh cuti ini. Semua dimatikan hanya menolak hari bekerja; hidupkan satu untuk turut mengira jenis hari itu dalam tempoh cuti.",
+        "statutoryNote": "Nota: bagi cuti berkanun (Tahunan, Sakit), Akta Kerja 1955 (s.60E) menetapkan hari rehat dan cuti umum dalam cuti tahunan bergaji TIDAK dikira — jangan aktifkan bagi jenis berkanun.",
+        "offDay": "Hari Cuti",
+        "restDay": "Hari Rehat",
+        "publicHoliday": "Cuti Umum",
+        "companyHoliday": "Cuti Syarikat",
+        "shutdownDay": "Hari Tutup Operasi",
+        "summaryNone": "Hari bekerja sahaja (hari rehat, cuti umum atau hari tutup tidak dikira)",
+        "summaryAll": "Semua hari kalendar dikira (termasuk hari rehat, cuti umum dan hari tutup)",
+        "summaryCounts": "Turut mengira: {list}"
+      },
       "visual": {
         "sectionTitle": "Konfigurasi Visual Jenis Cuti",
         "help": "Pilihan. Ikon dan tema warna dipaparkan di sebelah jenis cuti ini pada tab Profil Saya → Cuti pekerja. Semata-mata visual — tiada kesan pada kelayakan, syarat atau pengiraan.",

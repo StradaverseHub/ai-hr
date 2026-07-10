@@ -826,6 +826,20 @@ export const leaveType = pgTable('leave_type', {
   // touchEssViewConfig tri-state). JSONB extension point: new component keys ship with no migration, but a
   // writer MUST validate against the closed allow-list (unknown keys are rejected in updateLeaveType).
   essViewConfig: jsonb('ess_view_config').$type<Record<string, boolean>>(),
+  // Leave Eligibility Rules — Day Type Inclusion Configuration (feedback ef6d7146): a per-type vector of
+  // five INDEPENDENT booleans deciding whether each day type is COUNTED when calculating a leave's duration.
+  // Keyed by the closed camelCase allow-list { offDay, restDay, publicHoliday, companyHoliday, shutdownDay }
+  // (core/leave.ts DAY_TYPE_INCLUSION_KEYS). true ⇒ that day type is deducted inside a leave span; false ⇒
+  // skipped. REFINES leave_type.counting: for a working_days type the vector selectively RE-INCLUDES day
+  // types that would otherwise be skipped (e.g. count public holidays but still skip weekends). NULLABLE +
+  // all-false ≡ today's exact counting behaviour — a null column (every existing row) OR an all-false vector
+  // takes the byte-identical legacy counting path; the inclusion-aware kernel branch engages only when the
+  // vector is non-null with ≥1 true flag (core/leave.ts normalizeDayTypeInclusion + dayWeight). Phase A:
+  // offDay/restDay are collapsed to the "non-working weekday" bucket and companyHoliday/shutdownDay are
+  // STORED-but-inert (their resolver + the shutdown concept are Phase B); restDay/offDay + publicHoliday are
+  // live. Written from the "Day Type Inclusion" sub-form inside the per-type panel (updateLeaveType, own
+  // touchDayTypeInclusion tri-state).
+  dayTypeInclusion: jsonb('day_type_inclusion').$type<Record<string, boolean>>(),
   // Leave Type Visual Configuration Enhancement (feedback 639fdf77): two additive, nullable, DISPLAY-ONLY
   // columns letting HR attach an icon + colour theme to each leave type, surfaced only on the employee
   // self-service My Profile → Leave tab (icon beside the name + colour chip on the row). NEVER read for

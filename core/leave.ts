@@ -289,6 +289,47 @@ export function asList(v: string | string[] | null | undefined): string[] {
   return (Array.isArray(v) ? v : [v]).filter((x) => x != null && x !== '');
 }
 
+// ── Day Type Inclusion (feedback ef6d7146) ───────────────────────────────────────────────────────
+// A per-leave-type vector of five INDEPENDENT booleans deciding whether each day type is COUNTED when
+// calculating a leave's duration. It REFINES leave_type.counting: a calendar_days type already counts every
+// day (the vector is moot); a working_days type today skips weekends/rest days AND public holidays, and this
+// vector lets it selectively RE-INCLUDE specific day types (e.g. "skip weekends but DO count public
+// holidays" — impossible before). Persisted as leave_type.day_type_inclusion JSONB.
+export type DayTypeInclusion = {
+  offDay: boolean;
+  restDay: boolean;
+  publicHoliday: boolean;
+  companyHoliday: boolean;
+  shutdownDay: boolean;
+};
+/** The closed camelCase allow-list of day-type keys (the order the admin UI renders them). */
+export const DAY_TYPE_INCLUSION_KEYS = [
+  'offDay',
+  'restDay',
+  'publicHoliday',
+  'companyHoliday',
+  'shutdownDay',
+] as const;
+
+/** Normalize a stored day_type_inclusion JSONB to a strict DayTypeInclusion, or `undefined` when it should
+ *  be treated as INERT — i.e. take the byte-identical legacy counting path. `undefined` is returned for:
+ *  a null/non-object column (every existing row), AND an all-false vector (which is exactly today's
+ *  working_days behaviour, so nothing re-includes). Any non-boolean/absent key coerces to false. This is the
+ *  single guard that guarantees old data + all-off config count identically to before the feature. */
+export function normalizeDayTypeInclusion(v: unknown): DayTypeInclusion | undefined {
+  if (v == null || typeof v !== 'object') return undefined;
+  const o = v as Record<string, unknown>;
+  const r: DayTypeInclusion = {
+    offDay: o.offDay === true,
+    restDay: o.restDay === true,
+    publicHoliday: o.publicHoliday === true,
+    companyHoliday: o.companyHoliday === true,
+    shutdownDay: o.shutdownDay === true,
+  };
+  if (!r.offDay && !r.restDay && !r.publicHoliday && !r.companyHoliday && !r.shutdownDay) return undefined;
+  return r;
+}
+
 export class LeaveIneligibleError extends Error {
   constructor(message: string) {
     super(message);
@@ -729,12 +770,49 @@ function dayWeight(
   date: string,
   sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
   holidays: Set<string>,
+  // Day Type Inclusion (feedback ef6d7146): optional per-leave-type re-inclusion vector. When ABSENT
+  // (undefined — every existing type / an all-off config, via normalizeDayTypeInclusion) this takes the
+  // byte-identical legacy early-return path below, so nothing about today's counting changes. When present
+  // it refines the working_days weighting: a public holiday counts 1 if inclusion.publicHoliday, and a
+  // non-roster weekday (rest/off day) counts 1 if inclusion.restDay OR inclusion.offDay.
+  inclusion?: DayTypeInclusion,
 ): number {
-  if (holidays.has(date)) return 0;
+  if (inclusion === undefined) {
+    // ── Legacy path (unchanged) — the golden-test guarantee. ──
+    if (holidays.has(date)) return 0;
+    const dowL = isoWeekday(date);
+    if (sched.workingDaysIso.includes(dowL)) return 1;
+    if (sched.halfDaysIso.includes(dowL)) return sched.halfCountsFull ? 1 : 0.5;
+    return 0;
+  }
+  // ── Inclusion-aware refinement of working_days ──
   const dow = isoWeekday(date);
+  if (holidays.has(date)) {
+    // Phase A: every holiday is treated as a PUBLIC holiday for inclusion. companyHoliday/shutdownDay are
+    // stored-but-inert (the public-vs-company scope split + the shutdown concept are Phase B), so a holiday
+    // is re-included iff publicHoliday is on.
+    return inclusion.publicHoliday ? 1 : 0;
+  }
   if (sched.workingDaysIso.includes(dow)) return 1;
   if (sched.halfDaysIso.includes(dow)) return sched.halfCountsFull ? 1 : 0.5;
-  return 0;
+  // A non-roster weekday is a rest/off day. Phase A collapses restDay + offDay into this single bucket (the
+  // statutory rest-vs-off weekday designation is Phase B), so it re-includes if EITHER toggle is on.
+  return inclusion.restDay || inclusion.offDay ? 1 : 0;
+}
+
+/** True when `date` carries a non-zero leave DEDUCTION weight for the given schedule/holiday set and optional
+ *  inclusion vector — i.e. it is a day this leave type actually deducts. When `inclusion` is undefined this is
+ *  BYTE-IDENTICAL to isWorkingDay (a Full day weighs 1, a Half day 0.5 — both > 0 — and a holiday/rest day 0),
+ *  so the membership set is unchanged for every existing type. With an inclusion vector it additionally admits
+ *  re-included public-holiday / rest-day dates, keeping the cancellable/per-date set in agreement with the
+ *  weighted total (workingDaysWeighted) so submission, per-date, preview and cancellation never drift. */
+function isDeductibleDay(
+  date: string,
+  sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+  holidays: Set<string>,
+  inclusion?: DayTypeInclusion,
+): boolean {
+  return dayWeight(date, sched, holidays, inclusion) > 0;
 }
 
 /** Feedback 31474452 (4c): the WEIGHTED sum of dayWeight over [start, end] — the real deducted-days total for
@@ -745,9 +823,11 @@ function workingDaysWeighted(
   end: string,
   holidays: Set<string>,
   sched: { workingDaysIso: number[]; halfDaysIso: number[]; halfCountsFull: boolean },
+  // Day Type Inclusion (feedback ef6d7146): threaded straight into dayWeight — undefined ⇒ byte-identical.
+  inclusion?: DayTypeInclusion,
 ): number {
   let total = 0;
-  for (const d of eachDate(start, end)) total += dayWeight(d, sched, holidays);
+  for (const d of eachDate(start, end)) total += dayWeight(d, sched, holidays, inclusion);
   return round2(total);
 }
 
@@ -945,6 +1025,9 @@ export async function requestLeave(
         name: leaveType.name,
         counting: leaveType.counting,
         eligibility: leaveType.eligibility,
+        // Day Type Inclusion (feedback ef6d7146): the re-inclusion vector — threaded into the working_days
+        // counting below so the deducted `days` honours which day types this type counts.
+        dayTypeInclusion: leaveType.dayTypeInclusion,
         requiresDocument: leaveType.requiresDocument,
         mandatoryAfterDays: leaveType.mandatoryAfterDays,
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
@@ -1063,9 +1146,15 @@ export async function requestLeave(
       // company.default_work_state → national-only (see resolveHolidaySet).
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
       const sched = await resolveSchedule(tx, p.employmentId);
-      const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
-      workingDayCount = workingDays(p.startDate, p.endDate, hols, workingDaysIso);
-      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched);
+      // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector (undefined ⇒ inert legacy
+      // path). Both the deducted WEIGHT and the "any deductible day in range?" guard honour it so a type
+      // configured to count e.g. public holidays deducts them and a half/hourly guard sees them as valid.
+      const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
+      // workingDayCount is the LIST count of deductible days — byte-identical to workingDays() when incl is
+      // undefined (a Full/Half day weighs > 0, a holiday/rest day 0), and additionally counts re-included
+      // day types when a vector is set.
+      workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
+      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
     }
 
     let days: number;
@@ -1264,13 +1353,16 @@ export async function requestLeave(
     if (perDateEligible) {
       const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
       const sched = await resolveSchedule(tx, p.employmentId);
-      const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
-      const dates = eachDate(p.startDate, p.endDate).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+      // Day Type Inclusion (feedback ef6d7146): the per-date sub-rows must span exactly the DEDUCTIBLE dates
+      // (re-included day types included) and carry each date's inclusion-aware weight, so sum(perDate.days)
+      // still equals the request's weighted `days` and no re-included day is stranded outside per-date approval.
+      const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
+      const dates = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl));
       if (dates.length > 1) {
         // Feedback 31474452: each date carries ITS OWN weight (1 for Full, 0.5/1.0 for Half per the company
         // toggle) rather than always-1 "one whole working day by construction" — so sum(perDate.days) equals
         // the request's WEIGHTED total (days, set above from workingDayWeight), not merely its date count.
-        perDate = dates.map((d) => ({ date: d, days: dayWeight(d, sched, hols) }));
+        perDate = dates.map((d) => ({ date: d, days: dayWeight(d, sched, hols, incl) }));
         await tx.insert(leaveRequestDate).values(
           perDate.map((pd) => ({
             tenantId: ctx.tenantId,
@@ -1344,7 +1436,9 @@ export async function previewLeaveDeduction(
   return withTenant(ctx, async (tx) => {
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
     const [lt] = await tx
-      .select({ code: leaveType.code, counting: leaveType.counting })
+      // Day Type Inclusion (feedback ef6d7146): projected so the preview's day-count matches what submission
+      // will deduct (both run through workingDaysWeighted with the same inclusion vector — no preview drift).
+      .select({ code: leaveType.code, counting: leaveType.counting, dayTypeInclusion: leaveType.dayTypeInclusion })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
       .limit(1);
@@ -1358,7 +1452,8 @@ export async function previewLeaveDeduction(
       const sched = await resolveSchedule(tx, p.employmentId);
       hasHalfScheduleDate = eachDate(p.startDate, p.endDate).some((d) => sched.halfDaysIso.includes(isoWeekday(d)));
       if (durationType === 'full_day' || isEmergencySplit) {
-        days = workingDaysWeighted(p.startDate, p.endDate, hols, sched);
+        const incl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
+        days = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
       } else {
         days = 0.5; // half_day_am / half_day_pm — D4: unaffected by the half-schedule toggle
       }
@@ -1459,6 +1554,10 @@ async function requestEmergencyLeave(
 
   // Count the span as the working-days (paid) children would (honouring the employee's holidays/state +
   // configured rest-day roster + Half-day markers) and as the UNPAID child would (calendar-days).
+  // Day Type Inclusion (feedback ef6d7146): DELIBERATELY NOT applied here. Emergency Leave decomposes into
+  // ANNUAL (+ SICK) + UNPAID children; EA-1955 s.60E forbids counting rest days / public holidays inside paid
+  // ANNUAL leave, so re-including them via a day-type vector would be unlawful. EL therefore always counts its
+  // paid portion in the byte-identical legacy working-days frame (no inclusion vector passed below).
   const hols = await resolveHolidaySet(tx, p.employmentId, p.startDate, p.endDate);
   const sched = await resolveSchedule(tx, p.employmentId);
   const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
@@ -2433,10 +2532,19 @@ export async function workingDatesForSpan(
   employmentId: string,
   start: string,
   end: string,
+  // Day Type Inclusion (feedback ef6d7146): the leave type's re-inclusion vector. When ABSENT (undefined ⇒
+  // every existing type / all-off config) this is byte-identical to before (roster + holiday-aware working
+  // dates). When present the cancellable candidate set additionally admits the re-included day types, so the
+  // cancellation gate + give-back stay in agreement with how the leave was originally deducted.
+  inclusion?: DayTypeInclusion,
 ): Promise<string[]> {
   const hols = await resolveHolidaySet(tx, employmentId, start, end);
-  const workingDaysIso = await resolveWorkingDaysIso(tx, employmentId);
-  return eachDate(start, end).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+  if (inclusion === undefined) {
+    const workingDaysIso = await resolveWorkingDaysIso(tx, employmentId);
+    return eachDate(start, end).filter((d) => isWorkingDay(d, workingDaysIso, hols));
+  }
+  const sched = await resolveSchedule(tx, employmentId);
+  return eachDate(start, end).filter((d) => isDeductibleDay(d, sched, hols, inclusion));
 }
 
 /** ADR-0065 (R5 Build #2 — iterative cancellation). True when the parent_group_id names a CANCELLATION-SPLIT
@@ -2524,7 +2632,9 @@ export async function requestLeaveCancellation(
       throw new LeaveCancellationNotAllowedError('this leave cannot be partially cancelled');
     }
     const [lt] = await tx
-      .select({ code: leaveType.code })
+      // Day Type Inclusion (feedback ef6d7146): the type's re-inclusion vector — cancellation must offer + give
+      // back exactly the day types the original deduction counted, or the ledger reversal/re-debit drifts.
+      .select({ code: leaveType.code, dayTypeInclusion: leaveType.dayTypeInclusion })
       .from(leaveType)
       .where(eq(leaveType.id, req.leaveTypeId))
       .limit(1);
@@ -2533,10 +2643,11 @@ export async function requestLeaveCancellation(
       // reintroduce the ghost-credit / negative-balance bug — and there is no inverse of consumeReplacementLeaveTx.
       throw new LeaveCancellationNotAllowedError('replacement (time-off-in-lieu) leave cannot be cancelled');
     }
+    const cancelIncl = normalizeDayTypeInclusion(lt?.dayTypeInclusion);
 
     // The request's working dates (the only cancellable dates), in the tenant calendar frame. Shared helper so
     // the read layer (UI candidate list) and this gate agree exactly (R5 Build #2 — Fix C, no Mon–Fri drift).
-    let workingDates = await workingDatesForSpan(tx, req.employmentId, req.startDate, req.endDate);
+    let workingDates = await workingDatesForSpan(tx, req.employmentId, req.startDate, req.endDate, cancelIncl);
     // ADR-0068 §6: a per-date-approval request is now a single parentGroupId=NULL row, so it reaches here.
     // Its interior REJECTED dates are NOT approved leave — exclude them from the cancellable set so an employee
     // can only give back a date that was actually approved (mirrors §4A's effectively-approved-dates rule).
@@ -2580,7 +2691,9 @@ export async function requestLeaveCancellation(
     // so the manager's approval screen previews the real give-back amount decideLeaveCancellation will apply.
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
     const sched = await resolveSchedule(tx, req.employmentId);
-    const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols), 0));
+    // Day Type Inclusion (feedback ef6d7146): weigh each cancel date through the SAME vector the leave was
+    // deducted under (cancelIncl above), so a re-included public-holiday/rest date previews its real weight.
+    const requestedDays = round2(cancelDates.reduce((s, d) => s + dayWeight(d, sched, hols, cancelIncl), 0));
     const [row] = await tx
       .insert(leaveCancellationRequest)
       .values({
@@ -2659,14 +2772,23 @@ export async function decideLeaveCancellation(
 
     const cancelDates = (cr.cancelDates as string[]) ?? [];
     const hols = await resolveHolidaySet(tx, req.employmentId, req.startDate, req.endDate);
+    // Day Type Inclusion (feedback ef6d7146): resolve the type's re-inclusion vector so the give-back split
+    // spans exactly the day types the original debit counted. Without this a re-included rest/PH date would be
+    // absent from workingDates, so sum(segment days) < req.days and the whole-span reversal below would
+    // over-restore. undefined ⇒ byte-identical legacy split.
+    const [decLt] = await tx
+      .select({ dayTypeInclusion: leaveType.dayTypeInclusion })
+      .from(leaveType)
+      .where(eq(leaveType.id, req.leaveTypeId))
+      .limit(1);
+    const decIncl = normalizeDayTypeInclusion(decLt?.dayTypeInclusion);
     // Feedback 31474452 (4e): resolve the CURRENT schedule/toggle config (as today — a pre-existing property,
     // not a new behaviour) and thread each working date's real WEIGHT through the split, so a cancelled Half
     // date gives back exactly the configured amount (0.5 OFF / 1.0 ON) instead of always 1.
     const sched = await resolveSchedule(tx, req.employmentId);
-    const workingDaysIso = [...new Set([...sched.workingDaysIso, ...sched.halfDaysIso])];
     const workingDates = eachDate(req.startDate, req.endDate)
-      .filter((d) => isWorkingDay(d, workingDaysIso, hols))
-      .map((date) => ({ date, weight: dayWeight(date, sched, hols) }));
+      .filter((d) => isDeductibleDay(d, sched, hols, decIncl))
+      .map((date) => ({ date, weight: dayWeight(date, sched, hols, decIncl) }));
     const { segments, cancelledSegmentIndexes } = splitSpanForCancellation(workingDates, cancelDates);
 
     // Split-and-cancel. We REUSE the original row id for the first segment (preserving attachments / FKs) and
@@ -2755,7 +2877,7 @@ export async function decideLeaveCancellation(
           sourceRequestId: rowId,
           effectiveOn: seg.from,
         });
-        remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isWorkingDay(d, workingDaysIso, hols)));
+        remainingDates.push(...eachDate(seg.from, seg.to).filter((d) => isDeductibleDay(d, sched, hols, decIncl)));
         remainingDays += segDays;
         if (i > 0) survivingNewRowIds.push(rowId); // a survivor that is NOT the reused segment[0] row
       } else {

@@ -3048,6 +3048,19 @@
         "transactionHistory": "交易历史",
         "entitlementCalcBreakdown": "应享额计算明细"
       },
+      "dayTypeInclusion": {
+        "sectionTitle": "日期类型计入",
+        "help": "选择计算此假期时长时计入哪些日期类型。全部关闭仅扣除工作日；开启某项则在假期期间也计入该日期类型。",
+        "statutoryNote": "注意：对于法定假期（年假、病假），《1955年雇佣法》第60E条规定带薪年假中的休息日和公共假期不得计入——法定假期请勿在此启用。",
+        "offDay": "轮休日",
+        "restDay": "休息日",
+        "publicHoliday": "公共假期",
+        "companyHoliday": "公司假期",
+        "shutdownDay": "停工日",
+        "summaryNone": "仅计工作日（不计休息日、假期或停工日）",
+        "summaryAll": "计入所有日历日（包括休息日、假期和停工日）",
+        "summaryCounts": "另计入：{list}"
+      },
       "visual": {
         "sectionTitle": "假期类型视觉配置",
         "help": "可选。图标和颜色主题会显示在员工「我的资料 → 假期」标签中此假期类型旁边。纯视觉效果——不影响权益、资格或计算。",

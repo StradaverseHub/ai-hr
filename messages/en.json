@@ -3048,6 +3048,19 @@
         "transactionHistory": "Transaction History",
         "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
       },
+      "dayTypeInclusion": {
+        "sectionTitle": "Day Type Inclusion",
+        "help": "Choose which day types are counted when calculating this leave's duration. All off deducts working days only; turn one on to also count that day type inside a leave span.",
+        "statutoryNote": "Note: for statutory leave (Annual, Sick), the Employment Act 1955 (s.60E) requires rest days and public holidays within paid annual leave NOT to be counted — do not enable those here for statutory types.",
+        "offDay": "Off Day",
+        "restDay": "Rest Day",
+        "publicHoliday": "Public Holiday",
+        "companyHoliday": "Company Holiday",
+        "shutdownDay": "Shutdown Day",
+        "summaryNone": "Working days only (no rest days, holidays or shutdown days counted)",
+        "summaryAll": "All calendar days counted (rest days, holidays and shutdown days included)",
+        "summaryCounts": "Also counts: {list}"
+      },
       "visual": {
         "sectionTitle": "Leave Type Visual Configuration",
         "help": "Optional. The icon and colour theme appear beside this leave type on the employee My Profile → Leave tab. Purely visual — no effect on entitlement, eligibility or calculations.",

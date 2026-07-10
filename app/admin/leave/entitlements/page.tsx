@@ -163,6 +163,7 @@ export default async function LeaveEntitlementsPage({
               expiryUnit={lt.expiryUnit ?? null}
               customMessages={(lt.customMessages as Record<string, string> | null) ?? null}
               essViewConfig={(lt.essViewConfig as Record<string, boolean> | null) ?? null}
+              dayTypeInclusion={(lt.dayTypeInclusion as Record<string, boolean> | null) ?? null}
               color={lt.color ?? null}
               icon={lt.icon ?? null}
               policies={polByType.get(lt.id) ?? []}

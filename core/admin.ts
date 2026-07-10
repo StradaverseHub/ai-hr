@@ -18,6 +18,7 @@ import {
   reprojectEntitlementForPolicy,
   todayInKualaLumpur,
   type AccrualConfig,
+  type DayTypeInclusion,
   type LeaveDurationType,
   type LeaveEligibility,
   type ServiceBand,
@@ -2356,6 +2357,26 @@ function cleanDurations(d: LeaveDurationType[] | null | undefined): LeaveDuratio
   return set.size === 0 ? null : [...set];
 }
 
+/** Day Type Inclusion (feedback ef6d7146): normalise the five-toggle re-inclusion vector. undefined ⇒
+ *  untouched (tri-state). null ⇒ clear. An object is coerced to strict booleans on the closed key set; an
+ *  ALL-FALSE result collapses to null — it is exactly today's working_days behaviour (nothing re-included),
+ *  so storing null keeps the counting kernel on its byte-identical legacy path (normalizeDayTypeInclusion). */
+function cleanDayTypeInclusion(
+  v: DayTypeInclusion | null | undefined,
+): DayTypeInclusion | null | undefined {
+  if (v === undefined) return undefined;
+  if (v == null) return null;
+  const r: DayTypeInclusion = {
+    offDay: v.offDay === true,
+    restDay: v.restDay === true,
+    publicHoliday: v.publicHoliday === true,
+    companyHoliday: v.companyHoliday === true,
+    shutdownDay: v.shutdownDay === true,
+  };
+  const anyTrue = r.offDay || r.restDay || r.publicHoliday || r.companyHoliday || r.shutdownDay;
+  return anyTrue ? r : null;
+}
+
 /** Supporting-document config: the closed set of mime types an admin may allow. No generic ceiling. */
 const DOC_MIME_SET = ['application/pdf', 'image/jpeg', 'image/png'] as const;
 const MAX_DOC_BYTES_CEILING = 10 * 1024 * 1024; // the feedback fixes the max at 10 MB
@@ -2429,6 +2450,13 @@ export async function updateLeaveType(
     // clear (revert to all-visible default). Every key MUST be in the closed allow-list (core/ess-view.ts);
     // an unknown key is rejected. Value false ⇒ hidden in ESS; missing/true ⇒ visible.
     essViewConfig?: EssViewConfig | null;
+    // Day Type Inclusion (feedback ef6d7146): the five-toggle re-inclusion vector { offDay, restDay,
+    // publicHoliday, companyHoliday, shutdownDay }. OWN tri-state (undefined = day_type_inclusion column
+    // untouched), mirroring essViewConfig — its own "Day Type Inclusion" sub-form posts `dayTypeInclusion=1`
+    // so an unrelated save never resets it. null ⇒ clear (revert to the counting-mode default). An all-false
+    // vector is normalised to null (≡ working_days behaviour, so the counting kernel stays on its legacy
+    // byte-identical path). See core/leave.ts dayWeight / normalizeDayTypeInclusion.
+    dayTypeInclusion?: DayTypeInclusion | null;
     // Leave Type Visual Configuration Enhancement (feedback 639fdf77): OPTIONAL, DISPLAY-ONLY colour theme +
     // icon shown on the employee self-service Leave tab. OWN tri-state (undefined = column untouched),
     // mirroring perDateApproval/essViewConfig — the visual sub-form posts `visual=1` so an unrelated save
@@ -2476,6 +2504,11 @@ export async function updateLeaveType(
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
   const touchCustomMessages = p.customMessages !== undefined;
+  // Day Type Inclusion (feedback ef6d7146): OWN tri-state, mirroring touchEssViewConfig — the "Day Type
+  // Inclusion" sub-form posts `dayTypeInclusion=1`, any other save omits it so day_type_inclusion stays
+  // untouched. The normaliser coerces to strict booleans and collapses an all-false vector to null (inert).
+  const touchDayTypeInclusion = p.dayTypeInclusion !== undefined;
+  const nextDayTypeInclusion = touchDayTypeInclusion ? cleanDayTypeInclusion(p.dayTypeInclusion) : undefined;
   // Employee Leave View Configuration (65dec703): OWN tri-state, mirroring touchPartial — the ESS-view
   // sub-form posts `essView=1`, any other save omits essViewConfig so ess_view_config stays untouched.
   const touchEssViewConfig = p.essViewConfig !== undefined;
@@ -2606,6 +2639,8 @@ export async function updateLeaveType(
   // Leave Type Visual Configuration Enhancement (639fdf77): its own set fragment (the validated color/icon,
   // or null to clear). Display-only; nothing downstream reads these.
   const visualSet = touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {};
+  // Day Type Inclusion (feedback ef6d7146): its own set fragment (the normalised vector, or null to clear).
+  const dayTypeInclusionSet = touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -2633,6 +2668,8 @@ export async function updateLeaveType(
         customMessages: leaveType.customMessages,
         // ESS view config (65dec703): selected for the before/after audit diff.
         essViewConfig: leaveType.essViewConfig,
+        // Day Type Inclusion (ef6d7146): selected for the before/after audit diff.
+        dayTypeInclusion: leaveType.dayTypeInclusion,
         // Visual config (639fdf77): selected for the before/after audit diff.
         color: leaveType.color,
         icon: leaveType.icon,
@@ -2692,6 +2729,7 @@ export async function updateLeaveType(
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
+        ...dayTypeInclusionSet,
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -2722,6 +2760,7 @@ export async function updateLeaveType(
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: before?.essViewConfig ?? null } : {}),
+          ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
@@ -2750,6 +2789,7 @@ export async function updateLeaveType(
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig ?? null } : {}),
+          ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
