@@ -3,7 +3,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies } from '@/core/read';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { CompanyPanel, type PanelBankProfile } from '@/components/company-panel';
 import { OrganizationList } from '@/components/organization-list';
 import { CompaniesCardHeader } from '@/components/add-company';
@@ -95,15 +95,30 @@ export default async function OrganizationPage({
       />
       <ErrorBanner message={error} />
 
+      {/* Group structure is collapsed by default (native details/summary keeps this a server
+          component — no client JS/state). Reuses SectionHeader's border/padding classes; the
+          Show/Hide affordance toggles via the group-open CSS variant. CompanyTree stays
+          server-rendered inside so navigation/rendering of the hierarchy is unchanged. */}
       <Card data-tour="people-org-tree">
-        <SectionHeader title={t('groupStructure')} count={companies.length} />
-        <div className="px-4 py-3">
-          {tree.length > 0 ? (
-            <CompanyTree nodes={tree} />
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
-          )}
-        </div>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between border-b border-border px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+            <span>
+              {t('groupStructure')}
+              <span className="ml-2 text-muted-foreground">({companies.length})</span>
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              <span className="group-open:hidden">{t('showGroupStructure')}</span>
+              <span className="hidden group-open:inline">{t('hideGroupStructure')}</span>
+            </span>
+          </summary>
+          <div className="px-4 py-3">
+            {tree.length > 0 ? (
+              <CompanyTree nodes={tree} />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
+            )}
+          </div>
+        </details>
       </Card>
 
       <Card data-tour="people-org-companies">

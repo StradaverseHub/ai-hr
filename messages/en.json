@@ -2713,6 +2713,8 @@
       "pageDescription": "Each company manages its details, statutory identity and bank profiles",
       "groupStructure": "Group structure",
       "noCompaniesYet": "No companies yet.",
+      "showGroupStructure": "Show group structure",
+      "hideGroupStructure": "Hide group structure",
       "companies": "Companies",
       "noCompaniesInScope": "No companies in scope.",
       "legalName": "Legal name",
