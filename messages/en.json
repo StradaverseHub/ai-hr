@@ -1143,6 +1143,14 @@
     "reasonPlaceholder": "Forgot to clock out",
     "requestCorrection": "Request correction",
     "leaveHeading": "Leave",
+    "myLeaveHeading": "My Leave",
+    "otherLeaveHeading": "Other leave types",
+    "detailedTable": "Detailed balance table",
+    "leaveGroups": {
+      "family_personal": "Family & Personal Leave",
+      "education": "Education Leave",
+      "other": "Other Leave"
+    },
     "leaveUsed": "{count} used",
     "leavePending": "{count} pending",
     "leaveAvailable": "{count} available",

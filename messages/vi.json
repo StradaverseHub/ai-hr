@@ -1143,6 +1143,14 @@
     "reasonPlaceholder": "Quên chấm công ra",
     "requestCorrection": "Yêu cầu điều chỉnh",
     "leaveHeading": "Nghỉ phép",
+    "myLeaveHeading": "Nghỉ phép của tôi",
+    "otherLeaveHeading": "Loại nghỉ phép khác",
+    "detailedTable": "Bảng số dư chi tiết",
+    "leaveGroups": {
+      "family_personal": "Nghỉ gia đình & cá nhân",
+      "education": "Nghỉ học tập",
+      "other": "Nghỉ phép khác"
+    },
     "leaveUsed": "đã dùng {count}",
     "leavePending": "{count} chờ duyệt",
     "leaveAvailable": "{count} khả dụng",

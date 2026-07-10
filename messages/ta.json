@@ -1143,6 +1143,14 @@
     "reasonPlaceholder": "வெளியேற்றப் பதிவு செய்ய மறந்தது",
     "requestCorrection": "திருத்தம் கோரு",
     "leaveHeading": "விடுப்பு",
+    "myLeaveHeading": "என் விடுப்பு",
+    "otherLeaveHeading": "பிற விடுப்பு வகைகள்",
+    "detailedTable": "விரிவான இருப்பு அட்டவணை",
+    "leaveGroups": {
+      "family_personal": "குடும்ப & தனிப்பட்ட விடுப்பு",
+      "education": "கல்வி விடுப்பு",
+      "other": "பிற விடுப்பு"
+    },
     "leaveUsed": "{count} பயன்படுத்தப்பட்டது",
     "leavePending": "{count} நிலுவையில்",
     "leaveAvailable": "{count} கிடைக்கும்",

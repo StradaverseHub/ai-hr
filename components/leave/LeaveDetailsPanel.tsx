@@ -62,6 +62,9 @@ export function LeaveDetailsPanel({
   action,
   hiddenParams = {},
   applyEssConfig = false,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   data: EntitlementBreakdownData;
   summary: PanelSummary;
@@ -72,6 +75,13 @@ export function LeaveDetailsPanel({
   action: string;
   hiddenParams?: Record<string, string>;
   applyEssConfig?: boolean;
+  /** Controlled-open mode (Leave View Dashboard 6d78f373): when `open`/`onOpenChange` are supplied the caller
+   *  owns the Dialog open state (e.g. a summary card that is itself the trigger). Omit both ⇒ uncontrolled,
+   *  the panel manages its own open state via the internal "View Breakdown" trigger (today's behaviour). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the built-in "View Breakdown" trigger (used with controlled-open, where an external card opens it). */
+  hideTrigger?: boolean;
 }) {
   const t = useTranslations('leave.breakdown');
   const fmtDays = (n: number) => n.toFixed(2);
@@ -169,16 +179,21 @@ export function LeaveDetailsPanel({
 
   const sections = [...ENTITLEMENT_PANEL_SECTIONS].sort((a, b) => a.order - b.order);
 
+  // Controlled when the caller drives `open` (a card owns the state for its highlight); else uncontrolled.
+  const rootProps = open !== undefined ? { open, onOpenChange } : {};
+
   return (
-    <Dialog.Root>
-      <Dialog.Trigger asChild>
-        <button
-          type="button"
-          className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
-        >
-          {t('viewBreakdown')}
-        </button>
-      </Dialog.Trigger>
+    <Dialog.Root {...rootProps}>
+      {!hideTrigger && (
+        <Dialog.Trigger asChild>
+          <button
+            type="button"
+            className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('viewBreakdown')}
+          </button>
+        </Dialog.Trigger>
+      )}
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content

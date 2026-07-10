@@ -1143,6 +1143,14 @@
     "reasonPlaceholder": "ลืมลงเวลาออก",
     "requestCorrection": "ขอแก้ไข",
     "leaveHeading": "การลา",
+    "myLeaveHeading": "การลาของฉัน",
+    "otherLeaveHeading": "ประเภทการลาอื่น ๆ",
+    "detailedTable": "ตารางยอดคงเหลือโดยละเอียด",
+    "leaveGroups": {
+      "family_personal": "การลาครอบครัวและส่วนตัว",
+      "education": "การลาเพื่อการศึกษา",
+      "other": "การลาอื่น ๆ"
+    },
     "leaveUsed": "ใช้ไป {count}",
     "leavePending": "รออนุมัติ {count}",
     "leaveAvailable": "ใช้ได้ {count}",

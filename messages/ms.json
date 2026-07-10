@@ -1143,6 +1143,14 @@
     "reasonPlaceholder": "Terlupa daftar keluar",
     "requestCorrection": "Mohon pembetulan",
     "leaveHeading": "Cuti",
+    "myLeaveHeading": "Cuti Saya",
+    "otherLeaveHeading": "Jenis cuti lain",
+    "detailedTable": "Jadual baki terperinci",
+    "leaveGroups": {
+      "family_personal": "Cuti Keluarga & Peribadi",
+      "education": "Cuti Pendidikan",
+      "other": "Cuti Lain"
+    },
     "leaveUsed": "{count} digunakan",
     "leavePending": "{count} tertangguh",
     "leaveAvailable": "{count} tersedia",

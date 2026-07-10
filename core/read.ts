@@ -490,6 +490,12 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           // behaviour). Independent of visibleToEmployee: a visible-but-not-can-apply type still shows in
           // leaveBalances but never here. requestLeave enforces the same rule server-side (defense-in-depth).
           employeeCanApply: leaveType.employeeCanApply,
+          // Leave View Dashboard (6d78f373): the placement inputs so a HIDDEN type never reaches the Request
+          // Leave dropdown. resolvePlacement (lib/leave-groups) resolves 'hidden' from EITHER visible_to_employee
+          // =false OR the code-keyed default-hidden set (Prolonged Illness / Suspension / Unrecorded / Unpaid
+          // Medical). NULL/absent config ⇒ primary|secondary (kept), so every ordinary type is unaffected.
+          visibleToEmployee: leaveType.visibleToEmployee,
+          essPlacement: leaveType.essPlacement,
         })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
@@ -506,7 +512,15 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
       // Leave Type Employee Visibility (7b11f1c1): drop types HR has closed to employee applications
       // (employee_can_apply=false). NULL ⇒ keep (today's behaviour). requestLeave re-checks server-side.
       .filter((t) => t.employeeCanApply !== false)
-      .map(({ i18n, eligibility, employeeCanApply, ...r }) => ({ ...r, name: pickName(r.name, i18n, locale) }));
+      // Leave View Dashboard (6d78f373) hidden gate: a type that resolves to 'hidden' — via HR's
+      // visible_to_employee=false OR the code-keyed default-hidden set — must not appear in the Request Leave
+      // dropdown (reporter §3). Ordinary types resolve to 'primary'|'secondary' and are kept. This is the ESS
+      // apply source only (admin uses listLeaveTypes); requestLeave stays the server-side authority.
+      .filter((t) => resolvePlacement(t.code, t.essPlacement, t.visibleToEmployee) !== 'hidden')
+      .map(({ i18n, eligibility, employeeCanApply, visibleToEmployee, essPlacement, ...r }) => ({
+        ...r,
+        name: pickName(r.name, i18n, locale),
+      }));
   });
 }
 

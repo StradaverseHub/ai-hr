@@ -1143,6 +1143,14 @@
     "reasonPlaceholder": "忘记打下班卡",
     "requestCorrection": "申请更正",
     "leaveHeading": "休假",
+    "myLeaveHeading": "我的休假",
+    "otherLeaveHeading": "其他休假类型",
+    "detailedTable": "详细余额表",
+    "leaveGroups": {
+      "family_personal": "家庭与个人假",
+      "education": "教育假",
+      "other": "其他假期"
+    },
     "leaveUsed": "已用 {count}",
     "leavePending": "待审 {count}",
     "leaveAvailable": "可用 {count}",

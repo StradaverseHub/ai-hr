@@ -32,9 +32,11 @@ import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { todayInKualaLumpur } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { LeaveBalanceTable, deriveBalanceRow } from '@/components/leave/leave-balance-table';
+import { LeaveCards, type LeaveCardEntry } from '@/components/leave/leave-cards';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { durationLabel } from '@/lib/leave-duration';
 import { leaveVisual } from '@/lib/leave-visual';
+import { PRIMARY_CODES, SECONDARY_GROUPS, resolveSecondaryGroup } from '@/lib/leave-groups';
 import {
   myCheckIn,
   myCheckOut,
@@ -178,6 +180,60 @@ export default async function MePage({
     balances.map((b) => leaveEntitlementBreakdown(s, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
   );
   const breakdownByType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
+
+  // Leave View Dashboard (6d78f373): partition the (already ESS-gated) balances into PRIMARY summary cards and
+  // SECONDARY collapsible groups, DROPPING any type resolved to 'hidden'. leaveBalances already dropped
+  // visible_to_employee=false types (7b11f1c1); the code-keyed default-hidden set (Prolonged Illness /
+  // Suspension / Unrecorded / Unpaid Medical) still arrives with placement='hidden' and is filtered here. This
+  // is presentation only — deriveBalanceRow (R24) supplies the ESS-gated remaining figure; no calc change.
+  type Balance = (typeof balances)[number];
+  // Build the plain side-panel envelope for a balance row — null when the breakdown is absent OR the
+  // Entitlement Calculation Breakdown component is ESS-hidden for this type (65dec703), so a card/row with
+  // nothing to open stays a static tile / plain figure rather than opening an empty panel.
+  const buildPanel = (b: Balance) => {
+    const bd = breakdownByType.get(b.leaveTypeId);
+    if (b.essView.entitlementCalcBreakdown === false || !bd) return null;
+    return {
+      data: bd,
+      summary: { available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued },
+      // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched by localized name).
+      upcoming: requests
+        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType })),
+      visual: { color: b.color, icon: b.icon, code: b.code },
+      asOf: breakdownAsOf,
+    };
+  };
+  // ESS-gated remaining figure for a card/row (deriveBalanceRow returns null when Available is HR-hidden).
+  const remainingOf = (b: Balance) => deriveBalanceRow(b, breakdownByType.get(b.leaveTypeId) ?? null).available;
+
+  const primaryCards: LeaveCardEntry[] = balances
+    .filter((b) => b.placement === 'primary')
+    .map((b) => ({
+      leaveTypeId: b.leaveTypeId,
+      leaveType: b.leaveType,
+      color: b.color,
+      icon: b.icon,
+      code: b.code,
+      remaining: remainingOf(b),
+      panel: buildPanel(b),
+    }));
+  // Order the card row by the canonical PRIMARY_CODES sequence (Annual, Medical, Hospitalisation, Emergency,
+  // Replacement), then any other HR-promoted primaries alphabetically, so it reads in the reporter's order.
+  const primaryRank = (code: string | null) => {
+    const i = code ? (PRIMARY_CODES as readonly string[]).indexOf(code.toUpperCase()) : -1;
+    return i === -1 ? PRIMARY_CODES.length : i;
+  };
+  primaryCards.sort((a, b) => primaryRank(a.code) - primaryRank(b.code) || a.leaveType.localeCompare(b.leaveType));
+
+  // Secondary types bucketed into the three labelled groups (empty groups are omitted).
+  const secondaryGroups = SECONDARY_GROUPS.map((group) => ({
+    group,
+    types: balances.filter((b) => b.placement === 'secondary' && resolveSecondaryGroup(b.code) === group),
+  })).filter((g) => g.types.length > 0);
+
+  // Detailed balance table (R24 483fa7c3, demoted to an optional toggle) — every NON-hidden type.
+  const detailedBalances = balances.filter((b) => b.placement !== 'hidden');
 
   // R17 600be8ac ask #6: for each request shown in the list, fetch its per-date rows (if any) so the employee
   // sees the same date-by-date outcome — which dates were approved / rejected and why — that the approver
@@ -1154,67 +1210,81 @@ export default async function MePage({
             </>
           ),
           leave: (
-            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              {/* Left column: balance summary + entitlement breakdown + request history. */}
-              <Card className="p-5" data-tour="me-leave">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-sm font-semibold">{t('leaveHeading')}</h2>
-                  {/* Workday-style redesign (483fa7c3): ONE shared as-at date GET form driving the whole table
-                      (was previously one form per per-type expander). One ?asOf= already drives every row's
-                      breakdown; an invalid/empty param falls back to today. Preserves tab=leave across the GET. */}
-                  <form method="GET" action="/me" className="flex items-end gap-2">
-                    <input type="hidden" name="tab" value="leave" />
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      {t('leaveBalanceTable.asAtDate')}
-                      <input
-                        type="date"
-                        name="asOf"
-                        defaultValue={breakdownAsOf}
-                        className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
-                    >
-                      {t('leaveBalanceTable.apply')}
-                    </button>
-                  </form>
-                </div>
-                <div className="mt-3">
-                  <LeaveBalanceTable
-                    rows={balances.map((b) => {
-                      // Employee Leave View Configuration (65dec703): HR gates which ESS figures this employee
-                      // sees. deriveBalanceRow applies available/taken/overutilized gating (missing ⇒ visible)
-                      // and the derived columns. The per-row Entitlement Calculation Breakdown side-sheet is its
-                      // own toggle (1fedb473); off ⇒ the expander (detail) doesn't mount at all.
-                      const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
-                      const bd = breakdownByType.get(b.leaveTypeId);
-                      return {
-                        ...deriveBalanceRow(b, bd ?? null),
-                        detail:
-                          showBreakdown && bd ? (
-                            <EntitlementBreakdown
-                              data={bd}
-                              summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
-                              // §5 Upcoming Approved Leave — approved + future requests for THIS type (matched
-                              // by localized name; both sides resolve via the same pickName + locale).
-                              upcoming={requests
-                                .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                                .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
-                              visual={{ color: b.color, icon: b.icon, code: b.code }}
-                              asOf={breakdownAsOf}
-                              action="/me"
-                              hiddenParams={{ tab: 'leave' }}
-                              applyEssConfig
-                            />
-                          ) : undefined,
-                      };
-                    })}
-                  />
-                </div>
+            <div className="space-y-6">
+              {/* Full-width "My Leave" summary cards (6d78f373): PRIMARY leave types as clickable, colour-coded
+                  cards. Clicking a card highlights it and opens THAT type's details in the existing right-side
+                  slide-out panel with no page refresh (LeaveCards drives LeaveDetailsPanel in controlled mode).
+                  Reuses deriveBalanceRow (R24) for the ESS-gated remaining figure. Empty ⇒ card row omitted. */}
+              {primaryCards.length > 0 && (
+                <Card className="p-5" data-tour="me-leave">
+                  <LeaveCards entries={primaryCards} />
+                </Card>
+              )}
 
-                <div className="mt-4 border-t border-border pt-4">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                {/* Left column: SECONDARY leave-type groups + request history + the demoted detailed table. */}
+                <Card className="p-5">
+                {/* Secondary types in collapsible groups (Family & Personal / Education / Other). Each row keeps
+                    the existing "View Breakdown" link → same right-side panel (reporter §2). Empty groups omitted. */}
+                {secondaryGroups.length > 0 && (
+                  <div className="space-y-2">
+                    <h2 className="text-sm font-semibold">{t('otherLeaveHeading')}</h2>
+                    {secondaryGroups.map(({ group, types }) => (
+                      <details key={group} className="group rounded-lg border border-border" open>
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium">
+                          <span>
+                            {t(`leaveGroups.${group}`)} ({types.length})
+                          </span>
+                          <span className="text-muted-foreground transition group-open:rotate-180" aria-hidden>
+                            ▾
+                          </span>
+                        </summary>
+                        <ul className="divide-y divide-border border-t border-border">
+                          {types.map((b) => {
+                            const v = leaveVisual({ color: b.color, icon: b.icon, code: b.code });
+                            const Icon = v.Icon;
+                            const bd = breakdownByType.get(b.leaveTypeId);
+                            const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+                            const remaining = remainingOf(b);
+                            return (
+                              <li key={b.leaveTypeId} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                                <span className="flex min-w-0 items-center gap-2 text-sm">
+                                  <span className={v.hasColor ? `rounded p-0.5 ${v.chipClass}` : undefined}>
+                                    <Icon className="size-3.5 shrink-0" aria-hidden />
+                                  </span>
+                                  <span className="truncate font-medium text-foreground">{b.leaveType}</span>
+                                </span>
+                                <span className="flex shrink-0 flex-col items-end">
+                                  <span className="tabular-nums text-sm text-foreground">
+                                    {remaining == null ? '—' : remaining.toFixed(2)}
+                                  </span>
+                                  {showBreakdown && bd && (
+                                    <EntitlementBreakdown
+                                      data={bd}
+                                      summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                                      // §5 Upcoming Approved Leave — approved + future requests for THIS type
+                                      // (matched by localized name; both sides resolve via the same pickName + locale).
+                                      upcoming={requests
+                                        .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                                        .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                                      visual={{ color: b.color, icon: b.icon, code: b.code }}
+                                      asOf={breakdownAsOf}
+                                      action="/me"
+                                      hiddenParams={{ tab: 'leave' }}
+                                      applyEssConfig
+                                    />
+                                  )}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    ))}
+                  </div>
+                )}
+
+                <div className={secondaryGroups.length > 0 ? 'mt-4 border-t border-border pt-4' : ''}>
                   <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     {t('requests')}
                   </div>
@@ -1343,6 +1413,66 @@ export default async function MePage({
                     {requests.length === 0 && <li className="text-muted-foreground">{t('noRequests')}</li>}
                   </ul>
                 </div>
+
+                {/* Detailed balance table (R24 483fa7c3) — demoted from the primary /me view to an optional
+                    toggle so the dense Workday-style comparison + its shared as-at date form stay reachable
+                    without dominating the redesigned card view. Shows every non-hidden type. */}
+                {detailedBalances.length > 0 && (
+                  <details className="mt-4 border-t border-border pt-4">
+                    <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {t('detailedTable')}
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      {/* Workday-style redesign (483fa7c3): ONE shared as-at date GET form driving the whole
+                          table. One ?asOf= drives every row's breakdown; invalid/empty ⇒ today. Preserves tab. */}
+                      <form method="GET" action="/me" className="flex flex-wrap items-end gap-2">
+                        <input type="hidden" name="tab" value="leave" />
+                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          {t('leaveBalanceTable.asAtDate')}
+                          <input
+                            type="date"
+                            name="asOf"
+                            defaultValue={breakdownAsOf}
+                            className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
+                        >
+                          {t('leaveBalanceTable.apply')}
+                        </button>
+                      </form>
+                      <LeaveBalanceTable
+                        rows={detailedBalances.map((b) => {
+                          // Employee Leave View Configuration (65dec703): deriveBalanceRow applies available/
+                          // taken/overutilized gating; the Entitlement Calculation Breakdown side-sheet is its
+                          // own toggle (1fedb473) — off ⇒ the expander (detail) doesn't mount at all.
+                          const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+                          const bd = breakdownByType.get(b.leaveTypeId);
+                          return {
+                            ...deriveBalanceRow(b, bd ?? null),
+                            detail:
+                              showBreakdown && bd ? (
+                                <EntitlementBreakdown
+                                  data={bd}
+                                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                                  upcoming={requests
+                                    .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                                    .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                                  visual={{ color: b.color, icon: b.icon, code: b.code }}
+                                  asOf={breakdownAsOf}
+                                  action="/me"
+                                  hiddenParams={{ tab: 'leave' }}
+                                  applyEssConfig
+                                />
+                              ) : undefined,
+                          };
+                        })}
+                      />
+                    </div>
+                  </details>
+                )}
               </Card>
 
               {/* Right column: leave application form incl. supporting-document upload. */}
@@ -1385,6 +1515,7 @@ export default async function MePage({
                   </Button>
                 </form>
               </Card>
+              </div>
             </div>
           ),
         }}
