@@ -785,7 +785,8 @@
       "cancellationPeriodClosed": "{date} thuộc kỳ lương đã đóng và không thể hủy nữa.",
       "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc.",
       "balanceFrozenForEncashment": "Số dư phép này đã bị khóa để quy đổi sau khi đơn nghỉ việc được phê duyệt và không thể thay đổi. Vui lòng liên hệ bộ phận Nhân sự nếu bạn cho rằng đây là nhầm lẫn.",
-      "advanceNoticeRequired": "{typeName} phải được nộp ít nhất {days} ngày trước ngày bắt đầu nghỉ phép."
+      "advanceNoticeRequired": "{typeName} phải được nộp ít nhất {days} ngày trước ngày bắt đầu nghỉ phép.",
+      "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -906,7 +907,17 @@
       },
       "decidedByLine": "Quyết định bởi {name}",
       "pendingWithLine": "Đang chờ {stage}"
-    }
+    },
+    "editButton": "Chỉnh sửa",
+    "editDialogTitle": "Chỉnh sửa đơn xin nghỉ",
+    "editDialogDescription": "Cập nhật chi tiết đơn nghỉ đang chờ duyệt của bạn. Đơn vẫn ở trạng thái chờ duyệt.",
+    "editSaveLabel": "Lưu thay đổi",
+    "selfCancelButton": "Hủy nghỉ phép",
+    "selfCancelDialogTitle": "Hủy đơn xin nghỉ",
+    "selfCancelDialogDescription": "Thao tác này sẽ rút lại đơn xin nghỉ đang chờ duyệt của bạn. Không thể hoàn tác.",
+    "selfCancelKeep": "Giữ lại",
+    "selfCancelConfirm": "Hủy nghỉ phép",
+    "selfCancelPillAffordanceLabel": "Hủy đơn nghỉ này"
   },
   "attendance": {
     "title": "Chấm công",

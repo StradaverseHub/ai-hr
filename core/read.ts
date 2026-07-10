@@ -505,6 +505,9 @@ const leaveRequestSelection = {
   employee: person.fullName,
   employeeCode: employment.employeeCode,
   leaveType: leaveType.name,
+  // Edit/cancel-by-status (item c9a19e34): the type id so the /leave own-pending Edit dialog can prefill its
+  // leave-type <select>.
+  leaveTypeId: leaveRequest.leaveTypeId,
   typeCode: leaveType.code,
   appliedOn: leaveRequest.createdAt,
   startDate: leaveRequest.startDate,
@@ -1825,6 +1828,10 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
     const rows = await tx
       .select({
         id: leaveRequest.id,
+        // Edit/cancel-by-status (item c9a19e34): the employment behind the row + the leave type id, so the /me
+        // list can gate + prefill the status-gated Edit dialog and resolve the approved give-back candidates.
+        employmentId: leaveRequest.employmentId,
+        leaveTypeId: leaveRequest.leaveTypeId,
         leaveType: leaveType.name,
         i18n: leaveType.i18n,
         startDate: leaveRequest.startDate,
@@ -1837,6 +1844,9 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         toTime: leaveRequest.toTime,
         status: leaveRequest.status,
         typeCode: leaveType.code,
+        // Edit/cancel-by-status: the applicant's own words prefill the Edit dialog.
+        reason: leaveRequest.reason,
+        employeeRemark: leaveRequest.employeeRemark,
         // Emergency Leave (0106): the shared id linking an EL submission's ANNUAL + UNPAID children, so the
         // /me history can group them under one EL heading. NULL for ordinary requests.
         parentGroupId: leaveRequest.parentGroupId,
@@ -1844,6 +1854,10 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
         currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
         stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+        // Edit/cancel-by-status: an open give-back already on this approved row suppresses a second cancel click.
+        pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+        // R5 Build #2: TRUE when this row is a SURVIVOR of a prior cancellation split (still cancellable).
+        isCancellationSplit: sql<boolean>`(leave_request.parent_group_id is not null and exists (select 1 from leave_request s where s.parent_group_id = leave_request.parent_group_id and s.status = 'cancelled'))`,
         // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row → the /me + personnel
         // history renders the derived "Partially approved" badge instead of a flat "Approved" (no status enum).
         hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
@@ -1852,7 +1866,11 @@ export function leaveRequestsFor(ctx: SessionContext, employmentId: string, loca
       .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
       .where(eq(leaveRequest.employmentId, employmentId))
       .orderBy(desc(leaveRequest.startDate));
-    return rows.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
+    // Edit/cancel-by-status: resolve each approved full-day plain/split row's REAL working dates (the give-back
+    // candidate set), holiday-aware, exactly as the /leave page does — so the /me approved-cancel dialog offers
+    // the same dates the service will accept.
+    const withDates = await resolveLeaveWorkingDates(tx, rows);
+    return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
   });
 }
 

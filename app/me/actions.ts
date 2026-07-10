@@ -8,10 +8,14 @@ import { myEmployment, listEligibleLeaveTypesFor } from '@/core/read';
 import {
   addLeaveAttachment,
   requestLeave,
+  editLeaveRequest,
+  cancelOwnLeave,
+  requestLeaveCancellation,
   previewLeaveDeduction,
   validateLeaveDocument,
   isEmergencyReasonCategory,
   todayInKualaLumpur,
+  LeaveEditNotAllowedError,
   LeaveBackdatingNotAllowedError,
   LeaveAdvanceNoticeRequiredError,
   LeaveDocumentRequiredError,
@@ -155,6 +159,80 @@ export async function myRequestLeave(formData: FormData) {
   redirect('/me?toast=Leave+requested');
 }
 
+// ── Edit / cancel own leave by status (item c9a19e34) ──
+// Status-gated ESS self-service on the caller's OWN leave: a PENDING request can be edited (stays pending) or
+// withdrawn immediately; an APPROVED request is routed to the manager-approved give-back flow (Option A /
+// ADR-0065); a REJECTED request has no action. Every action resolves the caller's own employment server-side
+// (never a form field) — the same trust boundary as myRequestLeave — and the core service re-asserts
+// subject-only + status authoritatively, so a stale form can't act on someone else's or a non-pending row.
+
+/** Edit a PENDING own leave in place (stays pending). Mirrors myRequestLeave's field parsing; the service
+ *  re-runs every validation gate against the new details. */
+export async function myEditLeave(formData: FormData) {
+  const { s, employmentId } = await resolveMe();
+  const leaveRequestId = String(formData.get('leaveRequestId'));
+  const leaveTypeId = String(formData.get('leaveTypeId'));
+  const startDate = String(formData.get('startDate'));
+  const endDate = String(formData.get('endDate'));
+  const durationType = String(formData.get('durationType') || 'full_day') as LeaveDurationType;
+  const fromTime = String(formData.get('fromTime') ?? '').trim();
+  const toTime = String(formData.get('toTime') ?? '').trim();
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  const employeeRemark = String(formData.get('employeeRemark') ?? '').trim() || undefined;
+  // Resolve the selected type's localized name for any validation error message (mirrors myRequestLeave).
+  const locale = await getLocale();
+  const types = await listEligibleLeaveTypesFor(s, employmentId, locale);
+  const selected = types.find((t) => t.id === leaveTypeId);
+  try {
+    await editLeaveRequest(s, {
+      leaveRequestId,
+      leaveTypeId,
+      startDate,
+      endDate,
+      reason,
+      employeeRemark,
+      durationType,
+      fromTime: durationType === 'hourly' && fromTime !== '' ? fromTime : undefined,
+      toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
+      today: todayInKualaLumpur(),
+    });
+  } catch (e) {
+    redirect(`/me?tab=leave&error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?tab=leave&toast=Leave+updated');
+}
+
+/** Withdraw a PENDING own leave immediately (→ cancelled). */
+export async function myCancelLeave(formData: FormData) {
+  const { s } = await resolveMe();
+  const leaveRequestId = String(formData.get('leaveRequestId'));
+  try {
+    await cancelOwnLeave(s, { leaveRequestId });
+  } catch (e) {
+    redirect(`/me?tab=leave&error=${encodeURIComponent(await localizeLeaveError(e))}`);
+  }
+  revalidatePath('/me');
+  redirect('/me?tab=leave&toast=Leave+cancelled');
+}
+
+/** Request cancellation (give-back) of an APPROVED own leave — the manager-approved flow (Option A / ADR-0065).
+ *  The dialog posts one `cancelDate` per whole-span working date; the service re-runs every give-back gate. */
+export async function myRequestLeaveCancellation(formData: FormData) {
+  const { s } = await resolveMe();
+  const leaveRequestId = String(formData.get('leaveRequestId'));
+  const cancelDates = formData.getAll('cancelDate').map((d) => String(d)).filter(Boolean);
+  const reason = String(formData.get('reason') ?? '').trim() || undefined;
+  try {
+    await requestLeaveCancellation(s, { leaveRequestId, cancelDates, reason, today: todayInKualaLumpur() });
+  } catch (e) {
+    redirect(`/me?tab=leave&error=${encodeURIComponent(await localizeLeaveError(e))}`);
+  }
+  revalidatePath('/me');
+  revalidatePath('/approvals');
+  redirect('/me?tab=leave&toast=Cancellation+requested');
+}
+
 /** Supporting-document config: re-localize the structured service/validation errors into the viewer's
  *  language (they reach ms/ta/th/vi/zh via ?error=). Unknown errors fall back to their English message.
  *  Exported so the Leave-Tab action (app/leave/actions.ts) reuses the same localizer rather than copying
@@ -168,6 +246,9 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
       : t('documentRequired', { typeName: name });
   }
   if (e instanceof LeaveRemarkRequiredError) return t('employeeRemarkRequired', { typeName: name });
+  // Edit/cancel-by-status (item c9a19e34): the leave is not in an editable state (only PENDING plain rows
+  // are editable) or the row is grouped/per-date. Localized so all 6 locales see a clear message.
+  if (e instanceof LeaveEditNotAllowedError) return t('editNotAllowed');
   // Custom validation messages (custom-messages migration): when HR configured an override message for the
   // backdating rule, the service passes it through the typed error verbatim — render it as-is (do NOT
   // re-localize or interpolate an admin-authored free-text string). Absent ⇒ the built-in localized default.

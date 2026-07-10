@@ -89,6 +89,9 @@ export async function PlannedAbsences({
   // adminCancelAction is the SAME action the Leave page posts. Both optional — absent ⇒ no admin affordance.
   viewerIsAdmin,
   adminCancelAction,
+  // Edit/cancel-by-status (item c9a19e34): the SAME cancelOwnLeaveAction the Leave page posts, for the viewer's
+  // OWN PENDING leave (an immediate self-withdraw, no dates picker). Optional — absent ⇒ no affordance.
+  selfCancelAction,
 }: {
   rows: Row[];
   from: string;
@@ -99,6 +102,7 @@ export async function PlannedAbsences({
   cancelAction?: (fd: FormData) => void | Promise<void>;
   viewerIsAdmin?: boolean;
   adminCancelAction?: (fd: FormData) => void | Promise<void>;
+  selfCancelAction?: (fd: FormData) => void | Promise<void>;
 }) {
   const t = await getTranslations('components.plannedAbsences');
   const tLeave = await getTranslations('leave');
@@ -159,6 +163,19 @@ export async function PlannedAbsences({
     (l.status === 'pending' || l.status === 'approved') &&
     !(l.status === 'approved' && l.typeCode === 'REPLACEMENT');
 
+  // Edit/cancel-by-status (item c9a19e34): the viewer may self-withdraw their OWN PENDING plain (non-EL/
+  // non-REPLACEMENT) leave immediately from the calendar. Mirrors the Leave-page gate; the service re-asserts
+  // subject-only + status='pending'. Approved own leave keeps the give-back affordance (cancelEligible above).
+  const canOfferSelfCancel = !!selfCancelAction;
+  const selfCancelEligible = (personId: string, l: Leave): boolean =>
+    canOfferSelfCancel &&
+    viewerPersonId != null &&
+    personId === viewerPersonId &&
+    l.status === 'pending' &&
+    l.parentGroupId == null &&
+    l.typeCode !== 'EMERGENCY' &&
+    l.typeCode !== 'REPLACEMENT';
+
   // Translate per-pill titles + status labels server-side so the client grid stays i18n-free.
   const gridRows: GridRow[] = rows.map((emp) => ({
     id: emp.id,
@@ -192,6 +209,8 @@ export async function PlannedAbsences({
       candidateCancelDates: cancelEligible(emp.id, l) ? (l.candidateCancelDates ?? []) : [],
       // HR Admin Leave Cancellation (feedback 22e68ff0): whether an HR admin can immediately cancel THIS pill.
       adminCancelEligible: adminCancelEligible(emp.id, l),
+      // Edit/cancel-by-status (item c9a19e34): whether the viewer can self-withdraw THIS pending own pill.
+      selfCancelEligible: selfCancelEligible(emp.id, l),
     })),
   }));
 
@@ -234,6 +253,8 @@ export async function PlannedAbsences({
           cancelPillLabel={tLeave('cancelPillAffordanceLabel')}
           adminCancelAction={adminCancelAction}
           adminCancelPillLabel={tLeave('adminCancelPillAffordanceLabel')}
+          selfCancelAction={selfCancelAction}
+          selfCancelPillLabel={tLeave('selfCancelPillAffordanceLabel')}
         />
       )}
 

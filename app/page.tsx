@@ -23,7 +23,7 @@ import { Card, PageHeader, StatusBadge } from '@/components/ui';
 import { PlannedAbsences } from '@/components/planned-absences';
 import { LeaveBalanceCard } from '@/components/leave-balance-card';
 import { TimelineNav } from '@/components/timeline-nav';
-import { requestLeaveCancellationAction, adminCancelLeaveAction } from '@/app/leave/actions';
+import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
 import {
   type DashboardCardId,
   pendingTasksCount,
@@ -293,6 +293,9 @@ export default async function DashboardPage({
           // affordance on other employees' pills; same action the Leave page posts.
           viewerIsAdmin={isAdmin(s)}
           adminCancelAction={adminCancelLeaveAction}
+          // Edit/cancel-by-status (item c9a19e34): the viewer self-withdraws their own PENDING leave directly
+          // from the calendar; the SAME action the Leave page posts (re-asserts subject-only + pending).
+          selfCancelAction={cancelOwnLeaveAction}
         />
       </div>
 

@@ -169,6 +169,17 @@ export class LeaveCancellationPeriodClosedError extends Error {
   }
 }
 
+/** Edit-by-status self-service (item c9a19e34) — an employee tried to EDIT a leave that is not in an
+ *  editable state (only a PENDING, plain single-request row is editable) or the new details fail re-validation.
+ *  A distinct type from the cancellation errors so the action-layer localizer renders a clear "can't edit"
+ *  message (the underlying validation errors — backdating, eligibility, etc. — keep their own typed errors). */
+export class LeaveEditNotAllowedError extends Error {
+  constructor(reason?: string) {
+    super(reason ? `This leave cannot be edited: ${reason}` : 'This leave cannot be edited.');
+    this.name = 'LeaveEditNotAllowedError';
+  }
+}
+
 // ── Emergency-Leave unpaid consent (Phase-B #12, ADR-0061) ─────────────────────────────────────────
 // An Emergency-Leave application whose paid balances (Annual, and Sick for illness) fall short would have
 // the remainder taken as UNPAID (no-work-no-pay). That conversion is lawful only if the employee elects it,
@@ -3101,6 +3112,353 @@ export async function adminCancelLeave(
     });
 
     return { previousStatus, restoredDays };
+  });
+}
+
+// ═════════════════════ Edit / cancel own leave by status (item c9a19e34) ═════════════════════
+// Employee self-service on their OWN leave, status-gated:
+//   • PENDING  → editLeaveRequest (modify details, stays pending) + cancelOwnLeave (immediate self-withdraw).
+//   • APPROVED → cancellation is routed through the manager-approved give-back flow (requestLeaveCancellation),
+//                NOT an immediate unilateral self-cancel — that preserves the balance invariant + ADR-0065's
+//                deliberate "a manager confirms giving back approved leave" rule. So cancelOwnLeave refuses a
+//                non-pending row (the action layer sends approved rows to requestLeaveCancellation instead).
+//   • REJECTED → view-only (no write path).
+// The "creator-only" rule lives in the SERVICE (RLS is symmetric — a manager can SEE a subordinate's leave —
+// so the subject assertion is enforced in code, mirroring requestLeaveCancellation :2614-2620). v1 restricts
+// both edit and self-withdraw to PLAIN single-request rows (parentGroupId null, no per-date sub-rows, not an
+// EL/REPLACEMENT type): an Emergency-Leave submission is two coupled child rows and a per-date-approval span
+// carries its own decision sub-rows, so editing/withdrawing just one half would strand the other. Those groups
+// keep the existing give-back / admin-cancel paths and are deferred to a later pass.
+
+/**
+ * Edit a PENDING leave request in place, keeping it pending. Subject-only (the creator). Re-runs the same
+ * validation gates requestLeave applies (eligibility, backdating 0133, min-advance 0159, duration allow-list,
+ * document/remark, day recompute) against the NEW details, updates the row, and regenerates the approval-step
+ * chain (day count / type may have changed the scoped chain). Pending leave has NO ledger debit (the debit
+ * posts only at final approval :1915) so there is nothing to reverse. Appends `leave-request.edited`
+ * {before, after, diff} for the audit trail (CLAUDE.md substrate discipline).
+ */
+export async function editLeaveRequest(
+  ctx: SessionContext,
+  p: {
+    leaveRequestId: string;
+    leaveTypeId: string;
+    startDate: string;
+    endDate: string;
+    reason?: string;
+    employeeRemark?: string;
+    durationType?: LeaveDurationType;
+    fromTime?: string;
+    toTime?: string;
+    today?: string;
+  },
+): Promise<{ leaveRequestId: string; days: number }> {
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+
+    // Subject-only: RLS is symmetric so the creator-only rule is enforced here (mirrors requestLeaveCancellation).
+    const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+    if (!ctx.personId || ctx.personId !== subjectPersonId) {
+      throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
+    }
+
+    // Status gate: only a PENDING request is editable (expected_function 3.i — "available only for pending").
+    if (req.status !== 'pending') throw new LeaveEditNotAllowedError(`the leave is already ${req.status}`);
+
+    // v1 edge-case exclusions: plain single-request rows only.
+    if (req.parentGroupId != null) {
+      throw new LeaveEditNotAllowedError('grouped (emergency / split) leave cannot be edited here');
+    }
+    const [hasDateRows] = await tx
+      .select({ id: leaveRequestDate.id })
+      .from(leaveRequestDate)
+      .where(eq(leaveRequestDate.leaveRequestId, req.id))
+      .limit(1);
+    if (hasDateRows) {
+      throw new LeaveEditNotAllowedError('per-date-approval leave cannot be edited here');
+    }
+
+    const [lt] = await tx
+      .select({
+        code: leaveType.code,
+        name: leaveType.name,
+        counting: leaveType.counting,
+        eligibility: leaveType.eligibility,
+        dayTypeInclusion: leaveType.dayTypeInclusion,
+        requiresDocument: leaveType.requiresDocument,
+        mandatoryAfterDays: leaveType.mandatoryAfterDays,
+        employeeRemarkRequired: leaveType.employeeRemarkRequired,
+        durations: leaveType.durations,
+        backdatingLimitDays: leaveType.backdatingLimitDays,
+        minAdvanceDays: leaveType.minAdvanceDays,
+        customMessages: leaveType.customMessages,
+      })
+      .from(leaveType)
+      .where(eq(leaveType.id, p.leaveTypeId))
+      .limit(1);
+    if (!lt) throw new Error('leave type not found');
+    // EMERGENCY / REPLACEMENT decompose or consume registers — never edited in place (v1).
+    if (lt.code === EMERGENCY_LEAVE_CODE || lt.code === 'REPLACEMENT') {
+      throw new LeaveEditNotAllowedError('this leave type cannot be edited here');
+    }
+
+    // ── Re-validate the NEW details (fail fast, same gates + errors as requestLeave) ─────────────────────
+    const elig = (lt.eligibility ?? null) as LeaveEligibility | null;
+    if (elig && (elig.gender || elig.maritalStatus || elig.minServiceMonths)) {
+      const [emp] = await tx
+        .select({ gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(eq(employment.id, req.employmentId))
+        .limit(1);
+      assertEligible(elig, emp, p.startDate);
+    }
+
+    const today = p.today ?? todayInKualaLumpur();
+    if (!isAdmin(ctx) && exceedsBackdatingLimit(p.startDate, today, lt.backdatingLimitDays ?? null)) {
+      throw new LeaveBackdatingNotAllowedError(
+        lt.backdatingLimitDays!,
+        lt.name,
+        lt.customMessages?.backdatingLimitDays || undefined,
+      );
+    }
+    if (!isAdmin(ctx) && lacksMinAdvanceNotice(p.startDate, today, lt.minAdvanceDays ?? null)) {
+      throw new LeaveAdvanceNoticeRequiredError(
+        lt.minAdvanceDays!,
+        lt.name,
+        lt.customMessages?.minAdvanceDays || undefined,
+      );
+    }
+
+    const durationType: LeaveDurationType = p.durationType ?? 'full_day';
+    let fromTime: string | null = null;
+    let toTime: string | null = null;
+    let hours: number | null = null;
+    if (durationType === 'hourly') {
+      if (p.fromTime || p.toTime) {
+        hours = hoursBetween(p.fromTime ?? '', p.toTime ?? '');
+        fromTime = (p.fromTime ?? '').slice(0, 5);
+        toTime = (p.toTime ?? '').slice(0, 5);
+      } else {
+        throw new HourlyLeaveTimeRangeError();
+      }
+    }
+    if (durationType !== 'full_day') {
+      const allow = (lt.durations as string[] | null) ?? [];
+      if (!allow.includes(durationType)) throw new LeaveDurationNotAllowedError();
+      if (p.startDate !== p.endDate) {
+        throw new Error('Half-day and hourly leave must be a single day (start and end dates must match)');
+      }
+    }
+
+    let workingDayCount: number | null = null;
+    let workingDayWeight: number | null = null;
+    if (lt.counting === 'working_days') {
+      const hols = await resolveHolidaySet(tx, req.employmentId, p.startDate, p.endDate);
+      const sched = await resolveSchedule(tx, req.employmentId);
+      const incl = normalizeDayTypeInclusion(lt.dayTypeInclusion);
+      workingDayCount = eachDate(p.startDate, p.endDate).filter((d) => isDeductibleDay(d, sched, hols, incl)).length;
+      workingDayWeight = workingDaysWeighted(p.startDate, p.endDate, hols, sched, incl);
+    }
+
+    let days: number;
+    if (durationType === 'full_day') {
+      days = lt.counting === 'working_days' ? workingDayWeight! : dayCount(p.startDate, p.endDate);
+    } else {
+      if (lt.counting === 'working_days' && workingDayCount === 0) throw new LeaveNoDaysInRangeError();
+      if (durationType === 'hourly') {
+        const h = hours ?? 0;
+        if (!(h > 0 && h <= 24)) throw new Error('Hourly leave must be more than 0 and at most 24 hours');
+        days = Math.round((h / DEFAULT_STANDARD_HOURS) * 100) / 100;
+      } else {
+        days = 0.5;
+      }
+      // AM/PM same-date conflict guard, EXCLUDING this very request (an edit must not clash with itself).
+      const existing = await tx
+        .select({ durationType: leaveRequest.durationType })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, req.employmentId),
+            eq(leaveRequest.startDate, p.startDate),
+            eq(leaveRequest.endDate, p.endDate),
+            inArray(leaveRequest.status, ['pending', 'approved']),
+            sql`${leaveRequest.id} <> ${req.id}`,
+          ),
+        );
+      for (const e of existing) {
+        const conflicts =
+          e.durationType === durationType ||
+          e.durationType === 'full_day' ||
+          e.durationType === 'hourly' ||
+          durationType === 'hourly';
+        if (conflicts) throw new Error('This date already has a conflicting leave request');
+      }
+    }
+    if (days <= 0) throw new LeaveNoDaysInRangeError();
+
+    // Document + remark gates (identical to requestLeave). hasDocument = an attachment already exists on this
+    // request (edit does not re-upload; changing to a doc-required type with no attachment is refused).
+    const [att] = await tx
+      .select({ id: leaveRequestAttachment.id })
+      .from(leaveRequestAttachment)
+      .where(eq(leaveRequestAttachment.leaveRequestId, req.id))
+      .limit(1);
+    const hasDocument = !!att;
+    if (lt.requiresDocument && !hasDocument) {
+      const after = lt.mandatoryAfterDays;
+      if (after == null || after === 0 || days > after) {
+        throw new LeaveDocumentRequiredError(lt.name, after ?? undefined);
+      }
+    }
+    const employeeRemark = p.employeeRemark?.trim() || null;
+    if (lt.employeeRemarkRequired && !employeeRemark) throw new LeaveRemarkRequiredError(lt.name);
+
+    // ── Apply the edit ───────────────────────────────────────────────────────────────────────────────────
+    const before = {
+      leaveTypeId: req.leaveTypeId,
+      startDate: req.startDate,
+      endDate: req.endDate,
+      days: Number(req.days),
+      durationType: req.durationType,
+      reason: req.reason,
+      employeeRemark: req.employeeRemark,
+    };
+    await tx
+      .update(leaveRequest)
+      .set({
+        leaveTypeId: p.leaveTypeId,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        days: days.toFixed(2),
+        durationType,
+        hours: hours != null ? hours.toFixed(2) : null,
+        fromTime,
+        toTime,
+        reason: p.reason?.trim() || null,
+        employeeRemark,
+      })
+      .where(eq(leaveRequest.id, req.id));
+
+    // Regenerate the approval-step chain from scratch — the day count / leave type may now resolve a different
+    // scoped chain. Only pending steps existed (the request is pending), so deleting + regenerating is safe.
+    await tx.delete(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id));
+    await generateApprovalSteps(tx, ctx.tenantId, req.id, req.employmentId, p.leaveTypeId, days);
+
+    const after = {
+      leaveTypeId: p.leaveTypeId,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      days,
+      durationType,
+      reason: p.reason?.trim() || null,
+      employeeRemark,
+    };
+    const diff: Record<string, { before: unknown; after: unknown }> = {};
+    for (const k of Object.keys(after) as (keyof typeof after)[]) {
+      if ((before as Record<string, unknown>)[k] !== (after as Record<string, unknown>)[k]) {
+        diff[k] = { before: (before as Record<string, unknown>)[k], after: (after as Record<string, unknown>)[k] };
+      }
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-request',
+      aggregateId: req.id,
+      eventType: 'leave-request.edited',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: { before, after, diff },
+    });
+
+    return { leaveRequestId: req.id, days };
+  });
+}
+
+/**
+ * Employee self-withdrawal of their OWN PENDING leave — an immediate cancel (no approval workflow), because a
+ * pending request was never approved so there is nothing for a manager to confirm giving back. Subject-only.
+ * Restricted to PENDING (an approved row must go through requestLeaveCancellation's manager-approved give-back,
+ * per Option A / ADR-0065). Pending leave has no ledger debit (net 0 ⇒ nothing to restore); the net-sum
+ * reversal is kept for defense-in-depth. Appends a DISTINCT `leave-request.self-cancelled` event (separate
+ * from admin-cancelled + give-back) so the notification registry can key "notify approver + HR" (req 4.v).
+ */
+export async function cancelOwnLeave(
+  ctx: SessionContext,
+  p: { leaveRequestId: string },
+): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
+  return withTenant(ctx, async (tx) => {
+    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    if (!req) throw new Error('leave request not found (or not visible)');
+
+    // Subject-only (creator). Enforced in code (RLS is symmetric).
+    const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
+    if (!ctx.personId || ctx.personId !== subjectPersonId) {
+      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave');
+    }
+
+    // Status gate: PENDING only. An approved row is routed to the give-back flow at the action layer.
+    if (req.status !== 'pending') {
+      throw new LeaveCancellationNotAllowedError(
+        req.status === 'approved'
+          ? 'approved leave must be cancelled through the give-back flow'
+          : `the leave is already ${req.status}`,
+      );
+    }
+    // v1: plain single-request rows only (an EL child would strand its sibling).
+    if (req.parentGroupId != null) {
+      throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here');
+    }
+
+    const [lt] = await tx
+      .select({ code: leaveType.code, name: leaveType.name })
+      .from(leaveType)
+      .where(eq(leaveType.id, req.leaveTypeId))
+      .limit(1);
+
+    // Reverse the NET ledger debit (net 0 for pending ⇒ restoredDays 0; kept robust for defense-in-depth).
+    const [netRow] = await tx
+      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
+      .from(leaveLedger)
+      .where(eq(leaveLedger.sourceRequestId, req.id));
+    const net = Number(netRow?.net ?? 0);
+    let restoredDays = 0;
+    if (net < 0) {
+      restoredDays = round2(-net);
+      await tx.insert(leaveLedger).values({
+        tenantId: ctx.tenantId,
+        employmentId: req.employmentId,
+        leaveTypeId: req.leaveTypeId,
+        entryType: 'debit',
+        days: restoredDays.toFixed(2),
+        sourceRequestId: req.id,
+        effectiveOn: req.startDate,
+      });
+    }
+
+    await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
+
+    // Substrate: distinct self-cancelled event (audit + notification key). Carries the display fields the
+    // approver/HR notification renderer needs (payload-only renderers).
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-request',
+      aggregateId: req.id,
+      eventType: 'leave-request.self-cancelled',
+      actor: actorOf(ctx),
+      subjectEmploymentId: req.employmentId,
+      payload: {
+        previousStatus: 'pending',
+        newStatus: 'cancelled',
+        restoredDays,
+        leaveTypeCode: lt?.code ?? null,
+        leaveTypeName: lt?.name ?? null,
+        startDate: req.startDate,
+        endDate: req.endDate,
+      },
+    });
+
+    return { previousStatus: 'pending', restoredDays };
   });
 }
 

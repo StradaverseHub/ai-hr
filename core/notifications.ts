@@ -16,6 +16,7 @@ import {
   notification,
   notificationCursor,
   payslip,
+  reportingLine,
   roleAssignment,
   type NotificationSeverity,
 } from '../db/schema';
@@ -119,6 +120,37 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       body: `Your ${p?.leaveTypeName ?? 'leave'} (${p?.startDate ?? ''} → ${p?.endDate ?? ''}) has been cancelled by an HR administrator.`,
       linkPath: '/me',
     }),
+  },
+  // The employee withdrew their OWN pending leave (item c9a19e34, expected_function 4.v — "notify the approver
+  // and HR"). Unlike the other leave notices, the SUBJECT here is the person who took the action, so a subject
+  // notice would be pointless — a fan-out resolver targets the approver (the subject's current administrative
+  // manager) + the company's HR admins instead, excluding the subject. English-only body (registry convention).
+  'leave-request.self-cancelled': {
+    kind: 'leave.self-cancelled',
+    category: 'leave',
+    render: (p) => ({
+      severity: 'info',
+      title: 'Leave application withdrawn',
+      body: `An employee withdrew their ${p?.leaveTypeName ?? 'leave'} application (${p?.startDate ?? ''} → ${p?.endDate ?? ''}).`,
+      linkPath: '/approvals',
+    }),
+    recipients: async (tx, ev) => {
+      if (!ev.subjectEmploymentId) return [];
+      const hr = await hrAdminsForCompany(tx, ev.subjectEmploymentId);
+      const mgrs = await tx
+        .select({ id: reportingLine.managerEmploymentId })
+        .from(reportingLine)
+        .where(
+          and(
+            eq(reportingLine.subordinateEmploymentId, ev.subjectEmploymentId),
+            eq(reportingLine.lineType, 'administrative'),
+            isNull(reportingLine.validTo),
+            isNull(reportingLine.supersededAt),
+          ),
+        );
+      const out = [...mgrs.map((m) => m.id), ...hr].filter((id) => id !== ev.subjectEmploymentId);
+      return [...new Set(out)];
+    },
   },
   'toil.accrued': {
     kind: 'toil.accrued',

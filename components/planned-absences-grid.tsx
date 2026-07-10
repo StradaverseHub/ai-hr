@@ -7,6 +7,7 @@ import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { EmployeeName } from '@/components/ui';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
+import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 
 const MS_DAY = 86_400_000;
 const ms = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
@@ -50,6 +51,9 @@ export type GridLeave = {
   /** feedback 22e68ff0: true when the viewer is an HR admin who may immediately cancel THIS pill's leave on
    *  behalf of the employee (gated server-side: admin + not own + pending|approved + not approved-REPLACEMENT). */
   adminCancelEligible?: boolean;
+  /** item c9a19e34: true when the viewer may self-withdraw THIS pending own pill (gated server-side:
+   *  own + pending + plain + non-EL/REPLACEMENT). */
+  selfCancelEligible?: boolean;
 };
 export type GridRow = { id: string; name: string; employeeCode?: string | null; role: string | null; leaves: GridLeave[] };
 export type GridDay = { iso: string; weekday: string; dayNum: number; isWeekend: boolean };
@@ -80,6 +84,9 @@ export function PlannedAbsencesGrid({
   // affordance renders on any pill.
   adminCancelAction,
   adminCancelPillLabel,
+  // item c9a19e34: the SAME cancelOwnLeaveAction the Leave page posts, for the viewer's own PENDING pill.
+  selfCancelAction,
+  selfCancelPillLabel,
 }: {
   rows: GridRow[];
   dayArr: GridDay[];
@@ -93,6 +100,8 @@ export function PlannedAbsencesGrid({
   cancelPillLabel?: string;
   adminCancelAction?: (fd: FormData) => void | Promise<void>;
   adminCancelPillLabel?: string;
+  selfCancelAction?: (fd: FormData) => void | Promise<void>;
+  selfCancelPillLabel?: string;
 }) {
   const [showAll, setShowAll] = useState(false);
   const lastIdx = days - 1;
@@ -188,6 +197,8 @@ export function PlannedAbsencesGrid({
                 // compact XCircle trigger convention as the employee give-back, but opens AdminCancelLeaveDialog
                 // (confirmation + optional reason) and posts the on-behalf action with back="/".
                 const showAdminCancel = !!adminCancelAction && !!l.adminCancelEligible;
+                // item c9a19e34: the viewer self-withdraws their own PENDING pill (immediate, no dates picker).
+                const showSelfCancel = !!selfCancelAction && !!l.selfCancelEligible;
                 return (
                   <div
                     key={l.id}
@@ -259,6 +270,22 @@ export function PlannedAbsencesGrid({
                             type="button"
                             aria-label={adminCancelPillLabel}
                             title={adminCancelPillLabel}
+                            className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
+                          >
+                            <XCircle className="size-3.5" />
+                          </button>
+                        }
+                      />
+                    )}
+                    {showSelfCancel && (
+                      <CancelLeaveDialog
+                        leaveRequestId={l.id}
+                        submitAction={selfCancelAction!}
+                        trigger={
+                          <button
+                            type="button"
+                            aria-label={selfCancelPillLabel}
+                            title={selfCancelPillLabel}
                             className="grid size-4 shrink-0 place-items-center rounded-full text-current/70 transition-opacity hover:text-current hover:opacity-100"
                           >
                             <XCircle className="size-3.5" />

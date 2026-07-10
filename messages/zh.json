@@ -785,7 +785,8 @@
       "cancellationPeriodClosed": "{date} 属于已关闭的薪资期间，无法再取消。",
       "noLeaveDaysInRange": "此申请没有请假日 — 日期为空或全部落在周末/公共假期。请选择至少包含一个工作日的日期范围。",
       "balanceFrozenForEncashment": "此假期余额因离职申请已获批而被冻结以供折现，无法更改。如您认为这是错误，请联系人力资源部门。",
-      "advanceNoticeRequired": "{typeName}必须至少在休假开始日期前 {days} 天提交。"
+      "advanceNoticeRequired": "{typeName}必须至少在休假开始日期前 {days} 天提交。",
+      "editNotAllowed": "此请假已无法编辑。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -906,7 +907,17 @@
       },
       "decidedByLine": "由 {name} 决定",
       "pendingWithLine": "待 {stage} 审批"
-    }
+    },
+    "editButton": "编辑",
+    "editDialogTitle": "编辑请假申请",
+    "editDialogDescription": "更新您待审批请假的详情，它将保持待审批状态。",
+    "editSaveLabel": "保存更改",
+    "selfCancelButton": "取消请假",
+    "selfCancelDialogTitle": "取消请假申请",
+    "selfCancelDialogDescription": "这将撤回您待审批的请假申请，此操作无法撤销。",
+    "selfCancelKeep": "保留",
+    "selfCancelConfirm": "取消请假",
+    "selfCancelPillAffordanceLabel": "取消此请假"
   },
   "attendance": {
     "title": "考勤",

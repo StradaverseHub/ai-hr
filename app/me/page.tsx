@@ -26,6 +26,10 @@ import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls }
 import { AttendanceClockButton, LocationNotice } from './attendance-clock';
 import { ClientTabs } from '@/components/personnel-tabs';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
+import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
+import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
+import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
+import { todayInKualaLumpur } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { LeaveBalanceTable, deriveBalanceRow } from '@/components/leave/leave-balance-table';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
@@ -39,6 +43,9 @@ import {
   myRequestCorrection,
   myRequestTravel,
   myRequestLeave,
+  myEditLeave,
+  myCancelLeave,
+  myRequestLeaveCancellation,
   myPreviewLeaveDeduction,
   myRequestProfileChange,
   mySubmitPeerFeedback,
@@ -177,6 +184,15 @@ export default async function MePage({
   // decided. RLS self-branch (can_see_employment) admits the subject to their own date rows. Empty ⇒ ordinary
   // whole-request row (no expander rendered).
   const shownRequests = requests.slice(0, 5);
+  // Edit/cancel-by-status (item c9a19e34): the leave-type options the Edit dialog's <select> prefills from,
+  // and the MYT "today" the approved give-back candidate list is filtered against (strictly-after-today).
+  const editTypeOptions = leaveTypes.map((lt) => ({
+    id: lt.id,
+    label: lt.name,
+    durations: lt.durations ?? null,
+    code: lt.code,
+  }));
+  const mytToday = todayInKualaLumpur();
   const requestDateBreakdowns = new Map(
     await Promise.all(
       shownRequests.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
@@ -1256,6 +1272,58 @@ export default async function MePage({
                           <Pill status={pillStatus} map={LEAVE_STATUS} label={pillLabel} />
                         </div>
                       </div>
+                      {/* Edit/cancel-by-status (item c9a19e34): status-gated self-service actions on the
+                          employee's OWN leave. PENDING plain rows → Edit + Cancel (immediate withdraw);
+                          APPROVED full-day plain/split rows → Cancel (manager-approved give-back, Option A);
+                          REJECTED/cancelled → none. Emergency/grouped/per-date rows are deferred (v1). The
+                          server re-asserts every gate authoritatively. */}
+                      {(() => {
+                        const isPlain = r.parentGroupId == null;
+                        const isGroupable = r.typeCode === 'EMERGENCY' || r.typeCode === 'REPLACEMENT';
+                        if (r.status === 'pending' && isPlain && !isGroupable) {
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              <EditLeaveDialog
+                                leaveRequestId={r.id}
+                                types={editTypeOptions}
+                                current={{
+                                  leaveTypeId: r.leaveTypeId,
+                                  durationType: (r.durationType ?? 'full_day') as
+                                    | 'full_day'
+                                    | 'half_day_am'
+                                    | 'half_day_pm'
+                                    | 'hourly',
+                                  startDate: r.startDate,
+                                  endDate: r.endDate,
+                                  fromTime: r.fromTime,
+                                  toTime: r.toTime,
+                                  reason: r.reason,
+                                  employeeRemark: r.employeeRemark,
+                                }}
+                                submitAction={myEditLeave}
+                              />
+                              <CancelLeaveDialog leaveRequestId={r.id} submitAction={myCancelLeave} />
+                            </div>
+                          );
+                        }
+                        if (r.status === 'approved') {
+                          const cancellableShape =
+                            r.durationType === 'full_day' && (r.parentGroupId == null || r.isCancellationSplit);
+                          const candidates = (r.workingDates ?? []).filter((d) => d > mytToday);
+                          if (cancellableShape && !r.pendingCancellationId && candidates.length > 0) {
+                            return (
+                              <div className="flex flex-wrap gap-2">
+                                <CancelDatesDialog
+                                  leaveRequestId={r.id}
+                                  candidateDates={candidates}
+                                  submitAction={myRequestLeaveCancellation}
+                                />
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
                       {dateRows.length > 0 && (
                         <LeaveDateOutcome
                           dates={dateRows}

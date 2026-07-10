@@ -8,7 +8,9 @@ import { listLeaveTypes, myEmployment } from '@/core/read';
 import {
   addLeaveAttachment,
   adminCancelLeave,
+  cancelOwnLeave,
   decideLeave,
+  editLeaveRequest,
   requestLeave,
   requestLeaveCancellation,
   previewLeaveDeduction,
@@ -176,6 +178,51 @@ export async function adminCancelLeaveAction(formData: FormData) {
   revalidatePath('/approvals');
   revalidatePath('/');
   redirect(`${back}?toast=adminCancelled`);
+}
+
+// Edit / cancel own leave by status (item c9a19e34): an employee edits or withdraws their OWN PENDING leave
+// from the /leave history table. Both re-run every gate server-side (subject-only + status='pending'). The
+// listLeaveTypes lookup supplies the localized type name for any validation error message.
+export async function editLeaveAction(formData: FormData) {
+  const session = await getSession();
+  const leaveTypeId = String(formData.get('leaveTypeId'));
+  const durationType = String(formData.get('durationType') || 'full_day') as LeaveDurationType;
+  const fromTime = String(formData.get('fromTime') ?? '').trim();
+  const toTime = String(formData.get('toTime') ?? '').trim();
+  const locale = await getLocale();
+  const types = await listLeaveTypes(session, { locale });
+  const selected = types.find((t) => t.id === leaveTypeId);
+  try {
+    await editLeaveRequest(session, {
+      leaveRequestId: String(formData.get('leaveRequestId')),
+      leaveTypeId,
+      startDate: String(formData.get('startDate')),
+      endDate: String(formData.get('endDate')),
+      reason: (formData.get('reason') as string) || undefined,
+      employeeRemark: (formData.get('employeeRemark') as string) || undefined,
+      durationType,
+      fromTime: durationType === 'hourly' && fromTime !== '' ? fromTime : undefined,
+      toTime: durationType === 'hourly' && toTime !== '' ? toTime : undefined,
+      today: todayInKualaLumpur(),
+    });
+  } catch (e) {
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e, selected?.name))}`);
+  }
+  revalidatePath('/leave');
+  redirect('/leave?toast=leaveUpdated');
+}
+
+export async function cancelOwnLeaveAction(formData: FormData) {
+  const session = await getSession();
+  const leaveRequestId = String(formData.get('leaveRequestId'));
+  try {
+    await cancelOwnLeave(session, { leaveRequestId });
+  } catch (e) {
+    redirect(`/leave?error=${encodeURIComponent(await localizeLeaveError(e))}`);
+  }
+  revalidatePath('/leave');
+  revalidatePath('/approvals');
+  redirect('/leave?toast=leaveCancelled');
 }
 
 export async function decideLeaveAction(formData: FormData) {

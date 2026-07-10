@@ -20,12 +20,16 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 import { styleFor } from '@/components/planned-absences';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
+import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
+import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
 import {
   requestLeaveAction,
   requestLeaveCancellationAction,
   adminCancelLeaveAction,
+  editLeaveAction,
+  cancelOwnLeaveAction,
   previewLeaveDeductionAction,
 } from './actions';
 
@@ -709,6 +713,46 @@ export default async function LeavePage({
                               back="/leave"
                               submitAction={adminCancelLeaveAction}
                             />
+                          );
+                        }
+                        // Edit/cancel-by-status (item c9a19e34): the viewer's OWN PENDING plain (non-EL/
+                        // non-REPLACEMENT) row gets Edit + immediate self-Cancel. The service re-asserts
+                        // subject-only + status='pending' authoritatively.
+                        if (
+                          isOwn &&
+                          r.status === 'pending' &&
+                          r.parentGroupId == null &&
+                          r.typeCode !== 'EMERGENCY' &&
+                          r.typeCode !== 'REPLACEMENT'
+                        ) {
+                          return (
+                            <div className="flex flex-wrap gap-2">
+                              <EditLeaveDialog
+                                leaveRequestId={r.id}
+                                types={leaveTypes.map((lt) => ({
+                                  id: lt.id,
+                                  label: lt.name,
+                                  durations: lt.durations ?? null,
+                                  code: lt.code,
+                                }))}
+                                current={{
+                                  leaveTypeId: r.leaveTypeId,
+                                  durationType: (r.durationType ?? 'full_day') as
+                                    | 'full_day'
+                                    | 'half_day_am'
+                                    | 'half_day_pm'
+                                    | 'hourly',
+                                  startDate: r.startDate,
+                                  endDate: r.endDate,
+                                  fromTime: r.fromTime,
+                                  toTime: r.toTime,
+                                  reason: r.reason,
+                                  employeeRemark: r.employeeRemark,
+                                }}
+                                submitAction={editLeaveAction}
+                              />
+                              <CancelLeaveDialog leaveRequestId={r.id} submitAction={cancelOwnLeaveAction} />
+                            </div>
                           );
                         }
                         const cancellableShape =

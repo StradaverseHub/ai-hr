@@ -785,7 +785,8 @@
       "cancellationPeriodClosed": "{date} berada dalam tempoh gaji yang telah ditutup dan tidak boleh dibatalkan lagi.",
       "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja.",
       "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan.",
-      "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti."
+      "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti.",
+      "editNotAllowed": "Cuti ini tidak boleh lagi disunting."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -906,7 +907,17 @@
       },
       "decidedByLine": "Diputuskan oleh {name}",
       "pendingWithLine": "Menunggu {stage}"
-    }
+    },
+    "editButton": "Sunting",
+    "editDialogTitle": "Sunting permohonan cuti",
+    "editDialogDescription": "Kemas kini butiran cuti anda yang belum diluluskan. Ia kekal menunggu kelulusan.",
+    "editSaveLabel": "Simpan perubahan",
+    "selfCancelButton": "Batal cuti",
+    "selfCancelDialogTitle": "Batalkan permohonan cuti",
+    "selfCancelDialogDescription": "Ini akan menarik balik permohonan cuti anda yang belum diluluskan. Tindakan ini tidak boleh dibatalkan.",
+    "selfCancelKeep": "Kekalkan",
+    "selfCancelConfirm": "Batal cuti",
+    "selfCancelPillAffordanceLabel": "Batalkan cuti ini"
   },
   "attendance": {
     "title": "Kehadiran",
