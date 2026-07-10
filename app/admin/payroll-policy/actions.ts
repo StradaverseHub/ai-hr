@@ -26,6 +26,13 @@ const str = (fd: FormData, k: string): string | undefined => {
   return v || undefined;
 };
 
+/** 61d77e82 — resolve the wizard's explicit Status field to a valid PolicyStatus, defaulting to 'active'
+ *  (today's behaviour) for anything unrecognized. */
+function resolveStatus(fd: FormData): 'active' | 'inactive' | 'draft' {
+  const v = str(fd, 'status');
+  return v === 'inactive' || v === 'draft' ? v : 'active';
+}
+
 /** Build the pay-rule from the submitted form for the given type. Daily ⇒ a per_day rule from `dailyRate`;
  *  Hourly (2.1.3) ⇒ a per_hour rule from `hourlyRate` plus the `onlyPullHoursWithinShiftSchedule` checkbox.
  *  (NaN/blank rate ⇒ 0, which the service's resolveRule validation then rejects as out of range.) Monthly ⇒ null. */
@@ -212,17 +219,23 @@ export async function createPolicyAction(formData: FormData) {
   // for daily/hourly, build the pay-rule from the rate field; for custom_period, build the cut-off-window config.
   // The service's resolveRule + cleanPayrollPolicyConfig validate both.
   const policyType = str(formData, 'policyType') ?? 'monthly';
+  // 61d77e82 — the wizard's Save-Draft button submits intent='draft' (forces draft); Save submits intent='save'
+  // and honours the explicit Status field (active/inactive/draft), defaulting to 'active' (today's behaviour).
+  const isDraft = String(formData.get('intent') ?? '') === 'draft';
+  const status = isDraft ? 'draft' : resolveStatus(formData);
   await run(
     () =>
       createPolicy(s, {
         companyId: String(formData.get('companyId') ?? ''),
         name: String(formData.get('name') ?? ''),
+        code: str(formData, 'code') ?? null,
         description: str(formData, 'description') ?? null,
         policyType,
         payRule: payRuleFromForm(formData, policyType),
         config: configFromForm(formData, policyType),
+        status,
       }).then(() => undefined),
-    'saved',
+    isDraft ? 'draftSaved' : 'saved',
   );
 }
 
@@ -235,12 +248,18 @@ export async function updatePolicyAction(formData: FormData) {
   // or hourly policy pass the edited rate (and, for hourly, the shift toggle) through; for a custom_period policy
   // pass the edited cut-off-window config (null when the toggle is back on "calendar", clearing the window).
   const policyType = str(formData, 'policyType') ?? 'monthly';
+  // 61d77e82 — Save-Draft re-marks the policy 'draft'; Save honours the explicit Status field. When no status
+  // field is present (legacy path) the status is left untouched (undefined ⇒ keep stored value).
+  const intent = String(formData.get('intent') ?? '');
+  const status = intent === 'draft' ? 'draft' : str(formData, 'status') ? resolveStatus(formData) : undefined;
   await run(
     () =>
       updatePolicy(s, {
         id: String(formData.get('id') ?? ''),
         name: String(formData.get('name') ?? ''),
+        code: str(formData, 'code') ?? null,
         description: str(formData, 'description') ?? null,
+        ...(status ? { status } : {}),
         ...(policyType === 'daily' || policyType === 'hourly'
           ? { payRule: payRuleFromForm(formData, policyType) }
           : {}),
@@ -248,7 +267,7 @@ export async function updatePolicyAction(formData: FormData) {
         // untouched this submit would be wiped. cleanPayrollPolicyConfig collapses an all-default blob to NULL.
         config: configFromForm(formData, policyType),
       }).then(() => undefined),
-    'saved',
+    intent === 'draft' ? 'draftSaved' : 'saved',
   );
 }
 

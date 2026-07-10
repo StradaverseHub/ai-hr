@@ -4245,7 +4245,8 @@
     },
     "status": {
       "active": "Aktif",
-      "inactive": "Tidak aktif"
+      "inactive": "Tidak aktif",
+      "draft": "Draf"
     },
     "typePending": "pengiraan menunggu kelulusan",
     "edit": "Sunting",
@@ -4278,7 +4279,8 @@
       "statusChanged": "Status dasar dikemas kini",
       "deleted": "Dasar gaji dipadam",
       "assigned": "Dasar gaji ditetapkan",
-      "copied": "Dasar gaji disalin"
+      "copied": "Dasar gaji disalin",
+      "draftSaved": "Draf disimpan"
     },
     "errors": {
       "duplicateName": "Dasar gaji dengan nama ini sudah wujud untuk syarikat ini.",
@@ -4397,6 +4399,40 @@
         "nearest": "Ringgit terdekat"
       },
       "roundingHint": "Pembundaran caruman berkanun sentiasa mengikut peraturan perundangannya sendiri dan tidak terjejas."
+    },
+    "createNewPolicy": "Cipta dasar baharu",
+    "fieldCode": "Kod dasar",
+    "codePlaceholder": "cth. STD-BULANAN",
+    "fieldStatus": "Status",
+    "wizard": {
+      "stepOf": "Langkah {n} daripada {total}",
+      "next": "Seterusnya",
+      "previous": "Sebelumnya",
+      "saveDraft": "Simpan draf",
+      "save": "Simpan dasar",
+      "cancel": "Batal",
+      "createTitle": "Dasar gaji baharu",
+      "editTitle": "Sunting {name}",
+      "requiredHint": "Lengkapkan medan yang diperlukan pada langkah ini untuk meneruskan.",
+      "reviewHint": "Semak konfigurasi di bawah, kemudian Simpan. Gunakan Sebelumnya untuk kembali ke mana-mana langkah dan meminda.",
+      "reviewDraftNote": "Disimpan sebagai draf, dasar ini tidak digunakan pada gaji. Aktifkannya daripada senarai dasar apabila sedia.",
+      "steps": {
+        "info": "Maklumat dasar",
+        "cutOff": "Tetingkap tarikh tutup",
+        "proration": "Pembahagian gaji",
+        "salary": "Konfigurasi gaji",
+        "negativeNet": "Gaji bersih negatif",
+        "overtime": "Kerja lebih masa",
+        "leave": "Pengiraan cuti",
+        "rounding": "Pembundaran",
+        "review": "Semak & simpan"
+      },
+      "validation": {
+        "name": "Nama dasar diperlukan.",
+        "company": "Pilih syarikat.",
+        "dailyRate": "Masukkan kadar sehari melebihi sifar.",
+        "hourlyRate": "Masukkan kadar sejam melebihi sifar."
+      }
     }
   },
   "leaveApproval": {

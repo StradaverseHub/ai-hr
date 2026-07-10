@@ -1337,6 +1337,9 @@ export const payrollPolicy = pgTable(
       .notNull()
       .references(() => company.id),
     name: text('name').notNull(),
+    // 61d77e82 — optional Policy Code (metadata for the admin catalog display + search). Nullable; NULL =
+    // today's behaviour. Never read by the payroll kernel (additive, calc-neutral).
+    code: text('code'),
     description: text('description'),
     policyType: payrollPolicyTypeEnum('policy_type').notNull(),
     // Reuses core/pay-rule.ts's PayRule (no new config shape). Null for monthly. For daily/hourly (deferred)

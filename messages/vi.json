@@ -4245,7 +4245,8 @@
     },
     "status": {
       "active": "Hoạt động",
-      "inactive": "Không hoạt động"
+      "inactive": "Không hoạt động",
+      "draft": "Bản nháp"
     },
     "typePending": "phép tính đang chờ phê duyệt",
     "edit": "Sửa",
@@ -4278,7 +4279,8 @@
       "statusChanged": "Đã cập nhật trạng thái chính sách",
       "deleted": "Đã xóa chính sách lương",
       "assigned": "Đã gán chính sách lương",
-      "copied": "Đã sao chép chính sách lương"
+      "copied": "Đã sao chép chính sách lương",
+      "draftSaved": "Đã lưu bản nháp"
     },
     "errors": {
       "duplicateName": "Đã có chính sách lương với tên này cho công ty này.",
@@ -4397,6 +4399,40 @@
         "nearest": "Ringgit gần nhất"
       },
       "roundingHint": "Việc làm tròn đóng góp theo luật luôn tuân theo quy định pháp luật riêng và không bị ảnh hưởng."
+    },
+    "createNewPolicy": "Tạo chính sách mới",
+    "fieldCode": "Mã chính sách",
+    "codePlaceholder": "vd. STD-MONTHLY",
+    "fieldStatus": "Trạng thái",
+    "wizard": {
+      "stepOf": "Bước {n} trên {total}",
+      "next": "Tiếp theo",
+      "previous": "Quay lại",
+      "saveDraft": "Lưu bản nháp",
+      "save": "Lưu chính sách",
+      "cancel": "Hủy",
+      "createTitle": "Chính sách lương mới",
+      "editTitle": "Chỉnh sửa {name}",
+      "requiredHint": "Hoàn thành các trường bắt buộc ở bước này để tiếp tục.",
+      "reviewHint": "Xem lại cấu hình bên dưới, sau đó Lưu. Dùng Quay lại để trở về bất kỳ bước nào và sửa.",
+      "reviewDraftNote": "Chính sách được lưu dưới dạng bản nháp sẽ không áp dụng cho lương. Kích hoạt từ danh sách chính sách khi sẵn sàng.",
+      "steps": {
+        "info": "Thông tin chính sách",
+        "cutOff": "Kỳ chốt",
+        "proration": "Chia lương theo tỷ lệ",
+        "salary": "Cấu hình lương",
+        "negativeNet": "Lương thực âm",
+        "overtime": "Làm thêm giờ",
+        "leave": "Tính toán nghỉ phép",
+        "rounding": "Làm tròn",
+        "review": "Xem lại & lưu"
+      },
+      "validation": {
+        "name": "Tên chính sách là bắt buộc.",
+        "company": "Chọn công ty.",
+        "dailyRate": "Nhập mức theo ngày lớn hơn 0.",
+        "hourlyRate": "Nhập mức theo giờ lớn hơn 0."
+      }
     }
   },
   "leaveApproval": {

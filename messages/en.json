@@ -4245,7 +4245,8 @@
     },
     "status": {
       "active": "Active",
-      "inactive": "Inactive"
+      "inactive": "Inactive",
+      "draft": "Draft"
     },
     "typePending": "calculation pending sign-off",
     "edit": "Edit",
@@ -4278,7 +4279,8 @@
       "statusChanged": "Policy status updated",
       "deleted": "Payroll policy deleted",
       "assigned": "Payroll policy assigned",
-      "copied": "Payroll policy copied"
+      "copied": "Payroll policy copied",
+      "draftSaved": "Draft saved"
     },
     "errors": {
       "duplicateName": "A payroll policy with this name already exists for this company.",
@@ -4397,6 +4399,40 @@
         "nearest": "Nearest ringgit"
       },
       "roundingHint": "Statutory contribution rounding always follows its own legislated rules and is unaffected."
+    },
+    "createNewPolicy": "Create new policy",
+    "fieldCode": "Policy code",
+    "codePlaceholder": "e.g. STD-MONTHLY",
+    "fieldStatus": "Status",
+    "wizard": {
+      "stepOf": "Step {n} of {total}",
+      "next": "Next",
+      "previous": "Previous",
+      "saveDraft": "Save draft",
+      "save": "Save policy",
+      "cancel": "Cancel",
+      "createTitle": "New payroll policy",
+      "editTitle": "Edit {name}",
+      "requiredHint": "Complete the required fields on this step to continue.",
+      "reviewHint": "Review the configuration below, then Save. Use Previous to return to any step and amend.",
+      "reviewDraftNote": "Saved as a draft, this policy is not applied to payroll. Activate it from the policy list when ready.",
+      "steps": {
+        "info": "Policy information",
+        "cutOff": "Cut-off window",
+        "proration": "Salary proration",
+        "salary": "Salary configuration",
+        "negativeNet": "Negative net pay",
+        "overtime": "Overtime",
+        "leave": "Leave calculation",
+        "rounding": "Rounding",
+        "review": "Review & save"
+      },
+      "validation": {
+        "name": "Policy name is required.",
+        "company": "Select a company.",
+        "dailyRate": "Enter a per-day rate greater than zero.",
+        "hourlyRate": "Enter a per-hour rate greater than zero."
+      }
     }
   },
   "leaveApproval": {
