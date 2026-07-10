@@ -218,10 +218,17 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
+    // Career Movement (feedback 5296d984): employment lifecycle events — Assignment History, Transfer
+    // (Effective-Dated) and Terminate — relocated OUT of the Employment tab into a dedicated home. The
+    // Employment tab keeps the "how they work" master data (reporting lines, delegations); the lifecycle
+    // "events that change employment over time" now live here. Same cards, same server actions
+    // (transferAction / terminateAction keep their existing DomainEvents), only regrouped. Positioned
+    // right after Employment so the person's static setup sits next to the actions that move them.
+    { key: 'careerMovement', label: t('tabs.careerMovement') },
     // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that
     // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking
     // Locations & Geofencing) into one dedicated tab. Same cards, same server actions — only regrouped.
@@ -1311,9 +1318,11 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  // ── JOB ────────────────────────────────────────────────────────────────────
-  // Assignment (position/department) history, reporting lines, approval delegations, location, and
-  // the transfer/terminate controls. Assignment history is not admin-gated (visible to any viewer).
+  // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
+  // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
+  // ("job") tab, while assignmentHistoryCard and transferTerminateCards now render on the Career
+  // Movement tab (feedback 5296d984). Location + default shift moved to Attendance (feedback 1fbe9891).
+  // Assignment history is not admin-gated (visible to any viewer); transfer/terminate are admin actions.
   const assignmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('assignmentHistory')} count={history.length} />
@@ -1649,9 +1658,20 @@ export default async function EmployeePage({
     family: familyPanel,
     job: (
       <>
-        {assignmentHistoryCard}
         {reportingLinesCard}
         {delegationsCard}
+      </>
+    ),
+    // Career Movement (feedback 5296d984): the employment-lifecycle cards relocated WHOLE out of the
+    // Employment tab. assignmentHistoryCard (position/department history) and transferTerminateCards —
+    // which already bundles BOTH the Transfer (Effective-Dated) form and the Terminate form — move here
+    // unchanged. The const definitions (assignmentHistoryCard / transferTerminateCards, still defined in
+    // the "── JOB ──" section) are untouched: only their render location moved, so transferAction /
+    // terminateAction keep their existing effective-date rules and DomainEvents and no data is affected.
+    // Order mirrors the lifecycle: past movements (history) first, then the actions that create the next.
+    careerMovement: (
+      <>
+        {assignmentHistoryCard}
         {transferTerminateCards}
       </>
     ),

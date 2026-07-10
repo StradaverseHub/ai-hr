@@ -67,10 +67,11 @@ describe('Personnel — Attendance Information tab (1fbe9891)', () => {
     const job = panelBody('job');
     expect(job.includes('{locationCard}')).toBe(false);
     expect(job.includes('{defaultShiftCard}')).toBe(false);
-    // Employment tab still renders its own cards (relocation only removed the two attendance ones).
-    expect(job.includes('{assignmentHistoryCard}')).toBe(true);
+    // Employment tab still renders reporting lines + delegations. (assignmentHistoryCard and
+    // transferTerminateCards later relocated to the Career Movement tab by feedback 5296d984 — see
+    // test/personnel-career-movement-tab.test.ts; the job tab no longer renders them.)
     expect(job.includes('{reportingLinesCard}')).toBe(true);
-    expect(job.includes('{transferTerminateCards}')).toBe(true);
+    expect(job.includes('{delegationsCard}')).toBe(true);
   });
 
   it('relocates Clocking & Geofencing OUT of the Others tab', () => {
