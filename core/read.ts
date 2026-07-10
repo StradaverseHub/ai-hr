@@ -1150,6 +1150,24 @@ export function employeeDetail(ctx: SessionContext, employmentId: string) {
         // ADR-0070: per-employee Clocking Location & Geofencing enforcement toggle + radius.
         geofencingEnabled: employment.geofencingEnabled,
         geofenceRadiusM: employment.geofenceRadiusM,
+        // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on
+        // the Employment tab's Employment Information card (all nullable; null = not set).
+        probationMonths: employment.probationMonths,
+        probationDays: employment.probationDays,
+        confirmationDate: employment.confirmationDate,
+        resignationNoticeMonths: employment.resignationNoticeMonths,
+        resignationNoticeDays: employment.resignationNoticeDays,
+        resignationDate: employment.resignationDate,
+        shortNoticeMonths: employment.shortNoticeMonths,
+        shortNoticeDays: employment.shortNoticeDays,
+        orgBranch: employment.orgBranch,
+        orgDivision: employment.orgDivision,
+        orgRegion: employment.orgRegion,
+        orgLine: employment.orgLine,
+        orgSection: employment.orgSection,
+        orgTeam: employment.orgTeam,
+        orgBase: employment.orgBase,
+        employmentCategory: employment.employmentCategory,
       })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))

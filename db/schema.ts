@@ -646,6 +646,33 @@ export const employment = pgTable(
     // meaningful (and required) while enforcement is on — enforced by the CHECK below.
     geofencingEnabled: boolean('geofencing_enabled').notNull().default(false),
     geofenceRadiusM: integer('geofence_radius_m'),
+    // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on the
+    // Employment tab's new Employment Information card. All NULLABLE and additive — an existing employment
+    // with every column NULL behaves exactly as before (field-capture only; business rules follow in a
+    // later CR). Dates are validated (confirmation ≥ hire, resignation ≥ hire) and periods are non-negative
+    // in core/org.ts::setEmploymentInfo; the DB stays permissive so backfills/imports never trip a CHECK.
+    probationMonths: integer('probation_months'),
+    probationDays: integer('probation_days'),
+    confirmationDate: date('confirmation_date'),
+    resignationNoticeMonths: integer('resignation_notice_months'),
+    resignationNoticeDays: integer('resignation_notice_days'),
+    // Manual/administrative resignation date. The self-service resignation workflow (ADR-0042) owns the
+    // lifecycle end date; this column is an audited HR override for master-data capture and does not drive
+    // that workflow. Nullable.
+    resignationDate: date('resignation_date'),
+    shortNoticeMonths: integer('short_notice_months'),
+    shortNoticeDays: integer('short_notice_days'),
+    // Organisation dimensions beyond the effective-dated department/position (which live on `assignment`).
+    // Free-text in v1 — a follow-up CR introduces master tables + validated dropdowns. Nullable text.
+    orgBranch: text('org_branch'),
+    orgDivision: text('org_division'),
+    orgRegion: text('org_region'),
+    orgLine: text('org_line'),
+    orgSection: text('org_section'),
+    orgTeam: text('org_team'),
+    orgBase: text('org_base'),
+    // Employee category (e.g. Management / Executive / Non-executive). Free-text in v1. Nullable.
+    employmentCategory: text('employment_category'),
     createdAt: createdAt(),
   },
   (t) => [

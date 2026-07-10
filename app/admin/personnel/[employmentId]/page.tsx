@@ -31,6 +31,7 @@ import {
   setContactAddressAction,
   setEmergencyContactAction,
   setEmploymentComponentAction,
+  setEmploymentInfoAction,
   setLocationAction,
   setPersonAction,
   setPersonPhotoAction,
@@ -1372,6 +1373,138 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
+  // Employment Information enhancement (2323f671) — the Employment tab's primary master-data card. Groups
+  // Employment Dates / Organisation / Job / Reporting into ONE admin-gated <form> → setEmploymentInfoAction.
+  // NEW fields (probation/notice periods, confirmation & resignation dates, org dimensions, category, +
+  // editable Hire Date) are captured here. Effective-dated fields (Company, Department, Position, Employment
+  // Type, Employee Status) are shown READ-ONLY from the current open assignment with a pointer to Career
+  // Movement — editing them here would corrupt assignment history. Job Grade is read-only too (Profile owns
+  // the editable control). The superior (Reporting To) stays the single editable control on the Reporting
+  // Lines card below; this card only points to it, so there is no duplicate superior editor.
+  const employmentInfoCard = admin ? (
+    <Card id="section-employment-info">
+      <SectionHeader title={t('employmentInfo.title')} />
+      {/* Read-only reference block: effective-dated / other-tab-owned fields. Kept visible so this card is a
+          single view of the employment profile, per the CR ("maintain all employment info from one place"). */}
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-b border-border p-4 text-sm sm:grid-cols-4">
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.company')}</dt>
+          <dd className="font-medium text-foreground">{emp.company}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.department')}</dt>
+          <dd className="font-medium text-foreground">{current?.department ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.position')}</dt>
+          <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.jobGrade')}</dt>
+          <dd className="font-medium text-foreground">{emp.gradeName ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.employmentType')}</dt>
+          <dd className="font-medium capitalize text-foreground">{current?.employmentType ?? '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('employmentInfo.employeeStatus')}</dt>
+          <dd className="font-medium capitalize text-foreground">{current?.status ?? '—'}</dd>
+        </div>
+        <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">{t('employmentInfo.readOnlyNote')}</p>
+      </dl>
+
+      <form action={setEmploymentInfoAction} className="space-y-6 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+
+        {/* ── Employment Dates ── */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.datesGroup')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('employmentInfo.hireDate')}>
+              <input name="hiredOn" type="date" defaultValue={emp.hiredOn ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.confirmationDate')}>
+              <input name="confirmationDate" type="date" defaultValue={emp.confirmationDate ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.resignationDate')}>
+              <input name="resignationDate" type="date" defaultValue={emp.resignationDate ?? ''} className={inputCls} />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <Field label={t('employmentInfo.probationPeriod')}>
+              <div className="flex gap-2">
+                <input name="probationMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.probationMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
+                <input name="probationDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.probationDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
+              </div>
+            </Field>
+            <Field label={t('employmentInfo.resignationNoticePeriod')}>
+              <div className="flex gap-2">
+                <input name="resignationNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.resignationNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
+                <input name="resignationNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.resignationNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
+              </div>
+            </Field>
+            <Field label={t('employmentInfo.shortNoticePeriod')}>
+              <div className="flex gap-2">
+                <input name="shortNoticeMonths" type="number" min={0} step={1} placeholder={t('employmentInfo.months')} defaultValue={emp.shortNoticeMonths ?? ''} className={inputCls} aria-label={t('employmentInfo.months')} />
+                <input name="shortNoticeDays" type="number" min={0} step={1} placeholder={t('employmentInfo.days')} defaultValue={emp.shortNoticeDays ?? ''} className={inputCls} aria-label={t('employmentInfo.days')} />
+              </div>
+            </Field>
+          </div>
+        </fieldset>
+
+        {/* ── Organisation ── */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.orgGroup')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Field label={t('employmentInfo.branch')}>
+              <input name="orgBranch" defaultValue={emp.orgBranch ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.division')}>
+              <input name="orgDivision" defaultValue={emp.orgDivision ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.region')}>
+              <input name="orgRegion" defaultValue={emp.orgRegion ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.line')}>
+              <input name="orgLine" defaultValue={emp.orgLine ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.section')}>
+              <input name="orgSection" defaultValue={emp.orgSection ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.team')}>
+              <input name="orgTeam" defaultValue={emp.orgTeam ?? ''} className={inputCls} />
+            </Field>
+            <Field label={t('employmentInfo.base')}>
+              <input name="orgBase" defaultValue={emp.orgBase ?? ''} className={inputCls} />
+            </Field>
+          </div>
+        </fieldset>
+
+        {/* ── Job ── (Position / Grade / Type / Status read-only above; Category is new master data) */}
+        <fieldset className="space-y-3">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.jobGroup')}
+          </legend>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <Field label={t('employmentInfo.category')}>
+              <input name="employmentCategory" defaultValue={emp.employmentCategory ?? ''} className={inputCls} />
+            </Field>
+          </div>
+        </fieldset>
+
+        <p className="text-xs text-muted-foreground">{t('employmentInfo.superiorNote')}</p>
+        <div className="flex justify-end">
+          <button className={btnPrimary}>{t('employmentInfo.save')}</button>
+        </div>
+      </form>
+    </Card>
+  ) : null;
+
   const reportingLinesCard = (
     <Card id="section-reporting-lines">
       <SectionHeader title={t('reportingLines')} />
@@ -1658,6 +1791,7 @@ export default async function EmployeePage({
     family: familyPanel,
     job: (
       <>
+        {employmentInfoCard}
         {reportingLinesCard}
         {delegationsCard}
       </>

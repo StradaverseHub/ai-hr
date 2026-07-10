@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { endReportingLine, setEmployeeCode, setEmploymentGrade, setEmploymentHolidayCalendar, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
+import { endReportingLine, setEmployeeCode, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation, updateCompensation } from '@/core/comp';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -465,6 +465,52 @@ export async function setComplianceFieldsAction(formData: FormData) {
       gender: (formData.get('gender') as string) || null,
       maritalStatus: (formData.get('maritalStatus') as string) || null,
       dateOfBirth: (formData.get('dateOfBirth') as string) || null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Employment Information enhancement (2323f671) — HR/Admin saves the employment master-data card on the
+ * Employment tab (hire date + probation/notice periods, confirmation/resignation dates, org dimensions,
+ * category). Mirrors setComplianceFieldsAction: requireAdmin, one audited service writer, ?error redirect
+ * on failure, ?toast=Saved on success (landing back on the same tab via withTab). A blank input is an
+ * explicit clear-to-null; number inputs come through as strings and are parsed/validated in the service.
+ */
+export async function setEmploymentInfoAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  // Helper: a present-but-blank field is an explicit clear (null); an absent field is untouched. Every
+  // input on this single form is always rendered, so "" → null is the intended clear semantic here.
+  const str = (name: string): string | null => {
+    const v = formData.get(name);
+    if (v == null) return null;
+    const t = String(v).trim();
+    return t === '' ? null : t;
+  };
+  try {
+    await setEmploymentInfo(s, {
+      employmentId,
+      hiredOn: str('hiredOn') ?? undefined, // hiredOn is NOT NULL — a blank submit must not clear it.
+      probationMonths: str('probationMonths') as string | null,
+      probationDays: str('probationDays') as string | null,
+      confirmationDate: str('confirmationDate'),
+      resignationNoticeMonths: str('resignationNoticeMonths') as string | null,
+      resignationNoticeDays: str('resignationNoticeDays') as string | null,
+      resignationDate: str('resignationDate'),
+      shortNoticeMonths: str('shortNoticeMonths') as string | null,
+      shortNoticeDays: str('shortNoticeDays') as string | null,
+      orgBranch: str('orgBranch'),
+      orgDivision: str('orgDivision'),
+      orgRegion: str('orgRegion'),
+      orgLine: str('orgLine'),
+      orgSection: str('orgSection'),
+      orgTeam: str('orgTeam'),
+      orgBase: str('orgBase'),
+      employmentCategory: str('employmentCategory'),
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

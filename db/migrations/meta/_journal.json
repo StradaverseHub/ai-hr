@@ -1268,6 +1268,13 @@
       "when": 1781862179000,
       "tag": "0180_profile_option",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1781862180000,
+      "tag": "0181_employment_info_fields",
+      "breakpoints": true
     }
   ]
 }
