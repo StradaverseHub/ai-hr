@@ -51,7 +51,7 @@ export default async function OrganizationPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const { s } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.organization');
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
@@ -71,7 +71,9 @@ export default async function OrganizationPage({
     bankBy.set(bp.companyId, list);
   }
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
-  const scoped = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
+  // substrate: read-only, no event. The Companies management card is a tenant-wide master:
+  // it renders every company regardless of the company-switcher scope (getScopeIds), unlike
+  // operational screens which stay scoped. The switcher is intentionally ignored on this screen.
 
   const actions = {
     updateCompany: updateCompanyAction,
@@ -107,14 +109,14 @@ export default async function OrganizationPage({
       <Card data-tour="people-org-companies">
         <CompaniesCardHeader
           title={t('companies')}
-          count={scoped.length}
+          count={companies.length}
           createAction={createCompanyAction}
         />
-        {scoped.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
+        {companies.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
         ) : (
           <OrganizationList
-            items={scoped.map((c) => ({
+            items={companies.map((c) => ({
               id: c.id,
               name: c.name,
               registrationNo: c.registrationNo,
