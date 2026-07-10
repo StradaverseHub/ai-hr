@@ -322,6 +322,9 @@ export async function createLeaveTypeAction(formData: FormData) {
       // a Status select (active|inactive, default active). The service trims the description (empty ⇒ null).
       description: String(formData.get('description') ?? '').trim(),
       active: formData.get('active') !== 'inactive',
+      // Leave Unit Configuration (e4980382): the add-type form carries a Day/Hour select beside "Paid".
+      // Anything other than 'hour' falls back to 'day' (default), so an absent field ⇒ Day.
+      leaveUnit: formData.get('leaveUnit') === 'hour' ? 'hour' : 'day',
     });
   } catch (e) {
     fail(LEAVE, e);
@@ -1028,6 +1031,13 @@ export async function updateLeaveTypeAction(fd: FormData) {
         icon: String(fd.get('icon') ?? '').trim() === '' ? null : String(fd.get('icon')).trim(),
       }
     : {};
+  // Leave Unit Configuration (e4980382): its own sub-form posts `leaveUnit=1` (marker) plus a Day/Hour select,
+  // so any other sub-form save that omits the marker leaves leave_unit untouched (same tri-state guard). The
+  // value is constrained to 'hour' else 'day' (default) — the service also validates against the closed set.
+  const touchLeaveUnit = fd.get('leaveUnit') === '1';
+  const leaveUnitFields = touchLeaveUnit
+    ? { leaveUnit: (fd.get('leaveUnitValue') === 'hour' ? 'hour' : 'day') as 'day' | 'hour' }
+    : {};
   // Custom validation messages (custom-messages migration): each rule's "Custom system message" textarea
   // lives in the SAME sub-form as its rule config (backdating ⇒ `backdating=1`; min-advance ⇒ `minAdvance=1`),
   // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
@@ -1068,6 +1078,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...essViewFields,
       ...dayTypeInclusionFields,
       ...visualFields,
+      ...leaveUnitFields,
       ...customMessageFields,
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
       reason: String(fd.get('reason') || '') || null,

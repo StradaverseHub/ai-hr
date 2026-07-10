@@ -3077,7 +3077,12 @@
           "teal": "Teal",
           "grey": "Grey"
         }
-      }
+      },
+      "leaveUnitLabel": "Leave Unit",
+      "leaveUnitDay": "Day",
+      "leaveUnitHour": "Hour",
+      "leaveUnitSectionTitle": "Leave Unit",
+      "leaveUnitHelp": "Whether this leave type is managed and applied in whole days or in hours. Labelling only — it does not change entitlement, accrual, workflow or payroll."
     },
     "holidays": {
       "pageTitle": "Public holidays",

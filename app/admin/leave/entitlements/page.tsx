@@ -166,6 +166,7 @@ export default async function LeaveEntitlementsPage({
               dayTypeInclusion={(lt.dayTypeInclusion as Record<string, boolean> | null) ?? null}
               color={lt.color ?? null}
               icon={lt.icon ?? null}
+              leaveUnit={lt.leaveUnit ?? 'day'}
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}
@@ -208,6 +209,13 @@ export default async function LeaveEntitlementsPage({
             <input type="checkbox" name="paid" defaultChecked className="size-4 rounded" />
             {t('paidLabel')}
           </label>
+          {/* Leave Unit Configuration (e4980382): Day/Hour select beside Paid. Default Day. */}
+          <Field label={t('leaveUnitLabel')}>
+            <select name="leaveUnit" defaultValue="day" className={inputCls}>
+              <option value="day">{t('leaveUnitDay')}</option>
+              <option value="hour">{t('leaveUnitHour')}</option>
+            </select>
+          </Field>
           <button className={btnPrimary}>{t('addType')}</button>
         </form>
         <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">

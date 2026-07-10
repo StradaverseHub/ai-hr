@@ -3077,7 +3077,12 @@
           "teal": "Teal",
           "grey": "Kelabu"
         }
-      }
+      },
+      "leaveUnitLabel": "Unit Cuti",
+      "leaveUnitDay": "Hari",
+      "leaveUnitHour": "Jam",
+      "leaveUnitSectionTitle": "Unit Cuti",
+      "leaveUnitHelp": "Sama ada jenis cuti ini diurus dan digunakan dalam hari penuh atau jam. Untuk label sahaja — ia tidak mengubah kelayakan, terakru, aliran kerja atau gaji."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

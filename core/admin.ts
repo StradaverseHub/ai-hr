@@ -412,7 +412,9 @@ export async function createLeaveType(
   ctx: SessionContext,
   // Leave Type master page (feedback 097de541): the add-type form now carries an optional description and a
   // create-time active/inactive status (default active). Code + name stay required.
-  p: { code: string; name: string; paid?: boolean; description?: string | null; active?: boolean },
+  // Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours. Optional; the service
+  // defaults to 'day' so an omitted value reproduces today's behaviour. Validated against the closed set.
+  p: { code: string; name: string; paid?: boolean; description?: string | null; active?: boolean; leaveUnit?: 'day' | 'hour' },
 ) {
   // The code is the semantic key the statutory floor / standing grants / carry-forward match on
   // (exact, uppercase). Normalize hard so 'annual' can never silently miss the EA floor.
@@ -421,6 +423,11 @@ export async function createLeaveType(
     throw new Error('Leave-type code must be letters, digits or underscores (e.g. ANNUAL)');
   }
   const name = cleanName(p.name, 'Leave-type name');
+  // Leave Unit Configuration (e4980382): default 'day'; reject anything outside the closed { day, hour } set.
+  const leaveUnit = p.leaveUnit ?? 'day';
+  if (leaveUnit !== 'day' && leaveUnit !== 'hour') {
+    throw new Error('Leave unit must be day or hour.');
+  }
   // Leave Type master page (feedback 097de541): trim the optional description; empty ⇒ null (never store "").
   const description = typeof p.description === 'string' && p.description.trim() !== '' ? p.description.trim() : null;
   // Create-time status. active=false ⇒ insert already archived (mirrors archiveLeaveType semantics). Note the
@@ -445,6 +452,7 @@ export async function createLeaveType(
         name,
         description,
         paid: p.paid ?? true,
+        leaveUnit,
         ...(active ? {} : { archivedAt: sql`now()` }),
       })
       .returning({ id: leaveType.id })
@@ -458,7 +466,7 @@ export async function createLeaveType(
       aggregateId: row.id,
       eventType: 'leave-type.created',
       actor: actorOf(ctx),
-      payload: { code, name, paid: p.paid ?? true, description, active },
+      payload: { code, name, paid: p.paid ?? true, description, active, leaveUnit },
     });
     return row;
   });
@@ -2465,6 +2473,11 @@ export async function updateLeaveType(
     // workflow / calculation — purely cosmetic. Empty string ⇒ null (never store '').
     color?: string | null;
     icon?: string | null;
+    // Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours. OWN tri-state
+    // (undefined = leave_unit column untouched), mirroring perDateApproval/visual — its own "Leave Unit"
+    // sub-form posts `leaveUnit=1` so an unrelated save never resets it. Validated against { day, hour }.
+    // Coarse labelling/reporting only — never read for entitlement / accrual / workflow / payroll.
+    leaveUnit?: 'day' | 'hour';
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -2509,6 +2522,14 @@ export async function updateLeaveType(
   // untouched. The normaliser coerces to strict booleans and collapses an all-false vector to null (inert).
   const touchDayTypeInclusion = p.dayTypeInclusion !== undefined;
   const nextDayTypeInclusion = touchDayTypeInclusion ? cleanDayTypeInclusion(p.dayTypeInclusion) : undefined;
+  // Leave Unit Configuration (e4980382): OWN tri-state, mirroring touchPartial — the "Leave Unit" sub-form
+  // posts `leaveUnit=1`, any other save omits leaveUnit so leave_unit stays untouched (no silent reset).
+  // Validate against the closed { day, hour } set (the DB CHECK is defence-in-depth).
+  const touchLeaveUnit = p.leaveUnit !== undefined;
+  if (touchLeaveUnit && p.leaveUnit !== 'day' && p.leaveUnit !== 'hour') {
+    throw new Error('Leave unit must be day or hour.');
+  }
+  const leaveUnitSet = touchLeaveUnit ? { leaveUnit: p.leaveUnit } : {};
   // Employee Leave View Configuration (65dec703): OWN tri-state, mirroring touchPartial — the ESS-view
   // sub-form posts `essView=1`, any other save omits essViewConfig so ess_view_config stays untouched.
   const touchEssViewConfig = p.essViewConfig !== undefined;
@@ -2673,6 +2694,8 @@ export async function updateLeaveType(
         // Visual config (639fdf77): selected for the before/after audit diff.
         color: leaveType.color,
         icon: leaveType.icon,
+        // Leave Unit Configuration (e4980382): selected for the before/after audit diff.
+        leaveUnit: leaveType.leaveUnit,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -2730,6 +2753,7 @@ export async function updateLeaveType(
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...dayTypeInclusionSet,
+        ...leaveUnitSet,
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -2762,6 +2786,7 @@ export async function updateLeaveType(
           ...(touchEssViewConfig ? { essViewConfig: before?.essViewConfig ?? null } : {}),
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
+          ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
@@ -2791,6 +2816,7 @@ export async function updateLeaveType(
           ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig ?? null } : {}),
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
+          ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
         ...(reason ? { reason } : {}),

@@ -3077,7 +3077,12 @@
           "teal": "Xanh mòng két",
           "grey": "Xám"
         }
-      }
+      },
+      "leaveUnitLabel": "Đơn vị nghỉ phép",
+      "leaveUnitDay": "Ngày",
+      "leaveUnitHour": "Giờ",
+      "leaveUnitSectionTitle": "Đơn vị nghỉ phép",
+      "leaveUnitHelp": "Loại nghỉ phép này được quản lý và áp dụng theo ngày trọn hay theo giờ. Chỉ là nhãn — không thay đổi định mức, tích lũy, quy trình hay lương."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

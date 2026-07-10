@@ -851,6 +851,14 @@ export const leaveType = pgTable('leave_type', {
   //     DB CHECK so the registry can grow without a migration). null ⇒ default leave icon.
   color: text('color'),
   icon: text('icon'),
+  // Leave Unit Configuration (feedback e4980382): whether this leave type is MANAGED and applied in whole
+  // Days or in Hours. 'day' | 'hour', NOT NULL DEFAULT 'day' (a DB CHECK backs the service validation). Shown
+  // beside the "Paid Leave" setting on the Leave Type Setup screen. This is a coarse labelling/reporting
+  // setting — it deliberately does NOT drive entitlement, accrual, workflow, or payroll logic (the reporter's
+  // stated scope). The finer per-request fraction model already lives on `durations` (full_day / half_day /
+  // hourly) and continues to drive deduction math; wiring leave_unit into apply/approve is a future item.
+  // DEFAULT 'day' ⇒ every existing row reads Day (backward compatible, no backfill).
+  leaveUnit: text('leave_unit').notNull().default('day'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

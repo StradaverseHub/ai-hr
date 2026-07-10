@@ -3077,7 +3077,12 @@
           "teal": "青色",
           "grey": "灰色"
         }
-      }
+      },
+      "leaveUnitLabel": "请假单位",
+      "leaveUnitDay": "天",
+      "leaveUnitHour": "小时",
+      "leaveUnitSectionTitle": "请假单位",
+      "leaveUnitHelp": "此请假类型以整天还是小时管理和申请。仅作标签用途——不影响额度、累积、审批流程或薪资。"
     },
     "holidays": {
       "pageTitle": "公共假期",

@@ -536,6 +536,7 @@ export function LeaveTypePanel({
   dayTypeInclusion,
   color,
   icon,
+  leaveUnit,
   policies,
   grades,
   companies,
@@ -595,6 +596,9 @@ export function LeaveTypePanel({
    *  radio + icon picker init from what's saved. null ⇒ nothing selected (default styling). */
   color: string | null;
   icon: string | null;
+  /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
+   *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
+  leaveUnit: string;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -1316,6 +1320,31 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
+          </div>
+
+          {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts
+              `leaveUnit=1` — a Day/Hour select declaring whether this leave type is managed in whole days or
+              in hours. Coarse labelling/reporting only: it does NOT change entitlement, accrual, workflow, or
+              payroll behaviour. Default Day; existing types read Day (backward compatible). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('leaveUnitSectionTitle')}</span>
+            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the leave_unit column (tri-state guard) */}
+              <input type="hidden" name="leaveUnit" value="1" />
+              <Field label={t('leaveUnitLabel')}>
+                <select name="leaveUnitValue" defaultValue={leaveUnit === 'hour' ? 'hour' : 'day'} className={`${inputCls} w-32`}>
+                  <option value="day">{t('leaveUnitDay')}</option>
+                  <option value="hour">{t('leaveUnitHour')}</option>
+                </select>
+              </Field>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('leaveUnitHelp')}</p>
           </div>
 
           {/* Leave Type Visual Configuration Enhancement (639fdf77). Its own self-contained sub-form (own

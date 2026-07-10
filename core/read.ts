@@ -421,6 +421,9 @@ export function listLeaveTypes(
         // projected or the swatch/icon picker render empty on every reload). null ⇒ default styling.
         color: leaveType.color,
         icon: leaveType.icon,
+        // Leave Unit Configuration (e4980382): feeds the admin panel's "Leave Unit" select + the create-form
+        // default (MUST be projected or the select renders at its default on every reload). 'day' | 'hour'.
+        leaveUnit: leaveType.leaveUnit,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
