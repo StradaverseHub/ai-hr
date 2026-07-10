@@ -197,7 +197,15 @@ export default async function LeaveEntitlementsPage({
             <input name="name" required placeholder={t('namePlaceholder')} className={inputCls} />
           </Field>
           <Field label={t('descriptionLabel')}>
-            <input name="description" placeholder={t('descriptionPlaceholder')} className={inputCls} />
+            {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting; h-auto/min-h/resize-y
+                overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag handle, and scrolls on overflow.
+                Persistence already stores text with newlines (action only .trim()s the ends). */}
+            <textarea
+              name="description"
+              rows={3}
+              placeholder={t('descriptionPlaceholder')}
+              className={`${inputCls} h-auto min-h-[4.5rem] resize-y`}
+            />
           </Field>
           <Field label={t('statusLabel')}>
             <select name="active" defaultValue="active" className={inputCls}>

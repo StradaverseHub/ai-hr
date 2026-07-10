@@ -779,12 +779,16 @@ export function LeaveTypePanel({
                 <input name="name" defaultValue={name} aria-label={t('nameLabel')} className={`${inputCls} w-52`} />
               </Field>
               <Field label={t('descriptionLabel')}>
-                <input
+                {/* Multiline (fbcadc71): textarea so Enter inserts a newline instead of submitting the rename form;
+                    h-auto/min-h/resize-y overrides inputCls's fixed h-9 so it shows ~3 lines, grows via the drag
+                    handle, and scrolls on overflow. defaultValue round-trips stored newlines faithfully. */}
+                <textarea
                   name="description"
                   defaultValue={description ?? ''}
                   aria-label={t('descriptionLabel')}
                   placeholder={t('descriptionPlaceholder')}
-                  className={`${inputCls} w-64`}
+                  rows={3}
+                  className={`${inputCls} h-auto min-h-[4.5rem] w-64 resize-y`}
                 />
               </Field>
               {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
