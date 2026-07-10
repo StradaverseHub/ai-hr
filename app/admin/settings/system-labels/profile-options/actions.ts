@@ -11,7 +11,11 @@ import {
   updateProfileOption,
 } from '@/core/profile-options';
 
-const BASE = '/admin/settings/profile-options';
+// fbdeee87: Profile Options relocated into the System Labels surface as a tab. These are the SAME five
+// core functions the standalone page called (core/profile-options.ts UNCHANGED — this is a UI/navigation
+// consolidation, not a data merge); only the redirect BASE moves onto the System Labels path so a
+// create/edit/activate/delete/seed keeps the admin on the Profile Options tab.
+const BASE = '/admin/settings/system-labels/profile-options';
 const fail = (e: unknown) => redirect(`${BASE}?error=${encodeURIComponent((e as Error).message)}`);
 const numOrNull = (v: FormDataEntryValue | null): number | null => {
   const s = String(v ?? '').trim();

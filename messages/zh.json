@@ -3757,6 +3757,10 @@
       "payroll": "薪资相关",
       "audit": "审计"
     },
+    "systemLabelsTabs": {
+      "organisation": "组织标签",
+      "profileOptions": "档案选项"
+    },
     "claimsTabs": {
       "types": "报销类型",
       "limits": "报销限额",

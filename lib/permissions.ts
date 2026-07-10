@@ -167,11 +167,16 @@ export const SCREENS: readonly ScreenEntry[] = [
   },
   {
     // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).
+    // fbdeee87: relocated INTO the System Labels surface as a tab — the catalog is unchanged (flat tenant-wide
+    // table, requireAdmin), only its route moved under /admin/settings/system-labels/. The old standalone route
+    // is now an unguarded redirect stub (so it is not a guarded route needing a column). Kept as its own column
+    // (not merged into systemLabels) so the guard stays HONEST: profile options are requireAdmin tenant-wide,
+    // whereas the org-label grid is scopedAdmin — folding them would misreport one of the two guards.
     screenKey: 'profileOptions',
-    href: '/admin/settings/profile-options',
+    href: '/admin/settings/system-labels/profile-options',
     labelKey: 'nav.profileOptions',
     guard: 'requireAdmin',
-    routes: ['/admin/settings/profile-options'],
+    routes: ['/admin/settings/system-labels/profile-options'],
   },
   // ── Admin leave / attendance / claims config (requireAdmin) ──
   {

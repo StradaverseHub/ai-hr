@@ -3757,6 +3757,10 @@
       "payroll": "เกี่ยวข้องกับเงินเดือน",
       "audit": "การตรวจสอบ"
     },
+    "systemLabelsTabs": {
+      "organisation": "ป้ายกำกับองค์กร",
+      "profileOptions": "ตัวเลือกโปรไฟล์"
+    },
     "claimsTabs": {
       "types": "ประเภทการเบิก",
       "limits": "วงเงินการเบิก",
