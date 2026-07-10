@@ -138,8 +138,10 @@ const GROUPS: Group[] = [
     items: [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
+      // fbdeee87: Profile Options was folded into the System Labels surface as a tab, so the two adjacent
+      // admin entries collapse into this single "System Labels" entry (profile options now live at
+      // /admin/settings/system-labels/profile-options).
       { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags },
-      { href: '/admin/settings/profile-options', labelKey: 'profileOptions', icon: ListChecks },
       // 0d147b78: Leave config is now a tabbed surface; the former standalone "Approval chain" entry
       // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },

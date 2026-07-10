@@ -3846,6 +3846,10 @@
       "payroll": "Berkaitan Gaji",
       "audit": "Audit"
     },
+    "systemLabelsTabs": {
+      "organisation": "Label Organisasi",
+      "profileOptions": "Pilihan Profil"
+    },
     "claimsTabs": {
       "types": "Jenis Tuntutan",
       "limits": "Had Tuntutan",

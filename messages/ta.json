@@ -3846,6 +3846,10 @@
       "payroll": "ஊதியம் தொடர்பானவை",
       "audit": "தணிக்கை"
     },
+    "systemLabelsTabs": {
+      "organisation": "நிறுவன லேபிள்கள்",
+      "profileOptions": "சுயவிவர விருப்பங்கள்"
+    },
     "claimsTabs": {
       "types": "உரிமைகோரல் வகைகள்",
       "limits": "உரிமைகோரல் வரம்புகள்",

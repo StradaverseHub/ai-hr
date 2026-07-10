@@ -75,6 +75,17 @@ import {
   createCostCenterAction,
   createBusinessUnitAction,
 } from '../app/admin/settings/actions';
+// fbdeee87: Profile Options relocated into the System Labels surface as a tab. Its five server actions now
+// live under the System Labels sub-route and must redirect to the Profile Options tab (NOT the old
+// standalone /admin/settings/profile-options path) — the same redirect-target guard as the org catalogs.
+import {
+  createProfileOptionAction,
+  updateProfileOptionAction,
+  setProfileOptionActiveAction,
+  deleteProfileOptionAction,
+  seedProfileOptionsAction,
+} from '../app/admin/settings/system-labels/profile-options/actions';
+import { listAllProfileOptions } from '../core/profile-options';
 
 let b: Base;
 
@@ -294,5 +305,64 @@ describe('System Labels — server actions redirect to the System Labels path (r
       const target = await captureRedirect(() => setup(new FormData()));
       expect(target).toBe('/admin/settings/system-labels');
     }
+  });
+});
+
+describe('Profile Options — relocated actions redirect to the System Labels tab (fbdeee87)', () => {
+  const PO_TAB = '/admin/settings/system-labels/profile-options';
+  const OLD = '/admin/settings/profile-options';
+
+  it('create redirects to the Profile Options tab on success, NOT the old standalone path', async () => {
+    actionCtx = adminCtx(b);
+    const fd = new FormData();
+    fd.set('category', 'religion');
+    fd.set('value', 'Buddhism');
+    fd.set('label', 'Buddhist');
+    const target = await captureRedirect(() => createProfileOptionAction(fd));
+    expect(target.startsWith(`${PO_TAB}?`)).toBe(true);
+    expect(target).not.toBe(OLD);
+    expect(target.startsWith(`${OLD}?`)).toBe(false);
+
+    // The option actually persisted through the relocated action → core path (data model unchanged).
+    const all = await listAllProfileOptions(actionCtx, { activeOnly: false });
+    expect(all.religion.find((o) => o.value === 'Buddhism')?.label).toBe('Buddhist');
+  });
+
+  it('a create validation failure redirects to the Profile Options tab with an error, NOT the old path', async () => {
+    actionCtx = adminCtx(b);
+    const fd = new FormData();
+    fd.set('category', 'religion');
+    fd.set('value', '   '); // blank value → createProfileOption throws
+    const target = await captureRedirect(() => createProfileOptionAction(fd));
+    expect(target.startsWith(`${PO_TAB}?error=`)).toBe(true);
+    expect(target.startsWith(OLD)).toBe(false);
+  });
+
+  it('update / activate / delete / seed all redirect to the Profile Options tab', async () => {
+    // Seed the default catalog, then exercise update/activate/delete against a real row.
+    actionCtx = adminCtx(b);
+    expect((await captureRedirect(() => seedProfileOptionsAction())).startsWith(`${PO_TAB}?`)).toBe(true);
+
+    const all = await listAllProfileOptions(adminCtx(b), { activeOnly: false });
+    const row = all.religion[0];
+    expect(row).toBeTruthy();
+
+    actionCtx = adminCtx(b);
+    const upd = new FormData();
+    upd.set('id', row.id);
+    upd.set('label', 'Renamed');
+    upd.set('sortOrder', '3');
+    expect((await captureRedirect(() => updateProfileOptionAction(upd))).startsWith(`${PO_TAB}?`)).toBe(true);
+
+    actionCtx = adminCtx(b);
+    const act = new FormData();
+    act.set('id', row.id);
+    act.set('isActive', 'false');
+    expect((await captureRedirect(() => setProfileOptionActiveAction(act))).startsWith(`${PO_TAB}?`)).toBe(true);
+
+    actionCtx = adminCtx(b);
+    const del = new FormData();
+    del.set('id', row.id);
+    expect((await captureRedirect(() => deleteProfileOptionAction(del))).startsWith(`${PO_TAB}?`)).toBe(true);
   });
 });

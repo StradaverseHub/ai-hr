@@ -11,6 +11,7 @@ import {
 import { listLabelAssignments } from '@/core/system-labels';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { SystemLabelsGrid, type GridKind, type GridRecord } from '@/components/system-labels-grid';
+import { SystemLabelsTabs } from '@/components/system-labels-tabs';
 import {
   assignLabelCompaniesAction,
   copyLabelsToCompaniesAction,
@@ -134,6 +135,7 @@ export default async function SystemLabelsPage({
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} />
+      <SystemLabelsTabs active="organisation" />
       <ErrorBanner message={error} />
 
       {gridCompanies.length === 0 ? (

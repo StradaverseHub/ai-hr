@@ -3846,6 +3846,10 @@
       "payroll": "Payroll Related",
       "audit": "Audit"
     },
+    "systemLabelsTabs": {
+      "organisation": "Organisation Labels",
+      "profileOptions": "Profile Options"
+    },
     "claimsTabs": {
       "types": "Claim Types",
       "limits": "Claim Limits",

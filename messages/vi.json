@@ -3846,6 +3846,10 @@
       "payroll": "Liên quan bảng lương",
       "audit": "Kiểm toán"
     },
+    "systemLabelsTabs": {
+      "organisation": "Nhãn tổ chức",
+      "profileOptions": "Tùy chọn hồ sơ"
+    },
     "claimsTabs": {
       "types": "Loại yêu cầu",
       "limits": "Hạn mức yêu cầu",
