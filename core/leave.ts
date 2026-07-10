@@ -72,6 +72,7 @@ import {
   company,
   department,
   employment,
+  jobGrade,
   leaveApprovalStep,
   leaveCancellationRequest,
   leaveEncashmentSnapshot,
@@ -4087,20 +4088,93 @@ export function earnedCycleStart(hiredOn: string, asOf: string, cycle: string | 
 // '@/core/leave' unchanged. Leave Entitlement Rules Engine (feedback a0228655) added serviceBands +
 // bandDaysFor + previewEntitlement there and made resolveGradePolicy's serviceYears param required.
 
+// ── Run Earned Accrual — scope + preview (feedback 2c7c6385) ────────────────────────────────────────
+/** One grouped row of the "Run Earned Accrual" preview/summary table — Company × Grade × Leave Type.
+ *  `entitlementGenerated` is the Σ of the actual per-employee top-ups (`toGrant`) for the group, so the
+ *  preview (dryRun) and the real commit produce IDENTICAL numbers (they share one computation pass). */
+export type EarnedAccrualGroup = {
+  companyId: string;
+  companyName: string;
+  gradeId: string | null;
+  gradeName: string | null;
+  leaveTypeId: string;
+  leaveTypeCode: string;
+  leaveTypeName: string;
+  /** Distinct active employees in this Company×Grade whose resolved policy for the type is earned. */
+  employeeCount: number;
+  /** The accrual leave year (asOf's year) — the "Accrual Period" column. */
+  accrualPeriod: number;
+  /** 'earned_monthly' | 'earned_quarterly' — the resolved accrual method for the group. */
+  method: string;
+  /** Σ of per-employee `toGrant` (days) for the group. */
+  entitlementGenerated: number;
+};
+export type EarnedAccrualResult = {
+  granted: number;
+  forfeits: number;
+  breakdown: EarnedAccrualGroup[];
+};
+
+/**
+ * Leave Year → asOf mapping for the "Run Earned Accrual" scope selector (feedback 2c7c6385, product
+ * decision 1). The engine derives the accrual cycle from `asOf.slice(0,4)`, so the chosen Leave Year must
+ * map to an asOf INSIDE that year:
+ *  • current year  → today (progressive, to-date accrual — identical to the bare button / monthly cron).
+ *  • past year     → that year's 31-Dec (full historical cycle; idempotent, harmless if already run).
+ *  • future year   → that year's 31-Dec (full-year projection — this is the "600 days = 50×12" case in the
+ *                    spec: HR opens next year and generates its full entitlement ahead of time).
+ * A naive min(today, {year}-12-31) would collapse a FUTURE year to today (→ the wrong year's cycle), so the
+ * branch is by year comparison, not a numeric min. Exported for the scope test.
+ */
+export function asOfForLeaveYear(year: number, today: string): string {
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+  if (today < yearStart) return yearEnd; // future year → full-year projection
+  if (today > yearEnd) return yearEnd; // past year → full cycle
+  return today; // current year → to-date
+}
+
 /** ADR-0040: top every earned policy up to the amount accrued by `asOf`. Idempotent — only the
  *  shortfall is written — so it is safe to run repeatedly (admin button + monthly cron, 2D-2).
  *  The cycle is per company (`leave_cycle`): calendar (1 Jan, joiners pro-rate from their join month)
  *  or anniversary (each employee's cycle anchored to their hire-month anniversary). The full-cycle
- *  total equals max(EA-floor, policy days), so the statutory floor still holds. */
-export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }) {
-  return withTenant(ctx, async (tx) => {
+ *  total equals max(EA-floor, policy days), so the statutory floor still holds.
+ *
+ *  Feedback 2c7c6385 (Run Earned Accrual button): the manual admin trigger now carries an optional SCOPE
+ *  ({companyIds, gradeIds, leaveTypeIds}) and a `dryRun` flag, and returns a GROUPED breakdown accumulated
+ *  in the SAME pass as the commit. When `dryRun` is set NOTHING is written (no ledger inserts, no event) —
+ *  the returned breakdown/counters are exactly what a real run would produce, so the HR preview can never
+ *  lie. Absent scope filters ⇒ "all" on that axis (byte-identical to the cron's unscoped run). */
+export async function accrueEarnedLeave(
+  ctx: SessionContext,
+  p: {
+    asOf: string;
+    companyIds?: string[];
+    gradeIds?: string[];
+    leaveTypeIds?: string[];
+    dryRun?: boolean;
+  },
+): Promise<EarnedAccrualResult> {
+  const scopeCompanyIds = (p.companyIds ?? []).filter(Boolean);
+  const scopeGradeIds = (p.gradeIds ?? []).filter(Boolean);
+  const scopeTypeIds = (p.leaveTypeIds ?? []).filter(Boolean);
+  const dryRun = p.dryRun === true;
+  const accrualPeriod = Number(p.asOf.slice(0, 4));
+  return withTenant(ctx, async (tx): Promise<EarnedAccrualResult> => {
     const yearStart = `${p.asOf.slice(0, 4)}-01-01`;
     const types = await tx
-      .select({ id: leaveType.id, code: leaveType.code })
+      .select({ id: leaveType.id, code: leaveType.code, name: leaveType.name })
       .from(leaveType)
-      .where(and(inArray(leaveType.code, [...STANDING_LEAVE_CODES]), isNull(leaveType.archivedAt)));
+      .where(
+        and(
+          inArray(leaveType.code, [...STANDING_LEAVE_CODES]),
+          isNull(leaveType.archivedAt),
+          // Leave-Type scope filter (feedback 2c7c6385). Empty ⇒ all standing types.
+          scopeTypeIds.length ? inArray(leaveType.id, scopeTypeIds) : undefined,
+        ),
+      );
     const typeIds = types.map((t) => t.id);
-    if (typeIds.length === 0) return { granted: 0, forfeits: 0 };
+    if (typeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
 
     const policies = await tx
       .select({ leaveTypeId: leavePolicy.leaveTypeId, gradeId: leavePolicy.gradeId, companyId: leavePolicy.companyId, accrual: leavePolicy.accrual })
@@ -4124,7 +4198,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
     const earnedTypeIds = [...policyByType.entries()]
       .filter(([, rows]) => rows.some((r) => isEarnedMethod((r.accrual as { method?: string } | null)?.method)))
       .map(([id]) => id);
-    if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0 };
+    if (earnedTypeIds.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
 
     const emps = await tx
       .select({
@@ -4134,6 +4208,7 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         leaveCycle: company.leaveCycle,
         gradeId: employment.gradeId,
         companyId: employment.companyId,
+        companyName: company.legalName,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -4141,10 +4216,31 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         and(
           lte(employment.hiredOn, p.asOf),
           or(isNull(employment.terminatedOn), gte(employment.terminatedOn, yearStart)),
+          // Scope filters (feedback 2c7c6385). Empty axis ⇒ all (matches countEmployeesInScope).
+          scopeCompanyIds.length ? inArray(employment.companyId, scopeCompanyIds) : undefined,
+          scopeGradeIds.length ? inArray(employment.gradeId, scopeGradeIds) : undefined,
         ),
       );
-    if (emps.length === 0) return { granted: 0, forfeits: 0 };
+    if (emps.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
     const empIds = emps.map((e) => e.employmentId);
+
+    // Grade-name lookup for the grouped preview breakdown (feedback 2c7c6385). A null gradeId row is the
+    // ungraded/company-default bucket — no jobGrade name.
+    const gradeNameById = new Map<string, string>();
+    const distinctGradeIds = [...new Set(emps.map((e) => e.gradeId).filter((g): g is string => !!g))];
+    if (distinctGradeIds.length) {
+      const gradeRows = await tx
+        .select({ id: jobGrade.id, name: jobGrade.name })
+        .from(jobGrade)
+        .where(inArray(jobGrade.id, distinctGradeIds));
+      for (const g of gradeRows) gradeNameById.set(g.id, g.name);
+    }
+    // Grouped breakdown accumulator, keyed company|grade|type — filled in the SAME pass as the commit so
+    // the dryRun preview and the real run are guaranteed to report identical numbers (preview-must-not-lie).
+    const groupBy = new Map<
+      string,
+      { companyId: string; companyName: string; gradeId: string | null; leaveTypeId: string; method: string; count: number; entitlementGenerated: number }
+    >();
 
     // 2D-2: the cycle start varies per employee (calendar = yearStart; anniversary = their hire-month
     // anniversary), so we can't sum "already accrued this cycle" in SQL with one bound. Fetch the
@@ -4255,6 +4351,24 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         const type = types.find((t) => t.id === typeId);
         if (!type) continue;
         if (frozenSet.has(`${e.employmentId}|${typeId}`)) continue; // ADR-0069: balance frozen for encashment
+        // Grouped preview accumulator (feedback 2c7c6385): this (employee, type) resolves an earned policy,
+        // so it belongs to the Company×Grade×Type group. Count it here (regardless of `toGrant`) — the
+        // "Employee Count" column is the eligible population, not only those with a non-zero top-up.
+        const groupKey = `${e.companyId}|${e.gradeId ?? ''}|${typeId}`;
+        let group = groupBy.get(groupKey);
+        if (!group) {
+          group = {
+            companyId: e.companyId,
+            companyName: e.companyName,
+            gradeId: e.gradeId ?? null,
+            leaveTypeId: typeId,
+            method: pol!.method!,
+            count: 0,
+            entitlementGenerated: 0,
+          };
+          groupBy.set(groupKey, group);
+        }
+        group.count += 1;
         // 2D-3: cap what carries into the new cycle. ANNUAL carries up to its policy cap; other earned
         // types reset (cap 0). Posted once per cycle, dated at the cycle start (guarded by `forfeited`).
         const carryKey = `${e.employmentId}|${typeId}`;
@@ -4267,15 +4381,18 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         if (!forfeited.has(carryKey)) {
           const forfeit = Math.round((priorBalance - retainedCarry) * 100) / 100;
           if (forfeit > 0) {
-            await tx.insert(leaveLedger).values({
-              tenantId: ctx.tenantId,
-              employmentId: e.employmentId,
-              leaveTypeId: typeId,
-              entryType: 'adjustment',
-              days: (-forfeit).toFixed(2),
-              effectiveOn: cycleStart,
-              reason: CARRY_FORFEIT_REASON_CAP,
-            });
+            // dryRun (feedback 2c7c6385): compute the same forfeit but write NOTHING — preview == commit.
+            if (!dryRun) {
+              await tx.insert(leaveLedger).values({
+                tenantId: ctx.tenantId,
+                employmentId: e.employmentId,
+                leaveTypeId: typeId,
+                entryType: 'adjustment',
+                days: (-forfeit).toFixed(2),
+                effectiveOn: cycleStart,
+                reason: CARRY_FORFEIT_REASON_CAP,
+              });
+            }
             forfeited.add(carryKey);
             forfeits += 1;
           }
@@ -4297,28 +4414,70 @@ export async function accrueEarnedLeave(ctx: SessionContext, p: { asOf: string }
         const already = rows.reduce((s, r) => (r.effectiveOn >= cycleStart ? s + r.days : s), 0);
         const toGrant = Math.round((earnedToDate - already) * 100) / 100;
         if (toGrant > 0) {
-          await tx.insert(leaveLedger).values({
-            tenantId: ctx.tenantId,
-            employmentId: e.employmentId,
-            leaveTypeId: typeId,
-            entryType: 'accrual',
-            days: toGrant.toFixed(2),
-            effectiveOn: p.asOf,
-          });
+          // dryRun (feedback 2c7c6385): compute the same top-up but write NOTHING — preview == commit.
+          if (!dryRun) {
+            await tx.insert(leaveLedger).values({
+              tenantId: ctx.tenantId,
+              employmentId: e.employmentId,
+              leaveTypeId: typeId,
+              entryType: 'accrual',
+              days: toGrant.toFixed(2),
+              effectiveOn: p.asOf,
+            });
+          }
           granted += 1;
+          group.entitlementGenerated = Math.round((group.entitlementGenerated + toGrant) * 100) / 100;
         }
       }
     }
-    // One summary event; ledger rows are the per-item audit (deliberate skip, as openLeaveYear).
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-year',
-      aggregateId: ctx.tenantId,
-      eventType: 'leave.earned-accrual.run',
-      actor: actorOf(ctx),
-      payload: { asOf: p.asOf, granted, forfeits },
-    });
-    return { granted, forfeits };
+    // Materialise the grouped breakdown for the preview/summary table (feedback 2c7c6385).
+    const breakdown: EarnedAccrualGroup[] = [...groupBy.values()]
+      .map((g) => {
+        const type = types.find((t) => t.id === g.leaveTypeId)!;
+        return {
+          companyId: g.companyId,
+          companyName: g.companyName,
+          gradeId: g.gradeId,
+          gradeName: g.gradeId ? (gradeNameById.get(g.gradeId) ?? null) : null,
+          leaveTypeId: g.leaveTypeId,
+          leaveTypeCode: type.code,
+          leaveTypeName: type.name,
+          employeeCount: g.count,
+          accrualPeriod,
+          method: g.method,
+          entitlementGenerated: g.entitlementGenerated,
+        };
+      })
+      .sort(
+        (a, b) =>
+          a.companyName.localeCompare(b.companyName) ||
+          (a.gradeName ?? '').localeCompare(b.gradeName ?? '') ||
+          a.leaveTypeName.localeCompare(b.leaveTypeName),
+      );
+
+    // dryRun (feedback 2c7c6385): a PREVIEW must leave no trace — skip the audit event entirely. A real
+    // run appends ONE summary event; the ledger rows are the per-item audit (deliberate skip, as openLeaveYear).
+    if (!dryRun) {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'leave-year',
+        aggregateId: ctx.tenantId,
+        eventType: 'leave.earned-accrual.run',
+        actor: actorOf(ctx),
+        // feedback 2c7c6385 (product decision 4): stamp the scope so a manual scoped run is distinguishable
+        // from the unscoped monthly cron in the audit log. Empty arrays ⇒ "all" on that axis. IDs only (no
+        // PII — see test/event-payload-pii-guard.test.ts).
+        payload: {
+          asOf: p.asOf,
+          granted,
+          forfeits,
+          companyIds: scopeCompanyIds,
+          gradeIds: scopeGradeIds,
+          leaveTypeIds: scopeTypeIds,
+        },
+      });
+    }
+    return { granted, forfeits, breakdown };
   });
 }
 

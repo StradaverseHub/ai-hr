@@ -56,11 +56,13 @@ import {
   saveFutureOpeningRule,
   isLeaveYearStatus,
   accrueEarnedLeave,
+  asOfForLeaveYear,
   grantAdHocLeave,
   grantAdHocLeaveMulti,
   todayInKualaLumpur,
   DAY_TYPE_INCLUSION_KEYS,
   type DayTypeInclusion,
+  type EarnedAccrualGroup,
   type LeaveDurationType,
   type ServiceBand,
 } from '@/core/leave';
@@ -547,16 +549,64 @@ export async function grantAdHocLeaveAction(
   }
 }
 
-/** ADR-0040 (2D-1): top earned policies up to today's accrued amount. Idempotent — admins can run it
- *  any time; the same call the monthly cron (scripts/accrue-earned.ts) makes. */
-export async function runEarnedAccrualAction() {
+/** feedback 2c7c6385 (Run Earned Accrual button): the scope the HR admin picked in the review card. An
+ *  empty array on any axis ⇒ "all" on that axis (matches countEmployeesInScope). `year` selects the leave
+ *  year → asOf (asOfForLeaveYear: current=to-date, past/future=full cycle). */
+export type EarnedAccrualScope = {
+  year: number;
+  companyIds: string[];
+  gradeIds: string[];
+  leaveTypeIds: string[];
+};
+
+/**
+ * feedback 2c7c6385 — PREVIEW (dry-run) for the "Run Earned Accrual" review card. Computes the EXACT same
+ * grouped breakdown a real run would, WITHOUT writing anything (no ledger rows, no audit event). RLS scopes
+ * the underlying reads to the session's visible companies, so a group admin cannot preview outside their
+ * companies even if they hand-craft a companyId. READ-ONLY (the dryRun engine appends no event).
+ */
+export async function previewEarnedAccrualAction(
+  scope: EarnedAccrualScope,
+): Promise<{ rows?: EarnedAccrualGroup[]; asOf?: string; error?: string }> {
   const s = await getSession();
   try {
-    await accrueEarnedLeave(s, { asOf: new Date().toISOString().slice(0, 10) });
+    const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
+    const { breakdown } = await accrueEarnedLeave(s, {
+      asOf,
+      companyIds: scope.companyIds,
+      gradeIds: scope.gradeIds,
+      leaveTypeIds: scope.leaveTypeIds,
+      dryRun: true,
+    });
+    return { rows: breakdown, asOf };
   } catch (e) {
-    fail(LEAVE, e);
+    return { error: (e as Error).message };
   }
-  ok(LEAVE);
+}
+
+/** ADR-0040 (2D-1) + feedback 2c7c6385: top earned policies up to the accrued amount for the selected leave
+ *  year, narrowed to the chosen scope. Idempotent — admins can run it any time; a re-run grants nothing more
+ *  (the monthly cron scripts/accrue-earned.ts calls the same engine unscoped). Returns {granted, forfeits}
+ *  so the review card can surface "N generated" (a 2nd run visibly shows 0). No redirect — the client card
+ *  toasts + refreshes, mirroring grantAdHocLeaveAction. */
+export async function runEarnedAccrualAction(
+  scope: EarnedAccrualScope,
+): Promise<{ granted?: number; forfeits?: number; error?: string }> {
+  const s = await getSession();
+  try {
+    const asOf = asOfForLeaveYear(scope.year, todayInKualaLumpur());
+    const { granted, forfeits } = await accrueEarnedLeave(s, {
+      asOf,
+      companyIds: scope.companyIds,
+      gradeIds: scope.gradeIds,
+      leaveTypeIds: scope.leaveTypeIds,
+    });
+    revalidatePath(LEAVE);
+    revalidatePath(ENTITLEMENTS);
+    return { granted, forfeits };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
 }
 
 /** ADR-0040 (2D-2): set a company's earned-accrual cycle (calendar vs hire anniversary). */

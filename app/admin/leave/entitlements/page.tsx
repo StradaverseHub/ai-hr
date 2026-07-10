@@ -10,6 +10,7 @@ import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btn
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
+import { EarnedAccrualCard } from '@/components/earned-accrual-card';
 import {
   archiveLeaveTypeAction,
   countEmployeesInScopeAction,
@@ -22,7 +23,6 @@ import {
   upsertLeaveYearConfigAction,
   setLeaveYearStatusAction,
   saveFutureOpeningRuleAction,
-  runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
   createJobGradeAction,
   archiveJobGradeAction,
@@ -94,6 +94,16 @@ export default async function LeaveEntitlementsPage({
   // Future Leave Year Opening Rule (d9e41725): prefill the rule sub-form from the default year's existing rule
   // (if one is already saved), so re-editing shows the current window instead of blank fields.
   const defaultRule = leaveYearConfigs.find((c) => c.year === defaultNewYear) ?? null;
+  // feedback 2c7c6385: the Run-Earned-Accrual Leave-Year selector reads the managed leave_year_config
+  // records (9aa894a4). When none exist yet, fall back to the current-year..+6 range so the card still
+  // works. Default to the current year if configured, else the newest record.
+  const currentYear = new Date().getUTCFullYear();
+  const earnedLeaveYears =
+    leaveYearConfigs.length > 0
+      ? leaveYearConfigs.map((c) => ({ year: c.year, status: c.status }))
+      : yearOptions.map((y) => ({ year: y, status: 'draft' }));
+  const earnedDefaultYear =
+    earnedLeaveYears.find((y) => y.year === currentYear)?.year ?? earnedLeaveYears[0]?.year ?? currentYear;
   const leaveYearStatusVariant = (status: string) =>
     status === 'open' ? ('success' as const) : status === 'closed' ? ('default' as const) : ('warning' as const);
 
@@ -438,13 +448,19 @@ export default async function LeaveEntitlementsPage({
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
-          <p className="max-w-md text-xs text-muted-foreground">{t('earnedAccrualHelp')}</p>
-          <form action={runEarnedAccrualAction}>
-            <Button type="submit" variant="outline" size="sm">
-              {t('runEarnedAccrual')}
-            </Button>
-          </form>
+        {/* feedback 2c7c6385 (Run Earned Accrual button): the bare fire-immediately button is replaced with a
+            scope + preview/dry-run + confirm review card. Scope axes narrow the shipped idempotent engine;
+            the preview is a dry-run that writes nothing yet reports the exact numbers the commit produces.
+            The Leave-Year selector reads the managed leave_year_config records (9aa894a4). */}
+        <div className="border-t border-border">
+          <h3 className="px-4 pt-3 text-sm font-semibold text-foreground">{t('runEarnedAccrual')}</h3>
+          <EarnedAccrualCard
+            companies={festiveCompanies}
+            grades={gradeOptions}
+            leaveTypes={activeTypeOptions}
+            leaveYears={earnedLeaveYears}
+            defaultYear={earnedDefaultYear}
+          />
         </div>
       </Card>
 
