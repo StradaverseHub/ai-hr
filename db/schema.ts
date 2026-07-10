@@ -1941,7 +1941,21 @@ export type ShiftOtRule = { eligible: boolean; minMinutes?: number; dailyCapMinu
 // R7 Multi-Shift Phase 1: one break window inside a shift. 'HH:MM:SS', start < end (lexicographic order is
 // chronological), so a single break can never cross midnight — Phase 1 excludes overnight breaks. STORAGE-
 // ONLY this phase: the engine keeps reading the canonical break_minutes scalar (= Σ durations).
-export type BreakPeriod = { start: string; end: string };
+//
+// f3321963 — Shift Settings Enhancement: two OPTIONAL per-break flags (JSONB, no DDL — additive, absent ⇒
+// today's behaviour). `flexible` = the break window is a target, not a fixed clock. `clockingRequired` =
+// employees must punch in/out for the break. For a Semi-Flexi shift the service FORCES flexible=true and
+// clockingRequired=false (the reporter's fixed rule). Absent on legacy rows / Normal shifts ⇒ unset.
+export type BreakPeriod = { start: string; end: string; flexible?: boolean; clockingRequired?: boolean };
+
+// f3321963 — Shift Settings Enhancement: which attendance/scheduling behaviour a shift template follows.
+//   'normal'      = fixed Time-In/Time-Out schedule (today's engine behaviour). DEFAULT (legacy rows).
+//   'semi_flexi'  = flexible start within a window; breaks forced Flexible + no-clocking. Engine branch is
+//                   deferred Phase-2 work — stored + surfaced now.
+//   'full_flexi'  = employee-set hours (required working + break only). Reserved for a FUTURE enhancement;
+//                   the enum value is accepted for forward-compat but the setup UI disables selecting it.
+// DISTINCT from employment.shiftType ('fixed'|'roster') which is a per-EMPLOYEE assignment mode.
+export type ShiftType = 'normal' | 'semi_flexi' | 'full_flexi';
 
 // A configurable pay-rule on a pay_component (Payroll Setup — configurable pay-rule engine). A small
 // typed-JSONB discriminated union resolved by a switch (mirrors ShiftDifferential), NOT a custom expression
@@ -1981,6 +1995,9 @@ export const shift = pgTable(
     // per (tenant, company) among non-archived rows — lives in the 0139 migration (expression index,
     // mirroring business_unit's 0136 shape).
     code: text('code'),
+    // f3321963 — Shift Settings Enhancement: shift template type (see ShiftType). DEFAULT 'normal' so every
+    // legacy row is byte-identical. CHECK ('normal','semi_flexi','full_flexi') lives in migration 0181.
+    type: text('type').notNull().default('normal').$type<ShiftType>(),
     startTime: time('start_time').notNull(),
     endTime: time('end_time').notNull(),
     breakMinutes: integer('break_minutes').notNull().default(0),

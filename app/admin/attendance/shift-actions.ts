@@ -65,9 +65,14 @@ function shiftFields(formData: FormData) {
     .getAll('weeklyPattern')
     .map((v) => Number(v))
     .filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
+  // f3321963 — shift template type (Normal / Semi-Flexi / Full-Flexi). Blank ⇒ null ⇒ the service defaults to
+  // 'normal' (legacy). The service validates the value against the three-value enum + forces the Semi-Flexi
+  // break flags.
+  const typeRaw = String(formData.get('shiftTemplateType') ?? '').trim();
   return {
     name: String(formData.get('name') ?? '').trim(),
     code: String(formData.get('code') ?? '').trim(),
+    type: (typeRaw === '' ? null : typeRaw) as 'normal' | 'semi_flexi' | 'full_flexi' | null,
     startTime: norm(String(formData.get('startTime') ?? '')),
     endTime: norm(String(formData.get('endTime') ?? '')),
     breakMinutes: Number(formData.get('breakMinutes') ?? 0),
