@@ -3297,7 +3297,17 @@
       "addLeaveYear": "Thêm năm nghỉ phép",
       "closeLeaveYear": "Đóng",
       "reopenLeaveYear": "Mở lại",
-      "noLeaveYears": "Chưa cấu hình năm nghỉ phép nào."
+      "noLeaveYears": "Chưa cấu hình năm nghỉ phép nào.",
+      "openingRuleTitle": "Quy tắc mở năm nghỉ phép tương lai",
+      "openingRuleHelp": "Tự động quyết định khi nào năm nghỉ phép sắp tới được mở. Chọn khoảng thời gian trước khi bắt đầu năm để mở — hệ thống tính ngày mở (1 tháng 1 trừ đi khoảng thời gian) và ghi vào năm đó. Các công ty khác nhau có thể đặt các khoảng thời gian khác nhau.",
+      "openingRuleEnableLabel": "Bật mở năm nghỉ phép tương lai",
+      "openBeforeAmountLabel": "Mở trước khi bắt đầu năm nghỉ phép",
+      "openBeforeUnitLabel": "Đơn vị",
+      "openingUnitDays": "Ngày",
+      "openingUnitWeeks": "Tuần",
+      "openingUnitMonths": "Tháng",
+      "effectiveLeaveYearLabel": "Năm nghỉ phép hiệu lực",
+      "openingRuleSummary": "Năm nghỉ phép {year}: mở {amount} {unit} trước khi bắt đầu → {date}"
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

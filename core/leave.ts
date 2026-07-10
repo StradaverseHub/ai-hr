@@ -3629,6 +3629,10 @@ export type LeaveYearConfigView = {
   status: LeaveYearStatus;
   openLeaveYearDate: string | null;
   employeeApplicationStartDate: string | null;
+  // Future Leave Year Opening Rule (d9e41725): the advance-opening policy attached to this row.
+  openingRuleEnabled: boolean;
+  openBeforeAmount: number | null;
+  openBeforeUnit: LeaveOpeningUnit | null;
   openedAt: string | null;
   openedBy: string | null;
 };
@@ -3647,6 +3651,9 @@ export async function listLeaveYearConfigs(ctx: SessionContext): Promise<LeaveYe
       status: (isLeaveYearStatus(r.status) ? r.status : 'draft') as LeaveYearStatus,
       openLeaveYearDate: r.openLeaveYearDate ?? null,
       employeeApplicationStartDate: r.employeeApplicationStartDate ?? null,
+      openingRuleEnabled: r.openingRuleEnabled,
+      openBeforeAmount: r.openBeforeAmount ?? null,
+      openBeforeUnit: isLeaveOpeningUnit(r.openBeforeUnit) ? r.openBeforeUnit : null,
       openedAt: r.openedAt ? r.openedAt.toISOString() : null,
       openedBy: r.openedBy ?? null,
     }));
@@ -3761,6 +3768,137 @@ export async function setLeaveYearStatus(ctx: SessionContext, p: { year: number;
     return { id: row.id, status: target };
   });
   return { ...result, opened };
+}
+
+// ── Future Leave Year Opening Rule (d9e41725) ─────────────────────────────────────────────────────────
+/** The advance-opening window unit. Days / Weeks / Months, mirroring the reporter's field. */
+export type LeaveOpeningUnit = 'days' | 'weeks' | 'months';
+export const LEAVE_OPENING_UNITS: readonly LeaveOpeningUnit[] = ['days', 'weeks', 'months'] as const;
+export function isLeaveOpeningUnit(v: unknown): v is LeaveOpeningUnit {
+  return typeof v === 'string' && (LEAVE_OPENING_UNITS as readonly string[]).includes(v);
+}
+
+/**
+ * Compute the advance opening date for a leave `year`: 1-Jan-of-year MINUS `amount × unit`, returned as ISO
+ * yyyy-mm-dd. Pure + UTC-correct calendar math (mirrors serviceYearsAt / subtractMonths — NEVER amount/365.25):
+ *   - days   → subtract `amount` calendar days
+ *   - weeks  → subtract `amount × 7` calendar days
+ *   - months → subtract `amount` WHOLE calendar months (day clamped to the target month's length)
+ * The anchor is deliberately the LEAVE YEAR START (Jan 1). Example: LY2027, 14 days → 2026-12-18; LY2027,
+ * 1 month → 2026-12-01; LY2027, 2 weeks → 2026-12-18. Amount must be a positive integer.
+ */
+export function computeOpenLeaveYearDate(year: number, amount: number, unit: LeaveOpeningUnit): string {
+  if (!Number.isInteger(amount) || amount <= 0) {
+    throw new Error('Open-before amount must be a positive integer');
+  }
+  const leaveYearStart = `${year}-01-01`;
+  if (unit === 'months') return subtractMonths(leaveYearStart, amount);
+  const days = unit === 'weeks' ? amount * 7 : amount;
+  // Calendar-day subtraction via a UTC epoch (no DST/timezone drift — dates are date-only).
+  const [y, m, d] = leaveYearStart.split('-').map(Number);
+  const base = new Date(Date.UTC(y, m - 1, d));
+  base.setUTCDate(base.getUTCDate() - days);
+  const ty = base.getUTCFullYear();
+  const tm = base.getUTCMonth() + 1;
+  const td = base.getUTCDate();
+  return `${ty}-${String(tm).padStart(2, '0')}-${String(td).padStart(2, '0')}`;
+}
+
+/**
+ * Save the Future Leave Year Opening Rule for a leave `year` (the "Effective Leave Year"). This is the
+ * advance-opening POLICY layered on the managed leave_year_config row (9aa894a4): HR Admin says "open this
+ * year `amount` `unit` before it starts" and the system COMPUTES open_leave_year_date = Jan-1-minus-window and
+ * stamps it on the same row. Idempotent on (tenant, year) — upserts the record (creating it as `draft` if it
+ * does not exist, matching upsertLeaveYearConfig). Lifecycle `status` is left untouched here.
+ *
+ * v1 is COMPUTE-ONLY (a documented product decision): enabling the rule SETS open_leave_year_date but does NOT
+ * auto-transition the year to `open`. An automatic cron (open the year once today >= open_leave_year_date) is
+ * DEFERRED — when built it belongs in scripts/ (like accrue-earned.ts), iterating tenants under RLS, relying
+ * on openLeaveYear's idempotent openedSet. Disabling the rule (enabled=false) clears the rule columns and
+ * leaves open_leave_year_date as-is (a previously computed date is not wiped — an admin can still edit it by
+ * hand via upsertLeaveYearConfig). Substrate: config write → leave-year.opening-rule.configured.
+ */
+export async function saveFutureOpeningRule(
+  ctx: SessionContext,
+  p: { year: number; enabled: boolean; amount?: number | null; unit?: string | null },
+) {
+  if (!Number.isInteger(p.year) || p.year < 2020 || p.year > 2100) {
+    throw new Error('Invalid leave year (must be an integer between 2020 and 2100)');
+  }
+  let amount: number | null = null;
+  let unit: LeaveOpeningUnit | null = null;
+  let computedOpenDate: string | null = null;
+  if (p.enabled) {
+    amount = Number(p.amount);
+    if (!Number.isInteger(amount) || amount <= 0) {
+      throw new Error('Open-before amount must be a positive integer when the rule is enabled');
+    }
+    if (!isLeaveOpeningUnit(p.unit)) {
+      throw new Error('Unit must be one of days, weeks, months when the rule is enabled');
+    }
+    unit = p.unit;
+    computedOpenDate = computeOpenLeaveYearDate(p.year, amount, unit);
+  }
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
+      .limit(1);
+    const now = new Date();
+    // When enabling, the computed date overwrites open_leave_year_date. When disabling, keep whatever date is
+    // already on the record (don't wipe a hand-set/previously-computed date) and null out the rule columns.
+    const openLeaveYearDate = p.enabled ? computedOpenDate : (before?.openLeaveYearDate ?? null);
+    const [row] = await tx
+      .insert(leaveYearConfig)
+      .values({
+        tenantId: ctx.tenantId,
+        year: p.year,
+        status: 'draft',
+        openLeaveYearDate,
+        openingRuleEnabled: p.enabled,
+        openBeforeAmount: amount,
+        openBeforeUnit: unit,
+      })
+      .onConflictDoUpdate({
+        target: [leaveYearConfig.tenantId, leaveYearConfig.year],
+        // Status stays untouched (only setLeaveYearStatus moves the lifecycle). open_leave_year_date is only
+        // rewritten when enabling; on disable it is left as-is via the openLeaveYearDate computed above.
+        set: {
+          openLeaveYearDate,
+          openingRuleEnabled: p.enabled,
+          openBeforeAmount: amount,
+          openBeforeUnit: unit,
+          updatedAt: now,
+        },
+      })
+      .returning({ id: leaveYearConfig.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: row.id,
+      eventType: 'leave-year.opening-rule.configured',
+      actor: actorOf(ctx),
+      payload: {
+        year: p.year,
+        before: before
+          ? {
+              openingRuleEnabled: before.openingRuleEnabled,
+              openBeforeAmount: before.openBeforeAmount ?? null,
+              openBeforeUnit: before.openBeforeUnit ?? null,
+              openLeaveYearDate: before.openLeaveYearDate ?? null,
+            }
+          : null,
+        after: {
+          openingRuleEnabled: p.enabled,
+          openBeforeAmount: amount,
+          openBeforeUnit: unit,
+          openLeaveYearDate,
+        },
+      },
+    });
+    return { id: row.id, openLeaveYearDate, enabled: p.enabled };
+  });
 }
 
 export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {

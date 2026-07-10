@@ -1338,6 +1338,13 @@
       "when": 1781862189000,
       "tag": "0190_leave_year_config",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "7",
+      "when": 1781862190000,
+      "tag": "0191_leave_year_opening_rule",
+      "breakpoints": true
     }
   ]
 }

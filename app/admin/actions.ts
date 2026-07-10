@@ -53,6 +53,7 @@ import {
   openLeaveYear,
   upsertLeaveYearConfig,
   setLeaveYearStatus,
+  saveFutureOpeningRule,
   isLeaveYearStatus,
   accrueEarnedLeave,
   grantAdHocLeave,
@@ -823,6 +824,27 @@ export async function setLeaveYearStatusAction(formData: FormData) {
         : `Leave year ${year} status set to ${status}`,
     )}`,
   );
+}
+
+// Future Leave Year Opening Rule (d9e41725): persist the advance-opening policy for the chosen Effective Leave
+// Year. The sub-form posts a hidden `ruleSubmitted=1` marker (tri-state convention) so the checkbox's absence
+// reads as "disable", not "untouched" — `enable` is present only when checked. When enabled, the service
+// computes + stamps open_leave_year_date = Jan-1-minus-window (v1 is COMPUTE-ONLY; no auto-open cron).
+export async function saveFutureOpeningRuleAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    const enabled = formData.get('enable') != null;
+    const rawAmount = String(formData.get('openBeforeAmount') ?? '').trim();
+    await saveFutureOpeningRule(s, {
+      year: Number(formData.get('year')),
+      enabled,
+      amount: rawAmount === '' ? null : Number(rawAmount),
+      unit: String(formData.get('openBeforeUnit') ?? '') || null,
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
 }
 
 export async function assignRoleAction(formData: FormData) {

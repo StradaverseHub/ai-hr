@@ -3297,7 +3297,17 @@
       "addLeaveYear": "添加假期年度",
       "closeLeaveYear": "关闭",
       "reopenLeaveYear": "重新开放",
-      "noLeaveYears": "尚未配置任何假期年度。"
+      "noLeaveYears": "尚未配置任何假期年度。",
+      "openingRuleTitle": "未来假期年度开启规则",
+      "openingRuleHelp": "自动决定即将到来的假期年度何时开启。选择在年度开始前多久开启——系统会计算开启日期（1 月 1 日减去该时段）并标记到该年度。不同公司可设置不同的时段。",
+      "openingRuleEnableLabel": "启用未来假期年度开启",
+      "openBeforeAmountLabel": "在假期年度开始前开启",
+      "openBeforeUnitLabel": "单位",
+      "openingUnitDays": "天",
+      "openingUnitWeeks": "周",
+      "openingUnitMonths": "月",
+      "effectiveLeaveYearLabel": "生效假期年度",
+      "openingRuleSummary": "假期年度 {year}：在开始前 {amount} {unit} 开启 → {date}"
     },
     "holidays": {
       "pageTitle": "公共假期",

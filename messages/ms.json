@@ -3297,7 +3297,17 @@
       "addLeaveYear": "Tambah tahun cuti",
       "closeLeaveYear": "Tutup",
       "reopenLeaveYear": "Buka semula",
-      "noLeaveYears": "Belum ada tahun cuti dikonfigurasikan."
+      "noLeaveYears": "Belum ada tahun cuti dikonfigurasikan.",
+      "openingRuleTitle": "Peraturan pembukaan tahun cuti hadapan",
+      "openingRuleHelp": "Tentukan secara automatik bila tahun cuti akan datang dibuka. Pilih berapa lama sebelum permulaan tahun untuk membukanya — sistem mengira tarikh pembukaan (1 Januari tolak tempoh) dan menetapkannya pada tahun tersebut. Syarikat berbeza boleh menetapkan tempoh berbeza.",
+      "openingRuleEnableLabel": "Dayakan pembukaan tahun cuti hadapan",
+      "openBeforeAmountLabel": "Buka sebelum permulaan tahun cuti",
+      "openBeforeUnitLabel": "Unit",
+      "openingUnitDays": "Hari",
+      "openingUnitWeeks": "Minggu",
+      "openingUnitMonths": "Bulan",
+      "effectiveLeaveYearLabel": "Tahun cuti berkuat kuasa",
+      "openingRuleSummary": "Tahun cuti {year}: dibuka {amount} {unit} sebelum permulaan → {date}"
     },
     "holidays": {
       "pageTitle": "Cuti umum",

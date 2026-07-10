@@ -3842,6 +3842,13 @@ export const leaveYearConfig = pgTable(
     status: text('status').notNull().default('draft'),
     openLeaveYearDate: date('open_leave_year_date'),
     employeeApplicationStartDate: date('employee_application_start_date'),
+    // Future Leave Year Opening Rule (d9e41725): the advance-opening POLICY layered on this row. When
+    // openingRuleEnabled, open_leave_year_date is COMPUTED as 1-Jan-of-year minus openBeforeAmount×openBeforeUnit
+    // (UTC-correct calendar math). NULL/false ⇒ no rule (0190 behaviour: date is set manually). openBeforeUnit is
+    // DB-checked to 'days' | 'weeks' | 'months' (0191).
+    openingRuleEnabled: boolean('opening_rule_enabled').notNull().default(false),
+    openBeforeAmount: integer('open_before_amount'),
+    openBeforeUnit: text('open_before_unit'),
     openedAt: timestamp('opened_at', { withTimezone: true }),
     // The app_user id (actor) that transitioned the year to open; nullable until first opened.
     openedBy: uuid('opened_by'),

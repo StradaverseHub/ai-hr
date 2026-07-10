@@ -21,6 +21,7 @@ import {
   updateLeaveTypeAction,
   upsertLeaveYearConfigAction,
   setLeaveYearStatusAction,
+  saveFutureOpeningRuleAction,
   runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
   createJobGradeAction,
@@ -90,6 +91,9 @@ export default async function LeaveEntitlementsPage({
   const configuredYears = new Set(leaveYearConfigs.map((c) => c.year));
   const yearOptions = Array.from({ length: 7 }, (_, i) => new Date().getUTCFullYear() + i);
   const defaultNewYear = yearOptions.find((y) => !configuredYears.has(y)) ?? nextYear;
+  // Future Leave Year Opening Rule (d9e41725): prefill the rule sub-form from the default year's existing rule
+  // (if one is already saved), so re-editing shows the current window instead of blank fields.
+  const defaultRule = leaveYearConfigs.find((c) => c.year === defaultNewYear) ?? null;
   const leaveYearStatusVariant = (status: string) =>
     status === 'open' ? ('success' as const) : status === 'closed' ? ('default' as const) : ('warning' as const);
 
@@ -350,6 +354,90 @@ export default async function LeaveEntitlementsPage({
           </Field>
           <button className={btnPrimary}>{t('addLeaveYear')}</button>
         </form>
+
+        {/* Future Leave Year Opening Rule (d9e41725). HR Admin defines an advance-opening window ("open the
+            year N Days/Weeks/Months before it starts") for a chosen Effective Leave Year; on save the system
+            COMPUTES open_leave_year_date = 1-Jan-of-year minus that window (UTC-correct calendar math) and
+            stamps it on that year's record. v1 is compute-only — enabling the rule sets the date; an automatic
+            open-the-year cron is deferred. The hidden `ruleSubmitted` marker + checkbox `enable` follow the
+            tri-state sub-form convention so an unchecked box reliably disables the rule. Prefilled from the
+            default (next uncofigured) year's existing rule, if any. */}
+        <div className="border-t border-border px-4 py-3">
+          <h3 className="text-sm font-semibold text-foreground">{t('openingRuleTitle')}</h3>
+          <p className="mt-1 max-w-2xl text-xs text-muted-foreground">{t('openingRuleHelp')}</p>
+          <form action={saveFutureOpeningRuleAction} className="mt-3 flex flex-wrap items-end gap-3">
+            {/* tri-state marker: this sub-form owns the rule columns; its presence means "apply the rule state
+                below" (checkbox absent ⇒ disable, not "leave untouched"). */}
+            <input type="hidden" name="ruleSubmitted" value="1" />
+            <label className="flex items-center gap-2 self-center pt-5 text-sm">
+              <input
+                type="checkbox"
+                name="enable"
+                defaultChecked={defaultRule?.openingRuleEnabled ?? false}
+                className="size-4 rounded"
+              />
+              {t('openingRuleEnableLabel')}
+            </label>
+            <Field label={t('openBeforeAmountLabel')}>
+              <input
+                type="number"
+                name="openBeforeAmount"
+                min={1}
+                step={1}
+                defaultValue={defaultRule?.openBeforeAmount ?? ''}
+                placeholder="14"
+                className={`${inputCls} w-24`}
+              />
+            </Field>
+            <Field label={t('openBeforeUnitLabel')}>
+              <select
+                name="openBeforeUnit"
+                defaultValue={defaultRule?.openBeforeUnit ?? 'days'}
+                className={`${inputCls} w-32`}
+              >
+                <option value="days">{t('openingUnitDays')}</option>
+                <option value="weeks">{t('openingUnitWeeks')}</option>
+                <option value="months">{t('openingUnitMonths')}</option>
+              </select>
+            </Field>
+            <Field label={t('effectiveLeaveYearLabel')}>
+              <select name="year" defaultValue={String(defaultNewYear)} className={`${inputCls} w-28`}>
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Button type="submit" variant="outline" size="sm">
+              {t('save')}
+            </Button>
+          </form>
+          {/* Show the currently-persisted rules so HR sees the computed opening dates at a glance. */}
+          {leaveYearConfigs.some((c) => c.openingRuleEnabled) && (
+            <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
+              {leaveYearConfigs
+                .filter((c) => c.openingRuleEnabled)
+                .map((c) => (
+                  <li key={`rule-${c.id}`}>
+                    {t('openingRuleSummary', {
+                      year: c.year,
+                      amount: c.openBeforeAmount ?? 0,
+                      unit: t(
+                        c.openBeforeUnit === 'weeks'
+                          ? 'openingUnitWeeks'
+                          : c.openBeforeUnit === 'months'
+                            ? 'openingUnitMonths'
+                            : 'openingUnitDays',
+                      ),
+                      date: c.openLeaveYearDate ?? '—',
+                    })}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
           <p className="max-w-md text-xs text-muted-foreground">{t('earnedAccrualHelp')}</p>
           <form action={runEarnedAccrualAction}>

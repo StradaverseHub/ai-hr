@@ -3297,7 +3297,17 @@
       "addLeaveYear": "เพิ่มปีการลา",
       "closeLeaveYear": "ปิด",
       "reopenLeaveYear": "เปิดใหม่",
-      "noLeaveYears": "ยังไม่ได้กำหนดค่าปีการลา"
+      "noLeaveYears": "ยังไม่ได้กำหนดค่าปีการลา",
+      "openingRuleTitle": "กฎการเปิดปีการลาในอนาคต",
+      "openingRuleHelp": "กำหนดโดยอัตโนมัติว่าปีการลาที่กำลังจะมาถึงจะเปิดเมื่อใด เลือกว่าจะเปิดก่อนเริ่มปีนานเท่าใด — ระบบจะคำนวณวันที่เปิด (1 มกราคม ลบด้วยช่วงเวลา) และบันทึกไว้ในปีนั้น บริษัทต่าง ๆ สามารถตั้งค่าช่วงเวลาที่แตกต่างกันได้",
+      "openingRuleEnableLabel": "เปิดใช้งานการเปิดปีการลาในอนาคต",
+      "openBeforeAmountLabel": "เปิดก่อนเริ่มปีการลา",
+      "openBeforeUnitLabel": "หน่วย",
+      "openingUnitDays": "วัน",
+      "openingUnitWeeks": "สัปดาห์",
+      "openingUnitMonths": "เดือน",
+      "effectiveLeaveYearLabel": "ปีการลาที่มีผล",
+      "openingRuleSummary": "ปีการลา {year}: เปิด {amount} {unit} ก่อนเริ่ม → {date}"
     },
     "holidays": {
       "pageTitle": "วันหยุดราชการ",
