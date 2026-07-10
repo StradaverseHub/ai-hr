@@ -538,6 +538,7 @@
         "profile": "Hồ sơ",
         "family": "Gia đình",
         "job": "Việc làm",
+        "bankStatutory": "Ngân hàng & Luật định",
         "payroll": "Lương",
         "documents": "Tài liệu",
         "others": "Khác",
@@ -546,7 +547,7 @@
       },
       "documents": {
         "title": "Nhận dạng & tài liệu",
-        "note": "Các mã định danh theo luật đã ghi nhận. Tải lên và lưu trữ tệp (bản quét giấy tờ tùy thân, hợp đồng đã ký) sẽ có trong bản phát hành sau; chỉnh sửa các giá trị này ở tab Lương.",
+        "note": "Các mã định danh theo luật đã ghi nhận. Tải lên và lưu trữ tệp (bản quét giấy tờ tùy thân, hợp đồng đã ký) sẽ có trong bản phát hành sau; chỉnh sửa các giá trị này ở tab Ngân hàng & Luật định.",
         "cp38Records": "Bản ghi trả góp CP38",
         "hint": "Đây là bản tóm tắt chỉ đọc. Nguồn có thể chỉnh sửa cho các trường này nằm trong tab Lương (Theo luật)."
       },

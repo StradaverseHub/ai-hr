@@ -538,6 +538,7 @@
         "profile": "Profile",
         "family": "Family",
         "job": "Employment",
+        "bankStatutory": "Bank & Statutory",
         "payroll": "Payroll",
         "documents": "Documents",
         "others": "Others",
@@ -546,7 +547,7 @@
       },
       "documents": {
         "title": "Identification & documents",
-        "note": "Statutory identifiers on record. Uploading and storing files (ID scans, signed contracts) is coming in a later release; edit these values on the Payroll tab.",
+        "note": "Statutory identifiers on record. Uploading and storing files (ID scans, signed contracts) is coming in a later release; edit these values on the Bank & Statutory tab.",
         "cp38Records": "CP38 instalment records",
         "hint": "This is a read-only summary. The editable source of truth for these fields lives under the Payroll tab (Statutory)."
       },

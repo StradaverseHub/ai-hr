@@ -538,6 +538,7 @@
         "profile": "Profil",
         "family": "Keluarga",
         "job": "Pekerjaan",
+        "bankStatutory": "Bank & Berkanun",
         "payroll": "Gaji",
         "documents": "Dokumen",
         "others": "Lain-lain",
@@ -546,7 +547,7 @@
       },
       "documents": {
         "title": "Pengenalan & dokumen",
-        "note": "Pengecam statutori dalam rekod. Muat naik dan simpan fail (imbasan kad pengenalan, kontrak yang ditandatangani) akan disediakan dalam keluaran akan datang; sunting nilai ini pada tab Gaji.",
+        "note": "Pengecam statutori dalam rekod. Muat naik dan simpan fail (imbasan kad pengenalan, kontrak yang ditandatangani) akan disediakan dalam keluaran akan datang; sunting nilai ini pada tab Bank & Berkanun.",
         "cp38Records": "Rekod ansuran CP38",
         "hint": "Ini ringkasan baca sahaja. Sumber boleh sunting untuk medan ini terletak di bawah tab Gaji (Statutori)."
       },

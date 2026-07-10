@@ -218,10 +218,14 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
+    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — which already co-locates the
+    // salary-payment bank fields alongside EPF/SOCSO/EIS/PCB — is relocated here out of the Payroll tab,
+    // giving all pay-related master data its own clearly-named home. Positioned before Payroll.
+    { key: 'bankStatutory', label: t('tabs.bankStatutory') },
     { key: 'payroll', label: t('tabs.payroll') },
     { key: 'leave', label: t('tabs.leave') },
     { key: 'documents', label: t('tabs.documents') },
@@ -1116,9 +1120,10 @@ export default async function EmployeePage({
     </Card>
   ) : null;
 
-  // Statutory (Malaysia) card — relocated to the TOP of the Payroll tab and redesigned as a full-width
-  // card (feedback 7524eda1). The layout is regrouped into clearly-labelled sections for readability
-  // and future headroom. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
+  // Statutory (Malaysia) card — now the sole card of the dedicated Bank & Statutory tab (feedback
+  // 40ef71a0; originally pinned to the top of the Payroll tab under 7524eda1). Full-width card whose
+  // layout is regrouped into clearly-labelled sections (identity/tax, EPF, SOCSO/EIS, salary-payment
+  // bank, TP3) for readability. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
   // action is a full-row overwrite, so every named input MUST stay mounted at all times (no accordions /
   // conditional unmounting) or an absent field silently wipes stored data. No server logic changed.
   const statutoryCard = admin ? (
@@ -1267,7 +1272,7 @@ export default async function EmployeePage({
   // ── DOCUMENTS ──────────────────────────────────────────────────────────────
   // v1 is intentionally thin: there is no general upload-and-store capability yet. We surface the
   // identification/statutory identifiers that qualify as "documents" today (read-only — the editable
-  // source of truth stays on the Payroll statutory form, so no server action is forked here), plus a
+  // source of truth stays on the Bank & Statutory statutory form, so no server action is forked here), plus a
   // count of the CP38 LHDN instalment records. A true file-attachment store is a separate enhancement.
   const documentsPanel = admin ? (
     <Card id="section-documents">
@@ -1647,11 +1652,16 @@ export default async function EmployeePage({
         {transferTerminateCards}
       </>
     ),
-    // Statutory (Malaysia) pinned to the TOP of the Payroll tab (feedback 7524eda1); Compensation keeps
-    // its old slot at the bottom. Every other card retains its relative order.
+    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single
+    // <form action={setStatutoryAction}> that already co-locates the salary-payment bank fields
+    // (Group 4) alongside EPF/SOCSO/EIS/PCB — relocated WHOLE out of Payroll into its own tab. The
+    // const definition (statutoryCard) is unchanged; only its render location moved, so the
+    // full-row-overwrite form and every mounted input stay byte-identical and no server logic changed.
+    bankStatutory: statutoryCard,
+    // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
+    // statutory/bank card previously pinned to the top (feedback 7524eda1) now lives on Bank & Statutory.
     payroll: (
       <>
-        {statutoryCard}
         {payComponentsCard}
         {cp38Card}
         {encashmentCard}
