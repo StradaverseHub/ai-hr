@@ -2723,6 +2723,8 @@
       "pageDescription": "每家公司管理自己的详情、法定身份、部门、职位和成本中心",
       "groupStructure": "集团结构",
       "noCompaniesYet": "暂无公司。",
+      "showGroupStructure": "显示集团结构",
+      "hideGroupStructure": "隐藏集团结构",
       "companies": "公司",
       "noCompaniesInScope": "范围内无公司。",
       "legalName": "法定名称",

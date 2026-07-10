@@ -3,7 +3,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies } from '@/core/read';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
-import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
+import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { CompanyPanel, type PanelBankProfile } from '@/components/company-panel';
 import { OrganizationList } from '@/components/organization-list';
 import { CompaniesCardHeader } from '@/components/add-company';
@@ -51,7 +51,7 @@ export default async function OrganizationPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const { s } = await scopedAdmin();
   const { error } = await searchParams;
   const t = await getTranslations('admin.organization');
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
@@ -71,7 +71,9 @@ export default async function OrganizationPage({
     bankBy.set(bp.companyId, list);
   }
   const parentBy = new Map(tree.map((n) => [n.id, n.parentId]));
-  const scoped = scopeIds.length ? companies.filter((c) => scopeIds.includes(c.id)) : companies;
+  // substrate: read-only, no event. The Companies management card is a tenant-wide master:
+  // it renders every company regardless of the company-switcher scope (getScopeIds), unlike
+  // operational screens which stay scoped. The switcher is intentionally ignored on this screen.
 
   const actions = {
     updateCompany: updateCompanyAction,
@@ -93,28 +95,43 @@ export default async function OrganizationPage({
       />
       <ErrorBanner message={error} />
 
+      {/* Group structure is collapsed by default (native details/summary keeps this a server
+          component — no client JS/state). Reuses SectionHeader's border/padding classes; the
+          Show/Hide affordance toggles via the group-open CSS variant. CompanyTree stays
+          server-rendered inside so navigation/rendering of the hierarchy is unchanged. */}
       <Card data-tour="people-org-tree">
-        <SectionHeader title={t('groupStructure')} count={companies.length} />
-        <div className="px-4 py-3">
-          {tree.length > 0 ? (
-            <CompanyTree nodes={tree} />
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
-          )}
-        </div>
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between border-b border-border px-4 py-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+            <span>
+              {t('groupStructure')}
+              <span className="ml-2 text-muted-foreground">({companies.length})</span>
+            </span>
+            <span className="text-xs font-normal text-muted-foreground">
+              <span className="group-open:hidden">{t('showGroupStructure')}</span>
+              <span className="hidden group-open:inline">{t('hideGroupStructure')}</span>
+            </span>
+          </summary>
+          <div className="px-4 py-3">
+            {tree.length > 0 ? (
+              <CompanyTree nodes={tree} />
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
+            )}
+          </div>
+        </details>
       </Card>
 
       <Card data-tour="people-org-companies">
         <CompaniesCardHeader
           title={t('companies')}
-          count={scoped.length}
+          count={companies.length}
           createAction={createCompanyAction}
         />
-        {scoped.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesInScope')}</p>
+        {companies.length === 0 ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noCompaniesYet')}</p>
         ) : (
           <OrganizationList
-            items={scoped.map((c) => ({
+            items={companies.map((c) => ({
               id: c.id,
               name: c.name,
               registrationNo: c.registrationNo,

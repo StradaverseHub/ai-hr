@@ -2723,6 +2723,8 @@
       "pageDescription": "Setiap syarikat menguruskan butirannya, identiti berkanun, jabatan, jawatan dan pusat kos",
       "groupStructure": "Struktur kumpulan",
       "noCompaniesYet": "Belum ada syarikat.",
+      "showGroupStructure": "Tunjukkan struktur kumpulan",
+      "hideGroupStructure": "Sembunyikan struktur kumpulan",
       "companies": "Syarikat",
       "noCompaniesInScope": "Tiada syarikat dalam skop.",
       "legalName": "Nama sah",

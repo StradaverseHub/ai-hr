@@ -2723,6 +2723,8 @@
       "pageDescription": "แต่ละบริษัทจัดการรายละเอียด ตัวตนตามกฎหมาย แผนก ตำแหน่ง และศูนย์ต้นทุนของตนเอง",
       "groupStructure": "โครงสร้างกลุ่ม",
       "noCompaniesYet": "ยังไม่มีบริษัท",
+      "showGroupStructure": "แสดงโครงสร้างกลุ่ม",
+      "hideGroupStructure": "ซ่อนโครงสร้างกลุ่ม",
       "companies": "บริษัท",
       "noCompaniesInScope": "ไม่มีบริษัทในขอบเขต",
       "legalName": "ชื่อตามกฎหมาย",

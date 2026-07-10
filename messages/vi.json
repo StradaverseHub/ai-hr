@@ -2723,6 +2723,8 @@
       "pageDescription": "Mỗi công ty quản lý thông tin, danh tính pháp lý, phòng ban, chức vụ và trung tâm chi phí của mình",
       "groupStructure": "Cấu trúc tập đoàn",
       "noCompaniesYet": "Chưa có công ty nào.",
+      "showGroupStructure": "Hiện cấu trúc tập đoàn",
+      "hideGroupStructure": "Ẩn cấu trúc tập đoàn",
       "companies": "Công ty",
       "noCompaniesInScope": "Không có công ty trong phạm vi.",
       "legalName": "Tên pháp lý",
