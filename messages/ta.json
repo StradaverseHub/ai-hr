@@ -1102,7 +1102,29 @@
     "otReportFormat": "வடிவம்",
     "otReportCsv": "CSV",
     "otReportXlsx": "Excel",
-    "otReportPdf": "PDF"
+    "otReportPdf": "PDF",
+    "tabs": {
+      "overview": "கண்ணோட்டம்",
+      "daily": "தினசரி வருகை",
+      "individual": "தனிநபர் வருகை"
+    },
+    "filters": {
+      "company": "நிறுவனம்",
+      "department": "துறை",
+      "date": "தேதி",
+      "allCompanies": "அனைத்து நிறுவனங்கள்",
+      "allDepartments": "அனைத்து துறைகள்",
+      "apply": "பயன்படுத்து",
+      "selectEmployee": "பணியாளரைத் தேர்ந்தெடு",
+      "chooseEmployee": "ஒரு பணியாளரைத் தேர்ந்தெடுக்கவும்…",
+      "dateFrom": "தேதி முதல்",
+      "dateTo": "தேதி வரை",
+      "pickEmployeePrompt": "வருகை வரலாற்றைக் காண ஒரு பணியாளரைத் தேர்ந்தெடுக்கவும்."
+    },
+    "colDay": "நாள்",
+    "colException": "விதிவிலக்கு",
+    "individualTitle": "தனிநபர் வருகை",
+    "noRecords": "இந்த வரம்பில் வருகை பதிவுகள் இல்லை."
   },
   "org": {
     "title": "நிறுவன அமைப்பு",

@@ -10,6 +10,9 @@ const dateOf = (formData: FormData) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : new Date().toISOString().slice(0, 10);
 };
 
+// Daily tab (314ea061) now hosts the per-employee day table, so check-in/out return there.
+const DAILY = '/attendance/daily';
+
 export async function checkInAction(formData: FormData) {
   const s = await getSession();
   const employmentId = String(formData.get('employmentId'));
@@ -17,10 +20,10 @@ export async function checkInAction(formData: FormData) {
   try {
     await checkIn(s, { employmentId, date, time: String(formData.get('time') || '09:00') });
   } catch (e) {
-    redirect(`/attendance?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${DAILY}?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/attendance');
-  redirect(`/attendance?date=${date}&toast=Checked in`);
+  revalidatePath(DAILY);
+  redirect(`${DAILY}?date=${date}&toast=Checked in`);
 }
 
 export async function decideCorrectionAction(formData: FormData) {
@@ -45,8 +48,8 @@ export async function checkOutAction(formData: FormData) {
   try {
     await checkOut(s, { employmentId, date, time: String(formData.get('time') || '18:00') });
   } catch (e) {
-    redirect(`/attendance?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
+    redirect(`${DAILY}?date=${date}&error=${encodeURIComponent((e as Error).message)}`);
   }
-  revalidatePath('/attendance');
-  redirect(`/attendance?date=${date}&toast=Checked out`);
+  revalidatePath(DAILY);
+  redirect(`${DAILY}?date=${date}&toast=Checked out`);
 }

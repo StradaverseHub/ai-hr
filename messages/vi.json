@@ -1102,7 +1102,29 @@
     "otReportFormat": "Định dạng",
     "otReportCsv": "CSV",
     "otReportXlsx": "Excel",
-    "otReportPdf": "PDF"
+    "otReportPdf": "PDF",
+    "tabs": {
+      "overview": "Tổng quan",
+      "daily": "Chấm công Hàng ngày",
+      "individual": "Chấm công Cá nhân"
+    },
+    "filters": {
+      "company": "Công ty",
+      "department": "Phòng ban",
+      "date": "Ngày",
+      "allCompanies": "Tất cả Công ty",
+      "allDepartments": "Tất cả Phòng ban",
+      "apply": "Áp dụng",
+      "selectEmployee": "Chọn Nhân viên",
+      "chooseEmployee": "Chọn một nhân viên…",
+      "dateFrom": "Từ ngày",
+      "dateTo": "Đến ngày",
+      "pickEmployeePrompt": "Chọn một nhân viên để xem lịch sử chấm công."
+    },
+    "colDay": "Thứ",
+    "colException": "Ngoại lệ",
+    "individualTitle": "Chấm công Cá nhân",
+    "noRecords": "Không có bản ghi chấm công trong khoảng này."
   },
   "org": {
     "title": "Sơ đồ tổ chức",
