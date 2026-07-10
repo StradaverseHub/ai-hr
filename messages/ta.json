@@ -1841,7 +1841,13 @@
       "secHrdf": "HRDF",
       "hrdfNote": "தகுதியான முதலாளிகளுக்குப் பொருந்தும் HRD Corp (PSMB சட்டம் 2001) வரி விகிதங்கள்.",
       "advancedEdit": "மேம்பட்ட திருத்தம் (பட்டியல் அட்டவணைகள்)",
-      "viewBody": "திற"
+      "viewBody": "திற",
+      "rowsPerPage": "பக்கத்திற்கு வரிசைகள்",
+      "pageFirst": "முதல் பக்கம்",
+      "pagePrev": "முந்தைய பக்கம்",
+      "pageNext": "அடுத்த பக்கம்",
+      "pageLast": "கடைசி பக்கம்",
+      "pageIndicator": "பக்கம் {page} / {pages}"
     },
     "batch": {
       "back": "ஊதியம்",

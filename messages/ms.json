@@ -1841,7 +1841,13 @@
       "secHrdf": "HRDF",
       "hrdfNote": "Kadar levi HRD Corp (Akta PSMB 2001) dikenakan kepada majikan yang layak.",
       "advancedEdit": "Suntingan lanjutan (jadual band)",
-      "viewBody": "Buka"
+      "viewBody": "Buka",
+      "rowsPerPage": "Baris setiap halaman",
+      "pageFirst": "Halaman pertama",
+      "pagePrev": "Halaman sebelumnya",
+      "pageNext": "Halaman seterusnya",
+      "pageLast": "Halaman terakhir",
+      "pageIndicator": "Halaman {page} daripada {pages}"
     },
     "batch": {
       "back": "Gaji",

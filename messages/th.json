@@ -1841,7 +1841,13 @@
       "secHrdf": "HRDF",
       "hrdfNote": "อัตราเงินสมทบ HRD Corp (พ.ร.บ. PSMB 2001) ที่ใช้กับนายจ้างที่มีคุณสมบัติ",
       "advancedEdit": "แก้ไขขั้นสูง (ตารางขั้น)",
-      "viewBody": "เปิด"
+      "viewBody": "เปิด",
+      "rowsPerPage": "แถวต่อหน้า",
+      "pageFirst": "หน้าแรก",
+      "pagePrev": "หน้าก่อนหน้า",
+      "pageNext": "หน้าถัดไป",
+      "pageLast": "หน้าสุดท้าย",
+      "pageIndicator": "หน้า {page} จาก {pages}"
     },
     "batch": {
       "back": "เงินเดือน",

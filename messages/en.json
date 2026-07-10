@@ -2006,7 +2006,13 @@
       "secHrdf": "HRDF",
       "hrdfNote": "HRD Corp (PSMB Act 2001) levy rates applied to eligible employers.",
       "advancedEdit": "Advanced edit (band tables)",
-      "viewBody": "Open"
+      "viewBody": "Open",
+      "rowsPerPage": "Rows per page",
+      "pageFirst": "First page",
+      "pagePrev": "Previous page",
+      "pageNext": "Next page",
+      "pageLast": "Last page",
+      "pageIndicator": "Page {page} of {pages}"
     },
     "transactions": {
       "title": "Transactions",

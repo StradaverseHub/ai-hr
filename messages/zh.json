@@ -1841,7 +1841,13 @@
       "secHrdf": "HRDF",
       "hrdfNote": "适用于符合条件雇主的 HRD Corp（2001年人力资源发展基金法令）征费率。",
       "advancedEdit": "高级编辑（分级表）",
-      "viewBody": "打开"
+      "viewBody": "打开",
+      "rowsPerPage": "每页行数",
+      "pageFirst": "首页",
+      "pagePrev": "上一页",
+      "pageNext": "下一页",
+      "pageLast": "末页",
+      "pageIndicator": "第 {page} 页，共 {pages} 页"
     },
     "batch": {
       "back": "薪资",
