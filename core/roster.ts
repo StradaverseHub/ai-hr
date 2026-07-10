@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type BreakPeriod, type ShiftDifferential, type ShiftOtRule } from '../db/schema';
+import { attendance, employment, leaveRequest, person, rosterAssignment, shift, type BreakPeriod, type ShiftDifferential, type ShiftOtRule, type ShiftType } from '../db/schema';
 import { isoWeekday, shiftSpan } from './attendance';
 import { approvedLeaveDates } from './leave';
 import { listEmployeesPage } from './read';
@@ -45,6 +45,16 @@ function validateOtRule(r: ShiftOtRule | null | undefined): ShiftOtRule | null {
   return out;
 }
 
+const SHIFT_TYPES = ['normal', 'semi_flexi', 'full_flexi'] as const;
+
+/** f3321963 — validate the shift template type. Absent/blank ⇒ 'normal' (legacy behaviour). Any other value
+ *  outside the three-value enum is rejected before it can reach the DB CHECK. */
+function validateShiftType(v: ShiftType | string | null | undefined): ShiftType {
+  if (v == null || v === '') return 'normal';
+  if (!(SHIFT_TYPES as readonly string[]).includes(v)) throw new Error(`Invalid shift type: ${v}`);
+  return v as ShiftType;
+}
+
 /** end ≤ start means the shift runs past midnight (e.g. 22:00:00 → 06:00:00). Times are 'HH:MM:SS', whose
  *  lexicographic order is chronological. */
 export const shiftCrossesMidnight = (startTime: string, endTime: string) => endTime <= startTime;
@@ -63,6 +73,8 @@ export type ShiftInput = {
   companyId: string;
   name: string;
   code: string;
+  /** f3321963 — shift template type: 'normal' | 'semi_flexi' | 'full_flexi'. Absent ⇒ 'normal' (legacy). */
+  type?: ShiftType | null;
   startTime: string;
   endTime: string;
   breakMinutes?: number;
@@ -89,6 +101,7 @@ export type ShiftInput = {
 type NormalizedShift = {
   name: string;
   code: string;
+  type: ShiftType;
   startTime: string;
   endTime: string;
   crossesMidnight: boolean;
@@ -111,6 +124,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   const code = p.code.trim();
   if (!code) throw new Error('Shift code is required');
   const differential = validateDifferential(p.differential);
+  const type = validateShiftType(p.type);
   const startTime = asShiftTime(p.startTime, 'Shift start');
   const endTime = asShiftTime(p.endTime, 'Shift end');
   const crossesMidnight = shiftCrossesMidnight(startTime, endTime);
@@ -119,6 +133,11 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   // Multi-break is STORAGE-ONLY in Phase 1: the periods are saved and shown, but the deducted hours are the
   // canonical breakMinutes scalar (their sum) — workedFromSpan's all-or-nothing 6h-cliff behaviour is
   // unchanged. True per-window deduction is a deferred Phase-2+ item.
+  //
+  // f3321963 — per-break Flexible / Clocking-Required flags. A Semi-Flexi shift FORCES flexible=true and
+  // clockingRequired=false on EVERY break (the reporter's fixed, non-editable rule); Normal/Full-Flexi keep
+  // whatever flags were supplied (absent ⇒ unset, == legacy behaviour, so existing shifts stay byte-identical).
+  const semiFlexi = type === 'semi_flexi';
   let breakPeriods: BreakPeriod[] | null = null;
   let breakMinutes = Math.trunc(p.breakMinutes ?? 0);
   if (!Number.isFinite(breakMinutes) || breakMinutes < 0) throw new Error('Break minutes must be a non-negative number');
@@ -130,7 +149,14 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
       if (end <= start) throw new Error('Each break must start before it ends (a break cannot cross midnight)');
       const inside = crossesMidnight ? start >= startTime || end <= endTime : start >= startTime && end <= endTime;
       if (!inside) throw new Error('Each break must fall inside the shift span');
-      return { start, end };
+      const out: BreakPeriod = { start, end };
+      // Semi-Flexi overrides the flags; otherwise persist only flags that were explicitly set (keep the
+      // stored JSON minimal so a plain break is { start, end } exactly as before).
+      const flexible = semiFlexi ? true : bp.flexible;
+      const clockingRequired = semiFlexi ? false : bp.clockingRequired;
+      if (flexible != null) out.flexible = flexible;
+      if (clockingRequired != null) out.clockingRequired = clockingRequired;
+      return out;
     });
     // Canonical scalar = Σ break durations, so every existing consumer of break_minutes reads byte-identically.
     breakMinutes = breakPeriods.reduce((acc, bp) => acc + (hhmmToMin(bp.end) - hhmmToMin(bp.start)), 0);
@@ -172,6 +198,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   return {
     name,
     code,
+    type,
     startTime,
     endTime,
     crossesMidnight,
@@ -223,6 +250,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           companyId: p.companyId,
           name: n.name,
           code: n.code,
+          type: n.type,
           startTime: n.startTime,
           endTime: n.endTime,
           breakMinutes: n.breakMinutes,
@@ -249,6 +277,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         companyId: p.companyId,
         name: n.name,
         code: n.code,
+        type: n.type,
         startTime: n.startTime,
         endTime: n.endTime,
         breakMinutes: n.breakMinutes,
@@ -291,6 +320,7 @@ export async function createShiftMulti(
             companyId,
             name: n.name,
             code: n.code,
+            type: n.type,
             startTime: n.startTime,
             endTime: n.endTime,
             breakMinutes: n.breakMinutes,
@@ -317,6 +347,7 @@ export async function createShiftMulti(
           companyId,
           name: n.name,
           code: n.code,
+          type: n.type,
           startTime: n.startTime,
           endTime: n.endTime,
           breakMinutes: n.breakMinutes,
@@ -345,6 +376,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         .set({
           name: n.name,
           code: n.code,
+          type: n.type,
           startTime: n.startTime,
           endTime: n.endTime,
           breakMinutes: n.breakMinutes,
@@ -371,6 +403,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
       payload: {
         name: n.name,
         code: n.code,
+        type: n.type,
         startTime: n.startTime,
         endTime: n.endTime,
         breakMinutes: n.breakMinutes,
@@ -447,6 +480,7 @@ export async function duplicateShift(
             companyId,
             name,
             code,
+            type: src.type,
             startTime: src.startTime,
             endTime: src.endTime,
             breakMinutes: src.breakMinutes,
@@ -474,6 +508,7 @@ export async function duplicateShift(
           companyId,
           name,
           code,
+          type: src.type,
           startTime: src.startTime,
           endTime: src.endTime,
           breakMinutes: src.breakMinutes,

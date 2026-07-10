@@ -18,6 +18,13 @@ import { archiveShiftAction, createShiftAction, deleteShiftAction, duplicateShif
 
 const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
 const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
+// f3321963 — shift template type → i18n label key. Falls back to Normal for legacy rows (type defaults to
+// 'normal' at the DB layer, so this is belt-and-braces).
+const SHIFT_TYPE_KEY: Record<string, string> = {
+  normal: 'shiftTypeNormal',
+  semi_flexi: 'shiftTypeSemiFlexi',
+  full_flexi: 'shiftTypeFullFlexi',
+};
 const toMin = (t: string) => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
@@ -260,6 +267,7 @@ export default async function AttendancePolicyPage({
                       <th className="px-4 py-2 font-medium">{t('colCompany')}</th>
                       <th className="px-4 py-2 font-medium">{t('colCode')}</th>
                       <th className="px-4 py-2 font-medium">{t('colShiftName')}</th>
+                      <th className="px-4 py-2 font-medium">{t('colShiftType')}</th>
                       <th className="px-4 py-2 font-medium">{t('colTimeIn')}</th>
                       <th className="px-4 py-2 font-medium">{t('colTimeOut')}</th>
                       <th className="px-4 py-2 font-medium">{t('colBreakTime')}</th>
@@ -288,6 +296,11 @@ export default async function AttendancePolicyPage({
                                 {sh.earlyLeaveGraceMinutes != null && t('earlyLeaveGraceBadge', { minutes: sh.earlyLeaveGraceMinutes })}
                               </span>
                             )}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                              {t(SHIFT_TYPE_KEY[sh.type] ?? 'shiftTypeNormal')}
+                            </span>
                           </td>
                           <td className="px-4 py-2.5 tabular-nums">{sh.startTime.slice(0, 5)}</td>
                           <td className="px-4 py-2.5 tabular-nums">{sh.endTime.slice(0, 5)}</td>
@@ -465,6 +478,23 @@ export default async function AttendancePolicyPage({
                 className={`${inputCls} w-24`}
                 aria-label={t('shiftCode')}
               />
+              {/* f3321963 — Shift Type selector. Normal (fixed schedule) + Semi-Flexi (flexible window) are
+                  selectable; Full-Flexi is reserved for a FUTURE enhancement (reporter-sanctioned), so its
+                  option is disabled and a placeholder note explains it. */}
+              <Field label={t('shiftTypeLabel')}>
+                <select
+                  name="shiftTemplateType"
+                  defaultValue={editing?.type ?? 'normal'}
+                  className={`${inputCls} w-40`}
+                  aria-label={t('shiftTypeLabel')}
+                >
+                  <option value="normal">{t('shiftTypeNormal')}</option>
+                  <option value="semi_flexi">{t('shiftTypeSemiFlexi')}</option>
+                  <option value="full_flexi" disabled>
+                    {t('shiftTypeFullFlexi')}
+                  </option>
+                </select>
+              </Field>
               <ShiftTimeFields
                 defaultStart={editing?.startTime.slice(0, 5) ?? '09:00'}
                 defaultEnd={editing?.endTime.slice(0, 5) ?? '18:00'}
@@ -602,6 +632,9 @@ export default async function AttendancePolicyPage({
             </form>
             <p className="text-xs text-muted-foreground">{t('shiftHint')}</p>
             <p className="text-xs text-muted-foreground">{t('multiBreakStorageHint')}</p>
+            {/* f3321963 — Semi-Flexi rule + Full-Flexi future-release placeholder. */}
+            <p className="text-xs text-muted-foreground">{t('shiftTypeSemiFlexiNote')}</p>
+            <p className="text-xs text-muted-foreground">{t('shiftTypeFullFlexiNote')}</p>
           </div>
         </Card>
       )}
