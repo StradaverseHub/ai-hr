@@ -2331,14 +2331,20 @@
       },
       "tp1": {
         "title": "Miễn giảm TP1",
-        "subtitle": "Miễn giảm thuế TP1 hàng tháng theo nhân viên cho đợt nháp.",
-        "pickBatch": "Đợt nháp",
-        "noBatches": "Không có đợt nháp khả dụng. Hãy tạo một đợt từ tab Quy trình tính lương trước.",
+        "subtitle": "Quản lý bản kê khai miễn giảm thuế thu nhập cá nhân TP1 (LHDN) của nhân viên.",
+        "searchLabel": "Tìm nhân viên",
+        "searchPlaceholder": "Tên, mã nhân viên hoặc email",
+        "companyLabel": "Công ty",
+        "departmentLabel": "Phòng ban",
+        "allCompanies": "Tất cả công ty",
+        "allDepartments": "Tất cả phòng ban",
+        "search": "Tìm",
+        "results": "Nhân viên",
         "employee": "Nhân viên",
-        "amount": "Miễn giảm TP1",
-        "save": "Lưu",
-        "saved": "Đã lưu.",
-        "empty": "Không có nhân viên trong đợt này."
+        "employeeCode": "Mã nhân viên",
+        "open": "Mở",
+        "noResults": "Không có nhân viên nào phù hợp với tìm kiếm của bạn.",
+        "changeEmployee": "Đổi nhân viên"
       },
       "zakat": {
         "title": "Zakat",

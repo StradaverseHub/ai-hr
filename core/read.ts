@@ -2363,6 +2363,44 @@ export function myEmployment(ctx: SessionContext) {
   });
 }
 
+/**
+ * Resolve a SELECTED employment to its person + header details, for the HR TP1-on-behalf screen
+ * (Standardize-TP1, item 0cde61f3). RLS-scoped: an admin sees any employment in their tenant/scope; a
+ * non-admin only their own — so this cannot be used to widen access. `personId` is the trusted key the
+ * TP1 admin service writes against (NEVER a raw form field). Read-only, no DomainEvent. Returns null when
+ * the employment id is not visible to the caller.
+ */
+export function employmentSubject(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        employmentId: employment.id,
+        personId: employment.personId,
+        name: person.fullName,
+        email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
+        company: company.legalName,
+        companyId: employment.companyId,
+        department: department.name,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
 /** ALL active employments for the current principal (concurrent multi-company, ADR-0009). */
 export function myEmployments(ctx: SessionContext) {
   return withTenant(ctx, async (tx) => {

@@ -2331,14 +2331,20 @@
       },
       "tp1": {
         "title": "Pelepasan TP1",
-        "subtitle": "Pelepasan cukai TP1 bulanan bagi setiap pekerja untuk kelompok draf.",
-        "pickBatch": "Kelompok draf",
-        "noBatches": "Tiada kelompok draf tersedia. Cipta satu dari tab Proses Gaji dahulu.",
+        "subtitle": "Selenggara perisytiharan pelepasan cukai peribadi TP1 LHDN pekerja.",
+        "searchLabel": "Cari pekerja",
+        "searchPlaceholder": "Nama, ID pekerja, atau e-mel",
+        "companyLabel": "Syarikat",
+        "departmentLabel": "Jabatan",
+        "allCompanies": "Semua syarikat",
+        "allDepartments": "Semua jabatan",
+        "search": "Cari",
+        "results": "Pekerja",
         "employee": "Pekerja",
-        "amount": "Pelepasan TP1",
-        "save": "Simpan",
-        "saved": "Disimpan.",
-        "empty": "Tiada pekerja dalam kelompok ini."
+        "employeeCode": "ID Pekerja",
+        "open": "Buka",
+        "noResults": "Tiada pekerja sepadan dengan carian anda.",
+        "changeEmployee": "Tukar pekerja"
       },
       "zakat": {
         "title": "Zakat",

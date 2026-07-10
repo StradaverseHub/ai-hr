@@ -2331,14 +2331,20 @@
       },
       "tp1": {
         "title": "TP1 减免",
-        "subtitle": "草稿批次中每位员工的每月 TP1 税务减免。",
-        "pickBatch": "草稿批次",
-        "noBatches": "没有可用的草稿批次。请先在薪资流程选项卡中创建一个。",
+        "subtitle": "维护员工的 LHDN TP1 个人税务减免申报。",
+        "searchLabel": "搜索员工",
+        "searchPlaceholder": "姓名、员工编号或电子邮件",
+        "companyLabel": "公司",
+        "departmentLabel": "部门",
+        "allCompanies": "所有公司",
+        "allDepartments": "所有部门",
+        "search": "搜索",
+        "results": "员工",
         "employee": "员工",
-        "amount": "TP1 减免",
-        "save": "保存",
-        "saved": "已保存。",
-        "empty": "此批次中没有员工。"
+        "employeeCode": "员工编号",
+        "open": "打开",
+        "noResults": "没有符合搜索条件的员工。",
+        "changeEmployee": "更换员工"
       },
       "zakat": {
         "title": "天课",
