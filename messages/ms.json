@@ -880,7 +880,8 @@
       "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja.",
       "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan.",
       "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti.",
-      "editNotAllowed": "Cuti ini tidak boleh lagi disunting."
+      "editNotAllowed": "Cuti ini tidak boleh lagi disunting.",
+      "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -3287,7 +3288,14 @@
       "deleteGrade": "Padam",
       "deleteGradeConfirmTitle": "Padam gred ini?",
       "deleteGradeConfirmDescription": "Ini mengeluarkan gred daripada katalog secara kekal. Tindakan ini tidak boleh dibatalkan.",
-      "gradeInUseCannotDelete": "Gred ini digunakan oleh pekerja atau polisi cuti dan tidak boleh dipadam. Arkibkannya sebaliknya."
+      "gradeInUseCannotDelete": "Gred ini digunakan oleh pekerja atau polisi cuti dan tidak boleh dipadam. Arkibkannya sebaliknya.",
+      "visibility": {
+        "sectionTitle": "Keterlihatan Pekerja",
+        "visibleToEmployee": "Boleh dilihat oleh pekerja",
+        "employeeCanApply": "Pekerja boleh memohon",
+        "statutoryLocked": "Ini ialah cuti berkanun — pekerja mesti sentiasa boleh memohonnya.",
+        "help": "Kawal sama ada pekerja melihat jenis cuti ini pada tab Cuti mereka dan sama ada mereka boleh memohonnya. Jenis yang disembunyikan akan hilang sepenuhnya dari tab Cuti pekerja; mematikan “boleh memohon” mengekalkan jenis itu kelihatan tetapi menyekat permohonan baharu."
+      }
     },
     "holidays": {
       "pageTitle": "Cuti umum",

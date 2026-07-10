@@ -17,6 +17,7 @@ import {
   LEAVE_DURATION_TYPES,
   reprojectEntitlementForPolicy,
   todayInKualaLumpur,
+  STATUTORY_APPLY_CODES,
   type AccrualConfig,
   type DayTypeInclusion,
   type LeaveDurationType,
@@ -2569,6 +2570,16 @@ export async function updateLeaveType(
     // sub-form posts `leaveUnit=1` so an unrelated save never resets it. Validated against { day, hour }.
     // Coarse labelling/reporting only — never read for entitlement / accrual / workflow / payroll.
     leaveUnit?: 'day' | 'hour';
+    // Leave Type Employee Visibility (feedback 7b11f1c1): two INDEPENDENT tri-state booleans controlling, per
+    // leave type, whether an employee sees it on the /me Leave surface and whether they may apply for it. Each
+    // is its OWN tri-state (undefined = column untouched), mirroring perDateApproval — the visibility sub-form
+    // posts `visibility=1` so an unrelated save never resets them. null ⇒ clear (revert to the visible /
+    // can-apply default). STATUTORY SAFETY: employeeCanApply=false is REJECTED when the type's code is a
+    // statutory-entitlement code (ANNUAL / SICK / HOSPITALIZATION / MATERNITY / PATERNITY) — an employee must
+    // always be able to exercise a lawful entitlement. Gating applies ONLY to /me reads + requestLeave;
+    // admin/HR reads are never gated.
+    visibleToEmployee?: boolean | null;
+    employeeCanApply?: boolean | null;
     // Edit Paid/Unpaid on rename (feedback 75953777): the paid/unpaid flag is the payroll-deduction source of
     // truth (schema paid boolean notNull default true). OWN tri-state (undefined = paid column untouched),
     // mirroring perDateApproval — the identity/rename sub-form posts an `identity=1` marker and always forwards
@@ -2633,6 +2644,13 @@ export async function updateLeaveType(
     throw new Error('Leave unit must be day or hour.');
   }
   const leaveUnitSet = touchLeaveUnit ? { leaveUnit: p.leaveUnit } : {};
+  // Leave Type Employee Visibility (7b11f1c1): two INDEPENDENT OWN tri-states, mirroring touchLeaveUnit — the
+  // visibility sub-form posts `visibility=1`, any other save omits both so the columns stay untouched. The
+  // statutory-code guard on employeeCanApply=false runs inside the transaction below (it needs the type code).
+  const touchVisibleToEmployee = p.visibleToEmployee !== undefined;
+  const touchEmployeeCanApply = p.employeeCanApply !== undefined;
+  const visibleToEmployeeSet = touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {};
+  const employeeCanApplySet = touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {};
   // Employee Leave View Configuration (65dec703): OWN tri-state, mirroring touchPartial — the ESS-view
   // sub-form posts `essView=1`, any other save omits essViewConfig so ess_view_config stays untouched.
   const touchEssViewConfig = p.essViewConfig !== undefined;
@@ -2770,6 +2788,11 @@ export async function updateLeaveType(
     const [before] = await tx
       .select({
         name: leaveType.name,
+        // Leave Type Employee Visibility (7b11f1c1): the code drives the statutory-entitlement guard below;
+        // the two flags feed the before/after audit diff.
+        code: leaveType.code,
+        visibleToEmployee: leaveType.visibleToEmployee,
+        employeeCanApply: leaveType.employeeCanApply,
         // Leave Type master page (feedback 097de541): selected for the rename-uniqueness check (below) and the
         // description audit diff (MUST be here or before?.description is always undefined).
         description: leaveType.description,
@@ -2823,6 +2846,22 @@ export async function updateLeaveType(
         .limit(1);
       if (dupe) throw new DuplicateError(`A leave type named “${name}” already exists.`);
     }
+    // Leave Type Employee Visibility (7b11f1c1) — STATUTORY SAFETY. Refuse to close off employee applications
+    // on a leave type that carries a Malaysian statutory entitlement (ANNUAL / SICK / HOSPITALIZATION per EA
+    // 1955 s.60E/s.60F, MATERNITY per s.37, PATERNITY per s.60FA): an employee must always be able to exercise
+    // a lawful entitlement, so a well-meant configuration can never silently deny it. visible_to_employee=false
+    // is NOT blocked on these (HR can still grant the leave directly), only the can-apply block. The type code
+    // is immutable, so `before.code` is authoritative.
+    if (
+      touchEmployeeCanApply &&
+      p.employeeCanApply === false &&
+      before &&
+      (STATUTORY_APPLY_CODES as readonly string[]).includes(before.code)
+    ) {
+      throw new Error(
+        `${before.code} is a statutory leave entitlement — employees must be able to apply for it. You cannot block applications for this leave type.`,
+      );
+    }
     // Custom validation messages: read-then-patch-then-write on the SHARED JSONB column. Start from what is
     // already stored, apply the caller's touched keys: a value that is empty or all-whitespace after trim is
     // treated as "not configured" and the key is REMOVED (never stored as an empty string, so it round-trips
@@ -2860,6 +2899,8 @@ export async function updateLeaveType(
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...dayTypeInclusionSet,
         ...leaveUnitSet,
+        ...visibleToEmployeeSet,
+        ...employeeCanApplySet,
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -2894,6 +2935,8 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: before?.dayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
+          ...(touchVisibleToEmployee ? { visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
+          ...(touchEmployeeCanApply ? { employeeCanApply: before?.employeeCanApply ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
@@ -2925,6 +2968,8 @@ export async function updateLeaveType(
           ...(touchDayTypeInclusion ? { dayTypeInclusion: nextDayTypeInclusion ?? null } : {}),
           ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
+          ...(touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {}),
+          ...(touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
         ...(reason ? { reason } : {}),

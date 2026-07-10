@@ -538,6 +538,8 @@ export function LeaveTypePanel({
   color,
   icon,
   leaveUnit,
+  visibleToEmployee,
+  employeeCanApply,
   counting,
   perDateApproval,
   policies,
@@ -606,6 +608,11 @@ export function LeaveTypePanel({
   /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
    *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
   leaveUnit: string;
+  /** Leave Type Employee Visibility (7b11f1c1): whether this type is shown to employees on the /me Leave tab
+   *  and whether they may apply for it. Threaded so the two checkboxes round-trip their saved value. null ⇒
+   *  the default (visible / can-apply). The service rejects can-apply=false on a statutory code. */
+  visibleToEmployee: boolean | null;
+  employeeCanApply: boolean | null;
   /** ADR-0068 / Partial Leave Approval: the type's counting mode ('working_days' | 'calendar_days'), threaded
    *  so the per-date-approval sub-form can grey out its toggle for calendar-counted types (the feature can
    *  never fire there — see the gate in core/leave.ts perDateEligible). */
@@ -629,6 +636,11 @@ export function LeaveTypePanel({
   countInScopeAction: (p: { companyIds: string[]; gradeIds: string[] }) => Promise<number>;
 }) {
   const t = useTranslations('admin.leave');
+  // Leave Type Employee Visibility (7b11f1c1): statutory-entitlement codes can never have employee
+  // applications blocked (an employee must be able to exercise a lawful entitlement — EA 1955 s.60E/s.60F/
+  // s.37/s.60FA). Mirrors STATUTORY_APPLY_CODES in core/leave.ts; kept as a local literal so this client
+  // component never pulls server-only code. The service enforces the same rule as the authority.
+  const isStatutoryApply = ['ANNUAL', 'SICK', 'HOSPITALIZATION', 'MATERNITY', 'PATERNITY'].includes(code);
   const [expanded, setExpanded] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [editingEligibility, setEditingEligibility] = useState(false);
@@ -1412,6 +1424,51 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
+          </div>
+
+          {/* Leave Type Employee Visibility (7b11f1c1). Its own self-contained sub-form (own tri-state) posts
+              `visibility=1` — two checkboxes controlling whether an employee sees this leave type on their
+              self-service Leave tab, and whether they may apply for it. Both switches are independent: a
+              visible-but-not-can-apply type still shows (and its balance) but is dropped from the apply menu
+              and rejected server-side in requestLeave. A statutory-entitlement code (ANNUAL / SICK /
+              HOSPITALIZATION / MATERNITY / PATERNITY) cannot have applications blocked — the checkbox is
+              disabled + forced on there, and the service rejects it too. null/default ⇒ visible + can-apply
+              (backward compatible). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('visibility.sectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the two visibility columns (tri-state guard) */}
+              <input type="hidden" name="visibility" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="visibleToEmployee"
+                  defaultChecked={visibleToEmployee !== false}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('visibility.visibleToEmployee')}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="employeeCanApply"
+                  defaultChecked={isStatutoryApply ? true : employeeCanApply !== false}
+                  disabled={isStatutoryApply}
+                  className="size-3.5 rounded border-border disabled:opacity-60"
+                />
+                {t('visibility.employeeCanApply')}
+              </label>
+              {isStatutoryApply ? (
+                <p className="text-xs text-amber-600 dark:text-amber-500">{t('visibility.statutoryLocked')}</p>
+              ) : null}
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('visibility.help')}</p>
           </div>
 
           {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts

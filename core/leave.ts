@@ -348,6 +348,29 @@ export class LeaveIneligibleError extends Error {
   }
 }
 
+// Leave Type Employee Visibility (feedback 7b11f1c1): thrown by requestLeave when the leave type has
+// employee_can_apply === false and the caller is an ordinary employee. This is the SERVER-SIDE authority for
+// the "can look but can't apply" switch — defense-in-depth behind the apply-dropdown filter, so the rule
+// holds even if the UI is bypassed. HR admins (isAdmin) bypass it via the existing override path (like
+// backdating / min-advance), so HR can still book this leave on an employee's behalf. Carries the (localized)
+// leave-type name so the action layer can re-localize via getTranslations('leave.errors') before redirecting.
+export class LeaveApplyNotAllowedError extends Error {
+  readonly typeName?: string;
+  constructor(typeName?: string) {
+    super(`Employees cannot apply for ${typeName ?? 'this leave type'}. Please contact HR.`);
+    this.name = 'LeaveApplyNotAllowedError';
+    this.typeName = typeName;
+  }
+}
+
+// Leave Type Employee Visibility (feedback 7b11f1c1): the closed set of leave-type codes that carry a
+// Malaysian statutory entitlement an employee must always be able to exercise — Annual & Sick (EA 1955
+// s.60E / s.60F), Hospitalization (s.60F), Maternity (s.37), Paternity (s.60FA). updateLeaveType refuses to
+// set employee_can_apply=false on any of these so a well-meant configuration can never deny a lawful
+// entitlement. visible_to_employee=false is NOT blocked on these (HR can still grant the leave directly), but
+// closing off the ability to APPLY would breach the statutory right.
+export const STATUTORY_APPLY_CODES = ['ANNUAL', 'SICK', 'HOSPITALIZATION', 'MATERNITY', 'PATERNITY'] as const;
+
 // ── Mandatory documents (ADR-0038 2A-2, #25) ─────────────────────────────────────────────────────
 // Some leave types need a supporting document (e.g. an MC for sick leave). When leave_type.requires_
 // document is set, requestLeave rejects a request that arrives without an attachment.
@@ -1050,6 +1073,9 @@ export async function requestLeave(
         // Custom validation messages (custom-messages migration): the admin-authored override map, keyed by
         // rule config field. Passed through the typed error so the localizer shows it verbatim.
         customMessages: leaveType.customMessages,
+        // Leave Type Employee Visibility (7b11f1c1): the can-apply switch. false ⇒ an ordinary employee may
+        // not apply for this type (rejected below); NULL ⇒ can apply (today's behaviour). isAdmin bypasses.
+        employeeCanApply: leaveType.employeeCanApply,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.leaveTypeId))
@@ -1074,6 +1100,17 @@ export async function requestLeave(
         .where(eq(employment.id, p.employmentId))
         .limit(1);
       assertEligible(elig, emp, p.startDate);
+    }
+
+    // Leave Type Employee Visibility (7b11f1c1) — can-apply gate. When HR has set employee_can_apply=false,
+    // an ordinary employee may not submit a request for this type ("can look but can't apply"). This is the
+    // SERVER-SIDE authority behind the apply-dropdown filter (listEligibleLeaveTypesFor), so the rule holds
+    // even if the UI is bypassed. HR admins (isAdmin) bypass it — like backdating / min-advance below — so HR
+    // can still book this leave on the employee's behalf. NULL ⇒ can apply (backward compatible). The
+    // statutory guard in updateLeaveType prevents this ever being set on a lawful-entitlement code, so this
+    // gate can never block a statutory leave. Fails fast before any write, like the eligibility gate above.
+    if (!isAdmin(ctx) && lt?.employeeCanApply === false) {
+      throw new LeaveApplyNotAllowedError(lt?.name);
     }
 
     // Configurable backdated-leave restriction (0133). Non-HR users are blocked when the request's start date

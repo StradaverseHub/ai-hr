@@ -1074,6 +1074,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
   const leaveUnitFields = touchLeaveUnit
     ? { leaveUnit: (fd.get('leaveUnitValue') === 'hour' ? 'hour' : 'day') as 'day' | 'hour' }
     : {};
+  // Leave Type Employee Visibility (7b11f1c1): its own sub-form posts `visibility=1` (marker) plus two
+  // checkboxes — `visibleToEmployee` (whether the type shows on the /me Leave tab) and `employeeCanApply`
+  // (whether employees may apply for it). A checked box posts 'on', an unchecked box does not post, so with
+  // the marker present we forward a concrete boolean for each: checked ⇒ true, absent ⇒ false. Any other
+  // sub-form save omits the marker ⇒ both columns stay untouched (same tri-state guard as essView/leaveUnit).
+  // The service rejects employeeCanApply=false on a statutory-entitlement code.
+  const touchVisibility = fd.get('visibility') === '1';
+  const visibilityFields = touchVisibility
+    ? {
+        visibleToEmployee: fd.get('visibleToEmployee') === 'on',
+        employeeCanApply: fd.get('employeeCanApply') === 'on',
+      }
+    : {};
   // Custom validation messages (custom-messages migration): each rule's "Custom system message" textarea
   // lives in the SAME sub-form as its rule config (backdating ⇒ `backdating=1`; min-advance ⇒ `minAdvance=1`),
   // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
@@ -1115,6 +1128,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...dayTypeInclusionFields,
       ...visualFields,
       ...leaveUnitFields,
+      ...visibilityFields,
       ...customMessageFields,
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
       reason: String(fd.get('reason') || '') || null,

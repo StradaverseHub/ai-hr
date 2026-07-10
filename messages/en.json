@@ -880,7 +880,8 @@
       "noLeaveDaysInRange": "This request has no leave days — the dates are empty or fall entirely on weekends/public holidays. Pick a range that includes at least one working day.",
       "balanceFrozenForEncashment": "This leave balance is frozen for encashment following an approved resignation and cannot be changed. Contact HR if you believe this is a mistake.",
       "advanceNoticeRequired": "{typeName} must be submitted at least {days} day(s) before the leave start date.",
-      "editNotAllowed": "This leave can no longer be edited."
+      "editNotAllowed": "This leave can no longer be edited.",
+      "applyNotAllowed": "Employees cannot apply for {typeName}. Please contact HR."
     },
     "documentLabel": "Supporting document",
     "documentHint": "Required for some leave types (e.g. a medical certificate). Allowed types and size limits depend on the selected leave type.",
@@ -3287,7 +3288,14 @@
       "deleteGrade": "Delete",
       "deleteGradeConfirmTitle": "Delete this grade?",
       "deleteGradeConfirmDescription": "This permanently removes the grade from the catalog. This cannot be undone.",
-      "gradeInUseCannotDelete": "This grade is used by employees or leave policies and can't be deleted. Archive it instead."
+      "gradeInUseCannotDelete": "This grade is used by employees or leave policies and can't be deleted. Archive it instead.",
+      "visibility": {
+        "sectionTitle": "Employee Visibility",
+        "visibleToEmployee": "Visible to employee",
+        "employeeCanApply": "Employees can apply",
+        "statutoryLocked": "This is a statutory leave — employees must always be able to apply for it.",
+        "help": "Control whether employees see this leave type on their Leave tab and whether they can apply for it. A hidden type disappears entirely from the employee's Leave tab; turning off “can apply” keeps the type visible but blocks new applications."
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",

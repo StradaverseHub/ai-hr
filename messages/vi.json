@@ -880,7 +880,8 @@
       "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc.",
       "balanceFrozenForEncashment": "Số dư phép này đã bị khóa để quy đổi sau khi đơn nghỉ việc được phê duyệt và không thể thay đổi. Vui lòng liên hệ bộ phận Nhân sự nếu bạn cho rằng đây là nhầm lẫn.",
       "advanceNoticeRequired": "{typeName} phải được nộp ít nhất {days} ngày trước ngày bắt đầu nghỉ phép.",
-      "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa."
+      "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa.",
+      "applyNotAllowed": "Nhân viên không thể đăng ký {typeName}. Vui lòng liên hệ bộ phận Nhân sự."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -3287,7 +3288,14 @@
       "deleteGrade": "Xóa",
       "deleteGradeConfirmTitle": "Xóa cấp bậc này?",
       "deleteGradeConfirmDescription": "Thao tác này sẽ xóa vĩnh viễn cấp bậc khỏi danh mục. Không thể hoàn tác.",
-      "gradeInUseCannotDelete": "Cấp bậc này đang được nhân viên hoặc chính sách nghỉ phép sử dụng nên không thể xóa. Hãy lưu trữ thay thế."
+      "gradeInUseCannotDelete": "Cấp bậc này đang được nhân viên hoặc chính sách nghỉ phép sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
+      "visibility": {
+        "sectionTitle": "Khả năng hiển thị với nhân viên",
+        "visibleToEmployee": "Hiển thị cho nhân viên",
+        "employeeCanApply": "Nhân viên có thể đăng ký",
+        "statutoryLocked": "Đây là loại nghỉ phép theo luật định — nhân viên phải luôn có thể đăng ký.",
+        "help": "Kiểm soát việc nhân viên có nhìn thấy loại nghỉ phép này trong tab Nghỉ phép của họ hay không và có thể đăng ký hay không. Loại bị ẩn sẽ biến mất hoàn toàn khỏi tab Nghỉ phép của nhân viên; tắt “có thể đăng ký” vẫn giữ loại này hiển thị nhưng chặn các đơn đăng ký mới."
+      }
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

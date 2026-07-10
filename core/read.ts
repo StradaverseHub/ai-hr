@@ -424,6 +424,10 @@ export function listLeaveTypes(
         // Leave Unit Configuration (e4980382): feeds the admin panel's "Leave Unit" select + the create-form
         // default (MUST be projected or the select renders at its default on every reload). 'day' | 'hour'.
         leaveUnit: leaveType.leaveUnit,
+        // Leave Type Employee Visibility (7b11f1c1): feeds the admin panel's two visibility checkboxes (MUST be
+        // projected or the checkboxes render at their default on every reload). null ⇒ visible / can-apply.
+        visibleToEmployee: leaveType.visibleToEmployee,
+        employeeCanApply: leaveType.employeeCanApply,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
@@ -476,6 +480,11 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
           eligibility: leaveType.eligibility,
           durations: leaveType.durations,
           archivedAt: leaveType.archivedAt,
+          // Leave Type Employee Visibility (7b11f1c1): the can-apply switch — false ⇒ this type is dropped
+          // from the apply dropdown (in addition to the eligibility filter). NULL ⇒ can apply (today's
+          // behaviour). Independent of visibleToEmployee: a visible-but-not-can-apply type still shows in
+          // leaveBalances but never here. requestLeave enforces the same rule server-side (defense-in-depth).
+          employeeCanApply: leaveType.employeeCanApply,
         })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
@@ -489,7 +498,10 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
     const today = new Date().toISOString().slice(0, 10);
     return types
       .filter((t) => isLeaveEligible(t.eligibility as LeaveEligibility | null, emp, today))
-      .map(({ i18n, eligibility, ...r }) => ({ ...r, name: pickName(r.name, i18n, locale) }));
+      // Leave Type Employee Visibility (7b11f1c1): drop types HR has closed to employee applications
+      // (employee_can_apply=false). NULL ⇒ keep (today's behaviour). requestLeave re-checks server-side.
+      .filter((t) => t.employeeCanApply !== false)
+      .map(({ i18n, eligibility, employeeCanApply, ...r }) => ({ ...r, name: pickName(r.name, i18n, locale) }));
   });
 }
 
@@ -1347,7 +1359,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     // yet — so the list is the full menu, not just types they've already accrued or requested.
     const [types, [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
+        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, visibleToEmployee: leaveType.visibleToEmployee })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
@@ -1392,7 +1404,18 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         r.code = v.code;
       }
     }
-    return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+    // Leave Type Employee Visibility (7b11f1c1) — visibility gate. HR can hide a whole leave type from the
+    // /me Leave tab (visible_to_employee=false) — its balance, its pending request, and its no-activity menu
+    // entry all disappear. SINGLE choke point covering all three ways a row enters `out` (ledger rows, the
+    // pending-only tail, the eligible-no-activity tail): build the hidden-type-id set from the active `types`
+    // select and filter `out` once here. NULL ⇒ visible (backward compatible). Archived types (present only
+    // via old ledger rows, not in `types`) are never flagged hidden — they already surface as today. Gating
+    // is /me ONLY; admin/HR balance reads (leaveBalancesAll) do not call this and are never gated. Because a
+    // hidden type is dropped here, leaveEntitlementBreakdown is never requested for it downstream (it is
+    // called per surviving balance row), so no separate change is needed there.
+    const hiddenTypeIds = new Set(types.filter((t) => t.visibleToEmployee === false).map((t) => t.id));
+    const visible = hiddenTypeIds.size === 0 ? out : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
+    return visible.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
 }
 
