@@ -2478,6 +2478,13 @@ export async function updateLeaveType(
     // sub-form posts `leaveUnit=1` so an unrelated save never resets it. Validated against { day, hour }.
     // Coarse labelling/reporting only — never read for entitlement / accrual / workflow / payroll.
     leaveUnit?: 'day' | 'hour';
+    // Edit Paid/Unpaid on rename (feedback 75953777): the paid/unpaid flag is the payroll-deduction source of
+    // truth (schema paid boolean notNull default true). OWN tri-state (undefined = paid column untouched),
+    // mirroring perDateApproval — the identity/rename sub-form posts an `identity=1` marker and always forwards
+    // a concrete boolean, so an unrelated sub-form save omits paid and the column stays untouched (no silent
+    // reset). Applies to FUTURE leave only (paid is read at request/payroll time); historical requests and the
+    // ledger are unaffected.
+    paid?: boolean;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -2513,6 +2520,11 @@ export async function updateLeaveType(
   // Partial Leave Approval (ADR-0068): its OWN tri-state, mirroring touchPayroll/touchBackdating — a save
   // from any other sub-form omits perDateApproval, so per_date_approval stays untouched (no silent reset).
   const touchPartial = p.perDateApproval !== undefined;
+  // Edit Paid/Unpaid on rename (feedback 75953777): its OWN tri-state, mirroring touchPartial — the identity/
+  // rename sub-form posts a concrete `paid` boolean, any other save omits it so the paid column stays
+  // untouched. Fixes the bug where paid/unpaid was immutable after creation.
+  const touchPaid = p.paid !== undefined;
+  const paidSet = touchPaid ? { paid: p.paid } : {};
   // Custom validation messages (custom-messages migration): OWN tri-state, mirroring touchBackdating. The
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
@@ -2679,6 +2691,8 @@ export async function updateLeaveType(
         employeeRemarkRequired: leaveType.employeeRemarkRequired,
         hrRemarkRequired: leaveType.hrRemarkRequired,
         sendToPayroll: leaveType.sendToPayroll,
+        // Edit Paid/Unpaid on rename (75953777): selected for the before/after audit diff.
+        paid: leaveType.paid,
         backdatingLimitDays: leaveType.backdatingLimitDays,
         minAdvanceDays: leaveType.minAdvanceDays,
         expiryValue: leaveType.expiryValue,
@@ -2750,6 +2764,7 @@ export async function updateLeaveType(
         ...descriptionSet,
         ...visualSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
+        ...paidSet,
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
         ...dayTypeInclusionSet,
@@ -2778,6 +2793,7 @@ export async function updateLeaveType(
               }
             : {}),
           ...(touchPayroll ? { sendToPayroll: before?.sendToPayroll ?? null } : {}),
+          ...(touchPaid ? { paid: before?.paid ?? null } : {}),
           ...(touchBackdating ? { backdatingLimitDays: before?.backdatingLimitDays ?? null } : {}),
           ...(touchMinAdvance ? { minAdvanceDays: before?.minAdvanceDays ?? null } : {}),
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
@@ -2804,6 +2820,7 @@ export async function updateLeaveType(
               }
             : {}),
           ...(touchPayroll ? { sendToPayroll: p.sendToPayroll ?? before?.sendToPayroll ?? null } : {}),
+          ...(touchPaid ? { paid: p.paid ?? before?.paid ?? null } : {}),
           ...(touchBackdating
             ? { backdatingLimitDays: p.backdatingLimitDays !== undefined ? p.backdatingLimitDays : (before?.backdatingLimitDays ?? null) }
             : {}),

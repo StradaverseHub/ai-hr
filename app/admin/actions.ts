@@ -904,8 +904,15 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // present do we forward `description`, so any other sub-form save leaves the description column untouched.
   // Empty string ⇒ null (service trims + treats blank as cleared).
   const touchIdentity = fd.get('identity') === '1';
+  // Edit Paid/Unpaid on rename (feedback 75953777): the identity/rename sub-form now also carries the
+  // Paid/Unpaid checkbox. The `identity=1` marker guarantees the form was submitted, so an unchecked box is a
+  // genuine "unpaid" choice (checkbox absent ⇒ 'on' missing ⇒ false), not "untouched". Any OTHER sub-form
+  // omits the marker and thus leaves `paid` undefined ⇒ the column stays untouched (tri-state). No new marker.
   const identityFields = touchIdentity
-    ? { description: String(fd.get('description') ?? '').trim() === '' ? null : String(fd.get('description')).trim() }
+    ? {
+        description: String(fd.get('description') ?? '').trim() === '' ? null : String(fd.get('description')).trim(),
+        paid: fd.get('paid') === 'on',
+      }
     : {};
   // #25 visibility: the eligibility form posts `eligibility=1` (a marker hidden input) so a name-only
   // rename — which doesn't carry that marker — leaves the rule untouched (tri-state in updateLeaveType).

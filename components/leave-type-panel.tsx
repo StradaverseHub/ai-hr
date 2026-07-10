@@ -514,6 +514,7 @@ export function LeaveTypePanel({
   name,
   code,
   description,
+  paid,
   archived,
   inUse,
   isAnnual,
@@ -554,6 +555,10 @@ export function LeaveTypePanel({
   /** Leave Type master page (feedback 097de541): optional free-text description, edited in the identity
    *  sub-form. Threaded so the input round-trips. null = none. */
   description: string | null;
+  /** Edit Paid/Unpaid on rename (feedback 75953777): whether leave of this type is paid (payroll-deduction
+   *  source of truth). Threaded so the identity/rename sub-form's Paid checkbox round-trips its saved value.
+   *  Editing it applies to FUTURE leave only — historical records/ledger are untouched. */
+  paid: boolean;
   archived: boolean;
   inUse: boolean;
   isAnnual: boolean;
@@ -790,6 +795,20 @@ export function LeaveTypePanel({
                   rows={3}
                   className={`${inputCls} h-auto min-h-[4.5rem] w-64 resize-y`}
                 />
+              </Field>
+              {/* Edit Paid/Unpaid on rename (feedback 75953777): the Paid/Unpaid flag lives on the rename form
+                  so a mis-set type can be corrected without recreating it. The `identity=1` marker above means an
+                  unchecked box is a real "unpaid" choice, not "untouched". Applies to future leave only. */}
+              <Field label={t('paidLabel')}>
+                <div className="flex h-9 items-center">
+                  <input
+                    type="checkbox"
+                    name="paid"
+                    defaultChecked={paid}
+                    aria-label={t('paidLabel')}
+                    className="size-4 rounded"
+                  />
+                </div>
               </Field>
               {/* 4ec5a940 — optional "why the change was made" note; recorded on the audit event. */}
               <Field label={t('reasonLabel')}>

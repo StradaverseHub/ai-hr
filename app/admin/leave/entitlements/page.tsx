@@ -144,6 +144,7 @@ export default async function LeaveEntitlementsPage({
               name={lt.name}
               code={lt.code}
               description={lt.description ?? null}
+              paid={lt.paid}
               archived={!!lt.archivedAt}
               inUse={lt.inUse}
               isAnnual={lt.code === 'ANNUAL'}
