@@ -1248,6 +1248,8 @@ export function listDepartmentsForLabels(
         id: department.id,
         companyId: department.companyId,
         name: department.name,
+        // 797e3523: optional short code shown in the System Labels grid.
+        label: department.label,
         businessUnitId: department.businessUnitId,
         // 6fadb036: the department head an approval `department_head` step routes to (nullable).
         headEmploymentId: department.headEmploymentId,
@@ -1277,6 +1279,8 @@ export function listPositionsForLabels(
         id: position.id,
         companyId: position.companyId,
         title: position.title,
+        // 797e3523: optional short code shown in the System Labels grid.
+        label: position.label,
         jobFamily: position.jobFamily,
         description: position.description,
         archivedAt: position.archivedAt,
@@ -1305,6 +1309,8 @@ export function listCostCentersForLabels(
         companyId: costCenter.companyId,
         code: costCenter.code,
         name: costCenter.name,
+        // 797e3523: optional short code shown in the System Labels grid.
+        label: costCenter.label,
         description: costCenter.description,
         archivedAt: costCenter.archivedAt,
         isGlobal: costCenter.isGlobal,
@@ -1332,6 +1338,8 @@ export function listBusinessUnitsForLabels(
         companyId: businessUnit.companyId,
         code: businessUnit.code,
         name: businessUnit.name,
+        // 797e3523: optional short code shown in the System Labels grid.
+        label: businessUnit.label,
         // 6fadb036: the BU head an approval `business_unit_head` step routes to (nullable).
         headEmploymentId: businessUnit.headEmploymentId,
         description: businessUnit.description,
@@ -2213,6 +2221,8 @@ export type LabelCreateInput = {
   businessUnitId?: string | null;
   // 6fadb036: department / business-unit head (approval routing target). Ignored for other kinds.
   headEmploymentId?: string | null;
+  // 797e3523: optional short code / abbreviation shown in the System Labels grid.
+  label?: string;
   description?: string;
 };
 /** One existing row to update. `archived` toggles the soft-archive; scope (isGlobal) is applied too. */
@@ -2228,6 +2238,8 @@ export type LabelUpdateInput = {
   businessUnitId?: string | null;
   // 6fadb036: department / business-unit head (approval routing target). Ignored for other kinds.
   headEmploymentId?: string | null;
+  // 797e3523: optional short code / abbreviation shown in the System Labels grid.
+  label?: string;
   description?: string;
 };
 export type LabelRowError = { key: string; field?: string; message: string };
@@ -2296,7 +2308,7 @@ export async function bulkSaveLabels(
           const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
           const [row] = await tx
             .insert(department)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, headEmploymentId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, name, businessUnitId, headEmploymentId, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: department.id });
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'department.created', actor: actorOf(ctx), payload: { companyId: c.companyId, name, isGlobal: c.isGlobal ?? false } });
@@ -2305,7 +2317,7 @@ export async function bulkSaveLabels(
           if (!title) continue;
           const [row] = await tx
             .insert(position)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, title, jobFamily: c.jobFamily?.trim() || null, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: position.id });
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'position.created', actor: actorOf(ctx), payload: { companyId: c.companyId, title, isGlobal: c.isGlobal ?? false } });
@@ -2315,7 +2327,7 @@ export async function bulkSaveLabels(
           if (!code || !name) continue;
           const [row] = await tx
             .insert(costCenter)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: costCenter.id });
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'cost-center.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
@@ -2327,7 +2339,7 @@ export async function bulkSaveLabels(
           const headEmploymentId = await resolveHeadEmploymentId(tx, c.headEmploymentId, c.companyId);
           const [row] = await tx
             .insert(businessUnit)
-            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, headEmploymentId, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
+            .values({ tenantId: ctx.tenantId, companyId: c.companyId, code, name, headEmploymentId, label: c.label?.trim() || null, description: c.description?.trim() || null, isGlobal: c.isGlobal ?? false })
             .returning({ id: businessUnit.id });
           createdIds.push({ key: c.key, id: row.id });
           await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: agg, aggregateId: row.id, eventType: 'business-unit.created', actor: actorOf(ctx), payload: { companyId: c.companyId, code, isGlobal: c.isGlobal ?? false } });
@@ -2347,7 +2359,7 @@ export async function bulkSaveLabels(
         if (kind === 'department') {
           const name = clean(u.key, u.name, 'name', 'Department name', true);
           if (!name) continue;
-          const set: { name: string; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, description: u.description?.trim() || null };
+          const set: { name: string; label: string | null; description: string | null; isGlobal?: boolean; businessUnitId?: string | null; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { name, label: u.label?.trim() || null, description: u.description?.trim() || null };
           if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
           if (u.businessUnitId !== undefined || u.headEmploymentId !== undefined) {
             const [dep] = await tx.select({ companyId: department.companyId }).from(department).where(eq(department.id, u.id)).limit(1);
@@ -2363,7 +2375,7 @@ export async function bulkSaveLabels(
         } else if (kind === 'position') {
           const title = clean(u.key, u.title, 'title', 'Position title', true);
           if (!title) continue;
-          const set: { title: string; jobFamily: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { title, jobFamily: u.jobFamily?.trim() || null, description: u.description?.trim() || null };
+          const set: { title: string; jobFamily: string | null; label: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { title, jobFamily: u.jobFamily?.trim() || null, label: u.label?.trim() || null, description: u.description?.trim() || null };
           if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
           if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
           await tx.update(position).set(set).where(eq(position.id, u.id));
@@ -2372,7 +2384,7 @@ export async function bulkSaveLabels(
           const code = clean(u.key, u.code, 'code', 'Cost-center code', true);
           const name = clean(u.key, u.name, 'name', 'Cost-center name', true);
           if (!code || !name) continue;
-          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          const set: { code: string; name: string; label: string | null; description: string | null; isGlobal?: boolean; archivedAt?: ReturnType<typeof sql> | null } = { code, name, label: u.label?.trim() || null, description: u.description?.trim() || null };
           if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
           if (u.archived !== undefined) set.archivedAt = u.archived ? sql`now()` : null;
           await tx.update(costCenter).set(set).where(eq(costCenter.id, u.id));
@@ -2381,7 +2393,7 @@ export async function bulkSaveLabels(
           const code = clean(u.key, u.code, 'code', 'Business-unit code', true);
           const name = clean(u.key, u.name, 'name', 'Business-unit name', true);
           if (!code || !name) continue;
-          const set: { code: string; name: string; description: string | null; isGlobal?: boolean; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { code, name, description: u.description?.trim() || null };
+          const set: { code: string; name: string; label: string | null; description: string | null; isGlobal?: boolean; headEmploymentId?: string | null; archivedAt?: ReturnType<typeof sql> | null } = { code, name, label: u.label?.trim() || null, description: u.description?.trim() || null };
           if (u.isGlobal !== undefined) set.isGlobal = u.isGlobal;
           // 6fadb036: tri-state head — undefined ⇒ untouched; blank ⇒ clear; id ⇒ same-company-validated.
           if (u.headEmploymentId !== undefined) {

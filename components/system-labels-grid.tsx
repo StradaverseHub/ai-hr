@@ -31,6 +31,8 @@ export type GridRecord = {
   name: string;
   title: string;
   jobFamily: string;
+  // 797e3523: optional short code / abbreviation.
+  label: string;
   businessUnitId: string | null;
   // 6fadb036: the department / business-unit head an approval `department_head` / `business_unit_head`
   // step routes to (nullable). Only meaningful for the department + business_unit kinds.
@@ -65,6 +67,7 @@ export type GridActions = {
         jobFamily?: string;
         businessUnitId?: string | null;
         headEmploymentId?: string | null;
+        label?: string;
         description?: string;
       }[];
       updates: {
@@ -78,6 +81,7 @@ export type GridActions = {
         jobFamily?: string;
         businessUnitId?: string | null;
         headEmploymentId?: string | null;
+        label?: string;
         description?: string;
       }[];
     },
@@ -89,15 +93,20 @@ export type GridActions = {
   setCompanyShared: (companyId: string, enabled: boolean) => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
-const KINDS: GridKind[] = ['department', 'position', 'cost_center', 'business_unit'];
+// 797e3523: the visible category rail. Business Unit is intentionally NOT listed — it was removed from the
+// System Labels surface per the reporter (existing BU records + department→BU links are untouched in the DB;
+// the backend `business_unit` kind still exists and is consumed elsewhere). GridKind keeps 'business_unit'
+// for backend/type parity, but no tab renders it here.
+const KINDS: GridKind[] = ['department', 'position', 'cost_center'];
 
-// Editable text columns per kind (field key + whether required). Business-unit link + status/scope/audit
-// columns are rendered specially, not from this list.
+// Editable text columns per kind (field key + whether required). Business-unit link + criteria/status
+// columns are rendered specially, not from this list. 797e3523: every kind carries an optional `label`
+// short-code column.
 const TEXT_COLS: Record<GridKind, { field: keyof GridRecord; required?: boolean }[]> = {
-  department: [{ field: 'name', required: true }, { field: 'description' }],
-  position: [{ field: 'title', required: true }, { field: 'jobFamily' }, { field: 'description' }],
-  cost_center: [{ field: 'code', required: true }, { field: 'name', required: true }, { field: 'description' }],
-  business_unit: [{ field: 'code', required: true }, { field: 'name', required: true }, { field: 'description' }],
+  department: [{ field: 'name', required: true }, { field: 'label' }, { field: 'description' }],
+  position: [{ field: 'title', required: true }, { field: 'label' }, { field: 'jobFamily' }, { field: 'description' }],
+  cost_center: [{ field: 'code', required: true }, { field: 'name', required: true }, { field: 'label' }, { field: 'description' }],
+  business_unit: [{ field: 'code', required: true }, { field: 'name', required: true }, { field: 'label' }, { field: 'description' }],
 };
 
 function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState {
@@ -109,6 +118,7 @@ function emptyDraft(key: string, companyId: string, isGlobal: boolean): RowState
     name: '',
     title: '',
     jobFamily: '',
+    label: '',
     businessUnitId: null,
     headEmploymentId: null,
     description: '',
@@ -128,7 +138,6 @@ export function SystemLabelsGrid({
   data,
   companies,
   buByCompany,
-  headByCompany,
   isGroupAdmin,
   actions,
 }: {
@@ -136,15 +145,10 @@ export function SystemLabelsGrid({
   companies: GridCompany[];
   /** Active business units per company, for the department BU-link select. */
   buByCompany: Record<string, { id: string; label: string }[]>;
-  /** 6fadb036: employees per company, for the department / business-unit Head select. */
-  headByCompany: Record<string, { id: string; label: string }[]>;
   isGroupAdmin: boolean;
   actions: GridActions;
 }) {
   const t = useTranslations('admin.systemLabels');
-  // 6fadb036: the Head column reuses the org-settings labels (fieldHead / headNone) that shipped with the
-  // approval-routing feature — no new i18n keys.
-  const to = useTranslations('admin.organization');
   const [kind, setKind] = useState<GridKind>('department');
   const [rowsByKind, setRowsByKind] = useState<Record<GridKind, RowState[]>>(() => {
     const seed = {} as Record<GridKind, RowState[]>;
@@ -154,6 +158,8 @@ export function SystemLabelsGrid({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'archived'>('active');
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'company'>('all');
+  // 797e3523: filters live behind a collapsible panel, hidden by default for a cleaner surface.
+  const [showFilters, setShowFilters] = useState(false);
   const [sortField, setSortField] = useState<keyof GridRecord | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [rowErrors, setRowErrors] = useState<Record<string, { field?: string; message: string }>>({});
@@ -172,6 +178,9 @@ export function SystemLabelsGrid({
   const dirtyExisting = rows.filter((r) => !r.isNew && r.dirty);
   const drafts = rows.filter((r) => r.isNew);
   const hasChanges = dirtyExisting.length > 0 || drafts.length > 0;
+  // 797e3523: how many filters diverge from their defaults — badges the Filter button so a collapsed
+  // panel never silently hides rows.
+  const activeFilterCount = (search.trim() ? 1 : 0) + (statusFilter !== 'active' ? 1 : 0) + (scopeFilter !== 'all' ? 1 : 0);
 
   function patchRows(next: RowState[]) {
     setRowsByKind((prev) => ({ ...prev, [kind]: next }));
@@ -188,7 +197,7 @@ export function SystemLabelsGrid({
     draftSeq.current += 1;
     patchRows([
       ...rows,
-      { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description },
+      { ...emptyDraft(`draft-${draftSeq.current}`, src.companyId, src.isGlobal), code: src.code, name: src.name, title: src.title, jobFamily: src.jobFamily, label: src.label, businessUnitId: src.businessUnitId, headEmploymentId: src.headEmploymentId, description: src.description },
     ]);
   }
   function removeDraft(key: string) {
@@ -215,7 +224,10 @@ export function SystemLabelsGrid({
       name: r.name,
       title: r.title,
       jobFamily: r.jobFamily,
+      label: r.label,
       businessUnitId: r.businessUnitId,
+      // 797e3523: the Head column was removed from this surface, but the loaded value is preserved and
+      // re-sent unchanged so a save never clears an approval-routing head that lives on the record.
       headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
@@ -231,7 +243,10 @@ export function SystemLabelsGrid({
       name: r.name,
       title: r.title,
       jobFamily: r.jobFamily,
+      label: r.label,
       businessUnitId: r.businessUnitId,
+      // 797e3523: Head removed from the UI; re-send the loaded value unchanged so a text edit never
+      // clears an approval-routing head stored on the department / business-unit record.
       headEmploymentId: r.headEmploymentId,
       description: r.description,
     }));
@@ -356,7 +371,7 @@ export function SystemLabelsGrid({
       if (scopeFilter === 'global' && !r.isGlobal) return false;
       if (scopeFilter === 'company' && r.isGlobal) return false;
       if (search) {
-        const hay = `${r.code} ${r.name} ${r.title} ${r.jobFamily} ${r.description}`.toLowerCase();
+        const hay = `${r.code} ${r.name} ${r.title} ${r.jobFamily} ${r.label} ${r.description}`.toLowerCase();
         if (!hay.includes(search.toLowerCase())) return false;
       }
       return true;
@@ -476,24 +491,23 @@ export function SystemLabelsGrid({
 
       {/* Main grid */}
       <div className="min-w-0 flex-1 space-y-3">
-        {/* Toolbar */}
+        {/* Toolbar — 797e3523: filters collapse behind a Filter button (hidden by default). */}
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('searchPlaceholder')}
-            className={`${inputCls} h-8 w-44`}
-          />
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className={`${inputCls} h-8 w-auto`}>
-            <option value="active">{t('filterActive')}</option>
-            <option value="archived">{t('filterArchived')}</option>
-            <option value="all">{t('filterAllStatus')}</option>
-          </select>
-          <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)} className={`${inputCls} h-8 w-auto`}>
-            <option value="all">{t('filterAllScope')}</option>
-            <option value="global">{t('scopeGlobal')}</option>
-            <option value="company">{t('scopeCompanySpecific')}</option>
-          </select>
+          <button
+            type="button"
+            onClick={() => setShowFilters((v) => !v)}
+            aria-expanded={showFilters}
+            className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition ${
+              showFilters || activeFilterCount > 0
+                ? 'border-primary/40 bg-primary/10 text-primary'
+                : 'border-input hover:bg-accent hover:text-accent-foreground'
+            }`}
+          >
+            <span aria-hidden>⛃</span>
+            {t('filter')}
+            {activeFilterCount > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground tabular-nums">{activeFilterCount}</span>}
+            <span aria-hidden>{showFilters ? '▴' : '▾'}</span>
+          </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <select value={newRowCompany} onChange={(e) => setNewRowCompany(e.target.value)} className={`${inputCls} h-8 w-auto`} title={t('addToCompany')}>
               {companies.map((c) => (
@@ -520,6 +534,41 @@ export function SystemLabelsGrid({
             </ToolbarButton>
           </div>
         </div>
+
+        {/* 797e3523: collapsible filter panel — search + status + criteria scope. */}
+        {showFilters && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/20 p-2">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('searchPlaceholder')}
+              className={`${inputCls} h-8 w-44`}
+            />
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className={`${inputCls} h-8 w-auto`}>
+              <option value="active">{t('filterActive')}</option>
+              <option value="archived">{t('filterArchived')}</option>
+              <option value="all">{t('filterAllStatus')}</option>
+            </select>
+            <select value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)} className={`${inputCls} h-8 w-auto`}>
+              <option value="all">{t('filterAllScope')}</option>
+              <option value="global">{t('scopeGlobal')}</option>
+              <option value="company">{t('scopeCompanySpecific')}</option>
+            </select>
+            {activeFilterCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setStatusFilter('active');
+                  setScopeFilter('all');
+                }}
+                className="inline-flex h-8 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                {t('clearFilters')}
+              </button>
+            )}
+          </div>
+        )}
 
         {copyOpen && (
           <CopyToCompaniesBar
@@ -550,8 +599,10 @@ export function SystemLabelsGrid({
         )}
         {hasChanges && <p className="text-xs text-amber-600 dark:text-amber-400">{t('unsavedChanges')}</p>}
 
+        {/* 797e3523: responsive full-width grid — no forced min-width so it fits the container without
+            excessive horizontal scrolling; long values wrap / tooltip instead. */}
         <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full min-w-[820px] border-collapse text-sm" onPaste={onGridPaste}>
+          <table className="w-full border-collapse text-sm" onPaste={onGridPaste}>
             <thead className="bg-muted/40">
               <tr>
                 <th className="w-8 px-2 py-1.5"></th>
@@ -563,12 +614,10 @@ export function SystemLabelsGrid({
                   </th>
                 ))}
                 {kind === 'department' && <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.businessUnit')}</th>}
-                {(kind === 'department' || kind === 'business_unit') && (
-                  <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{to('fieldHead')}</th>
-                )}
+                {/* 797e3523: Head column removed from the System Labels surface. */}
                 <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.scope')}</th>
                 <th className={headerCls} onClick={() => toggleSort('archived')}>{t('col.status')}</th>
-                <th className="px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.lastUpdated')}</th>
+                {/* 797e3523: Last-updated column removed — history lives in the Audit Trail. */}
                 <th className="px-2 py-1.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('col.actions')}</th>
               </tr>
             </thead>
@@ -606,7 +655,9 @@ export function SystemLabelsGrid({
                           value={String(r[c.field] ?? '')}
                           onChange={(e) => updateCell(r.key, c.field, e.target.value)}
                           onKeyDown={(e) => onCellKey(e, rowIdx, String(c.field))}
-                          className={`${cellInput} ${err?.field === c.field ? 'border-destructive' : ''}`}
+                          // 797e3523: full value on hover so long text is readable without a wider column.
+                          title={String(r[c.field] ?? '')}
+                          className={`${cellInput} w-full min-w-0 ${err?.field === c.field ? 'border-destructive' : ''}`}
                         />
                       </td>
                     ))}
@@ -626,25 +677,8 @@ export function SystemLabelsGrid({
                         </select>
                       </td>
                     )}
-                    {/* 6fadb036: Head — this company's employees + a "None" clear option. The head is who a
-                        department_head / business_unit_head approval step routes to. */}
-                    {(kind === 'department' || kind === 'business_unit') && (
-                      <td className="px-1.5 py-1">
-                        <select
-                          value={r.headEmploymentId ?? ''}
-                          onChange={(e) => updateCell(r.key, 'headEmploymentId', e.target.value || null)}
-                          className={`${cellInput} ${err?.field === 'headEmploymentId' ? 'border-destructive' : ''}`}
-                        >
-                          <option value="">{to('headNone')}</option>
-                          {(headByCompany[r.companyId] ?? []).map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    )}
-                    {/* Scope */}
+                    {/* 797e3523: Head column removed from the System Labels surface. */}
+                    {/* Criteria (scope) */}
                     <td className="relative px-1.5 py-1">
                       {r.isNew ? (
                         <span className="text-xs text-muted-foreground">{t('saveFirst')}</span>
@@ -678,17 +712,7 @@ export function SystemLabelsGrid({
                         {r.archived ? t('statusArchived') : t('statusActive')}
                       </span>
                     </td>
-                    {/* Last updated */}
-                    <td className="px-1.5 py-1 text-xs text-muted-foreground">
-                      {r.lastUpdatedAt ? (
-                        <>
-                          <div>{r.lastUpdatedBy ?? t('systemActor')}</div>
-                          <div className="tabular-nums">{new Date(r.lastUpdatedAt).toLocaleDateString()}</div>
-                        </>
-                      ) : (
-                        '—'
-                      )}
-                    </td>
+                    {/* 797e3523: Last-updated cell removed — change history lives in the Audit Trail. */}
                     {/* Row actions */}
                     <td className="px-1.5 py-1 text-right">
                       <div className="inline-flex gap-1">
