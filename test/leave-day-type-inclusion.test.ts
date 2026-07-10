@@ -90,7 +90,7 @@ const hire = () =>
   });
 
 /** A working_days leave type with a large granted balance so the balance gate never blocks. */
-async function workingDaysType(dayTypeInclusion: unknown = null) {
+async function workingDaysType(dayTypeInclusion: Record<string, boolean> | null = null) {
   const [row] = await owner.db
     .insert(schema.leaveType)
     .values({
@@ -125,7 +125,7 @@ const storedInclusion = async (id: string) => {
 };
 
 /** Full-span (Mon..Sun) count for a type via requestLeave — the headline "leave duration". */
-async function spanDays(dayTypeInclusion: unknown) {
+async function spanDays(dayTypeInclusion: Record<string, boolean> | null) {
   const e = await hire();
   const t = await workingDaysType(dayTypeInclusion);
   await grant(e.employmentId, t, '30.00');

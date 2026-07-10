@@ -242,6 +242,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/configuration/eis',
       '/payroll/configuration/pcb',
       '/payroll/configuration/hrdf',
+      // R24 5db3ae48: guided end-to-end payroll process view (scopedAdmin, same guard as the hub).
+      '/payroll/guide',
       '/payroll/history-import',
       '/payroll/process',
       '/payroll/process/result',
