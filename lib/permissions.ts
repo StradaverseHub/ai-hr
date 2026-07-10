@@ -165,6 +165,14 @@ export const SCREENS: readonly ScreenEntry[] = [
     guard: 'scopedAdmin',
     routes: ['/admin/settings/system-labels'],
   },
+  {
+    // R22 7d309da7: Personnel profile dropdown catalog (religion/race/nationality/state/country/relationship).
+    screenKey: 'profileOptions',
+    href: '/admin/settings/profile-options',
+    labelKey: 'nav.profileOptions',
+    guard: 'requireAdmin',
+    routes: ['/admin/settings/profile-options'],
+  },
   // ── Admin leave / attendance / claims config (requireAdmin) ──
   {
     screenKey: 'leaveConfig',
