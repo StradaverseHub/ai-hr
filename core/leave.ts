@@ -267,7 +267,19 @@ export type LeaveEligibility = {
   gender?: string | string[];
   maritalStatus?: string | string[];
   minServiceMonths?: number;
+  // Min-service unit (#f88f0a63): the number in minServiceMonths is measured in this unit — 'months' (whole
+  // completed months, the legacy behaviour) or 'days' (elapsed whole days). ABSENT ⇒ 'months', so every row
+  // written before this field existed keeps its exact old meaning without a migration/backfill. Only carried
+  // when a positive minServiceMonths survives cleaning (a lone unit is never stored).
+  minServiceUnit?: 'months' | 'days';
 };
+
+/** Elapsed service in a rule's chosen unit, from an employee's hire date to `asOf`. unit==='days' counts
+ *  whole elapsed days (daysBetween); anything else — including an absent unit on a legacy row — counts whole
+ *  completed months (monthsBetween). Central so assertEligible + isLeaveEligible resolve service identically. */
+function servedFor(unit: LeaveEligibility['minServiceUnit'], hiredOn: string, asOf: string): number {
+  return unit === 'days' ? daysBetween(hiredOn, asOf) : monthsBetween(hiredOn, asOf);
+}
 
 /** Normalize a scalar-or-array eligibility field to a de-blanked list. null/undefined → []; scalar → [scalar];
  *  array → itself (blanks dropped). Used at every chokepoint so legacy scalar rows and new array rows match
@@ -458,8 +470,10 @@ function assertEligible(
   if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) {
     throw new LeaveIneligibleError(`This leave type requires marital status “${maritals.join(' or ')}”.`);
   }
-  if (elig.minServiceMonths && (!emp || monthsBetween(emp.hiredOn, asOf) < elig.minServiceMonths)) {
-    throw new LeaveIneligibleError(`This leave type requires at least ${elig.minServiceMonths} months of service.`);
+  if (elig.minServiceMonths && (!emp || servedFor(elig.minServiceUnit, emp.hiredOn, asOf) < elig.minServiceMonths)) {
+    // Unit-aware message (#f88f0a63): 'days' rules read as "N days", months (incl. absent unit) as "N months".
+    const unitWord = elig.minServiceUnit === 'days' ? 'days' : 'months';
+    throw new LeaveIneligibleError(`This leave type requires at least ${elig.minServiceMonths} ${unitWord} of service.`);
   }
 }
 
@@ -578,7 +592,8 @@ export function isLeaveEligible(
   if (genders.length > 0 && !genders.includes(emp?.gender ?? '')) return false;
   const maritals = asList(elig.maritalStatus);
   if (maritals.length > 0 && !maritals.includes(emp?.marital ?? '')) return false;
-  if (elig.minServiceMonths && (!emp || monthsBetween(emp.hiredOn, asOf) < elig.minServiceMonths)) return false;
+  if (elig.minServiceMonths && (!emp || servedFor(elig.minServiceUnit, emp.hiredOn, asOf) < elig.minServiceMonths))
+    return false;
   return true;
 }
 

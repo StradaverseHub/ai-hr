@@ -149,7 +149,7 @@ export default async function LeaveEntitlementsPage({
               isAnnual={lt.code === 'ANNUAL'}
               floorLabel={floorBands(lt.code)}
               floor0={entitlement(lt.code, 0)}
-              eligibility={(lt.eligibility as { gender?: string | string[]; maritalStatus?: string | string[]; minServiceMonths?: number } | null) ?? null}
+              eligibility={(lt.eligibility as { gender?: string | string[]; maritalStatus?: string | string[]; minServiceMonths?: number; minServiceUnit?: 'months' | 'days' } | null) ?? null}
               durations={(lt.durations as string[] | null) ?? null}
               requiresDocument={lt.requiresDocument}
               mandatoryAfterDays={lt.mandatoryAfterDays ?? null}

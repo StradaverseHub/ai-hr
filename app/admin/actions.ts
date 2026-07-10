@@ -906,14 +906,19 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // rename — which doesn't carry that marker — leaves the rule untouched (tri-state in updateLeaveType).
   const touchEligibility = fd.get('eligibility') === '1';
   const minRaw = String(fd.get('minServiceMonths') ?? '').trim();
+  // Min-service unit (#f88f0a63): the eligibility form posts minServiceUnit ('months' | 'days') beside the
+  // duration. Absent/blank ⇒ undefined so cleanEligibility defaults it to 'months' (legacy compat). The unit
+  // is only persisted alongside a surviving positive minServiceMonths.
+  const unitRaw = String(fd.get('minServiceUnit') ?? '').trim();
   // Multi-select (#badc5966): the gender / marital checkbox groups post repeated inputs → getAll yields the
   // selected values as arrays. cleanEligibility de-dupes, validates, and collapses an empty array to "no
-  // restriction". minServiceMonths stays scalar (f88f0a63's turf).
+  // restriction".
   const eligibility = touchEligibility
     ? {
         gender: fd.getAll('gender').map(String),
         maritalStatus: fd.getAll('maritalStatus').map(String),
         minServiceMonths: minRaw === '' ? undefined : Number(minRaw),
+        minServiceUnit: unitRaw === '' ? undefined : (unitRaw as 'months' | 'days'),
       }
     : undefined;
   // ADR-0048: the durations form posts `durations=1` (marker) plus a `duration` checkbox per allowed slot,

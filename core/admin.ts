@@ -149,10 +149,19 @@ function cleanEligibility(e: LeaveEligibility | null | undefined): LeaveEligibil
   if (maritalStatus) out.maritalStatus = maritalStatus;
   if (e.minServiceMonths != null && (e.minServiceMonths as unknown) !== '') {
     const n = Number(e.minServiceMonths);
-    if (!Number.isInteger(n) || n < 0) throw new Error('Minimum service months must be a non-negative whole number');
-    if (n > 0) out.minServiceMonths = n; // 0 = no service floor → omit so the stored object stays minimal
+    if (!Number.isInteger(n) || n < 0) throw new Error('Minimum service duration must be a non-negative whole number');
+    if (n > 0) {
+      out.minServiceMonths = n; // 0 = no service floor → omit so the stored object stays minimal
+      // Min-service unit (#f88f0a63): validate against the closed set (mirror the expiry-unit gate). Absent ⇒
+      // 'months' (legacy compat — a pre-unit row and a new months row store the identical value). Only persist
+      // the unit alongside a surviving positive value: a lone unit with no/zero value is never stored, so a
+      // legacy row re-saved without a value can never invent a unit — the load-bearing backward-compat rule.
+      const rawUnit = e.minServiceUnit == null || (e.minServiceUnit as unknown) === '' ? 'months' : e.minServiceUnit;
+      if (rawUnit !== 'months' && rawUnit !== 'days') throw new Error('Minimum service unit must be months or days');
+      out.minServiceUnit = rawUnit;
+    }
   }
-  // All three blank ⇒ open to all.
+  // All fields blank ⇒ open to all.
   return Object.keys(out).length === 0 ? null : out;
 }
 

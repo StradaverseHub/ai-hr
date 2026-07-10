@@ -56,6 +56,9 @@ export type LeaveEligibilityRule = {
   gender?: string | string[];
   maritalStatus?: string | string[];
   minServiceMonths?: number;
+  // Min-service unit (#f88f0a63): the number in minServiceMonths measured in 'months' (default / absent) or
+  // 'days'. Absent on legacy rows ⇒ rendered + posted as 'months'.
+  minServiceUnit?: 'months' | 'days';
 };
 
 /** The checkbox options the eligibility rule form renders. Order matches the mockup. The marital list mirrors
@@ -670,7 +673,11 @@ export function LeaveTypePanel({
     const genderText = orJoin(genders.map(genderLabel));
     const who = [maritalText, genderText].filter(Boolean).join(' ');
     if (who) parts.push(t('eligibilitySummaryOnly', { who }));
-    if (eligibility.minServiceMonths) parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths }));
+    if (eligibility.minServiceMonths) {
+      // Min-service unit (#f88f0a63): render "≥ N months/days service". Absent unit ⇒ months (legacy compat).
+      const unit = eligibility.minServiceUnit === 'days' ? t('expiryUnitDays') : t('expiryUnitMonths');
+      parts.push(t('eligibilitySummaryService', { n: eligibility.minServiceMonths, unit }));
+    }
     return parts.join(' · ');
   };
 
@@ -883,6 +890,9 @@ export function LeaveTypePanel({
                   </div>
                 </Field>
                 <Field label={t('eligibilityMinServiceLabel')}>
+                  {/* Min-service unit (#f88f0a63): duration input + a unit select (Months / Days) beside it,
+                      mirroring the expiry {value, unit} field. Absent stored unit ⇒ 'months' default so a
+                      legacy row shows exactly as before. */}
                   <div className="flex items-center gap-1.5">
                     <input
                       name="minServiceMonths"
@@ -892,7 +902,15 @@ export function LeaveTypePanel({
                       defaultValue={eligibility?.minServiceMonths ?? ''}
                       className={`${inputCls} w-20`}
                     />
-                    <span className="text-xs text-muted-foreground">{t('eligibilityMinServiceSuffix')}</span>
+                    <select
+                      name="minServiceUnit"
+                      defaultValue={eligibility?.minServiceUnit ?? 'months'}
+                      aria-label={t('eligibilityMinServiceUnitLabel')}
+                      className={`${inputCls} w-28`}
+                    >
+                      <option value="months">{t('expiryUnitMonths')}</option>
+                      <option value="days">{t('expiryUnitDays')}</option>
+                    </select>
                   </div>
                 </Field>
                 <p className="w-full text-xs text-muted-foreground">{t('eligibilityMultiHint')}</p>
