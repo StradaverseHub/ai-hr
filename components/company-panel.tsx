@@ -456,12 +456,6 @@ export function CompanyPanel({
               <p className="text-xs text-muted-foreground">{t('bankProfilesHint')}</p>
             </div>
           )}
-          {/* Payroll-cycle settings live on their own admin page — cross-link, don't duplicate. */}
-          <CrossLinkTab
-            text={t('payrollCycleCrossLink')}
-            href="/admin/payroll-cycle"
-            action={t('payrollCycleCrossLinkAction')}
-          />
           </div>
           {/* end Payroll tab */}
         </div>
