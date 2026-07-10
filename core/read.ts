@@ -1,5 +1,5 @@
 /** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, type AnyColumn } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
@@ -2038,6 +2038,145 @@ export function delegationsFor(ctx: SessionContext, employmentId: string) {
       )
       .orderBy(desc(reportingLine.validFrom));
   });
+}
+
+export type DelegationScopedRow = {
+  id: string;
+  delegatorEmploymentId: string;
+  delegatorName: string;
+  delegateEmploymentId: string;
+  delegateName: string;
+  validFrom: string;
+  validTo: string | null;
+  ended: boolean;
+};
+
+type DelegationRawRow = {
+  id: string;
+  delegatorEmploymentId: string;
+  delegatorName: string;
+  delegateEmploymentId: string;
+  delegateName: string;
+  validFrom: string;
+  validTo: string | null;
+  supersededAt: Date | string | null;
+};
+
+/** Shape a raw delegation row (either source) into the page row, deriving `ended` from asOf. */
+function shapeDelegationRow(r: DelegationRawRow, asOf: string): DelegationScopedRow {
+  return {
+    id: r.id,
+    delegatorEmploymentId: r.delegatorEmploymentId,
+    delegatorName: r.delegatorName,
+    delegateEmploymentId: r.delegateEmploymentId,
+    delegateName: r.delegateName,
+    validFrom: r.validFrom,
+    validTo: r.validTo,
+    ended: r.supersededAt != null || (r.validTo != null && r.validTo <= asOf),
+  };
+}
+
+/**
+ * Global Delegation (Phase 1) — the /delegations listing. Unlike `delegationsFor` (one delegator's active
+ * rows), this returns delegations ACROSS employments with both sides named:
+ *   • HR / super_admin (`isAdmin`) → every delegation in the tenant; `history` adds past/superseded rows.
+ *     Admins already read all employment/person under RLS, so this is a plain scoped join.
+ *   • a self-service user → only rows where the CALLER is the delegator OR the delegate. reporting_line
+ *     SELECT is tenant-only, but the employment/person NAME joins are visibility-gated (a stand-in cannot
+ *     see the delegator's employment under RLS), so a plain join would silently drop the counterparty's
+ *     row. It is resolved through the SECURITY-DEFINER helper `app.self_delegations()` (migration 0195) —
+ *     the same vetted-boundary pattern as `app.can_decide_via_delegation`: the function's own WHERE clause
+ *     restricts the result to delegations the caller participates in (delegator OR delegate), so no broader
+ *     employment/person visibility is granted.
+ * `ended` = TRUE for a superseded row or one whose window has closed (validTo <= asOf) — the page derives
+ * the finer Active / Scheduled / Ended status from the dates. Read-only (no DomainEvent).
+ */
+export function delegationsScoped(
+  ctx: SessionContext,
+  opts: { isAdmin: boolean; history: boolean; asOf: string },
+): Promise<DelegationScopedRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!opts.isAdmin) {
+      // Self view — the definer helper self-scopes to the caller's own delegations (delegator OR delegate).
+      const res = await tx.execute(sql`SELECT * FROM app.self_delegations()`);
+      const raws = res as unknown as {
+        id: string;
+        delegator_employment_id: string;
+        delegator_name: string;
+        delegate_employment_id: string;
+        delegate_name: string;
+        valid_from: string;
+        valid_to: string | null;
+        superseded_at: Date | string | null;
+      }[];
+      const notEnded = (r: (typeof raws)[number]) =>
+        r.superseded_at == null && (r.valid_to == null || r.valid_to > opts.asOf);
+      return raws
+        .filter((r) => opts.history || notEnded(r))
+        .map((r) =>
+          shapeDelegationRow(
+            {
+              id: r.id,
+              delegatorEmploymentId: r.delegator_employment_id,
+              delegatorName: r.delegator_name,
+              delegateEmploymentId: r.delegate_employment_id,
+              delegateName: r.delegate_name,
+              validFrom: r.valid_from,
+              validTo: r.valid_to,
+              supersededAt: r.superseded_at,
+            },
+            opts.asOf,
+          ),
+        )
+        .sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
+    }
+    const delegatorEmp = alias(employment, 'deleg_delegator_emp');
+    const delegatorPerson = alias(person, 'deleg_delegator_person');
+    const delegateEmp = alias(employment, 'deleg_delegate_emp');
+    const delegatePerson = alias(person, 'deleg_delegate_person');
+    // history=false → only rows still active-or-future (not superseded, window not yet closed).
+    const notEnded = and(
+      isNull(reportingLine.supersededAt),
+      or(isNull(reportingLine.validTo), gt(reportingLine.validTo, opts.asOf)),
+    );
+    const rows = await tx
+      .select({
+        id: reportingLine.id,
+        delegatorEmploymentId: reportingLine.subordinateEmploymentId,
+        delegatorName: delegatorPerson.fullName,
+        delegateEmploymentId: reportingLine.managerEmploymentId,
+        delegateName: delegatePerson.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+        supersededAt: reportingLine.supersededAt,
+      })
+      .from(reportingLine)
+      .innerJoin(delegatorEmp, eq(delegatorEmp.id, reportingLine.subordinateEmploymentId))
+      .innerJoin(delegatorPerson, eq(delegatorPerson.id, delegatorEmp.personId))
+      .innerJoin(delegateEmp, eq(delegateEmp.id, reportingLine.managerEmploymentId))
+      .innerJoin(delegatePerson, eq(delegatePerson.id, delegateEmp.personId))
+      .where(and(eq(reportingLine.lineType, 'delegate'), opts.history ? undefined : notEnded))
+      .orderBy(desc(reportingLine.validFrom));
+    return rows.map((r) => shapeDelegationRow(r, opts.asOf));
+  });
+}
+
+/** Global Delegation (Phase 1) — a lightweight active-employee picker (id + name + code), for the
+ *  delegation create form's "delegate to" / (HR) "delegate from" selects. RLS-scoped; read-only. */
+export function employmentPickerList(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ employmentId: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(person.fullName),
+  );
 }
 
 /** Active employees + current administrative reporting edges, for the org chart. */

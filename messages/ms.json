@@ -133,7 +133,8 @@
     "reportPayroll": "Gaji",
     "reportClaim": "Tuntutan",
     "reportPerformance": "Prestasi",
-    "profileOptions": "Pilihan Profil"
+    "profileOptions": "Pilihan Profil",
+    "delegations": "Perwakilan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -3545,7 +3546,8 @@
         "roster": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "performance": "Pengurus dan ke atas; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
         "leaveApproval": "Pengurus dan pentadbir; apa yang dipaparkan mengikut garis pelaporan sebenar anda.",
-        "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya."
+        "payrollConfig": "Semua orang boleh membukanya; hanya pentadbir syarikat boleh mengubahnya.",
+        "delegations": "HR dan pentadbir melihat semua perwakilan; anda hanya melihat yang anda wakilkan atau gantikan."
       }
     },
     "audit": {
@@ -5681,5 +5683,37 @@
       "payroll_partner": "Rakan Gaji",
       "performance_comp_partner": "Rakan Prestasi/Pampasan"
     }
+  },
+  "delegations": {
+    "title": "Pengurusan Perwakilan",
+    "subtitle": "Serahkan tugas kelulusan kepada pengganti buat sementara semasa pelulus tiada.",
+    "createTitle": "Perwakilan baharu",
+    "listTitle": "Perwakilan",
+    "colFrom": "Wakil Dari",
+    "colTo": "Wakil Kepada",
+    "colModule": "Modul / Tugas Kelulusan",
+    "colStart": "Mula",
+    "colEnd": "Tamat",
+    "colStatus": "Status",
+    "colActions": "Tindakan",
+    "allApprovals": "Semua kelulusan",
+    "statusActive": "Aktif",
+    "statusScheduled": "Dijadualkan",
+    "statusEnded": "Tamat",
+    "ongoing": "Berterusan",
+    "create": "Cipta perwakilan",
+    "delegateTo": "Wakilkan kepada",
+    "delegateFrom": "Wakil dari",
+    "start": "Tarikh mula",
+    "end": "Tarikh tamat",
+    "revoke": "Batalkan",
+    "edit": "Sunting",
+    "save": "Simpan",
+    "choose": "Pilih…",
+    "empty": "Tiada perwakilan.",
+    "noDownline": "Anda tiada bawahan langsung, jadi tiada kelulusan untuk diwakilkan.",
+    "showHistory": "Tunjuk sejarah",
+    "hideHistory": "Sembunyi sejarah",
+    "selfHint": "Anda menyerahkan tugas kelulusan anda sendiri semasa anda tiada."
   }
 }

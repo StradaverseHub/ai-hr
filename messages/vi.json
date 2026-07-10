@@ -133,7 +133,8 @@
     "reportPayroll": "Bảng lương",
     "reportClaim": "Yêu cầu chi",
     "reportPerformance": "Hiệu suất",
-    "profileOptions": "Tùy chọn hồ sơ"
+    "profileOptions": "Tùy chọn hồ sơ",
+    "delegations": "Ủy quyền"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -3545,7 +3546,8 @@
         "roster": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "performance": "Quản lý trở lên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
         "leaveApproval": "Quản lý và quản trị viên; nội dung hiển thị theo tuyến báo cáo thực tế của bạn.",
-        "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi."
+        "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
+        "delegations": "HR và quản trị viên thấy mọi ủy quyền; bạn chỉ thấy những ủy quyền do bạn tạo hoặc đảm nhận."
       }
     },
     "audit": {
@@ -5681,5 +5683,37 @@
       "payroll_partner": "Đối tác Lương",
       "performance_comp_partner": "Đối tác Hiệu suất/Lương thưởng"
     }
+  },
+  "delegations": {
+    "title": "Quản lý ủy quyền",
+    "subtitle": "Tạm thời giao nhiệm vụ phê duyệt cho người thay thế khi người phê duyệt vắng mặt.",
+    "createTitle": "Ủy quyền mới",
+    "listTitle": "Ủy quyền",
+    "colFrom": "Người ủy quyền",
+    "colTo": "Người được ủy quyền",
+    "colModule": "Phân hệ / Nhiệm vụ phê duyệt",
+    "colStart": "Bắt đầu",
+    "colEnd": "Kết thúc",
+    "colStatus": "Trạng thái",
+    "colActions": "Hành động",
+    "allApprovals": "Tất cả phê duyệt",
+    "statusActive": "Đang hiệu lực",
+    "statusScheduled": "Đã lên lịch",
+    "statusEnded": "Đã kết thúc",
+    "ongoing": "Đang tiếp diễn",
+    "create": "Tạo ủy quyền",
+    "delegateTo": "Ủy quyền cho",
+    "delegateFrom": "Người ủy quyền",
+    "start": "Ngày bắt đầu",
+    "end": "Ngày kết thúc",
+    "revoke": "Thu hồi",
+    "edit": "Sửa",
+    "save": "Lưu",
+    "choose": "Chọn…",
+    "empty": "Không có ủy quyền.",
+    "noDownline": "Bạn không có nhân viên cấp dưới trực tiếp nên không có phê duyệt để ủy quyền.",
+    "showHistory": "Hiện lịch sử",
+    "hideHistory": "Ẩn lịch sử",
+    "selfHint": "Bạn đang bàn giao nhiệm vụ phê duyệt của mình khi vắng mặt."
   }
 }

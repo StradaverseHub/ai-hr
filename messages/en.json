@@ -133,7 +133,8 @@
     "reportPayroll": "Payroll",
     "reportClaim": "Claim",
     "reportPerformance": "Performance",
-    "profileOptions": "Profile Options"
+    "profileOptions": "Profile Options",
+    "delegations": "Delegations"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -3545,7 +3546,8 @@
         "roster": "Managers and above; what appears follows your actual reporting lines.",
         "performance": "Managers and above; what appears follows your actual reporting lines.",
         "leaveApproval": "Managers and admins; what appears follows your actual reporting lines.",
-        "payrollConfig": "Everyone can open this; only admins for the company can change it."
+        "payrollConfig": "Everyone can open this; only admins for the company can change it.",
+        "delegations": "HR and admins see every delegation; you see only ones you delegated or cover."
       }
     },
     "audit": {
@@ -5681,5 +5683,37 @@
       "payroll_partner": "Payroll Partner",
       "performance_comp_partner": "Perf/Comp Partner"
     }
+  },
+  "delegations": {
+    "title": "Delegation Management",
+    "subtitle": "Temporarily hand approval duties to a stand-in while an approver is away.",
+    "createTitle": "New delegation",
+    "listTitle": "Delegations",
+    "colFrom": "Delegate From",
+    "colTo": "Delegate To",
+    "colModule": "Module / Approval Task",
+    "colStart": "Start",
+    "colEnd": "End",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "allApprovals": "All approvals",
+    "statusActive": "Active",
+    "statusScheduled": "Scheduled",
+    "statusEnded": "Ended",
+    "ongoing": "Ongoing",
+    "create": "Create delegation",
+    "delegateTo": "Delegate to",
+    "delegateFrom": "Delegate from",
+    "start": "Start date",
+    "end": "End date",
+    "revoke": "Revoke",
+    "edit": "Edit",
+    "save": "Save",
+    "choose": "Choose…",
+    "empty": "No delegations.",
+    "noDownline": "You have no direct reports, so there are no approvals to delegate.",
+    "showHistory": "Show history",
+    "hideHistory": "Hide history",
+    "selfHint": "You are handing over your own approval duties while you are away."
   }
 }
