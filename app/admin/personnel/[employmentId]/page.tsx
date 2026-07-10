@@ -218,10 +218,15 @@ export default async function EmployeePage({
 
   // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
   // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
-  const tabs: { key: 'profile' | 'family' | 'job' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
+  const tabs: { key: 'profile' | 'family' | 'job' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'others'; label: string }[] = [
     { key: 'profile', label: t('tabs.profile') },
     { key: 'family', label: t('tabs.family') },
     { key: 'job', label: t('tabs.job') },
+    // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that
+    // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking
+    // Locations & Geofencing) into one dedicated tab. Same cards, same server actions — only regrouped.
+    // Positioned right after Employment so the operational attendance setup sits next to the role/posting.
+    { key: 'attendance', label: t('tabs.attendance') },
     // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — which already co-locates the
     // salary-payment bank fields alongside EPF/SOCSO/EIS/PCB — is relocated here out of the Payroll tab,
     // giving all pay-related master data its own clearly-named home. Positioned before Payroll.
@@ -1647,9 +1652,20 @@ export default async function EmployeePage({
         {assignmentHistoryCard}
         {reportingLinesCard}
         {delegationsCard}
+        {transferTerminateCards}
+      </>
+    ),
+    // Attendance Information (feedback 1fbe9891): the four attendance-related section cards relocated
+    // WHOLE from Employment (locationCard, defaultShiftCard) and Others (clockingCard) into one tab.
+    // The const definitions (setLocationAction / setDefaultShiftAction / setEmployeeClockingLocationsAction
+    // + setGeofencingAction) are untouched — only their render location moved, so the full-row-overwrite
+    // <form>s and every mounted input stay byte-identical and no server logic or event emission changed.
+    // Order mirrors an attendance setup flow: Work Location → Shift Arrangement → Clocking & Geofencing.
+    attendance: (
+      <>
         {locationCard}
         {defaultShiftCard}
-        {transferTerminateCards}
+        {clockingCard}
       </>
     ),
     // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single
@@ -1676,7 +1692,6 @@ export default async function EmployeePage({
     documents: documentsPanel,
     others: (
       <>
-        {clockingCard}
         {changeHistoryCard}
         {dataPrivacyCard}
         {leaveRequestsCard}
