@@ -1,13 +1,15 @@
 /**
- * Personnel (Admin) → Payroll tab: Statutory (Malaysia) screen layout redesign (feedback 7524eda1).
+ * Personnel (Admin) → Statutory (Malaysia) screen layout redesign (feedback 7524eda1),
+ * updated for R24 40ef71a0: the Statutory (Malaysia) card was relocated into its own dedicated
+ * "Bank & Statutory" tab. The card definition (const statutoryCard) is unchanged — only its render
+ * location moved from the Payroll tab to the Bank & Statutory tab.
  *
- * The Statutory (Malaysia) card was relocated to the TOP of the Payroll tab and redesigned as a
- * full-width, grouped layout. The single `setStatutoryAction` form is a FULL-ROW overwrite, so every
- * named input must stay mounted at all times — a field absent from the POST silently wipes stored data.
+ * The single `setStatutoryAction` form is a FULL-ROW overwrite, so every named input must stay mounted
+ * at all times — a field absent from the POST silently wipes stored data.
  *
  * This is a DB-free static-source guard (same style as `test/personnel-links.test.ts`). It fails loudly
- * if a future edit (a) moves statutory back down the tab, (b) drops one of the required statutory inputs
- * (the full-overwrite wipe trap), or (c) reintroduces a zakat input (undoing the 58755260 relocation).
+ * if a future edit (a) removes statutory from the Bank & Statutory tab, (b) drops one of the required
+ * statutory inputs (the full-overwrite wipe trap), or (c) reintroduces a zakat input (undoing 58755260).
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -17,16 +19,17 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const page = read('app/admin/personnel/[employmentId]/page.tsx');
 
-describe('Statutory (Malaysia) layout: pinned to the top of the Payroll tab', () => {
-  it('renders {statutoryCard} before every other payroll card in the payroll panel', () => {
-    // Isolate the payroll panel fragment so we compare positions within it, not across the whole file.
+describe('Statutory (Malaysia) layout: lives in the Bank & Statutory tab', () => {
+  it('renders {statutoryCard} in the bankStatutory tab panel', () => {
+    // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab.
+    expect(page.includes('bankStatutory: statutoryCard')).toBe(true);
+  });
+
+  it('keeps the remaining payroll cards in the payroll tab panel', () => {
     const start = page.indexOf('payroll: (');
     expect(start).toBeGreaterThan(-1);
     const end = page.indexOf('),', start);
     const panel = page.slice(start, end);
-
-    const statutoryPos = panel.indexOf('{statutoryCard}');
-    expect(statutoryPos).toBeGreaterThan(-1);
 
     for (const token of [
       '{payComponentsCard}',
@@ -35,9 +38,7 @@ describe('Statutory (Malaysia) layout: pinned to the top of the Payroll tab', ()
       '{payrollPolicyCard}',
       '{compensationCard}',
     ]) {
-      const pos = panel.indexOf(token);
-      expect(pos, `${token} should exist in the payroll panel`).toBeGreaterThan(-1);
-      expect(statutoryPos, `statutoryCard must precede ${token}`).toBeLessThan(pos);
+      expect(panel.indexOf(token), `${token} should exist in the payroll panel`).toBeGreaterThan(-1);
     }
   });
 
