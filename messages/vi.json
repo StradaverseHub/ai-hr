@@ -2434,7 +2434,10 @@
           "empty": "Không có giao dịch cá nhân nào khớp với bộ lọc đã chọn."
         },
         "history": {
-          "empty": "Không có kết quả lương đã xử lý nào khớp với bộ lọc đã chọn."
+          "empty": "Không có kết quả lương đã xử lý nào khớp với bộ lọc đã chọn.",
+          "showBreakdown": "Hiện chi tiết",
+          "hideBreakdown": "Ẩn chi tiết",
+          "totalEmployerContributions": "Tổng đóng góp của người sử dụng lao động"
         },
         "exportCsv": "Xuất CSV"
       }

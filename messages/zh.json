@@ -2434,7 +2434,10 @@
           "empty": "没有符合所选筛选条件的个人交易。"
         },
         "history": {
-          "empty": "没有符合所选筛选条件的已处理薪资结果。"
+          "empty": "没有符合所选筛选条件的已处理薪资结果。",
+          "showBreakdown": "显示明细",
+          "hideBreakdown": "隐藏明细",
+          "totalEmployerContributions": "雇主缴纳总额"
         },
         "exportCsv": "导出 CSV"
       }

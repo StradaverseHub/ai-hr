@@ -2434,7 +2434,10 @@
           "empty": "No individual transactions match the selected filters."
         },
         "history": {
-          "empty": "No processed payroll results match the selected filters."
+          "empty": "No processed payroll results match the selected filters.",
+          "showBreakdown": "Show breakdown",
+          "hideBreakdown": "Hide breakdown",
+          "totalEmployerContributions": "Total employer contributions"
         },
         "exportCsv": "Export CSV"
       }

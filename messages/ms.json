@@ -2434,7 +2434,10 @@
           "empty": "Tiada transaksi individu yang sepadan dengan penapis dipilih."
         },
         "history": {
-          "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih."
+          "empty": "Tiada keputusan gaji diproses yang sepadan dengan penapis dipilih.",
+          "showBreakdown": "Tunjuk pecahan",
+          "hideBreakdown": "Sembunyikan pecahan",
+          "totalEmployerContributions": "Jumlah caruman majikan"
         },
         "exportCsv": "Eksport CSV"
       }
