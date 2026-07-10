@@ -139,6 +139,7 @@ const GROUPS: Group[] = [
       { href: '/admin/organization', labelKey: 'organization', icon: Building2, tour: 'nav-admin' },
       { href: '/admin/personnel', labelKey: 'personnelAdmin', icon: Users },
       { href: '/admin/settings/system-labels', labelKey: 'systemLabels', icon: Tags },
+      { href: '/admin/settings/profile-options', labelKey: 'profileOptions', icon: ListChecks },
       // 0d147b78: Leave config is now a tabbed surface; the former standalone "Approval chain" entry
       // was absorbed into its Approval Workflow tab (/admin/leave/approval), so it's removed here.
       { href: '/admin/leave', labelKey: 'leaveConfig', icon: SlidersHorizontal },

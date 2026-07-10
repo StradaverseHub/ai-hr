@@ -59,6 +59,8 @@ import { ReviewSection } from './review-section';
 import { PersonnelTabs } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
+import { listAllProfileOptions } from '@/core/profile-options';
+import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
 import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
 import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
@@ -176,6 +178,14 @@ export default async function EmployeePage({
   const current = history.find((h) => !h.validTo) ?? history[0];
   const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
   const changeHistory = admin ? await employeeAudit(s, employmentId) : [];
+  // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
+  // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
+  // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
+  const profileOptions = admin
+    ? await listAllProfileOptions(s, { activeOnly: true })
+    : ({ religion: [], race: [], nationality: [], state: [], country: [], relationship: [] } as Awaited<
+        ReturnType<typeof listAllProfileOptions>
+      >);
 
   // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
   // dynamic template) so test/i18n-coverage.test.ts (check C) catches a missing Tamil/Thai label instead of
@@ -251,13 +261,31 @@ export default async function EmployeePage({
             <input name="preferredName" defaultValue={emp.preferredName ?? ''} className={inputCls} />
           </Field>
           <Field label={t('religion')}>
-            <input name="religion" defaultValue={emp.religion ?? ''} className={inputCls} />
+            <ProfileOptionSelect
+              name="religion"
+              value={emp.religion}
+              options={profileOptions.religion}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
           </Field>
           <Field label={t('race')}>
-            <input name="race" defaultValue={emp.race ?? ''} className={inputCls} />
+            <ProfileOptionSelect
+              name="race"
+              value={emp.race}
+              options={profileOptions.race}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
           </Field>
           <Field label={t('nationality')}>
-            <input name="nationality" defaultValue={emp.nationality ?? ''} className={inputCls} />
+            <ProfileOptionSelect
+              name="nationality"
+              value={emp.nationality}
+              options={profileOptions.nationality}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
           </Field>
           <Field label={t('holidayCalendar')}>
             <select name="holidayCalendar" defaultValue={holidayCalendarValue} className={inputCls}>
@@ -361,10 +389,22 @@ export default async function EmployeePage({
             <input name="city" defaultValue={emp.city ?? ''} className={inputCls} />
           </Field>
           <Field label={t('stateLabel')}>
-            <input name="state" defaultValue={emp.state ?? ''} className={inputCls} />
+            <ProfileOptionSelect
+              name="state"
+              value={emp.state}
+              options={profileOptions.state}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
           </Field>
           <Field label={t('country')}>
-            <input name="country" defaultValue={emp.country ?? ''} className={inputCls} />
+            <ProfileOptionSelect
+              name="country"
+              value={emp.country}
+              options={profileOptions.country}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
+            />
           </Field>
           <div className="sm:col-span-4 flex justify-end">
             <button className={btnPrimary}>{t('saveContact')}</button>
@@ -385,10 +425,12 @@ export default async function EmployeePage({
             <input name="emergencyContactName" defaultValue={emp.emergencyContactName ?? ''} className={inputCls} />
           </Field>
           <Field label={t('emergencyRelationship')}>
-            <input
+            <ProfileOptionSelect
               name="emergencyContactRelationship"
-              defaultValue={emp.emergencyContactRelationship ?? ''}
-              className={inputCls}
+              value={emp.emergencyContactRelationship}
+              options={profileOptions.relationship}
+              placeholder={t('optionNotSet')}
+              legacySuffix={t('optionLegacySuffix')}
             />
           </Field>
           <Field label={t('emergencyPhone1')}>
@@ -398,9 +440,11 @@ export default async function EmployeePage({
             <input name="emergencyContactPhone2" defaultValue={emp.emergencyContactPhone2 ?? ''} className={inputCls} />
           </Field>
           <Field label={t('emergencyAddress')}>
-            <input
+            {/* 7d309da7 — address = multi-line long-text (line breaks preserved) instead of a single input. */}
+            <textarea
               name="emergencyContactAddress"
               defaultValue={emp.emergencyContactAddress ?? ''}
+              rows={3}
               className={`${inputCls} sm:col-span-4`}
             />
           </Field>

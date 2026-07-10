@@ -49,6 +49,9 @@ const ALL_TABLES = [
   // ADR-0073 — shared system labels junction: a leaked (label_id, company_id) row would trip the unique
   // index (or make a resolver test see a phantom shared label) across test files.
   'label_company_assignment',
+  // 7d309da7 — Personnel profile dropdown catalog: a leaked option row would trip the
+  // (tenant, category, value) unique index (or make a seed-idempotency test see phantom rows).
+  'profile_option',
 ];
 
 export async function migrateTestDb() {

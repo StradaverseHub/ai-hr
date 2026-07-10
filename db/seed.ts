@@ -17,6 +17,7 @@ import { myPack } from '../localization/my';
 import { MY_STATE_HOLIDAYS_2026 } from '../localization/my/holidays';
 import { seedGuides } from './seed-guides';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
+import { seedProfileOptions } from '../core/profile-options';
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_ADMIN_USER_ID = '22222222-2222-2222-2222-222222222222';
@@ -165,6 +166,9 @@ async function main() {
   // presets the wizard offered before this feature) so the "Payroll Cycle" dropdown is populated on demo.
   await seedPayrollCycleCatalog(admin, company.id);
   await seedPayrollCycleCatalog(admin, holding.id);
+  // 7d309da7: seed the default Personnel-profile dropdown catalogs (religion / race / nationality / state /
+  // country / relationship) so the Profile-tab selects are populated on demo. Idempotent + tenant-scoped.
+  await seedProfileOptions(admin);
   // ADR-0040 (2D): demo ANNUAL *accrues monthly* (earned), not as a lump on hire — so balances grow
   // through the year. Entitlement is max(EA floor 8, policy 12) = 12 → 1 day/month; the hire grant skips
   // earned types and accrueEarnedLeave (run after hiring, below) tops each employee up to today's share.

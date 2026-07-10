@@ -132,7 +132,8 @@
     "reportLeave": "休假",
     "reportPayroll": "薪资",
     "reportClaim": "报销",
-    "reportPerformance": "绩效"
+    "reportPerformance": "绩效",
+    "profileOptions": "档案选项"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -629,7 +630,9 @@
       "headerDepartment": "部门",
       "headerPosition": "职位",
       "headerCompany": "公司",
-      "headerJoinDate": "入职日期"
+      "headerJoinDate": "入职日期",
+      "optionNotSet": "未设置",
+      "optionLegacySuffix": "（现有值）"
     },
     "import": {
       "title": "导入员工",
@@ -3516,6 +3519,36 @@
       "types": "报销类型",
       "limits": "报销限额",
       "reimbursements": "报销支付"
+    },
+    "profileOptions": {
+      "title": "档案选项",
+      "subtitle": "管理员工档案字段（宗教、种族、国籍、州、国家、关系）的下拉列表值。",
+      "emptyAll": "尚无档案选项。添加默认集以开始。",
+      "seedDefaults": "添加默认选项",
+      "emptyCategory": "此列表中没有选项。",
+      "inactiveBadge": "已停用",
+      "labelLabel": "标签",
+      "sortOrderLabel": "排序",
+      "save": "保存",
+      "deactivate": "停用",
+      "activate": "启用",
+      "deleteTitle": "删除选项",
+      "deleteDescription": "删除“{value}”？此操作无法撤消。员工正在使用的选项无法删除——请改为停用它。",
+      "delete": "删除",
+      "valueLabel": "值",
+      "valuePlaceholder": "例如 伊斯兰教",
+      "labelOptionalLabel": "标签（可选）",
+      "labelPlaceholder": "默认为值",
+      "add": "添加",
+      "legacyNote": "现有员工记录即使其值不在此列表中也会保留其存储值；您仍可以在不更改的情况下保存。",
+      "category": {
+        "religion": "宗教",
+        "race": "种族",
+        "nationality": "国籍",
+        "state": "州",
+        "country": "国家",
+        "relationship": "关系"
+      }
     }
   },
   "topbar": {

@@ -3667,6 +3667,34 @@ export const claimType = pgTable(
   ],
 );
 
+// Generic tenant-wide option catalog for the configurable Personnel-profile dropdowns (7d309da7):
+// religion / race / nationality / state / country / relationship. Deliberately NOT folded into
+// LABEL_KINDS (department/position/cost_center/business_unit are company-scoped typed tables with a
+// junction + is_global) — these are flat tenant-wide lists. `value` is what a person column stores; `label`
+// is the display text. Person columns STAY free-text (no data migration): a stored value that is not (or no
+// longer) in this catalog is preserved on save (legacy-value tolerance) — the catalog only governs what an
+// admin can NEWLY pick. is_active hides an option from the picker without deleting history. RLS mirrors
+// claim_type: tenant-read, admin-write (0180_profile_option.sql).
+export const profileOption = pgTable(
+  'profile_option',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    // 'religion' | 'race' | 'nationality' | 'state' | 'country' | 'relationship'
+    category: text('category').notNull(),
+    value: text('value').notNull(), // canonical value stored on the person column
+    label: text('label').notNull(), // display text (defaults to value)
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('profile_option_tenant_cat_idx').on(t.tenantId, t.category),
+    // One row per (tenant, category, value) — the idempotency key the seed + create path rely on.
+    uniqueIndex('profile_option_tenant_cat_value_uq').on(t.tenantId, t.category, t.value),
+  ],
+);
+
 // Dependent sub-category under a claim type (e.g. TRAVEL → MILEAGE / PARKING / TOLL). The submission form
 // shows it as a dependent dropdown; mandatory only when the chosen type has ≥1 live item (enforced in the
 // service, not the schema — claim_request.claim_item_id stays nullable for legacy/zero-item types).

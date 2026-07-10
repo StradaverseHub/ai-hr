@@ -132,7 +132,8 @@
     "reportLeave": "Leave",
     "reportPayroll": "Payroll",
     "reportClaim": "Claim",
-    "reportPerformance": "Performance"
+    "reportPerformance": "Performance",
+    "profileOptions": "Profile Options"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -629,7 +630,9 @@
       "headerDepartment": "Department",
       "headerPosition": "Position",
       "headerCompany": "Company",
-      "headerJoinDate": "Join date"
+      "headerJoinDate": "Join date",
+      "optionNotSet": "Not set",
+      "optionLegacySuffix": "(existing value)"
     },
     "import": {
       "title": "Import employees",
@@ -3516,6 +3519,36 @@
       "types": "Claim Types",
       "limits": "Claim Limits",
       "reimbursements": "Reimbursements"
+    },
+    "profileOptions": {
+      "title": "Profile Options",
+      "subtitle": "Manage the dropdown values for employee profile fields (religion, race, nationality, state, country, relationship).",
+      "emptyAll": "No profile options yet. Add the default set to get started.",
+      "seedDefaults": "Add default options",
+      "emptyCategory": "No options in this list.",
+      "inactiveBadge": "Inactive",
+      "labelLabel": "Label",
+      "sortOrderLabel": "Sort",
+      "save": "Save",
+      "deactivate": "Deactivate",
+      "activate": "Activate",
+      "deleteTitle": "Delete option",
+      "deleteDescription": "Delete \"{value}\"? This cannot be undone. An option in use by an employee cannot be deleted — deactivate it instead.",
+      "delete": "Delete",
+      "valueLabel": "Value",
+      "valuePlaceholder": "e.g. Islam",
+      "labelOptionalLabel": "Label (optional)",
+      "labelPlaceholder": "Defaults to value",
+      "add": "Add",
+      "legacyNote": "Existing employee records keep their stored value even if it is not in this list; you can still save without changing it.",
+      "category": {
+        "religion": "Religion",
+        "race": "Race",
+        "nationality": "Nationality",
+        "state": "State",
+        "country": "Country",
+        "relationship": "Relationship"
+      }
     }
   },
   "topbar": {

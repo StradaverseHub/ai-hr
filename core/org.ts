@@ -11,6 +11,7 @@ import { requireEmployeeCode } from '../lib/employee-code';
 import { applyMaxBalance, isEarnedMethod, resolveGradePolicy, type GradePolicyRow } from './leave';
 import { packFor } from '../localization/registry';
 import { labelUsableByCompany } from './system-labels';
+import { assertProfileValueAllowed, type ProfileOptionCategory } from './profile-options';
 import {
   person,
   employment,
@@ -751,6 +752,17 @@ const trimOrNull = (v: string | null | undefined): string | null => {
   return s === '' ? null : s;
 };
 
+// 7d309da7 — the profile columns governed by the profile_option catalog, mapped to their category. A save
+// touching any of these validates the NEW value against the tenant's active catalog (legacy value permitted).
+const CATALOG_BACKED_COLUMNS: Partial<Record<keyof PersonProfileFields, ProfileOptionCategory>> = {
+  religion: 'religion',
+  race: 'race',
+  nationality: 'nationality',
+  state: 'state',
+  country: 'country',
+  emergencyContactRelationship: 'relationship',
+};
+
 /**
  * Edit an employee's core person fields (name / email / phone) plus the redesigned Profile fields
  * (b4682879). A person is shared across all of their (possibly multi-company) employments, so this updates
@@ -769,6 +781,14 @@ export async function updatePerson(
         fullName: person.fullName,
         primaryEmail: person.primaryEmail,
         phone: person.phone,
+        // Legacy values of the catalog-backed columns — needed so a save that leaves an out-of-catalog
+        // value UNCHANGED is permitted (7d309da7 legacy-value tolerance), not rejected.
+        religion: person.religion,
+        race: person.race,
+        nationality: person.nationality,
+        state: person.state,
+        country: person.country,
+        emergencyContactRelationship: person.emergencyContactRelationship,
       })
       .from(person)
       .where(eq(person.id, p.personId))
@@ -788,6 +808,17 @@ export async function updatePerson(
       if (p[k] !== undefined) {
         profileSet[k] = trimOrNull(p[k]);
         profileFields.push(k);
+      }
+    }
+    // 7d309da7 — the six catalog-backed columns may only take an ACTIVE catalog value, EXCEPT the legacy
+    // value already stored (tolerance). Clearing to null is always allowed. Validated against the tenant's
+    // profile_option catalog within this same RLS tx.
+    for (const [col, category] of Object.entries(CATALOG_BACKED_COLUMNS) as [
+      keyof PersonProfileFields,
+      ProfileOptionCategory,
+    ][]) {
+      if (col in profileSet) {
+        await assertProfileValueAllowed(tx, category, profileSet[col], (before as Record<string, string | null>)[col]);
       }
     }
     await tx.update(person).set({ ...after, ...profileSet }).where(eq(person.id, p.personId));

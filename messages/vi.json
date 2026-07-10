@@ -132,7 +132,8 @@
     "reportLeave": "Nghỉ phép",
     "reportPayroll": "Bảng lương",
     "reportClaim": "Yêu cầu chi",
-    "reportPerformance": "Hiệu suất"
+    "reportPerformance": "Hiệu suất",
+    "profileOptions": "Tùy chọn hồ sơ"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -629,7 +630,9 @@
       "headerDepartment": "Phòng ban",
       "headerPosition": "Chức vụ",
       "headerCompany": "Công ty",
-      "headerJoinDate": "Ngày vào làm"
+      "headerJoinDate": "Ngày vào làm",
+      "optionNotSet": "Chưa đặt",
+      "optionLegacySuffix": "(giá trị hiện có)"
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -3516,6 +3519,36 @@
       "types": "Loại yêu cầu",
       "limits": "Hạn mức yêu cầu",
       "reimbursements": "Hoàn trả"
+    },
+    "profileOptions": {
+      "title": "Tùy chọn hồ sơ",
+      "subtitle": "Quản lý các giá trị danh sách thả xuống cho các trường hồ sơ nhân viên (tôn giáo, chủng tộc, quốc tịch, bang, quốc gia, mối quan hệ).",
+      "emptyAll": "Chưa có tùy chọn hồ sơ nào. Thêm bộ mặc định để bắt đầu.",
+      "seedDefaults": "Thêm tùy chọn mặc định",
+      "emptyCategory": "Không có tùy chọn nào trong danh sách này.",
+      "inactiveBadge": "Không hoạt động",
+      "labelLabel": "Nhãn",
+      "sortOrderLabel": "Thứ tự",
+      "save": "Lưu",
+      "deactivate": "Vô hiệu hóa",
+      "activate": "Kích hoạt",
+      "deleteTitle": "Xóa tùy chọn",
+      "deleteDescription": "Xóa \"{value}\"? Không thể hoàn tác. Không thể xóa tùy chọn đang được nhân viên sử dụng — hãy vô hiệu hóa nó thay thế.",
+      "delete": "Xóa",
+      "valueLabel": "Giá trị",
+      "valuePlaceholder": "vd. Hồi giáo",
+      "labelOptionalLabel": "Nhãn (tùy chọn)",
+      "labelPlaceholder": "Mặc định là giá trị",
+      "add": "Thêm",
+      "legacyNote": "Hồ sơ nhân viên hiện có vẫn giữ giá trị đã lưu ngay cả khi không có trong danh sách này; bạn vẫn có thể lưu mà không thay đổi.",
+      "category": {
+        "religion": "Tôn giáo",
+        "race": "Chủng tộc",
+        "nationality": "Quốc tịch",
+        "state": "Bang",
+        "country": "Quốc gia",
+        "relationship": "Mối quan hệ"
+      }
     }
   },
   "topbar": {

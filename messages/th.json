@@ -132,7 +132,8 @@
     "reportLeave": "การลา",
     "reportPayroll": "เงินเดือน",
     "reportClaim": "การเบิก",
-    "reportPerformance": "ผลงาน"
+    "reportPerformance": "ผลงาน",
+    "profileOptions": "ตัวเลือกโปรไฟล์"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -629,7 +630,9 @@
       "headerDepartment": "แผนก",
       "headerPosition": "ตำแหน่ง",
       "headerCompany": "บริษัท",
-      "headerJoinDate": "วันที่เริ่มงาน"
+      "headerJoinDate": "วันที่เริ่มงาน",
+      "optionNotSet": "ไม่ได้ตั้งค่า",
+      "optionLegacySuffix": "(ค่าที่มีอยู่)"
     },
     "import": {
       "title": "นำเข้าพนักงาน",
@@ -3516,6 +3519,36 @@
       "types": "ประเภทการเบิก",
       "limits": "วงเงินการเบิก",
       "reimbursements": "การจ่ายคืน"
+    },
+    "profileOptions": {
+      "title": "ตัวเลือกโปรไฟล์",
+      "subtitle": "จัดการค่ารายการแบบเลื่อนลงสำหรับฟิลด์โปรไฟล์พนักงาน (ศาสนา เชื้อชาติ สัญชาติ รัฐ ประเทศ ความสัมพันธ์)",
+      "emptyAll": "ยังไม่มีตัวเลือกโปรไฟล์ เพิ่มชุดค่าเริ่มต้นเพื่อเริ่มต้น",
+      "seedDefaults": "เพิ่มตัวเลือกเริ่มต้น",
+      "emptyCategory": "ไม่มีตัวเลือกในรายการนี้",
+      "inactiveBadge": "ไม่ใช้งาน",
+      "labelLabel": "ป้ายกำกับ",
+      "sortOrderLabel": "ลำดับ",
+      "save": "บันทึก",
+      "deactivate": "ปิดใช้งาน",
+      "activate": "เปิดใช้งาน",
+      "deleteTitle": "ลบตัวเลือก",
+      "deleteDescription": "ลบ \"{value}\" หรือไม่? ไม่สามารถยกเลิกได้ ตัวเลือกที่พนักงานใช้งานอยู่ไม่สามารถลบได้ — ให้ปิดใช้งานแทน",
+      "delete": "ลบ",
+      "valueLabel": "ค่า",
+      "valuePlaceholder": "เช่น อิสลาม",
+      "labelOptionalLabel": "ป้ายกำกับ (ไม่บังคับ)",
+      "labelPlaceholder": "ค่าเริ่มต้นเป็นค่า",
+      "add": "เพิ่ม",
+      "legacyNote": "บันทึกพนักงานที่มีอยู่จะยังคงค่าที่จัดเก็บไว้แม้ว่าจะไม่อยู่ในรายการนี้ คุณยังสามารถบันทึกได้โดยไม่ต้องเปลี่ยน",
+      "category": {
+        "religion": "ศาสนา",
+        "race": "เชื้อชาติ",
+        "nationality": "สัญชาติ",
+        "state": "รัฐ",
+        "country": "ประเทศ",
+        "relationship": "ความสัมพันธ์"
+      }
     }
   },
   "topbar": {

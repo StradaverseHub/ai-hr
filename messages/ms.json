@@ -132,7 +132,8 @@
     "reportLeave": "Cuti",
     "reportPayroll": "Gaji",
     "reportClaim": "Tuntutan",
-    "reportPerformance": "Prestasi"
+    "reportPerformance": "Prestasi",
+    "profileOptions": "Pilihan Profil"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -629,7 +630,9 @@
       "headerDepartment": "Jabatan",
       "headerPosition": "Jawatan",
       "headerCompany": "Syarikat",
-      "headerJoinDate": "Tarikh menyertai"
+      "headerJoinDate": "Tarikh menyertai",
+      "optionNotSet": "Tidak ditetapkan",
+      "optionLegacySuffix": "(nilai sedia ada)"
     },
     "import": {
       "title": "Import pekerja",
@@ -3516,6 +3519,36 @@
       "types": "Jenis Tuntutan",
       "limits": "Had Tuntutan",
       "reimbursements": "Bayaran Balik"
+    },
+    "profileOptions": {
+      "title": "Pilihan Profil",
+      "subtitle": "Urus nilai senarai juntai bawah untuk medan profil pekerja (agama, bangsa, kewarganegaraan, negeri, negara, hubungan).",
+      "emptyAll": "Tiada pilihan profil lagi. Tambah set lalai untuk bermula.",
+      "seedDefaults": "Tambah pilihan lalai",
+      "emptyCategory": "Tiada pilihan dalam senarai ini.",
+      "inactiveBadge": "Tidak aktif",
+      "labelLabel": "Label",
+      "sortOrderLabel": "Susun",
+      "save": "Simpan",
+      "deactivate": "Nyahaktif",
+      "activate": "Aktifkan",
+      "deleteTitle": "Padam pilihan",
+      "deleteDescription": "Padam \"{value}\"? Ini tidak boleh dibatalkan. Pilihan yang digunakan oleh pekerja tidak boleh dipadam — nyahaktifkannya sebaliknya.",
+      "delete": "Padam",
+      "valueLabel": "Nilai",
+      "valuePlaceholder": "cth. Islam",
+      "labelOptionalLabel": "Label (pilihan)",
+      "labelPlaceholder": "Lalai kepada nilai",
+      "add": "Tambah",
+      "legacyNote": "Rekod pekerja sedia ada mengekalkan nilai tersimpan walaupun ia tiada dalam senarai ini; anda masih boleh menyimpan tanpa mengubahnya.",
+      "category": {
+        "religion": "Agama",
+        "race": "Bangsa",
+        "nationality": "Kewarganegaraan",
+        "state": "Negeri",
+        "country": "Negara",
+        "relationship": "Hubungan"
+      }
     }
   },
   "topbar": {

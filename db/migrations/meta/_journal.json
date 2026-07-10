@@ -1261,6 +1261,13 @@
       "when": 1781862178000,
       "tag": "0179_leave_type_visual_config",
       "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1781862179000,
+      "tag": "0180_profile_option",
+      "breakpoints": true
     }
   ]
 }
