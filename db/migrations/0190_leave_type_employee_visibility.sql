@@ -1,0 +1,24 @@
+-- Leave Type Employee Visibility (feedback 7b11f1c1).
+--
+-- Adds two additive, NULLABLE boolean columns to leave_type letting an HR admin control, per leave type,
+-- whether an employee sees the type at all on their self-service Leave surface, and whether they may submit
+-- an application for it. These are the SINGLE SOURCE OF TRUTH for employee-facing leave-type visibility /
+-- can-apply — later leave-view / grouping / dashboard consumers read these rather than inventing a second
+-- hidden flag.
+--
+--   visible_to_employee — false ⇒ the type is dropped completely from the /me Leave tab (its balance row +
+--     its entry in the apply list). NULL ⇒ VISIBLE (today's exact behaviour). Gating applies ONLY to the /me
+--     ESS surface; admin/HR reads are never gated.
+--   employee_can_apply — false ⇒ the type still shows (subject to visible_to_employee) but is dropped from the
+--     apply dropdown AND rejected server-side in requestLeave. NULL ⇒ CAN APPLY (today's behaviour).
+--
+-- STATUTORY SAFETY (enforced in core/admin.ts updateLeaveType, not the DB): employee_can_apply=false is
+-- refused on a statutory-entitlement code (ANNUAL / SICK / HOSPITALIZATION / MATERNITY / PATERNITY) so a
+-- configuration can never deny a lawful entitlement (EA 1955 s.60F / s.37 / s.60FA).
+--
+-- Backward compatible: both columns NULL on every existing row ⇒ today's exact behaviour (visible + can
+-- apply). No backfill, additive only. No RLS change: leave_type already has tenant-read + admin-write
+-- policies; the new columns inherit them (same as the 0179 visual-config / 0182 leave-unit migrations).
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS visible_to_employee boolean;
+--> statement-breakpoint
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS employee_can_apply boolean;

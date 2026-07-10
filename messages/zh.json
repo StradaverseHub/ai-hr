@@ -881,7 +881,8 @@
       "balanceFrozenForEncashment": "此假期余额因离职申请已获批而被冻结以供折现，无法更改。如您认为这是错误，请联系人力资源部门。",
       "advanceNoticeRequired": "{typeName}必须至少在休假开始日期前 {days} 天提交。",
       "editNotAllowed": "此请假已无法编辑。",
-      "leaveYearNotOpen": "假期年度 {year} 尚未开放申请。请联系人力资源部。"
+      "leaveYearNotOpen": "假期年度 {year} 尚未开放申请。请联系人力资源部。",
+      "applyNotAllowed": "员工无法申请 {typeName}。请联系人力资源部。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -1415,6 +1416,14 @@
       "rejected": "已驳回",
       "pending": "待处理",
       "reason": "原因"
+    },
+    "myLeaveHeading": "我的休假",
+    "otherLeaveHeading": "其他休假类型",
+    "detailedTable": "详细余额表",
+    "leaveGroups": {
+      "family_personal": "家庭与个人假",
+      "education": "教育假",
+      "other": "其他假期"
     }
   },
   "approvals": {
@@ -3339,7 +3348,24 @@
       "openingUnitWeeks": "周",
       "openingUnitMonths": "月",
       "effectiveLeaveYearLabel": "生效假期年度",
-      "openingRuleSummary": "假期年度 {year}：在开始前 {amount} {unit} 开启 → {date}"
+      "openingRuleSummary": "假期年度 {year}：在开始前 {amount} {unit} 开启 → {date}",
+      "visibility": {
+        "sectionTitle": "员工可见性",
+        "visibleToEmployee": "对员工可见",
+        "employeeCanApply": "员工可申请",
+        "statutoryLocked": "这是法定假期——员工必须始终能够申请。",
+        "help": "控制员工是否在其休假页签中看到此假期类型，以及是否可以申请。隐藏的类型将完全从员工的休假页签中消失；关闭“可申请”会保留该类型可见但阻止新的申请。"
+      },
+      "placement": {
+        "sectionTitle": "员工标签页位置",
+        "label": "位置",
+        "option": {
+          "primary": "主卡片",
+          "secondary": "次级分组",
+          "hidden": "隐藏"
+        },
+        "help": "选择此假期类型在员工休假标签页上的显示位置：顶部的主卡片、下方的次级分组，或对员工完全隐藏。隐藏使用上方相同的可见性开关。在您选择之前，每种类型都使用合理的默认值。"
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",

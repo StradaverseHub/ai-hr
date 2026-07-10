@@ -881,7 +881,8 @@
       "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan.",
       "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti.",
       "editNotAllowed": "Cuti ini tidak boleh lagi disunting.",
-      "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR."
+      "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR.",
+      "applyNotAllowed": "Pekerja tidak boleh memohon {typeName}. Sila hubungi HR."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -1415,6 +1416,14 @@
       "rejected": "Ditolak",
       "pending": "Menunggu",
       "reason": "Sebab"
+    },
+    "myLeaveHeading": "Cuti Saya",
+    "otherLeaveHeading": "Jenis cuti lain",
+    "detailedTable": "Jadual baki terperinci",
+    "leaveGroups": {
+      "family_personal": "Cuti Keluarga & Peribadi",
+      "education": "Cuti Pendidikan",
+      "other": "Cuti Lain"
     }
   },
   "approvals": {
@@ -3339,7 +3348,24 @@
       "openingUnitWeeks": "Minggu",
       "openingUnitMonths": "Bulan",
       "effectiveLeaveYearLabel": "Tahun cuti berkuat kuasa",
-      "openingRuleSummary": "Tahun cuti {year}: dibuka {amount} {unit} sebelum permulaan → {date}"
+      "openingRuleSummary": "Tahun cuti {year}: dibuka {amount} {unit} sebelum permulaan → {date}",
+      "visibility": {
+        "sectionTitle": "Keterlihatan Pekerja",
+        "visibleToEmployee": "Boleh dilihat oleh pekerja",
+        "employeeCanApply": "Pekerja boleh memohon",
+        "statutoryLocked": "Ini ialah cuti berkanun — pekerja mesti sentiasa boleh memohonnya.",
+        "help": "Kawal sama ada pekerja melihat jenis cuti ini pada tab Cuti mereka dan sama ada mereka boleh memohonnya. Jenis yang disembunyikan akan hilang sepenuhnya dari tab Cuti pekerja; mematikan “boleh memohon” mengekalkan jenis itu kelihatan tetapi menyekat permohonan baharu."
+      },
+      "placement": {
+        "sectionTitle": "Penempatan Tab Pekerja",
+        "label": "Penempatan",
+        "option": {
+          "primary": "Kad utama",
+          "secondary": "Kumpulan sekunder",
+          "hidden": "Tersembunyi"
+        },
+        "help": "Pilih di mana jenis cuti ini dipaparkan pada tab Cuti pekerja: kad Utama di atas, dimasukkan ke dalam kumpulan Sekunder di bawah, atau Tersembunyi sepenuhnya daripada pekerja. Tersembunyi menggunakan suis keterlihatan yang sama di atas. Sehingga anda memilih, setiap jenis menggunakan tetapan lalai yang munasabah."
+      }
     },
     "holidays": {
       "pageTitle": "Cuti umum",

@@ -26,6 +26,7 @@ import {
   UnpaidConsentRequiredError,
   HourlyLeaveTimeRangeError,
   LeaveNoDaysInRangeError,
+  LeaveApplyNotAllowedError,
   MissingRejectReasonError,
   LeaveCancellationNotAllowedError,
   LeaveCancellationTooLateError,
@@ -279,6 +280,9 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // that lands on a non-working day (fires for HR admins on the on-behalf path too). Localized so the reason
   // reads clearly instead of raw English via the fallback below.
   if (e instanceof LeaveNoDaysInRangeError) return t('noLeaveDaysInRange');
+  // Leave Type Employee Visibility (7b11f1c1): HR has closed this leave type to employee applications
+  // (employee_can_apply=false). Localized so the /me apply form shows a clear "contact HR" message.
+  if (e instanceof LeaveApplyNotAllowedError) return t('applyNotAllowed', { typeName: name });
   // Partial Leave Cancellation (ADR-0065): localize the cancellation gate errors.
   if (e instanceof LeaveCancellationTooLateError) return t('cancellationTooLate', { date: e.date ?? '' });
   if (e instanceof LeaveCancellationDateInvalidError) return t('cancelDateInvalid', { date: e.date ?? '' });

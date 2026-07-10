@@ -895,6 +895,36 @@ export const leaveType = pgTable('leave_type', {
   // hourly) and continues to drive deduction math; wiring leave_unit into apply/approve is a future item.
   // DEFAULT 'day' ⇒ every existing row reads Day (backward compatible, no backfill).
   leaveUnit: text('leave_unit').notNull().default('day'),
+  // Leave Type Employee Visibility (feedback 7b11f1c1): two additive, NULLABLE booleans that let HR control,
+  // per leave type, whether an employee sees the type at all on their self-service Leave surface, and whether
+  // they may submit an application for it. These are the SINGLE SOURCE OF TRUTH for employee-facing leave-type
+  // visibility / can-apply — later leave-view / grouping / dashboard consumers read these rather than inventing
+  // a second hidden flag (see the item's consolidation note).
+  //   visibleToEmployee — false ⇒ the type is dropped completely from the /me Leave tab (its balance row + its
+  //     entry in the apply list). NULL/missing ⇒ VISIBLE (today's exact behaviour, so every existing row is
+  //     unchanged, no backfill). Gating applies ONLY to the /me ESS surface; admin/HR reads are never gated.
+  //   employeeCanApply — false ⇒ the type still shows (subject to visibleToEmployee) but is dropped from the
+  //     apply dropdown AND rejected server-side in requestLeave (LeaveApplyNotAllowedError; isAdmin bypasses via
+  //     the existing override path). NULL/missing ⇒ CAN APPLY (today's behaviour). STATUTORY SAFETY:
+  //     updateLeaveType refuses employee_can_apply=false on a statutory-entitlement code (ANNUAL / SICK /
+  //     HOSPITALIZATION / MATERNITY / PATERNITY) so a configuration can never deny a lawful entitlement.
+  // The two switches are INDEPENDENT: a visible-but-not-can-apply type stays in the balance list but not the
+  // apply menu. NEVER read for admin/HR reads, entitlement math, accrual, workflow or payroll — purely an ESS
+  // presentation + apply gate.
+  visibleToEmployee: boolean('visible_to_employee'),
+  employeeCanApply: boolean('employee_can_apply'),
+  // Leave grouping visibility (feedback b653ac1b): the HR-editable placement of this leave type on the
+  // employee self-service Leave tab — 'primary' (a card that stands out at the top) or 'secondary' (tucked
+  // into a group below). NULL ⇒ resolve from a code-keyed default map (lib/leave-groups.ts): the common
+  // codes default 'primary', the sensitive/rarely-used ones default 'hidden', everything else 'secondary'.
+  // HIDDEN IS NOT STORED HERE: "Hidden" placement reuses the SINGLE visibleToEmployee switch (7b11f1c1) —
+  // choosing Hidden sets visibleToEmployee=false, and resolving placement reads that flag FIRST (false ⇒
+  // hidden). A DB CHECK constrains this column to 'primary' | 'secondary' so 'hidden' can never be stored
+  // here (one source of truth for hidden). Presentation/config ONLY — never read for entitlement, accrual,
+  // eligibility, workflow or payroll. NULL on every existing row ⇒ code-keyed default, today's exact
+  // behaviour (see migration 0191). Resolved onto leaveBalances rows in core/read.ts; the /me cards-and-
+  // groups renderer (planned 6d78f373) consumes the resolved value.
+  essPlacement: text('ess_placement'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });
