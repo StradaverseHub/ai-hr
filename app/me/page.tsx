@@ -31,7 +31,10 @@ import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { todayInKualaLumpur } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { LeaveBalanceTable, deriveBalanceRow } from '@/components/leave/leave-balance-table';
+import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
+// deriveBalanceRow is imported from the server-safe module (NOT the 'use client' table) so this RSC can
+// call it at render time — importing it from the client module crashed all of /me (b7d84266).
+import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import { LeaveCards, type LeaveCardEntry } from '@/components/leave/leave-cards';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { durationLabel } from '@/lib/leave-duration';

@@ -17,7 +17,7 @@ import {
   type BalanceInput,
   type BreakdownInput,
   type LeaveBalanceRow,
-} from '../components/leave/leave-balance-table';
+} from '../components/leave/leave-balance-row';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
