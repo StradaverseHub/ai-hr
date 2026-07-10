@@ -58,10 +58,11 @@ export type LeaveEligibilityRule = {
   minServiceMonths?: number;
 };
 
-/** The checkbox options the eligibility rule form renders. Order matches the mockup; extend the marital list
- *  when 12129e77 adds Divorced/Widowed/Separated to the master enum. */
+/** The checkbox options the eligibility rule form renders. Order matches the mockup. The marital list mirrors
+ *  the shared master enum (core/profile.ts MARITAL_STATUSES, #12129e77) — client components can't import the
+ *  server module, so it's duplicated here in the same order; keep the two in sync. */
 const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
-const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'other'] as const;
+const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
 
 /** Normalize a scalar-or-array eligibility field to a list (mirrors core asList — kept local so the client
  *  component has no server import). */
@@ -646,9 +647,15 @@ export function LeaveTypePanel({
       ? t('eligibilityMaritalSingle')
       : m === 'married'
         ? t('eligibilityMaritalMarried')
-        : m === 'other'
-          ? t('eligibilityMaritalOther')
-          : null;
+        : m === 'divorced'
+          ? t('eligibilityMaritalDivorced')
+          : m === 'widowed'
+            ? t('eligibilityMaritalWidowed')
+            : m === 'separated'
+              ? t('eligibilityMaritalSeparated')
+              : m === 'other'
+                ? t('eligibilityMaritalOther')
+                : null;
   // Multi-select (#badc5966): join the selected labels for a field with "or" ("Male or Female"), then join
   // fields with a space ("Married Male or Female only"). asEligList tolerates legacy scalar rows.
   const orJoin = (labels: (string | null)[]) => labels.filter(Boolean).join(` ${t('eligibilitySummaryOr')} `);
@@ -870,11 +877,7 @@ export function LeaveTypePanel({
                           defaultChecked={asEligList(eligibility?.maritalStatus).includes(m)}
                           className="size-4 accent-primary"
                         />
-                        {m === 'single'
-                          ? t('eligibilityMaritalSingle')
-                          : m === 'married'
-                            ? t('eligibilityMaritalMarried')
-                            : t('eligibilityMaritalOther')}
+                        {maritalLabel(m)}
                       </label>
                     ))}
                   </div>

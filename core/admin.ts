@@ -23,6 +23,7 @@ import {
   type ServiceBand,
 } from './leave';
 import { MY_STATES } from '../localization/my/holidays';
+import { MARITAL_STATUSES } from './profile';
 import {
   appUser,
   assignment,
@@ -116,11 +117,12 @@ export function normalizeReason(v: string | null | undefined): string | undefine
  */
 // Allow-lists for the two multi-select eligibility criteria (#badc5966). The gender list matches the master
 // person.gender values that this gate supports (male|female — 'undisclosed' is never a rule value, see
-// eligibilityUndisclosedNote). The marital list mirrors the current master person.maritalStatus enum; adding
-// Divorced/Widowed/Separated is 12129e77's master-data scope — once those enter the enum, extend this array
-// and the rule form renders the new checkboxes for free.
+// eligibilityUndisclosedNote). The marital list is the shared master enum (core/profile.ts MARITAL_STATUSES,
+// #12129e77) so a rule value and a profile value are provably drawn from the same list — the "centralized
+// marital status master list" the item asks for. Adding a value there (divorced/widowed/separated) makes it a
+// rule option AND a reachable profile value in one edit.
 export const ELIGIBILITY_GENDER_OPTIONS = ['male', 'female'] as const;
-export const ELIGIBILITY_MARITAL_OPTIONS = ['single', 'married', 'other'] as const;
+export const ELIGIBILITY_MARITAL_OPTIONS = MARITAL_STATUSES;
 
 /** Normalize a scalar-or-array eligibility field to a de-duped, blank-stripped, validated list. Accepts a
  *  legacy scalar (single-select rows / in-flight event payloads) or a multi-select array. Empty ⇒ undefined

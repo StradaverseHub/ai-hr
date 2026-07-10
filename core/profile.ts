@@ -21,7 +21,12 @@ const oneOf = (v: unknown, allowed: readonly string[]): string | null => {
   return s && allowed.includes(s) ? s : null;
 };
 export const GENDERS = ['male', 'female', 'undisclosed'] as const;
-export const MARITAL_STATUSES = ['single', 'married', 'other'] as const;
+// Centralized marital-status master list (#12129e77). Every surface that lets a value be chosen for an
+// employee record — HR-set personnel card, ESS self-edit, and the leave-eligibility rule form — must draw
+// from this one list so a rule value (e.g. 'divorced') always has a reachable matching profile value.
+// 'other' is retained as a valid legacy value (existing rows may store it); the real-world set adds
+// divorced/widowed/separated.
+export const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed', 'separated', 'other'] as const;
 
 export type ProfileChangeProposed = {
   // Pay-affecting statutory fields (employee_statutory_my).

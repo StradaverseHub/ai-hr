@@ -347,6 +347,9 @@ export default async function EmployeePage({
               <option value="">{t('maritalNotSet')}</option>
               <option value="single">{t('maritalSingle')}</option>
               <option value="married">{t('maritalMarried')}</option>
+              <option value="divorced">{t('maritalDivorced')}</option>
+              <option value="widowed">{t('maritalWidowed')}</option>
+              <option value="separated">{t('maritalSeparated')}</option>
               <option value="other">{t('maritalOther')}</option>
             </select>
           </Field>

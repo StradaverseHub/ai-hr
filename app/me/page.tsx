@@ -585,6 +585,9 @@ export default async function MePage({
                       <option value="">{t('noChangeOption')}</option>
                       <option value="single">{t('marital_single')}</option>
                       <option value="married">{t('marital_married')}</option>
+                      <option value="divorced">{t('marital_divorced')}</option>
+                      <option value="widowed">{t('marital_widowed')}</option>
+                      <option value="separated">{t('marital_separated')}</option>
                       <option value="other">{t('marital_other')}</option>
                     </select>
                   </Field>
