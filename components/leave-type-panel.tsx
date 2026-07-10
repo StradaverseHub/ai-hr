@@ -538,6 +538,8 @@ export function LeaveTypePanel({
   color,
   icon,
   leaveUnit,
+  counting,
+  perDateApproval,
   policies,
   grades,
   companies,
@@ -604,6 +606,14 @@ export function LeaveTypePanel({
   /** Leave Unit Configuration (e4980382): whether this type is managed in Days or Hours ('day' | 'hour'),
    *  threaded so the "Leave Unit" select round-trips its saved value. Coarse labelling/reporting only. */
   leaveUnit: string;
+  /** ADR-0068 / Partial Leave Approval: the type's counting mode ('working_days' | 'calendar_days'), threaded
+   *  so the per-date-approval sub-form can grey out its toggle for calendar-counted types (the feature can
+   *  never fire there — see the gate in core/leave.ts perDateEligible). */
+  counting: string;
+  /** ADR-0068 / Partial Leave Approval: whether HR has enabled per-date (partial) approval for this type,
+   *  threaded so the sub-form's checkbox round-trips its saved value. Backend at app/admin/actions.ts +
+   *  core/admin.ts touchPartial persists it as a tri-state (untouched when the marker is absent). */
+  perDateApproval: boolean;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -1159,8 +1169,52 @@ export function LeaveTypePanel({
           </div>
 
           {/* Feedback 9d8cf621: the "Payroll impact" controls moved to the Payroll Related tab (per-type list
-              there). The per-date-approval toggle was removed. Both were self-contained sub-forms, so removing
-              them here never touches any other column on save. */}
+              there). Both were self-contained sub-forms, so moving/removing them here never touches any other
+              column on save. */}
+
+          {/* Partial Leave Approval (ADR-0068 · re-added ac6c2025). Its own sub-form (own tri-state) posts
+              `partialApproval=1`, so a rename / eligibility / durations / document / payroll / backdating edit
+              that omits the marker leaves per_date_approval untouched. This is the HR-facing enable switch for
+              the per-date approval modal that is already live on the approvals inbox — previously removable only
+              via seed data after feedback 9d8cf621 dropped this toggle. Backend wiring (app/admin/actions.ts
+              touchPartial + core/admin.ts) was left intact; this restores the surface that drives it.
+              The feature only fires for FULL-DAY, WORKING-DAYS-counted, non-REPLACEMENT types in a company whose
+              leave approval chain is single-step; when the type can never satisfy that, we still let the admin
+              set the flag but show a greyed note explaining it won't apply (rather than silently no-op). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('partialApprovalSectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the per_date_approval column (tri-state guard) */}
+              <input type="hidden" name="partialApproval" value="1" />
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <input
+                  type="checkbox"
+                  name="perDateApproval"
+                  defaultChecked={perDateApproval}
+                  className="size-3.5 rounded border-border"
+                />
+                {t('perDateApprovalLabel')}
+              </label>
+              {/* Greyed note: the type is structurally ineligible (REPLACEMENT or calendar-counted), so the
+                  flag has no effect even when set. Mirrors ADR-0068 §4C's gate rather than silently ignoring. */}
+              {(code === 'REPLACEMENT' || counting !== 'working_days') && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {code === 'REPLACEMENT'
+                    ? t('perDateApprovalNoteReplacement')
+                    : t('perDateApprovalNoteCounting')}
+                </p>
+              )}
+              {/* Discoverability note (item 4): the load-bearing explanation of the multi-step interaction. */}
+              <p className="text-xs text-muted-foreground">{t('perDateApprovalMultiStepNote')}</p>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('perDateApprovalHelp')}</p>
+          </div>
 
           {/* Configurable backdated-leave restriction (0133). Its own sub-form (own tri-state) posts
               `backdating=1`. Hidden for Emergency Leave — EL is inherently retroactive and is never guarded,

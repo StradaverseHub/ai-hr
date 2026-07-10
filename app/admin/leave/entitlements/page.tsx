@@ -168,6 +168,8 @@ export default async function LeaveEntitlementsPage({
               color={lt.color ?? null}
               icon={lt.icon ?? null}
               leaveUnit={lt.leaveUnit ?? 'day'}
+              counting={lt.counting ?? 'working_days'}
+              perDateApproval={lt.perDateApproval ?? false}
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}
