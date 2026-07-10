@@ -1104,7 +1104,29 @@
     "otReportFormat": "Format",
     "otReportCsv": "CSV",
     "otReportXlsx": "Excel",
-    "otReportPdf": "PDF"
+    "otReportPdf": "PDF",
+    "tabs": {
+      "overview": "Overview",
+      "daily": "Daily Attendance",
+      "individual": "Individual Attendance"
+    },
+    "filters": {
+      "company": "Company",
+      "department": "Department",
+      "date": "Date",
+      "allCompanies": "All Companies",
+      "allDepartments": "All Departments",
+      "apply": "Apply",
+      "selectEmployee": "Select Employee",
+      "chooseEmployee": "Choose an employee…",
+      "dateFrom": "Date From",
+      "dateTo": "Date To",
+      "pickEmployeePrompt": "Select an employee to view their attendance history."
+    },
+    "colDay": "Day",
+    "colException": "Exception",
+    "individualTitle": "Individual Attendance",
+    "noRecords": "No attendance records in this range."
   },
   "org": {
     "title": "Org chart",

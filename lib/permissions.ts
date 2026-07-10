@@ -106,7 +106,8 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/attendance',
     labelKey: 'nav.attendance',
     guard: 'scopedSession',
-    routes: ['/attendance'],
+    // Attendance>Records tabs (314ea061): Overview (/attendance) · Daily · Individual.
+    routes: ['/attendance', '/attendance/daily', '/attendance/individual'],
     hasScopeNote: true,
   },
   // Design-preview surface (ca2f2fef): a purely presentational mobile-app mock. scopedSession-guarded so

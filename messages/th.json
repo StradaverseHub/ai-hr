@@ -1104,7 +1104,29 @@
     "otReportFormat": "รูปแบบ",
     "otReportCsv": "CSV",
     "otReportXlsx": "Excel",
-    "otReportPdf": "PDF"
+    "otReportPdf": "PDF",
+    "tabs": {
+      "overview": "ภาพรวม",
+      "daily": "การเข้างานรายวัน",
+      "individual": "การเข้างานรายบุคคล"
+    },
+    "filters": {
+      "company": "บริษัท",
+      "department": "แผนก",
+      "date": "วันที่",
+      "allCompanies": "ทุกบริษัท",
+      "allDepartments": "ทุกแผนก",
+      "apply": "ใช้",
+      "selectEmployee": "เลือกพนักงาน",
+      "chooseEmployee": "เลือกพนักงาน…",
+      "dateFrom": "วันที่เริ่มต้น",
+      "dateTo": "วันที่สิ้นสุด",
+      "pickEmployeePrompt": "เลือกพนักงานเพื่อดูประวัติการเข้างาน"
+    },
+    "colDay": "วัน",
+    "colException": "ข้อยกเว้น",
+    "individualTitle": "การเข้างานรายบุคคล",
+    "noRecords": "ไม่มีบันทึกการเข้างานในช่วงนี้"
   },
   "org": {
     "title": "ผังองค์กร",

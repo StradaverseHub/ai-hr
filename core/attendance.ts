@@ -16,6 +16,7 @@ import { holidayDatesFor } from './holidays';
 import { approvedLeaveDates } from './leave';
 import { maybeAutoAccrueOnApprovalTx } from './toil';
 import {
+  assignment,
   attendance,
   attendanceCorrection,
   attendancePolicy,
@@ -777,9 +778,25 @@ export type DayContext = 'on_leave' | 'holiday' | 'rest_day' | null;
 /**
  * Every active employee with their attendance row for `date` (null = no row), plus the
  * context that explains a missing row: approved leave > public holiday > rest day.
+ *
+ * `opts.departmentId` (Attendance>Records Daily tab, 314ea061) narrows to a single department via the
+ * employee's CURRENT assignment (validTo/supersededAt null) — the same current-assignment join the People
+ * directory uses. Absent = every department (today's behaviour, unchanged).
  */
-export function attendanceForDate(ctx: SessionContext, date: string, companyIds?: string[]) {
+export function attendanceForDate(
+  ctx: SessionContext,
+  date: string,
+  companyIds?: string[],
+  opts?: { departmentId?: string },
+) {
   return withTenant(ctx, async (tx) => {
+    // Current assignment (≤1 per employment) — only needed to filter by department; a leftJoin keeps every
+    // employee visible when no department filter is applied.
+    const currentAssignment = and(
+      eq(assignment.employmentId, employment.id),
+      isNull(assignment.validTo),
+      isNull(assignment.supersededAt),
+    );
     const rows = await tx
       .select({
         employmentId: employment.id,
@@ -813,10 +830,12 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       )
       .leftJoin(dayCheckInSite, eq(dayCheckInSite.id, attendance.checkInClockingLocationId))
       .leftJoin(dayCheckOutSite, eq(dayCheckOutSite.id, attendance.checkOutClockingLocationId))
+      .leftJoin(assignment, currentAssignment)
       .where(
         and(
           isNull(employment.terminatedOn),
           companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          opts?.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
         ),
       )
       .orderBy(person.fullName);
@@ -865,6 +884,108 @@ export function attendanceForDate(ctx: SessionContext, date: string, companyIds?
       }
       return { ...r, context };
     });
+  });
+}
+
+export type AttendanceRangeRow = {
+  date: string;
+  attendanceId: string | null;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  status: string | null;
+  dayType: DayType | null;
+  workedMinutes: number | null;
+  otMinutes: number | null;
+  /** Explains a no-row day, same precedence as attendanceForDate: leave > holiday > rest day. */
+  context: DayContext;
+};
+
+/**
+ * One row per calendar day in [from, to] for a SINGLE employment (Attendance>Records Individual tab,
+ * 314ea061). The range analogue of attendanceForDate: an attendance row when present, else the context
+ * (approved full-day leave > public holiday > rest day) that explains its absence. Read-only.
+ */
+export function attendanceForEmploymentRange(
+  ctx: SessionContext,
+  employmentId: string,
+  from: string,
+  to: string,
+): Promise<AttendanceRangeRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (from > to) return [];
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    if (!emp) return []; // RLS-fenced: not visible to this session, or no such employment.
+
+    const [rows, policyRows, approvedDates, holidays] = await Promise.all([
+      tx
+        .select({
+          date: attendance.attendanceDate,
+          attendanceId: attendance.id,
+          checkInAt: attendance.checkInAt,
+          checkOutAt: attendance.checkOutAt,
+          status: attendance.status,
+          dayType: attendance.dayType,
+          workedMinutes: attendance.workedMinutes,
+          otMinutes: attendance.otMinutes,
+        })
+        .from(attendance)
+        .where(
+          and(
+            eq(attendance.employmentId, employmentId),
+            gte(attendance.attendanceDate, from),
+            lte(attendance.attendanceDate, to),
+          ),
+        ),
+      tx
+        .select({
+          workingDays: attendancePolicy.workingDays,
+          halfWorkingDays: attendancePolicy.halfWorkingDays,
+        })
+        .from(attendancePolicy)
+        .where(eq(attendancePolicy.companyId, emp.companyId))
+        .limit(1),
+      // Only full_day leave suppresses the attendance signal (approvedLeaveDates already filters full_day).
+      approvedLeaveDates(tx, [employmentId], from, to),
+      holidayDatesFor(tx, { employmentId, startDate: from, endDate: to }),
+    ]);
+
+    const byDate = new Map(rows.map((r) => [r.date, r]));
+    const leaveSet = approvedDates.get(employmentId) ?? new Set<string>();
+    const workDays = policyRows[0]
+      ? unionWorkingDays(policyRows[0].workingDays, policyRows[0].halfWorkingDays)
+      : DEFAULTS.workingDays;
+
+    const out: AttendanceRangeRow[] = [];
+    let d = from;
+    // Guard against a pathological range; a first-of-month → today window is ≤ 31 days.
+    for (let i = 0; i < 400 && d <= to; i++) {
+      const row = byDate.get(d);
+      let context: DayContext = null;
+      if (!row) {
+        if (leaveSet.has(d)) context = 'on_leave';
+        else if (holidays.has(d)) context = 'holiday';
+        else if (!workDays.includes(isoWeekday(d))) context = 'rest_day';
+      }
+      out.push({
+        date: d,
+        attendanceId: row?.attendanceId ?? null,
+        checkInAt: row?.checkInAt ?? null,
+        checkOutAt: row?.checkOutAt ?? null,
+        status: row?.status ?? null,
+        dayType: row?.dayType ?? null,
+        workedMinutes: row?.workedMinutes ?? null,
+        otMinutes: row?.otMinutes ?? null,
+        context,
+      });
+      const next = new Date(`${d}T00:00:00Z`);
+      next.setUTCDate(next.getUTCDate() + 1);
+      d = next.toISOString().slice(0, 10);
+    }
+    return out;
   });
 }
 

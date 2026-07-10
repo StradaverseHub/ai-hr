@@ -115,7 +115,7 @@
       {
         "id": "day",
         "target": "[data-tour=\"attendance-day\"]",
-        "route": "/attendance",
+        "route": "/attendance/daily",
         "titleKey": "tour.attendance.day.title",
         "bodyKey": "tour.attendance.day.body",
         "placement": "bottom"
@@ -123,7 +123,7 @@
       {
         "id": "action",
         "target": "[data-tour=\"attendance-action\"]",
-        "route": "/attendance",
+        "route": "/attendance/daily",
         "titleKey": "tour.attendance.action.title",
         "bodyKey": "tour.attendance.action.body",
         "placement": "left"
@@ -131,7 +131,7 @@
       {
         "id": "status",
         "target": "[data-tour=\"attendance-status\"]",
-        "route": "/attendance",
+        "route": "/attendance/daily",
         "titleKey": "tour.attendance.status.title",
         "bodyKey": "tour.attendance.status.body",
         "placement": "bottom"
@@ -139,7 +139,7 @@
       {
         "id": "correction",
         "target": "[data-tour=\"attendance-day\"]",
-        "route": "/attendance",
+        "route": "/attendance/daily",
         "titleKey": "tour.attendance.correction.title",
         "bodyKey": "tour.attendance.correction.body",
         "placement": "top"

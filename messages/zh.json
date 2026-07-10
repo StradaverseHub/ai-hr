@@ -1104,7 +1104,29 @@
     "otReportFormat": "格式",
     "otReportCsv": "CSV",
     "otReportXlsx": "Excel",
-    "otReportPdf": "PDF"
+    "otReportPdf": "PDF",
+    "tabs": {
+      "overview": "概览",
+      "daily": "每日考勤",
+      "individual": "个人考勤"
+    },
+    "filters": {
+      "company": "公司",
+      "department": "部门",
+      "date": "日期",
+      "allCompanies": "所有公司",
+      "allDepartments": "所有部门",
+      "apply": "应用",
+      "selectEmployee": "选择员工",
+      "chooseEmployee": "选择员工…",
+      "dateFrom": "起始日期",
+      "dateTo": "结束日期",
+      "pickEmployeePrompt": "选择一名员工以查看其考勤记录。"
+    },
+    "colDay": "星期",
+    "colException": "异常",
+    "individualTitle": "个人考勤",
+    "noRecords": "此范围内没有考勤记录。"
   },
   "org": {
     "title": "组织架构图",

@@ -2,25 +2,11 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { scopedSession } from '@/lib/scope';
-import { attendanceForDate, attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
-import { allowancePreviewForPeriod, listAllowancePolicies } from '@/core/read';
-import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls } from '@/components/ui';
-import { Badge } from '@/components/ui/badge';
-import { TimelineNav } from '@/components/timeline-nav';
+import { attendanceMonthSummary, listAttendanceCorrections } from '@/core/attendance';
+import { Avatar, Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { OtReportExport } from '@/components/ot-report-export';
-import { checkInAction, checkOutAction, decideCorrectionAction } from './actions';
-
-const STATUS: Record<string, string> = {
-  present: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  late: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  half_day: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
-  absent: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400',
-};
-const CONTEXT_CLS: Record<string, string> = {
-  on_leave: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
-  holiday: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300',
-  rest_day: 'bg-muted text-muted-foreground',
-};
+import { AttendanceTabs } from '@/components/attendance-tabs';
+import { decideCorrectionAction } from './actions';
 
 function Pill({ label, cls }: { label: string; cls: string }) {
   return (
@@ -44,59 +30,27 @@ const shiftMonth = (month: string, by: number) => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
+/**
+ * Attendance > Records — Overview tab (314ea061). The month-summary dashboard (with OT-report export +
+ * month stepper) plus the pending-corrections worklist. The single-day table moved to the Daily tab; the
+ * admin-only Attendance Allowance panel was removed (it is configured under Shift Settings, per the request).
+ */
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; date?: string; month?: string; policy?: string; qualified?: string }>;
+  searchParams: Promise<{ error?: string; month?: string }>;
 }) {
   const t = await getTranslations('attendance');
   const { s, scopeIds } = await scopedSession();
   const sp = await searchParams;
-  const contextLabels: Record<string, string> = {
-    on_leave: t('contextOnLeave'),
-    holiday: t('contextHoliday'),
-    rest_day: t('contextRestDay'),
-  };
-  const statusLabels: Record<string, string> = {
-    present: t('statusPresent'),
-    late: t('statusLate'),
-    half_day: t('statusHalfDay'),
-    absent: t('statusAbsent'),
-  };
-  const statusLabel = (status: string) => statusLabels[status] ?? status.replace(/_/g, ' ');
   const todayIso = new Date().toISOString().slice(0, 10);
-  const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayIso;
-  const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : date.slice(0, 7);
-  const [rows, summary, corrections] = await Promise.all([
-    attendanceForDate(s, date, scopeIds),
+  const month = sp.month && /^\d{4}-\d{2}$/.test(sp.month) ? sp.month : todayIso.slice(0, 7);
+  const [summary, corrections] = await Promise.all([
     attendanceMonthSummary(s, { month, companyIds: scopeIds, today: todayIso }),
     listAttendanceCorrections(s, { companyIds: scopeIds, status: 'pending' }),
   ]);
-  const monthHref = (m: string) => `/attendance?date=${date}&month=${m}`;
+  const monthHref = (m: string) => `/attendance?month=${m}`;
   const isAdmin = (s.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
-
-  // Attendance Allowance (ADR-0072). The active allowance policies in scope, and the live evaluation of the
-  // selected one for the shown month (pure read — nothing persisted). Admin-only surface.
-  const ta = await getTranslations('attendanceAllowance');
-  const allowancePolicies = isAdmin
-    ? await listAllowancePolicies(s, { companyIds: scopeIds }).then((rows) =>
-        rows.filter((r) => r.status === 'active'),
-      )
-    : [];
-  const selectedPolicyId =
-    sp.policy && allowancePolicies.some((p) => p.id === sp.policy) ? sp.policy : allowancePolicies[0]?.id;
-  const selectedPolicy = allowancePolicies.find((p) => p.id === selectedPolicyId) ?? null;
-  const allowancePreview =
-    isAdmin && selectedPolicyId
-      ? await allowancePreviewForPeriod(s, { policyId: selectedPolicyId, month, today: todayIso })
-      : null;
-  const qualifiedFilter = sp.qualified; // 'yes' | 'no' | undefined
-  const previewRows = (allowancePreview?.rows ?? []).filter((r) => {
-    if (qualifiedFilter === 'yes') return r.qualified;
-    if (qualifiedFilter === 'no') return !r.qualified;
-    return true;
-  });
-  const criterionLabel = (key: string) => ta(`criteria.${key}`);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -104,119 +58,19 @@ export default async function AttendancePage({
         <PageHeader
           title={t('title')}
           actions={
-            <div className="flex items-center gap-3">
-              {isAdmin && (
-                <Link
-                  href="/attendance/import"
-                  className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-                >
-                  {t('importPunches')}
-                </Link>
-              )}
-              <TimelineNav from={date} isDefault={date === todayIso} basePath="/attendance" param="date" stepDays={1} />
-            </div>
+            isAdmin ? (
+              <Link
+                href="/attendance/import"
+                className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+              >
+                {t('importPunches')}
+              </Link>
+            ) : undefined
           }
         />
       </div>
+      <AttendanceTabs active="overview" />
       <ErrorBanner message={sp.error} />
-
-      <Card className="overflow-hidden" data-tour="attendance-day">
-        <SectionHeader title={date === todayIso ? t('today') : date} count={rows.length} />
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                <th className="px-4 py-2 font-medium">{t('colCheckIn')}</th>
-                <th className="px-4 py-2 font-medium">{t('colCheckOut')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('colHours')}</th>
-                <th className="px-4 py-2 text-right font-medium">{t('colOvertime')}</th>
-                <th className="px-4 py-2 font-medium" data-tour="attendance-status">{t('colStatus')}</th>
-                <th className="px-4 py-2 font-medium">{t('colLocation')}</th>
-                <th className="px-4 py-2 text-right font-medium" data-tour="attendance-action">{t('colAction')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {rows.map((r) => (
-                <tr key={r.employmentId}>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={r.name} className="size-7 text-[10px]" />
-                      {/* Employee ID left-of-name (feedback 38668d9b) */}
-                      <EmployeeName code={r.employeeCode} name={r.name} className="font-medium" />
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {r.checkInAt?.slice(0, 5) ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {r.checkOutAt?.slice(0, 5) ?? '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
-                    {fmtMin(r.workedMinutes)}
-                  </td>
-                  <td
-                    className="px-4 py-2.5 text-right tabular-nums text-muted-foreground"
-                    title={r.dayType && r.dayType !== 'workday' ? t('otClass', { dayType: r.dayType.replace('_', ' ') }) : undefined}
-                  >
-                    {fmtOt(r.otMinutes)}
-                    {(r.otMinutes ?? 0) > 0 && r.dayType !== 'workday' && (
-                      <span className="ml-1 text-[10px] uppercase text-amber-600 dark:text-amber-400">
-                        {r.dayType === 'holiday' ? t('otCodePh') : t('otCodeRd')}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    {r.attendanceId && r.status ? (
-                      <Pill label={statusLabel(r.status)} cls={STATUS[r.status] ?? STATUS.absent} />
-                    ) : r.context ? (
-                      <Pill label={contextLabels[r.context] ?? r.context} cls={CONTEXT_CLS[r.context] ?? ''} />
-                    ) : (
-                      <Pill label={t('statusAbsent')} cls={STATUS.absent} />
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                    {/* ADR-0070: prefer the matched site name, else raw coordinates, else nothing captured. */}
-                    {(() => {
-                      const locName = r.checkOutLocationName ?? r.checkInLocationName;
-                      const lat = r.checkOutLat ?? r.checkInLat;
-                      const lng = r.checkOutLng ?? r.checkInLng;
-                      if (locName) return locName;
-                      if (lat != null && lng != null) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-                      return '—';
-                    })()}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex justify-end">
-                      {!r.attendanceId ? (
-                        <form action={checkInAction} className="flex items-center gap-2">
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <input type="hidden" name="date" value={date} />
-                          <input name="time" type="time" defaultValue="09:00" className={`${inputCls} h-8 w-28`} />
-                          <Button type="submit" size="sm">
-                            {t('checkIn')}
-                          </Button>
-                        </form>
-                      ) : !r.checkOutAt ? (
-                        <form action={checkOutAction} className="flex items-center gap-2">
-                          <input type="hidden" name="employmentId" value={r.employmentId} />
-                          <input type="hidden" name="date" value={date} />
-                          <input name="time" type="time" defaultValue="18:00" className={`${inputCls} h-8 w-28`} />
-                          <Button type="submit" size="sm" variant="secondary">
-                            {t('checkOut')}
-                          </Button>
-                        </form>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">{t('done')}</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
 
       {corrections.length > 0 && (
         <Card className="overflow-hidden">
@@ -390,104 +244,6 @@ export default async function AttendancePage({
           {t('summaryNote')}
         </p>
       </Card>
-
-      {/* Attendance Allowance panel (ADR-0072) — admin-only. Live evaluation of a policy for the month. */}
-      {isAdmin && (
-        <Card className="overflow-hidden">
-          <SectionHeader title={ta('panel.title')} count={previewRows.length} />
-          {allowancePolicies.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-              {ta('panel.noPolicies')}{' '}
-              <Link href="/admin/attendance-allowance" className="text-primary hover:underline">
-                {ta('panel.configure')}
-              </Link>
-            </p>
-          ) : (
-            <>
-              {/* Policy + qualified filter — GET form (server-driven, no client state). */}
-              <form method="GET" className="flex flex-wrap items-end gap-3 border-b border-border px-4 py-3">
-                <input type="hidden" name="date" value={date} />
-                <input type="hidden" name="month" value={month} />
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  {ta('panel.policy')}
-                  <select name="policy" defaultValue={selectedPolicyId} className={inputCls}>
-                    {allowancePolicies.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} — RM {Number(p.amount).toFixed(2)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-                  {ta('panel.filter')}
-                  <select name="qualified" defaultValue={qualifiedFilter ?? ''} className={inputCls}>
-                    <option value="">{ta('panel.filterAll')}</option>
-                    <option value="yes">{ta('panel.filterQualified')}</option>
-                    <option value="no">{ta('panel.filterDisqualified')}</option>
-                  </select>
-                </label>
-                <Button type="submit" variant="outline" size="sm">
-                  {ta('panel.evaluate')}
-                </Button>
-                {selectedPolicy && (
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {ta('panel.gateWarning')}
-                  </span>
-                )}
-              </form>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-2 font-medium">{ta('panel.colEmployee')}</th>
-                      <th className="px-4 py-2 font-medium">{ta('panel.colStatus')}</th>
-                      <th className="px-4 py-2 text-right font-medium">{ta('panel.colAmount')}</th>
-                      <th className="px-4 py-2 font-medium">{ta('panel.colReason')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {previewRows.map((r) => (
-                      <tr key={r.employmentId}>
-                        <td className="px-4 py-2.5 font-medium">{r.name}</td>
-                        <td className="px-4 py-2.5">
-                          <Badge variant={r.qualified ? 'success' : 'default'}>
-                            {r.qualified ? ta('panel.qualified') : ta('panel.disqualified')}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-2.5 text-right tabular-nums">RM {Number(r.amount).toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                          {r.perCriterion.length === 0 ? (
-                            ta('panel.noCriteria')
-                          ) : (
-                            <ul className="space-y-0.5">
-                              {r.perCriterion.map((c) => (
-                                <li key={c.key} className={c.pass ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}>
-                                  {c.pass ? '✓' : '✗'} {criterionLabel(c.key)}: {c.actual} / {c.threshold}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {previewRows.length === 0 && (
-                      <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                          {ta('panel.empty')}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-                {ta('panel.note')}
-              </p>
-            </>
-          )}
-        </Card>
-      )}
     </div>
   );
 }

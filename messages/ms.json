@@ -1104,7 +1104,29 @@
     "otReportFormat": "Format",
     "otReportCsv": "CSV",
     "otReportXlsx": "Excel",
-    "otReportPdf": "PDF"
+    "otReportPdf": "PDF",
+    "tabs": {
+      "overview": "Ringkasan",
+      "daily": "Kehadiran Harian",
+      "individual": "Kehadiran Individu"
+    },
+    "filters": {
+      "company": "Syarikat",
+      "department": "Jabatan",
+      "date": "Tarikh",
+      "allCompanies": "Semua Syarikat",
+      "allDepartments": "Semua Jabatan",
+      "apply": "Guna",
+      "selectEmployee": "Pilih Pekerja",
+      "chooseEmployee": "Pilih pekerja…",
+      "dateFrom": "Tarikh Dari",
+      "dateTo": "Tarikh Hingga",
+      "pickEmployeePrompt": "Pilih seorang pekerja untuk melihat sejarah kehadiran mereka."
+    },
+    "colDay": "Hari",
+    "colException": "Pengecualian",
+    "individualTitle": "Kehadiran Individu",
+    "noRecords": "Tiada rekod kehadiran dalam julat ini."
   },
   "org": {
     "title": "Carta organisasi",
