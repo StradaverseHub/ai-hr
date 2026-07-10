@@ -521,6 +521,155 @@ export class DelegationError extends Error {
   }
 }
 
+/**
+ * Global Delegation (Phase 1) — does `employmentId` currently HAVE a downline, i.e. is it the manager of
+ * ≥1 active administrative reporting line? Delegation only makes sense for an approver: the decision-time
+ * guard (app.can_decide_via_delegation) requires the DELEGATOR to be the subject's current administrative
+ * manager, so an employee with no reports has no approver duty to hand over. Self-service create reuses this
+ * as its gate. Read-only (no DomainEvent). Runs inside the caller's tx so the self-service action can guard
+ * in the same RLS scope; RLS on reporting_line is tenant-only, so this is not a visibility widen.
+ */
+export async function hasDownlineTx(tx: Tx, employmentId: string, asOf: string): Promise<boolean> {
+  const rows = await tx
+    .select({ id: reportingLine.id })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.managerEmploymentId, employmentId),
+        eq(reportingLine.lineType, 'administrative'),
+        isNull(reportingLine.supersededAt),
+        lte(reportingLine.validFrom, asOf),
+        or(isNull(reportingLine.validTo), gt(reportingLine.validTo, asOf)),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Session-scoped wrapper for `hasDownlineTx` (opens its own tx). */
+export async function hasDownline(ctx: SessionContext, employmentId: string, asOf: string): Promise<boolean> {
+  return withTenant(ctx, (tx) => hasDownlineTx(tx, employmentId, asOf));
+}
+
+/**
+ * The delegate-edge insert, extracted so both `setReportingLine` (lineType 'delegate') and `editDelegation`
+ * (supersede + recreate) share ONE overlap guard + insert + event pair. subordinate = delegator,
+ * manager = delegate. Rejects self-delegation, a window whose end precedes its start, and an OVERLAPPING
+ * active delegation of the SAME delegator (rule #2 — two stand-ins can't both hold authority over one
+ * window). Emits the structural `reporting-line.set` (audit) plus the delegation-specific `delegation.started`
+ * (notification fan-out to the stand-in). Runs inside the caller's tx.
+ */
+async function insertDelegateLineTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { subordinateEmploymentId: string; managerEmploymentId: string; validFrom: string; validTo: string | null },
+): Promise<{ reportingLineId: string }> {
+  if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
+  if (p.validTo != null && p.validTo < p.validFrom) {
+    throw new DelegationError('The end date must be on or after the start date');
+  }
+  const existing = await tx
+    .select({ id: reportingLine.id, validFrom: reportingLine.validFrom, validTo: reportingLine.validTo })
+    .from(reportingLine)
+    .where(
+      and(
+        eq(reportingLine.subordinateEmploymentId, p.subordinateEmploymentId),
+        eq(reportingLine.lineType, 'delegate'),
+        isNull(reportingLine.supersededAt),
+      ),
+    );
+  const newFrom = p.validFrom;
+  const newTo = p.validTo ?? null;
+  for (const e of existing) {
+    const eTo = e.validTo ?? null;
+    const overlaps = (eTo === null || newFrom <= eTo) && (newTo === null || e.validFrom <= newTo);
+    if (overlaps) throw new DelegationError('An overlapping active delegation already exists for this period');
+  }
+  const [row] = await tx
+    .insert(reportingLine)
+    .values({
+      tenantId: ctx.tenantId,
+      subordinateEmploymentId: p.subordinateEmploymentId,
+      managerEmploymentId: p.managerEmploymentId,
+      lineType: 'delegate',
+      validFrom: p.validFrom,
+      validTo: p.validTo ?? null,
+    })
+    .returning({ id: reportingLine.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'reporting-line',
+    aggregateId: row.id,
+    eventType: 'reporting-line.set',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.subordinateEmploymentId,
+    payload: { ...p, lineType: 'delegate' },
+  });
+  // Global Delegation (Phase 1) — a SECOND, delegation-specific event so notifications can target the
+  // stand-in WITHOUT overloading the structural reporting-line.set (which fires for every line type).
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'reporting-line',
+    aggregateId: row.id,
+    eventType: 'delegation.started',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.subordinateEmploymentId,
+    payload: {
+      delegatorEmploymentId: p.subordinateEmploymentId,
+      delegateEmploymentId: p.managerEmploymentId,
+      validFrom: p.validFrom,
+      validTo: p.validTo ?? null,
+    },
+  });
+  return { reportingLineId: row.id };
+}
+
+/**
+ * Global Delegation (Phase 1) — edit an existing delegation (HR management). Bitemporal: the old edge is
+ * SUPERSEDED (supersededAt set, so it drops out of the active set AND the overlap guard) and a fresh edge is
+ * inserted with the new stand-in / window. Emits `reporting-line.superseded` + `delegation.ended` (old) and,
+ * via insertDelegateLineTx, `reporting-line.set` + `delegation.started` (new). Only a `delegate` row may be
+ * edited here. The subordinate (delegator) is carried forward from the old row — HR changes the stand-in and
+ * the window, never who is handing over (that is a separate delegation).
+ */
+export async function editDelegation(
+  ctx: SessionContext,
+  p: { reportingLineId: string; managerEmploymentId: string; validFrom: string; validTo: string | null },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [old] = await tx
+      .update(reportingLine)
+      .set({ supersededAt: sql`now()` })
+      .where(and(eq(reportingLine.id, p.reportingLineId), eq(reportingLine.lineType, 'delegate'), isNull(reportingLine.supersededAt)))
+      .returning({ subordinate: reportingLine.subordinateEmploymentId, manager: reportingLine.managerEmploymentId });
+    if (!old) throw new DelegationError('That delegation no longer exists or was already changed');
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'reporting-line',
+      aggregateId: p.reportingLineId,
+      eventType: 'reporting-line.superseded',
+      actor: actorOf(ctx),
+      subjectEmploymentId: old.subordinate,
+      payload: { supersededBy: { lineType: 'delegate', managerEmploymentId: p.managerEmploymentId, validFrom: p.validFrom, validTo: p.validTo } },
+    });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'reporting-line',
+      aggregateId: p.reportingLineId,
+      eventType: 'delegation.ended',
+      actor: actorOf(ctx),
+      subjectEmploymentId: old.subordinate,
+      payload: { delegatorEmploymentId: old.subordinate, delegateEmploymentId: old.manager, reason: 'delegation.edited' },
+    });
+    return insertDelegateLineTx(tx, ctx, {
+      subordinateEmploymentId: old.subordinate,
+      managerEmploymentId: p.managerEmploymentId,
+      validFrom: p.validFrom,
+      validTo: p.validTo,
+    });
+  });
+}
+
 export async function setReportingLine(
   ctx: SessionContext,
   p: {
@@ -546,48 +695,12 @@ export async function setReportingLine(
       }
     }
     if (p.lineType === 'delegate') {
-      // A delegation row reuses reporting_line: subordinate = delegator, manager = delegate. Reject an
-      // OVERLAPPING active delegation of the SAME delegator (rule #2) so two stand-ins can't both hold
-      // authority over the same window. Two windows overlap when each starts before the other ends.
-      const existing = await tx
-        .select({ id: reportingLine.id, validFrom: reportingLine.validFrom, validTo: reportingLine.validTo })
-        .from(reportingLine)
-        .where(
-          and(
-            eq(reportingLine.subordinateEmploymentId, p.subordinateEmploymentId),
-            eq(reportingLine.lineType, 'delegate'),
-            isNull(reportingLine.supersededAt),
-          ),
-        );
-      const newFrom = p.validFrom;
-      const newTo = p.validTo ?? null;
-      for (const e of existing) {
-        const eTo = e.validTo ?? null;
-        const overlaps =
-          (eTo === null || newFrom <= eTo) && (newTo === null || e.validFrom <= newTo);
-        if (overlaps) throw new DelegationError('An overlapping active delegation already exists for this period');
-      }
-      const [row] = await tx
-        .insert(reportingLine)
-        .values({
-          tenantId: ctx.tenantId,
-          subordinateEmploymentId: p.subordinateEmploymentId,
-          managerEmploymentId: p.managerEmploymentId,
-          lineType: 'delegate',
-          validFrom: p.validFrom,
-          validTo: p.validTo ?? null,
-        })
-        .returning({ id: reportingLine.id });
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'reporting-line',
-        aggregateId: row.id,
-        eventType: 'reporting-line.set',
-        actor: actorOf(ctx),
-        subjectEmploymentId: p.subordinateEmploymentId,
-        payload: { ...p, lineType: 'delegate' },
+      return insertDelegateLineTx(tx, ctx, {
+        subordinateEmploymentId: p.subordinateEmploymentId,
+        managerEmploymentId: p.managerEmploymentId,
+        validFrom: p.validFrom,
+        validTo: p.validTo ?? null,
       });
-      return { reportingLineId: row.id };
     }
     // A subordinate has at most one *active* line per type (one admin manager, one functional, …).
     // There is no DB exclusion constraint, so adding a second of the same type would silently leave
@@ -671,7 +784,11 @@ export async function endReportingLine(
       .update(reportingLine)
       .set({ validTo: p.endDate })
       .where(eq(reportingLine.id, p.reportingLineId))
-      .returning({ subordinate: reportingLine.subordinateEmploymentId });
+      .returning({
+        subordinate: reportingLine.subordinateEmploymentId,
+        manager: reportingLine.managerEmploymentId,
+        lineType: reportingLine.lineType,
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'reporting-line',
@@ -681,6 +798,24 @@ export async function endReportingLine(
       subjectEmploymentId: ended?.subordinate ?? null,
       payload: { endDate: p.endDate },
     });
+    // Global Delegation (Phase 1) — mirror the .started fan-out: emit a delegation-specific event ONLY when
+    // the ended edge was a delegate line, so the stand-in is told their cover has ended. Structural lines
+    // (administrative/functional/…) keep emitting only reporting-line.ended (no notification), unchanged.
+    if (ended?.lineType === 'delegate') {
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'reporting-line',
+        aggregateId: p.reportingLineId,
+        eventType: 'delegation.ended',
+        actor: actorOf(ctx),
+        subjectEmploymentId: ended.subordinate,
+        payload: {
+          delegatorEmploymentId: ended.subordinate,
+          delegateEmploymentId: ended.manager,
+          endDate: p.endDate,
+        },
+      });
+    }
   });
 }
 

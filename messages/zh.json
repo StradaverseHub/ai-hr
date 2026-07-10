@@ -133,7 +133,8 @@
     "reportPayroll": "薪资",
     "reportClaim": "报销",
     "reportPerformance": "绩效",
-    "profileOptions": "档案选项"
+    "profileOptions": "档案选项",
+    "delegations": "委托"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -3526,7 +3527,8 @@
         "roster": "经理及以上；显示内容取决于你实际的汇报线。",
         "performance": "经理及以上；显示内容取决于你实际的汇报线。",
         "leaveApproval": "经理和管理员；显示内容取决于你实际的汇报线。",
-        "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。"
+        "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
+        "delegations": "HR 和管理员可见所有委托；您只能看到自己委托或代理的委托。"
       }
     },
     "audit": {
@@ -5662,5 +5664,37 @@
       "payroll_partner": "薪资合作伙伴",
       "performance_comp_partner": "绩效/薪酬合作伙伴"
     }
+  },
+  "delegations": {
+    "title": "委托管理",
+    "subtitle": "在审批人外出期间临时将审批职责交给代理人。",
+    "createTitle": "新建委托",
+    "listTitle": "委托",
+    "colFrom": "委托人",
+    "colTo": "受托人",
+    "colModule": "模块 / 审批任务",
+    "colStart": "开始",
+    "colEnd": "结束",
+    "colStatus": "状态",
+    "colActions": "操作",
+    "allApprovals": "所有审批",
+    "statusActive": "生效中",
+    "statusScheduled": "已排期",
+    "statusEnded": "已结束",
+    "ongoing": "持续中",
+    "create": "创建委托",
+    "delegateTo": "委托给",
+    "delegateFrom": "委托人",
+    "start": "开始日期",
+    "end": "结束日期",
+    "revoke": "撤销",
+    "edit": "编辑",
+    "save": "保存",
+    "choose": "请选择…",
+    "empty": "暂无委托。",
+    "noDownline": "您没有直属下属，因此没有可委托的审批。",
+    "showHistory": "显示历史",
+    "hideHistory": "隐藏历史",
+    "selfHint": "您外出期间将自己的审批职责交给他人。"
   }
 }

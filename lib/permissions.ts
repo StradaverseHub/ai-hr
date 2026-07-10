@@ -137,6 +137,17 @@ export const SCREENS: readonly ScreenEntry[] = [
     hasScopeNote: true,
   },
   {
+    // Global Delegation (Phase 1). scopedSession — every authenticated role reaches the screen; the DATA is
+    // scoped in the read (HR/super_admin see the whole tenant, a self-service user only rows where they are
+    // delegator or delegate). Deliberately NO sidebar entry (per the request), so it is nav-less but guarded.
+    screenKey: 'delegations',
+    href: '/delegations',
+    labelKey: 'nav.delegations',
+    guard: 'scopedSession',
+    routes: ['/delegations'],
+    hasScopeNote: true,
+  },
+  {
     screenKey: 'performance',
     href: '/performance',
     labelKey: 'nav.performance',

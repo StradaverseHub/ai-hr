@@ -47,6 +47,17 @@ export async function hrAdminsForCompany(tx: Tx, employmentId: string): Promise<
   return [...new Set(rows.map((r) => r.employmentId))];
 }
 
+/** Global Delegation (Phase 1) — the stand-in (delegate) of a delegation row, resolved off the
+ *  reporting_line manager side by the row id (the event's aggregateId). Empty when the row is gone. */
+export async function delegateRecipient(tx: Tx, reportingLineId: string): Promise<string[]> {
+  const [row] = await tx
+    .select({ delegate: reportingLine.managerEmploymentId })
+    .from(reportingLine)
+    .where(eq(reportingLine.id, reportingLineId))
+    .limit(1);
+  return row?.delegate ? [row.delegate] : [];
+}
+
 const enabled = () => process.env.NOTIFICATIONS_ENABLED === 'true';
 
 type Rendered = { severity: NotificationSeverity; title: string; body: string; linkPath: string };
@@ -309,6 +320,32 @@ const REGISTRY: Record<string, Spec | Spec[]> = {
       if (rev.managerEmploymentId) out.unshift(rev.managerEmploymentId);
       return [...new Set(out)];
     },
+  },
+  // Global Delegation (Phase 1) — tell the STAND-IN (the delegate) when their cover starts / ends. The
+  // event's subjectEmploymentId is the delegator (the person handing over), so a subject-default notice
+  // would be wrong; a fan-out resolver reads the delegate off the reporting_line row (aggregateId) instead.
+  // Deep-links to /delegations, where the full picture (who covers whom, windows, revoke) lives.
+  'delegation.started': {
+    kind: 'delegation.started',
+    category: 'delegation',
+    render: (p) => ({
+      severity: 'action',
+      title: 'You are now a stand-in approver',
+      body: `You have been assigned to cover approvals${p?.validFrom ? ` from ${p.validFrom}` : ''}${p?.validTo ? ` to ${p.validTo}` : ''}.`,
+      linkPath: '/delegations',
+    }),
+    recipients: (tx, ev) => delegateRecipient(tx, ev.aggregateId),
+  },
+  'delegation.ended': {
+    kind: 'delegation.ended',
+    category: 'delegation',
+    render: (p) => ({
+      severity: 'info',
+      title: 'Your stand-in cover has ended',
+      body: `Your approval cover has ended${p?.endDate ? ` (${p.endDate})` : ''}.`,
+      linkPath: '/delegations',
+    }),
+    recipients: (tx, ev) => delegateRecipient(tx, ev.aggregateId),
   },
   // The batch event has no single subject — fan out to every employee with a payslip in the closed batch.
   'payroll-batch.closed': {
