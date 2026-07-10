@@ -2341,14 +2341,20 @@
       },
       "tp1": {
         "title": "TP1 Relief",
-        "subtitle": "Monthly TP1 tax relief per employee for a draft batch.",
-        "pickBatch": "Draft batch",
-        "noBatches": "No draft batch available. Create one from the Payroll Process tab first.",
+        "subtitle": "Maintain an employee's LHDN TP1 personal tax relief declaration.",
+        "searchLabel": "Search employee",
+        "searchPlaceholder": "Name, employee ID, or email",
+        "companyLabel": "Company",
+        "departmentLabel": "Department",
+        "allCompanies": "All companies",
+        "allDepartments": "All departments",
+        "search": "Search",
+        "results": "Employees",
         "employee": "Employee",
-        "amount": "TP1 relief",
-        "save": "Save",
-        "saved": "Saved.",
-        "empty": "No employees in this batch."
+        "employeeCode": "Employee ID",
+        "open": "Open",
+        "noResults": "No employees match your search.",
+        "changeEmployee": "Change employee"
       },
       "zakat": {
         "title": "Zakat",
@@ -2438,7 +2444,10 @@
           "empty": "No individual transactions match the selected filters."
         },
         "history": {
-          "empty": "No processed payroll results match the selected filters."
+          "empty": "No processed payroll results match the selected filters.",
+          "showBreakdown": "Show breakdown",
+          "hideBreakdown": "Hide breakdown",
+          "totalEmployerContributions": "Total employer contributions"
         },
         "exportCsv": "Export CSV"
       }

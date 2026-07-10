@@ -23,6 +23,7 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
+import { isAdmin } from '../lib/authz';
 import { tp1Relief, TP1_CATEGORY_KEYS, type Tp1CategoryKey, type Tp1Categories } from '../db/schema';
 import { MY_RELIEFS } from '../localization/my/statutory-tables';
 
@@ -148,13 +149,47 @@ function requirePerson(ctx: SessionContext): string {
   return ctx.personId;
 }
 
+/**
+ * Admin-on-behalf gate (Standardize-TP1, item 0cde61f3). The `*ForPerson` entry points let an HR admin
+ * open/maintain ANOTHER employee's TP1 declaration — the SAME single tp1_relief master row the employee
+ * edits on /me, so there is exactly one declaration per person per year (no duplicate store). The DB is the
+ * real backstop: the tp1_relief RLS policy is `app.can_see_person(person_id)` for both USING and WITH CHECK
+ * (self OR admin), so a non-admin session physically cannot read or write a peer's row. This service gate
+ * fails fast BEFORE the DB, and `personId` is always resolved server-side from the selected employment —
+ * never a raw form field. actorOf(ctx) records the HR admin as the event actor.
+ */
+function requireAdminTarget(ctx: SessionContext, personId: string | null | undefined): string {
+  if (!isAdmin(ctx)) {
+    throw new TaxReliefError('Only an HR administrator can maintain another employee’s TP1 declaration.');
+  }
+  if (!personId) throw new TaxReliefError('Select an employee before maintaining a TP1 declaration.');
+  return personId;
+}
+
 /** The latest TP1 row for the caller for an assessment year (RLS-scoped). Read-only, no event. */
 export function getTp1(
   ctx: SessionContext,
   p: { assessmentYear: number },
 ): Promise<Tp1Row | null> {
-  const personId = requirePerson(ctx);
-  const year = Math.trunc(Number(p.assessmentYear));
+  return getTp1ForPersonId(ctx, requirePerson(ctx), p.assessmentYear);
+}
+
+/** Admin-on-behalf read: the latest TP1 row for a SELECTED employee + year (same master row the employee
+ *  reads). Admin-gated; RLS confines the read to self+admin. Read-only, no event. */
+export async function getTp1ForPerson(
+  ctx: SessionContext,
+  p: { personId: string; assessmentYear: number },
+): Promise<Tp1Row | null> {
+  return getTp1ForPersonId(ctx, requireAdminTarget(ctx, p.personId), p.assessmentYear);
+}
+
+/** Internal person-keyed read shared by the self and admin entry points (identical query + shape). */
+function getTp1ForPersonId(
+  ctx: SessionContext,
+  personId: string,
+  assessmentYear: number,
+): Promise<Tp1Row | null> {
+  const year = Math.trunc(Number(assessmentYear));
   return withTenant(ctx, async (tx): Promise<Tp1Row | null> => {
     const [row] = await tx
       .select({
@@ -210,7 +245,15 @@ export function getLatestSubmittedTp1(
 
 /** Distinct assessment years the caller has TP1 rows for (drives the year selector + historical view). */
 export function listTp1Years(ctx: SessionContext): Promise<number[]> {
-  const personId = requirePerson(ctx);
+  return listTp1YearsForPersonId(ctx, requirePerson(ctx));
+}
+
+/** Admin-on-behalf: distinct assessment years a SELECTED employee has TP1 rows for. Admin-gated. */
+export async function listTp1YearsForPerson(ctx: SessionContext, p: { personId: string }): Promise<number[]> {
+  return listTp1YearsForPersonId(ctx, requireAdminTarget(ctx, p.personId));
+}
+
+function listTp1YearsForPersonId(ctx: SessionContext, personId: string): Promise<number[]> {
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .selectDistinct({ year: tp1Relief.assessmentYear })
@@ -225,11 +268,24 @@ export function listTp1Years(ctx: SessionContext): Promise<number[]> {
  * Save the single editable DRAFT for an assessment year: UPDATE the open draft if present, else INSERT.
  * A submitted row is never touched here (a submitted year is corrected via `submitTp1`).
  */
-export async function saveTp1Draft(
+export function saveTp1Draft(ctx: SessionContext, p: Tp1WriteInput): Promise<{ id: string }> {
+  return saveTp1DraftForPersonId(ctx, requirePerson(ctx), p);
+}
+
+/** Admin-on-behalf draft save: UPSERT the SELECTED employee's editable draft for a year. Admin-gated;
+ *  writes the SAME master row the employee edits; HR is recorded as the event actor. */
+export async function saveTp1DraftForPerson(
   ctx: SessionContext,
+  p: { personId: string } & Tp1WriteInput,
+): Promise<{ id: string }> {
+  return saveTp1DraftForPersonId(ctx, requireAdminTarget(ctx, p.personId), p);
+}
+
+async function saveTp1DraftForPersonId(
+  ctx: SessionContext,
+  personId: string,
   p: Tp1WriteInput,
 ): Promise<{ id: string }> {
-  const personId = requirePerson(ctx);
   const { year, amount, categories } = resolveInput(p);
   // PDPA Layer-0: list the changed FIELD names only — never the cleartext amounts.
   const fields = categories ? ['tp1Amount', 'categories'] : ['tp1Amount'];
@@ -279,11 +335,24 @@ export async function saveTp1Draft(
  * Submit a TP1 declaration for an assessment year: INSERT a new SUBMITTED row (a correction is just another
  * append — latest-submitted wins). Never closes/supersedes a prior row.
  */
-export async function submitTp1(
+export function submitTp1(ctx: SessionContext, p: Tp1WriteInput): Promise<{ id: string }> {
+  return submitTp1ForPersonId(ctx, requirePerson(ctx), p);
+}
+
+/** Admin-on-behalf submit: INSERT a SUBMITTED correction for the SELECTED employee (latest-submitted
+ *  wins, history kept). Admin-gated; writes the SAME master row the employee reads; HR is the actor. */
+export async function submitTp1ForPerson(
   ctx: SessionContext,
+  p: { personId: string } & Tp1WriteInput,
+): Promise<{ id: string }> {
+  return submitTp1ForPersonId(ctx, requireAdminTarget(ctx, p.personId), p);
+}
+
+async function submitTp1ForPersonId(
+  ctx: SessionContext,
+  personId: string,
   p: Tp1WriteInput,
 ): Promise<{ id: string }> {
-  const personId = requirePerson(ctx);
   const { year, amount, categories } = resolveInput(p);
   const fields = categories ? ['tp1Amount', 'categories'] : ['tp1Amount'];
   return withTenant(ctx, async (tx) => {

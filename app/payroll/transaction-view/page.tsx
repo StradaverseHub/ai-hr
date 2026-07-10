@@ -14,6 +14,7 @@ import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, in
 import { employeeLabel } from '@/lib/employee-code';
 import { PayrollTabs } from '@/components/payroll-tabs';
 import { IndividualTxnTable } from './individual-table';
+import { HistoryTable } from './history-table';
 
 /**
  * Transaction View (feedback a4a05174; relocated to a top-level Payroll tab by feedback 59178702) —
@@ -40,9 +41,6 @@ const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11'
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 const TXN_STATUSES = ['unattached', 'draft', 'processed', 'closed'] as const; // 'unattached' = no run yet (f1564110 Phase 2)
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-
-const rm = (n: unknown) =>
-  `RM ${Number(n ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
 function intParam(v: string | undefined, min: number, max: number): number | undefined {
@@ -75,7 +73,6 @@ export default async function TransactionViewPage({
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
   const tList = await getTranslations('payroll.list');
-  const tBatch = await getTranslations('payroll.batch');
   const sp = await searchParams;
 
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'fixed';
@@ -405,66 +402,14 @@ export default async function TransactionViewPage({
         </Card>
       )}
 
-      {/* ── 3. Transaction History (processed payslip results) ── */}
+      {/* ── 3. Transaction History (processed payslip results) ──
+          Each summary row expands to the itemized payslip breakdown (feedback 5f8d8395). The client table
+          receives the already-fetched, scope-guarded rows (full statutory blob + aggregates) and renders the
+          detail inline with no extra round-trip. */}
       {tab === 'history' && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('view.tabs.history')} count={historyRows.length} />
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <tr>
-                  <th className="px-4 py-2 font-medium">{tList('colPeriod')}</th>
-                  <th className="px-4 py-2 font-medium">{tList('colCycle')}</th>
-                  <th className="px-4 py-2 font-medium">{tBatch('colEmployee')}</th>
-                  <th className="px-4 py-2 font-medium">{tList('colCompany')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('colGross')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('colEpf')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('colSocso')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('colEis')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('colPcb')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('totalDeductions')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{tBatch('colNet')}</th>
-                  <th className="px-4 py-2 font-medium">{tList('colStatus')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {historyRows.map((r) => {
-                  const st = (r.statutory ?? {}) as Record<string, number>;
-                  return (
-                    <tr key={r.id}>
-                      <td className="px-4 py-2.5 tabular-nums">{r.payPeriod}</td>
-                      <td className="px-4 py-2.5">
-                        {t(`individual.cycle.${r.runType}`)}
-                        {r.runSeq > 1 ? ` #${r.runSeq}` : ''}
-                      </td>
-                      <td className="px-4 py-2.5 font-medium">
-                        {/* Employee ID left-of-name (feedback 38668d9b) */}
-                        <EmployeeName code={r.employeeCode} name={r.employeeName} />
-                      </td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.company}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">{rm(r.gross)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.epfEmployee)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.socsoEmployee)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.eisEmployee)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(st.pcb)}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{rm(r.totalDeductions)}</td>
-                      <td className="px-4 py-2.5 text-right font-medium tabular-nums">{rm(r.net)}</td>
-                      <td className="px-4 py-2.5">
-                        <Badge variant="success">{tList(`status.${r.batchStatus}`)}</Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {historyRows.length === 0 && (
-                  <tr>
-                    <td colSpan={12} className="px-4 py-8 text-center text-muted-foreground">
-                      {t('view.history.empty')}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <HistoryTable rows={historyRows} />
         </Card>
       )}
     </div>
