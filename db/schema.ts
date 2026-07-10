@@ -450,6 +450,9 @@ export const position = pgTable(
       .references(() => company.id),
     title: text('title').notNull(),
     jobFamily: text('job_family'),
+    // System Labels UI redesign (797e3523, migration 0181): optional short code / abbreviation shown in
+    // the System Labels grid to help identify a record. Nullable; NULL = no short code.
+    label: text('label'),
     // System Labels (migration 0145): optional admin note. Nullable, mirrors job_family; shown only on
     // the System Labels admin CRUD screen, not in the shared hire-form/People read paths.
     description: text('description'),
@@ -475,6 +478,8 @@ export const businessUnit = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
+    // System Labels UI redesign (797e3523, migration 0181): optional short code / abbreviation (nullable).
+    label: text('label'),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
     // Approval vocabulary (6fadb036, migration 0164): the business-unit head — the employment a
@@ -501,6 +506,8 @@ export const department = pgTable(
     // BU on the hire form). Validated to the same company as the department at write time in the service.
     businessUnitId: uuid('business_unit_id').references(() => businessUnit.id),
     name: text('name').notNull(),
+    // System Labels UI redesign (797e3523, migration 0181): optional short code / abbreviation (nullable).
+    label: text('label'),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
     // Approval vocabulary (6fadb036, migration 0164): the department head — the employment a
@@ -524,6 +531,8 @@ export const costCenter = pgTable(
       .references(() => company.id),
     code: text('code').notNull(),
     name: text('name').notNull(),
+    // System Labels UI redesign (797e3523, migration 0181): optional short code / abbreviation (nullable).
+    label: text('label'),
     // System Labels (migration 0145): optional admin note (nullable). System Labels CRUD screen only.
     description: text('description'),
     // Shared System Labels (ADR-0073): TRUE = "All Companies" global master. Group-admin gated at RLS.
