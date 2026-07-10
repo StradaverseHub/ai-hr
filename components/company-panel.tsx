@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { Avatar, Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
-type TabKey = 'general' | 'payroll' | 'system' | 'access' | 'other';
+type TabKey = 'general' | 'payroll';
 
 /** One tab trigger — mirrors the payroll-tabs styling (border-b, active = border-primary text-primary). */
 function TabButton({
@@ -209,15 +209,6 @@ export function CompanyPanel({
             </TabButton>
             <TabButton active={tab === 'payroll'} onClick={() => setTab('payroll')}>
               {t('tabPayroll')}
-            </TabButton>
-            <TabButton active={tab === 'system'} onClick={() => setTab('system')}>
-              {t('tabSystemConfig')}
-            </TabButton>
-            <TabButton active={tab === 'access'} onClick={() => setTab('access')}>
-              {t('tabAccessUsers')}
-            </TabButton>
-            <TabButton active={tab === 'other'} onClick={() => setTab('other')}>
-              {t('tabOther')}
             </TabButton>
           </div>
 
@@ -473,30 +464,6 @@ export function CompanyPanel({
           />
           </div>
           {/* end Payroll tab */}
-
-          {/* System config: departments/positions/cost-centres/business-units moved to Settings → System
-              labels (owned by sibling item d356dec8). Cross-link, don't re-introduce here. */}
-          <div className={cn(tab === 'system' ? '' : 'hidden')}>
-            <CrossLinkTab
-              text={t('systemConfigCrossLink')}
-              href="/admin/settings/system-labels"
-              action={t('systemConfigCrossLinkAction')}
-            />
-          </div>
-
-          {/* Access & users: assigned users + RBAC live on the Users admin page. Cross-link, don't duplicate. */}
-          <div className={cn(tab === 'access' ? '' : 'hidden')}>
-            <CrossLinkTab
-              text={t('accessUsersCrossLink')}
-              href="/admin/users"
-              action={t('accessUsersCrossLinkAction')}
-            />
-          </div>
-
-          {/* Other: reserved placeholder so future company settings slot in without a redesign. */}
-          <div className={cn(tab === 'other' ? '' : 'hidden')}>
-            <p className="rounded-lg bg-background p-4 text-sm text-muted-foreground">{t('otherTabNote')}</p>
-          </div>
         </div>
       )}
     </li>
