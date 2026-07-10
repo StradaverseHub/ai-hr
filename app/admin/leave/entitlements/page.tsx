@@ -3,9 +3,10 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/lib/authz';
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
+import { listLeaveYearConfigs } from '@/core/leave';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
-import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
+import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { LeaveTabs } from '@/components/leave-tabs';
 import { LeaveTypePanel, type EntitlementPolicy } from '@/components/leave-type-panel';
 import { FestiveGrantCard, type FestiveGrantRow } from '@/components/festive-grant-card';
@@ -18,7 +19,8 @@ import {
   deleteLeaveTypeAction,
   updateLeavePolicyAction,
   updateLeaveTypeAction,
-  openLeaveYearAction,
+  upsertLeaveYearConfigAction,
+  setLeaveYearStatusAction,
   runEarnedAccrualAction,
   setCompanyLeaveCycleAction,
   createJobGradeAction,
@@ -49,7 +51,7 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants] = await Promise.all([
+  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs] = await Promise.all([
     listLeaveTypes(s, { includeArchived: true }),
     listLeavePolicies(s),
     listCompanies(s),
@@ -57,6 +59,8 @@ export default async function LeaveEntitlementsPage({
     // scope dropdown below is filtered to ACTIVE grades only (archived grades can't be assigned to new scopes).
     listJobGrades(s, { includeArchived: true }),
     listAdHocLeaveGrants(s),
+    // Leave Year Configuration (9aa894a4): the managed Draft/Open/Closed records driving the Leave-Year table.
+    listLeaveYearConfigs(s),
   ]);
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
@@ -81,6 +85,13 @@ export default async function LeaveEntitlementsPage({
   }));
   const todayIso = new Date().toISOString().slice(0, 10);
   const nextYear = new Date().getUTCFullYear() + 1;
+  // Leave Year Configuration (9aa894a4): offer the current year through +6 in the create dropdown; default to
+  // the first year that does not yet have a managed record (so repeated "Add" naturally walks forward).
+  const configuredYears = new Set(leaveYearConfigs.map((c) => c.year));
+  const yearOptions = Array.from({ length: 7 }, (_, i) => new Date().getUTCFullYear() + i);
+  const defaultNewYear = yearOptions.find((y) => !configuredYears.has(y)) ?? nextYear;
+  const leaveYearStatusVariant = (status: string) =>
+    status === 'open' ? ('success' as const) : status === 'closed' ? ('default' as const) : ('warning' as const);
 
   // Statutory floor display (MY pack): sample the three service bands.
   const floorBands = (code: string) => {
@@ -238,26 +249,106 @@ export default async function LeaveEntitlementsPage({
         </p>
       </Card>
 
+      {/* Leave Year Configuration (9aa894a4): the managed Draft → Open → Closed leave-year records. Each row
+          carries a status badge, the two control dates (editable), and the lifecycle action. Opening a year
+          runs the same grant sweep as before (via setLeaveYearStatusAction → openLeaveYear), so the record
+          and the ledger stay in lockstep. Employees can only apply for a FUTURE leave year once it is open
+          and past its Employee-Application-Start-Date (enforced in requestLeave). */}
       <Card>
-        <SectionHeader title={t('leaveYearTitle')} />
+        <SectionHeader title={t('leaveYearTitle')} count={leaveYearConfigs.length} />
         <p className="px-4 pt-3 text-xs text-muted-foreground">
           {t.rich('leaveYearHelp', {
             strong: (chunks) => <span className="font-medium text-foreground">{chunks}</span>,
           })}
         </p>
-        <form action={openLeaveYearAction} className="flex flex-wrap items-end gap-3 p-4">
+        <ul className="divide-y divide-border">
+          {leaveYearConfigs.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-muted-foreground">{t('noLeaveYears')}</li>
+          )}
+          {leaveYearConfigs.map((cfg) => (
+            <li key={cfg.id} className="flex flex-wrap items-end justify-between gap-4 px-4 py-3">
+              <div className="flex items-center gap-3">
+                <span className="w-14 text-sm font-semibold text-foreground">{cfg.year}</span>
+                <Badge variant={leaveYearStatusVariant(cfg.status)}>{t(`leaveYearStatus_${cfg.status}`)}</Badge>
+              </div>
+              {/* Edit the two control dates (status unchanged here — the lifecycle action does that). */}
+              <form action={upsertLeaveYearConfigAction} className="flex flex-wrap items-end gap-2">
+                <input type="hidden" name="year" value={cfg.year} />
+                <Field label={t('openLeaveYearDateLabel')}>
+                  <input
+                    type="date"
+                    name="openLeaveYearDate"
+                    defaultValue={cfg.openLeaveYearDate ?? ''}
+                    className={`${inputCls} w-40`}
+                  />
+                </Field>
+                <Field label={t('employeeApplicationStartDateLabel')}>
+                  <input
+                    type="date"
+                    name="employeeApplicationStartDate"
+                    defaultValue={cfg.employeeApplicationStartDate ?? ''}
+                    className={`${inputCls} w-40`}
+                  />
+                </Field>
+                <Button type="submit" variant="outline" size="sm">
+                  {t('save')}
+                </Button>
+              </form>
+              {/* Lifecycle action. Draft → Open runs the grant sweep; Open → Closed is an informational badge
+                  flip (v1); Closed → Draft reopens for corrections. */}
+              <div className="flex items-end">
+                {cfg.status === 'draft' && (
+                  <form action={setLeaveYearStatusAction}>
+                    <input type="hidden" name="year" value={cfg.year} />
+                    <input type="hidden" name="status" value="open" />
+                    <Button type="submit" size="sm">
+                      {t('openLeaveYear')}
+                    </Button>
+                  </form>
+                )}
+                {cfg.status === 'open' && (
+                  <form action={setLeaveYearStatusAction}>
+                    <input type="hidden" name="year" value={cfg.year} />
+                    <input type="hidden" name="status" value="closed" />
+                    <Button type="submit" variant="outline" size="sm">
+                      {t('closeLeaveYear')}
+                    </Button>
+                  </form>
+                )}
+                {cfg.status === 'closed' && (
+                  <form action={setLeaveYearStatusAction}>
+                    <input type="hidden" name="year" value={cfg.year} />
+                    <input type="hidden" name="status" value="draft" />
+                    <Button type="submit" variant="ghost" size="sm">
+                      {t('reopenLeaveYear')}
+                    </Button>
+                  </form>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {/* Create / configure an upcoming leave year (year dropdown + two control dates). */}
+        <form
+          action={upsertLeaveYearConfigAction}
+          className="flex flex-wrap items-end gap-3 border-t border-border p-4"
+        >
           <Field label={t('yearLabel')}>
-            <input
-              name="year"
-              type="number"
-              min="2020"
-              max="2100"
-              required
-              defaultValue={nextYear}
-              className={`${inputCls} w-28`}
-            />
+            <select name="year" defaultValue={String(defaultNewYear)} className={`${inputCls} w-28`}>
+              {yearOptions.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           </Field>
-          <button className={btnPrimary}>{t('openLeaveYear')}</button>
+          <Field label={t('openLeaveYearDateLabel')}>
+            <input type="date" name="openLeaveYearDate" className={`${inputCls} w-44`} />
+          </Field>
+          <Field label={t('employeeApplicationStartDateLabel')}>
+            <input type="date" name="employeeApplicationStartDate" className={`${inputCls} w-44`} />
+          </Field>
+          <button className={btnPrimary}>{t('addLeaveYear')}</button>
         </form>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-3">
           <p className="max-w-md text-xs text-muted-foreground">{t('earnedAccrualHelp')}</p>

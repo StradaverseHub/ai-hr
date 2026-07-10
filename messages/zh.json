@@ -880,7 +880,8 @@
       "noLeaveDaysInRange": "此申请没有请假日 — 日期为空或全部落在周末/公共假期。请选择至少包含一个工作日的日期范围。",
       "balanceFrozenForEncashment": "此假期余额因离职申请已获批而被冻结以供折现，无法更改。如您认为这是错误，请联系人力资源部门。",
       "advanceNoticeRequired": "{typeName}必须至少在休假开始日期前 {days} 天提交。",
-      "editNotAllowed": "此请假已无法编辑。"
+      "editNotAllowed": "此请假已无法编辑。",
+      "leaveYearNotOpen": "假期年度 {year} 尚未开放申请。请联系人力资源部。"
     },
     "documentLabel": "证明文件",
     "documentHint": "某些请假类型需要（例如医疗证明）。允许的文件类型和大小限制取决于所选的请假类型。",
@@ -3287,7 +3288,16 @@
       "deleteGrade": "删除",
       "deleteGradeConfirmTitle": "删除此职级？",
       "deleteGradeConfirmDescription": "这将从目录中永久删除该职级，此操作无法撤销。",
-      "gradeInUseCannotDelete": "此职级正被员工或休假政策使用，无法删除。请改为归档。"
+      "gradeInUseCannotDelete": "此职级正被员工或休假政策使用，无法删除。请改为归档。",
+      "leaveYearStatus_draft": "草稿",
+      "leaveYearStatus_open": "开放",
+      "leaveYearStatus_closed": "已关闭",
+      "openLeaveYearDateLabel": "开放假期年度日期",
+      "employeeApplicationStartDateLabel": "员工申请开始日期",
+      "addLeaveYear": "添加假期年度",
+      "closeLeaveYear": "关闭",
+      "reopenLeaveYear": "重新开放",
+      "noLeaveYears": "尚未配置任何假期年度。"
     },
     "holidays": {
       "pageTitle": "公共假期",

@@ -880,7 +880,8 @@
       "noLeaveDaysInRange": "Đơn này không có ngày nghỉ nào — khoảng thời gian trống hoặc rơi hoàn toàn vào cuối tuần/ngày lễ. Vui lòng chọn khoảng thời gian có ít nhất một ngày làm việc.",
       "balanceFrozenForEncashment": "Số dư phép này đã bị khóa để quy đổi sau khi đơn nghỉ việc được phê duyệt và không thể thay đổi. Vui lòng liên hệ bộ phận Nhân sự nếu bạn cho rằng đây là nhầm lẫn.",
       "advanceNoticeRequired": "{typeName} phải được nộp ít nhất {days} ngày trước ngày bắt đầu nghỉ phép.",
-      "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa."
+      "editNotAllowed": "Không thể chỉnh sửa đơn nghỉ này nữa.",
+      "leaveYearNotOpen": "Năm nghỉ phép {year} chưa mở để nộp đơn. Vui lòng liên hệ bộ phận nhân sự."
     },
     "documentLabel": "Tài liệu hỗ trợ",
     "documentHint": "Bắt buộc đối với một số loại nghỉ phép (ví dụ: giấy chứng nhận y tế). Loại tệp và giới hạn kích thước được phép tùy thuộc vào loại nghỉ phép đã chọn.",
@@ -3287,7 +3288,16 @@
       "deleteGrade": "Xóa",
       "deleteGradeConfirmTitle": "Xóa cấp bậc này?",
       "deleteGradeConfirmDescription": "Thao tác này sẽ xóa vĩnh viễn cấp bậc khỏi danh mục. Không thể hoàn tác.",
-      "gradeInUseCannotDelete": "Cấp bậc này đang được nhân viên hoặc chính sách nghỉ phép sử dụng nên không thể xóa. Hãy lưu trữ thay thế."
+      "gradeInUseCannotDelete": "Cấp bậc này đang được nhân viên hoặc chính sách nghỉ phép sử dụng nên không thể xóa. Hãy lưu trữ thay thế.",
+      "leaveYearStatus_draft": "Bản nháp",
+      "leaveYearStatus_open": "Đang mở",
+      "leaveYearStatus_closed": "Đã đóng",
+      "openLeaveYearDateLabel": "Ngày mở năm nghỉ phép",
+      "employeeApplicationStartDateLabel": "Ngày bắt đầu nộp đơn của nhân viên",
+      "addLeaveYear": "Thêm năm nghỉ phép",
+      "closeLeaveYear": "Đóng",
+      "reopenLeaveYear": "Mở lại",
+      "noLeaveYears": "Chưa cấu hình năm nghỉ phép nào."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

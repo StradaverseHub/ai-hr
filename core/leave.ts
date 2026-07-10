@@ -81,6 +81,7 @@ import {
   leaveRequestAttachment,
   leaveRequestDate,
   leaveType,
+  leaveYearConfig,
   payrollBatch,
   payslip,
   person,
@@ -114,6 +115,21 @@ export class InsufficientLeaveBalanceError extends Error {
   constructor() {
     super('Leave rejected: insufficient balance');
     this.name = 'InsufficientLeaveBalanceError';
+  }
+}
+
+// Leave Year Configuration (9aa894a4): a non-HR employee tried to apply for a FUTURE leave year that has not
+// yet been opened for applications — either there is no managed leave_year_config row for that year, its
+// status is not 'open', or today is before its employeeApplicationStartDate. Carries `year` so the action
+// layer can re-localize via getTranslations('leave.errors') before redirecting with ?error=. HR admins
+// (isAdmin) bypass this in requestLeave (the override path, stamped for audit), so it only throws for
+// ordinary employees. Models InsufficientLeaveBalanceError (a plain typed leave rejection).
+export class LeaveYearNotOpenError extends Error {
+  readonly year: number;
+  constructor(year: number) {
+    super(`Leave year ${year} is not yet open for applications.`);
+    this.name = 'LeaveYearNotOpenError';
+    this.year = year;
   }
 }
 
@@ -587,6 +603,44 @@ export function lacksMinAdvanceNotice(startDate: string, today: string, minDays:
   return daysBetween(today, startDate) < minDays;
 }
 
+/** The lifecycle status of a managed leave-year record. draft = created but balances not yet posted;
+ *  open = openLeaveYear ran (balances live) and applications are permitted (subject to the app-start date);
+ *  closed = an informational badge for a bygone year (v1 does not sweep on close). */
+export type LeaveYearStatus = 'draft' | 'open' | 'closed';
+export const LEAVE_YEAR_STATUSES: readonly LeaveYearStatus[] = ['draft', 'open', 'closed'] as const;
+export function isLeaveYearStatus(v: unknown): v is LeaveYearStatus {
+  return typeof v === 'string' && (LEAVE_YEAR_STATUSES as readonly string[]).includes(v);
+}
+
+/** The minimal leave-year config shape the pure gate reads (subset of LeaveYearConfigRow). */
+export type LeaveYearGateConfig = {
+  year: number;
+  status: string;
+  employeeApplicationStartDate: string | null;
+};
+
+/**
+ * Leave Year Configuration (9aa894a4) — pure "may an employee apply for `targetYear`?" gate. Mirrors
+ * lacksMinAdvanceNotice: pure + `today`-injectable for deterministic tests. Returns TRUE only when the
+ * managed record for `targetYear` exists, is 'open', and today is on/after its employeeApplicationStartDate.
+ * FALSE (not open) when: no config for the year, config for a different year, status ≠ 'open', or today is
+ * before the application-start date. A null application-start date on an OPEN year means "no gate date" ⇒
+ * open immediately. The caller decides WHICH years to enforce this on — requestLeave only enforces it for a
+ * FUTURE leave year, so a null-config current/past year keeps today's exact behaviour (see requestLeave).
+ */
+export function leaveYearOpenForApplication(
+  config: LeaveYearGateConfig | null | undefined,
+  targetYear: number,
+  today: string,
+): boolean {
+  if (!config) return false;
+  if (config.year !== targetYear) return false;
+  if (config.status !== 'open') return false;
+  const appStart = config.employeeApplicationStartDate;
+  if (appStart && today < appStart) return false;
+  return true;
+}
+
 /** Subtract whole calendar months from an ISO date, clamping the day to the target month's length. */
 function subtractMonths(iso: string, months: number): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -899,6 +953,11 @@ async function insertLeaveRequest(
     // configured control must be captured). null/absent ⇒ normal in-notice request; payload unchanged so
     // existing assertions stay green. Mirrors backdatingAudit above.
     minAdvanceAudit?: { daysInAdvance: number; minAdvanceDays: number | null } | null;
+    // Leave Year Configuration (9aa894a4): set only when an HR admin SUCCESSFULLY overrode the not-yet-open
+    // gate (the request is for a future leave year that is not open, but isAdmin let it through). Stamps the
+    // override onto the submitted event payload for the audit trail. null/absent ⇒ normal request; payload
+    // unchanged. Mirrors backdatingAudit / minAdvanceAudit above.
+    leaveYearAudit?: { targetYear: number } | null;
   },
 ): Promise<{ id: string }> {
   const [row] = await tx
@@ -970,6 +1029,12 @@ async function insertLeaveRequest(
             daysInAdvance: v.minAdvanceAudit.daysInAdvance,
             minAdvanceDays: v.minAdvanceAudit.minAdvanceDays,
           }
+        : {}),
+      // Leave Year Configuration (9aa894a4): when an HR admin applied for a future leave year that is not yet
+      // open, stamp it so an auditor sees this was an override (vs a normal in-window request). Only present
+      // on the override path — the normal-path payload is byte-identical to before.
+      ...(v.leaveYearAudit
+        ? { leaveYearNotOpenOverride: true, targetLeaveYear: v.leaveYearAudit.targetYear }
         : {}),
     },
   });
@@ -1107,6 +1172,32 @@ export async function requestLeave(
       // config field name) through the typed error so the localizer renders it verbatim; absent ⇒ the
       // built-in localized default. Same look-up-then-pass-through pattern as the backdating gate above.
       throw new LeaveAdvanceNoticeRequiredError(minAdvance!, lt?.name, lt?.customMessages?.minAdvanceDays || undefined);
+    }
+
+    // Leave Year Configuration (9aa894a4). "Employees can only apply leave for a FUTURE leave year after the
+    // leave year is opened." Derive the target year from the request's START date. Only a FUTURE year (strictly
+    // after today's tenant-local calendar year) is gated — a current/past year keeps today's EXACT behaviour,
+    // and with NO managed leave_year_config record the system is unchanged for current/past years. For a
+    // future year we look up its managed record and require it to be OPEN and past its employee-application-
+    // start date (leaveYearOpenForApplication). HR admins (isAdmin) bypass for exceptional cases (the override
+    // path, stamped onto the submitted event below); ordinary employees get a typed LeaveYearNotOpenError
+    // BEFORE any write. Emergency Leave already returned above (it exists for urgent, current absence).
+    const targetLeaveYear = Number(p.startDate.slice(0, 4));
+    const currentLeaveYear = Number(today.slice(0, 4));
+    let leaveYearOverride = false;
+    if (Number.isInteger(targetLeaveYear) && targetLeaveYear > currentLeaveYear) {
+      const [lyCfg] = await tx
+        .select({
+          year: leaveYearConfig.year,
+          status: leaveYearConfig.status,
+          employeeApplicationStartDate: leaveYearConfig.employeeApplicationStartDate,
+        })
+        .from(leaveYearConfig)
+        .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, targetLeaveYear)))
+        .limit(1);
+      const open = leaveYearOpenForApplication(lyCfg ?? null, targetLeaveYear, today);
+      leaveYearOverride = isAdmin(ctx) && !open;
+      if (!isAdmin(ctx) && !open) throw new LeaveYearNotOpenError(targetLeaveYear);
     }
 
     const durationType: LeaveDurationType = p.durationType ?? 'full_day';
@@ -1350,6 +1441,9 @@ export async function requestLeave(
       minAdvanceAudit: advanceOverride
         ? { daysInAdvance: daysBetween(today, p.startDate), minAdvanceDays: minAdvance }
         : null,
+      // Leave Year Configuration (9aa894a4): stamp the override onto the submitted event only when an HR admin
+      // actually applied for a not-yet-open future leave year (computed at the gate above).
+      leaveYearAudit: leaveYearOverride ? { targetYear: targetLeaveYear } : null,
     });
 
     // Partial Leave Approval — single-request model (ADR-0068 §4B). When the type is opted-in (§4C gate above)
@@ -3527,6 +3621,148 @@ export const serviceYearsAt = (hiredOn: string, asOf: string): number => {
  * entirely (their hire grant covers the year). Overdrawn balances are never "forfeited"
  * (the debt simply rolls and the new grant lands on top).
  */
+// ── Leave Year Configuration (9aa894a4) ──────────────────────────────────────────────────────────────
+/** Row shape returned to the admin surface (the managed leave-year table). Dates are ISO yyyy-mm-dd. */
+export type LeaveYearConfigView = {
+  id: string;
+  year: number;
+  status: LeaveYearStatus;
+  openLeaveYearDate: string | null;
+  employeeApplicationStartDate: string | null;
+  openedAt: string | null;
+  openedBy: string | null;
+};
+
+/** List every managed leave-year record for the tenant, newest year first. Read-only (RLS: tenant-read). */
+export async function listLeaveYearConfigs(ctx: SessionContext): Promise<LeaveYearConfigView[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select()
+      .from(leaveYearConfig)
+      .where(eq(leaveYearConfig.tenantId, ctx.tenantId))
+      .orderBy(desc(leaveYearConfig.year));
+    return rows.map((r) => ({
+      id: r.id,
+      year: r.year,
+      status: (isLeaveYearStatus(r.status) ? r.status : 'draft') as LeaveYearStatus,
+      openLeaveYearDate: r.openLeaveYearDate ?? null,
+      employeeApplicationStartDate: r.employeeApplicationStartDate ?? null,
+      openedAt: r.openedAt ? r.openedAt.toISOString() : null,
+      openedBy: r.openedBy ?? null,
+    }));
+  });
+}
+
+/** Create or edit a managed leave-year record's two control dates (status is NOT changed here — use
+ *  setLeaveYearStatus for the Draft→Open transition). Idempotent on (tenant, year). Appends
+ *  leave-year.configured. Substrate: config write → event. */
+export async function upsertLeaveYearConfig(
+  ctx: SessionContext,
+  p: { year: number; openLeaveYearDate?: string | null; employeeApplicationStartDate?: string | null },
+) {
+  if (!Number.isInteger(p.year) || p.year < 2020 || p.year > 2100) {
+    throw new Error('Invalid leave year (must be an integer between 2020 and 2100)');
+  }
+  const openDate = p.openLeaveYearDate?.trim() || null;
+  const appStart = p.employeeApplicationStartDate?.trim() || null;
+  return withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
+      .limit(1);
+    const [row] = await tx
+      .insert(leaveYearConfig)
+      .values({
+        tenantId: ctx.tenantId,
+        year: p.year,
+        status: 'draft',
+        openLeaveYearDate: openDate,
+        employeeApplicationStartDate: appStart,
+      })
+      .onConflictDoUpdate({
+        target: [leaveYearConfig.tenantId, leaveYearConfig.year],
+        // Status is left untouched on edit (only setLeaveYearStatus moves the lifecycle).
+        set: { openLeaveYearDate: openDate, employeeApplicationStartDate: appStart, updatedAt: new Date() },
+      })
+      .returning({ id: leaveYearConfig.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: row.id,
+      eventType: 'leave-year.configured',
+      actor: actorOf(ctx),
+      payload: {
+        year: p.year,
+        before: before
+          ? { openLeaveYearDate: before.openLeaveYearDate ?? null, employeeApplicationStartDate: before.employeeApplicationStartDate ?? null }
+          : null,
+        after: { openLeaveYearDate: openDate, employeeApplicationStartDate: appStart },
+      },
+    });
+    return { id: row.id };
+  });
+}
+
+/**
+ * Transition a managed leave-year record's status. On →open, CALL the existing openLeaveYear grant sweep
+ * (idempotent — never duplicated here) so the record and the ledger move in lockstep, then stamp opened_at /
+ * opened_by on the record. draft/closed transitions just flip the badge (v1: closed is informational, no
+ * carry-forward sweep). Substrate: each write appends leave-year.configured (the status change), and →open
+ * additionally emits leave-year.opened via openLeaveYear.
+ */
+export async function setLeaveYearStatus(ctx: SessionContext, p: { year: number; status: LeaveYearStatus }) {
+  if (!Number.isInteger(p.year) || p.year < 2020 || p.year > 2100) {
+    throw new Error('Invalid leave year (must be an integer between 2020 and 2100)');
+  }
+  const target: LeaveYearStatus = isLeaveYearStatus(p.status) ? p.status : 'draft';
+  // On →open, run the grant sweep FIRST in its own transaction (idempotent; emits leave-year.opened). Doing
+  // it before the record write keeps record + ledger in lockstep even if a caller retries.
+  let opened: { granted: number; skipped: number; forfeits: number } | null = null;
+  if (target === 'open') {
+    opened = await openLeaveYear(ctx, { year: p.year });
+  }
+  const result = await withTenant(ctx, async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(leaveYearConfig)
+      .where(and(eq(leaveYearConfig.tenantId, ctx.tenantId), eq(leaveYearConfig.year, p.year)))
+      .limit(1);
+    const now = new Date();
+    const openedAt = target === 'open' ? now : (before?.openedAt ?? null);
+    const openedBy = target === 'open' ? (ctx.userId ?? null) : (before?.openedBy ?? null);
+    const [row] = await tx
+      .insert(leaveYearConfig)
+      .values({
+        tenantId: ctx.tenantId,
+        year: p.year,
+        status: target,
+        openedAt,
+        openedBy,
+      })
+      .onConflictDoUpdate({
+        target: [leaveYearConfig.tenantId, leaveYearConfig.year],
+        set: { status: target, openedAt, openedBy, updatedAt: now },
+      })
+      .returning({ id: leaveYearConfig.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'leave-year',
+      aggregateId: row.id,
+      eventType: 'leave-year.configured',
+      actor: actorOf(ctx),
+      payload: {
+        year: p.year,
+        before: { status: (before?.status ?? 'draft') as LeaveYearStatus },
+        after: { status: target },
+        ...(opened ? { opened } : {}),
+      },
+    });
+    return { id: row.id, status: target };
+  });
+  return { ...result, opened };
+}
+
 export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
   return withTenant(ctx, async (tx) => {
     const yearStart = `${p.year}-01-01`;

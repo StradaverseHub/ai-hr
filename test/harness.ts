@@ -52,6 +52,9 @@ const ALL_TABLES = [
   // 7d309da7 — Personnel profile dropdown catalog: a leaked option row would trip the
   // (tenant, category, value) unique index (or make a seed-idempotency test see phantom rows).
   'profile_option',
+  // 9aa894a4 — Leave Year Configuration: a leaked row would trip the (tenant, year) unique index across
+  // test files.
+  'leave_year_config',
   // f018ce8d — general employee document store: truncate between test files so a leaked bytea row
   // doesn't survive into a later file's count/RLS assertions.
   'employee_document',

@@ -51,6 +51,9 @@ import {
 } from '@/core/admin';
 import {
   openLeaveYear,
+  upsertLeaveYearConfig,
+  setLeaveYearStatus,
+  isLeaveYearStatus,
   accrueEarnedLeave,
   grantAdHocLeave,
   grantAdHocLeaveMulti,
@@ -82,6 +85,9 @@ import { packFor } from '@/localization/registry';
 
 const ORG = '/admin/organization';
 const LEAVE = '/admin/leave';
+// Leave Year Configuration (9aa894a4): the managed Leave-Year table lives on the Entitlements tab, so its
+// actions revalidate/redirect there (the page reads ?error= for the ErrorBanner).
+const ENTITLEMENTS = '/admin/leave/entitlements';
 const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 const ATTENDANCE_POLICY = '/admin/attendance';
@@ -772,6 +778,49 @@ export async function openLeaveYearAction(formData: FormData) {
       `Leave year ${year}: ${res.granted} grant${res.granted === 1 ? '' : 's'} posted` +
         (res.skipped ? `, ${res.skipped} already open` : '') +
         (res.forfeits ? `, ${res.forfeits} forfeit${res.forfeits === 1 ? '' : 's'}` : ''),
+    )}`,
+  );
+}
+
+// Leave Year Configuration (9aa894a4): create/edit a managed leave-year record's two control dates. Status
+// is NOT changed here (setLeaveYearStatusAction moves the lifecycle). Empty date inputs post '' → cleared.
+export async function upsertLeaveYearConfigAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await upsertLeaveYearConfig(s, {
+      year: Number(formData.get('year')),
+      openLeaveYearDate: String(formData.get('openLeaveYearDate') ?? '') || null,
+      employeeApplicationStartDate: String(formData.get('employeeApplicationStartDate') ?? '') || null,
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+// Leave Year Configuration (9aa894a4): transition a managed leave-year's status. →open runs the existing
+// openLeaveYear grant sweep (idempotent) + stamps opened_at/by, keeping the record and ledger in lockstep.
+// This is the repointed "Open leave year" action — the button posts status='open' through the record.
+export async function setLeaveYearStatusAction(formData: FormData) {
+  const s = await getSession();
+  const year = Number(formData.get('year'));
+  const status = String(formData.get('status') ?? '');
+  let res: Awaited<ReturnType<typeof setLeaveYearStatus>> | null = null;
+  try {
+    if (!isLeaveYearStatus(status)) throw new Error('Invalid leave-year status');
+    res = await setLeaveYearStatus(s, { year, status });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  revalidatePath(ENTITLEMENTS);
+  const opened = res?.opened;
+  redirect(
+    `${ENTITLEMENTS}?toast=${encodeURIComponent(
+      opened
+        ? `Leave year ${year} opened: ${opened.granted} grant${opened.granted === 1 ? '' : 's'} posted` +
+            (opened.skipped ? `, ${opened.skipped} already open` : '') +
+            (opened.forfeits ? `, ${opened.forfeits} forfeit${opened.forfeits === 1 ? '' : 's'}` : '')
+        : `Leave year ${year} status set to ${status}`,
     )}`,
   );
 }

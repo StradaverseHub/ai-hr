@@ -3826,6 +3826,35 @@ export const profileOption = pgTable(
   ],
 );
 
+// 9aa894a4 — Leave Year Configuration (0190). A managed lifecycle record per (tenant, leave year):
+// Draft → Open → Closed, with two independent control dates: openLeaveYearDate (when the year's balances go
+// live) and employeeApplicationStartDate (when staff may start APPLYING for that year). ADDITIVE: with NO
+// rows the system behaves exactly as before (openLeaveYear stays manual; the application gate in core/leave.ts
+// only ever fires for a FUTURE leave year). status→open calls the existing openLeaveYear grant sweep +
+// stamps openedAt / openedBy. RLS mirrors profile_option: tenant-read, admin-only write.
+export const leaveYearConfig = pgTable(
+  'leave_year_config',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    year: integer('year').notNull(),
+    // 'draft' | 'open' | 'closed' — enforced by a DB CHECK (0190).
+    status: text('status').notNull().default('draft'),
+    openLeaveYearDate: date('open_leave_year_date'),
+    employeeApplicationStartDate: date('employee_application_start_date'),
+    openedAt: timestamp('opened_at', { withTimezone: true }),
+    // The app_user id (actor) that transitioned the year to open; nullable until first opened.
+    openedBy: uuid('opened_by'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // One managed record per (tenant, year) — the idempotency key the upsert path relies on.
+    uniqueIndex('leave_year_config_tenant_year_uq').on(t.tenantId, t.year),
+  ],
+);
+export type LeaveYearConfigRow = typeof leaveYearConfig.$inferSelect;
+
 // Dependent sub-category under a claim type (e.g. TRAVEL → MILEAGE / PARKING / TOLL). The submission form
 // shows it as a dependent dropdown; mandatory only when the chosen type has ≥1 live item (enforced in the
 // service, not the schema — claim_request.claim_item_id stays nullable for legacy/zero-item types).

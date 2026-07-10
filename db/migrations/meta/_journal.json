@@ -1331,6 +1331,13 @@
       "when": 1781862188000,
       "tag": "0189_system_label_short_code",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "7",
+      "when": 1781862189000,
+      "tag": "0190_leave_year_config",
+      "breakpoints": true
     }
   ]
 }

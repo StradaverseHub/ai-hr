@@ -880,7 +880,8 @@
       "noLeaveDaysInRange": "Permohonan ini tiada hari cuti — tarikhnya kosong atau jatuh sepenuhnya pada hujung minggu/cuti umum. Pilih julat yang merangkumi sekurang-kurangnya satu hari bekerja.",
       "balanceFrozenForEncashment": "Baki cuti ini dibekukan untuk pemvantaian berikutan peletakan jawatan yang diluluskan dan tidak boleh diubah. Hubungi HR jika anda percaya ini satu kesilapan.",
       "advanceNoticeRequired": "{typeName} mesti dihantar sekurang-kurangnya {days} hari sebelum tarikh mula cuti.",
-      "editNotAllowed": "Cuti ini tidak boleh lagi disunting."
+      "editNotAllowed": "Cuti ini tidak boleh lagi disunting.",
+      "leaveYearNotOpen": "Tahun cuti {year} belum dibuka untuk permohonan. Sila hubungi HR."
     },
     "documentLabel": "Dokumen sokongan",
     "documentHint": "Diperlukan untuk sesetengah jenis cuti (cth. sijil perubatan). Jenis dan had saiz fail bergantung pada jenis cuti yang dipilih.",
@@ -3287,7 +3288,16 @@
       "deleteGrade": "Padam",
       "deleteGradeConfirmTitle": "Padam gred ini?",
       "deleteGradeConfirmDescription": "Ini mengeluarkan gred daripada katalog secara kekal. Tindakan ini tidak boleh dibatalkan.",
-      "gradeInUseCannotDelete": "Gred ini digunakan oleh pekerja atau polisi cuti dan tidak boleh dipadam. Arkibkannya sebaliknya."
+      "gradeInUseCannotDelete": "Gred ini digunakan oleh pekerja atau polisi cuti dan tidak boleh dipadam. Arkibkannya sebaliknya.",
+      "leaveYearStatus_draft": "Draf",
+      "leaveYearStatus_open": "Dibuka",
+      "leaveYearStatus_closed": "Ditutup",
+      "openLeaveYearDateLabel": "Tarikh buka tahun cuti",
+      "employeeApplicationStartDateLabel": "Tarikh mula permohonan pekerja",
+      "addLeaveYear": "Tambah tahun cuti",
+      "closeLeaveYear": "Tutup",
+      "reopenLeaveYear": "Buka semula",
+      "noLeaveYears": "Belum ada tahun cuti dikonfigurasikan."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

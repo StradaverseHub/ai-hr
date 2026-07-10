@@ -18,6 +18,7 @@ import {
   LeaveEditNotAllowedError,
   LeaveBackdatingNotAllowedError,
   LeaveAdvanceNoticeRequiredError,
+  LeaveYearNotOpenError,
   LeaveDocumentRequiredError,
   LeaveRemarkRequiredError,
   LeaveDocumentTypeError,
@@ -258,6 +259,9 @@ export async function localizeLeaveError(e: unknown, typeName?: string): Promise
   // backdating branch above.
   if (e instanceof LeaveAdvanceNoticeRequiredError)
     return e.customMessage ?? t('advanceNoticeRequired', { typeName: name, days: e.minDays });
+  // Leave Year Configuration (9aa894a4): the employee applied for a future leave year that HR has not opened
+  // for applications yet. Localized so all 6 locales see a clear "{year} isn't open yet" message.
+  if (e instanceof LeaveYearNotOpenError) return t('leaveYearNotOpen', { year: e.year });
   if (e instanceof LeaveDocumentTypeError) {
     const labels: Record<string, string> = { 'application/pdf': 'PDF', 'image/jpeg': 'JPG', 'image/png': 'PNG' };
     return t('fileTypeNotAllowed', { allowed: e.allowed.map((m) => labels[m] ?? m).join(', ') });
