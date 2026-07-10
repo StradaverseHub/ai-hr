@@ -58,11 +58,27 @@ export type PanelCompany = {
   country: string;
   currency: string;
   registrationNo: string | null;
+  // Enhance Company General Tab (bc5d4891) — Company Information + Contact Information master data.
+  companyLabel: string | null;
+  industry: string | null;
+  website: string | null;
+  businessType: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  addressLine3: string | null;
+  city: string | null;
+  state: string | null;
+  addressCountry: string | null;
+  postcode: string | null;
+  phone: string | null;
+  fax: string | null;
   archivedAt: Date | null;
   inUse: boolean;
   parentId: string | null;
   hasLogo: boolean;
 };
+/** A tenant-wide profile-option choice (value stored, label shown) for the State / Country pick-lists. */
+export type PanelOption = { value: string; label: string };
 export type PanelStatutory = {
   epfEmployerNo: string | null;
   socsoEmployerCode: string | null;
@@ -97,6 +113,34 @@ const badge = {
 
 function SubHeader({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{children}</div>;
+}
+
+/** A pick-list backed by a tenant-wide profile-option catalog (bc5d4891). Legacy-tolerant: if the stored
+ *  value is not (or no longer) in the active catalog it is still rendered as a selectable option so an edit
+ *  of any OTHER field never silently drops it. Empty = the placeholder (clears to null on save). */
+function OptionSelect({
+  name,
+  value,
+  options,
+  placeholder,
+}: {
+  name: string;
+  value: string | null;
+  options: PanelOption[];
+  placeholder: string;
+}) {
+  const known = !value || options.some((o) => o.value === value);
+  return (
+    <select name={name} defaultValue={value ?? ''} className={inputCls}>
+      <option value="">{placeholder}</option>
+      {!known && value ? <option value={value}>{value}</option> : null}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 /** The company's logo (served inline by the RLS-scoped logo route) or the initials Avatar placeholder when
@@ -134,6 +178,8 @@ export function CompanyPanel({
   companies,
   statutory,
   bankProfiles,
+  stateOptions = [],
+  countryOptions = [],
   actions,
   className,
 }: {
@@ -141,6 +187,9 @@ export function CompanyPanel({
   companies: { id: string; name: string }[];
   statutory: PanelStatutory;
   bankProfiles: PanelBankProfile[];
+  // Enhance Company General Tab (bc5d4891) — tenant-wide catalogs for the Contact-Info State/Country pickers.
+  stateOptions?: PanelOption[];
+  countryOptions?: PanelOption[];
   actions: {
     updateCompany: Action;
     archiveCompany: Action;
@@ -214,18 +263,42 @@ export function CompanyPanel({
 
           {/* General: company details, group parent, logo, archive/delete */}
           <div className={cn('space-y-4', tab === 'general' ? '' : 'hidden')}>
-          {/* Company details + group parent */}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <form action={actions.updateCompany} className="space-y-2.5 rounded-lg bg-background p-3">
-              <SubHeader>{t('details')}</SubHeader>
-              <input type="hidden" name="id" value={c.id} />
+          {/* Company master data — Company Information + Contact Information (bc5d4891). One form, one save. */}
+          <form action={actions.updateCompany} className="space-y-4 rounded-lg bg-background p-3">
+            <input type="hidden" name="id" value={c.id} />
+
+            {/* Company Information */}
+            <div className="space-y-2.5">
+              <SubHeader>{t('sectionCompanyInfo')}</SubHeader>
               <Field label={t('legalName')}>
                 <input name="legalName" required defaultValue={c.name} className={inputCls} />
               </Field>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <Field label={t('companyLabel')}>
+                  <input name="companyLabel" defaultValue={c.companyLabel ?? ''} className={inputCls} placeholder={t('companyLabelHint')} />
+                </Field>
                 <Field label={t('regNo')}>
                   <input name="registrationNo" defaultValue={c.registrationNo ?? ''} className={inputCls} />
                 </Field>
+                <Field label={t('industry')}>
+                  <input name="industry" defaultValue={c.industry ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('businessType')}>
+                  <input name="businessType" defaultValue={c.businessType ?? ''} className={inputCls} placeholder={t('businessTypeHint')} />
+                </Field>
+              </div>
+              <Field label={t('website')}>
+                <input
+                  name="website"
+                  type="url"
+                  inputMode="url"
+                  defaultValue={c.website ?? ''}
+                  className={inputCls}
+                  placeholder={t('websiteHint')}
+                  title={t('websiteHint')}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
                 <Field label={t('country')}>
                   <input name="country" defaultValue={c.country} pattern="[A-Za-z]{2}" maxLength={2} title={t('countryHint')} className={`${inputCls} uppercase`} />
                 </Field>
@@ -233,13 +306,51 @@ export function CompanyPanel({
                   <input name="currency" defaultValue={c.currency} pattern="[A-Za-z]{3}" maxLength={3} title={t('currencyHint')} className={`${inputCls} uppercase`} />
                 </Field>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Button type="submit" size="sm">
-                  {t('saveDetails')}
-                </Button>
-              </div>
-            </form>
+            </div>
 
+            {/* Contact Information — registered office / correspondence details */}
+            <div className="space-y-2.5 border-t border-border/60 pt-3">
+              <SubHeader>{t('sectionContactInfo')}</SubHeader>
+              <Field label={t('addressLine1')}>
+                <textarea name="addressLine1" rows={2} defaultValue={c.addressLine1 ?? ''} className={`${inputCls} min-h-[2.25rem] resize-y`} />
+              </Field>
+              <Field label={t('addressLine2')}>
+                <textarea name="addressLine2" rows={2} defaultValue={c.addressLine2 ?? ''} className={`${inputCls} min-h-[2.25rem] resize-y`} />
+              </Field>
+              <Field label={t('addressLine3')}>
+                <textarea name="addressLine3" rows={2} defaultValue={c.addressLine3 ?? ''} className={`${inputCls} min-h-[2.25rem] resize-y`} />
+              </Field>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <Field label={t('city')}>
+                  <input name="city" defaultValue={c.city ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('addrState')}>
+                  <OptionSelect name="state" value={c.state} options={stateOptions} placeholder={t('optionNone')} />
+                </Field>
+                <Field label={t('postcode')}>
+                  <input name="postcode" defaultValue={c.postcode ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('addrCountry')}>
+                  <OptionSelect name="addressCountry" value={c.addressCountry} options={countryOptions} placeholder={t('optionNone')} />
+                </Field>
+                <Field label={t('phone')}>
+                  <input name="phone" type="tel" defaultValue={c.phone ?? ''} className={inputCls} />
+                </Field>
+                <Field label={t('fax')}>
+                  <input name="fax" type="tel" defaultValue={c.fax ?? ''} className={inputCls} />
+                </Field>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button type="submit" size="sm">
+                {t('saveDetails')}
+              </Button>
+            </div>
+          </form>
+
+          {/* Group parent + archive/delete */}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="space-y-3">
               <form action={actions.setParent} className="space-y-2.5 rounded-lg bg-background p-3">
                 <SubHeader>{t('groupParent')}</SubHeader>

@@ -1366,6 +1366,13 @@
       "when": 1781862193000,
       "tag": "0194_holiday_master_fields_and_group_holiday",
       "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1781862194000,
+      "tag": "0195_company_general_profile",
+      "breakpoints": true
     }
   ]
 }

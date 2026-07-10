@@ -153,6 +153,23 @@ export const company = pgTable(
     country: text('country').notNull().default('MY'), // ISO-3166 alpha-2
     currency: text('currency').notNull().default('MYR'), // ISO-4217
     registrationNo: text('registration_no'),
+    // Enhance Company General Tab (bc5d4891) — Company Information + Contact Information master data.
+    // All nullable, additive, no backfill. `addressCountry` is display/correspondence only and must NOT be
+    // confused with `country` above (ISO alpha-2, the holiday/statutory driver). `state` here is the postal
+    // address state (reuses the profile_option 'state' catalog in the UI), distinct from defaultWorkState.
+    companyLabel: text('company_label'), // short name / abbreviation / internal code
+    industry: text('industry'),
+    website: text('website'),
+    businessType: text('business_type'),
+    addressLine1: text('address_line1'),
+    addressLine2: text('address_line2'),
+    addressLine3: text('address_line3'),
+    city: text('city'),
+    state: text('state'),
+    addressCountry: text('address_country'),
+    postcode: text('postcode'),
+    phone: text('phone'),
+    fax: text('fax'),
     // Wave 2 (ADR-0038 2B-1): when true, leave requests in this company route through a multi-step
     // approval chain (direct manager → HR) instead of a single approval. Per-company; 2B-2 makes the
     // chain itself configurable.

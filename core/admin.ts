@@ -3262,19 +3262,90 @@ export async function deleteLeaveType(ctx: SessionContext, p: { id: string }) {
   });
 }
 
+// Enhance Company General Tab (bc5d4891): normalize a nullable free-text field — undefined = untouched
+// (tri-state, so a caller that omits a field never wipes it), empty/whitespace = cleared (null), else trimmed.
+const normNullableText = (v: string | null | undefined): string | null | undefined =>
+  v === undefined ? undefined : typeof v === 'string' && v.trim() !== '' ? v.trim() : null;
+
+// Website validation (bc5d4891): blank clears; a non-empty value must parse as an http(s) URL. Centralized
+// here so the mutation is the single source of truth (the action is a thin FormData reader).
+function normalizeWebsite(v: string | null | undefined): string | null | undefined {
+  if (v === undefined) return undefined;
+  const s = (v ?? '').trim();
+  if (s === '') return null;
+  let url: URL;
+  try {
+    url = new URL(s);
+  } catch {
+    throw new Error('Website must be a valid URL, including http:// or https://.');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Website must start with http:// or https://.');
+  }
+  return s;
+}
+
 export async function updateCompany(
   ctx: SessionContext,
-  p: { id: string; legalName: string; registrationNo?: string; country?: string; currency?: string },
+  p: {
+    id: string;
+    legalName: string;
+    registrationNo?: string;
+    country?: string;
+    currency?: string;
+    // Company Information (bc5d4891)
+    companyLabel?: string | null;
+    industry?: string | null;
+    website?: string | null;
+    businessType?: string | null;
+    // Contact Information (bc5d4891). `addressCountry` is display-only; it never overrides `country` above.
+    addressLine1?: string | null;
+    addressLine2?: string | null;
+    addressLine3?: string | null;
+    city?: string | null;
+    state?: string | null;
+    addressCountry?: string | null;
+    postcode?: string | null;
+    phone?: string | null;
+    fax?: string | null;
+  },
 ) {
   const legalName = cleanName(p.legalName, 'Legal name');
   const country = isoCode(p.country, 'MY', 'Country');
   const currency = isoCode(p.currency, 'MYR', 'Currency');
+  const website = normalizeWebsite(p.website);
+  // Tri-state set: only include a General-tab profile field when the caller actually provided it, so an
+  // omitted field is never nulled out. The action always sends the full form, so empty -> null persists.
+  const put = (key: string, v: string | null | undefined) => (v === undefined ? {} : { [key]: v });
+  const profileSet = {
+    ...put('companyLabel', normNullableText(p.companyLabel)),
+    ...put('industry', normNullableText(p.industry)),
+    ...put('website', website),
+    ...put('businessType', normNullableText(p.businessType)),
+    ...put('addressLine1', normNullableText(p.addressLine1)),
+    ...put('addressLine2', normNullableText(p.addressLine2)),
+    ...put('addressLine3', normNullableText(p.addressLine3)),
+    ...put('city', normNullableText(p.city)),
+    ...put('state', normNullableText(p.state)),
+    ...put('addressCountry', normNullableText(p.addressCountry)),
+    ...put('postcode', normNullableText(p.postcode)),
+    ...put('phone', normNullableText(p.phone)),
+    ...put('fax', normNullableText(p.fax)),
+  };
+  const nextCore = { legalName, registrationNo: p.registrationNo?.trim() || null, country, currency };
   return withTenant(ctx, async (tx) => {
     await tx
       .update(company)
-      .set({ legalName, registrationNo: p.registrationNo?.trim() || null, country, currency })
+      .set({ ...nextCore, ...profileSet })
       .where(eq(company.id, p.id));
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'company', aggregateId: p.id, eventType: 'company.updated', actor: actorOf(ctx), payload: { legalName: p.legalName } });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'company',
+      aggregateId: p.id,
+      eventType: 'company.updated',
+      actor: actorOf(ctx),
+      payload: { after: { ...nextCore, ...profileSet } },
+    });
   });
 }
 /** ADR-0040 2D-2: set a company's earned-accrual cycle ('calendar' | 'anniversary'). RLS (the company

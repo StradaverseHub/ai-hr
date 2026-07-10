@@ -1,6 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { companyTree, listCompanies } from '@/core/read';
+import { listProfileOptions } from '@/core/profile-options';
 import { listCompanyStatutoryMY } from '@/localization/my/company-statutory';
 import { listAllCompanyBankProfiles } from '@/core/bank-profile';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -57,12 +58,18 @@ export default async function OrganizationPage({
   // The tree stays unscoped (it needs every node to draw the group); the company panels follow
   // the active company context. Org catalogs (departments/positions/cost-centers/business-units) moved to
   // Settings → System Labels, so this page no longer fetches them.
-  const [companies, tree, statutory, bankProfiles] = await Promise.all([
+  const [companies, tree, statutory, bankProfiles, stateOpts, countryOpts] = await Promise.all([
     listCompanies(s, { includeArchived: true }),
     companyTree(s),
     listCompanyStatutoryMY(s),
     listAllCompanyBankProfiles(s),
+    // Enhance Company General Tab (bc5d4891): reuse the tenant-wide profile-option catalogs for the
+    // Contact-Information State + Country pick-lists (same source the Personnel profile dropdowns read).
+    listProfileOptions(s, 'state', { activeOnly: true }),
+    listProfileOptions(s, 'country', { activeOnly: true }),
   ]);
+  const stateOptions = stateOpts.map((o) => ({ value: o.value, label: o.label }));
+  const countryOptions = countryOpts.map((o) => ({ value: o.value, label: o.label }));
   const statBy = new Map(statutory.map((r) => [r.companyId, r]));
   const bankBy = new Map<string, PanelBankProfile[]>();
   for (const bp of bankProfiles) {
@@ -144,6 +151,19 @@ export default async function OrganizationPage({
                     country: c.country,
                     currency: c.currency,
                     registrationNo: c.registrationNo,
+                    companyLabel: c.companyLabel,
+                    industry: c.industry,
+                    website: c.website,
+                    businessType: c.businessType,
+                    addressLine1: c.addressLine1,
+                    addressLine2: c.addressLine2,
+                    addressLine3: c.addressLine3,
+                    city: c.city,
+                    state: c.state,
+                    addressCountry: c.addressCountry,
+                    postcode: c.postcode,
+                    phone: c.phone,
+                    fax: c.fax,
                     archivedAt: c.archivedAt,
                     inUse: c.inUse,
                     parentId: parentBy.get(c.id) ?? null,
@@ -152,6 +172,8 @@ export default async function OrganizationPage({
                   companies={companies}
                   statutory={statBy.get(c.id) ?? null}
                   bankProfiles={bankBy.get(c.id) ?? []}
+                  stateOptions={stateOptions}
+                  countryOptions={countryOptions}
                   actions={actions}
                 />
               ),

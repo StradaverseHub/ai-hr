@@ -1043,6 +1043,9 @@ export async function archiveBusinessUnitAction(fd: FormData) {
 
 export async function updateCompanyAction(fd: FormData) {
   const s = await getSession();
+  // Enhance Company General Tab (bc5d4891): read each new field, trim, and treat empty as an explicit
+  // clear (empty string -> the service normalizes to null). Website format is validated in the service.
+  const str = (k: string) => String(fd.get(k) ?? '').trim();
   try {
     await updateCompany(s, {
       id: String(fd.get('id')),
@@ -1050,6 +1053,21 @@ export async function updateCompanyAction(fd: FormData) {
       registrationNo: (fd.get('registrationNo') as string) || undefined,
       country: (fd.get('country') as string) || undefined,
       currency: (fd.get('currency') as string) || undefined,
+      // Company Information
+      companyLabel: str('companyLabel'),
+      industry: str('industry'),
+      website: str('website'),
+      businessType: str('businessType'),
+      // Contact Information
+      addressLine1: str('addressLine1'),
+      addressLine2: str('addressLine2'),
+      addressLine3: str('addressLine3'),
+      city: str('city'),
+      state: str('state'),
+      addressCountry: str('addressCountry'),
+      postcode: str('postcode'),
+      phone: str('phone'),
+      fax: str('fax'),
     });
   } catch (e) { fail(ORG, e); }
   ok(ORG);
