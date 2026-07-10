@@ -12,7 +12,7 @@
 import { eq } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { employeeStatutoryMy, employment, person, personPhoto, profileChangeRequest } from '../db/schema';
+import { employeeDependent, employeeStatutoryMy, employment, person, personPhoto, profileChangeRequest } from '../db/schema';
 import { shredSubjectInTx } from './pii-vault';
 
 /** LHDN income-tax / EPF / SOCSO records must be kept ~7 years; statutory PII stays locked until then. */
@@ -134,6 +134,27 @@ export async function erasePersonPii(
     if (p.scope === 'identity' || p.scope === 'all') {
       await tx.delete(personPhoto).where(eq(personPhoto.personId, emp.personId));
       erased.push('profilePhoto');
+    }
+
+    // 4535b733 — Family / dependent register PII (employee_dependent). This is benefits/insurance data, NOT
+    // under the LHDN/EPF/SOCSO statutory retention hold, so it is erasable IMMEDIATELY when in scope. NULL
+    // the sensitive columns across ALL of the person's dependent rows (contact-scope: phone / address /
+    // employer; identity-scope: IC / passport). Not-in-scope fields (name/DOB/relationship) are untouched
+    // — they carry no statutory obligation but are minimal identifiers we retain like person.full_name.
+    const depContactCols = ['phone', 'residentialAddress', 'companyName', 'employerAddress'] as const;
+    const depIdentityCols = ['icOrPassport', 'passportNumber'] as const;
+    const depSet: Record<string, null> = {};
+    if (p.scope === 'contact' || p.scope === 'all') for (const c of depContactCols) depSet[c] = null;
+    if (p.scope === 'identity' || p.scope === 'all') for (const c of depIdentityCols) depSet[c] = null;
+    if (Object.keys(depSet).length) {
+      // Only REPORT dependent fields that were actually cleared — when the person has no dependent rows,
+      // nothing is erased and the report stays truthful (and existing erasure-scope assertions unaffected).
+      const cleared = await tx
+        .update(employeeDependent)
+        .set(depSet as Partial<typeof employeeDependent.$inferInsert>)
+        .where(eq(employeeDependent.personId, emp.personId))
+        .returning({ id: employeeDependent.id });
+      if (cleared.length > 0) for (const k of Object.keys(depSet)) erased.push(`dependent.${k}`);
     }
 
     // (5) audit record — no PII payload

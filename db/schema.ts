@@ -2480,6 +2480,24 @@ export const employeeDependent = pgTable(
     isBeneficiary: boolean('is_beneficiary').notNull().default(false), // insurance beneficiary flag; NOT tax
     phone: text('phone'),
     remarks: text('remarks'),
+    // 4535b733 — Family Information enhancement (migration 0182). Additional family-member fields grouped
+    // for the Spouse / Children / Other Dependants sections. All nullable → legacy rows unaffected. New
+    // PII (passport_number, residential_address, occupation, company_name, employer_address) is kept OUT
+    // of DomainEvent payloads (ADR-0030 Layer 0) and wired into PDPA erasure (core/pdpa.ts).
+    passportNumber: text('passport_number'), // distinct from ic_or_passport (New IC)
+    residentialAddress: text('residential_address'), // long text
+    isDeceased: boolean('is_deceased').notNull().default(false),
+    deceasedOn: date('deceased_on'),
+    // Spouse-specific (validate-or-ignore when relationship != spouse in-service)
+    marriageDate: date('marriage_date'),
+    marriageStatus: text('marriage_status'), // validated in-service: married|divorced|widowed|separated
+    spouseWorking: boolean('spouse_working'),
+    occupation: text('occupation'), // spouse / other dependant occupation
+    companyName: text('company_name'),
+    employerAddress: text('employer_address'),
+    // Children-specific
+    isStudent: boolean('is_student'),
+    schoolName: text('school_name'),
     archivedAt: timestamp('archived_at', { withTimezone: true }), // soft-delete
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

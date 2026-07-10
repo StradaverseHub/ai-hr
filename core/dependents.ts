@@ -32,6 +32,10 @@ export type DependentRelationship = (typeof DEPENDENT_RELATIONSHIPS)[number];
 export const DEPENDENT_GENDERS = ['male', 'female', 'undisclosed'] as const;
 export type DependentGender = (typeof DEPENDENT_GENDERS)[number];
 
+/** Allowed spouse marriage-status values (optional; only meaningful for a spouse record). */
+export const DEPENDENT_MARRIAGE_STATUSES = ['married', 'divorced', 'widowed', 'separated'] as const;
+export type DependentMarriageStatus = (typeof DEPENDENT_MARRIAGE_STATUSES)[number];
+
 export class DependentValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -50,7 +54,39 @@ export type DependentRow = {
   isBeneficiary: boolean;
   phone: string | null;
   remarks: string | null;
+  // 4535b733 — Family Information enhancement fields.
+  passportNumber: string | null;
+  residentialAddress: string | null;
+  isDeceased: boolean;
+  deceasedOn: string | null;
+  marriageDate: string | null;
+  marriageStatus: string | null;
+  spouseWorking: boolean | null;
+  occupation: string | null;
+  companyName: string | null;
+  employerAddress: string | null;
+  isStudent: boolean | null;
+  schoolName: string | null;
   archivedAt: Date | null;
+};
+
+/**
+ * The additional family fields shared by add + update. Every field is optional; the caller passes only the
+ * ones it wants to set. All are validate-or-normalise → the DB stays permissive (legacy rows unaffected).
+ */
+export type DependentExtraInput = {
+  passportNumber?: string | null;
+  residentialAddress?: string | null;
+  isDeceased?: boolean;
+  deceasedOn?: string | null;
+  marriageDate?: string | null;
+  marriageStatus?: string | null;
+  spouseWorking?: boolean | null;
+  occupation?: string | null;
+  companyName?: string | null;
+  employerAddress?: string | null;
+  isStudent?: boolean | null;
+  schoolName?: string | null;
 };
 
 function isRelationship(v: string): v is DependentRelationship {
@@ -65,9 +101,41 @@ function normGender(v: string | null | undefined): string | null {
   return v;
 }
 
+function normMarriageStatus(v: string | null | undefined): string | null {
+  if (v == null || v.trim() === '') return null;
+  if (!(DEPENDENT_MARRIAGE_STATUSES as readonly string[]).includes(v)) {
+    throw new DependentValidationError('Marriage status is invalid.');
+  }
+  return v;
+}
+
 function trimOrNull(v: string | null | undefined): string | null {
   const s = (v ?? '').trim();
   return s === '' ? null : s;
+}
+
+/**
+ * Column values for the enhancement fields on an ADD, relationship-gated: spouse-only fields (marriage,
+ * spouse employment) persist only for a spouse; student/school only for a child; anything else is stored
+ * NULL regardless of the input (validate-or-ignore). General fields apply to every relationship.
+ */
+function extraColumnsForAdd(relationship: string, x: DependentExtraInput) {
+  const isSpouse = relationship === 'spouse';
+  const isChild = relationship === 'child';
+  return {
+    passportNumber: trimOrNull(x.passportNumber),
+    residentialAddress: trimOrNull(x.residentialAddress),
+    isDeceased: x.isDeceased ?? false,
+    deceasedOn: trimOrNull(x.deceasedOn),
+    occupation: trimOrNull(x.occupation),
+    marriageDate: isSpouse ? trimOrNull(x.marriageDate) : null,
+    marriageStatus: isSpouse ? normMarriageStatus(x.marriageStatus) : null,
+    spouseWorking: isSpouse ? (x.spouseWorking ?? null) : null,
+    companyName: isSpouse ? trimOrNull(x.companyName) : null,
+    employerAddress: isSpouse ? trimOrNull(x.employerAddress) : null,
+    isStudent: isChild ? (x.isStudent ?? null) : null,
+    schoolName: isChild ? trimOrNull(x.schoolName) : null,
+  };
 }
 
 /**
@@ -91,6 +159,18 @@ export function listDependents(
         isBeneficiary: employeeDependent.isBeneficiary,
         phone: employeeDependent.phone,
         remarks: employeeDependent.remarks,
+        passportNumber: employeeDependent.passportNumber,
+        residentialAddress: employeeDependent.residentialAddress,
+        isDeceased: employeeDependent.isDeceased,
+        deceasedOn: employeeDependent.deceasedOn,
+        marriageDate: employeeDependent.marriageDate,
+        marriageStatus: employeeDependent.marriageStatus,
+        spouseWorking: employeeDependent.spouseWorking,
+        occupation: employeeDependent.occupation,
+        companyName: employeeDependent.companyName,
+        employerAddress: employeeDependent.employerAddress,
+        isStudent: employeeDependent.isStudent,
+        schoolName: employeeDependent.schoolName,
         archivedAt: employeeDependent.archivedAt,
       })
       .from(employeeDependent)
@@ -121,7 +201,7 @@ export function addDependent(
     isBeneficiary?: boolean;
     phone?: string | null;
     remarks?: string | null;
-  },
+  } & DependentExtraInput,
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const fullName = (p.fullName ?? '').trim();
@@ -143,6 +223,7 @@ export function addDependent(
         isBeneficiary: p.isBeneficiary ?? false,
         phone: trimOrNull(p.phone),
         remarks: trimOrNull(p.remarks),
+        ...extraColumnsForAdd(p.relationship, p),
       })
       .returning({ id: employeeDependent.id });
     await appendEvent(tx, {
@@ -191,7 +272,7 @@ export function updateDependent(
     isBeneficiary?: boolean;
     phone?: string | null;
     remarks?: string | null;
-  },
+  } & DependentExtraInput,
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
     const existing = await loadDependent(tx, p.id);
@@ -216,6 +297,44 @@ export function updateDependent(
     if (p.isBeneficiary !== undefined) patch.isBeneficiary = p.isBeneficiary;
     if (p.phone !== undefined) patch.phone = trimOrNull(p.phone);
     if (p.remarks !== undefined) patch.remarks = trimOrNull(p.remarks);
+
+    // 4535b733 — enhancement fields. General fields apply to any relationship. Spouse-only + child-only
+    // fields are relationship-gated against the EFFECTIVE relationship (post-patch): a provided spouse
+    // field is ignored (validate-or-ignore) when the member is not a spouse, and when the relationship is
+    // CHANGED away from spouse/child we NULL the now-irrelevant fields so no stale cross-section data
+    // lingers.
+    const effRel = (patch.relationship as string | undefined) ?? existing.relationship;
+    const isSpouse = effRel === 'spouse';
+    const isChild = effRel === 'child';
+    const relChanged = patch.relationship !== undefined && patch.relationship !== existing.relationship;
+
+    if (p.passportNumber !== undefined) patch.passportNumber = trimOrNull(p.passportNumber);
+    if (p.residentialAddress !== undefined) patch.residentialAddress = trimOrNull(p.residentialAddress);
+    if (p.isDeceased !== undefined) patch.isDeceased = p.isDeceased;
+    if (p.deceasedOn !== undefined) patch.deceasedOn = trimOrNull(p.deceasedOn);
+    if (p.occupation !== undefined) patch.occupation = trimOrNull(p.occupation);
+
+    if (isSpouse) {
+      if (p.marriageDate !== undefined) patch.marriageDate = trimOrNull(p.marriageDate);
+      if (p.marriageStatus !== undefined) patch.marriageStatus = normMarriageStatus(p.marriageStatus);
+      if (p.spouseWorking !== undefined) patch.spouseWorking = p.spouseWorking;
+      if (p.companyName !== undefined) patch.companyName = trimOrNull(p.companyName);
+      if (p.employerAddress !== undefined) patch.employerAddress = trimOrNull(p.employerAddress);
+    } else if (relChanged) {
+      patch.marriageDate = null;
+      patch.marriageStatus = null;
+      patch.spouseWorking = null;
+      patch.companyName = null;
+      patch.employerAddress = null;
+    }
+
+    if (isChild) {
+      if (p.isStudent !== undefined) patch.isStudent = p.isStudent;
+      if (p.schoolName !== undefined) patch.schoolName = trimOrNull(p.schoolName);
+    } else if (relChanged) {
+      patch.isStudent = null;
+      patch.schoolName = null;
+    }
 
     if (Object.keys(patch).length > 0) {
       patch.updatedAt = new Date();

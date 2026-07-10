@@ -29,6 +29,17 @@ const str = (v: FormDataEntryValue | null): string | undefined => {
   return s.trim() === '' ? undefined : s;
 };
 
+// A field the edit form only PRESENTS for some relationship sections. When the input isn't in the form
+// (get === null) we pass `undefined` (leave unchanged); when present-but-blank we pass null (clear it).
+const editStr = (formData: FormData, key: string): string | null | undefined =>
+  formData.get(key) !== null ? (str(formData.get(key)) ?? null) : undefined;
+
+// A tri-state boolean checkbox on the edit form: absent from the form → undefined (unchanged); present
+// (rendered) → true/false. `${key}__present` is a hidden marker the form emits so an unticked box (which
+// posts nothing) is still distinguishable from "field not on this section's form".
+const editBool = (formData: FormData, key: string): boolean | undefined =>
+  formData.get(`${key}__present`) !== null ? formData.get(key) != null : undefined;
+
 export async function addDependentAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -43,6 +54,20 @@ export async function addDependentAction(formData: FormData) {
       isBeneficiary: formData.get('isBeneficiary') != null,
       phone: str(formData.get('phone')) ?? null,
       remarks: str(formData.get('remarks')) ?? null,
+      // 4535b733 — enhancement fields.
+      passportNumber: str(formData.get('passportNumber')) ?? null,
+      residentialAddress: str(formData.get('residentialAddress')) ?? null,
+      isDeceased: formData.get('isDeceased') != null,
+      deceasedOn: str(formData.get('deceasedOn')) ?? null,
+      occupation: str(formData.get('occupation')) ?? null,
+      marriageDate: str(formData.get('marriageDate')) ?? null,
+      marriageStatus: str(formData.get('marriageStatus')) ?? null,
+      spouseWorking:
+        formData.get('spouseWorking__present') !== null ? formData.get('spouseWorking') != null : null,
+      companyName: str(formData.get('companyName')) ?? null,
+      employerAddress: str(formData.get('employerAddress')) ?? null,
+      isStudent: formData.get('isStudent__present') !== null ? formData.get('isStudent') != null : null,
+      schoolName: str(formData.get('schoolName')) ?? null,
     });
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
@@ -59,13 +84,25 @@ export async function editDependentAction(formData: FormData) {
       id: String(formData.get('id')),
       fullName: str(formData.get('fullName')),
       relationship: str(formData.get('relationship')),
-      dateOfBirth: formData.get('dateOfBirth') !== null ? (str(formData.get('dateOfBirth')) ?? null) : undefined,
-      gender: formData.get('gender') !== null ? (str(formData.get('gender')) ?? null) : undefined,
-      icOrPassport:
-        formData.get('icOrPassport') !== null ? (str(formData.get('icOrPassport')) ?? null) : undefined,
+      dateOfBirth: editStr(formData, 'dateOfBirth'),
+      gender: editStr(formData, 'gender'),
+      icOrPassport: editStr(formData, 'icOrPassport'),
       isBeneficiary: formData.get('isBeneficiary') != null,
-      phone: formData.get('phone') !== null ? (str(formData.get('phone')) ?? null) : undefined,
-      remarks: formData.get('remarks') !== null ? (str(formData.get('remarks')) ?? null) : undefined,
+      phone: editStr(formData, 'phone'),
+      remarks: editStr(formData, 'remarks'),
+      // 4535b733 — enhancement fields.
+      passportNumber: editStr(formData, 'passportNumber'),
+      residentialAddress: editStr(formData, 'residentialAddress'),
+      isDeceased: editBool(formData, 'isDeceased'),
+      deceasedOn: editStr(formData, 'deceasedOn'),
+      occupation: editStr(formData, 'occupation'),
+      marriageDate: editStr(formData, 'marriageDate'),
+      marriageStatus: editStr(formData, 'marriageStatus'),
+      spouseWorking: editBool(formData, 'spouseWorking'),
+      companyName: editStr(formData, 'companyName'),
+      employerAddress: editStr(formData, 'employerAddress'),
+      isStudent: editBool(formData, 'isStudent'),
+      schoolName: editStr(formData, 'schoolName'),
     });
   } catch (e) {
     back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
