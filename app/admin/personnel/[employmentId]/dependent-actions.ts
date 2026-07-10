@@ -14,7 +14,12 @@ import {
 // page. Each action is admin-only (requireAdmin → RLS WITH CHECK is_admin()), routes through the
 // event-logged service, and revalidates the detail page. The page is keyed by employmentId (for the redirect
 // path) but the record is keyed by personId, passed through the hidden form field.
-const back = (employmentId: string, qs: string) => redirect(`/admin/personnel/${employmentId}?${qs}`);
+// Tab retention (feedback bd2f0bb2): the client tab shell injects a hidden `tab` field into the submitting
+// form; thread it through so the post-save redirect returns to the originating tab, not Profile.
+const back = (employmentId: string, qs: string, formData: FormData) => {
+  const tab = String(formData.get('tab') ?? '').trim();
+  redirect(`/admin/personnel/${employmentId}?${qs}${tab ? `&tab=${encodeURIComponent(tab)}` : ''}`);
+};
 
 const errorMsg = (e: unknown): string =>
   e instanceof DependentValidationError ? e.message : (e as Error).message;
@@ -40,10 +45,10 @@ export async function addDependentAction(formData: FormData) {
       remarks: str(formData.get('remarks')) ?? null,
     });
   } catch (e) {
-    back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`);
+    back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  back(employmentId, 'toast=Saved');
+  back(employmentId, 'toast=Saved', formData);
 }
 
 export async function editDependentAction(formData: FormData) {
@@ -63,10 +68,10 @@ export async function editDependentAction(formData: FormData) {
       remarks: formData.get('remarks') !== null ? (str(formData.get('remarks')) ?? null) : undefined,
     });
   } catch (e) {
-    back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`);
+    back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  back(employmentId, 'toast=Saved');
+  back(employmentId, 'toast=Saved', formData);
 }
 
 export async function archiveDependentAction(formData: FormData) {
@@ -75,8 +80,8 @@ export async function archiveDependentAction(formData: FormData) {
   try {
     await archiveDependent(s, { id: String(formData.get('id')) });
   } catch (e) {
-    back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`);
+    back(employmentId, `error=${encodeURIComponent(errorMsg(e))}`, formData);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  back(employmentId, 'toast=Saved');
+  back(employmentId, 'toast=Saved', formData);
 }

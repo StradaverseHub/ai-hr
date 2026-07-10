@@ -288,6 +288,10 @@ export async function assignPolicyAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId') ?? '');
   const rawPolicy = String(formData.get('policyId') ?? '').trim();
   const dest = `/admin/personnel/${employmentId}`;
+  // Tab retention (feedback bd2f0bb2): the Personnel tab shell injects a hidden `tab` field into the
+  // submitting form; preserve it so the post-save redirect returns to the originating tab, not Profile.
+  const tab = String(formData.get('tab') ?? '').trim();
+  const tabSuffix = tab ? `&tab=${encodeURIComponent(tab)}` : '';
   let errMsg: string | null = null;
   try {
     await assignPolicy(s, { employmentId, policyId: rawPolicy || null });
@@ -295,7 +299,7 @@ export async function assignPolicyAction(formData: FormData) {
   } catch (e) {
     errMsg = await errorMessage(e);
   }
-  if (errMsg) redirect(`${dest}?error=${encodeURIComponent(errMsg)}`);
+  if (errMsg) redirect(`${dest}?error=${encodeURIComponent(errMsg)}${tabSuffix}`);
   const t = await getTranslations('payrollPolicy.toasts');
-  redirect(`${dest}?toast=${encodeURIComponent(t('assigned'))}`);
+  redirect(`${dest}?toast=${encodeURIComponent(t('assigned'))}${tabSuffix}`);
 }

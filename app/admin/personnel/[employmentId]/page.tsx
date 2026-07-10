@@ -56,7 +56,7 @@ import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
-import { PersonnelTabs } from '@/components/personnel-tabs';
+import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
@@ -95,7 +95,14 @@ export default async function EmployeePage({
   searchParams,
 }: {
   params: Promise<{ employmentId: string }>;
-  searchParams: Promise<{ error?: string; from?: string; cp38Error?: string; asOf?: string; encashmentError?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    from?: string;
+    cp38Error?: string;
+    asOf?: string;
+    encashmentError?: string;
+    tab?: string;
+  }>;
 }) {
   const s = await requireAdmin(); // Admin-only management surface (People→Personnel split). Non-admins redirect home.
   const t = await getTranslations('people.detail');
@@ -103,7 +110,7 @@ export default async function EmployeePage({
   const tc = await getTranslations('people.detail.clocking');
   const admin = isAdmin(s);
   const { employmentId } = await params;
-  const { error, from, cp38Error, asOf: spAsOf, encashmentError } = await searchParams;
+  const { error, from, cp38Error, asOf: spAsOf, encashmentError, tab } = await searchParams;
   // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the
   // people directory. Keeps the `from` param flowing through so nested navigation stays consistent.
   const back =
@@ -1765,7 +1772,12 @@ export default async function EmployeePage({
 
       <ErrorBanner message={error} />
 
-      <PersonnelTabs tabs={tabs} panels={panels} emptyLabel={t('tabs.empty')} />
+      <PersonnelTabs
+        tabs={tabs}
+        panels={panels}
+        emptyLabel={t('tabs.empty')}
+        defaultTab={tab as PersonnelTabKey | undefined}
+      />
     </div>
   );
 }

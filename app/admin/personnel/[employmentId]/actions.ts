@@ -16,6 +16,15 @@ import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
 
+// Tab retention (feedback bd2f0bb2): the client tab shell (components/personnel-tabs.tsx) injects a hidden
+// `tab` field into every submitting form. Each action appends `&tab=<key>` to its post-save redirect so the
+// reloaded page lands back on the tab the user was editing instead of resetting to Profile. Absent/empty =
+// legacy behaviour (no tab param → first tab). All these URLs already carry a `?`, so we always append `&`.
+function withTab(formData: FormData, url: string): string {
+  const tab = String(formData.get('tab') ?? '').trim();
+  return tab ? `${url}&tab=${encodeURIComponent(tab)}` : url;
+}
+
 const REVIEW_TYPES: ReviewType[] = ['probation', 'contract', 'internship'];
 
 export async function setReviewEndDateAction(formData: FormData) {
@@ -26,10 +35,10 @@ export async function setReviewEndDateAction(formData: FormData) {
   try {
     await setReviewEndDate(s, { employmentId, reviewType, endDate: String(formData.get('endDate') || '') || null });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 export async function startReviewAction(formData: FormData) {
@@ -38,10 +47,10 @@ export async function startReviewAction(formData: FormData) {
   try {
     await startReview(s, { employmentId });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Review started`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Review started`));
 }
 
 /** 6522d26a — derive a TRUSTWORTHY mime type from the file's leading bytes (fail-closed: unknown → null).
@@ -69,10 +78,10 @@ export async function uploadReviewDocumentAction(formData: FormData) {
     if (!mimeType) throw new Error('Only PDF, JPG, or PNG files are allowed');
     await uploadReviewDocument(s, { reviewId, kind: 'signed_letter', fileName: file.name, mimeType, content });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Document uploaded`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document uploaded`));
 }
 
 /** 6522d26a Fn 5 — persist the system-generated outcome letter to the review record (kind system_letter,
@@ -93,10 +102,10 @@ export async function saveReviewLetterAction(formData: FormData) {
       content: Buffer.from(letter.bytes),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Letter saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Letter saved`));
 }
 
 export async function setEmploymentComponentAction(formData: FormData) {
@@ -132,10 +141,10 @@ export async function setEmploymentComponentAction(formData: FormData) {
           : e instanceof FixedTransactionAmountError
             ? t('amountError')
             : (e as Error).message;
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(msg)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 export async function transferAction(formData: FormData) {
@@ -148,10 +157,10 @@ export async function transferAction(formData: FormData) {
       departmentId: String(formData.get('departmentId')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** ADR-0054: set (or clear) an employee's location, effective-dated through the existing transfer path
@@ -167,10 +176,10 @@ export async function setLocationAction(formData: FormData) {
       locationId: (formData.get('locationId') as string) || null,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** R17 3e8350db — set the employee's shift ARRANGEMENT (the reporter's "Shift Type"): Fixed (a default
@@ -187,11 +196,11 @@ export async function setDefaultShiftAction(formData: FormData) {
   try {
     await assignEmployeeShift(s, { employmentId, shiftType, shiftId: rawShift || null });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   const t = await getTranslations('people.detail');
-  redirect(`/admin/personnel/${employmentId}?toast=${encodeURIComponent(t('defaultShiftAssigned'))}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=${encodeURIComponent(t('defaultShiftAssigned'))}`));
 }
 
 export async function terminateAction(formData: FormData) {
@@ -211,10 +220,10 @@ export async function terminateAction(formData: FormData) {
       terminationReason: (formData.get('terminationReason') as string) || undefined,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 export async function addReportingLineAction(formData: FormData) {
@@ -228,10 +237,10 @@ export async function addReportingLineAction(formData: FormData) {
       validFrom: String(formData.get('validFrom')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 export async function endReportingLineAction(formData: FormData) {
@@ -243,10 +252,10 @@ export async function endReportingLineAction(formData: FormData) {
       endDate: String(formData.get('endDate')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** Hierarchy Management (ADR-0052): create an approval delegation FROM this employment (the delegator
@@ -264,10 +273,10 @@ export async function addDelegationAction(formData: FormData) {
       validTo: String(formData.get('validTo') ?? '').trim() || null,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** End an active delegation early (ADR-0052) — reuses endReportingLine (events + RLS). */
@@ -280,10 +289,10 @@ export async function endDelegationAction(formData: FormData) {
       endDate: String(formData.get('endDate')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 export async function setCompensationAction(formData: FormData) {
@@ -299,10 +308,10 @@ export async function setCompensationAction(formData: FormData) {
       effectiveFrom: String(formData.get('effectiveFrom')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /**
@@ -324,10 +333,10 @@ export async function editCompensationAction(formData: FormData) {
       remarks: String(formData.get('remarks') ?? '').trim() || null,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** Parse the unified "Holiday calendar" selector value into a discriminated selection. The single field
@@ -378,10 +387,10 @@ export async function setPersonAction(formData: FormData) {
     // 2E (ADR-0041): seniority grade — same form, drives grade-scoped leave entitlements.
     await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /**
@@ -408,10 +417,10 @@ export async function setContactAddressAction(formData: FormData) {
       country: orNull(formData.get('country')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /**
@@ -434,10 +443,10 @@ export async function setEmergencyContactAction(formData: FormData) {
       emergencyContactAddress: orNull(formData.get('emergencyContactAddress')),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /**
@@ -458,10 +467,10 @@ export async function setComplianceFieldsAction(formData: FormData) {
       dateOfBirth: (formData.get('dateOfBirth') as string) || null,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /**
@@ -483,10 +492,10 @@ export async function setPersonPhotoAction(formData: FormData) {
     }
     await setPersonPhoto(s, { personId, content, fileName: file.name, mimeType, sizeBytes: content.byteLength });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** b4682879 §1.5 — remove an employee's profile photo (admin-gated, no-op-safe). */
@@ -497,10 +506,10 @@ export async function removePersonPhotoAction(formData: FormData) {
   try {
     await removePersonPhoto(s, { personId });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 export async function setStatutoryAction(formData: FormData) {
@@ -559,10 +568,10 @@ export async function setStatutoryAction(formData: FormData) {
       zakatEffectiveTo: current?.zakatEffectiveTo ?? null,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** ADR-0070 — set-based replace of an employee's assigned clocking sites. */
@@ -575,10 +584,10 @@ export async function setEmployeeClockingLocationsAction(formData: FormData) {
       clockingLocationIds: formData.getAll('clockingLocationIds').map(String),
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
 /** ADR-0070 — enable/disable geofencing for one employee + set its radius (metres). */
@@ -592,8 +601,8 @@ export async function setGeofencingAction(formData: FormData) {
       radiusM: formData.get('radiusM') ? Number(formData.get('radiusM')) : null,
     });
   } catch (e) {
-    redirect(`/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(`/admin/personnel/${employmentId}?toast=Saved`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
