@@ -174,6 +174,7 @@ export default async function LeaveEntitlementsPage({
               leaveUnit={lt.leaveUnit ?? 'day'}
               visibleToEmployee={lt.visibleToEmployee ?? null}
               employeeCanApply={lt.employeeCanApply ?? null}
+              essPlacement={lt.essPlacement ?? null}
               counting={lt.counting ?? 'working_days'}
               perDateApproval={lt.perDateApproval ?? false}
               policies={polByType.get(lt.id) ?? []}

@@ -53,6 +53,7 @@ import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
 import { resolveEssView, type ResolvedEssView } from './ess-view';
+import { resolvePlacement, type EssPlacement } from '../lib/leave-groups';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -428,6 +429,10 @@ export function listLeaveTypes(
         // projected or the checkboxes render at their default on every reload). null ⇒ visible / can-apply.
         visibleToEmployee: leaveType.visibleToEmployee,
         employeeCanApply: leaveType.employeeCanApply,
+        // Leave grouping visibility (b653ac1b): feeds the admin panel's placement control (MUST be projected
+        // or the control renders at its default on every reload). null ⇒ code-keyed default (the control
+        // resolves it via lib/leave-groups.ts, reading visibleToEmployee for the Hidden state).
+        essPlacement: leaveType.essPlacement,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
@@ -1332,6 +1337,11 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         color: null as string | null,
         icon: null as string | null,
         code: null as string | null,
+        // Leave grouping visibility (b653ac1b): the HR-resolved placement ('primary'|'secondary'|'hidden')
+        // for this type on the /me Leave tab. Placeholder; overwritten in the final pass once code +
+        // ess_placement + visible_to_employee are known (resolvePlacement, lib/leave-groups.ts). The planned
+        // cards-and-groups renderer (6d78f373) reads this to decide the type's card/group/hidden slot.
+        placement: 'secondary' as EssPlacement,
       };
     });
     // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
@@ -1352,6 +1362,8 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         color: null as string | null,
         icon: null as string | null,
         code: null as string | null,
+        // Leave grouping visibility (b653ac1b): placeholder, overwritten in the final pass. See rows.map above.
+        placement: 'secondary' as EssPlacement,
       });
       seen.add(p.leaveTypeId);
     }
@@ -1359,7 +1371,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     // yet — so the list is the full menu, not just types they've already accrued or requested.
     const [types, [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, visibleToEmployee: leaveType.visibleToEmployee })
+        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, visibleToEmployee: leaveType.visibleToEmployee, essPlacement: leaveType.essPlacement })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
@@ -1373,7 +1385,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
-      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null });
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, placement: 'secondary' as EssPlacement });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
     // archived types with old ledger entries fall back to their stored English name).
@@ -1386,13 +1398,19 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     // tab can render the icon + colour chip. This does NOT touch any sum / ledger / entitlement math above —
     // it is a pure presentation join. null ⇒ default styling + code-keyed icon (via lib/leave-visual.ts).
     const seenIds = out.map((r) => r.leaveTypeId);
-    const visualByType = new Map<string, { color: string | null; icon: string | null; code: string | null }>();
+    // Leave grouping visibility (b653ac1b): select ess_placement + visible_to_employee alongside the visual
+    // columns so EVERY seen type (active OR archived-with-old-ledger) has what resolvePlacement needs, in one
+    // query. Archived types (absent from `types`) thus still resolve to their code-keyed default.
+    const visualByType = new Map<
+      string,
+      { color: string | null; icon: string | null; code: string | null; essPlacement: string | null; visibleToEmployee: boolean | null }
+    >();
     if (seenIds.length > 0) {
       const visuals = await tx
-        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code })
+        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee })
         .from(leaveType)
         .where(inArray(leaveType.id, seenIds));
-      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code });
+      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code, essPlacement: v.essPlacement, visibleToEmployee: v.visibleToEmployee });
     }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
@@ -1403,6 +1421,12 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         r.icon = v.icon;
         r.code = v.code;
       }
+      // Leave grouping visibility (b653ac1b): resolve the HR-editable placement for this type. Precedence
+      // (single source of truth for hidden = visible_to_employee): flag false ⇒ 'hidden'; else an explicit
+      // ess_placement ('primary'|'secondary') wins; else the code-keyed default (lib/leave-groups.ts). This
+      // is PRESENTATION metadata only — it does not filter `out` here (7b11f1c1's flag gate below owns the
+      // ESS drop); the planned 6d78f373 cards-and-groups renderer consumes r.placement.
+      r.placement = resolvePlacement(v?.code ?? r.code, v?.essPlacement ?? null, v?.visibleToEmployee ?? null);
     }
     // Leave Type Employee Visibility (7b11f1c1) — visibility gate. HR can hide a whole leave type from the
     // /me Leave tab (visible_to_employee=false) — its balance, its pending request, and its no-activity menu

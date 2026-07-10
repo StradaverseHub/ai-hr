@@ -3295,6 +3295,16 @@
         "employeeCanApply": "Pekerja boleh memohon",
         "statutoryLocked": "Ini ialah cuti berkanun — pekerja mesti sentiasa boleh memohonnya.",
         "help": "Kawal sama ada pekerja melihat jenis cuti ini pada tab Cuti mereka dan sama ada mereka boleh memohonnya. Jenis yang disembunyikan akan hilang sepenuhnya dari tab Cuti pekerja; mematikan “boleh memohon” mengekalkan jenis itu kelihatan tetapi menyekat permohonan baharu."
+      },
+      "placement": {
+        "sectionTitle": "Penempatan Tab Pekerja",
+        "label": "Penempatan",
+        "option": {
+          "primary": "Kad utama",
+          "secondary": "Kumpulan sekunder",
+          "hidden": "Tersembunyi"
+        },
+        "help": "Pilih di mana jenis cuti ini dipaparkan pada tab Cuti pekerja: kad Utama di atas, dimasukkan ke dalam kumpulan Sekunder di bawah, atau Tersembunyi sepenuhnya daripada pekerja. Tersembunyi menggunakan suis keterlihatan yang sama di atas. Sehingga anda memilih, setiap jenis menggunakan tetapan lalai yang munasabah."
       }
     },
     "holidays": {

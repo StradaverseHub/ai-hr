@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
+import { resolvePlacement, ESS_PLACEMENTS } from '@/lib/leave-groups';
 import { Search } from 'lucide-react';
 import {
   LEAVE_COLORS,
@@ -540,6 +541,7 @@ export function LeaveTypePanel({
   leaveUnit,
   visibleToEmployee,
   employeeCanApply,
+  essPlacement,
   counting,
   perDateApproval,
   policies,
@@ -613,6 +615,10 @@ export function LeaveTypePanel({
    *  the default (visible / can-apply). The service rejects can-apply=false on a statutory code. */
   visibleToEmployee: boolean | null;
   employeeCanApply: boolean | null;
+  /** Leave grouping visibility (b653ac1b): the stored ess_placement ('primary'|'secondary'|null). Combined
+   *  with visibleToEmployee (false ⇒ Hidden) and the type code, the panel resolves the current 3-way choice
+   *  shown in the placement select. null ⇒ the code-keyed default. */
+  essPlacement: string | null;
   /** ADR-0068 / Partial Leave Approval: the type's counting mode ('working_days' | 'calendar_days'), threaded
    *  so the per-date-approval sub-form can grey out its toggle for calendar-counted types (the feature can
    *  never fire there — see the gate in core/leave.ts perDateEligible). */
@@ -1469,6 +1475,41 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('visibility.help')}</p>
+          </div>
+
+          {/* Leave grouping visibility (b653ac1b). Its own self-contained sub-form (own tri-state) posts
+              `placement=1` — a single Primary / Secondary / Hidden select deciding WHERE this leave type sits
+              on the employee's My Profile → Leave tab: a Primary card at the top, tucked into a Secondary
+              group, or Hidden entirely. HIDDEN REUSES THE SINGLE VISIBILITY SWITCH (7b11f1c1): choosing Hidden
+              sets visible_to_employee=false — there is no second hidden control. The current selection is
+              resolved from the stored value, the visibility flag, and the code-keyed default so an unconfigured
+              type shows its sensible starting point. Presentation only — no balances/entitlement change. */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('placement.sectionTitle')}</span>
+            <form action={updateTypeAction} className="flex flex-wrap items-end gap-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch ess_placement + the shared visibility flag (tri-state guard) */}
+              <input type="hidden" name="placement" value="1" />
+              <Field label={t('placement.label')}>
+                <select
+                  name="placementValue"
+                  defaultValue={resolvePlacement(code, essPlacement, visibleToEmployee)}
+                  className={`${inputCls} w-40`}
+                >
+                  {ESS_PLACEMENTS.map((pl) => (
+                    <option key={pl} value={pl}>
+                      {t(`placement.option.${pl}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('placement.help')}</p>
           </div>
 
           {/* Leave Unit Configuration (e4980382). Its own self-contained sub-form (own tri-state) posts

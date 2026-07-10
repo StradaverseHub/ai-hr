@@ -3295,6 +3295,16 @@
         "employeeCanApply": "Nhân viên có thể đăng ký",
         "statutoryLocked": "Đây là loại nghỉ phép theo luật định — nhân viên phải luôn có thể đăng ký.",
         "help": "Kiểm soát việc nhân viên có nhìn thấy loại nghỉ phép này trong tab Nghỉ phép của họ hay không và có thể đăng ký hay không. Loại bị ẩn sẽ biến mất hoàn toàn khỏi tab Nghỉ phép của nhân viên; tắt “có thể đăng ký” vẫn giữ loại này hiển thị nhưng chặn các đơn đăng ký mới."
+      },
+      "placement": {
+        "sectionTitle": "Vị trí trên tab Nhân viên",
+        "label": "Vị trí",
+        "option": {
+          "primary": "Thẻ chính",
+          "secondary": "Nhóm phụ",
+          "hidden": "Ẩn"
+        },
+        "help": "Chọn nơi loại nghỉ phép này xuất hiện trên tab Nghỉ phép của nhân viên: thẻ Chính ở trên cùng, nằm trong nhóm Phụ bên dưới, hoặc Ẩn hoàn toàn khỏi nhân viên. Ẩn sử dụng cùng công tắc hiển thị ở trên. Cho đến khi bạn chọn, mỗi loại sử dụng giá trị mặc định hợp lý."
       }
     },
     "holidays": {

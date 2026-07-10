@@ -913,6 +913,18 @@ export const leaveType = pgTable('leave_type', {
   // presentation + apply gate.
   visibleToEmployee: boolean('visible_to_employee'),
   employeeCanApply: boolean('employee_can_apply'),
+  // Leave grouping visibility (feedback b653ac1b): the HR-editable placement of this leave type on the
+  // employee self-service Leave tab — 'primary' (a card that stands out at the top) or 'secondary' (tucked
+  // into a group below). NULL ⇒ resolve from a code-keyed default map (lib/leave-groups.ts): the common
+  // codes default 'primary', the sensitive/rarely-used ones default 'hidden', everything else 'secondary'.
+  // HIDDEN IS NOT STORED HERE: "Hidden" placement reuses the SINGLE visibleToEmployee switch (7b11f1c1) —
+  // choosing Hidden sets visibleToEmployee=false, and resolving placement reads that flag FIRST (false ⇒
+  // hidden). A DB CHECK constrains this column to 'primary' | 'secondary' so 'hidden' can never be stored
+  // here (one source of truth for hidden). Presentation/config ONLY — never read for entitlement, accrual,
+  // eligibility, workflow or payroll. NULL on every existing row ⇒ code-keyed default, today's exact
+  // behaviour (see migration 0191). Resolved onto leaveBalances rows in core/read.ts; the /me cards-and-
+  // groups renderer (planned 6d78f373) consumes the resolved value.
+  essPlacement: text('ess_placement'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

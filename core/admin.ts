@@ -2580,6 +2580,15 @@ export async function updateLeaveType(
     // admin/HR reads are never gated.
     visibleToEmployee?: boolean | null;
     employeeCanApply?: boolean | null;
+    // Leave grouping visibility (feedback b653ac1b): the HR-chosen placement of this leave type on the
+    // employee self-service Leave tab — 'primary' | 'secondary' | 'hidden'. OWN tri-state (undefined =
+    // untouched), mirroring visibleToEmployee — the placement sub-form posts `placement=1` so an unrelated
+    // save never resets it. HIDDEN REUSES THE SINGLE VISIBILITY SWITCH (7b11f1c1): 'hidden' is translated to
+    // visible_to_employee=false (never stored in ess_placement, which a DB CHECK constrains to
+    // primary|secondary); 'primary'/'secondary' store the value AND set visible_to_employee=true (un-hide);
+    // null clears the override (revert to the code-keyed default + un-hide). Presentation/config only — never
+    // touches entitlement / accrual / eligibility / workflow / payroll.
+    essPlacement?: 'primary' | 'secondary' | 'hidden' | null;
     // Edit Paid/Unpaid on rename (feedback 75953777): the paid/unpaid flag is the payroll-deduction source of
     // truth (schema paid boolean notNull default true). OWN tri-state (undefined = paid column untouched),
     // mirroring perDateApproval — the identity/rename sub-form posts an `identity=1` marker and always forwards
@@ -2651,6 +2660,31 @@ export async function updateLeaveType(
   const touchEmployeeCanApply = p.employeeCanApply !== undefined;
   const visibleToEmployeeSet = touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {};
   const employeeCanApplySet = touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {};
+  // Leave grouping visibility (b653ac1b): OWN tri-state, mirroring touchVisibleToEmployee — the placement
+  // sub-form posts `placement=1`, any other save omits it so both the ess_placement column and the shared
+  // visibility flag stay untouched. Map the 3-way choice onto the stored column + the single visibility
+  // switch (7b11f1c1): 'hidden' ⇒ clear ess_placement + set visible_to_employee=false (the ONE hidden
+  // mechanism — never a second column); 'primary'/'secondary' ⇒ store it + set visible_to_employee=true
+  // (a placed type is by definition visible); null ⇒ clear both (revert to code-keyed default + un-hide).
+  const touchPlacement = p.essPlacement !== undefined;
+  if (touchPlacement && p.essPlacement != null && !['primary', 'secondary', 'hidden'].includes(p.essPlacement)) {
+    throw new Error('Leave placement must be primary, secondary, or hidden.');
+  }
+  let placementColSet: { essPlacement?: string | null } = {};
+  let placementVisibilitySet: { visibleToEmployee?: boolean | null } = {};
+  if (touchPlacement) {
+    if (p.essPlacement === 'hidden') {
+      placementColSet = { essPlacement: null };
+      placementVisibilitySet = { visibleToEmployee: false };
+    } else if (p.essPlacement === 'primary' || p.essPlacement === 'secondary') {
+      placementColSet = { essPlacement: p.essPlacement };
+      placementVisibilitySet = { visibleToEmployee: true };
+    } else {
+      // null ⇒ clear the override entirely: revert to the code-keyed default AND un-hide.
+      placementColSet = { essPlacement: null };
+      placementVisibilitySet = { visibleToEmployee: null };
+    }
+  }
   // Employee Leave View Configuration (65dec703): OWN tri-state, mirroring touchPartial — the ESS-view
   // sub-form posts `essView=1`, any other save omits essViewConfig so ess_view_config stays untouched.
   const touchEssViewConfig = p.essViewConfig !== undefined;
@@ -2793,6 +2827,8 @@ export async function updateLeaveType(
         code: leaveType.code,
         visibleToEmployee: leaveType.visibleToEmployee,
         employeeCanApply: leaveType.employeeCanApply,
+        // Leave grouping visibility (b653ac1b): feeds the before/after placement audit diff.
+        essPlacement: leaveType.essPlacement,
         // Leave Type master page (feedback 097de541): selected for the rename-uniqueness check (below) and the
         // description audit diff (MUST be here or before?.description is always undefined).
         description: leaveType.description,
@@ -2901,6 +2937,11 @@ export async function updateLeaveType(
         ...leaveUnitSet,
         ...visibleToEmployeeSet,
         ...employeeCanApplySet,
+        // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
+        // drives (Hidden ⇒ flag false). Spread AFTER visibleToEmployeeSet so, in the (mutually-exclusive by
+        // marker) case both were somehow forwarded, the placement decision is authoritative.
+        ...placementColSet,
+        ...placementVisibilitySet,
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -2937,6 +2978,8 @@ export async function updateLeaveType(
           ...(touchLeaveUnit ? { leaveUnit: before?.leaveUnit ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: before?.employeeCanApply ?? null } : {}),
+          // Leave grouping visibility (b653ac1b): record both the stored column and the shared flag it drives.
+          ...(touchPlacement ? { essPlacement: before?.essPlacement ?? null, visibleToEmployee: before?.visibleToEmployee ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
@@ -2970,6 +3013,8 @@ export async function updateLeaveType(
           ...(touchLeaveUnit ? { leaveUnit: p.leaveUnit ?? before?.leaveUnit ?? null } : {}),
           ...(touchVisibleToEmployee ? { visibleToEmployee: p.visibleToEmployee ?? null } : {}),
           ...(touchEmployeeCanApply ? { employeeCanApply: p.employeeCanApply ?? null } : {}),
+          // Leave grouping visibility (b653ac1b): the resolved next values (Hidden ⇒ column null + flag false).
+          ...(touchPlacement ? { essPlacement: placementColSet.essPlacement ?? null, visibleToEmployee: placementVisibilitySet.visibleToEmployee ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
         ...(reason ? { reason } : {}),

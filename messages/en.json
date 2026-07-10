@@ -3295,6 +3295,16 @@
         "employeeCanApply": "Employees can apply",
         "statutoryLocked": "This is a statutory leave — employees must always be able to apply for it.",
         "help": "Control whether employees see this leave type on their Leave tab and whether they can apply for it. A hidden type disappears entirely from the employee's Leave tab; turning off “can apply” keeps the type visible but blocks new applications."
+      },
+      "placement": {
+        "sectionTitle": "Employee Tab Placement",
+        "label": "Placement",
+        "option": {
+          "primary": "Primary card",
+          "secondary": "Secondary group",
+          "hidden": "Hidden"
+        },
+        "help": "Choose where this leave type appears on the employee’s Leave tab: a Primary card at the top, tucked into a Secondary group below, or Hidden from the employee entirely. Hidden uses the same visibility switch above. Until you choose, each type uses a sensible default."
       }
     },
     "holidays": {
