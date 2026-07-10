@@ -3004,6 +3004,23 @@
         "upcomingApprovedLeave": "Upcoming Approved Leave",
         "transactionHistory": "Transaction History",
         "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
+      },
+      "visual": {
+        "sectionTitle": "Leave Type Visual Configuration",
+        "help": "Optional. The icon and colour theme appear beside this leave type on the employee My Profile → Leave tab. Purely visual — no effect on entitlement, eligibility or calculations.",
+        "iconLabel": "Icon",
+        "colorLabel": "Colour theme",
+        "searchPlaceholder": "Search icons…",
+        "noIcons": "No matching icons.",
+        "color": {
+          "blue": "Blue",
+          "green": "Green",
+          "orange": "Orange",
+          "purple": "Purple",
+          "red": "Red",
+          "teal": "Teal",
+          "grey": "Grey"
+        }
       }
     },
     "holidays": {

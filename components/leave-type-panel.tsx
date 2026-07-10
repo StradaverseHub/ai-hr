@@ -4,6 +4,15 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
 import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
+import { Search } from 'lucide-react';
+import {
+  LEAVE_COLORS,
+  LEAVE_COLOR_TOKENS,
+  LEAVE_ICONS,
+  LEAVE_ICON_KEYS,
+  type LeaveColorToken,
+  type LeaveIconKey,
+} from '@/lib/leave-visual';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
@@ -347,6 +356,135 @@ function ServiceBandEditor({ t, initial }: { t: ReturnType<typeof useTranslation
 }
 
 /**
+ * Leave Type Visual Configuration Enhancement (639fdf77): the self-contained visual sub-form — a SEARCHABLE
+ * icon picker (filter the curated registry by keyword → clickable grid + live preview, posts `icon`) + a
+ * 7-token colour swatch radio (posts `color`) + Save. Own tri-state marker `visual=1` so an unrelated
+ * sub-form save never resets the two columns. Both init from the stored values. Purely cosmetic — the picked
+ * icon + colour only change how the type LOOKS on the employee Leave tab.
+ */
+function LeaveVisualForm({
+  t,
+  id,
+  name,
+  color,
+  icon,
+  action,
+}: {
+  t: ReturnType<typeof useTranslations>;
+  id: string;
+  name: string;
+  color: string | null;
+  icon: string | null;
+  action: Action;
+}) {
+  const [selColor, setSelColor] = useState<LeaveColorToken | ''>(
+    color && (LEAVE_COLOR_TOKENS as string[]).includes(color) ? (color as LeaveColorToken) : '',
+  );
+  const [selIcon, setSelIcon] = useState<LeaveIconKey | ''>(
+    icon && (LEAVE_ICON_KEYS as string[]).includes(icon) ? (icon as LeaveIconKey) : '',
+  );
+  const [query, setQuery] = useState('');
+
+  const q = query.trim().toLowerCase();
+  const shownIcons = LEAVE_ICON_KEYS.filter((key) => {
+    if (q === '') return true;
+    if (key.toLowerCase().includes(q)) return true;
+    return LEAVE_ICONS[key].keywords.some((kw) => kw.includes(q));
+  });
+  const PreviewIcon = selIcon ? LEAVE_ICONS[selIcon].Icon : null;
+
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{t('visual.sectionTitle')}</span>
+      <form action={action} className="space-y-3 rounded-lg bg-background p-3">
+        <input type="hidden" name="id" value={id} />
+        {/* preserve the name — this form does not edit it */}
+        <input type="hidden" name="name" value={name} />
+        {/* marker: tells the action to touch the color + icon columns (tri-state guard) */}
+        <input type="hidden" name="visual" value="1" />
+        {/* the picked values, posted back to the action */}
+        <input type="hidden" name="icon" value={selIcon} />
+        <input type="hidden" name="color" value={selColor} />
+
+        {/* Icon picker */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium text-foreground">{t('visual.iconLabel')}</span>
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('visual.searchPlaceholder')}
+                aria-label={t('visual.searchPlaceholder')}
+                className={`${inputCls} w-full pl-7`}
+              />
+            </div>
+            {/* live preview of the selected icon */}
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border">
+              {PreviewIcon ? <PreviewIcon className="size-4" aria-hidden /> : <span className="text-xs text-muted-foreground">—</span>}
+            </span>
+          </div>
+          <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8">
+            {shownIcons.map((key) => {
+              const Ico = LEAVE_ICONS[key].Icon;
+              const active = selIcon === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelIcon(active ? '' : key)}
+                  aria-pressed={active}
+                  aria-label={key}
+                  title={key}
+                  className={`flex aspect-square items-center justify-center rounded-md border ${
+                    active ? 'border-primary bg-primary/10 text-primary' : 'border-border text-foreground hover:bg-muted'
+                  }`}
+                >
+                  <Ico className="size-4" aria-hidden />
+                </button>
+              );
+            })}
+            {shownIcons.length === 0 && (
+              <p className="col-span-full text-xs text-muted-foreground">{t('visual.noIcons')}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Colour swatch radio */}
+        <div className="space-y-1.5">
+          <span className="text-xs font-medium text-foreground">{t('visual.colorLabel')}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {LEAVE_COLOR_TOKENS.map((token) => {
+              const active = selColor === token;
+              return (
+                <button
+                  key={token}
+                  type="button"
+                  onClick={() => setSelColor(active ? '' : token)}
+                  aria-pressed={active}
+                  aria-label={t(`visual.color.${token}`)}
+                  title={t(`visual.color.${token}`)}
+                  className={`size-7 rounded-full ${LEAVE_COLORS[token].bg} ${
+                    active ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : 'ring-1 ring-border'
+                  }`}
+                />
+              );
+            })}
+          </div>
+        </div>
+
+        <Button type="submit" size="sm">
+          {t('save')}
+        </Button>
+      </form>
+      <p className="text-xs text-muted-foreground">{t('visual.help')}</p>
+    </div>
+  );
+}
+
+/**
  * One leave type as an expandable row. The body manages that type's own effective-dated
  * entitlement policies (add / correct / remove) so there's no separate, disconnected policy
  * form — the two tables stay split underneath, but the editing surface is unified.
@@ -375,6 +513,8 @@ export function LeaveTypePanel({
   expiryUnit,
   customMessages,
   essViewConfig,
+  color,
+  icon,
   policies,
   grades,
   companies,
@@ -426,6 +566,10 @@ export function LeaveTypePanel({
   /** Employee Leave View Configuration (65dec703 / dup 1fedb473): per-component ESS visibility map, threaded
    *  so each checkbox round-trips its stored value. null / missing key ⇒ visible (all-visible default). */
   essViewConfig: Record<string, boolean> | null;
+  /** Leave Type Visual Configuration (639fdf77): stored colour token + icon key, threaded so the swatch
+   *  radio + icon picker init from what's saved. null ⇒ nothing selected (default styling). */
+  color: string | null;
+  icon: string | null;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -1036,6 +1180,12 @@ export function LeaveTypePanel({
             </form>
             <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
           </div>
+
+          {/* Leave Type Visual Configuration Enhancement (639fdf77). Its own self-contained sub-form (own
+              tri-state) posts `visual=1` — a searchable icon picker + a 7-token colour swatch, purely
+              cosmetic (icon + colour beside the leave type on the employee My Profile → Leave tab). Nothing
+              existing moves; both null ⇒ default styling (backward compatible). */}
+          <LeaveVisualForm t={t} id={id} name={name} color={color} icon={icon} action={updateTypeAction} />
           </div>
           {/* end side-by-side grid (feedback 9d8cf621) */}
 

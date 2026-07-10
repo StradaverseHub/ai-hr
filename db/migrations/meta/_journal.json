@@ -1254,6 +1254,13 @@
       "when": 1781862177000,
       "tag": "0178_leave_type_ess_view_config",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "7",
+      "when": 1781862178000,
+      "tag": "0179_leave_type_visual_config",
+      "breakpoints": true
     }
   ]
 }

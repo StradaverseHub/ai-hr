@@ -414,6 +414,10 @@ export function listLeaveTypes(
         // Employee Leave View Configuration (65dec703): feeds the admin panel's ESS-view checklist (MUST be
         // projected or every checkbox renders at its default on every reload). null ⇒ all-visible default.
         essViewConfig: leaveType.essViewConfig,
+        // Leave Type Visual Configuration (639fdf77): feeds the admin panel's visual sub-form (MUST be
+        // projected or the swatch/icon picker render empty on every reload). null ⇒ default styling.
+        color: leaveType.color,
+        icon: leaveType.icon,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
@@ -1284,6 +1288,11 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         // resolved (missing key ⇒ visible). Placeholder = all-visible; overwritten in the final pass once
         // the active-type configs are fetched below, so render sites gate without a second query.
         essView: resolveEssView(null) as ResolvedEssView,
+        // Leave Type Visual Configuration (639fdf77): DISPLAY-ONLY colour theme + icon + code, filled in the
+        // final pass below (one select over the seen type ids). null ⇒ default styling / code-keyed icon.
+        color: null as string | null,
+        icon: null as string | null,
+        code: null as string | null,
       };
     });
     // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
@@ -1301,6 +1310,9 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         balance: 0,
         available: -pending,
         essView: resolveEssView(null) as ResolvedEssView,
+        color: null as string | null,
+        icon: null as string | null,
+        code: null as string | null,
       });
       seen.add(p.leaveTypeId);
     }
@@ -1322,7 +1334,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
-      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView });
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
     // archived types with old ledger entries fall back to their stored English name).
@@ -1330,9 +1342,28 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     // Employee Leave View Configuration (65dec703): resolve each active type's ESS-view config (missing ⇒
     // all-visible). Archived types with only old ledger entries keep the all-visible placeholder set above.
     const essViewByType = new Map(types.map((t) => [t.id, resolveEssView(t.essViewConfig as Record<string, boolean> | null)]));
+    // Leave Type Visual Configuration Enhancement (639fdf77): one select over every seen type id (active OR
+    // archived-with-old-ledger) for the DISPLAY-ONLY colour / icon / code. Attached below so the ESS Leave
+    // tab can render the icon + colour chip. This does NOT touch any sum / ledger / entitlement math above —
+    // it is a pure presentation join. null ⇒ default styling + code-keyed icon (via lib/leave-visual.ts).
+    const seenIds = out.map((r) => r.leaveTypeId);
+    const visualByType = new Map<string, { color: string | null; icon: string | null; code: string | null }>();
+    if (seenIds.length > 0) {
+      const visuals = await tx
+        .select({ id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code })
+        .from(leaveType)
+        .where(inArray(leaveType.id, seenIds));
+      for (const v of visuals) visualByType.set(v.id, { color: v.color, icon: v.icon, code: v.code });
+    }
     for (const r of out) {
       r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
       r.essView = essViewByType.get(r.leaveTypeId) ?? r.essView;
+      const v = visualByType.get(r.leaveTypeId);
+      if (v) {
+        r.color = v.color;
+        r.icon = v.icon;
+        r.code = v.code;
+      }
     }
     return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });

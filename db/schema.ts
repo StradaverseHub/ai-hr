@@ -826,6 +826,17 @@ export const leaveType = pgTable('leave_type', {
   // touchEssViewConfig tri-state). JSONB extension point: new component keys ship with no migration, but a
   // writer MUST validate against the closed allow-list (unknown keys are rejected in updateLeaveType).
   essViewConfig: jsonb('ess_view_config').$type<Record<string, boolean>>(),
+  // Leave Type Visual Configuration Enhancement (feedback 639fdf77): two additive, nullable, DISPLAY-ONLY
+  // columns letting HR attach an icon + colour theme to each leave type, surfaced only on the employee
+  // self-service My Profile → Leave tab (icon beside the name + colour chip on the row). NEVER read for
+  // entitlement / eligibility / workflow / calculation — purely cosmetic, so both null (every existing row)
+  // reproduces today's exact ESS appearance.
+  //   color — one of the fixed 7-token palette {blue,green,orange,purple,red,teal,grey} (lib/leave-visual.ts
+  //     LEAVE_COLOR_TOKENS; a DB CHECK backs the service validation). null ⇒ system default styling.
+  //   icon — a curated icon-registry key (lib/leave-visual.ts LEAVE_ICON_KEYS; validated in the service, no
+  //     DB CHECK so the registry can grow without a migration). null ⇒ default leave icon.
+  color: text('color'),
+  icon: text('icon'),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

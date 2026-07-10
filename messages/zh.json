@@ -3004,6 +3004,23 @@
         "upcomingApprovedLeave": "即将到来的已批准休假",
         "transactionHistory": "交易历史",
         "entitlementCalcBreakdown": "应享额计算明细"
+      },
+      "visual": {
+        "sectionTitle": "假期类型视觉配置",
+        "help": "可选。图标和颜色主题会显示在员工「我的资料 → 假期」标签中此假期类型旁边。纯视觉效果——不影响权益、资格或计算。",
+        "iconLabel": "图标",
+        "colorLabel": "颜色主题",
+        "searchPlaceholder": "搜索图标…",
+        "noIcons": "没有匹配的图标。",
+        "color": {
+          "blue": "蓝色",
+          "green": "绿色",
+          "orange": "橙色",
+          "purple": "紫色",
+          "red": "红色",
+          "teal": "青色",
+          "grey": "灰色"
+        }
       }
     },
     "holidays": {

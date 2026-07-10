@@ -3004,6 +3004,23 @@
         "upcomingApprovedLeave": "Cuti Diluluskan Akan Datang",
         "transactionHistory": "Sejarah Transaksi",
         "entitlementCalcBreakdown": "Pecahan Pengiraan Kelayakan"
+      },
+      "visual": {
+        "sectionTitle": "Konfigurasi Visual Jenis Cuti",
+        "help": "Pilihan. Ikon dan tema warna dipaparkan di sebelah jenis cuti ini pada tab Profil Saya → Cuti pekerja. Semata-mata visual — tiada kesan pada kelayakan, syarat atau pengiraan.",
+        "iconLabel": "Ikon",
+        "colorLabel": "Tema warna",
+        "searchPlaceholder": "Cari ikon…",
+        "noIcons": "Tiada ikon sepadan.",
+        "color": {
+          "blue": "Biru",
+          "green": "Hijau",
+          "orange": "Jingga",
+          "purple": "Ungu",
+          "red": "Merah",
+          "teal": "Teal",
+          "grey": "Kelabu"
+        }
       }
     },
     "holidays": {

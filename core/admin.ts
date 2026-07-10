@@ -9,6 +9,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
 import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
+import { isLeaveColorToken, isLeaveIconKey } from '@/lib/leave-visual';
 import { visibleLabelIdsCondition } from './system-labels';
 import {
   isValidMonthDay,
@@ -2399,6 +2400,14 @@ export async function updateLeaveType(
     // clear (revert to all-visible default). Every key MUST be in the closed allow-list (core/ess-view.ts);
     // an unknown key is rejected. Value false ⇒ hidden in ESS; missing/true ⇒ visible.
     essViewConfig?: EssViewConfig | null;
+    // Leave Type Visual Configuration Enhancement (feedback 639fdf77): OPTIONAL, DISPLAY-ONLY colour theme +
+    // icon shown on the employee self-service Leave tab. OWN tri-state (undefined = column untouched),
+    // mirroring perDateApproval/essViewConfig — the visual sub-form posts `visual=1` so an unrelated save
+    // never resets them. color must be in the 7-token allow-list (lib/leave-visual.ts) or null/'' to clear;
+    // icon must be a known icon-registry key or null/'' to clear. NEVER read for entitlement / eligibility /
+    // workflow / calculation — purely cosmetic. Empty string ⇒ null (never store '').
+    color?: string | null;
+    icon?: string | null;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -2457,6 +2466,31 @@ export async function updateLeaveType(
       }
       // An empty map is indistinguishable from "all visible" — store null so the default path stays clean.
       nextEssViewConfig = Object.keys(cleaned).length === 0 ? null : cleaned;
+    }
+  }
+  // Leave Type Visual Configuration Enhancement (639fdf77): OWN tri-state, mirroring touchEssViewConfig — the
+  // visual sub-form posts `visual=1`, any other save omits color/icon so those columns stay untouched. Both
+  // keys are touched together (one sub-form). An empty string clears (⇒ null). color is validated against the
+  // 7-token allow-list; icon against the icon-registry keys — an out-of-list value is rejected.
+  const touchVisual = p.color !== undefined || p.icon !== undefined;
+  let nextColor: string | null | undefined;
+  let nextIcon: string | null | undefined;
+  if (touchVisual) {
+    const rawColor = typeof p.color === 'string' ? p.color.trim() : p.color;
+    const rawIcon = typeof p.icon === 'string' ? p.icon.trim() : p.icon;
+    if (rawColor == null || rawColor === '') {
+      nextColor = null;
+    } else if (!isLeaveColorToken(rawColor)) {
+      throw new Error(`Unknown leave colour theme: ${rawColor}.`);
+    } else {
+      nextColor = rawColor;
+    }
+    if (rawIcon == null || rawIcon === '') {
+      nextIcon = null;
+    } else if (!isLeaveIconKey(rawIcon)) {
+      throw new Error(`Unknown leave icon: ${rawIcon}.`);
+    } else {
+      nextIcon = rawIcon;
     }
   }
   // Leave Type master page (feedback 097de541): its OWN tri-state — the identity sub-form posts `identity=1`
@@ -2540,6 +2574,9 @@ export async function updateLeaveType(
   const partialSet = touchPartial ? { perDateApproval: p.perDateApproval } : {};
   // Leave Type master page (feedback 097de541): its own set fragment (the trimmed value, or null to clear).
   const descriptionSet = touchDescription ? { description: nextDescription ?? null } : {};
+  // Leave Type Visual Configuration Enhancement (639fdf77): its own set fragment (the validated color/icon,
+  // or null to clear). Display-only; nothing downstream reads these.
+  const visualSet = touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {};
 
   return withTenant(ctx, async (tx) => {
     const [before] = await tx
@@ -2567,6 +2604,9 @@ export async function updateLeaveType(
         customMessages: leaveType.customMessages,
         // ESS view config (65dec703): selected for the before/after audit diff.
         essViewConfig: leaveType.essViewConfig,
+        // Visual config (639fdf77): selected for the before/after audit diff.
+        color: leaveType.color,
+        icon: leaveType.icon,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -2619,6 +2659,7 @@ export async function updateLeaveType(
         ...expirySet,
         ...partialSet,
         ...descriptionSet,
+        ...visualSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
         ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
@@ -2652,6 +2693,7 @@ export async function updateLeaveType(
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: before?.essViewConfig ?? null } : {}),
+          ...(touchVisual ? { color: before?.color ?? null, icon: before?.icon ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
@@ -2679,6 +2721,7 @@ export async function updateLeaveType(
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
           ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig ?? null } : {}),
+          ...(touchVisual ? { color: nextColor ?? null, icon: nextIcon ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
         ...(reason ? { reason } : {}),

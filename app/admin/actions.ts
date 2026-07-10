@@ -993,6 +993,18 @@ export async function updateLeaveTypeAction(fd: FormData) {
         ) as EssViewConfig,
       }
     : {};
+  // Leave Type Visual Configuration Enhancement (639fdf77): the visual sub-form posts `visual=1` (marker) plus
+  // `color` (one of the 7 palette tokens, or '' to clear) + `icon` (an icon-registry key, or '' to clear).
+  // OWN tri-state (mirrors essView) — any other sub-form save omits the marker ⇒ color/icon stay untouched.
+  // Empty string ⇒ null (the service trims + treats blank as cleared). The service rejects out-of-allow-list
+  // values. Display-only; never read for entitlement / eligibility / workflow / calculation.
+  const touchVisual = fd.get('visual') === '1';
+  const visualFields = touchVisual
+    ? {
+        color: String(fd.get('color') ?? '').trim() === '' ? null : String(fd.get('color')).trim(),
+        icon: String(fd.get('icon') ?? '').trim() === '' ? null : String(fd.get('icon')).trim(),
+      }
+    : {};
   // Custom validation messages (custom-messages migration): each rule's "Custom system message" textarea
   // lives in the SAME sub-form as its rule config (backdating ⇒ `backdating=1`; min-advance ⇒ `minAdvance=1`),
   // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
@@ -1031,6 +1043,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...expiryFields,
       ...partialFields,
       ...essViewFields,
+      ...visualFields,
       ...customMessageFields,
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
       reason: String(fd.get('reason') || '') || null,

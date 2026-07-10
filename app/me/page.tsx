@@ -29,6 +29,7 @@ import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { durationLabel } from '@/lib/leave-duration';
+import { leaveVisual } from '@/lib/leave-visual';
 import {
   myCheckIn,
   myCheckOut,
@@ -1154,10 +1155,21 @@ export default async function MePage({
                     const showBreakdown = ev.entitlementCalcBreakdown !== false;
                     // The usage bar visualizes taken/pending/available; hide it when none of those figures show.
                     const showBar = tracked && (showAvailable || showTaken || showPending);
+                    // Leave Type Visual Configuration Enhancement (639fdf77): DISPLAY-ONLY icon + colour theme.
+                    // The resolver falls back to a code-keyed icon then a universal default, so an unconfigured
+                    // type keeps today's look (default CalendarDays icon, no colour chip ⇒ system styling).
+                    const visual = leaveVisual({ color: b.color, icon: b.icon, code: b.code });
+                    const VisualIcon = visual.Icon;
                     return (
-                      <div key={b.leaveTypeId}>
+                      <div
+                        key={b.leaveTypeId}
+                        className={visual.hasColor ? `-mx-2 rounded-lg px-2 py-1.5 ${visual.chipClass}` : undefined}
+                      >
                         <div className="flex items-baseline justify-between text-sm">
-                          <span className="text-muted-foreground">{b.leaveType}</span>
+                          <span className={`flex items-center gap-1.5 ${visual.hasColor ? '' : 'text-muted-foreground'}`}>
+                            <VisualIcon className="size-3.5 shrink-0" aria-hidden />
+                            {b.leaveType}
+                          </span>
                           <span className="font-semibold tabular-nums">
                             {tracked && showAvailable ? (
                               <>

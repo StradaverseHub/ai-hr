@@ -3004,6 +3004,23 @@
         "upcomingApprovedLeave": "Nghỉ phép đã duyệt sắp tới",
         "transactionHistory": "Lịch sử giao dịch",
         "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
+      },
+      "visual": {
+        "sectionTitle": "Cấu hình Hiển thị Loại nghỉ phép",
+        "help": "Tùy chọn. Biểu tượng và chủ đề màu sẽ hiển thị bên cạnh loại nghỉ phép này trong tab Hồ sơ của tôi → Nghỉ phép của nhân viên. Chỉ mang tính hiển thị — không ảnh hưởng đến quyền lợi, điều kiện hay tính toán.",
+        "iconLabel": "Biểu tượng",
+        "colorLabel": "Chủ đề màu",
+        "searchPlaceholder": "Tìm biểu tượng…",
+        "noIcons": "Không có biểu tượng phù hợp.",
+        "color": {
+          "blue": "Xanh dương",
+          "green": "Xanh lá",
+          "orange": "Cam",
+          "purple": "Tím",
+          "red": "Đỏ",
+          "teal": "Xanh mòng két",
+          "grey": "Xám"
+        }
       }
     },
     "holidays": {
