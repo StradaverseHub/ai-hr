@@ -1345,6 +1345,27 @@
       "when": 1781862190000,
       "tag": "0191_leave_year_opening_rule",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1781862191000,
+      "tag": "0192_leave_type_employee_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 193,
+      "version": "7",
+      "when": 1781862192000,
+      "tag": "0193_leave_type_ess_placement",
+      "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1781862193000,
+      "tag": "0194_holiday_master_fields_and_group_holiday",
+      "breakpoints": true
     }
   ]
 }
