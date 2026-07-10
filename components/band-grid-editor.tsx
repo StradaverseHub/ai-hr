@@ -1,5 +1,16 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
+
+import {
+  DEFAULT_ROWS_PER_PAGE,
+  PAGINATION_THRESHOLD,
+  ROWS_PER_PAGE_OPTIONS,
+  normalizeRowsPerPage,
+  paginate,
+} from '@/lib/band-pagination';
+
 /**
  * BandGridEditor — a reusable, Excel-like editable grid for wage-band statutory tables.
  *
@@ -73,8 +84,64 @@ export function BandGridEditor<Row extends Record<string, string>>({
   /** Do not allow removing below this many rows (default 1). */
   minRows?: number;
 }) {
+  const tp = useTranslations('payroll.config');
   const lastIndex = rows.length - 1;
   const ceilingKey = columns.find((c) => c.isCeiling)?.key;
+
+  // Client-side render pagination (feedback 02b842c7). The full `rows` array stays in the parent form
+  // state — we only limit how many <input> rows are painted at once so the big EPF Third Schedule tables
+  // (~400 bands) open fast. Pagination chrome only appears once a table exceeds PAGINATION_THRESHOLD, so
+  // the small SOCSO/EIS/PCB tables render exactly as before.
+  const paginated = rows.length > PAGINATION_THRESHOLD;
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState<number>(DEFAULT_ROWS_PER_PAGE);
+
+  // Optional preference: remember the last selected rows-per-page across sessions. Read in an effect (not
+  // the initial state) so server and first client render agree — no hydration mismatch, no round-trip impact.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem('bandGrid.rowsPerPage');
+      if (stored != null) setRowsPerPage(normalizeRowsPerPage(Number(stored)));
+    } catch {
+      /* localStorage unavailable (private mode / SSR) — keep the default. */
+    }
+  }, []);
+
+  const view = useMemo(
+    () => paginate(rows.length, rowsPerPage, page),
+    [rows.length, rowsPerPage, page],
+  );
+
+  // Keep the internal page state in sync with the clamped view (e.g. after deleting the last row on the
+  // final page, or shrinking rowsPerPage). Rendering always uses `view.page`, so this is just bookkeeping.
+  useEffect(() => {
+    if (view.page !== page) setPage(view.page);
+  }, [view.page, page]);
+
+  // When pagination is off, show every row (unchanged legacy behaviour); otherwise slice the current page.
+  const start = paginated ? view.start : 0;
+  const visibleRows = paginated ? rows.slice(view.start, view.end) : rows;
+
+  const changeRowsPerPage = (value: number) => {
+    const next = normalizeRowsPerPage(value);
+    setRowsPerPage(next);
+    setPage(0);
+    try {
+      window.localStorage.setItem('bandGrid.rowsPerPage', String(next));
+    } catch {
+      /* ignore persistence failures */
+    }
+  };
+
+  // Add-row appends near the end (EPF inserts just before the open-ended top band; SOCSO/EIS append),
+  // so jump the view to the last page to reveal the newly added row.
+  const handleAddRow = () => {
+    onAddRow();
+    if (paginated) {
+      const newCount = Math.max(1, Math.ceil((rows.length + 1) / rowsPerPage));
+      setPage(newCount - 1);
+    }
+  };
 
   /** Derived, display-only "From" = previous row's ceiling + 0.01 (first row starts at 0.00). Only used
    *  when `fromHeader` is provided AND a ceiling column exists. */
@@ -107,7 +174,10 @@ export function BandGridEditor<Row extends Record<string, string>>({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => {
+            {visibleRows.map((row, localIdx) => {
+              // Map the page-local index back to the row's position in the full `rows` array so
+              // onCell/onRemoveRow/isTop all operate on the correct global row.
+              const i = start + localIdx;
               const isTop = i === lastIndex;
               return (
                 <tr key={i} className="border-t border-border">
@@ -144,9 +214,74 @@ export function BandGridEditor<Row extends Record<string, string>>({
           </tbody>
         </table>
       </div>
+      {paginated && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-2 text-xs">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            <span>{tp('rowsPerPage')}</span>
+            <select
+              value={rowsPerPage}
+              onChange={(e) => changeRowsPerPage(Number(e.target.value))}
+              className="h-8 rounded-md border border-input bg-background px-2 text-foreground"
+            >
+              {ROWS_PER_PAGE_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="tabular-nums text-muted-foreground">
+              {tp('pageIndicator', { page: view.page + 1, pages: view.pageCount })}
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPage(0)}
+                disabled={view.page === 0}
+                aria-label={tp('pageFirst')}
+                title={tp('pageFirst')}
+                className="inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-input px-2 font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <span aria-hidden>&laquo;</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage(view.page - 1)}
+                disabled={view.page === 0}
+                aria-label={tp('pagePrev')}
+                title={tp('pagePrev')}
+                className="inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-input px-2 font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <span aria-hidden>&lsaquo;</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage(view.page + 1)}
+                disabled={view.page >= view.pageCount - 1}
+                aria-label={tp('pageNext')}
+                title={tp('pageNext')}
+                className="inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-input px-2 font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <span aria-hidden>&rsaquo;</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage(view.pageCount - 1)}
+                disabled={view.page >= view.pageCount - 1}
+                aria-label={tp('pageLast')}
+                title={tp('pageLast')}
+                className="inline-flex h-8 min-w-8 items-center justify-center rounded-md border border-input px-2 font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40"
+              >
+                <span aria-hidden>&raquo;</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <button
         type="button"
-        onClick={onAddRow}
+        onClick={handleAddRow}
         className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-input px-3 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
       >
         <span aria-hidden>+</span> {addRowLabel}

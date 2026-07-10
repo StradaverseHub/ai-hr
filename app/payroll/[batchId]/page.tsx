@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { batchDetail, batchInputRows, leaverAdvisory, preProcessAdvisory, type PreProcessAdvisory } from '@/core/payroll';
+import { payrollReadiness, type PayrollReadiness } from '@/core/payroll-readiness';
+import { statutoryPackStale } from '@/lib/statutory-readiness';
 import { loanSummaryForBatch } from '@/core/loans';
 import { listAllowancePolicies, auditEvents } from '@/core/read';
 import { humanizeEvent } from '@/lib/audit-format';
@@ -42,6 +44,34 @@ export default async function BatchPage({
       : { missingCompensation: [], missingStatutory: [], missingBank: [] };
   const preBlockers = preChecks.missingCompensation.length;
   const preWarnings = preChecks.missingStatutory.length + preChecks.missingBank.length;
+  // Config-level readiness (feedback 5db3ae48, Phase A) — the layer ABOVE the employee-master pre-checks:
+  // is the COMPANY configured to run payroll (statutory tables, active cycle, pay-day, pay items, policy)?
+  // Read-only; surfaced here as a compact panel with a link to the full Workflow Guide. Uses the
+  // payroll.guide namespace so the check copy is written once.
+  const tg = await getTranslations('payroll.guide');
+  const configReadiness: PayrollReadiness | null =
+    batch.status === 'draft'
+      ? await payrollReadiness(s, {
+          companyId: batch.companyId,
+          payPeriod: batch.payPeriod,
+          statutoryStale: await statutoryPackStale(s),
+        })
+      : null;
+  const configAlerts = configReadiness ? configReadiness.checks.filter((c) => c.status !== 'ok') : [];
+  const CHECK_CAP: Record<string, string> = {
+    masterData: 'MasterData',
+    payrollItems: 'PayrollItems',
+    statutoryConfig: 'StatutoryConfig',
+    payrollCycle: 'PayrollCycle',
+    payrollSchedule: 'PayrollSchedule',
+    payrollPolicy: 'PayrollPolicy',
+    transactions: 'Transactions',
+  };
+  const STATUS_CAP: Record<string, string> = { ok: 'Ok', warning: 'Warning', blocker: 'Blocker' };
+  const STATUS_PILL: Record<string, string> = {
+    warning: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
+    blocker: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400',
+  };
   // 1.2.8 (ADR-0060): loan deductions are RESERVED onto a regular draft run only; show the running summary.
   const isRegular = batch.runType === 'regular';
   const loanSummary = batch.status === 'draft' && isRegular ? await loanSummaryForBatch(s, batchId) : { loans: 0, total: 0 };
@@ -266,6 +296,50 @@ export default async function BatchPage({
           mono: (chunks) => <span className="font-mono">{chunks}</span>,
         })}
       </div>
+
+      {/* Config-level readiness (feedback 5db3ae48, Phase A): whether the COMPANY is configured to run
+          payroll at all — one layer above the per-employee pre-checks below. Only non-ok checks are listed
+          here to keep the draft page focused; the full checklist + guided Phase 1→6 flow lives on the
+          Workflow Guide tab. */}
+      {configReadiness && configAlerts.length > 0 && (
+        <Card
+          className={`overflow-hidden ${
+            configReadiness.blockers > 0 ? 'border-red-200 dark:border-red-500/30' : 'border-amber-200 dark:border-amber-500/30'
+          }`}
+        >
+          <SectionHeader title={tg('readinessTitle')} count={configAlerts.length} />
+          <div className="space-y-2 px-4 py-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-muted-foreground">
+                {configReadiness.blockers > 0
+                  ? tg('readinessBlocked', { n: configReadiness.blockers })
+                  : tg('readinessWarnings', { n: configReadiness.warnings })}
+              </p>
+              <Link href="/payroll/guide" className="shrink-0 text-xs font-medium text-primary hover:underline">
+                {tg('title')} →
+              </Link>
+            </div>
+            <ul className="divide-y divide-border rounded-lg border border-border">
+              {configAlerts.map((c) => (
+                <li key={c.key} className="flex items-start justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATUS_PILL[c.status]}`}>
+                        {tg(`status${STATUS_CAP[c.status]}`)}
+                      </span>
+                      <span className="text-sm font-medium text-foreground">{tg(`check${CHECK_CAP[c.key]}Title`)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{tg(`check${CHECK_CAP[c.key]}${STATUS_CAP[c.status]}`, c.detail)}</p>
+                  </div>
+                  <Link href={c.href} className="shrink-0 text-xs font-medium text-primary hover:underline">
+                    {tg('fix')} →
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      )}
 
       {/* Pre-processing checks (feedback f1564110, Phase 1): the validation step of the reporter's
           "maintain → validate → process" workflow, surfaced on every draft run. Blocker rows stop

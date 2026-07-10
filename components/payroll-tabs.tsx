@@ -5,11 +5,14 @@ import Link from 'next/link';
 export async function PayrollTabs({
   active,
 }: {
-  active: 'batches' | 'transactions' | 'view' | 'reports' | 'setup';
+  active: 'batches' | 'guide' | 'transactions' | 'view' | 'reports' | 'setup';
 }) {
   const t = await getTranslations('components.payrollTabs');
   const tabs = [
     { key: 'batches', href: '/payroll', label: t('batches') },
+    // Guided end-to-end payroll workflow view (feedback 5db3ae48): signposts Phase 1→6 and surfaces
+    // config-level readiness; links OUT to the existing screens rather than duplicating them.
+    { key: 'guide', href: '/payroll/guide', label: t('guide') },
     { key: 'transactions', href: '/payroll/transactions', label: t('transactions') },
     { key: 'view', href: '/payroll/transaction-view', label: t('view') },
     { key: 'reports', href: '/payroll/reports', label: t('reports') },

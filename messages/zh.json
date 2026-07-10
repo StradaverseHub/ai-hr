@@ -1968,7 +1968,13 @@
       "secHrdf": "HRDF",
       "hrdfNote": "适用于符合条件雇主的 HRD Corp（2001年人力资源发展基金法令）征费率。",
       "advancedEdit": "高级编辑（分级表）",
-      "viewBody": "打开"
+      "viewBody": "打开",
+      "rowsPerPage": "每页行数",
+      "pageFirst": "首页",
+      "pagePrev": "上一页",
+      "pageNext": "下一页",
+      "pageLast": "末页",
+      "pageIndicator": "第 {page} 页，共 {pages} 页"
     },
     "batch": {
       "back": "薪资",
@@ -2607,6 +2613,68 @@
         "MISSING_SALARY": "缺少薪资信息"
       },
       "resumeStep1Note": "您正在查看薪资流程草稿。此草稿的公司、薪资月份和薪资周期已固定——请继续查看或修改员工选择。如需更改月份或公司，请在薪资流程列表中删除此草稿并创建新的薪资运行。"
+    },
+    "guide": {
+      "title": "薪资工作流程指南",
+      "subtitle": "端到端薪资流程，按顺序进行：准备主数据、录入交易、验证就绪状态、处理、审核，然后定案。",
+      "company": "公司",
+      "period": "薪资月份",
+      "readinessTitle": "处理前就绪检查",
+      "readinessReady": "可以处理 — 没有阻碍项。",
+      "readinessBlocked": "{n, plural, other {处理前须先修正 # 个阻碍项。}}",
+      "readinessWarnings": "{n, plural, other {有 # 项需要审核。}}",
+      "statusOk": "就绪",
+      "statusWarning": "审核",
+      "statusBlocker": "阻碍",
+      "fix": "打开",
+      "phaseLabel": "阶段 {n}",
+      "phase1Title": "主数据准备",
+      "phase1Desc": "在开始处理前，完成员工主数据、法定设置、薪资项目、政策、时间表和周期。",
+      "phase2Title": "薪资交易录入",
+      "phase2Desc": "录入本月所有固定和一次性交易 — 津贴、扣款、加班、报销、休假和法定调整。",
+      "phase3Title": "验证",
+      "phase3Desc": "确认每项必要配置均已完成。阻碍项会停止处理；警告项应先行审核。",
+      "phase4Title": "薪资处理",
+      "phase4Desc": "执行计算。引擎读取已验证的员工数据、交易和配置，一次性计算收入、扣款、法定缴款和净薪。",
+      "phase4Processing": "处理为一次性执行，并非保存的状态 — 运行会直接从草稿进入已处理。",
+      "phase5Title": "交易视图",
+      "phase5Desc": "在定案前审核每位员工的详细明细 — 基本薪资、收入、津贴、加班、报销、EPF、SOCSO、EIS、PCB、天课、总薪和净薪。",
+      "phase6Title": "定案",
+      "phase6Desc": "核实后，将运行推进为 草稿 → 已处理 → 已关闭。如需更正，可在关闭前重新打开运行或重新处理选定员工。",
+      "lifecycle": "草稿 → 已处理 → 已关闭",
+      "linkPeople": "员工",
+      "linkPayItems": "薪资项目",
+      "linkStatutory": "法定配置",
+      "linkCycles": "薪资周期",
+      "linkSchedule": "薪资时间表",
+      "linkPolicies": "薪资政策",
+      "linkTransactions": "交易",
+      "linkTransactionView": "交易视图",
+      "linkProcess": "开始薪资处理",
+      "linkBatches": "薪资运行",
+      "checkMasterDataTitle": "员工档案完整",
+      "checkMasterDataOk": "{total, plural, other {全部 # 位员工均有薪资和法定记录。}}",
+      "checkMasterDataBlocker": "{missingCompensation, plural, other {# 位员工没有薪资记录，将被排除在运行之外。}}",
+      "checkMasterDataWarning": "{missingStatutory, plural, other {# 位员工没有法定档案 — EPF/SOCSO/PCB 将使用默认值。}}",
+      "checkPayrollItemsTitle": "薪资项目主档",
+      "checkPayrollItemsOk": "{activeComponents, plural, other {# 个有效组件。}}",
+      "checkPayrollItemsWarning": "没有有效薪资组件 — 请先配置收入和扣款。",
+      "checkStatutoryConfigTitle": "法定配置",
+      "checkStatutoryConfigOk": "法定表格为最新。",
+      "checkStatutoryConfigWarning": "有更新的法定数据包可用但尚未导入 — 请执行同步。",
+      "checkPayrollCycleTitle": "薪资周期",
+      "checkPayrollCycleOk": "{active, plural, other {# 个有效周期。}}",
+      "checkPayrollCycleWarning": "存在有效周期，但没有常规月度周期。",
+      "checkPayrollCycleBlocker": "没有有效薪资周期 — 无法开启运行。",
+      "checkPayrollScheduleTitle": "薪资时间表",
+      "checkPayrollScheduleOk": "已配置发薪日。",
+      "checkPayrollScheduleWarning": "未配置发薪日 — 付款日期默认为月底。",
+      "checkPayrollPolicyTitle": "薪资政策",
+      "checkPayrollPolicyOk": "{activePolicies, plural, other {# 项有效政策。}}",
+      "checkPayrollPolicyWarning": "未指派或未设默认政策 — 员工回退至月度政策。",
+      "checkTransactionsTitle": "薪资交易",
+      "checkTransactionsOk": "{entered, plural, =0 {本月尚未录入交易} other {已录入 # 笔交易}}。",
+      "empty": "您当前范围内没有公司。"
     }
   },
   "admin": {
@@ -3767,6 +3835,7 @@
     },
     "payrollTabs": {
       "batches": "薪资流程",
+      "guide": "工作流程指南",
       "reports": "报表",
       "transactions": "交易",
       "view": "交易查询",
@@ -4406,7 +4475,8 @@
     },
     "status": {
       "active": "启用",
-      "inactive": "停用"
+      "inactive": "停用",
+      "draft": "草稿"
     },
     "typePending": "计算待批准",
     "edit": "编辑",
@@ -4439,7 +4509,8 @@
       "statusChanged": "政策状态已更新",
       "deleted": "薪资政策已删除",
       "assigned": "薪资政策已分配",
-      "copied": "薪资政策已复制"
+      "copied": "薪资政策已复制",
+      "draftSaved": "草稿已保存"
     },
     "errors": {
       "duplicateName": "该公司已存在使用此名称的薪资政策。",
@@ -4558,6 +4629,40 @@
         "nearest": "最接近的令吉"
       },
       "roundingHint": "法定缴款的舍入始终遵循其自身的法定规则，不受影响。"
+    },
+    "createNewPolicy": "创建新政策",
+    "fieldCode": "政策代码",
+    "codePlaceholder": "例如 STD-MONTHLY",
+    "fieldStatus": "状态",
+    "wizard": {
+      "stepOf": "第 {n} 步，共 {total} 步",
+      "next": "下一步",
+      "previous": "上一步",
+      "saveDraft": "保存草稿",
+      "save": "保存政策",
+      "cancel": "取消",
+      "createTitle": "新建薪资政策",
+      "editTitle": "编辑 {name}",
+      "requiredHint": "请填写此步骤的必填字段以继续。",
+      "reviewHint": "请检查以下配置，然后保存。使用“上一步”返回任意步骤进行修改。",
+      "reviewDraftNote": "保存为草稿的政策不会应用于薪资计算。准备就绪后可从政策列表中激活。",
+      "steps": {
+        "info": "政策信息",
+        "cutOff": "截止周期",
+        "proration": "薪资按比例计算",
+        "salary": "薪资配置",
+        "negativeNet": "负净薪",
+        "overtime": "加班",
+        "leave": "假期计算",
+        "rounding": "舍入",
+        "review": "检查并保存"
+      },
+      "validation": {
+        "name": "政策名称为必填项。",
+        "company": "请选择公司。",
+        "dailyRate": "请输入大于零的每日费率。",
+        "hourlyRate": "请输入大于零的每小时费率。"
+      }
     }
   },
   "leaveApproval": {

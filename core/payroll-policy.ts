@@ -28,7 +28,11 @@ function cleanPriority(v: number | undefined): number {
 
 export const POLICY_TYPES = ['monthly', 'daily', 'hourly', 'custom_period'] as const;
 export type PolicyType = (typeof POLICY_TYPES)[number];
-export const POLICY_STATUSES = ['active', 'inactive'] as const;
+// 61d77e82 — 'draft' widens the enum for the wizard's "Save Draft" path. A draft is never assignable and
+// never computes: resolveAssignedPolicy + listAssignablePolicies both gate on status='active', so a draft
+// policy is invisible to the kernel and the assignment dropdown. status is plain text (no column CHECK), so
+// widening the TS union needs no migration.
+export const POLICY_STATUSES = ['draft', 'active', 'inactive'] as const;
 export type PolicyStatus = (typeof POLICY_STATUSES)[number];
 
 /** Thrown when a policy name collides with an existing one in the same company (DB unique-violation). The
@@ -115,27 +119,34 @@ export async function createPolicy(
   p: {
     companyId: string;
     name: string;
+    // 61d77e82 — optional Policy Code (catalog metadata; never read by the kernel).
+    code?: string | null;
     description?: string | null;
     policyType: string;
     payRule?: PayRule | null;
     // 2.1.1 (ADR-0064) — Monthly General-Settings config (null = today's behaviour) + Phase-2 priority.
     config?: PayrollPolicyConfig | null;
     priority?: number;
+    // 61d77e82 — the wizard's Save-Draft path creates the policy as 'draft' (never assignable/computed) so it
+    // can be finished later. Defaults to 'active' (today's behaviour) when omitted.
+    status?: PolicyStatus;
   },
 ): Promise<{ id: string }> {
   const name = cleanName(p.name);
   const policyType = normalizeType(p.policyType);
   const payRule = resolveRule(policyType, p.payRule);
+  const code = (p.code ?? '').trim() || null;
   const description = (p.description ?? '').trim() || null;
   // cleanPayrollPolicyConfig coerces + clamps; a null/empty/all-default config persists as NULL (byte-identical).
   const config = cleanPayrollPolicyConfig(p.config);
   const priority = cleanPriority(p.priority);
+  const status: PolicyStatus = p.status && POLICY_STATUSES.includes(p.status) ? p.status : 'active';
   return withTenant(ctx, async (tx) => {
     let id: string;
     try {
       const [row] = await tx
         .insert(payrollPolicy)
-        .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, description, policyType, payRule, config, priority, status: 'active' })
+        .values({ tenantId: ctx.tenantId, companyId: p.companyId, name, code, description, policyType, payRule, config, priority, status })
         .returning({ id: payrollPolicy.id });
       id = row.id;
     } catch (e) {
@@ -148,7 +159,7 @@ export async function createPolicy(
       aggregateId: id,
       eventType: 'payroll-policy.created',
       actor: actorOf(ctx),
-      payload: { companyId: p.companyId, name, policyType, payRule, config, priority },
+      payload: { companyId: p.companyId, name, code, policyType, payRule, config, priority, status },
     });
     return { id };
   });
@@ -159,6 +170,8 @@ export async function updatePolicy(
   p: {
     id: string;
     name?: string;
+    // 61d77e82 — optional Policy Code patch. Omit to keep the stored value; pass '' / null to clear it.
+    code?: string | null;
     description?: string | null;
     policyType?: string;
     payRule?: PayRule | null;
@@ -166,6 +179,8 @@ export async function updatePolicy(
     // existing value; pass `null` (config) to clear it back to today's behaviour.
     config?: PayrollPolicyConfig | null;
     priority?: number;
+    // 61d77e82 — the wizard passes 'draft' on Save-Draft and 'active' on Save. Omit to keep the stored status.
+    status?: PolicyStatus;
   },
 ): Promise<{ id: string }> {
   return withTenant(ctx, async (tx) => {
@@ -173,6 +188,9 @@ export async function updatePolicy(
     if (!before) throw new Error('Payroll policy not found');
     const policyType = p.policyType !== undefined ? normalizeType(p.policyType) : (before.policyType as PolicyType);
     const name = p.name !== undefined ? cleanName(p.name) : before.name;
+    const code = p.code !== undefined ? ((p.code ?? '').trim() || null) : before.code;
+    const status: PolicyStatus =
+      p.status !== undefined && POLICY_STATUSES.includes(p.status) ? p.status : (before.status as PolicyStatus);
     const description =
       p.description !== undefined ? ((p.description ?? '').trim() || null) : before.description;
     // If type changes, re-derive the rule from the new type; otherwise honour an explicit payRule patch.
@@ -187,13 +205,13 @@ export async function updatePolicy(
     try {
       await tx
         .update(payrollPolicy)
-        .set({ name, description, policyType, payRule, config, priority, updatedAt: sql`now()` })
+        .set({ name, code, description, policyType, payRule, config, priority, status, updatedAt: sql`now()` })
         .where(eq(payrollPolicy.id, p.id));
     } catch (e) {
       if (isUniqueViolation(e)) throw new DuplicatePolicyNameError();
       throw e;
     }
-    const after = { name, description, policyType, payRule, config, priority };
+    const after = { name, code, description, policyType, payRule, config, priority, status };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-policy',
@@ -201,7 +219,7 @@ export async function updatePolicy(
       eventType: 'payroll-policy.updated',
       actor: actorOf(ctx),
       payload: {
-        before: { name: before.name, description: before.description, policyType: before.policyType, payRule: before.payRule, config: before.config, priority: before.priority },
+        before: { name: before.name, code: before.code, description: before.description, policyType: before.policyType, payRule: before.payRule, config: before.config, priority: before.priority, status: before.status },
         after,
       },
     });
@@ -224,6 +242,7 @@ export async function copyPolicy(
   return createPolicy(ctx, {
     companyId: src.companyId,
     name: p.name,
+    code: src.code,
     description: src.description,
     policyType: src.policyType,
     payRule: src.payRule,
@@ -324,6 +343,8 @@ export type PolicyRow = {
   id: string;
   companyId: string;
   name: string;
+  // 61d77e82 — optional Policy Code (catalog metadata; never read by the kernel).
+  code: string | null;
   description: string | null;
   policyType: PolicyType;
   payRule: PayRule | null;
@@ -346,6 +367,7 @@ export async function listPolicies(ctx: SessionContext, companyIds?: string[]): 
         id: payrollPolicy.id,
         companyId: payrollPolicy.companyId,
         name: payrollPolicy.name,
+        code: payrollPolicy.code,
         description: payrollPolicy.description,
         policyType: payrollPolicy.policyType,
         payRule: payrollPolicy.payRule,
@@ -388,6 +410,7 @@ async function listPoliciesById(ctx: SessionContext, ids: string[]): Promise<Pol
         id: payrollPolicy.id,
         companyId: payrollPolicy.companyId,
         name: payrollPolicy.name,
+        code: payrollPolicy.code,
         description: payrollPolicy.description,
         policyType: payrollPolicy.policyType,
         payRule: payrollPolicy.payRule,
@@ -463,6 +486,7 @@ export async function resolveAssignedPolicy(
       id: payrollPolicy.id,
       companyId: payrollPolicy.companyId,
       name: payrollPolicy.name,
+      code: payrollPolicy.code,
       description: payrollPolicy.description,
       policyType: payrollPolicy.policyType,
       payRule: payrollPolicy.payRule,
