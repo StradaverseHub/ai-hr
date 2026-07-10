@@ -2406,6 +2406,36 @@ export const reviewDocument = pgTable(
   (t) => [index('review_document_review_idx').on(t.reviewId)],
 );
 
+// f018ce8d — general employee document store (Personnel → Documents tab redesign). Replaces the old
+// read-only statutory summary with a real file repository: HR uploads categorized supporting documents
+// (PDF / Word / Excel / PowerPoint / images / text) against an employee. bytea side-table mirroring
+// claim_attachment / review_document (employment_id denormalized so RLS resolves via can_see_employment
+// directly). Read = subject + administrative-line manager + admin; write = admin only (see 0183 RLS).
+// title is the mandatory display name; category + description are optional metadata. uploaded_by /
+// updated_by capture the audit actors surfaced in the grid; updated_at bumps on meta edits + replacements.
+export const employeeDocument = pgTable(
+  'employee_document',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    title: text('title').notNull(),
+    category: text('category'),
+    description: text('description'),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id'),
+    updatedByUserId: uuid('updated_by_user_id'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('employee_document_employment_idx').on(t.tenantId, t.employmentId)],
+);
+
 // ADR-0050 (#1.1.3): yearly self-service TP1 personal tax relief. Keyed by `person_id` (TP1 is the
 // employee's own statutory declaration). One scalar `tp1_amount` per assessment year — the single number
 // the PCB kernel consumes (LP). Append-only request-row shape (profile_change_request pattern): the latest

@@ -10,6 +10,13 @@ import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
 import { FixedTransactionAmountError, FixedTransactionDateError, setEmploymentPayComponent, UnsupportedFixedCurrencyError } from '@/core/pay-components';
 import { setReviewEndDate, startReview, uploadReviewDocument, type ReviewType } from '@/core/employment-review';
+import {
+  addEmployeeDocument,
+  deleteEmployeeDocument,
+  replaceEmployeeDocumentContent,
+  resolveDocumentUpload,
+  updateEmployeeDocumentMeta,
+} from '@/core/employee-documents';
 import { buildReviewLetterPdf } from '@/lib/review-letter-build';
 import { setPersonComplianceFields } from '@/core/profile';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
@@ -106,6 +113,89 @@ export async function saveReviewLetterAction(formData: FormData) {
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Letter saved`));
+}
+
+// ── f018ce8d — Employee document store (Documents tab) ─────────────────────────────────────────────
+// All admin-only (requireAdmin). Uploads/replacements sniff the file's magic bytes (resolveDocumentUpload)
+// and cross-check them against the extension before the service re-validates against the allowlist — the
+// browser-declared type is never trusted. The service appends the DomainEvent for every write.
+
+export async function uploadEmployeeDocumentAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    const title = String(formData.get('title') ?? '');
+    if (!title.trim()) throw new Error('Document name / title is required.');
+    const file = formData.get('file');
+    if (!(file instanceof File) || file.size === 0) throw new Error('Choose a file to upload.');
+    const content = Buffer.from(await file.arrayBuffer());
+    const { mimeType } = resolveDocumentUpload(file.name, content); // fail-closed sniff + extension cross-check
+    await addEmployeeDocument(s, {
+      employmentId,
+      title,
+      category: String(formData.get('category') ?? '') || null,
+      description: String(formData.get('description') ?? '') || null,
+      fileName: file.name,
+      mimeType,
+      content,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document uploaded`));
+}
+
+export async function updateEmployeeDocumentMetaAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    const title = String(formData.get('title') ?? '');
+    if (!title.trim()) throw new Error('Document name / title is required.');
+    await updateEmployeeDocumentMeta(s, {
+      documentId: String(formData.get('documentId')),
+      title,
+      category: String(formData.get('category') ?? '') || null,
+      description: String(formData.get('description') ?? '') || null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document updated`));
+}
+
+export async function replaceEmployeeDocumentAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    const file = formData.get('file');
+    if (!(file instanceof File) || file.size === 0) throw new Error('Choose a replacement file.');
+    const content = Buffer.from(await file.arrayBuffer());
+    const { mimeType } = resolveDocumentUpload(file.name, content);
+    await replaceEmployeeDocumentContent(s, {
+      documentId: String(formData.get('documentId')),
+      fileName: file.name,
+      mimeType,
+      content,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Attachment replaced`));
+}
+
+export async function deleteEmployeeDocumentAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  try {
+    await deleteEmployeeDocument(s, { documentId: String(formData.get('documentId')) });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Document deleted`));
 }
 
 export async function setEmploymentComponentAction(formData: FormData) {

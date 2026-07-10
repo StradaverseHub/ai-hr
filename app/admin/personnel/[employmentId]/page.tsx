@@ -57,6 +57,7 @@ import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
 import { ReviewSection } from './review-section';
+import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
@@ -1363,41 +1364,11 @@ export default async function EmployeePage({
   ) : null;
 
   // ── DOCUMENTS ──────────────────────────────────────────────────────────────
-  // v1 is intentionally thin: there is no general upload-and-store capability yet. We surface the
-  // identification/statutory identifiers that qualify as "documents" today (read-only — the editable
-  // source of truth stays on the Bank & Statutory statutory form, so no server action is forked here), plus a
-  // count of the CP38 LHDN instalment records. A true file-attachment store is a separate enhancement.
-  const documentsPanel = admin ? (
-    <Card id="section-documents">
-      <SectionHeader title={t('documents.title')} />
-      <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-        {t('documents.note')}
-      </p>
-      <dl className="grid grid-cols-1 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2">
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('icNumber')}</dt>
-          <dd className="font-mono">{statutory?.icNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('taxNumber')}</dt>
-          <dd className="font-mono">{statutory?.taxNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('epfNumber')}</dt>
-          <dd className="font-mono">{statutory?.epfNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('socsoNumber')}</dt>
-          <dd className="font-mono">{statutory?.socsoNumber || '—'}</dd>
-        </div>
-        <div className="flex justify-between gap-4 border-b border-border pb-2">
-          <dt className="text-muted-foreground">{t('documents.cp38Records')}</dt>
-          <dd className="tabular-nums">{cp38Records.length}</dd>
-        </div>
-      </dl>
-      <p className="px-4 pb-4 text-xs text-muted-foreground">{t('documents.hint')}</p>
-    </Card>
-  ) : null;
+  // f018ce8d — redesigned into a real employee document store (upload / categorize / view / download /
+  // edit / replace / delete, searchable grid + full audit). The old read-only statutory summary is gone;
+  // those identifiers stay editable on the Bank & Statutory tab (unchanged source of truth). The section
+  // component RLS-loads its own data + owns its server actions (see documents-section.tsx).
+  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} /> : null;
 
   // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
   // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
