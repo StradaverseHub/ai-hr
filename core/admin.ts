@@ -8,6 +8,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { CrossCompanyError } from './org';
+import { isEssViewComponentKey, type EssViewConfig } from './ess-view';
 import { visibleLabelIdsCondition } from './system-labels';
 import {
   isValidMonthDay,
@@ -2390,6 +2391,14 @@ export async function updateLeaveType(
     // another rule's message. Any future writer of this column MUST follow the same merge-in-transaction
     // convention. Each message is capped at 500 chars and only known rule keys are accepted.
     customMessages?: Record<string, string> | null;
+    // Employee Leave View Configuration (feedback 65dec703 / dup 1fedb473): which ESS breakdown components an
+    // employee may see for this leave type. OWN tri-state (undefined = ess_view_config column untouched),
+    // mirroring perDateApproval — its own sub-form posts `essView=1` so an unrelated save never resets it.
+    // A full { key: boolean } map is REPLACED wholesale (not merged): the admin checklist always posts the
+    // complete set of known keys, so there is no partial-key clobber risk (unlike customMessages). null ⇒
+    // clear (revert to all-visible default). Every key MUST be in the closed allow-list (core/ess-view.ts);
+    // an unknown key is rejected. Value false ⇒ hidden in ESS; missing/true ⇒ visible.
+    essViewConfig?: EssViewConfig | null;
     /** 4ec5a940 — optional free-text justification, recorded on the audit event payload only. */
     reason?: string | null;
   },
@@ -2429,6 +2438,27 @@ export async function updateLeaveType(
   // fixed allow-list of rule keys — currently only the one rule that exists (backdating). A future rule
   // adds its config-field name here and to the LeaveType schema comment.
   const touchCustomMessages = p.customMessages !== undefined;
+  // Employee Leave View Configuration (65dec703): OWN tri-state, mirroring touchPartial — the ESS-view
+  // sub-form posts `essView=1`, any other save omits essViewConfig so ess_view_config stays untouched.
+  const touchEssViewConfig = p.essViewConfig !== undefined;
+  // Validate against the closed component-key allow-list up front (reject unknown keys) and normalize to a
+  // clean { key: boolean } map. null ⇒ clear (all-visible default). This map REPLACES the column wholesale.
+  let nextEssViewConfig: EssViewConfig | null | undefined;
+  if (touchEssViewConfig) {
+    if (p.essViewConfig === null) {
+      nextEssViewConfig = null;
+    } else {
+      const cleaned: EssViewConfig = {};
+      for (const key of Object.keys(p.essViewConfig!)) {
+        if (!isEssViewComponentKey(key)) {
+          throw new Error(`Unknown leave-view component key: ${key}.`);
+        }
+        cleaned[key] = !!p.essViewConfig![key];
+      }
+      // An empty map is indistinguishable from "all visible" — store null so the default path stays clean.
+      nextEssViewConfig = Object.keys(cleaned).length === 0 ? null : cleaned;
+    }
+  }
   // Leave Type master page (feedback 097de541): its OWN tri-state — the identity sub-form posts `identity=1`
   // and forwards `description`; any other save omits it, so the description column stays untouched.
   const touchDescription = p.description !== undefined;
@@ -2535,6 +2565,8 @@ export async function updateLeaveType(
         // Must be selected so before?.customMessages reflects what was actually stored — without it the
         // audit diff and the read-then-patch merge would always see undefined (silently clobbering).
         customMessages: leaveType.customMessages,
+        // ESS view config (65dec703): selected for the before/after audit diff.
+        essViewConfig: leaveType.essViewConfig,
       })
       .from(leaveType)
       .where(eq(leaveType.id, p.id))
@@ -2589,6 +2621,7 @@ export async function updateLeaveType(
         ...descriptionSet,
         ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
         ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
+        ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
       })
       .where(eq(leaveType.id, p.id));
     await appendEvent(tx, {
@@ -2618,6 +2651,7 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: before?.expiryValue ?? null, expiryUnit: before?.expiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: before?.customMessages ?? null } : {}),
+          ...(touchEssViewConfig ? { essViewConfig: before?.essViewConfig ?? null } : {}),
           ...(touchDescription ? { description: before?.description ?? null } : {}),
         },
         after: {
@@ -2644,6 +2678,7 @@ export async function updateLeaveType(
           ...(touchExpiry ? { expiryValue: nextExpiryValue ?? null, expiryUnit: nextExpiryUnit ?? null } : {}),
           ...(touchPartial ? { perDateApproval: p.perDateApproval ?? before?.perDateApproval ?? null } : {}),
           ...(touchCustomMessages ? { customMessages: nextCustomMessages ?? null } : {}),
+          ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig ?? null } : {}),
           ...(touchDescription ? { description: nextDescription ?? null } : {}),
         },
         ...(reason ? { reason } : {}),

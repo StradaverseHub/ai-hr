@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import type { ServiceBand } from '@/core/leave-compute';
+import { ESS_VIEW_COMPONENT_KEYS } from '@/core/ess-view';
 import { Button, Field, inputCls } from './ui';
 import { ConfirmSubmit } from './ui/confirm-submit';
 
@@ -373,6 +374,7 @@ export function LeaveTypePanel({
   expiryValue,
   expiryUnit,
   customMessages,
+  essViewConfig,
   policies,
   grades,
   companies,
@@ -421,6 +423,9 @@ export function LeaveTypePanel({
    *  field (`backdatingLimitDays` | `minAdvanceDays`). Threaded so each rule's "Custom system message"
    *  textarea round-trips. null / absent key = show the built-in localized default. */
   customMessages: Record<string, string> | null;
+  /** Employee Leave View Configuration (65dec703 / dup 1fedb473): per-component ESS visibility map, threaded
+   *  so each checkbox round-trips its stored value. null / missing key ⇒ visible (all-visible default). */
+  essViewConfig: Record<string, boolean> | null;
   policies: EntitlementPolicy[];
   grades: GradeOption[];
   /** ADR-0066: companies (subsidiaries) for the per-policy company scope select. */
@@ -997,6 +1002,39 @@ export function LeaveTypePanel({
               </Button>
             </form>
             <p className="text-xs text-muted-foreground">{t('applyNoticeHelp')}</p>
+          </div>
+
+          {/* Employee Leave View Configuration (65dec703 / dup 1fedb473). Its own self-contained sub-form
+              (own tri-state) posts `essView=1` — a checklist of the breakdown components an employee sees in
+              My Profile → Leave for THIS leave type. An unchecked box does not post; the action rebuilds the
+              full { key: boolean } map from the closed key list, so unticked ⇒ hidden in ESS. Gating applies
+              to /me only — admin/HR always see everything. null/missing ⇒ visible (backward compatible). */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">{t('essView.sectionTitle')}</span>
+            <form action={updateTypeAction} className="space-y-2 rounded-lg bg-background p-3">
+              <input type="hidden" name="id" value={id} />
+              {/* preserve the name — this form does not edit it */}
+              <input type="hidden" name="name" value={name} />
+              {/* marker: tells the action to touch the ess_view_config column (tri-state guard) */}
+              <input type="hidden" name="essView" value="1" />
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {ESS_VIEW_COMPONENT_KEYS.map((key) => (
+                  <label key={key} className="flex items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      name={`essView_${key}`}
+                      defaultChecked={essViewConfig?.[key] !== false}
+                      className="size-3.5 rounded border-border"
+                    />
+                    {t(`essView.${key}`)}
+                  </label>
+                ))}
+              </div>
+              <Button type="submit" size="sm">
+                {t('save')}
+              </Button>
+            </form>
+            <p className="text-xs text-muted-foreground">{t('essView.help')}</p>
           </div>
           </div>
           {/* end side-by-side grid (feedback 9d8cf621) */}

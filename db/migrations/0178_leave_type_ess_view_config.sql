@@ -1,0 +1,20 @@
+-- Employee Leave View Configuration (feedback 65dec703 / duplicate 1fedb473).
+--
+-- Adds a per-leave-type JSONB map controlling WHICH entitlement/breakdown components an employee sees in
+-- self-service (My Profile → Leave tab). HR ticks the components to show, per leave type, inside the
+-- existing Leave Configuration → Entitlements panel — no new page or menu.
+--
+-- Keys (closed camelCase allow-list, validated in core/admin.ts updateLeaveType against
+-- ESS_VIEW_COMPONENT_KEYS in core/ess-view.ts):
+--   available, taken, entitlementToDate, broughtForward, expiredBroughtForward, unplanned, adjustment,
+--   overutilized, ytdEntitled, pendingApproval, carryForwardExpiry, forfeited, upcomingApprovedLeave,
+--   transactionHistory, entitlementCalcBreakdown
+-- Value semantics: true ⇒ visible, false ⇒ hidden in ESS. A MISSING key (or a null column) ⇒ VISIBLE —
+-- so ess_view_config = null (every existing row) reproduces today's exact behaviour (all components shown).
+-- Gating applies ONLY to the /me ESS surface; admin/HR always see every component (applyEssConfig flag on
+-- the shared EntitlementBreakdown component).
+--
+-- JSONB extension point per CLAUDE.md: no per-key migration. Additive, nullable, backward compatible.
+-- No RLS change: leave_type already has tenant-read + admin-write policies; a new column inherits them
+-- (same as the 0147 custom_messages and 0133 backdating_limit_days migrations).
+ALTER TABLE leave_type ADD COLUMN IF NOT EXISTS ess_view_config jsonb;

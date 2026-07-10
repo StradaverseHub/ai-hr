@@ -1142,12 +1142,24 @@ export default async function MePage({
                     const pctUsed = b.accrued > 0 ? Math.min(100, (b.taken / b.accrued) * 100) : 0;
                     const pctPending = b.accrued > 0 ? Math.min(100 - pctUsed, (b.pending / b.accrued) * 100) : 0;
                     const tracked = b.accrued > 0 || b.balance > 0;
+                    // Employee Leave View Configuration (65dec703): HR gates which ESS figures this employee
+                    // sees for this leave type. A missing/true key ⇒ visible (backward compatible). Applies
+                    // to /me only — admin/HR views never consult essView.
+                    const ev = b.essView;
+                    const showAvailable = ev.available !== false;
+                    const showTaken = ev.taken !== false;
+                    const showPending = ev.pendingApproval !== false;
+                    // The whole entitlement-calculation breakdown expander is its own toggle (the 1fedb473
+                    // "Entitlement Calculation Breakdown" component); off ⇒ the expander doesn't mount at all.
+                    const showBreakdown = ev.entitlementCalcBreakdown !== false;
+                    // The usage bar visualizes taken/pending/available; hide it when none of those figures show.
+                    const showBar = tracked && (showAvailable || showTaken || showPending);
                     return (
                       <div key={b.leaveTypeId}>
                         <div className="flex items-baseline justify-between text-sm">
                           <span className="text-muted-foreground">{b.leaveType}</span>
                           <span className="font-semibold tabular-nums">
-                            {tracked ? (
+                            {tracked && showAvailable ? (
                               <>
                                 {b.available}
                                 <span className="font-normal text-muted-foreground"> / {b.accrued}</span>
@@ -1157,7 +1169,7 @@ export default async function MePage({
                             )}
                           </span>
                         </div>
-                        {tracked && (
+                        {showBar && (
                           /* Usage bar: solid = used, translucent = pending approval. */
                           <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-muted">
                             <div className="h-full rounded-l-full bg-primary" style={{ width: `${pctUsed}%` }} />
@@ -1165,16 +1177,21 @@ export default async function MePage({
                           </div>
                         )}
                         <div className="mt-1 text-xs text-muted-foreground">
-                          {t('leaveUsed', { count: b.taken })}
-                          {b.pending > 0 ? ` · ${t('leavePending', { count: b.pending })}` : ''}
-                          {tracked ? ` · ${t('leaveAvailable', { count: b.available })}` : ''}
+                          {[
+                            showTaken ? t('leaveUsed', { count: b.taken }) : null,
+                            showPending && b.pending > 0 ? t('leavePending', { count: b.pending }) : null,
+                            tracked && showAvailable ? t('leaveAvailable', { count: b.available }) : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </div>
-                        {breakdownByType.get(b.leaveTypeId) && (
+                        {showBreakdown && breakdownByType.get(b.leaveTypeId) && (
                           <EntitlementBreakdown
                             data={breakdownByType.get(b.leaveTypeId)!}
                             asOf={breakdownAsOf}
                             action="/me"
                             hiddenParams={{ tab: 'leave' }}
+                            applyEssConfig
                           />
                         )}
                       </div>

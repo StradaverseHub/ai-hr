@@ -162,6 +162,7 @@ export default async function LeaveEntitlementsPage({
               expiryValue={lt.expiryValue ?? null}
               expiryUnit={lt.expiryUnit ?? null}
               customMessages={(lt.customMessages as Record<string, string> | null) ?? null}
+              essViewConfig={(lt.essViewConfig as Record<string, boolean> | null) ?? null}
               policies={polByType.get(lt.id) ?? []}
               grades={gradeOptions}
               companies={companyOptions}

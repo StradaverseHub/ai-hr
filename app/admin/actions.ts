@@ -67,6 +67,7 @@ import {
   ClockingLocationInUseError,
 } from '@/core/clocking-location';
 import { countEmployeesInScope } from '@/core/read';
+import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { requireAdmin } from '@/lib/authz';
 import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
@@ -980,6 +981,18 @@ export async function updateLeaveTypeAction(fd: FormData) {
   // "block not shown at all" ⇒ leave column.
   const touchPartial = fd.get('partialApproval') === '1';
   const partialFields = touchPartial ? { perDateApproval: fd.get('perDateApproval') === 'on' } : {};
+  // Employee Leave View Configuration (65dec703 / dup 1fedb473): the ESS-view checklist posts `essView=1`
+  // (marker) plus one checkbox per component (`essView_<key>`). An unchecked box does not post, so we build
+  // the COMPLETE map from the closed key list (checked ⇒ true/visible, absent ⇒ false/hidden) and replace
+  // the column wholesale. Any other sub-form save omits the marker ⇒ ess_view_config stays untouched.
+  const touchEssView = fd.get('essView') === '1';
+  const essViewFields = touchEssView
+    ? {
+        essViewConfig: Object.fromEntries(
+          ESS_VIEW_COMPONENT_KEYS.map((key) => [key, fd.get(`essView_${key}`) === 'on']),
+        ) as EssViewConfig,
+      }
+    : {};
   // Custom validation messages (custom-messages migration): each rule's "Custom system message" textarea
   // lives in the SAME sub-form as its rule config (backdating ⇒ `backdating=1`; min-advance ⇒ `minAdvance=1`),
   // so each key is read/forwarded only when its own sub-form saved — one sub-form, one atomic save. The
@@ -1017,6 +1030,7 @@ export async function updateLeaveTypeAction(fd: FormData) {
       ...minAdvanceFields,
       ...expiryFields,
       ...partialFields,
+      ...essViewFields,
       ...customMessageFields,
       // 4ec5a940 — optional "why the change was made" note, recorded on the audit event.
       reason: String(fd.get('reason') || '') || null,

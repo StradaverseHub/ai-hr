@@ -28,6 +28,9 @@ export type EntitlementBreakdownData = {
   forfeited: number;
   totalAvailable: number;
   transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null }[];
+  /** Employee Leave View Configuration (65dec703): per-component ESS visibility (missing key ⇒ visible).
+   *  Only consulted when `applyEssConfig` is set — i.e. on /me; admin/HR pass it false and see every row. */
+  essView?: Record<string, boolean>;
 };
 
 const ENTRY_KEYS: Record<string, string> = {
@@ -51,6 +54,7 @@ export function EntitlementBreakdown({
   asOf,
   action,
   hiddenParams = {},
+  applyEssConfig = false,
 }: {
   data: EntitlementBreakdownData;
   /** The current as-at date driving the view (defaults to today server-side). */
@@ -59,11 +63,18 @@ export function EntitlementBreakdown({
   action: string;
   /** Other query params to preserve across the as-at GET (kept as hidden inputs). */
   hiddenParams?: Record<string, string>;
+  /** Employee Leave View Configuration (65dec703): when true (ESS /me), gate each row against
+   *  `data.essView` (missing key ⇒ visible). Admin/HR leave it false so every row always shows — the SAME
+   *  component renders on /admin/personnel/[id], and the spec scopes hiding to self-service only. */
+  applyEssConfig?: boolean;
 }) {
   const t = useTranslations('leave.breakdown');
   const [open, setOpen] = useState(false);
 
   const fmt = (n: number) => n.toFixed(2);
+  // A component is shown when config is not applied (admin view) OR its key is not false in the resolved
+  // ESS-view map (missing ⇒ visible). Gating only affects the /me surface.
+  const show = (key: string) => !applyEssConfig || data.essView?.[key] !== false;
 
   return (
     <div className="mt-2">
@@ -101,24 +112,36 @@ export function EntitlementBreakdown({
           </form>
 
           <div className="divide-y divide-border">
-            <Row label={t('currentYearEntitlement')} value={fmt(data.currentYearEntitlement)} />
-            {data.monthlyAccruedToDate != null && (
+            {/* ESS-view gating (65dec703): entitlementToDate ⇒ current-year entitlement; ytdEntitled ⇒ the
+                monthly-accrued-to-date line; broughtForward ⇒ carried + remaining carry; carryForwardExpiry,
+                forfeited, available (the total). Admin view (applyEssConfig=false) always shows every row. */}
+            {show('entitlementToDate') && (
+              <Row label={t('currentYearEntitlement')} value={fmt(data.currentYearEntitlement)} />
+            )}
+            {data.monthlyAccruedToDate != null && show('ytdEntitled') && (
               <Row label={t('monthlyAccrued')} value={fmt(data.monthlyAccruedToDate)} />
             )}
-            <Row label={t('carriedForward')} value={fmt(data.carriedForward)} />
-            <Row label={t('carryForwardRemaining')} value={fmt(data.carryForwardRemaining)} />
-            <Row
-              label={t('carryForwardExpiry')}
-              value={data.carryForwardExpiryDate ?? t('noExpiry')}
-              muted={!data.carryForwardExpiryDate}
-            />
-            <Row label={t('forfeited')} value={fmt(data.forfeited)} />
-            <div className="flex items-baseline justify-between gap-3 pt-1.5 text-sm font-semibold">
-              <span className="text-foreground">{t('totalAvailable')}</span>
-              <span className="tabular-nums text-foreground">{fmt(data.totalAvailable)}</span>
-            </div>
+            {show('broughtForward') && <Row label={t('carriedForward')} value={fmt(data.carriedForward)} />}
+            {show('broughtForward') && (
+              <Row label={t('carryForwardRemaining')} value={fmt(data.carryForwardRemaining)} />
+            )}
+            {show('carryForwardExpiry') && (
+              <Row
+                label={t('carryForwardExpiry')}
+                value={data.carryForwardExpiryDate ?? t('noExpiry')}
+                muted={!data.carryForwardExpiryDate}
+              />
+            )}
+            {show('forfeited') && <Row label={t('forfeited')} value={fmt(data.forfeited)} />}
+            {show('available') && (
+              <div className="flex items-baseline justify-between gap-3 pt-1.5 text-sm font-semibold">
+                <span className="text-foreground">{t('totalAvailable')}</span>
+                <span className="tabular-nums text-foreground">{fmt(data.totalAvailable)}</span>
+              </div>
+            )}
           </div>
 
+          {show('transactionHistory') && (
           <div className="mt-3">
             <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               {t('transactionsHeading')}
@@ -148,6 +171,7 @@ export function EntitlementBreakdown({
               </table>
             )}
           </div>
+          )}
         </Card>
       )}
     </div>

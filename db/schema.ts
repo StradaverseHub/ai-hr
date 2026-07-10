@@ -816,6 +816,16 @@ export const leaveType = pgTable('leave_type', {
   // updateLeaveType), or it will silently clobber other rules' messages (last-writer-wins). The 500-char
   // cap per message is enforced in the service, not the DB.
   customMessages: jsonb('custom_messages').$type<Record<string, string>>(),
+  // Employee Leave View Configuration (feedback 65dec703 / dup 1fedb473): per-leave-type map of which
+  // entitlement/breakdown components an employee may see in self-service (My Profile → Leave tab). Keyed by
+  // the closed camelCase allow-list ESS_VIEW_COMPONENT_KEYS (core/ess-view.ts); value true ⇒ visible,
+  // false ⇒ hidden in ESS. A MISSING key (or a null column) ⇒ VISIBLE — so null (every existing row)
+  // reproduces today's exact behaviour (all components shown). Gating applies ONLY to the /me ESS surface;
+  // admin/HR always see everything (applyEssConfig flag on the shared EntitlementBreakdown component). HR
+  // edits it from the "Employee Leave View" sub-form inside the per-type panel (updateLeaveType, own
+  // touchEssViewConfig tri-state). JSONB extension point: new component keys ship with no migration, but a
+  // writer MUST validate against the closed allow-list (unknown keys are rejected in updateLeaveType).
+  essViewConfig: jsonb('ess_view_config').$type<Record<string, boolean>>(),
   archivedAt: timestamp('archived_at', { withTimezone: true }),
   createdAt: createdAt(),
 });

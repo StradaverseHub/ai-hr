@@ -2985,7 +2985,26 @@
       "payrollPerTypeTitle": "Payroll impact by leave type",
       "typeMasterConfigHint": "Edit a leave type's full configuration on the Entitlements tab.",
       "reasonLabel": "Reason for change (optional)",
-      "reasonPlaceholder": "Why is this being changed?"
+      "reasonPlaceholder": "Why is this being changed?",
+      "essView": {
+        "sectionTitle": "Employee Leave View Configuration",
+        "help": "Choose which entitlement and balance figures employees see for this leave type in My Profile → Leave. Unticked items are hidden in self-service only; HR always sees everything. Changes take effect immediately after saving.",
+        "available": "Available",
+        "taken": "Taken",
+        "entitlementToDate": "Entitlement to Date",
+        "broughtForward": "Brought Forward",
+        "expiredBroughtForward": "Expired Brought Forward",
+        "unplanned": "Unplanned",
+        "adjustment": "Adjustment",
+        "overutilized": "Overutilized",
+        "ytdEntitled": "YTD Entitled",
+        "pendingApproval": "Pending Approval",
+        "carryForwardExpiry": "Carry Forward Expiry Date",
+        "forfeited": "Forfeited Balance",
+        "upcomingApprovedLeave": "Upcoming Approved Leave",
+        "transactionHistory": "Transaction History",
+        "entitlementCalcBreakdown": "Entitlement Calculation Breakdown"
+      }
     },
     "holidays": {
       "pageTitle": "Public holidays",

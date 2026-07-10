@@ -2985,7 +2985,26 @@
       "payrollPerTypeTitle": "Ảnh hưởng lương theo loại nghỉ phép",
       "typeMasterConfigHint": "Chỉnh sửa toàn bộ cấu hình của loại nghỉ phép trong tab Quyền lợi.",
       "reasonLabel": "Lý do thay đổi (tùy chọn)",
-      "reasonPlaceholder": "Vì sao thực hiện thay đổi này?"
+      "reasonPlaceholder": "Vì sao thực hiện thay đổi này?",
+      "essView": {
+        "sectionTitle": "Cấu hình Hiển thị Nghỉ phép của Nhân viên",
+        "help": "Chọn các số liệu quyền lợi và số dư mà nhân viên thấy cho loại nghỉ phép này trong Hồ sơ của tôi → Nghỉ phép. Các mục không chọn chỉ bị ẩn trong tự phục vụ; HR luôn thấy tất cả. Thay đổi có hiệu lực ngay sau khi lưu.",
+        "available": "Khả dụng",
+        "taken": "Đã nghỉ",
+        "entitlementToDate": "Quyền lợi đến nay",
+        "broughtForward": "Chuyển sang",
+        "expiredBroughtForward": "Chuyển sang đã hết hạn",
+        "unplanned": "Không kế hoạch",
+        "adjustment": "Điều chỉnh",
+        "overutilized": "Sử dụng vượt mức",
+        "ytdEntitled": "Quyền lợi từ đầu năm",
+        "pendingApproval": "Chờ phê duyệt",
+        "carryForwardExpiry": "Ngày hết hạn chuyển sang",
+        "forfeited": "Số dư bị mất",
+        "upcomingApprovedLeave": "Nghỉ phép đã duyệt sắp tới",
+        "transactionHistory": "Lịch sử giao dịch",
+        "entitlementCalcBreakdown": "Chi tiết tính toán quyền lợi"
+      }
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

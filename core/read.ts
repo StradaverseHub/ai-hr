@@ -52,6 +52,7 @@ import { daysInMonth } from './payroll';
 import { payslipReleaseAt } from './payroll-policy-config';
 import { evaluateAllowancesForPeriod } from './attendance-allowance';
 import { visibleLabelIdsCondition } from './system-labels';
+import { resolveEssView, type ResolvedEssView } from './ess-view';
 
 // Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
 // etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
@@ -410,6 +411,9 @@ export function listLeaveTypes(
         // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
         // message" textarea (MUST be projected or the textarea renders empty on every reload).
         customMessages: leaveType.customMessages,
+        // Employee Leave View Configuration (65dec703): feeds the admin panel's ESS-view checklist (MUST be
+        // projected or every checkbox renders at its default on every reload). null ⇒ all-visible default.
+        essViewConfig: leaveType.essViewConfig,
         eligibility: leaveType.eligibility,
         durations: leaveType.durations,
         archivedAt: leaveType.archivedAt,
@@ -1276,6 +1280,10 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         balance,
         // What the employee can still book: ledger balance minus not-yet-decided requests.
         available: balance - pending,
+        // Employee Leave View Configuration (65dec703): per-component ESS visibility for this leave type,
+        // resolved (missing key ⇒ visible). Placeholder = all-visible; overwritten in the final pass once
+        // the active-type configs are fetched below, so render sites gate without a second query.
+        essView: resolveEssView(null) as ResolvedEssView,
       };
     });
     // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
@@ -1292,6 +1300,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
         pending,
         balance: 0,
         available: -pending,
+        essView: resolveEssView(null) as ResolvedEssView,
       });
       seen.add(p.leaveTypeId);
     }
@@ -1299,7 +1308,7 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     // yet — so the list is the full menu, not just types they've already accrued or requested.
     const [types, [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n })
+        .select({ id: leaveType.id, name: leaveType.name, eligibility: leaveType.eligibility, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
         .from(leaveType)
         .where(isNull(leaveType.archivedAt)),
       tx
@@ -1313,12 +1322,18 @@ export function leaveBalances(ctx: SessionContext, employmentId: string, locale?
     for (const lt of types) {
       if (seen.has(lt.id)) continue;
       if (!isLeaveEligible(lt.eligibility as LeaveEligibility | null, emp, today)) continue;
-      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0 });
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView });
     }
     // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
     // archived types with old ledger entries fall back to their stored English name).
     const localName = new Map(types.map((t) => [t.id, pickName(t.name, t.i18n, locale)]));
-    for (const r of out) r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
+    // Employee Leave View Configuration (65dec703): resolve each active type's ESS-view config (missing ⇒
+    // all-visible). Archived types with only old ledger entries keep the all-visible placeholder set above.
+    const essViewByType = new Map(types.map((t) => [t.id, resolveEssView(t.essViewConfig as Record<string, boolean> | null)]));
+    for (const r of out) {
+      r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
+      r.essView = essViewByType.get(r.leaveTypeId) ?? r.essView;
+    }
     return out.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
   });
 }
@@ -1365,6 +1380,10 @@ export type LeaveEntitlementBreakdown = {
   totalAvailable: number;
   /** Raw in-scope ledger rows so the UI can show the source of each component. */
   transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null }[];
+  /** Employee Leave View Configuration (65dec703): per-component ESS visibility for this leave type,
+   *  resolved (missing key ⇒ visible). The shared EntitlementBreakdown gates rows against this ONLY when
+   *  its `applyEssConfig` prop is set (i.e. on /me); admin/HR pass it false and see every row. */
+  essView: ResolvedEssView;
 };
 
 export function leaveEntitlementBreakdown(
@@ -1379,7 +1398,7 @@ export function leaveEntitlementBreakdown(
     // here (employment join returns nothing) → a defined empty state, never an error or a leak.
     const [[type], [emp]] = await Promise.all([
       tx
-        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n })
+        .select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig })
         .from(leaveType)
         .where(eq(leaveType.id, leaveTypeId))
         .limit(1),
@@ -1550,6 +1569,7 @@ export function leaveEntitlementBreakdown(
         days: Number(r.days),
         sourceRequestId: r.sourceRequestId,
       })),
+      essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
     };
   });
 }

@@ -2985,7 +2985,26 @@
       "payrollPerTypeTitle": "按假期类型的薪资影响",
       "typeMasterConfigHint": "在“额度”选项卡中编辑假期类型的完整配置。",
       "reasonLabel": "变更原因（可选）",
-      "reasonPlaceholder": "为何要进行此变更？"
+      "reasonPlaceholder": "为何要进行此变更？",
+      "essView": {
+        "sectionTitle": "员工休假视图配置",
+        "help": "选择员工在“我的资料 → 休假”中可见的此休假类型的应享和余额数字。未勾选的项目仅在自助服务中隐藏；HR 始终可见全部。保存后立即生效。",
+        "available": "可用",
+        "taken": "已使用",
+        "entitlementToDate": "截至目前应享",
+        "broughtForward": "结转",
+        "expiredBroughtForward": "已过期结转",
+        "unplanned": "未计划",
+        "adjustment": "调整",
+        "overutilized": "超额使用",
+        "ytdEntitled": "年度至今应享",
+        "pendingApproval": "待批准",
+        "carryForwardExpiry": "结转到期日",
+        "forfeited": "已作废余额",
+        "upcomingApprovedLeave": "即将到来的已批准休假",
+        "transactionHistory": "交易历史",
+        "entitlementCalcBreakdown": "应享额计算明细"
+      }
     },
     "holidays": {
       "pageTitle": "公共假期",
