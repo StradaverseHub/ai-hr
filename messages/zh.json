@@ -3083,7 +3083,19 @@
       "leaveUnitDay": "天",
       "leaveUnitHour": "小时",
       "leaveUnitSectionTitle": "请假单位",
-      "leaveUnitHelp": "此请假类型以整天还是小时管理和申请。仅作标签用途——不影响额度、累积、审批流程或薪资。"
+      "leaveUnitHelp": "此请假类型以整天还是小时管理和申请。仅作标签用途——不影响额度、累积、审批流程或薪资。",
+      "gradeColCode": "代码",
+      "gradeColName": "职级名称",
+      "gradeColRank": "排序",
+      "gradeColStatus": "状态",
+      "gradeColAction": "操作",
+      "gradeStatusActive": "启用",
+      "gradeStatusArchived": "已归档",
+      "editGrade": "编辑",
+      "deleteGrade": "删除",
+      "deleteGradeConfirmTitle": "删除此职级？",
+      "deleteGradeConfirmDescription": "这将从目录中永久删除该职级，此操作无法撤销。",
+      "gradeInUseCannotDelete": "此职级正被员工或休假政策使用，无法删除。请改为归档。"
     },
     "holidays": {
       "pageTitle": "公共假期",

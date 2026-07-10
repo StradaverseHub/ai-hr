@@ -3083,7 +3083,19 @@
       "leaveUnitDay": "Hari",
       "leaveUnitHour": "Jam",
       "leaveUnitSectionTitle": "Unit Cuti",
-      "leaveUnitHelp": "Sama ada jenis cuti ini diurus dan digunakan dalam hari penuh atau jam. Untuk label sahaja — ia tidak mengubah kelayakan, terakru, aliran kerja atau gaji."
+      "leaveUnitHelp": "Sama ada jenis cuti ini diurus dan digunakan dalam hari penuh atau jam. Untuk label sahaja — ia tidak mengubah kelayakan, terakru, aliran kerja atau gaji.",
+      "gradeColCode": "Kod",
+      "gradeColName": "Nama Gred",
+      "gradeColRank": "Pangkat",
+      "gradeColStatus": "Status",
+      "gradeColAction": "Tindakan",
+      "gradeStatusActive": "Aktif",
+      "gradeStatusArchived": "Diarkib",
+      "editGrade": "Sunting",
+      "deleteGrade": "Padam",
+      "deleteGradeConfirmTitle": "Padam gred ini?",
+      "deleteGradeConfirmDescription": "Ini mengeluarkan gred daripada katalog secara kekal. Tindakan ini tidak boleh dibatalkan.",
+      "gradeInUseCannotDelete": "Gred ini digunakan oleh pekerja atau polisi cuti dan tidak boleh dipadam. Arkibkannya sebaliknya."
     },
     "holidays": {
       "pageTitle": "Cuti umum",

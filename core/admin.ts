@@ -86,6 +86,18 @@ function isUniqueViolation(e: unknown): boolean {
   return false;
 }
 
+/** The constraint/index name behind a 23505 unique violation (walks the same cause chain), so a caller
+ *  with more than one unique index on a table (e.g. job_grade code + name) can map each to the right
+ *  friendly message. */
+function uniqueViolationConstraint(e: unknown): string | undefined {
+  let cur = e as { code?: string; constraint?: string; cause?: unknown } | null | undefined;
+  for (let i = 0; cur && i < 4; i++) {
+    if (cur.code === '23505') return cur.constraint;
+    cur = cur.cause as { code?: string; constraint?: string; cause?: unknown } | null | undefined;
+  }
+  return undefined;
+}
+
 /** Trim + collapse internal whitespace; the 0030 indexes are case-insensitive on the result. */
 function cleanName(v: string | undefined, label: string): string {
   const s = (v ?? '').replace(/\s+/g, ' ').trim();
@@ -489,6 +501,11 @@ export async function createJobGrade(
       .values({ tenantId: ctx.tenantId, code, name, rank })
       .returning({ id: jobGrade.id })
       .catch((e) => {
+        // Grade Management (728a7db6): two partial-unique indexes now guard the row — map each to its own
+        // friendly message so the admin knows which field clashed.
+        if (uniqueViolationConstraint(e) === 'job_grade_name_uq') {
+          throw new DuplicateError(`A grade named “${name}” already exists.`);
+        }
         if (isUniqueViolation(e)) throw new DuplicateError(`A grade with code “${code}” already exists.`);
         throw e;
       });
@@ -508,20 +525,45 @@ export async function updateJobGrade(
   ctx: SessionContext,
   // 4ec5a940 — optional `reason` for the change (free-text from the config form), recorded on the audit
   // event payload only (never persisted to the aggregate row).
-  p: { id: string; name: string; rank?: number; reason?: string | null },
+  // 728a7db6 — `code` is now editable too (reporter: "Update Grade Code"). Optional/undefined ⇒ leave the
+  // code untouched (rank/name-only edits stay backward compatible); when present it is normalized +
+  // re-validated + uniqueness-checked exactly like createJobGrade.
+  p: { id: string; name: string; rank?: number; code?: string; reason?: string | null },
 ) {
   const name = cleanName(p.name, 'Grade name');
   const rank = Number.isFinite(p.rank) ? Number(p.rank) : 0;
   const reason = normalizeReason(p.reason);
+  // Only touch `code` when the caller supplied one, so a name/rank edit never clears it.
+  const code =
+    p.code === undefined
+      ? undefined
+      : (() => {
+          const c = cleanName(p.code, 'Grade code').toUpperCase().replace(/ /g, '_');
+          if (!/^[A-Z][A-Z0-9_]{0,31}$/.test(c)) {
+            throw new Error('Grade code must be letters, digits or underscores (e.g. EXEC, G1)');
+          }
+          return c;
+        })();
   return withTenant(ctx, async (tx) => {
     // 4ec5a940 — read the prior row so the audit event carries a real before→after comparison (forward-only:
     // events that predate this change keep their new-values-only payload; the log is append-only).
     const [prev] = await tx
-      .select({ name: jobGrade.name, rank: jobGrade.rank })
+      .select({ name: jobGrade.name, rank: jobGrade.rank, code: jobGrade.code })
       .from(jobGrade)
       .where(eq(jobGrade.id, p.id))
       .limit(1);
-    await tx.update(jobGrade).set({ name, rank }).where(eq(jobGrade.id, p.id));
+    await tx
+      .update(jobGrade)
+      .set({ name, rank, ...(code === undefined ? {} : { code }) })
+      .where(eq(jobGrade.id, p.id))
+      .catch((e) => {
+        // 728a7db6 — same dual-index mapping as create: name clash vs code clash → distinct message.
+        if (uniqueViolationConstraint(e) === 'job_grade_name_uq') {
+          throw new DuplicateError(`A grade named “${name}” already exists.`);
+        }
+        if (isUniqueViolation(e)) throw new DuplicateError(`A grade with code “${code}” already exists.`);
+        throw e;
+      });
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'job-grade',
@@ -529,10 +571,47 @@ export async function updateJobGrade(
       eventType: 'job-grade.updated',
       actor: actorOf(ctx),
       payload: {
-        before: prev ? { name: prev.name, rank: prev.rank } : null,
-        after: { name, rank },
+        before: prev ? { name: prev.name, rank: prev.rank, code: prev.code } : null,
+        after: { name, rank, ...(code === undefined ? (prev ? { code: prev.code } : {}) : { code }) },
         ...(reason ? { reason } : {}),
       },
+    });
+  });
+}
+
+/**
+ * 728a7db6 — hard-delete a grade from the catalog. Reporter requires a Delete action that is BLOCKED when
+ * the grade is currently in use (referenced by an employment or a leave policy), preserving historical
+ * records. We re-check the in-use predicate INSIDE the write tx (not just the UI's disabled state) so a
+ * concurrent assignment can't slip a delete through. Unused ⇒ hard delete + a `job-grade.deleted` event
+ * (the only new substrate event this feature introduces).
+ */
+export async function deleteJobGrade(ctx: SessionContext, p: { id: string }) {
+  return withTenant(ctx, async (tx) => {
+    const [g] = await tx
+      .select({ code: jobGrade.code, name: jobGrade.name })
+      .from(jobGrade)
+      .where(eq(jobGrade.id, p.id))
+      .limit(1);
+    if (!g) throw new Error('Grade not found.');
+    const [used] = await tx
+      .select({
+        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = ${p.id}) or exists (select 1 from leave_policy lp where lp.grade_id = ${p.id})`,
+      })
+      .from(jobGrade)
+      .where(eq(jobGrade.id, p.id))
+      .limit(1);
+    if (used?.inUse) {
+      throw new Error('This grade is in use by employees or leave policies and cannot be deleted. Archive it instead.');
+    }
+    await tx.delete(jobGrade).where(eq(jobGrade.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'job-grade',
+      aggregateId: p.id,
+      eventType: 'job-grade.deleted',
+      actor: actorOf(ctx),
+      payload: { code: g.code, name: g.name },
     });
   });
 }

@@ -3083,7 +3083,19 @@
       "leaveUnitDay": "Ngày",
       "leaveUnitHour": "Giờ",
       "leaveUnitSectionTitle": "Đơn vị nghỉ phép",
-      "leaveUnitHelp": "Loại nghỉ phép này được quản lý và áp dụng theo ngày trọn hay theo giờ. Chỉ là nhãn — không thay đổi định mức, tích lũy, quy trình hay lương."
+      "leaveUnitHelp": "Loại nghỉ phép này được quản lý và áp dụng theo ngày trọn hay theo giờ. Chỉ là nhãn — không thay đổi định mức, tích lũy, quy trình hay lương.",
+      "gradeColCode": "Mã",
+      "gradeColName": "Tên cấp bậc",
+      "gradeColRank": "Thứ hạng",
+      "gradeColStatus": "Trạng thái",
+      "gradeColAction": "Thao tác",
+      "gradeStatusActive": "Đang hoạt động",
+      "gradeStatusArchived": "Đã lưu trữ",
+      "editGrade": "Sửa",
+      "deleteGrade": "Xóa",
+      "deleteGradeConfirmTitle": "Xóa cấp bậc này?",
+      "deleteGradeConfirmDescription": "Thao tác này sẽ xóa vĩnh viễn cấp bậc khỏi danh mục. Không thể hoàn tác.",
+      "gradeInUseCannotDelete": "Cấp bậc này đang được nhân viên hoặc chính sách nghỉ phép sử dụng nên không thể xóa. Hãy lưu trữ thay thế."
     },
     "holidays": {
       "pageTitle": "Ngày lễ",

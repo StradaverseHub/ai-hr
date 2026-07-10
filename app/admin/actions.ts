@@ -39,6 +39,8 @@ import {
   setLeaveHalfDayFullDeduction,
   createJobGrade,
   archiveJobGrade,
+  updateJobGrade,
+  deleteJobGrade,
   updateBusinessUnit,
   updateCompany,
   updateCostCenter,
@@ -598,6 +600,33 @@ export async function archiveJobGradeAction(formData: FormData) {
   const s = await getSession();
   try {
     await archiveJobGrade(s, { id: String(formData.get('id')), archived: formData.get('archived') === 'true' });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/** 728a7db6 — edit a grade's Code / Name / Rank inline. */
+export async function updateJobGradeAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await updateJobGrade(s, {
+      id: String(formData.get('id')),
+      code: String(formData.get('code') ?? ''),
+      name: String(formData.get('name') ?? ''),
+      rank: Number(formData.get('rank')) || 0,
+    });
+  } catch (e) {
+    fail(LEAVE, e);
+  }
+  ok(LEAVE);
+}
+
+/** 728a7db6 — hard-delete a grade (blocked server-side when in use). */
+export async function deleteJobGradeAction(formData: FormData) {
+  const s = await getSession();
+  try {
+    await deleteJobGrade(s, { id: String(formData.get('id')) });
   } catch (e) {
     fail(LEAVE, e);
   }

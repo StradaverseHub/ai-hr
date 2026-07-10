@@ -3083,7 +3083,19 @@
       "leaveUnitDay": "Day",
       "leaveUnitHour": "Hour",
       "leaveUnitSectionTitle": "Leave Unit",
-      "leaveUnitHelp": "Whether this leave type is managed and applied in whole days or in hours. Labelling only — it does not change entitlement, accrual, workflow or payroll."
+      "leaveUnitHelp": "Whether this leave type is managed and applied in whole days or in hours. Labelling only — it does not change entitlement, accrual, workflow or payroll.",
+      "gradeColCode": "Code",
+      "gradeColName": "Grade Name",
+      "gradeColRank": "Rank",
+      "gradeColStatus": "Status",
+      "gradeColAction": "Action",
+      "gradeStatusActive": "Active",
+      "gradeStatusArchived": "Archived",
+      "editGrade": "Edit",
+      "deleteGrade": "Delete",
+      "deleteGradeConfirmTitle": "Delete this grade?",
+      "deleteGradeConfirmDescription": "This permanently removes the grade from the catalog. This cannot be undone.",
+      "gradeInUseCannotDelete": "This grade is used by employees or leave policies and can't be deleted. Archive it instead."
     },
     "holidays": {
       "pageTitle": "Public holidays",

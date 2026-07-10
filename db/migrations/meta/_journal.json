@@ -1282,6 +1282,13 @@
       "when": 1781862181000,
       "tag": "0182_leave_type_leave_unit",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1781862182000,
+      "tag": "0183_job_grade_name_uq",
+      "breakpoints": true
     }
   ]
 }

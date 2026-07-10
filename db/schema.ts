@@ -877,7 +877,12 @@ export const jobGrade = pgTable(
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex('job_grade_code_uq').on(t.tenantId, t.code).where(sql`archived_at is null`)],
+  (t) => [
+    uniqueIndex('job_grade_code_uq').on(t.tenantId, t.code).where(sql`archived_at is null`),
+    // Grade Management (feedback 728a7db6): reject duplicate grade NAMES too (case-insensitive, active-only),
+    // mirroring the code index. Frees the name when a grade is archived. See migration 0183.
+    uniqueIndex('job_grade_name_uq').on(t.tenantId, sql`lower(${t.name})`).where(sql`archived_at is null`),
+  ],
 );
 
 export const leavePolicy = pgTable(
