@@ -112,6 +112,7 @@
     "notifications": "Notifications",
     "analytics": "Analytics",
     "attendancePolicy": "Shift settings",
+    "attendancePolicyConfig": "Attendance policy",
     "toilPolicy": "Time off in lieu",
     "leaveApproval": "Approval chain",
     "feedback": "Feedback",
@@ -3700,7 +3701,9 @@
     },
     "attendancePolicy": {
       "pageTitle": "Shift settings",
-      "pageDescription": "Maintain your organisation's shift templates and the default working schedule each company falls back to when an employee has no roster for a date. Overtime is computed above the scheduled hours; a saved roster takes precedence.",
+      "pageDescription": "A centralized library of shift templates shared across your whole organisation. Create a shift once and assign it to any employee through their profile (fixed shift) or Roster Management.",
+      "policyPageTitle": "Attendance policy",
+      "policyPageDescription": "The default working schedule each company falls back to when an employee has no roster for a date, plus the statutory overtime rates. Overtime is computed above the scheduled hours; a saved roster takes precedence.",
       "noCompanies": "No companies in scope.",
       "usingDefaults": "Using defaults",
       "netScheduled": "Net scheduled {hours}",

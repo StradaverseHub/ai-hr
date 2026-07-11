@@ -112,6 +112,7 @@
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
     "attendancePolicy": "Tetapan syif",
+    "attendancePolicyConfig": "Dasar kehadiran",
     "toilPolicy": "Cuti ganti",
     "leaveApproval": "Rantaian kelulusan",
     "feedback": "Maklum Balas",
@@ -3700,7 +3701,9 @@
     },
     "attendancePolicy": {
       "pageTitle": "Tetapan syif",
-      "pageDescription": "Selenggara templat syif organisasi anda serta jadual kerja lalai yang digunakan setiap syarikat apabila pekerja tiada roster bagi sesuatu tarikh. Kerja lebih masa dikira melebihi jam yang dijadualkan; roster yang disimpan diutamakan.",
+      "pageDescription": "Perpustakaan berpusat templat syif yang dikongsi seluruh organisasi anda. Cipta syif sekali dan tugaskan kepada mana-mana pekerja melalui profil mereka (syif tetap) atau Pengurusan Roster.",
+      "policyPageTitle": "Dasar kehadiran",
+      "policyPageDescription": "Jadual kerja lalai yang setiap syarikat gunakan apabila pekerja tiada roster bagi sesuatu tarikh, serta kadar kerja lebih masa berkanun. Kerja lebih masa dikira melebihi waktu berjadual; roster yang disimpan diberi keutamaan.",
       "noCompanies": "Tiada syarikat dalam skop.",
       "usingDefaults": "Menggunakan lalai",
       "netScheduled": "Bersih berjadual {hours}",

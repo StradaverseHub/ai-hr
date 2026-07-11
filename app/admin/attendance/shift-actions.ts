@@ -3,21 +3,13 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { archiveShift, createShiftMulti, deleteShift, duplicateShift, updateShift } from '@/core/roster';
+import { archiveShift, createShift, deleteShift, updateShift } from '@/core/roster';
 
 /**
- * Shift-schedule server actions for the Attendance Policy page (Configurable Multi-Shift Attendance
- * Management). Relocated verbatim from app/roster/actions.ts — same core/roster.ts calls, same
- * error-redirect shape; only the redirect target changed to /admin/attendance. Shift writes stay
- * admin-gated at the DB layer (migration 0075: shift RLS = app.is_admin_for(company_id)); the page itself
- * is gated by requireAdmin(). updateShiftAction is newly wired to a UI here (previously defined but never
- * called from any page).
- *
- * REDIRECT/SCROLL: /admin/attendance renders every visible company as its own Card and does not key state
- * off a companyId URL param, so a plain ?companyId=… is a harmless no-op for the page render. We attach it
- * anyway so a small client island (ScrollToCompany) can read it on mount and scrollIntoView the right
- * company card — Next.js App Router server-action redirect() does NOT reliably preserve a #hash, so we pass
- * the target as a query param and do the scroll client-side.
+ * Shift-schedule server actions for the Shift Settings page (/admin/attendance). R33 f21d6eee — the page is
+ * now a single SHARED shift library: templates are tenant-global (company_id NULL), so these actions carry
+ * no company anchor and redirect straight back to the flat list. Shift writes are admin-gated at the DB
+ * layer (migration 0197: shift RLS WITH CHECK app.is_admin()); the page itself is gated by requireAdmin().
  */
 
 const BASE = '/admin/attendance';
@@ -87,78 +79,52 @@ function shiftFields(formData: FormData) {
   };
 }
 
-const okTarget = (companyId: string) => `${BASE}?companyId=${companyId}`;
-const errTarget = (companyId: string, e: unknown) =>
-  `${BASE}?companyId=${companyId}&error=${encodeURIComponent((e as Error).message)}`;
+// R33 f21d6eee — Shared shift library: no company anchor anymore. Redirect straight back to the flat list.
+const errTarget = (e: unknown) => `${BASE}?error=${encodeURIComponent((e as Error).message)}`;
 
 export async function createShiftAction(formData: FormData) {
   const s = await getSession();
-  // R17 3e8350db — centralized authoring: the create form posts one or more companyId checkboxes. Fall
-  // back to the single legacy field so a single-company tenant keeps working. The FIRST company is used for
-  // the redirect/scroll anchor.
-  const companyIds = formData.getAll('companyId').map((v) => String(v)).filter(Boolean);
-  const anchor = companyIds[0] ?? '';
+  // Tenant-global template (company_id NULL) — a single shared library, assignable to any employee.
   try {
-    await createShiftMulti(s, { companyIds, ...shiftFields(formData) });
+    await createShift(s, shiftFields(formData));
   } catch (e) {
-    redirect(errTarget(anchor, e));
+    redirect(errTarget(e));
   }
   revalidatePath(BASE);
-  redirect(okTarget(anchor));
+  redirect(BASE);
 }
 
 export async function updateShiftAction(formData: FormData) {
   const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
   try {
     await updateShift(s, { shiftId: String(formData.get('shiftId') ?? ''), ...shiftFields(formData) });
   } catch (e) {
-    redirect(errTarget(companyId, e));
+    redirect(errTarget(e));
   }
   revalidatePath(BASE);
-  redirect(okTarget(companyId));
-}
-
-export async function duplicateShiftAction(formData: FormData) {
-  const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
-  // R17 3e8350db — optional "copy to…" companies. Empty ⇒ same-company duplicate (legacy). The redirect
-  // anchor stays the source company so the shift table scrolls back into view.
-  const targetCompanyIds = formData.getAll('targetCompanyId').map((v) => String(v)).filter(Boolean);
-  try {
-    await duplicateShift(s, {
-      shiftId: String(formData.get('shiftId') ?? ''),
-      targetCompanyIds: targetCompanyIds.length > 0 ? targetCompanyIds : undefined,
-    });
-  } catch (e) {
-    redirect(errTarget(companyId, e));
-  }
-  revalidatePath(BASE);
-  redirect(okTarget(companyId));
+  redirect(BASE);
 }
 
 export async function archiveShiftAction(formData: FormData) {
   const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
   try {
     await archiveShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
   } catch (e) {
-    redirect(errTarget(companyId, e));
+    redirect(errTarget(e));
   }
   revalidatePath(BASE);
-  redirect(okTarget(companyId));
+  redirect(BASE);
 }
 
 /** R17 3e8350db — hard-delete a shift template (distinct from Archive). The service refuses if the shift is
  *  still referenced (roster rows or an employee default) with a ShiftInUseError, surfaced on the page. */
 export async function deleteShiftAction(formData: FormData) {
   const s = await getSession();
-  const companyId = String(formData.get('companyId') ?? '');
   try {
     await deleteShift(s, { shiftId: String(formData.get('shiftId') ?? '') });
   } catch (e) {
-    redirect(errTarget(companyId, e));
+    redirect(errTarget(e));
   }
   revalidatePath(BASE);
-  redirect(okTarget(companyId));
+  redirect(BASE);
 }

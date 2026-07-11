@@ -1,0 +1,220 @@
+import { getTranslations } from 'next-intl/server';
+import { requireAdmin } from '@/lib/authz';
+import { getScopeIds } from '@/lib/scope';
+import { listCompanies } from '@/core/read';
+import { listAttendancePolicies } from '@/core/attendance';
+import { packFor } from '@/localization/registry';
+import { MY_HRDF } from '@/localization/my/statutory-tables';
+import { Card, ErrorBanner, Field, PageHeader, btnPrimary, inputCls } from '@/components/ui';
+import { StatutoryComponentForm } from '@/components/statutory-component-form';
+import { setAttendancePolicyAction } from '../actions';
+
+const ISO_DAYS = [1, 2, 3, 4, 5, 6, 7] as const;
+const DAY_KEY: Record<number, string> = { 1: 'dayMon', 2: 'dayTue', 3: 'dayWed', 4: 'dayThu', 5: 'dayFri', 6: 'daySat', 7: 'daySun' };
+const toMin = (t: string) => {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+};
+const hm = (mins: number) => `${Math.floor(mins / 60)}h ${String(mins % 60).padStart(2, '0')}m`;
+
+/**
+ * Attendance policy — R33 f21d6eee: the per-company default working schedule (start/end, break, lateness,
+ * working days, OT-approval calculation) AND the tenant-global Overtime rates. Relocated off the Shift
+ * Settings page (/admin/attendance), which is now purely the shared shift library. These settings are NOT
+ * shift patterns — they drive attendance + pay calculation and must remain configurable. Admin-only via
+ * requireAdmin(); each company's policy write is DB-gated by RLS.
+ */
+export default async function AttendancePolicyPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const s = await requireAdmin();
+  const t = await getTranslations('admin.attendancePolicy');
+  const { error } = await searchParams;
+
+  const companies = await listCompanies(s);
+  const scopeIds = await getScopeIds(companies.map((c) => c.id));
+  const visible = companies.filter((c) => scopeIds.includes(c.id));
+  const policies = await listAttendancePolicies(s, visible.map((c) => c.id));
+  const byCompany = new Map(policies.map((p) => [p.companyId, p]));
+
+  // Overtime rates (feedback e776d17d) — the SAME resolved MY ruleset the statutory page reads, edited
+  // through the SAME 'ot' slice / setStatutoryComponentAction write path. Tenant-global, renders once.
+  const pack = packFor('MY');
+  const otRuleset = pack ? (await pack.statutoryConfig.readActive(s)).ruleset : null;
+  const otComponentDefaults = otRuleset
+    ? {
+        epf: {
+          employeeRate: otRuleset.epf.employeeRate,
+          employerRateLow: otRuleset.epf.employerRateLow,
+          employerRateHigh: otRuleset.epf.employerRateHigh,
+          employerThreshold: otRuleset.epf.employerThreshold,
+        },
+        ot: {
+          wageCeiling: otRuleset.ot.wageCeiling,
+          restDayExcessMultiplier: otRuleset.ot.restDayExcessMultiplier ?? 2,
+          holidayExcessMultiplier: otRuleset.ot.holidayExcessMultiplier ?? 3,
+        },
+        hrdf: otRuleset.hrdf ?? MY_HRDF,
+      }
+    : null;
+  const otComponentLabels = {
+    effectiveFrom: t('otEffectiveFrom'),
+    version: t('otVersion'),
+    notes: t('otNotes'),
+    otWageCeiling: t('otWageCeiling'),
+    otRestDayExcessMultiplier: t('otRestDayExcessMultiplier'),
+    otHolidayExcessMultiplier: t('otHolidayExcessMultiplier'),
+    publish: t('otPublish'),
+    cancelEdit: t('otCancel'),
+    cancelHref: '/admin/attendance-policy',
+  };
+  const rm = (n: number) => `RM ${n.toLocaleString('en-MY')}`;
+
+  return (
+    <div className="mx-auto max-w-4xl space-y-6">
+      <PageHeader title={t('policyPageTitle')} description={t('policyPageDescription')} />
+      <ErrorBanner message={error} />
+
+      {/* ── Overtime rates (relocated from Payroll > Statutory Configuration — feedback e776d17d) ──────── */}
+      {otRuleset && otComponentDefaults && (
+        <Card id="overtime-rates" className="scroll-mt-6 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">{t('otRatesTitle')}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">{t('otRatesIntro')}</p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-x-8 sm:grid-cols-3">
+            <div className="flex items-baseline justify-between gap-4 py-1.5">
+              <span className="text-sm text-muted-foreground">{t('otWageCeiling')}</span>
+              <span className="font-mono text-sm font-medium tabular-nums">{rm(otRuleset.ot.wageCeiling)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 py-1.5">
+              <span className="text-sm text-muted-foreground">{t('otRestDayExcessMultiplier')}</span>
+              <span className="font-mono text-sm font-medium tabular-nums">
+                {`${otRuleset.ot.restDayExcessMultiplier ?? 2}×`}
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-4 py-1.5">
+              <span className="text-sm text-muted-foreground">{t('otHolidayExcessMultiplier')}</span>
+              <span className="font-mono text-sm font-medium tabular-nums">
+                {`${otRuleset.ot.holidayExcessMultiplier ?? 3}×`}
+              </span>
+            </div>
+          </div>
+          <p className="mt-2 rounded-lg border border-amber-300/60 bg-amber-50/60 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            {t('otWageCeilingLegalNote')}
+          </p>
+          <p className="mt-2 text-xs text-muted-foreground">{t('otMultipliersNote')}</p>
+          <StatutoryComponentForm
+            defaults={otComponentDefaults}
+            labels={otComponentLabels}
+            lockedBody="ot"
+            returnTo="/admin/attendance-policy"
+          />
+        </Card>
+      )}
+
+      {visible.length === 0 ? (
+        <p className="text-sm text-muted-foreground">{t('noCompanies')}</p>
+      ) : (
+        visible.map((c) => {
+          const p = byCompany.get(c.id);
+          if (!p) return null;
+          const net = Math.max(0, toMin(p.workEnd) - toMin(p.workStart) - p.breakMinutes);
+          return (
+            <Card key={c.id} id={`policy-${c.id}`} className="scroll-mt-6">
+              <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <h2 className="text-sm font-semibold text-foreground">{c.name}</h2>
+                {p.isDefault ? (
+                  <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                    {t('usingDefaults')}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">{t('netScheduled', { hours: hm(net) })}</span>
+                )}
+              </div>
+              <form action={setAttendancePolicyAction} className="space-y-4 p-4">
+                <input type="hidden" name="companyId" value={c.id} />
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <Field label={t('workStart')}>
+                    <input type="time" name="workStart" required defaultValue={p.workStart.slice(0, 5)} className={inputCls} />
+                  </Field>
+                  <Field label={t('workEnd')}>
+                    <input type="time" name="workEnd" required defaultValue={p.workEnd.slice(0, 5)} className={inputCls} />
+                  </Field>
+                  <Field label={t('breakMinutes')}>
+                    <input type="number" name="breakMinutes" min={0} max={480} required defaultValue={p.breakMinutes} className={inputCls} />
+                  </Field>
+                  <Field label={t('lateAfter')}>
+                    <input type="time" name="lateAfter" required defaultValue={p.lateAfter.slice(0, 5)} className={inputCls} />
+                  </Field>
+                  <Field label={t('halfDayBefore')}>
+                    <input type="time" name="halfDayBefore" required defaultValue={p.halfDayBefore.slice(0, 5)} className={inputCls} />
+                  </Field>
+                </div>
+
+                <fieldset>
+                  <legend className="mb-1.5 text-sm font-medium text-foreground">{t('workingDays')}</legend>
+                  <p className="mb-2 text-xs text-muted-foreground">{t('dayTypeHint')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {ISO_DAYS.map((d) => {
+                      const dayType: 'full' | 'half' | 'rest' = p.workingDays.includes(d)
+                        ? 'full'
+                        : p.halfWorkingDays.includes(d)
+                          ? 'half'
+                          : 'rest';
+                      return (
+                        <div
+                          key={d}
+                          className="flex flex-col items-center gap-1 rounded-lg border border-border px-2 py-1.5"
+                        >
+                          <span className="text-xs font-medium text-foreground">{t(DAY_KEY[d])}</span>
+                          {/* One <select> per weekday posts "full" | "half" | "rest" — decoded server-side in
+                              setAttendancePolicyAction into the two ISO-weekday arrays the service expects. */}
+                          <select
+                            name={`dayType_${d}`}
+                            defaultValue={dayType}
+                            className="rounded border border-border bg-transparent px-1 py-0.5 text-xs"
+                          >
+                            <option value="full">{t('dayTypeFull')}</option>
+                            <option value="half">{t('dayTypeHalf')}</option>
+                            <option value="rest">{t('dayTypeRest')}</option>
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+
+                {/* ADR-0069: how an approved overtime request's minutes are resolved against the engine's figure. */}
+                <fieldset>
+                  <legend className="mb-1.5 text-sm font-medium text-foreground">{t('otApprovalCalc')}</legend>
+                  <Field label={t('otApprovalCalcLabel')}>
+                    <select
+                      name="otApprovalCalculation"
+                      defaultValue={p.otApprovalCalculation}
+                      className={inputCls}
+                    >
+                      <option value="requested">{t('otApprovalRequested')}</option>
+                      <option value="system_calculated">{t('otApprovalSystem')}</option>
+                      <option value="smaller_of">{t('otApprovalSmaller')}</option>
+                    </select>
+                  </Field>
+                  <p className="mt-1.5 text-xs text-muted-foreground">{t('otApprovalCalcHint')}</p>
+                </fieldset>
+
+                <div className="flex items-center gap-3">
+                  <button className={btnPrimary}>{t('save')}</button>
+                  <span className="text-xs text-muted-foreground">{t('lateHint')}</span>
+                </div>
+              </form>
+            </Card>
+          );
+        })
+      )}
+    </div>
+  );
+}

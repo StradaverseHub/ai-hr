@@ -49,7 +49,7 @@ import { listDependents, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, type De
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
-import { listShifts } from '@/core/roster';
+import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
 import { listHolidayGroups } from '@/core/admin';
@@ -172,12 +172,12 @@ export default async function EmployeePage({
   const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   const assignablePolicies = admin ? await listAssignablePolicies(s, emp.companyId) : [];
-  // ec4cbf63 — Default shift picker options: THIS employee's company's shifts. Loaded WITH archived rows so
-  // a currently-assigned-but-later-archived shift still renders as the selected option (instead of silently
-  // showing "None"), then filtered to live shifts + the assigned one. New assignments of archived shifts
-  // are rejected by the service.
-  const companyShifts = admin && !emp.terminatedOn ? await listShifts(s, emp.companyId, { includeArchived: true }) : [];
-  const assignableShifts = companyShifts.filter((sh) => !sh.archivedAt || sh.id === emp.defaultShiftId);
+  // R33 f21d6eee — Default shift picker options: the SHARED tenant-wide shift library (a template may now be
+  // assigned to any employee regardless of company). Loaded WITH archived rows so a currently-assigned-but-
+  // later-archived shift still renders as the selected option (instead of silently showing "None"), then
+  // filtered to live shifts + the assigned one. New assignments of archived shifts are rejected by the service.
+  const libraryShifts = admin && !emp.terminatedOn ? await listShiftsForTenant(s, { includeArchived: true }) : [];
+  const assignableShifts = libraryShifts.filter((sh) => !sh.archivedAt || sh.id === emp.defaultShiftId);
   // ADR-0070 — Clocking Location & Geofencing: THIS employee's company's active clocking sites (the
   // multi-select options) + their current assignment (admin-only, mirrors the payroll-policy card).
   const clockingLocations = admin ? await listClockingLocations(s, [emp.companyId]) : [];

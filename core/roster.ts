@@ -70,7 +70,10 @@ const hhmmToMin = (t: string): number => {
 };
 
 export type ShiftInput = {
-  companyId: string;
+  /** R33 f21d6eee — Shared shift library: shifts are tenant-global. Absent/null ⇒ company_id NULL (the new
+   *  default for templates authored on the shift-settings page). Legacy callers may still pass a company_id
+   *  (kept for back-compat), but the template is no longer scoped by it for assignment. */
+  companyId?: string | null;
   name: string;
   code: string;
   /** f3321963 — shift template type: 'normal' | 'semi_flexi' | 'full_flexi'. Absent ⇒ 'normal' (legacy). */
@@ -231,9 +234,10 @@ function shiftUniqueError(e: unknown, n: { name: string; code: string }): Error 
       msg += cur.message ?? '';
       cur = cur.cause as { message?: string; cause?: unknown } | null | undefined;
     }
-    if (/shift_company_code_uq/i.test(msg)) return new Error(`A shift with code “${n.code}” already exists in this company.`);
-    if (/shift_company_name_uq/i.test(msg)) return new Error(`A shift named “${n.name}” already exists in this company.`);
-    return new Error('A shift with this name or code already exists in this company.');
+    // R33 f21d6eee — uniqueness is now tenant-wide (shift_tenant_name_uq / shift_tenant_code_uq).
+    if (/shift_tenant_code_uq/i.test(msg)) return new Error(`A shift with code “${n.code}” already exists.`);
+    if (/shift_tenant_name_uq/i.test(msg)) return new Error(`A shift named “${n.name}” already exists.`);
+    return new Error('A shift with this name or code already exists.');
   }
   return e as Error;
 }
@@ -247,7 +251,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         .insert(shift)
         .values({
           tenantId: ctx.tenantId,
-          companyId: p.companyId,
+          // R33 f21d6eee — tenant-global by default; a passed company_id is honoured for back-compat.
+          companyId: p.companyId ?? null,
           name: n.name,
           code: n.code,
           type: n.type,
@@ -274,7 +279,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
       eventType: 'shift.created',
       actor: actorOf(ctx),
       payload: {
-        companyId: p.companyId,
+        companyId: p.companyId ?? null,
         name: n.name,
         code: n.code,
         type: n.type,
@@ -294,78 +299,9 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
   });
 }
 
-/**
- * R17 3e8350db — centralized authoring: create ONE shift template into SEVERAL companies at once (the HR
- * "type it once, use it everywhere" outcome). Normalizes the input once, then inserts one row per company
- * inside a SINGLE transaction and appends one `shift.created` DomainEvent PER row (the same per-row
- * substrate the single create uses). Atomic: a unique-collision in any one company rolls back the whole
- * batch and reports which company collided. RLS still enforces `is_admin_for(company_id)` per inserted row.
- */
-export async function createShiftMulti(
-  ctx: SessionContext,
-  p: { companyIds: string[] } & Omit<ShiftInput, 'companyId'>,
-): Promise<{ ids: string[] }> {
-  const companyIds = [...new Set(p.companyIds.filter(Boolean))];
-  if (companyIds.length === 0) throw new Error('Pick at least one company for the shift');
-  const n = normalizeShiftInput(p);
-  return withTenant(ctx, async (tx) => {
-    const ids: string[] = [];
-    for (const companyId of companyIds) {
-      let row: { id: string };
-      try {
-        [row] = await tx
-          .insert(shift)
-          .values({
-            tenantId: ctx.tenantId,
-            companyId,
-            name: n.name,
-            code: n.code,
-            type: n.type,
-            startTime: n.startTime,
-            endTime: n.endTime,
-            breakMinutes: n.breakMinutes,
-            breakPeriods: n.breakPeriods,
-            normalMinutesOverride: n.normalMinutesOverride,
-            weeklyPattern: n.weeklyPattern,
-            crossesMidnight: n.crossesMidnight,
-            lateGraceMinutes: n.lateGraceMinutes,
-            earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-            otRule: n.otRule,
-            differential: n.differential,
-          })
-          .returning({ id: shift.id });
-      } catch (e) {
-        throw shiftUniqueError(e, n);
-      }
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'shift',
-        aggregateId: row.id,
-        eventType: 'shift.created',
-        actor: actorOf(ctx),
-        payload: {
-          companyId,
-          name: n.name,
-          code: n.code,
-          type: n.type,
-          startTime: n.startTime,
-          endTime: n.endTime,
-          breakMinutes: n.breakMinutes,
-          breakPeriods: n.breakPeriods,
-          normalMinutesOverride: n.normalMinutesOverride,
-          weeklyPattern: n.weeklyPattern,
-          lateGraceMinutes: n.lateGraceMinutes,
-          earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-          otRule: n.otRule,
-          hasDifferential: !!n.differential,
-          multiCompany: companyIds.length > 1,
-        },
-      });
-      ids.push(row.id);
-    }
-    return { ids };
-  });
-}
+// R33 f21d6eee — createShiftMulti (R17 multi-company authoring) was RETIRED: shifts are now a single
+// tenant-wide library, so "create the same template in several companies" is meaningless — a template is
+// created once and assignable to any employee. Use createShift (tenant-global).
 
 export async function updateShift(ctx: SessionContext, p: { shiftId: string } & Omit<ShiftInput, 'companyId'>) {
   const n = normalizeShiftInput(p);
@@ -420,115 +356,10 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
   });
 }
 
-/** First free candidate from an incrementing naming scheme (collision-safe: a second duplicate of the same
- *  source lands on "(copy 2)" / "-copy-2" instead of tripping the unique index). */
-const firstFree = (mk: (i: number) => string, taken: (v: string) => boolean): string => {
-  for (let i = 1; ; i++) {
-    const v = mk(i);
-    if (!taken(v)) return v;
-  }
-};
+// R33 f21d6eee — duplicateShift (R17 same-company / copy-to-company duplication) was RETIRED: the shared
+// tenant-wide library removes the reason to duplicate a template (expected_function: "No duplication of
+// shifts between companies"). A shift is created once and assigned to any employee.
 
-/** Duplicate a shift template: a FULL-field copy — including the differential (dropping it would silently
- *  lose the shift-premium pay rule), breakPeriods, the normal-hours override and the R17 grace windows —
- *  under collision-safe name/code suffixes chosen against the TARGET company's non-archived rows. Emits
- *  shift.created with payload.duplicatedFrom (no new event type — nothing branches on provenance). RLS
- *  scopes which source shifts are visible AND (via is_admin_for on each inserted row) which targets are
- *  writable.
- *
- *  R17 3e8350db — `targetCompanyIds` centralizes authoring: copy an existing shift into OTHER companies in
- *  one click (the "no re-typing across companies" outcome). Absent/empty ⇒ same-company copy (the legacy
- *  "(copy)" behaviour, unchanged). When targets are given, one row + one event is created per target inside
- *  a single transaction (atomic — a collision in any target rolls back the batch). Within the SAME company
- *  the name/code get the "(copy)" suffix; into a DIFFERENT company the original name/code are kept when
- *  free (a different company is its own namespace), suffixed only on an actual collision. */
-export async function duplicateShift(
-  ctx: SessionContext,
-  p: { shiftId: string; targetCompanyIds?: string[] },
-): Promise<{ id: string; name: string; code: string; ids: string[] }> {
-  return withTenant(ctx, async (tx) => {
-    const [src] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).limit(1);
-    if (!src) throw new Error('Shift not found (or not visible)');
-    const srcCode = src.code ?? 'SHIFT'; // legacy rows are backfilled by 0139; belt-and-braces fallback
-    const targets = [...new Set((p.targetCompanyIds ?? []).filter(Boolean))];
-    // No explicit targets ⇒ same-company copy (legacy path).
-    const companyIds = targets.length > 0 ? targets : [src.companyId];
-
-    const results: { id: string; name: string; code: string }[] = [];
-    for (const companyId of companyIds) {
-      const sameCompany = companyId === src.companyId;
-      const existing = await tx
-        .select({ name: shift.name, code: shift.code })
-        .from(shift)
-        .where(and(eq(shift.companyId, companyId), isNull(shift.archivedAt)));
-      const names = new Set(existing.map((r) => r.name));
-      const codes = new Set(existing.map((r) => (r.code ?? '').toLowerCase()));
-      // Same company: always suffix so the copy is distinguishable. Different company: keep the original
-      // name/code when free, suffix only on a real collision.
-      const name = sameCompany
-        ? firstFree((i) => (i === 1 ? `${src.name} (copy)` : `${src.name} (copy ${i})`), (v) => names.has(v))
-        : firstFree((i) => (i === 1 ? src.name : `${src.name} (copy ${i})`), (v) => names.has(v));
-      const code = sameCompany
-        ? firstFree((i) => (i === 1 ? `${srcCode}-copy` : `${srcCode}-copy-${i}`), (v) => codes.has(v.toLowerCase()))
-        : firstFree((i) => (i === 1 ? srcCode : `${srcCode}-copy-${i}`), (v) => codes.has(v.toLowerCase()));
-      let row: { id: string };
-      try {
-        [row] = await tx
-          .insert(shift)
-          .values({
-            tenantId: ctx.tenantId,
-            companyId,
-            name,
-            code,
-            type: src.type,
-            startTime: src.startTime,
-            endTime: src.endTime,
-            breakMinutes: src.breakMinutes,
-            breakPeriods: src.breakPeriods,
-            normalMinutesOverride: src.normalMinutesOverride,
-            weeklyPattern: src.weeklyPattern,
-            crossesMidnight: src.crossesMidnight,
-            lateGraceMinutes: src.lateGraceMinutes,
-            earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
-            differential: src.differential,
-            otRule: src.otRule,
-            archivedAt: null,
-          })
-          .returning({ id: shift.id });
-      } catch (e) {
-        throw shiftUniqueError(e, { name, code });
-      }
-      await appendEvent(tx, {
-        tenantId: ctx.tenantId,
-        aggregateType: 'shift',
-        aggregateId: row.id,
-        eventType: 'shift.created',
-        actor: actorOf(ctx),
-        payload: {
-          companyId,
-          name,
-          code,
-          type: src.type,
-          startTime: src.startTime,
-          endTime: src.endTime,
-          breakMinutes: src.breakMinutes,
-          breakPeriods: src.breakPeriods,
-          normalMinutesOverride: src.normalMinutesOverride,
-          weeklyPattern: src.weeklyPattern,
-          lateGraceMinutes: src.lateGraceMinutes,
-          earlyLeaveGraceMinutes: src.earlyLeaveGraceMinutes,
-          otRule: src.otRule,
-          hasDifferential: !!src.differential,
-          duplicatedFrom: p.shiftId,
-          copiedToCompany: !sameCompany,
-        },
-      });
-      results.push({ id: row.id, name, code });
-    }
-    // First result keeps the legacy { id, name, code } shape; `ids` exposes all created rows.
-    return { ...results[0], ids: results.map((r) => r.id) };
-  });
-}
 export class ShiftInUseError extends Error {
   constructor(message = 'This shift is referenced by roster entries or assigned as an employee default — archive it instead of deleting.') {
     super(message);
@@ -600,6 +431,8 @@ export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) 
   });
 }
 
+/** Company-scoped shift list. R33 f21d6eee — RETAINED for back-compat with legacy per-company rows/tests;
+ *  it will NOT return tenant-global templates (company_id NULL). New product surfaces use listShiftsForTenant. */
 export function listShifts(ctx: SessionContext, companyId: string, opts?: { includeArchived?: boolean }) {
   return withTenant(ctx, (tx) => {
     const conds = [eq(shift.companyId, companyId)];
@@ -608,14 +441,26 @@ export function listShifts(ctx: SessionContext, companyId: string, opts?: { incl
   });
 }
 
+/** R33 f21d6eee — the SHARED shift library: every shift in the tenant regardless of company_id (including the
+ *  tenant-global NULL-company templates authored on the shift-settings page). RLS already scopes to the
+ *  caller's tenant. This is what the shift-settings page, the roster picker, and the employee-profile
+ *  Fixed-shift picker read, so a template authored once is assignable to any employee tenant-wide. */
+export function listShiftsForTenant(ctx: SessionContext, opts?: { includeArchived?: boolean }) {
+  return withTenant(ctx, (tx) => {
+    const conds = opts?.includeArchived ? [] : [isNull(shift.archivedAt)];
+    return tx
+      .select()
+      .from(shift)
+      .where(conds.length ? and(...conds) : undefined)
+      .orderBy(asc(shift.startTime), asc(shift.name));
+  });
+}
+
 // ── Per-employee default shift (ec4cbf63 rev-6: "assigned to the staff in their profile") ──────────
 
-export class ShiftCompanyMismatchError extends Error {
-  constructor(message = 'A shift can only be assigned as default within its own company') {
-    super(message);
-    this.name = 'ShiftCompanyMismatchError';
-  }
-}
+// R33 f21d6eee — ShiftCompanyMismatchError was REMOVED. Shifts are a tenant-wide shared library, so a
+// template may be assigned to ANY employee in the tenant regardless of which company (if any) authored it.
+// The same-company guard is gone; ArchivedShiftError + FixedShiftRequiresShiftError still apply.
 
 export class ArchivedShiftError extends Error {
   constructor(message = 'An archived shift cannot be assigned as a default shift') {
@@ -655,7 +500,6 @@ export async function assignEmployeeShift(
     const [emp] = await tx
       .select({
         id: employment.id,
-        companyId: employment.companyId,
         beforeShift: employment.defaultShiftId,
         beforeType: employment.shiftType,
       })
@@ -665,12 +509,12 @@ export async function assignEmployeeShift(
     if (!emp) throw new Error('Employment not found');
     if (shiftId != null) {
       const [sh] = await tx
-        .select({ id: shift.id, companyId: shift.companyId, archivedAt: shift.archivedAt })
+        .select({ id: shift.id, archivedAt: shift.archivedAt })
         .from(shift)
         .where(eq(shift.id, shiftId))
         .limit(1);
       if (!sh) throw new Error('Shift not found');
-      if (sh.companyId !== emp.companyId) throw new ShiftCompanyMismatchError();
+      // R33 f21d6eee — no same-company check: a shared-library shift is assignable to any tenant employee.
       if (sh.archivedAt) throw new ArchivedShiftError();
     }
     await tx
@@ -889,7 +733,9 @@ export async function generateRosterFromTemplate(
     // (validTo IS NULL AND supersededAt IS NULL) department filter, mapped to employmentIds.
     const page = await listEmployeesPage(ctx, {
       departmentId: p.departmentId,
-      companyIds: [tpl.companyId],
+      // R33 f21d6eee — a tenant-global shift (company_id NULL) has no company to narrow by; the department
+      // already belongs to one company, so scope by department alone. Legacy company-stamped shifts still narrow.
+      companyIds: tpl.companyId ? [tpl.companyId] : undefined,
       status: 'active',
       limit: 100_000,
       offset: 0,

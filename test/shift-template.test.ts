@@ -4,17 +4,16 @@
  * normal-hours override being REAL (it changes what counts as workday OVERTIME through deriveAttendance,
  * not just a displayed figure); per-company non-archived code uniqueness (archive frees the code); multi-
  * break persistence with the canonical breakMinutes scalar (= Σ durations, storage-only this phase);
- * duplicateShift's full-field copy (incl. differential) with collision-safe (copy)/(copy 2) suffixes and
- * the shift.created duplicatedFrom payload; the 0139 backfill leaving legacy shifts editable; and the
- * byte-identical regression for a legacy single-break shift resolved through scheduleFor.
+ * the 0139 backfill leaving legacy shifts editable; and the byte-identical regression for a legacy
+ * single-break shift resolved through scheduleFor. (R33 f21d6eee retired duplicateShift.)
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
-import { adminCtx, closeAll, eventTypesFor, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { checkIn, checkOut, netScheduledMinutes, shiftSpan } from '../core/attendance';
-import { archiveShift, assignShift, createShift, duplicateShift, listShifts, updateShift } from '../core/roster';
+import { archiveShift, assignShift, createShift, listShifts, updateShift } from '../core/roster';
 
 let b: Base;
 let employmentId: string;
@@ -166,42 +165,6 @@ describe('shift template (R7 Multi-Shift Phase 1)', () => {
     await archiveShift(ctx, { shiftId: first.id });
     const again = await createShift(ctx, { companyId: b.companyId, name: 'Day B', code: 'DAY', startTime: '10:00:00', endTime: '19:00:00' });
     expect((await listShifts(ctx, b.companyId)).map((r) => r.id)).toEqual([again.id]);
-  });
-
-  it('duplicateShift: full-field copy incl. differential; (copy) then (copy 2); shift.created with duplicatedFrom', async () => {
-    const ctx = adminCtx(b);
-    const src = await createShift(ctx, {
-      companyId: b.companyId,
-      name: 'Night',
-      code: 'NGT',
-      startTime: '22:00:00',
-      endTime: '06:00:00',
-      breakPeriods: [{ start: '23:00:00', end: '23:30:00' }],
-      normalMinutesOverride: 400,
-      differential: { kind: 'percent', value: 15 },
-    });
-    const d1 = await duplicateShift(ctx, { shiftId: src.id });
-    const [r1] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, d1.id));
-    expect(r1.name).toBe('Night (copy)');
-    expect(r1.code).toBe('NGT-copy');
-    expect(r1.startTime).toBe('22:00:00');
-    expect(r1.endTime).toBe('06:00:00');
-    expect(r1.crossesMidnight).toBe(true);
-    expect(r1.breakMinutes).toBe(30);
-    expect(r1.breakPeriods).toEqual([{ start: '23:00:00', end: '23:30:00' }]);
-    expect(r1.normalMinutesOverride).toBe(400);
-    expect(r1.differential).toEqual({ kind: 'percent', value: 15 }); // the shift-premium rule MUST survive the copy
-    expect(r1.archivedAt).toBeNull();
-
-    // The exact browser-verify flow the fixed "-copy" suffix used to break: duplicate the SAME source twice.
-    const d2 = await duplicateShift(ctx, { shiftId: src.id });
-    const [r2] = await owner.db.select().from(schema.shift).where(eq(schema.shift.id, d2.id));
-    expect(r2.name).toBe('Night (copy 2)');
-    expect(r2.code).toBe('NGT-copy-2');
-
-    expect(await eventTypesFor(b.tenantId, d1.id)).toContain('shift.created');
-    const payload = await latestEventPayload(b.tenantId, d1.id, 'shift.created');
-    expect(payload?.duplicatedFrom).toBe(src.id);
   });
 
   it('a 0139-backfilled legacy shift (code was NULL) gets a code and stays editable through updateShift', async () => {

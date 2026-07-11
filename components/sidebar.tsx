@@ -76,7 +76,10 @@ const ATTENDANCE_NODE: CollapsibleGroupItem = {
   children: [
     { href: '/attendance', labelKey: 'attendanceRecords', icon: Clock },
     { href: '/admin/holidays', labelKey: 'holidays', icon: CalendarDays, adminOnly: true },
+    // R33 f21d6eee: "Shift settings" (/admin/attendance) is now the shared shift library; the per-company
+    // working-hours + overtime-rates config moved to its own "Attendance policy" screen.
     { href: '/admin/attendance', labelKey: 'attendancePolicy', icon: CalendarClock, adminOnly: true },
+    { href: '/admin/attendance-policy', labelKey: 'attendancePolicyConfig', icon: SlidersHorizontal, adminOnly: true },
     { href: '/admin/attendance-allowance', labelKey: 'attendanceAllowance', icon: HandCoins, adminOnly: true },
     { href: '/admin/locations', labelKey: 'clockingLocation', icon: MapPin, adminOnly: true },
     // e776d17d reserves the "Overtime Configuration" child slot here (after Clocking Location, before Import).

@@ -95,7 +95,9 @@ const USERS = '/admin/users';
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
 const HOLIDAY_GROUPS = '/admin/holidays/groups';
-const ATTENDANCE_POLICY = '/admin/attendance';
+// R33 f21d6eee — the per-company attendance policy + OT-rates form moved to its own /admin/attendance-policy
+// screen (the /admin/attendance route is now the shared shift library). setAttendancePolicyAction redirects here.
+const ATTENDANCE_POLICY = '/admin/attendance-policy';
 const TOIL_POLICY = '/admin/toil';
 const LOCATIONS = '/admin/locations';
 

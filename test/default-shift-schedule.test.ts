@@ -4,7 +4,8 @@
  * Service (core/roster.ts assignDefaultShift):
  *  - happy path persists employment.default_shift_id and emits employment.shift-arrangement.assigned with
  *    { before, after }; null clears the assignment (and emits with the reverse payload)
- *  - a cross-company shift is rejected (ShiftCompanyMismatchError — same-tenant, so RLS can't catch it)
+ *  - R33 f21d6eee: a shift authored under another company is now assignable (shared library — the old
+ *    ShiftCompanyMismatchError was dropped)
  *  - an archived shift is rejected (ArchivedShiftError)
  *
  * Engine (core/attendance.ts scheduleFor): precedence roster row → default shift → company policy —
@@ -34,7 +35,6 @@ import {
   assignShift,
   createShift,
   setRestDay,
-  ShiftCompanyMismatchError,
 } from '../core/roster';
 import {
   adminCtx,
@@ -125,12 +125,14 @@ describe('assignDefaultShift — service + substrate', () => {
     });
   });
 
-  it('rejects a cross-company shift (same tenant — RLS cannot catch this)', async () => {
+  it('R33 f21d6eee — a shift authored under a DIFFERENT company is now assignable (shared library)', async () => {
     const a = adminCtx(b);
     const [c2] = await owner.db
       .insert(schema.company)
       .values({ tenantId: b.tenantId, legalName: 'Beta Sdn Bhd' })
       .returning({ id: schema.company.id });
+    // A shift stamped with company c2 (or, going forward, a tenant-global one) is a shared-library template:
+    // assigning it to an employee in the base company must SUCCEED — the old ShiftCompanyMismatchError is gone.
     const foreign = await createShift(a, {
       companyId: c2.id,
       name: 'Beta Day',
@@ -139,10 +141,8 @@ describe('assignDefaultShift — service + substrate', () => {
       endTime: '18:00:00',
       breakMinutes: 60,
     });
-    await expect(assignDefaultShift(a, { employmentId: empId, shiftId: foreign.id })).rejects.toBeInstanceOf(
-      ShiftCompanyMismatchError,
-    );
-    expect(await storedDefaultShift(empId)).toBeNull(); // no partial write
+    await assignDefaultShift(a, { employmentId: empId, shiftId: foreign.id });
+    expect(await storedDefaultShift(empId)).toBe(foreign.id);
   });
 
   it('rejects an archived shift', async () => {

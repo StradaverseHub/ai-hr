@@ -112,6 +112,7 @@
     "notifications": "Thông báo",
     "analytics": "Phân tích",
     "attendancePolicy": "Cài đặt ca làm việc",
+    "attendancePolicyConfig": "Chính sách chấm công",
     "toilPolicy": "Nghỉ bù",
     "leaveApproval": "Chuỗi phê duyệt",
     "feedback": "Phản hồi",
@@ -3700,7 +3701,9 @@
     },
     "attendancePolicy": {
       "pageTitle": "Cài đặt ca làm việc",
-      "pageDescription": "Quản lý mẫu ca làm việc của tổ chức và lịch làm việc mặc định mà mỗi công ty sử dụng khi nhân viên không có lịch phân ca cho một ngày. Giờ làm thêm được tính vượt trên số giờ theo lịch; lịch phân ca đã lưu được ưu tiên.",
+      "pageDescription": "Thư viện tập trung các mẫu ca làm việc được dùng chung cho toàn tổ chức. Tạo ca một lần và gán cho bất kỳ nhân viên nào qua hồ sơ của họ (ca cố định) hoặc Quản lý lịch ca.",
+      "policyPageTitle": "Chính sách chấm công",
+      "policyPageDescription": "Lịch làm việc mặc định mà mỗi công ty sử dụng khi nhân viên không có lịch ca cho một ngày, cùng với mức tăng ca theo luật định. Tăng ca được tính vượt quá giờ đã định; lịch ca đã lưu được ưu tiên.",
       "noCompanies": "Không có công ty trong phạm vi.",
       "usingDefaults": "Đang dùng mặc định",
       "netScheduled": "Theo lịch thực {hours}",

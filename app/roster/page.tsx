@@ -2,7 +2,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { scopedSession } from '@/lib/scope';
 import { listCompanies, listDepartments, listEmployees } from '@/core/read';
-import { listShifts, rosterForRange, rosterVariance } from '@/core/roster';
+import { listShiftsForTenant, rosterForRange, rosterVariance } from '@/core/roster';
 import { listToilPolicies } from '@/core/toil';
 import { Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { RosterGrid } from '@/components/roster-grid';
@@ -46,7 +46,8 @@ export default async function RosterPage({
 
   const [employees, shifts, roster, variance, toilPolicies, departments] = await Promise.all([
     listEmployees(s, [companyId]),
-    listShifts(s, companyId),
+    // R33 f21d6eee — the shared shift library (tenant-wide); any shift can be painted onto any employee.
+    listShiftsForTenant(s),
     rosterForRange(s, { from: weekStart, to: weekEnd }),
     rosterVariance(s, { from: weekStart, to: weekEnd, companyIds: [companyId], today: todayIso }),
     listToilPolicies(s, [companyId]),

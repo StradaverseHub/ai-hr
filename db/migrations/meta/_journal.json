@@ -1380,6 +1380,13 @@
       "when": 1781862195000,
       "tag": "0196_delegation_self_service_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1781862196000,
+      "tag": "0197_shift_shared_library",
+      "breakpoints": true
     }
   ]
 }

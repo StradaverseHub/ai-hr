@@ -3,8 +3,9 @@
  *   1. Per-shift late grace + early-leave grace override the company-policy defaults in scheduleFor (proved
  *      through checkIn/checkOut status, so it's the REAL engine path, not a display figure). NULL columns
  *      keep the legacy behaviour.
- *   2. Centralized authoring — createShiftMulti creates one row + one shift.created event PER company;
- *      duplicateShift with targetCompanyIds copies a shift into another company (full-field, incl. grace).
+ *   2. R33 f21d6eee — shared tenant-wide shift library: createShift authors a tenant-global template
+ *      (company_id NULL, listed by listShiftsForTenant), and name/code are unique tenant-wide. (The R17
+ *      multi-company createShiftMulti / duplicateShift-to-company features were retired.)
  *   3. The employee "Shift Type" invariant — assignEmployeeShift: Fixed requires a default shift, Roster
  *      forces default_shift_id to null and stamps shift_type.
  */
@@ -20,11 +21,10 @@ import {
   assignShift,
   copyRoster,
   createShift,
-  createShiftMulti,
   deleteShift,
-  duplicateShift,
   FixedShiftRequiresShiftError,
   listShifts,
+  listShiftsForTenant,
   rosterForRange,
   ShiftInUseError,
 } from '../core/roster';
@@ -44,14 +44,6 @@ async function makeEmp() {
     .values({ tenantId: b.tenantId, personId: p.id, companyId: b.companyId, hiredOn: '2020-01-01' })
     .returning({ id: schema.employment.id });
   return e.id;
-}
-
-async function secondCompany() {
-  const [c] = await owner.db
-    .insert(schema.company)
-    .values({ tenantId: b.tenantId, legalName: `Beta ${randomUUID()}` })
-    .returning({ id: schema.company.id });
-  return c.id;
 }
 
 const storedEmployment = async (id: string) => {
@@ -127,47 +119,34 @@ describe('R17 per-shift grace windows drive scheduleFor lateness / early-leave',
   });
 });
 
-describe('R17 centralized authoring — multi-company create + copy-to-company', () => {
-  it('createShiftMulti inserts one row + one shift.created event per company', async () => {
+describe('R33 f21d6eee — shared tenant-wide shift library', () => {
+  it('createShift authors a tenant-global template (company_id NULL) visible via listShiftsForTenant', async () => {
     const a = adminCtx(b);
-    const c2 = await secondCompany();
-    const res = await createShiftMulti(a, {
-      companyIds: [b.companyId, c2],
+    const res = await createShift(a, {
       name: 'Office Hours',
       code: 'OFF',
       startTime: '09:00:00',
       endTime: '18:00:00',
       breakMinutes: 60,
     });
-    expect(res.ids).toHaveLength(2);
-    expect(await listShifts(a, b.companyId)).toHaveLength(1);
-    expect(await listShifts(a, c2)).toHaveLength(1);
-    for (const id of res.ids) expect(await eventTypesFor(b.tenantId, id)).toContain('shift.created');
+    expect(await eventTypesFor(b.tenantId, res.id)).toContain('shift.created');
+    const lib = await listShiftsForTenant(a);
+    expect(lib).toHaveLength(1);
+    expect(lib[0]).toMatchObject({ id: res.id, companyId: null, code: 'OFF' });
+    // Company-scoped listShifts does NOT return a tenant-global template (it has no company_id).
+    expect(await listShifts(a, b.companyId)).toHaveLength(0);
   });
 
-  it('duplicateShift with targetCompanyIds copies a shift (incl. grace) into another company', async () => {
+  it('name and code are unique tenant-wide (not per company)', async () => {
     const a = adminCtx(b);
-    const c2 = await secondCompany();
-    const src = await createShift(a, {
-      companyId: b.companyId,
-      name: 'Night',
-      code: 'NIGHT',
-      startTime: '22:00:00',
-      endTime: '06:00:00',
-      breakMinutes: 45,
-      lateGraceMinutes: 10,
-      earlyLeaveGraceMinutes: 20,
-      otRule: { eligible: true, dailyCapMinutes: 30 },
-    });
-    const dup = await duplicateShift(a, { shiftId: src.id, targetCompanyIds: [c2] });
-    expect(dup.ids).toHaveLength(1);
-    const target = await listShifts(a, c2);
-    expect(target).toHaveLength(1);
-    expect(target[0]).toMatchObject({ code: 'NIGHT', lateGraceMinutes: 10, earlyLeaveGraceMinutes: 20 });
-    // Duplicate must preserve the per-shift OT rule (not persist NULL).
-    expect(target[0].otRule).toEqual({ eligible: true, dailyCapMinutes: 30 });
-    // Source company still has just its own row (the copy landed in c2).
-    expect(await listShifts(a, b.companyId)).toHaveLength(1);
+    await createShift(a, { name: 'Day', code: 'DAY', startTime: '09:00:00', endTime: '18:00:00', breakMinutes: 60 });
+    // Same name / code again anywhere in the tenant is rejected (tenant-wide partial unique).
+    await expect(
+      createShift(a, { name: 'Day', code: 'DAY2', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 }),
+    ).rejects.toThrow(/already exists/i);
+    await expect(
+      createShift(a, { name: 'Day2', code: 'DAY', startTime: '08:00:00', endTime: '17:00:00', breakMinutes: 60 }),
+    ).rejects.toThrow(/already exists/i);
   });
 });
 

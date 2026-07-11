@@ -112,6 +112,7 @@
     "notifications": "通知",
     "analytics": "分析",
     "attendancePolicy": "班次设置",
+    "attendancePolicyConfig": "考勤政策",
     "toilPolicy": "调休",
     "leaveApproval": "审批链",
     "feedback": "反馈",
@@ -3700,7 +3701,9 @@
     },
     "attendancePolicy": {
       "pageTitle": "班次设置",
-      "pageDescription": "维护贵机构的班次模板，以及当员工某日期没有排班时各公司回退使用的默认工作时间表。加班按超出排定工时计算；已保存的排班优先。",
+      "pageDescription": "面向整个组织共享的集中式班次模板库。创建一次班次，即可通过员工档案（固定班次）或排班管理分配给任何员工。",
+      "policyPageTitle": "考勤政策",
+      "policyPageDescription": "当员工在某日期没有排班时，各公司回退使用的默认工作时间表，以及法定加班费率。加班按超出排定工时计算；已保存的排班优先。",
       "noCompanies": "范围内没有公司。",
       "usingDefaults": "使用默认值",
       "netScheduled": "净排定 {hours}",

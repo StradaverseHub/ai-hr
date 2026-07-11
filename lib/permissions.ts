@@ -225,11 +225,21 @@ export const SCREENS: readonly ScreenEntry[] = [
     routes: ['/admin/holidays', '/admin/holidays/groups', '/admin/holidays/groups/new', '/admin/holidays/groups/[id]'],
   },
   {
+    // R33 f21d6eee: /admin/attendance is now the shared shift library ("Shift settings").
     screenKey: 'attendancePolicy',
     href: '/admin/attendance',
     labelKey: 'nav.attendancePolicy',
     guard: 'requireAdmin',
     routes: ['/admin/attendance', '/attendance/import'],
+  },
+  {
+    // R33 f21d6eee: the per-company working-hours + overtime-rates config relocated off the shift library
+    // to its own screen. requireAdmin (same guard the settings had when they lived on /admin/attendance).
+    screenKey: 'attendancePolicyConfig',
+    href: '/admin/attendance-policy',
+    labelKey: 'nav.attendancePolicyConfig',
+    guard: 'requireAdmin',
+    routes: ['/admin/attendance-policy'],
   },
   {
     screenKey: 'attendanceAllowance',

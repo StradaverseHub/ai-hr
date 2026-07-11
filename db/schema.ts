@@ -2132,14 +2132,15 @@ export const shift = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
-    companyId: uuid('company_id')
-      .notNull()
-      .references(() => company.id),
+    // R33 f21d6eee — Shared shift library: company_id is NULLABLE. New templates are authored tenant-wide
+    // (company_id = NULL) and can be assigned to any employee in the tenant; legacy per-company rows keep
+    // their company_id. Migration 0197 dropped the NOT NULL and re-gated RLS on app.is_admin() (tenant-admin)
+    // instead of app.is_admin_for(company_id).
+    companyId: uuid('company_id').references(() => company.id),
     name: text('name').notNull(),
-    // R7 Multi-Shift Phase 1: short per-company identifier. Nullable in DB (legacy rows were backfilled by
-    // 0139), REQUIRED by the service/form. Uniqueness = shift_company_code_uq, a partial lower(code) index
-    // per (tenant, company) among non-archived rows — lives in the 0139 migration (expression index,
-    // mirroring business_unit's 0136 shape).
+    // R7 Multi-Shift Phase 1: short identifier. Nullable in DB (legacy rows were backfilled by 0139),
+    // REQUIRED by the service/form. R33 f21d6eee — uniqueness is now TENANT-WIDE (shift_tenant_code_uq), a
+    // partial lower(code) index among non-archived rows (migration 0197 replaced the per-company index).
     code: text('code'),
     // f3321963 — Shift Settings Enhancement: shift template type (see ShiftType). DEFAULT 'normal' so every
     // legacy row is byte-identical. CHECK ('normal','semi_flexi','full_flexi') lives in migration 0181.
@@ -2173,7 +2174,12 @@ export const shift = pgTable(
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [uniqueIndex('shift_company_name_uq').on(t.tenantId, t.companyId, t.name).where(sql`archived_at is null`)],
+  // R33 f21d6eee — Shared shift library: tenant-wide, case-insensitive, non-archived unique on name AND code
+  // (migration 0197 replaced the per-(tenant,company) indexes shift_company_name_uq / shift_company_code_uq).
+  (t) => [
+    uniqueIndex('shift_tenant_name_uq').on(t.tenantId, sql`lower(${t.name})`).where(sql`archived_at is null`),
+    uniqueIndex('shift_tenant_code_uq').on(t.tenantId, sql`lower(${t.code})`).where(sql`archived_at is null`),
+  ],
 );
 
 // The per-employee "expected" schedule the time engine consumes (C2). One concrete (employment, date) →
