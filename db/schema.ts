@@ -1584,6 +1584,14 @@ export const employeeStatutoryMy = pgTable(
     employerBearsTax: boolean('employer_bears_tax').notNull().default(false),
     // "Subject to EIS" (item 5a461b99 reuses this existing flag — no duplicate column).
     eisEligible: boolean('eis_eligible').notNull().default(true),
+    // SOCSO / EIS contribution-category override (item a7271737). Today the SOCSO category and EIS eligibility
+    // are DERIVED per-employee in the kernel from age + EPF citizenship; these persisted overrides let HR pin a
+    // scheme by hand. socso_category: 'auto' keeps the derivation; 'first'/'second' force the band; 'none' zeroes
+    // the SOCSO leg. eis_category: 'auto' keeps the derivation; 'none' zeroes the EIS leg. Both default 'auto' ⇒
+    // byte-identical. The category is the single per-scheme control: the setter derives the legacy subject_to_socso
+    // / eis_eligible booleans from it (= category !== 'none') so every downstream reader stays unchanged.
+    socsoCategory: text('socso_category').notNull().default('auto'),
+    eisCategory: text('eis_category').notNull().default('auto'),
     // SOCSO & EIS statutory controls (item 5a461b99). subject_to_* gate whether a scheme is contributed at
     // all; employer_bears_* keep the scheme computed + reported in full but fund the EMPLOYEE share from
     // employer cost instead of deducting it from net pay. subject_to_skbbk defaults false for NEW rows

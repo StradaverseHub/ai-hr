@@ -1318,17 +1318,39 @@ export default async function EmployeePage({
               />
             </Field>
           </div>
+          {/* Item a7271737 — SOCSO / EIS contribution CATEGORY selects. Consolidation (reporter-approved): the
+              category is the single per-scheme control, replacing the old Subject-to-SOCSO / Subject-to-EIS
+              checkboxes ('No contribution' = the scheme off). 'Auto' keeps the automatic PERKESO age/citizenship
+              derivation. SKBBK stays its own switch (not part of the SOCSO category). */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label={t('socsoCategoryLabel')}>
+              <select
+                name="socsoCategory"
+                defaultValue={statutory?.socsoCategory ?? 'auto'}
+                title={t('socsoCategoryHint')}
+                className={inputCls}
+              >
+                <option value="auto">{t('socsoCategoryAuto')}</option>
+                <option value="first">{t('socsoCategoryFirst')}</option>
+                <option value="second">{t('socsoCategorySecond')}</option>
+                <option value="none">{t('socsoCategoryNone')}</option>
+              </select>
+            </Field>
+            <Field label={t('eisCategoryLabel')}>
+              <select
+                name="eisCategory"
+                defaultValue={statutory?.eisCategory ?? 'auto'}
+                title={t('eisCategoryHint')}
+                className={inputCls}
+              >
+                <option value="auto">{t('eisCategoryAuto')}</option>
+                <option value="none">{t('eisCategoryNone')}</option>
+              </select>
+            </Field>
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('subjectToLegend')}</p>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="subjectToSocso" defaultChecked={statutory ? statutory.subjectToSocso : true} className="size-4 rounded" />
-                {t('subjectToSocso')}
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
-                {t('subjectToEis')}
-              </label>
               <label className="flex items-center gap-2 text-sm" title={t('subjectToSkbbkHint')}>
                 <input type="checkbox" name="subjectToSkbbk" defaultChecked={statutory ? statutory.subjectToSkbbk : false} className="size-4 rounded" />
                 {t('subjectToSkbbk')}

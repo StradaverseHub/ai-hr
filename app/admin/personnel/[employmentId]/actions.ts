@@ -686,9 +686,16 @@ export async function setStatutoryAction(formData: FormData) {
       taxNumber: current.taxNumber ?? undefined,
       taxCategory: current.taxCategory ?? 1,
       numChildren: current.numChildren ?? 0,
-      // Item 5a461b99 — SOCSO & EIS statutory controls. eisEligible doubles as "Subject to EIS".
-      eisEligible: formData.get('eisEligible') === 'on',
-      subjectToSocso: formData.get('subjectToSocso') === 'on',
+      // Item a7271737 — SOCSO & EIS CATEGORY is now the single per-scheme control (consolidation approved). The
+      // legacy subject_to_socso / eis_eligible booleans are DERIVED from the category by setStatutoryProfileMY
+      // (= category !== 'none'), so this form sends the category and the setter keeps the booleans in sync. The
+      // setter defends against an out-of-range value (falls back to the boolean, then 'auto').
+      socsoCategory: (() => {
+        const c = String(formData.get('socsoCategory') ?? 'auto');
+        return c === 'first' || c === 'second' || c === 'none' ? c : 'auto';
+      })(),
+      eisCategory: String(formData.get('eisCategory') ?? 'auto') === 'none' ? 'none' : 'auto',
+      // Item 5a461b99 — "Subject to SKBBK" stays its own switch (SKBBK is not part of the SOCSO category).
       subjectToSkbbk: formData.get('subjectToSkbbk') === 'on',
       employerBearsSocso: formData.get('employerBearsSocso') === 'on',
       employerBearsEis: formData.get('employerBearsEis') === 'on',

@@ -52,6 +52,11 @@ export async function saveZakatElectionAction(formData: FormData) {
       taxCategory: current.taxCategory,
       numChildren: current.numChildren,
       eisEligible: current.eisEligible,
+      // Item a7271737 — preserve the SOCSO/EIS category on this read-modify-write so an election-only save can
+      // never reset it to 'auto'. Passing the stored category also keeps the derived subject_to_socso /
+      // eis_eligible booleans intact (the setter derives them from the category when it is supplied).
+      socsoCategory: current.socsoCategory,
+      eisCategory: current.eisCategory,
       isResident: current.isResident,
       epfCitizenship: current.epfCitizenship,
       epfMode: current.epfMode,

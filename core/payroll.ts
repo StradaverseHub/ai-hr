@@ -1916,6 +1916,10 @@ export async function generatePayslips(
         taxResidency: employeeStatutoryMy.taxResidency,
         employerBearsTax: employeeStatutoryMy.employerBearsTax,
         eisEligible: employeeStatutoryMy.eisEligible,
+        // SOCSO / EIS contribution-category override (item a7271737) — 'auto' keeps the age/citizenship
+        // derivation below; 'first'/'second' pin the SOCSO band; 'none' zeroes the SOCSO/EIS leg respectively.
+        socsoCategory: employeeStatutoryMy.socsoCategory,
+        eisCategory: employeeStatutoryMy.eisCategory,
         // SOCSO & EIS statutory controls (item 5a461b99) — subject_to_* gate the scheme; employer_bears_*
         // fund the employee's share from employer cost without deducting it from net.
         subjectToSocso: employeeStatutoryMy.subjectToSocso,
@@ -2865,16 +2869,27 @@ export async function generatePayslips(
       // remuneration and take the delta, so the normal wage's SOCSO/EPF (already charged by the regular
       // run) cancels, SOCSO/EIS add 0, and PCB nets against earlier same-month MTD (ADR-0024 §4).
       const taxProfile = { category: (e.taxCategory ?? 1) as 1 | 2 | 3, children: e.numChildren ?? 0 };
+      // Item a7271737 — persisted SOCSO / EIS category override. 'auto' reproduces the age/citizenship derivation
+      // below byte-for-byte; 'first'/'second' pin the SOCSO band; 'none' gates the respective scheme off (exactly
+      // like subject_to_socso=false / eis_eligible=false do — the setter also derives those legacy booleans from
+      // the category, so this is belt-and-braces and stays correct even for a legacy row that predates the column).
+      const socsoCatSel = (e.socsoCategory ?? 'auto') as 'auto' | 'first' | 'second' | 'none';
+      const eisCatSel = (e.eisCategory ?? 'auto') as 'auto' | 'none';
+      const autoSocsoCategory = ((age != null && age >= 60) || (e.epfCitizenship ?? 'citizen') === 'non_citizen' ? 2 : 1) as 1 | 2;
       const stOpts = {
         // SOCSO Second Category (employer Injury-only) for age 60+ AND foreign workers (#156); both
         // still pay the employee SKBBK leg. EIS (Act 800) is Malaysian 18–60 only — not 60+, not foreign.
-        socsoCategory: ((age != null && age >= 60) || (e.epfCitizenship ?? 'citizen') === 'non_citizen' ? 2 : 1) as 1 | 2,
+        // 'auto' keeps that derivation; 'first'/'second' force the band (item a7271737).
+        socsoCategory: (socsoCatSel === 'first' ? 1 : socsoCatSel === 'second' ? 2 : autoSocsoCategory) as 1 | 2,
         eisEligible:
-          (e.eisEligible ?? true) && (age == null || age < 60) && (e.epfCitizenship ?? 'citizen') !== 'non_citizen',
+          eisCatSel === 'none'
+            ? false
+            : (e.eisEligible ?? true) && (age == null || age < 60) && (e.epfCitizenship ?? 'citizen') !== 'non_citizen',
         // Item 5a461b99 — "Subject to SOCSO"/"Subject to SKBBK". Default on (a person with no statutory row
         // keeps today's SOCSO + mandatory SKBBK) so this is byte-identical for every currently-covered
-        // employee; unchecking exempts that scheme (zero reported contribution).
-        subjectToSocso: e.subjectToSocso ?? true,
+        // employee; unchecking exempts that scheme (zero reported contribution). Item a7271737: SOCSO category
+        // 'none' also gates SOCSO off (the two are kept in sync by the setter).
+        subjectToSocso: socsoCatSel === 'none' ? false : (e.subjectToSocso ?? true),
         subjectToSkbbk: e.subjectToSkbbk ?? true,
         resident: e.isResident ?? true,
         // Item 8b5334db — resolve the flat PCB rate from tax residency (falling back to isResident for a legacy

@@ -1408,6 +1408,13 @@
       "when": 1781862199000,
       "tag": "0200_identity_tax_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1781862200000,
+      "tag": "0201_socso_eis_category",
+      "breakpoints": true
     }
   ]
 }

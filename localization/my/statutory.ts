@@ -160,6 +160,15 @@ export const defaultSocsoEisNumber = (args: {
   return undefined;
 };
 
+// SOCSO / EIS contribution-category override (item a7271737). The category is the single per-scheme control on
+// the SOCSO & EIS card; the setter derives the legacy subject_to_socso / eis_eligible booleans from it.
+export const SOCSO_CATEGORIES = ['auto', 'first', 'second', 'none'] as const;
+export type SocsoCategory = (typeof SOCSO_CATEGORIES)[number];
+export const isSocsoCategory = (v: string): v is SocsoCategory => (SOCSO_CATEGORIES as readonly string[]).includes(v);
+export const EIS_CATEGORIES = ['auto', 'none'] as const;
+export type EisCategory = (typeof EIS_CATEGORIES)[number];
+export const isEisCategory = (v: string): v is EisCategory => (EIS_CATEGORIES as readonly string[]).includes(v);
+
 export type StatutoryInput = {
   personId: string;
   icNumber: string;
@@ -169,6 +178,13 @@ export type StatutoryInput = {
   taxCategory?: number; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
   numChildren?: number;
   eisEligible?: boolean;
+  /** SOCSO / EIS contribution-category override (item a7271737). The single per-scheme control on the SOCSO &
+   *  EIS card. `socsoCategory`: 'auto' keeps the kernel's age/citizenship derivation; 'first'/'second' force the
+   *  band; 'none' zeroes the SOCSO leg. `eisCategory`: 'auto' keeps the derivation; 'none' zeroes the EIS leg.
+   *  When set, the setter derives the legacy `subjectToSocso` / `eisEligible` booleans from it (= category
+   *  !== 'none') so a caller can send EITHER the category OR the boolean and stay consistent. */
+  socsoCategory?: SocsoCategory | string | null;
+  eisCategory?: EisCategory | string | null;
   /** SOCSO & EIS statutory controls (item 5a461b99). `subjectToSocso`/`subjectToSkbbk` gate whether that
    *  scheme is contributed at all (unchecked ⇒ zero). `employerBears*` keep the scheme computed + reported in
    *  full but fund the employee's share from employer cost instead of deducting it from net (payroll wiring). */
@@ -216,6 +232,19 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
   const epf = resolveEpfElection(p); // throws InvalidEpfElectionError on a below-floor election
   const zakat = resolveZakatElection(p); // throws InvalidZakatSetupError on a bad election
+  // SOCSO / EIS contribution-category override (item a7271737). The category is the single per-scheme control;
+  // when a caller sends it we honour it, otherwise we DERIVE it from the legacy boolean so pre-existing callers
+  // that only pass subjectToSocso / eisEligible still map onto a category ('none' <=> scheme off). We then derive
+  // the legacy booleans back FROM the resolved category so the persisted row is always internally consistent and
+  // every downstream reader (payroll kernel, reports) that still reads subject_to_socso / eis_eligible is unchanged.
+  const socsoCatRaw =
+    p.socsoCategory != null && isSocsoCategory(String(p.socsoCategory)) ? (String(p.socsoCategory) as SocsoCategory) : null;
+  const eisCatRaw =
+    p.eisCategory != null && isEisCategory(String(p.eisCategory)) ? (String(p.eisCategory) as EisCategory) : null;
+  const socsoCategory: SocsoCategory = socsoCatRaw ?? ((p.subjectToSocso ?? true) ? 'auto' : 'none');
+  const eisCategory: EisCategory = eisCatRaw ?? ((p.eisEligible ?? true) ? 'auto' : 'none');
+  const subjectToSocso = socsoCategory !== 'none';
+  const eisEligible = eisCategory !== 'none';
   const values = {
     icNumber: normalizeIC(p.icNumber),
     epfNumber: p.epfNumber ?? null,
@@ -223,13 +252,17 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     taxNumber: p.taxNumber ?? null,
     taxCategory,
     numChildren,
-    eisEligible: p.eisEligible ?? true,
+    // Item a7271737 — persisted category override + the legacy booleans DERIVED from it (kept in sync so
+    // downstream readers are unchanged). eisEligible doubles as the legacy "Subject to EIS".
+    eisEligible,
+    socsoCategory,
+    eisCategory,
     // SOCSO & EIS statutory controls (item 5a461b99). Defaults preserve existing behaviour: subject_to_socso
     // on, employer_bears_* off. subject_to_skbbk defaults to false (reporter-approved for new employees;
     // migration 0198 backfilled pre-existing rows to true) — but on the setter path we default an
     // UNSPECIFIED value to the STORED value so a plain statutory save never silently flips it (the setter
     // is a full-row overwrite). The action always sends the checkbox state, so this only guards partial callers.
-    subjectToSocso: p.subjectToSocso ?? true,
+    subjectToSocso,
     subjectToSkbbk: p.subjectToSkbbk ?? false,
     employerBearsSocso: p.employerBearsSocso ?? false,
     employerBearsEis: p.employerBearsEis ?? false,
@@ -259,8 +292,11 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
-        // Statutory-control flags read for the event's before/after (item 5a461b99 audit trail).
+        // Statutory-control flags read for the event's before/after (item 5a461b99 audit trail; item a7271737
+        // adds the socso/eis category before/after so a category change is reconstructable from the log alone).
         subjectToSocso: employeeStatutoryMy.subjectToSocso,
+        socsoCategory: employeeStatutoryMy.socsoCategory,
+        eisCategory: employeeStatutoryMy.eisCategory,
         eisEligible: employeeStatutoryMy.eisEligible,
         subjectToSkbbk: employeeStatutoryMy.subjectToSkbbk,
         employerBearsSocso: employeeStatutoryMy.employerBearsSocso,
@@ -314,6 +350,8 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
                 subjectToSocso: existing.subjectToSocso,
                 subjectToEis: existing.eisEligible,
                 subjectToSkbbk: existing.subjectToSkbbk,
+                socsoCategory: existing.socsoCategory,
+                eisCategory: existing.eisCategory,
                 employerBearsSocso: existing.employerBearsSocso,
                 employerBearsEis: existing.employerBearsEis,
                 employerBearsSkbbk: existing.employerBearsSkbbk,
@@ -323,6 +361,8 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
             subjectToSocso: values.subjectToSocso,
             subjectToEis: values.eisEligible,
             subjectToSkbbk: values.subjectToSkbbk,
+            socsoCategory: values.socsoCategory,
+            eisCategory: values.eisCategory,
             employerBearsSocso: values.employerBearsSocso,
             employerBearsEis: values.employerBearsEis,
             employerBearsSkbbk: values.employerBearsSkbbk,
