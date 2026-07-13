@@ -1297,7 +1297,9 @@ export function assignmentHistory(ctx: SessionContext, employmentId: string) {
       .select({
         id: assignment.id,
         department: department.name,
+        departmentId: assignment.departmentId,
         position: position.title,
+        positionId: assignment.positionId,
         status: assignment.status,
         employmentType: assignment.employmentType,
         validFrom: assignment.validFrom,

@@ -356,6 +356,8 @@
       "employerBearsSocso": "Chủ lao động chịu SOCSO",
       "employerBearsEis": "Chủ lao động chịu EIS",
       "employerBearsSkbbk": "Chủ lao động chịu SKBBK",
+      "employerBearsEpf": "Chủ lao động chịu đóng góp EPF",
+      "employerBearsEpfHint": "Khi được đánh dấu, khoản đóng góp EPF của nhân viên vẫn được tính và báo cáo đầy đủ, nhưng chủ lao động tài trợ thay vì khấu trừ từ lương ròng.",
       "taxResident": "Cư trú thuế",
       "taxResidentHint": "Người không cư trú nộp MTD cố định 30% (không giảm trừ)",
       "tp3SectionTitle": "Việc làm trước đó trong năm (TP3 / số dư đầu kỳ)",
@@ -645,7 +647,21 @@
         "category": "Danh mục",
         "readOnlyNote": "Công ty, Phòng ban, Vị trí, Bậc công việc, Loại hình việc làm và Trạng thái nhân viên được hiển thị để tham khảo. Quản lý chúng trong Thay đổi nghề nghiệp (điều chuyển) và tab Hồ sơ (bậc) để giữ nguyên lịch sử.",
         "superiorNote": "Đặt người quản lý (cấp trên) trên thẻ Tuyến báo cáo bên dưới.",
-        "save": "Lưu thông tin việc làm"
+        "save": "Lưu thông tin việc làm",
+        "assignmentGroup": "Phân công tổ chức",
+        "saveAssignment": "Lưu phân công tổ chức",
+        "assignmentNote": "Các thay đổi về Phòng ban, Chức vụ, Loại hình lao động và Trạng thái nhân viên được ghi lại kèm ngày hiệu lực và lưu trong lịch sử phân công, để hồ sơ trước đây vẫn chính xác. Bậc công việc được lưu vào hồ sơ nhân viên.",
+        "positionNone": "Không có",
+        "invalidValue": "Giá trị đã chọn không hợp lệ.",
+        "employmentType_full_time": "Toàn thời gian",
+        "employmentType_part_time": "Bán thời gian",
+        "employmentType_contract": "Hợp đồng",
+        "employmentType_intern": "Thực tập",
+        "status_active": "Đang làm việc",
+        "status_on_leave": "Đang nghỉ phép",
+        "status_probation": "Thử việc",
+        "status_offboarding": "Đang nghỉ việc",
+        "status_terminated": "Đã chấm dứt"
       },
       "documents": {
         "title": "Tài liệu",
@@ -2091,7 +2107,7 @@
       "subtitle": "Đợt bảng lương",
       "paymentSummary": "Tóm tắt thanh toán",
       "paymentSummaryTitle": "Tải xuống tệp CSV gồm nhân viên, ngân hàng, tài khoản và lương thực lãnh để tải lên ngân hàng thủ công.",
-      "generatePayslips": "Tạo phiếu lương",
+      "generatePayslips": "Xử lý bảng lương",
       "closeBatch": "Đóng đợt",
       "disclaimer": "<strong>Số liệu nháp.</strong> Các khoản theo luật được tính từ các quy tắc Malaysia đã xác minh có hiệu lực tại thời điểm cuối kỳ. Hãy kiểm tra mọi phiếu lương trước khi đóng — sau khi đóng, đợt sẽ không thể thay đổi. Các tệp ngân hàng (<mono>CP39 / KWSP / PERKESO</mono>) được tạo riêng.",
       "leaversTitle": "Nhân viên nghỉ việc trong kỳ này",
@@ -2243,6 +2259,7 @@
       "preChecksWarningBadge": "Cảnh báo",
       "preChecks": {
         "missingCompensation": "Không có hồ sơ lương hiện tại",
+        "missingBasicComponent": "Không có thành phần lương cơ bản",
         "missingStatutory": "Không có hồ sơ pháp định (EPF/SOCSO/PCB)",
         "missingBank": "Thông tin ngân hàng chưa đầy đủ"
       },
@@ -2733,7 +2750,31 @@
         "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
         "MISSING_SALARY": "Thiếu thông tin lương"
       },
-      "resumeStep1Note": "Bạn đang xem lại bản nháp quy trình tính lương. Công ty, tháng lương và chu kỳ lương của bản nháp này đã được cố định — hãy tiếp tục để xem lại hoặc điều chỉnh danh sách nhân viên. Để thay đổi tháng hoặc công ty, hãy xóa bản nháp này khỏi danh sách Quy trình tính lương và tạo một lần chạy mới."
+      "resumeStep1Note": "Bạn đang xem lại bản nháp quy trình tính lương. Công ty, tháng lương và chu kỳ lương của bản nháp này đã được cố định — hãy tiếp tục để xem lại hoặc điều chỉnh danh sách nhân viên. Để thay đổi tháng hoặc công ty, hãy xóa bản nháp này khỏi danh sách Quy trình tính lương và tạo một lần chạy mới.",
+      "stepValidation": "Xác thực bảng lương",
+      "stagePreparation": "Chuẩn bị",
+      "stageValidation": "Xác thực",
+      "stageProcess": "Xử lý",
+      "stageReview": "Xem lại",
+      "stageFinalize": "Hoàn tất",
+      "stageOf": "Giai đoạn {n} trên {total}",
+      "processPayroll": "Xử lý bảng lương",
+      "validationRunning": "Đang kiểm tra mức độ sẵn sàng của bảng lương…",
+      "validationFailed": "Không thể hoàn tất việc kiểm tra. Vui lòng quay lại và thử lại.",
+      "validationAllClear": "Tất cả dữ liệu bảng lương đã sẵn sàng.",
+      "validationAllClearHint": "Mọi nhân viên được chọn đều có đầy đủ thông tin — bạn có thể xử lý bảng lương.",
+      "validationBlockerTitle": "{n} vấn đề phải được khắc phục trước khi xử lý",
+      "validationBlockerHint": "Không thể tiếp tục bảng lương cho đến khi các vấn đề này được khắc phục.",
+      "validationWarningTitle": "{n} mục cần bạn chú ý",
+      "validationWarningHint": "Bạn vẫn có thể xử lý bảng lương, nhưng hãy xem lại các mục này trước.",
+      "validationBlockerBadge": "Chặn xử lý",
+      "validationWarningBadge": "Cảnh báo",
+      "validationCheck": {
+        "missingCompensation": "Không có bản ghi lương hiện tại",
+        "missingBasicComponent": "Không có thành phần lương cơ bản",
+        "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+      }
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
 import { scopedAdmin } from '@/lib/scope';
-import { createAdditionalRun, createBatch, updateBatchScope } from '@/core/payroll';
+import { createAdditionalRun, createBatch, preProcessAdvisoryForSelection, updateBatchScope, type PreProcessAdvisory } from '@/core/payroll';
 import { getActivePayrollCycle } from '@/core/payroll-cycle';
 import { listEmployees, listEmployeesForPayrollRun, type PayrollRunEmployeeRow } from '@/core/read';
 import { encodeRunGroupResult, runMultiCompanyPayroll } from '@/core/payroll-run-group';
@@ -19,6 +19,36 @@ export async function fetchPayrollRunEmployees(
   const ids = (Array.isArray(companyIds) ? companyIds : [companyIds]).filter(Boolean);
   if (ids.length === 0 || !/^\d{4}-\d{2}$/.test(payPeriod)) return [];
   return listEmployeesForPayrollRun(s, ids, payPeriod);
+}
+
+const EMPTY_ADVISORY: PreProcessAdvisory = {
+  missingCompensation: [],
+  missingBasicComponent: [],
+  missingStatutory: [],
+  missingBank: [],
+};
+
+/**
+ * Payroll Process wizard — Validation step (R37 70764928). Runs the SAME pre-processing checks the batch
+ * page and the terminal Process action enforce, but BEFORE the batch exists, over the wizard's live
+ * selection (companies + period + touched employee scope). The client renders the result green/amber/red
+ * and blocks advance to Process when there are blockers (missing compensation / missing BASIC component).
+ * Read-only — no state mutation, no event (the durable event is appended when the run is actually created).
+ */
+export async function validatePayrollSelection(input: {
+  companyIds: string[];
+  payPeriod: string;
+  employmentIds?: string[];
+}): Promise<PreProcessAdvisory> {
+  const s = await getSession();
+  const companyIds = (input.companyIds ?? []).filter(Boolean);
+  if (companyIds.length === 0 || !/^\d{4}-\d{2}$/.test(input.payPeriod)) return EMPTY_ADVISORY;
+  const employmentIds = (input.employmentIds ?? []).filter(Boolean);
+  return preProcessAdvisoryForSelection(s, {
+    companyIds,
+    payPeriod: input.payPeriod,
+    employmentIds: employmentIds.length ? employmentIds : undefined,
+  });
 }
 
 /**

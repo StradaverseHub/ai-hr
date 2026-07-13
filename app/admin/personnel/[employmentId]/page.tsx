@@ -32,6 +32,7 @@ import {
   setComplianceFieldsAction,
   setContactAddressAction,
   setEmergencyContactAction,
+  setEmploymentAssignmentAction,
   setEmploymentComponentAction,
   setEmploymentInfoAction,
   setLocationAction,
@@ -58,7 +59,7 @@ import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
 import { listShiftsForTenant } from '@/core/roster';
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
 import { setDefaultShiftAction } from './actions';
-import { listHolidayGroups } from '@/core/admin';
+import { listHolidayGroups, listPositions } from '@/core/admin';
 import { listLocations } from '@/core/location';
 import { listClockingLocations, listEmployeeClockingLocations } from '@/core/clocking-location';
 import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actions';
@@ -158,6 +159,9 @@ export default async function EmployeePage({
   const statutory = admin ? await getStatutoryProfileMY(s, emp.personId) : null;
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
   const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
+  // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
+  const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
   // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
   const locations = admin ? await listLocations(s, [emp.companyId]) : [];
   // Current selection of the unified field: a group wins, else a single state, else company default.
@@ -1290,6 +1294,18 @@ export default async function EmployeePage({
               employerRate={statutory?.epfEmployerRate ? Number(statutory.epfEmployerRate) * 100 : null}
             />
           </div>
+          {/* Item 0d9bb2da — "Employer bears EPF Contribution". Mirrors the employer-bears SOCSO/EIS/tax
+              controls: when ticked, the EPF employee + employer legs are still computed + reported in full,
+              but the employee's EPF share is funded from employer cost instead of being deducted from net. */}
+          <label className="flex items-center gap-2 text-sm" title={t('employerBearsEpfHint')}>
+            <input
+              type="checkbox"
+              name="employerBearsEpf"
+              defaultChecked={statutory ? statutory.employerBearsEpf : false}
+              className="size-4 rounded"
+            />
+            {t('employerBearsEpf')}
+          </label>
         </fieldset>
 
         {/* Group 3 — dedicated SOCSO & EIS information card (item 5a461b99): the shared SOCSO & EIS
@@ -1588,43 +1604,84 @@ export default async function EmployeePage({
   // Employment Information enhancement (2323f671) — the Employment tab's primary master-data card. Groups
   // Employment Dates / Organisation / Job / Reporting into ONE admin-gated <form> → setEmploymentInfoAction.
   // NEW fields (probation/notice periods, confirmation & resignation dates, org dimensions, category, +
-  // editable Hire Date) are captured here. Effective-dated fields (Company, Department, Position, Employment
-  // Type, Employee Status) are shown READ-ONLY from the current open assignment with a pointer to Career
-  // Movement — editing them here would corrupt assignment history. Job Grade is read-only too (Profile owns
-  // the editable control). The superior (Reporting To) stays the single editable control on the Reporting
-  // Lines card below; this card only points to it, so there is no duplicate superior editor.
+  // editable Hire Date) are captured here.
+  //
+  // 594323a6 — the five organisation fields (Department, Position, Job Grade, Employment Type, Employee
+  // Status) are now EDITABLE from this tab via a dedicated sibling <form> → setEmploymentAssignmentAction.
+  // Department/Position/Employment Type/Employee Status are effective-dated (CLOSE+INSERT on `assignment`,
+  // preserving history + an audited event); Job Grade routes to setEmploymentGrade (owns employment.gradeId).
+  // Company stays read-only (moving companies is a distinct lifecycle event, not an inline edit). Two sibling
+  // forms in one Card is intentional — HTML forms can't nest, so the assignment editor is its own <form>.
+  const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
+  const ASSIGNMENT_STATUS_OPTIONS: readonly string[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
   const employmentInfoCard = admin ? (
     <Card id="section-employment-info">
       <SectionHeader title={t('employmentInfo.title')} />
-      {/* Read-only reference block: effective-dated / other-tab-owned fields. Kept visible so this card is a
-          single view of the employment profile, per the CR ("maintain all employment info from one place"). */}
-      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-b border-border p-4 text-sm sm:grid-cols-4">
-        <div>
-          <dt className="text-xs text-muted-foreground">{t('employmentInfo.company')}</dt>
-          <dd className="font-medium text-foreground">{emp.company}</dd>
+      {/* 594323a6 — editable organisation assignment. Effective-dated fields + Job Grade in one Save. */}
+      <form action={setEmploymentAssignmentAction} className="space-y-3 border-b border-border p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Field label={t('employmentInfo.company')}>
+            <input value={emp.company} disabled className={inputCls} aria-readonly="true" />
+          </Field>
+          <Field label={t('employmentInfo.department')}>
+            <select name="departmentId" defaultValue={current?.departmentId ?? ''} className={inputCls}>
+              <option value="">{t('employmentInfo.positionNone')}</option>
+              {departments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('employmentInfo.position')}>
+            <select name="positionId" defaultValue={current?.positionId ?? ''} className={inputCls}>
+              <option value="">{t('employmentInfo.positionNone')}</option>
+              {positions.map((pos) => (
+                <option key={pos.id} value={pos.id}>
+                  {pos.title}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('employmentInfo.jobGrade')}>
+            <select name="gradeId" defaultValue={emp.gradeId ?? ''} className={inputCls}>
+              <option value="">{t('employmentInfo.positionNone')}</option>
+              {grades.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('employmentInfo.employmentType')}>
+            <select name="employmentType" defaultValue={current?.employmentType ?? ''} className={inputCls}>
+              {EMPLOYMENT_TYPE_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time')}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('employmentInfo.employeeStatus')}>
+            <select name="status" defaultValue={current?.status ?? ''} className={inputCls}>
+              {ASSIGNMENT_STATUS_OPTIONS.map((v) => (
+                <option key={v} value={v}>
+                  {t(`employmentInfo.status_${v}` as 'employmentInfo.status_active')}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={t('effectiveDate')}>
+            <input name="effectiveDate" type="date" required defaultValue={today} className={inputCls} />
+          </Field>
         </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{t('employmentInfo.department')}</dt>
-          <dd className="font-medium text-foreground">{current?.department ?? '—'}</dd>
+        <p className="text-xs text-muted-foreground">{t('employmentInfo.assignmentNote')}</p>
+        <div className="flex justify-end">
+          <button className={btnPrimary}>{t('employmentInfo.saveAssignment')}</button>
         </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{t('employmentInfo.position')}</dt>
-          <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{t('employmentInfo.jobGrade')}</dt>
-          <dd className="font-medium text-foreground">{emp.gradeName ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{t('employmentInfo.employmentType')}</dt>
-          <dd className="font-medium capitalize text-foreground">{current?.employmentType ?? '—'}</dd>
-        </div>
-        <div>
-          <dt className="text-xs text-muted-foreground">{t('employmentInfo.employeeStatus')}</dt>
-          <dd className="font-medium capitalize text-foreground">{current?.status ?? '—'}</dd>
-        </div>
-        <p className="col-span-2 text-xs text-muted-foreground sm:col-span-4">{t('employmentInfo.readOnlyNote')}</p>
-      </dl>
+      </form>
 
       <form action={setEmploymentInfoAction} className="space-y-6 p-4">
         <input type="hidden" name="employmentId" value={emp.employmentId} />

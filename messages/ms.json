@@ -356,6 +356,8 @@
       "employerBearsSocso": "Majikan menanggung SOCSO",
       "employerBearsEis": "Majikan menanggung EIS",
       "employerBearsSkbbk": "Majikan menanggung SKBBK",
+      "employerBearsEpf": "Majikan menanggung Caruman EPF",
+      "employerBearsEpfHint": "Apabila ditanda, caruman EPF pekerja masih dikira dan dilaporkan sepenuhnya, tetapi majikan yang membiayainya dan bukan ditolak daripada gaji bersih.",
       "taxResident": "Pemastautin cukai",
       "taxResidentHint": "Bukan pemastautin bayar MTD rata 30% (tiada pelepasan)",
       "tp3SectionTitle": "Pekerjaan sebelumnya tahun ini (TP3 / baki pembukaan)",
@@ -645,7 +647,21 @@
         "category": "Kategori",
         "readOnlyNote": "Syarikat, Jabatan, Jawatan, Gred Jawatan, Jenis Pekerjaan dan Status Pekerja dipaparkan sebagai rujukan. Uruskannya di bawah Pergerakan Kerjaya (pemindahan) dan tab Profil (gred) untuk mengekalkan sejarahnya.",
         "superiorNote": "Tetapkan penyelia (atasan) pada kad Barisan pelaporan di bawah.",
-        "save": "Simpan maklumat pekerjaan"
+        "save": "Simpan maklumat pekerjaan",
+        "assignmentGroup": "Penetapan Organisasi",
+        "saveAssignment": "Simpan penetapan organisasi",
+        "assignmentNote": "Perubahan pada Jabatan, Jawatan, Jenis Pekerjaan dan Status Pekerja direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah penetapan, supaya rekod lampau kekal tepat. Gred Pekerjaan disimpan dalam rekod pekerja.",
+        "positionNone": "Tiada",
+        "invalidValue": "Nilai yang dipilih tidak sah.",
+        "employmentType_full_time": "Sepenuh masa",
+        "employmentType_part_time": "Separuh masa",
+        "employmentType_contract": "Kontrak",
+        "employmentType_intern": "Pelatih",
+        "status_active": "Aktif",
+        "status_on_leave": "Bercuti",
+        "status_probation": "Percubaan",
+        "status_offboarding": "Pemberhentian",
+        "status_terminated": "Ditamatkan"
       },
       "documents": {
         "title": "Dokumen",
@@ -2091,7 +2107,7 @@
       "subtitle": "Kelompok gaji",
       "paymentSummary": "Ringkasan pembayaran",
       "paymentSummaryTitle": "Muat turun CSV pekerja, bank, akaun dan gaji bersih untuk muat naik bank secara manual.",
-      "generatePayslips": "Jana slip gaji",
+      "generatePayslips": "Proses Gaji",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
       "leaversTitle": "Pekerja berhenti tempoh ini",
@@ -2243,6 +2259,7 @@
       "preChecksWarningBadge": "Amaran",
       "preChecks": {
         "missingCompensation": "Tiada rekod gaji semasa",
+        "missingBasicComponent": "Tiada komponen gaji asas",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap"
       },
@@ -2733,7 +2750,31 @@
         "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
         "MISSING_SALARY": "Maklumat gaji tiada"
       },
-      "resumeStep1Note": "Anda sedang menyemak draf proses gaji. Syarikat, bulan gaji dan kitaran gaji adalah tetap untuk draf ini — teruskan untuk menyemak atau meminda pemilihan pekerja. Untuk menukar bulan atau syarikat, padam draf ini daripada senarai Proses Gaji dan cipta larian baharu."
+      "resumeStep1Note": "Anda sedang menyemak draf proses gaji. Syarikat, bulan gaji dan kitaran gaji adalah tetap untuk draf ini — teruskan untuk menyemak atau meminda pemilihan pekerja. Untuk menukar bulan atau syarikat, padam draf ini daripada senarai Proses Gaji dan cipta larian baharu.",
+      "stepValidation": "Pengesahan Gaji",
+      "stagePreparation": "Persediaan",
+      "stageValidation": "Pengesahan",
+      "stageProcess": "Proses",
+      "stageReview": "Semakan",
+      "stageFinalize": "Muktamad",
+      "stageOf": "Peringkat {n} daripada {total}",
+      "processPayroll": "Proses Gaji",
+      "validationRunning": "Menyemak kesediaan gaji…",
+      "validationFailed": "Semakan kesediaan tidak dapat diselesaikan. Kembali dan cuba lagi.",
+      "validationAllClear": "Semua data gaji sudah sedia.",
+      "validationAllClearHint": "Setiap pekerja yang dipilih mempunyai maklumat lengkap — anda boleh memproses gaji.",
+      "validationBlockerTitle": "{n} isu perlu dibetulkan sebelum memproses",
+      "validationBlockerHint": "Gaji tidak boleh diteruskan sehingga ini dibetulkan.",
+      "validationWarningTitle": "{n} perkara memerlukan perhatian anda",
+      "validationWarningHint": "Anda masih boleh memproses gaji, tetapi semak perkara ini dahulu.",
+      "validationBlockerBadge": "Menghalang pemprosesan",
+      "validationWarningBadge": "Amaran",
+      "validationCheck": {
+        "missingCompensation": "Tiada rekod gaji semasa",
+        "missingBasicComponent": "Tiada komponen gaji asas",
+        "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
+        "missingBank": "Butiran bank tidak lengkap"
+      }
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
