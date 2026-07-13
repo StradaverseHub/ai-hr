@@ -14,10 +14,10 @@
  *   b. A non-blank reason succeeds: Closed → Processed, a payroll_status_history 'unlock' row is
  *      written (from/to/actor/trimmed-reason), and the payroll-batch.unlocked event carries the reason.
  *
- * Scope note: a single-run month cascades its pay_period to 'closed' on closeBatch, and reopening a
- * closed pay_period is guarded independently (migration 0067's pay_period_immutable_when_closed). That
- * period-reopen path is NOT what this item changes (the item is strictly "reason mandatory"), so (b)
- * reopens the period out-of-band first to exercise the mandatory-reason + status-flip + audit path in
+ * Scope note: a single-run month cascades its pay_period to 'closed' on closeBatch. Reopening it is
+ * guarded independently (migration 0067's pay_period_immutable_when_closed); migration 0202 adds the
+ * app.unlock_pay_period escape hatch so unlockClosedBatch reopens the period itself. Test (b) exercises
+ * the mandatory-reason + status-flip + real period-reopen + audit path in
  * isolation.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
@@ -97,14 +97,15 @@ async function closedBatch(period: string) {
   return batchId;
 }
 
-/** Reopen the (cascaded-closed) parent pay_period out-of-band so the unlock under test does not also
- *  hit the independent pay_period immutability guard (0067) — see the file-level scope note. */
-async function reopenPeriodOf(batchId: string) {
+/** Read the parent pay_period status for a batch (proves the real reopen path, migration 0202). */
+async function periodStatusOf(batchId: string): Promise<string> {
   const b = await batchRow(batchId);
-  await owner.db.transaction(async (t) => {
-    await t.execute(sql`SET LOCAL session_replication_role = replica`); // suspend the immutability trigger
-    await t.update(schema.payPeriod).set({ status: 'open' }).where(eq(schema.payPeriod.id, b.payPeriodId));
-  });
+  const [p] = await owner.db
+    .select({ status: schema.payPeriod.status })
+    .from(schema.payPeriod)
+    .where(eq(schema.payPeriod.id, b.payPeriodId))
+    .limit(1);
+  return p!.status;
 }
 
 describe('Unlock closed payroll — mandatory reason (unlockClosedBatch)', () => {
@@ -143,14 +144,17 @@ describe('Unlock closed payroll — mandatory reason (unlockClosedBatch)', () =>
 
   it('b. a non-blank reason succeeds: Closed → Processed, history row + event carry the trimmed reason', async () => {
     const batchId = await closedBatch('2026-06');
-    await reopenPeriodOf(batchId); // isolate from the independent pay_period-reopen guard (see scope note)
     const su = superCtx();
     const { code } = await requestUnlockChallenge(su, { batchId });
 
+    // The single-run month cascaded its pay_period closed; the real unlock reopens it through the
+    // app.unlock_pay_period escape hatch (migration 0202) — no out-of-band trigger suspension needed.
+    expect(await periodStatusOf(batchId)).toBe('closed');
     await unlockClosedBatch(su, { batchId, reason: '  fix keyed OT  ', code });
 
-    // Status flipped.
+    // Status flipped, and the parent period was reopened by the unlock itself.
     expect((await batchRow(batchId)).status).toBe('processed');
+    expect(await periodStatusOf(batchId)).toBe('open');
 
     // Exactly one audited 'unlock' history row with the trimmed reason + the real actor.
     const rows = await unlockHistoryRows(batchId);

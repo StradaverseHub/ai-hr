@@ -3879,6 +3879,10 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
       .limit(1);
     const reopenedPeriod = period?.status === 'closed';
     if (reopenedPeriod) {
+      // Reopening a closed period is blocked by the guard_closed_pay_period trigger (migration 0067) unless we
+      // signal a controlled unlock via the app.unlock_pay_period escape hatch (migration 0202) — same pattern as
+      // the batch guard's app.unlock_batch above. Transaction-local; cleared at COMMIT.
+      await tx.execute(sql`select set_config('app.unlock_pay_period', ${batch.payPeriodId}, true)`);
       await tx.update(payPeriod).set({ status: 'open' }).where(eq(payPeriod.id, batch.payPeriodId));
     }
 
