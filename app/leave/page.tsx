@@ -1,9 +1,12 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import {
-  leaveBalancesAll,
+  leaveBalances,
+  leaveEntitlementBreakdown,
+  leaveRequestsFor,
+  myEmployment,
   listCompanies,
   listDepartments,
   listEmployees,
@@ -22,6 +25,11 @@ import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { AdminCancelLeaveDialog } from '@/components/leave/admin-cancel-leave-dialog';
 import { EditLeaveDialog } from '@/components/leave/edit-leave-dialog';
 import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
+import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
+import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
+// deriveBalanceRow lives in a SERVER-SAFE module (no 'use client'), so this RSC can call it at render
+// time — importing it from the client table would trip the RSC boundary guard (b7d84266). R37 e5a158d3.
+import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
 import { LeaveDurationFields } from '@/components/leave-duration-fields';
 import { durationLabel } from '@/lib/leave-duration';
 import {
@@ -82,10 +90,14 @@ export default async function LeavePage({
     pendingWith?: string;
     sort?: string;
     dir?: string;
+    // R37 e5a158d3: as-at date for the (relocated) detailed leave-balance table's entitlement breakdown.
+    asOf?: string;
   }>;
 }) {
   const { s: session, scopeIds } = await scopedSession();
   const t = await getTranslations('leave');
+  // R37 e5a158d3: the relocated detailed balance table reuses the `me` namespace's as-at-form + table labels.
+  const tMe = await getTranslations('me');
   const admin = isAdmin(session);
   // R5 Build #2 (Fix B): MYT "today" so the "hasn't started yet" cut-off matches the service (Malaysia time),
   // not a UTC clock that would allow/block a day near KL midnight. The default-date on the apply form uses it too.
@@ -136,12 +148,32 @@ export default async function LeavePage({
       pendingWith
     );
 
-  const [employees, leaveTypes, balances] = await Promise.all([
+  const locale = await getLocale();
+  const [employees, leaveTypes, me] = await Promise.all([
     listEmployees(session, scopeIds),
     listLeaveTypes(session),
-    leaveBalancesAll(session, scopeIds),
+    // R37 e5a158d3: the balance view is now the viewer's OWN detailed table (was an all-employee pivot).
+    myEmployment(session),
   ]);
   const active = employees.filter((e) => !e.terminatedOn);
+
+  // ── Detailed leave-balance table (relocated from /me · R37 e5a158d3) ─────────────────────────────────
+  // The self-service balance view is the same dense Workday-style table the /me Leave tab used to carry:
+  // per-type rows via deriveBalanceRow + a per-row EntitlementBreakdown side-sheet + ONE shared as-at-date
+  // GET form. Scoped to the viewer via the per-employment leaveBalances (NOT the all-employee pivot), so
+  // permissions/calculations are unchanged and identical to what /me showed. An invalid/empty ?asOf= ⇒ today.
+  const breakdownAsOf = sp.asOf && /^\d{4}-\d{2}-\d{2}$/.test(sp.asOf) ? sp.asOf : today;
+  const selfBalances = me ? await leaveBalances(session, me.employmentId, locale) : [];
+  const selfRequests = me ? await leaveRequestsFor(session, me.employmentId, locale) : [];
+  const selfBreakdowns = me
+    ? await Promise.all(
+        selfBalances.map((b) => leaveEntitlementBreakdown(session, me.employmentId, b.leaveTypeId, breakdownAsOf, locale)),
+      )
+    : [];
+  const breakdownByType = new Map(selfBreakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
+  // leaveBalances already dropped visible_to_employee=false types; still filter the default-hidden placement
+  // (mirrors /me detailedBalances). Presentation only — no calc change.
+  const detailedBalances = selfBalances.filter((b) => b.placement !== 'hidden');
 
   // History: admins get the paginated, filterable, sortable read (over any population size); a
   // manager/employee keeps the untouched self-service view (their OWN requests, capped list). Option
@@ -190,20 +222,6 @@ export default async function LeavePage({
         const mine = requests.filter((r) => session.personId != null && r.personId === session.personId);
         return { rows: mine, total: mine.length, companies: [], businessUnits: [], departments: [], locations: [], approvers: [] };
       })();
-
-  // Balances are personal: admins see everyone in scope; everyone else sees ONLY their own.
-  const visibleBalances = admin ? balances : balances.filter((b) => b.personId === session.personId);
-
-  // Pivot balances: one row per employee, one column per leave type seen.
-  const balTypes = [...new Map(visibleBalances.map((b) => [b.leaveTypeId, b.leaveType])).entries()].sort(
-    (a, b) => a[1].localeCompare(b[1]),
-  );
-  const balByEmp = new Map<string, { name: string; cells: Map<string, (typeof balances)[number]> }>();
-  for (const b of visibleBalances) {
-    const e = balByEmp.get(b.employmentId) ?? { name: b.name, cells: new Map() };
-    e.cells.set(b.leaveTypeId, b);
-    balByEmp.set(b.employmentId, e);
-  }
 
   // ── Filter panel + query-string helpers (admin only; feedback 0773bda9) ──────────────────────────────
   // The active filter set WITHOUT sort/dir/page — the base for every generated link and the search-form's
@@ -486,76 +504,65 @@ export default async function LeavePage({
         </div>
       )}
 
+      {/* Detailed leave-balance table — relocated from the /me Leave tab (R37 e5a158d3). Single balance
+          view (replaced the old all-employee pivot): the viewer's OWN dense Workday-style table with a
+          per-type EntitlementBreakdown side-sheet and ONE shared as-at-date GET form. Same source
+          (leaveBalances + leaveEntitlementBreakdown) + same deriveBalanceRow gating as /me, so figures,
+          breakdowns, calculations and visibility are unchanged. */}
       <Card className="overflow-hidden" data-tour="leave-balance">
         <div className="border-b border-border px-4 py-3 text-sm font-medium">
-          {admin ? t('balancesTitle') : t('myBalancesTitle')}
+          {t('myBalancesTitle')}
           <span className="ml-2 font-normal text-muted-foreground">{t('balancesSubtitle')}</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 font-medium">{t('colEmployee')}</th>
-                {balTypes.map(([id, name]) => (
-                  <th key={id} className="px-4 py-2 text-right font-medium">
-                    {name.replace(/\s*leave$/i, '')}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {[...balByEmp.entries()].map(([empId, e]) => (
-                <tr key={empId}>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2.5">
-                      <Avatar name={e.name} className="size-7 text-[10px]" />
-                      <span className="font-medium">{e.name}</span>
-                    </div>
-                  </td>
-                  {balTypes.map(([typeId]) => {
-                    const b = e.cells.get(typeId);
-                    return (
-                      <td
-                        key={typeId}
-                        className="px-4 py-2.5 text-right tabular-nums"
-                        title={b ? t('balanceCellTitle', { taken: b.taken, pending: b.pending }) : undefined}
-                      >
-                        {b ? (
-                          <>
-                            {b.accrued > 0 || b.balance > 0 ? (
-                              <>
-                                <span className={b.available <= 0 ? 'font-semibold text-rose-600 dark:text-rose-400' : 'font-semibold'}>
-                                  {b.available}
-                                </span>
-                                <span className="text-muted-foreground"> / {b.accrued}</span>
-                              </>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                            {b.pending > 0 && (
-                              <span className="ml-1 text-[10px] font-medium uppercase text-amber-600 dark:text-amber-400">
-                                {t('pendBadge', { count: b.pending })}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-              {balByEmp.size === 0 && (
-                <tr>
-                  <td colSpan={1 + balTypes.length} className="px-4 py-8 text-center text-muted-foreground">
-                    {t('balancesEmpty')}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {me == null || detailedBalances.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">{t('balancesEmpty')}</div>
+        ) : (
+          <div className="space-y-3 p-4">
+            {/* ONE shared as-at date GET form driving every row's breakdown (mirrors /me). Invalid/empty ⇒ today. */}
+            <form method="GET" action="/leave" className="flex flex-wrap items-end gap-2">
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {tMe('leaveBalanceTable.asAtDate')}
+                <input
+                  type="date"
+                  name="asOf"
+                  defaultValue={breakdownAsOf}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+                />
+              </label>
+              <button
+                type="submit"
+                className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
+              >
+                {tMe('leaveBalanceTable.apply')}
+              </button>
+            </form>
+            <LeaveBalanceTable
+              rows={detailedBalances.map((b) => {
+                // deriveBalanceRow applies the ESS available/taken/overutilized gating; the Entitlement
+                // Calculation Breakdown side-sheet is its own ESS toggle — off ⇒ the expander doesn't mount.
+                const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
+                const bd = breakdownByType.get(b.leaveTypeId);
+                return {
+                  ...deriveBalanceRow(b, bd ?? null),
+                  detail:
+                    showBreakdown && bd ? (
+                      <EntitlementBreakdown
+                        data={bd}
+                        summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
+                        upcoming={selfRequests
+                          .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
+                          .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
+                        visual={{ color: b.color, icon: b.icon, code: b.code }}
+                        asOf={breakdownAsOf}
+                        action="/leave"
+                        applyEssConfig
+                      />
+                    ) : undefined,
+                };
+              })}
+            />
+          </div>
+        )}
       </Card>
 
       <Card className="overflow-hidden" data-tour="leave-requests">
