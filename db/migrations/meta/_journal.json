@@ -1422,6 +1422,13 @@
       "when": 1781862201000,
       "tag": "0202_pay_period_unlock_escape",
       "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1781862202000,
+      "tag": "0203_attendance_rule_library",
+      "breakpoints": true
     }
   ]
 }

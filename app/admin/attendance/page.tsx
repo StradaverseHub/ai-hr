@@ -1,7 +1,10 @@
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import { requireAdmin } from '@/lib/authz';
+import { getScopeIds } from '@/lib/scope';
+import { listCompanies } from '@/core/read';
 import { listShiftsForTenant } from '@/core/roster';
+import { listAttendanceRules } from '@/core/attendance-rule';
 import { formatBreakDisplay } from '@/core/shift-break-display';
 import { Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
 import { ShiftTimeFields } from '@/components/shift-time-fields';
@@ -39,6 +42,13 @@ export default async function ShiftSettingsPage({
   // The shared library — every non-archived shift in the tenant (same set the roster + personnel pickers use).
   const shifts = await listShiftsForTenant(s);
   const editing = editShift ? shifts.find((sh) => sh.id === editShift) : undefined;
+
+  // 88e94371 — the attendance-rule dropdown options for the shift form. Rules are company-scoped; show every
+  // rule in the admin's scope. Inactive rules are hidden unless the edited shift already points at one.
+  const companies = await listCompanies(s);
+  const scopeIds = await getScopeIds(companies.map((c) => c.id));
+  const allRules = await listAttendanceRules(s, scopeIds);
+  const ruleOptions = allRules.filter((r) => r.status === 'active' || r.id === editing?.ruleId);
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -240,46 +250,25 @@ export default async function ShiftSettingsPage({
                 aria-label={t('earlyLeaveGraceLabel')}
               />
             </Field>
-            {/* R17 3e8350db — per-shift "OT Rules": eligibility + an optional minimum block and daily cap.
-                Statutory multipliers (1.5×/2×/3×, the RM4,000 ceiling) stay in Attendance policy (overtime
-                rates) — a shift can shape ITS overtime accrual but never pay below the law. Blank min/cap ⇒ none. */}
-            <fieldset className="w-full">
-              <legend className="mb-1.5 text-sm font-medium text-foreground">{t('otRulesLabel')}</legend>
-              <div className="flex flex-wrap items-end gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10 has-[:checked]:text-primary">
-                  <input
-                    type="checkbox"
-                    name="otEligible"
-                    defaultChecked={editing ? (editing.otRule?.eligible ?? true) : true}
-                    className="h-3.5 w-3.5 accent-primary"
-                  />
-                  {t('otEligibleLabel')}
-                </label>
-                <Field label={t('otMinLabel')}>
-                  <input
-                    name="otMinMinutes"
-                    type="number"
-                    min={0}
-                    placeholder={t('otNone')}
-                    defaultValue={editing?.otRule?.minMinutes != null ? String(editing.otRule.minMinutes) : ''}
-                    className={`${inputCls} w-28`}
-                    aria-label={t('otMinLabel')}
-                  />
-                </Field>
-                <Field label={t('otCapLabel')}>
-                  <input
-                    name="otDailyCapMinutes"
-                    type="number"
-                    min={0}
-                    placeholder={t('otNone')}
-                    defaultValue={editing?.otRule?.dailyCapMinutes != null ? String(editing.otRule.dailyCapMinutes) : ''}
-                    className={`${inputCls} w-28`}
-                    aria-label={t('otCapLabel')}
-                  />
-                </Field>
-              </div>
-              <p className="mt-1.5 text-xs text-muted-foreground">{t('otRulesHint')}</p>
-            </fieldset>
+            {/* 88e94371 — the shift's attendance-calculation rule ("Lateness, Early Out & Overtime Settings").
+                Replaces the old per-shift OT-Rules field: OT shaping + lateness/early-out grace now live in the
+                reusable rule library. Blank ⇒ the company Standard rule is applied automatically. */}
+            <Field label={t('ruleFieldLabel')}>
+              <select
+                name="attendanceRuleId"
+                defaultValue={editing?.ruleId ?? ''}
+                className={`${inputCls} w-56`}
+                aria-label={t('ruleFieldLabel')}
+              >
+                <option value="">{t('ruleFieldStandardDefault')}</option>
+                {ruleOptions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.isDefault ? `${r.name} ${t('ruleDefaultSuffix')}` : r.name}
+                    {r.status === 'inactive' ? ` ${t('ruleInactiveSuffix')}` : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <select
               name="differentialKind"
               defaultValue={editing?.differential?.kind ?? ''}

@@ -45,14 +45,6 @@ function shiftFields(formData: FormData) {
   // R17 3e8350db — per-shift "OT Rules". A checkbox posts otEligible='on' when TICKED; an unchecked box
   // posts nothing ⇒ ineligible. Optional min-block / daily-cap minutes. The service collapses a fully-default
   // rule (eligible, no min, no cap) back to null, so a shift that touched none of these stays legacy.
-  const otEligible = formData.get('otEligible') != null;
-  const otMinRaw = String(formData.get('otMinMinutes') ?? '').trim();
-  const otCapRaw = String(formData.get('otDailyCapMinutes') ?? '').trim();
-  const otRule = {
-    eligible: otEligible,
-    ...(otMinRaw === '' ? {} : { minMinutes: Number(otMinRaw) }),
-    ...(otCapRaw === '' ? {} : { dailyCapMinutes: Number(otCapRaw) }),
-  };
   const weeklyPattern = formData
     .getAll('weeklyPattern')
     .map((v) => Number(v))
@@ -73,7 +65,10 @@ function shiftFields(formData: FormData) {
     // R17 3e8350db — optional per-shift grace windows (blank ⇒ null ⇒ inherit company-policy behaviour).
     lateGraceMinutes: lateGraceRaw === '' ? null : Number(lateGraceRaw),
     earlyLeaveGraceMinutes: earlyLeaveGraceRaw === '' ? null : Number(earlyLeaveGraceRaw),
-    otRule,
+    // 88e94371 — OT shaping moved to the attendance-rule library; the shift picks a rule via this dropdown.
+    // Blank ⇒ null (fall back to the company Standard rule). otRule is intentionally NOT posted here, so the
+    // service preserves any pre-existing per-shift OT-shape override untouched.
+    ruleId: String(formData.get('attendanceRuleId') ?? '').trim() || null,
     weeklyPattern: weeklyPattern.length > 0 ? weeklyPattern : null,
     differential,
   };
