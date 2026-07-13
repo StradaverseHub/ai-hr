@@ -2728,7 +2728,31 @@
         "SYSTEM_VALIDATION_ERROR": "系统验证错误",
         "MISSING_SALARY": "缺少薪资信息"
       },
-      "resumeStep1Note": "您正在查看薪资流程草稿。此草稿的公司、薪资月份和薪资周期已固定——请继续查看或修改员工选择。如需更改月份或公司，请在薪资流程列表中删除此草稿并创建新的薪资运行。"
+      "resumeStep1Note": "您正在查看薪资流程草稿。此草稿的公司、薪资月份和薪资周期已固定——请继续查看或修改员工选择。如需更改月份或公司，请在薪资流程列表中删除此草稿并创建新的薪资运行。",
+      "stepValidation": "薪资验证",
+      "stagePreparation": "准备",
+      "stageValidation": "验证",
+      "stageProcess": "处理",
+      "stageReview": "审核",
+      "stageFinalize": "完成",
+      "stageOf": "第 {n} 阶段，共 {total} 阶段",
+      "processPayroll": "处理薪资",
+      "validationRunning": "正在检查薪资就绪情况…",
+      "validationFailed": "就绪检查无法完成。请返回并重试。",
+      "validationAllClear": "所有薪资数据已就绪。",
+      "validationAllClearHint": "所选员工的信息均已完整——您可以处理薪资。",
+      "validationBlockerTitle": "处理前必须修正 {n} 个问题",
+      "validationBlockerHint": "在修正之前，薪资无法继续处理。",
+      "validationWarningTitle": "{n} 个项目需要您注意",
+      "validationWarningHint": "您仍可处理薪资，但请先查看这些项目。",
+      "validationBlockerBadge": "阻止处理",
+      "validationWarningBadge": "警告",
+      "validationCheck": {
+        "missingCompensation": "无当前薪资记录",
+        "missingBasicComponent": "无基本薪资组成项",
+        "missingStatutory": "无法定档案（EPF/SOCSO/PCB）",
+        "missingBank": "银行资料不完整"
+      }
     },
     "guide": {
       "title": "薪资工作流程指南",

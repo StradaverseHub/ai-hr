@@ -2728,7 +2728,31 @@
         "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
         "MISSING_SALARY": "Thiếu thông tin lương"
       },
-      "resumeStep1Note": "Bạn đang xem lại bản nháp quy trình tính lương. Công ty, tháng lương và chu kỳ lương của bản nháp này đã được cố định — hãy tiếp tục để xem lại hoặc điều chỉnh danh sách nhân viên. Để thay đổi tháng hoặc công ty, hãy xóa bản nháp này khỏi danh sách Quy trình tính lương và tạo một lần chạy mới."
+      "resumeStep1Note": "Bạn đang xem lại bản nháp quy trình tính lương. Công ty, tháng lương và chu kỳ lương của bản nháp này đã được cố định — hãy tiếp tục để xem lại hoặc điều chỉnh danh sách nhân viên. Để thay đổi tháng hoặc công ty, hãy xóa bản nháp này khỏi danh sách Quy trình tính lương và tạo một lần chạy mới.",
+      "stepValidation": "Xác thực bảng lương",
+      "stagePreparation": "Chuẩn bị",
+      "stageValidation": "Xác thực",
+      "stageProcess": "Xử lý",
+      "stageReview": "Xem lại",
+      "stageFinalize": "Hoàn tất",
+      "stageOf": "Giai đoạn {n} trên {total}",
+      "processPayroll": "Xử lý bảng lương",
+      "validationRunning": "Đang kiểm tra mức độ sẵn sàng của bảng lương…",
+      "validationFailed": "Không thể hoàn tất việc kiểm tra. Vui lòng quay lại và thử lại.",
+      "validationAllClear": "Tất cả dữ liệu bảng lương đã sẵn sàng.",
+      "validationAllClearHint": "Mọi nhân viên được chọn đều có đầy đủ thông tin — bạn có thể xử lý bảng lương.",
+      "validationBlockerTitle": "{n} vấn đề phải được khắc phục trước khi xử lý",
+      "validationBlockerHint": "Không thể tiếp tục bảng lương cho đến khi các vấn đề này được khắc phục.",
+      "validationWarningTitle": "{n} mục cần bạn chú ý",
+      "validationWarningHint": "Bạn vẫn có thể xử lý bảng lương, nhưng hãy xem lại các mục này trước.",
+      "validationBlockerBadge": "Chặn xử lý",
+      "validationWarningBadge": "Cảnh báo",
+      "validationCheck": {
+        "missingCompensation": "Không có bản ghi lương hiện tại",
+        "missingBasicComponent": "Không có thành phần lương cơ bản",
+        "missingStatutory": "Không có hồ sơ theo luật định (EPF/SOCSO/PCB)",
+        "missingBank": "Thông tin ngân hàng chưa đầy đủ"
+      }
     },
     "guide": {
       "title": "Hướng dẫn quy trình bảng lương",

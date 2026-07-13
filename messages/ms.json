@@ -2728,7 +2728,31 @@
         "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
         "MISSING_SALARY": "Maklumat gaji tiada"
       },
-      "resumeStep1Note": "Anda sedang menyemak draf proses gaji. Syarikat, bulan gaji dan kitaran gaji adalah tetap untuk draf ini — teruskan untuk menyemak atau meminda pemilihan pekerja. Untuk menukar bulan atau syarikat, padam draf ini daripada senarai Proses Gaji dan cipta larian baharu."
+      "resumeStep1Note": "Anda sedang menyemak draf proses gaji. Syarikat, bulan gaji dan kitaran gaji adalah tetap untuk draf ini — teruskan untuk menyemak atau meminda pemilihan pekerja. Untuk menukar bulan atau syarikat, padam draf ini daripada senarai Proses Gaji dan cipta larian baharu.",
+      "stepValidation": "Pengesahan Gaji",
+      "stagePreparation": "Persediaan",
+      "stageValidation": "Pengesahan",
+      "stageProcess": "Proses",
+      "stageReview": "Semakan",
+      "stageFinalize": "Muktamad",
+      "stageOf": "Peringkat {n} daripada {total}",
+      "processPayroll": "Proses Gaji",
+      "validationRunning": "Menyemak kesediaan gaji…",
+      "validationFailed": "Semakan kesediaan tidak dapat diselesaikan. Kembali dan cuba lagi.",
+      "validationAllClear": "Semua data gaji sudah sedia.",
+      "validationAllClearHint": "Setiap pekerja yang dipilih mempunyai maklumat lengkap — anda boleh memproses gaji.",
+      "validationBlockerTitle": "{n} isu perlu dibetulkan sebelum memproses",
+      "validationBlockerHint": "Gaji tidak boleh diteruskan sehingga ini dibetulkan.",
+      "validationWarningTitle": "{n} perkara memerlukan perhatian anda",
+      "validationWarningHint": "Anda masih boleh memproses gaji, tetapi semak perkara ini dahulu.",
+      "validationBlockerBadge": "Menghalang pemprosesan",
+      "validationWarningBadge": "Amaran",
+      "validationCheck": {
+        "missingCompensation": "Tiada rekod gaji semasa",
+        "missingBasicComponent": "Tiada komponen gaji asas",
+        "missingStatutory": "Tiada profil berkanun (EPF/SOCSO/PCB)",
+        "missingBank": "Butiran bank tidak lengkap"
+      }
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",

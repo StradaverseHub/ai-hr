@@ -2728,7 +2728,31 @@
         "SYSTEM_VALIDATION_ERROR": "System validation error",
         "MISSING_SALARY": "Missing salary information"
       },
-      "resumeStep1Note": "You are reviewing a draft payroll process. Its company, pay period and payroll cycle are fixed — continue to review or amend the employee selection. To change the period or company, delete this draft from the Payroll Process listing and create a new run."
+      "resumeStep1Note": "You are reviewing a draft payroll process. Its company, pay period and payroll cycle are fixed — continue to review or amend the employee selection. To change the period or company, delete this draft from the Payroll Process listing and create a new run.",
+      "stepValidation": "Payroll Validation",
+      "stagePreparation": "Preparation",
+      "stageValidation": "Validation",
+      "stageProcess": "Process",
+      "stageReview": "Review",
+      "stageFinalize": "Finalize",
+      "stageOf": "Stage {n} of {total}",
+      "processPayroll": "Process Payroll",
+      "validationRunning": "Checking payroll readiness…",
+      "validationFailed": "The readiness check could not be completed. Go back and try again.",
+      "validationAllClear": "All payroll data is ready.",
+      "validationAllClearHint": "Every selected employee has complete information — you can process payroll.",
+      "validationBlockerTitle": "{n} issue(s) must be fixed before processing",
+      "validationBlockerHint": "Payroll cannot proceed until these are corrected.",
+      "validationWarningTitle": "{n} item(s) need your attention",
+      "validationWarningHint": "You can still process payroll, but review these first.",
+      "validationBlockerBadge": "Blocks processing",
+      "validationWarningBadge": "Warning",
+      "validationCheck": {
+        "missingCompensation": "No current salary record",
+        "missingBasicComponent": "No basic-salary pay component",
+        "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
+        "missingBank": "Bank details incomplete"
+      }
     },
     "guide": {
       "title": "Payroll Workflow Guide",

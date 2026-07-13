@@ -4342,6 +4342,37 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
   });
 }
 
+/** Read-only pre-processing advisory for a PROSPECTIVE run that has no batch yet (R37 70764928 — the
+ *  Payroll Process wizard's Validation step, which runs BEFORE the batch is created). Reuses the exact
+ *  same `preProcessChecksTx` core as the batch-scoped `preProcessAdvisory` above (no duplicate check
+ *  logic), evaluating the same period/scope population the terminal Process action will run over. Multi-
+ *  company runs are checked per company and merged. `employmentIds` mirrors the wizard's touched-selection
+ *  scope: present ⇒ only those employees; absent/empty ⇒ the whole-company default. No events.append per
+ *  the CLAUDE.md skip rule — derived read, nothing written. */
+export function preProcessAdvisoryForSelection(
+  ctx: SessionContext,
+  input: { companyIds: string[]; payPeriod: string; employmentIds?: string[] },
+): Promise<PreProcessAdvisory> {
+  return withTenant(ctx, async (tx) => {
+    const scope: BatchScope | null =
+      input.employmentIds && input.employmentIds.length ? { employmentIds: input.employmentIds } : null;
+    const merged: PreProcessAdvisory = {
+      missingCompensation: [],
+      missingBasicComponent: [],
+      missingStatutory: [],
+      missingBank: [],
+    };
+    for (const companyId of input.companyIds) {
+      const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope });
+      merged.missingCompensation.push(...a.missingCompensation);
+      merged.missingBasicComponent.push(...a.missingBasicComponent);
+      merged.missingStatutory.push(...a.missingStatutory);
+      merged.missingBank.push(...a.missingBank);
+    }
+    return merged;
+  });
+}
+
 export function batchDetail(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx.select().from(payrollBatch).where(eq(payrollBatch.id, batchId)).limit(1);
