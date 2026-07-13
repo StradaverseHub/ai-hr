@@ -59,10 +59,9 @@ export function EpfElection({
           <option value="auto">{t('epfModeAuto')}</option>
           <option value="manual_percentage">{t('epfModeManualPercentage')}</option>
           <option value="semi_auto">{t('epfModeSemiAuto')}</option>
-          {/* Deferred per ADR-0046 — no KWSP fixed-amount election. Labelled, disabled. */}
-          <option value="manual_fixed" disabled>
-            {t('epfModeManualFixed')}
-          </option>
+          {/* manual_fixed (deferred per ADR-0046 — no KWSP fixed-amount election) removed from the
+              dropdown per feedback 127dffba; the UiMode union still tolerates it defensively but it is
+              never offered or persisted. */}
           <option value="none">{t('epfModeExempt')}</option>
         </select>
       </Field>

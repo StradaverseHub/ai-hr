@@ -1266,16 +1266,19 @@ export default async function EmployeePage({
           </div>
         </fieldset>
 
-        {/* Group 2 — EPF. Kept at sm:grid-cols-2 because <EpfElection> renders an internal sm:col-span-2
-            rate row; leaving that island's grid assumptions untouched is the safe play. */}
-        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
-          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {/* Group 2 — EPF. Presented as its own visually-distinct information card (rounded border +
+            heading + subtle surface) so the EPF election stands apart from the flat identity/SOCSO/bank
+            sections — feedback 127dffba. Still inside the single setStatutoryAction form; presentation only.
+            Kept at sm:grid-cols-2 because <EpfElection> renders an internal sm:col-span-2 rate row;
+            leaving that island's grid assumptions untouched is the safe play. */}
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
             {t('epfContribTitle')}
           </legend>
           <p className="text-xs text-muted-foreground">{t('epfElectionHint')}</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={t('epfNumber')}>
-              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} className={inputCls} />
+              <input name="epfNumber" defaultValue={statutory?.epfNumber ?? ''} placeholder="123456789" className={inputCls} />
             </Field>
             <Field label={t('epfCitizenship')}>
               <select name="epfCitizenship" defaultValue={statutory?.epfCitizenship ?? 'citizen'} className={inputCls}>
