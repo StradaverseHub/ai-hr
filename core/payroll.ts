@@ -3680,6 +3680,17 @@ export class BatchNotUnlockableError extends Error {
     this.name = 'BatchNotUnlockableError';
   }
 }
+/**
+ * A blank / whitespace-only reason was supplied to unlockClosedBatch (feedback 2108c01f). Reopening a
+ * finalised run is a sensitive, audited action — the reason is MANDATORY so the history log always
+ * explains WHY a closed run was reopened. Thrown BEFORE the status flip so nothing is mutated.
+ */
+export class UnlockReasonRequiredError extends Error {
+  constructor() {
+    super('A reason is required to unlock a closed payroll process.');
+    this.name = 'UnlockReasonRequiredError';
+  }
+}
 
 const callerRolesOf = (ctx: SessionContext): string[] => [
   ...(ctx.roles ?? []),
@@ -3806,7 +3817,7 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
     throw new Error('Payroll unlock is not enabled.');
   }
   const reason = (p.reason ?? '').trim();
-  if (!reason) throw new Error('A reason is required to unlock a closed payroll process.');
+  if (!reason) throw new UnlockReasonRequiredError();
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx
       .select({

@@ -2227,6 +2227,7 @@
       "unlockNotClosed": "Hanya proses gaji tertutup boleh dibuka kunci.",
       "unlockOtpInvalid": "Kod pengesahan tidak sah atau tamat tempoh — minta yang baharu.",
       "unlockPermissionDenied": "Anda tiada kebenaran untuk membuka kunci proses gaji tertutup.",
+      "unlockReasonRequired": "Sebab diperlukan untuk membuka semula proses gaji yang telah ditutup.",
       "preChecksTitle": "Semakan pra-pemprosesan",
       "preChecksAllClear": "Semua semakan lulus — maklumat pekerja lengkap untuk larian ini.",
       "preChecksBlockerHint": "{n} pekerja tiada rekod gaji semasa. Sebelum ini mereka akan tercicir daripada larian secara senyap — payroll tidak boleh diproses sehingga ini dibetulkan (atau skop larian mengecualikan mereka).",

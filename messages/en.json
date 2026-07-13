@@ -1996,6 +1996,7 @@
       "unlockNotClosed": "Only a closed payroll process can be unlocked.",
       "unlockOtpInvalid": "The confirmation code is invalid or expired — request a new one.",
       "unlockPermissionDenied": "You do not have permission to unlock a closed payroll process.",
+      "unlockReasonRequired": "A reason is required to unlock a closed payroll process.",
       "preChecksTitle": "Pre-processing checks",
       "preChecksAllClear": "All checks passed — employee information is complete for this run.",
       "preChecksBlockerHint": "{n} employee(s) have no current salary record. Previously they would have been silently left out of the run — payroll cannot be processed until this is fixed (or the run scope excludes them).",

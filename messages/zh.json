@@ -2227,6 +2227,7 @@
       "unlockNotClosed": "只有已关闭的薪资流程才能解锁。",
       "unlockOtpInvalid": "确认码无效或已过期——请重新申请。",
       "unlockPermissionDenied": "您无权解锁已关闭的薪资流程。",
+      "unlockReasonRequired": "解锁已关闭的薪资流程需要填写原因。",
       "preChecksTitle": "处理前检查",
       "preChecksAllClear": "所有检查已通过——本次运行的员工信息完整。",
       "preChecksBlockerHint": "{n} 名员工没有当前薪资记录。此前他们会被悄悄排除在运行之外——必须先解决此问题（或将其排除在运行范围之外）才能处理薪资。",

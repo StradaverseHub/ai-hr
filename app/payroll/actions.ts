@@ -11,6 +11,7 @@ import {
   PayrollPermissionDeniedError,
   PreProcessBlockedError,
   StepUpRequiredError,
+  UnlockReasonRequiredError,
   closeBatch,
   deleteDraftBatch,
   generatePayslips,
@@ -381,11 +382,13 @@ export async function unlockAction(formData: FormData) {
     const msg =
       e instanceof PayrollPermissionDeniedError
         ? t('unlockPermissionDenied')
-        : e instanceof StepUpRequiredError
-          ? t('unlockOtpInvalid')
-          : e instanceof BatchNotUnlockableError
-            ? t('unlockNotClosed')
-            : (e as Error).message;
+        : e instanceof UnlockReasonRequiredError
+          ? t('unlockReasonRequired')
+          : e instanceof StepUpRequiredError
+            ? t('unlockOtpInvalid')
+            : e instanceof BatchNotUnlockableError
+              ? t('unlockNotClosed')
+              : (e as Error).message;
     redirect(`/payroll/${batchId}?error=${encodeURIComponent(msg)}`);
   }
   revalidatePath(`/payroll/${batchId}`);

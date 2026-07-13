@@ -2227,6 +2227,7 @@
       "unlockNotClosed": "Chỉ quy trình lương đã đóng mới có thể mở khóa.",
       "unlockOtpInvalid": "Mã xác nhận không hợp lệ hoặc đã hết hạn — hãy yêu cầu mã mới.",
       "unlockPermissionDenied": "Bạn không có quyền mở khóa quy trình lương đã đóng.",
+      "unlockReasonRequired": "Cần có lý do để mở lại quy trình bảng lương đã đóng.",
       "preChecksTitle": "Kiểm tra trước khi xử lý",
       "preChecksAllClear": "Tất cả kiểm tra đã đạt — thông tin nhân viên đầy đủ cho kỳ chạy này.",
       "preChecksBlockerHint": "{n} nhân viên không có hồ sơ lương hiện tại. Trước đây họ sẽ bị âm thầm loại khỏi kỳ chạy — không thể xử lý lương cho đến khi khắc phục (hoặc phạm vi kỳ chạy loại trừ họ).",
