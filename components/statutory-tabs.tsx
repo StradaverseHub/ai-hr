@@ -16,13 +16,16 @@ import Link from 'next/link';
 export async function StatutoryTabs({
   active,
 }: {
-  active: 'overview' | 'epf' | 'socso' | 'eis' | 'pcb' | 'hrdf';
+  active: 'overview' | 'epf' | 'socso' | 'skbbk' | 'eis' | 'pcb' | 'hrdf';
 }) {
   const t = await getTranslations('payroll.config');
   const tabs = [
     { key: 'overview', href: '/payroll/configuration', label: t('tabOverview') },
     { key: 'epf', href: '/payroll/configuration/epf', label: t('body_epf') },
     { key: 'socso', href: '/payroll/configuration/socso', label: t('body_socso') },
+    // SKBBK sits next to SOCSO — it is an employee-paid leg carried ON the SOCSO bands (674ff6a5). It has
+    // its own tab for viewing/maintaining the schedule but is NOT an independently-versioned statutory body.
+    { key: 'skbbk', href: '/payroll/configuration/skbbk', label: t('body_skbbk') },
     { key: 'eis', href: '/payroll/configuration/eis', label: t('body_eis') },
     { key: 'pcb', href: '/payroll/configuration/pcb', label: t('body_pcb') },
     { key: 'hrdf', href: '/payroll/configuration/hrdf', label: t('body_hrdf') },

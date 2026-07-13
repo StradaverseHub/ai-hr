@@ -193,6 +193,10 @@ export type StatutoryInput = {
   employerBearsSocso?: boolean;
   employerBearsEis?: boolean;
   employerBearsSkbbk?: boolean;
+  /** Item 0d9bb2da — employer bears the employee's EPF contribution. The EPF employee + employer legs are
+   *  still computed + reported in full; this only funds the employee's EPF share from employer cost instead
+   *  of deducting it from net (payroll wiring mirrors employer_bears_socso/eis/tax). Defaults false. */
+  employerBearsEpf?: boolean;
   /** Tax residency — non-residents pay flat 30% MTD (LHDN spec §D.a). Defaults to resident. */
   isResident?: boolean;
   /** EPF citizenship status — selects the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
@@ -267,6 +271,9 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     employerBearsSocso: p.employerBearsSocso ?? false,
     employerBearsEis: p.employerBearsEis ?? false,
     employerBearsSkbbk: p.employerBearsSkbbk ?? false,
+    // Item 0d9bb2da — employer-bears-EPF flag (default off ⇒ byte-identical). The action always sends the
+    // checkbox state; this guards partial callers.
+    employerBearsEpf: p.employerBearsEpf ?? false,
     isResident: p.isResident ?? true,
     epfCitizenship: p.epfCitizenship ?? 'citizen',
     epfMode: epf.epfMode,
@@ -302,6 +309,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
         employerBearsSocso: employeeStatutoryMy.employerBearsSocso,
         employerBearsEis: employeeStatutoryMy.employerBearsEis,
         employerBearsSkbbk: employeeStatutoryMy.employerBearsSkbbk,
+        employerBearsEpf: employeeStatutoryMy.employerBearsEpf,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -355,6 +363,9 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
                 employerBearsSocso: existing.employerBearsSocso,
                 employerBearsEis: existing.employerBearsEis,
                 employerBearsSkbbk: existing.employerBearsSkbbk,
+                // Item 0d9bb2da — EPF employer-bears before/after so a compliance auditor can reconstruct
+                // who toggled it and when, from the event log alone.
+                employerBearsEpf: existing.employerBearsEpf,
               }
             : null,
           after: {
@@ -366,6 +377,7 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
             employerBearsSocso: values.employerBearsSocso,
             employerBearsEis: values.employerBearsEis,
             employerBearsSkbbk: values.employerBearsSkbbk,
+            employerBearsEpf: values.employerBearsEpf,
           },
         },
       },

@@ -96,8 +96,13 @@ export type ShiftInput = {
    *  Null ⇒ inherit the legacy shift-midpoint threshold. */
   earlyLeaveGraceMinutes?: number | null;
   /** R17 3e8350db — the reporter's per-shift "OT Rules". Shapes WORKDAY OT accrual (eligibility / minimum
-   *  block / daily cap); statutory multipliers stay company-level. Null ⇒ legacy behaviour. */
+   *  block / daily cap); statutory multipliers stay company-level. Null ⇒ legacy behaviour. UNDEFINED ⇒
+   *  leave the stored value unchanged (88e94371: the shift form dropped this field for the rule dropdown, so
+   *  editing a shift no longer wipes a pre-existing per-shift OT-shape override). */
   otRule?: ShiftOtRule | null;
+  /** 88e94371 — the chosen attendance-calculation rule ("Lateness, Early Out & Overtime Settings"). Null ⇒
+   *  fall back to the employee's-company Standard rule at resolve time. UNDEFINED ⇒ leave unchanged. */
+  ruleId?: string | null;
   differential?: ShiftDifferential | null;
 };
 
@@ -114,7 +119,9 @@ type NormalizedShift = {
   weeklyPattern: number[] | null;
   lateGraceMinutes: number | null;
   earlyLeaveGraceMinutes: number | null;
-  otRule: ShiftOtRule | null;
+  // 88e94371 — UNDEFINED ⇒ omit from the write (preserve stored value); null ⇒ explicitly clear.
+  otRule: ShiftOtRule | null | undefined;
+  ruleId: string | null | undefined;
   differential: ShiftDifferential | null;
 };
 
@@ -194,7 +201,11 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
   };
   const lateGraceMinutes = grace(p.lateGraceMinutes, 'Late grace');
   const earlyLeaveGraceMinutes = grace(p.earlyLeaveGraceMinutes, 'Early-leave grace');
-  const otRule = validateOtRule(p.otRule);
+  // 88e94371 — otRule is now edited via the attendance-rule library, not this form. UNDEFINED ⇒ preserve the
+  // stored value (omit from the write); an explicit value/null still flows through validateOtRule.
+  const otRule = p.otRule === undefined ? undefined : validateOtRule(p.otRule);
+  // 88e94371 — the shift's chosen rule. UNDEFINED ⇒ preserve; '' / null ⇒ clear (fall back to Standard).
+  const ruleId = p.ruleId === undefined ? undefined : p.ruleId === null || p.ruleId === '' ? null : p.ruleId;
 
   // The auto figure (used when no override): netScheduledMinutes(startTime, endTime, crossesMidnight,
   // breakMinutes) — derived on the fly by scheduleFor / the UI readout, deliberately not stored.
@@ -212,6 +223,7 @@ function normalizeShiftInput(p: Omit<ShiftInput, 'companyId'>): NormalizedShift 
     lateGraceMinutes,
     earlyLeaveGraceMinutes,
     otRule,
+    ruleId,
     differential,
   };
 }
@@ -265,7 +277,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
           crossesMidnight: n.crossesMidnight,
           lateGraceMinutes: n.lateGraceMinutes,
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-          otRule: n.otRule,
+          otRule: n.otRule ?? null,
+          ruleId: n.ruleId ?? null,
           differential: n.differential,
         })
         .returning({ id: shift.id });
@@ -291,7 +304,8 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
         weeklyPattern: n.weeklyPattern,
         lateGraceMinutes: n.lateGraceMinutes,
         earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-        otRule: n.otRule,
+        otRule: n.otRule ?? null,
+        ruleId: n.ruleId ?? null,
         hasDifferential: !!n.differential,
       },
     });
@@ -322,7 +336,10 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
           crossesMidnight: n.crossesMidnight,
           lateGraceMinutes: n.lateGraceMinutes,
           earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-          otRule: n.otRule,
+          // 88e94371 — omit when undefined so a form that no longer carries these fields preserves the stored
+          // value (drizzle skips undefined keys in .set).
+          ...(n.otRule === undefined ? {} : { otRule: n.otRule }),
+          ...(n.ruleId === undefined ? {} : { ruleId: n.ruleId }),
           differential: n.differential,
           updatedAt: new Date(),
         })
@@ -348,7 +365,8 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
         weeklyPattern: n.weeklyPattern,
         lateGraceMinutes: n.lateGraceMinutes,
         earlyLeaveGraceMinutes: n.earlyLeaveGraceMinutes,
-        otRule: n.otRule,
+        ...(n.otRule === undefined ? {} : { otRule: n.otRule }),
+        ...(n.ruleId === undefined ? {} : { ruleId: n.ruleId }),
         hasDifferential: !!n.differential,
       },
     });

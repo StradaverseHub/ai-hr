@@ -7,12 +7,30 @@ import { fetchPayrollRunEmployees, resumeRunAction, runMultiCompanyAction } from
 import { wizardInitialStep } from './selection-logic';
 import { StepPeriod, type Company, type CycleRunType, type CycleOption, type ExistingRun } from './steps/step-period';
 import { StepSelection, type Master, type PayrollRunEmployeeRow } from './steps/step-selection';
+import { StepValidation } from './steps/step-validation';
 
 /** Payroll Process wizard (3b) — STEPS registry, sequential gating, plain useState. No workflow engine:
- *  future steps slot in as additional entries in `STEPS` (plan §16, guardrail). */
+ *  future steps slot in as additional entries in `STEPS` (plan §16, guardrail).
+ *  R37 70764928: a Validation step now sits between Employee Selection and the terminal Process action,
+ *  so the operator sees an explicit green/amber/red "is everything ready?" checkpoint before processing.
+ *  Each STEP maps onto one of the five conceptual lifecycle STAGES (below) for the progress rail. */
 const STEPS = [
-  { key: 'period', titleKey: 'stepPeriod' },
-  { key: 'selection', titleKey: 'stepSelection' },
+  { key: 'period', titleKey: 'stepPeriod', stage: 0 },
+  { key: 'selection', titleKey: 'stepSelection', stage: 0 },
+  { key: 'validation', titleKey: 'stepValidation', stage: 1 },
+] as const;
+
+/** The five payroll lifecycle stages the reporter asked to see (expected_behavior §3): Preparation →
+ *  Validation → Process → Review → Finalize. The wizard OWNS the first two (Preparation = period +
+ *  selection, Validation = the checks step); Process is the terminal submit, and Review / Finalize happen
+ *  on the batch page (deliberately NOT rebuilt here — see the cut in the approved plan). The rail shows all
+ *  five so the operator always knows where they are and what comes next. */
+const STAGES = [
+  { key: 'preparation', titleKey: 'stagePreparation' },
+  { key: 'validation', titleKey: 'stageValidation' },
+  { key: 'process', titleKey: 'stageProcess' },
+  { key: 'review', titleKey: 'stageReview' },
+  { key: 'finalize', titleKey: 'stageFinalize' },
 ] as const;
 
 /** A DRAFT batch being resumed. Carries the fixed identity of the existing batch — company/period/cycle
@@ -95,6 +113,10 @@ export function Wizard({
   const [employees, setEmployees] = useState<PayrollRunEmployeeRow[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Validation-step status (R37 70764928). Reported up from StepValidation so the footer can keep Process
+  // disabled while the checks are still running AND when there are hard blockers. Initialised to loading so
+  // Process can never fire before the first check resolves.
+  const [validation, setValidation] = useState<{ loading: boolean; hasBlockers: boolean }>({ loading: true, hasBlockers: false });
 
   const defaultDate = defaultPayDate(payPeriod, payDayByCompany[companyId]);
 
@@ -160,6 +182,16 @@ export function Wizard({
   // valid (seeded) company + period. A fresh run still requires step1Valid (which includes the cycle).
   const step2Valid = isResume ? !!companyId && /^\d{4}-\d{2}$/.test(payPeriod) : step1Valid;
 
+  // The lifecycle stage the current wizard step belongs to (drives the 5-stage rail highlight).
+  const currentStage = STEPS[step].stage;
+  // Continue is a per-step gate now that there are three steps: Step 1 (period) requires a valid selection
+  // (resume uses the seeded-identity check); Step 2 (employee selection) never blocks — an empty selection
+  // means "whole company". The final Process button lives on Step 3 (Validation) and has its own gate.
+  const canContinue = step === 0 ? (isResume ? step2Valid : step1Valid) : true;
+  // Process is blocked while the validation check is still running or when it found hard blockers (missing
+  // compensation / missing BASIC component) — the operator must fix those before the run can proceed.
+  const canProcess = step2Valid && !isPending && !validation.loading && !validation.hasBlockers;
+
   const submit = () => {
     const fd = new FormData();
     if (isResume && resumeBatch) {
@@ -196,21 +228,28 @@ export function Wizard({
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        {STEPS.map((s, i) => (
-          <div key={s.key} className="flex items-center gap-2">
-            <span
-              className={`flex size-6 items-center justify-center rounded-full text-xs font-medium ${
-                i === step ? 'bg-primary text-primary-foreground' : i < step ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
-              }`}
-            >
-              {i + 1}
-            </span>
-            <span className={`text-sm ${i === step ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{t(s.titleKey)}</span>
-            {i < STEPS.length - 1 && <span className="mx-1 text-muted-foreground">→</span>}
-          </div>
-        ))}
-        <span className="ml-auto text-xs text-muted-foreground">{t('stepOf', { n: step + 1, total: STEPS.length + 1 })}</span>
+      {/* Five-stage lifecycle rail (R37 70764928, expected_behavior §3): Preparation → Validation → Process
+          → Review → Finalize. The wizard is on Preparation (period/selection) or Validation; Process/Review/
+          Finalize are shown as upcoming so the operator always sees the whole flow and what comes next. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 py-3">
+        {STAGES.map((s, i) => {
+          const done = i < currentStage;
+          const active = i === currentStage;
+          return (
+            <div key={s.key} className="flex items-center gap-2">
+              <span
+                className={`flex size-6 items-center justify-center rounded-full text-xs font-medium ${
+                  active ? 'bg-primary text-primary-foreground' : done ? 'bg-emerald-500 text-white' : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {i + 1}
+              </span>
+              <span className={`text-sm ${active ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{t(s.titleKey)}</span>
+              {i < STAGES.length - 1 && <span className="mx-1 text-muted-foreground">→</span>}
+            </div>
+          );
+        })}
+        <span className="ml-auto text-xs text-muted-foreground">{t('stageOf', { n: currentStage + 1, total: STAGES.length })}</span>
       </div>
 
       <div className="p-4">
@@ -283,6 +322,18 @@ export function Wizard({
             onFiltersTouchedChange={setFiltersTouched}
           />
         )}
+        {step === 2 && (
+          // Validation step (R37 70764928): runs the pre-processing checks over the CURRENT selection and
+          // renders green/amber/red before the terminal Process action. In resume mode the batch's single
+          // company is fixed; a fresh run may span several. `employmentIds` is only sent when the operator
+          // actually narrowed the set (filtersTouched) — otherwise the whole-company default is validated.
+          <StepValidation
+            companyIds={isResume ? [companyId] : companyIds}
+            payPeriod={payPeriod}
+            employmentIds={filtersTouched ? [...selected] : undefined}
+            onStatusChange={setValidation}
+          />
+        )}
       </div>
 
       <div className="flex items-center justify-between border-t border-border px-4 py-3">
@@ -292,14 +343,16 @@ export function Wizard({
           {t('back')}
         </Button>
         {step < STEPS.length - 1 ? (
-          // Resume mode's Step-1 gate is the resume-valid check (seeded company + period) — the cycle is
-          // fixed on the persisted draft and never re-posted, so it must not block Continue.
-          <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={isResume ? !step2Valid : !step1Valid}>
+          // Continue advances through Preparation (Step 1 gates on a valid period/company; Step 2 selection
+          // never blocks) into the Validation step. The terminal Process button only appears on Step 3.
+          <Button type="button" onClick={() => setStep((s) => s + 1)} disabled={!canContinue}>
             {t('continue')}
           </Button>
         ) : (
-          <Button type="button" onClick={submit} disabled={!step2Valid || isPending} data-tour="payroll-create-submit">
-            {isPending ? t('creating') : isResume ? t('confirmSelectionAndProcess') : t('createRun')}
+          // Process is the terminal action, now gated on the Validation step: disabled while the checks run
+          // and whenever there are hard blockers (missing salary record / missing BASIC component).
+          <Button type="button" onClick={submit} disabled={!canProcess} data-tour="payroll-create-submit">
+            {isPending ? t('creating') : isResume ? t('confirmSelectionAndProcess') : t('processPayroll')}
           </Button>
         )}
       </div>

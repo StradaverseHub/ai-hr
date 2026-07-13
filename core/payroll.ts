@@ -1805,7 +1805,11 @@ export async function generatePayslips(
     // generateAction. A subset reprocess targets a processed run that already passed this gate.
     if (!subset) {
       const checks = await preProcessChecksTx(tx, { companyId: batch.companyId, payPeriod: batch.payPeriod, scope: batch.scope });
-      if (checks.missingCompensation.length > 0) throw new PreProcessBlockedError(checks.missingCompensation.length);
+      // BLOCKER: no compensation row (silently dropped by the earnings inner-join) OR — when the typed
+      // path is live (R37 62e370b0) — a compensation row with no BASIC component (typed earnings would read
+      // basic as 0). Both are salary-data gaps that must be fixed before the run, so generation fails closed.
+      const blocked = checks.missingCompensation.length + checks.missingBasicComponent.length;
+      if (blocked > 0) throw new PreProcessBlockedError(blocked);
     }
 
     const [co] = await tx
@@ -1938,6 +1942,9 @@ export async function generatePayslips(
         employerBearsSocso: employeeStatutoryMy.employerBearsSocso,
         employerBearsEis: employeeStatutoryMy.employerBearsEis,
         employerBearsSkbbk: employeeStatutoryMy.employerBearsSkbbk,
+        // Item 0d9bb2da — employer bears the employee's EPF share (EPF still computed + reported in full;
+        // only the funding of the employee leg moves to employer cost). Off by default ⇒ byte-identical.
+        employerBearsEpf: employeeStatutoryMy.employerBearsEpf,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
@@ -2664,7 +2671,21 @@ export async function generatePayslips(
       // Resolve the BASIC component's amount first so `percent_of basic` is order-independent. BASIC itself
       // never references percent_of basic, so basic=0 in its own scope is harmless.
       const basicComp = comps.find((c) => c.code === 'BASIC');
-      rscope.basic = basicComp ? resolvePayRule(basicComp.rule, rscope, basicComp.amount) : 0;
+      // FALLBACK (R37 62e370b0): typed path but this employee has NO BASIC employment_pay_component row
+      // (e.g. their compensation was never backfilled into the typed component tables). Rather than
+      // silently resolving basic to 0 — which pays the employee nothing despite a saved basic salary —
+      // read the basic straight off the compensation join (`e.basic`), exactly as the legacy path does.
+      // This keeps `rscope.basic` correct for any `percent_of basic` rule and seeds basicRaw/basicGross
+      // below so a missing backfill can never zero out someone's pay.
+      const basicFallback = basicComp ? 0 : Number(e.basic ?? 0);
+      rscope.basic = basicComp ? resolvePayRule(basicComp.rule, rscope, basicComp.amount) : basicFallback;
+      if (!basicComp && basicFallback !== 0) {
+        // Mirror the legacy path: basicRaw is the unfactored monthly basic; basicGross applies the
+        // EA-1955 tenure `factor` (mid-period joiner/leaver proration). No BASIC component means no
+        // prorateOverride to consult, so the contractual monthly basic prorates like the legacy path.
+        basicRaw = basicFallback;
+        basicGross = round2(basicFallback * factor);
+      }
       // A single resolved value per component, substituted at BOTH read sites (the line-868 amount and the
       // line-877 basicRaw accumulator) so the gross AND the statutory base see the same number.
       const resolveAmount = (c: (typeof comps)[number]): number =>
@@ -3022,7 +3043,18 @@ export async function generatePayslips(
       // fully-correct treatment grosses up (tax-on-tax). This implements the funding/plumbing; gross-up is deferred.
       const bearsTax = e.employerBearsTax ?? false;
       const employerBorneTax = bearsTax ? round2(st.pcb) : 0;
-      const employerBorneTotal = round2(employerBorneSocso + employerBorneEis + employerBorneSkbbk + employerBorneTax);
+      // Item 0d9bb2da — "Employer bears EPF": the EPF employee + employer contributions are still computed +
+      // reported in full (st.epfEmployee / st.epfEmployer untouched, so the KWSP file + EPF report + the amount
+      // remitted to KWSP are unchanged), but the employee's EPF share is NOT deducted from take-home — the
+      // employer funds it. Same funding plumbing as the SOCSO/EIS/tax employer-bears flags: subtract from
+      // statutory deductions, add to employer cost. Off by default ⇒ 0 ⇒ byte-identical. NOTE (documented
+      // follow-up, same as the tax control): under LHDN, EPF the employer pays on an employee's behalf is a
+      // taxable perquisite; a fully-correct treatment grosses it up. This implements funding/plumbing only.
+      const bearsEpf = e.employerBearsEpf ?? false;
+      const employerBorneEpf = bearsEpf ? round2(st.epfEmployee) : 0;
+      const employerBorneTotal = round2(
+        employerBorneSocso + employerBorneEis + employerBorneSkbbk + employerBorneTax + employerBorneEpf,
+      );
 
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,
       // allowance and OT were paid by the regular run — so basic/allowance/OT are 0 and gross = the bonus.
@@ -3171,16 +3203,19 @@ export async function generatePayslips(
           // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
           // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
           // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
-          ...(bearsSocso || bearsEis || bearsSkbbk || bearsTax
+          ...(bearsSocso || bearsEis || bearsSkbbk || bearsTax || bearsEpf
             ? {
                 // Item 8b5334db — `tax` extends the employer-bears snapshot (absent ⇒ byte-identical to the
                 // SOCSO/EIS-only snapshot). Records that the employee's PCB share was funded by the employer.
-                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk, tax: bearsTax },
+                // Item 0d9bb2da — `epf` extends it again (records the employee's EPF share funded by the
+                // employer). The whole block stays absent when EVERY flag is off ⇒ byte-identical default.
+                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk, tax: bearsTax, epf: bearsEpf },
                 employerBorne: {
                   socso: employerBorneSocso,
                   eis: employerBorneEis,
                   skbbk: employerBorneSkbbk,
                   tax: employerBorneTax,
+                  epf: employerBorneEpf,
                   total: employerBorneTotal,
                 },
               }
@@ -4223,6 +4258,11 @@ export type PreProcessCheckRow = { employmentId: string; name: string; employeeC
 
 export type PreProcessAdvisory = {
   missingCompensation: PreProcessCheckRow[];
+  // BLOCKER (R37 62e370b0). Only populated when TYPED_PAY_COMPONENTS_ENABLED is on: the employee HAS a
+  // current compensation row but NO period-active BASIC employment_pay_component. In that state the typed
+  // earnings path used to resolve basic to 0 and pay them nothing (the earningsOf fallback now prevents the
+  // silent zero, but an un-backfilled BASIC is still a data gap the operator must fix before processing).
+  missingBasicComponent: PreProcessCheckRow[];
   missingStatutory: PreProcessCheckRow[];
   missingBank: PreProcessCheckRow[];
 };
@@ -4264,10 +4304,38 @@ async function preProcessChecksTx(
       ),
     )
     .orderBy(person.fullName);
-  const out: PreProcessAdvisory = { missingCompensation: [], missingStatutory: [], missingBank: [] };
+  // R37 62e370b0 — typed path only: which in-scope employees have a period-active BASIC component. An
+  // employee with a compensation row but NO BASIC component is flagged as missingBasicComponent (BLOCKER),
+  // because the typed earnings path reads basic from that component. Gated: with the flag off the legacy
+  // path reads e.basic directly, so a BASIC component is irrelevant and this query is skipped entirely.
+  const basicComponentEmpIds = new Set<string>();
+  if (process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true' && rows.length > 0) {
+    const basicRows = await tx
+      .select({ employmentId: employmentPayComponent.employmentId })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          inArray(employmentPayComponent.employmentId, rows.map((r) => r.employmentId)),
+          eq(payComponent.code, 'BASIC'),
+          // Same period-active window as the earnings query (lte valid_from / valid_to open-or-future /
+          // not superseded) so the check agrees exactly with what the kernel would read.
+          lte(employmentPayComponent.validFrom, periodEnd),
+          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      );
+    for (const b of basicRows) basicComponentEmpIds.add(b.employmentId);
+  }
+  const typedComponentsOn = process.env.TYPED_PAY_COMPONENTS_ENABLED === 'true';
+  const out: PreProcessAdvisory = { missingCompensation: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
   for (const r of rows) {
     const row: PreProcessCheckRow = { employmentId: r.employmentId, name: r.name, employeeCode: r.employeeCode };
     if (!r.compId) out.missingCompensation.push(row);
+    // A compensation row exists but the typed path has no BASIC component to read → BLOCKER (only when the
+    // typed path is live). Reported alongside missingCompensation, not instead of it: the two gaps are
+    // disjoint (this branch requires compId to be present).
+    else if (typedComponentsOn && !basicComponentEmpIds.has(r.employmentId)) out.missingBasicComponent.push(row);
     if (!r.statPersonId) out.missingStatutory.push(row);
     // Bank readiness is only meaningful once a statutory profile exists (a missing profile already
     // covers the row above — listing it twice would be noise, not signal).
@@ -4286,8 +4354,39 @@ export function preProcessAdvisory(ctx: SessionContext, batchId: string): Promis
       .from(payrollBatch)
       .where(eq(payrollBatch.id, batchId))
       .limit(1);
-    if (!batch) return { missingCompensation: [], missingStatutory: [], missingBank: [] };
+    if (!batch) return { missingCompensation: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
     return preProcessChecksTx(tx, batch);
+  });
+}
+
+/** Read-only pre-processing advisory for a PROSPECTIVE run that has no batch yet (R37 70764928 — the
+ *  Payroll Process wizard's Validation step, which runs BEFORE the batch is created). Reuses the exact
+ *  same `preProcessChecksTx` core as the batch-scoped `preProcessAdvisory` above (no duplicate check
+ *  logic), evaluating the same period/scope population the terminal Process action will run over. Multi-
+ *  company runs are checked per company and merged. `employmentIds` mirrors the wizard's touched-selection
+ *  scope: present ⇒ only those employees; absent/empty ⇒ the whole-company default. No events.append per
+ *  the CLAUDE.md skip rule — derived read, nothing written. */
+export function preProcessAdvisoryForSelection(
+  ctx: SessionContext,
+  input: { companyIds: string[]; payPeriod: string; employmentIds?: string[] },
+): Promise<PreProcessAdvisory> {
+  return withTenant(ctx, async (tx) => {
+    const scope: BatchScope | null =
+      input.employmentIds && input.employmentIds.length ? { employmentIds: input.employmentIds } : null;
+    const merged: PreProcessAdvisory = {
+      missingCompensation: [],
+      missingBasicComponent: [],
+      missingStatutory: [],
+      missingBank: [],
+    };
+    for (const companyId of input.companyIds) {
+      const a = await preProcessChecksTx(tx, { companyId, payPeriod: input.payPeriod, scope });
+      merged.missingCompensation.push(...a.missingCompensation);
+      merged.missingBasicComponent.push(...a.missingBasicComponent);
+      merged.missingStatutory.push(...a.missingStatutory);
+      merged.missingBank.push(...a.missingBank);
+    }
+    return merged;
   });
 }
 

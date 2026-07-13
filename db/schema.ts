@@ -617,6 +617,15 @@ export const employment = pgTable(
     // Wave 2 (ADR-0041 2E): the employee's seniority grade — drives grade-scoped leave entitlements.
     // Null = ungraded (falls to the company-default leave policy).
     gradeId: uuid('grade_id').references(() => jobGrade.id),
+    // Benefit Scheme & Leave Entitlement (b83c6a3b): the employee's MANUAL benefit-scheme override. Null =
+    // auto-match by (company, current-assignment employment_type, grade-group) at resolution time (the
+    // default). When set to an ACTIVE scheme it wins over the auto-match. The scheme's leave entitlements
+    // supersede the grade-scoped leave_policy days; when neither a scheme nor a policy resolves, the
+    // statutory EA-1955 floor still applies. ON DELETE SET NULL so deleting a scheme falls the employee
+    // back to auto-match / grade policy, never an FK error.
+    benefitSchemeId: uuid('benefit_scheme_id').references((): AnyPgColumn => benefitScheme.id, {
+      onDelete: 'set null',
+    }),
     // Hiring enhancement: provisional/lifecycle end date — interpreted by assignment.employment_type
     // (probation end for full_time, contract end for contract, internship end for intern). Single-date
     // by design; a separate probation date for contract hires is deferred (PM). Null = no provisional
@@ -990,6 +999,104 @@ export const leavePolicy = pgTable(
   (t) => [
     index('leave_policy_type_idx').on(t.leaveTypeId),
     index('leave_policy_company_idx').on(t.companyId, t.leaveTypeId),
+  ],
+);
+
+// ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ─────────────────────────────
+// A friendlier CONFIGURATION LAYER over the existing grade-scoped leave_policy engine. Grade groups let HR
+// treat several grades as one band (e.g. "Grade 12–15"); a benefit_scheme names a (company × employment_type
+// × grade_group) target; scheme_leave_entitlement holds that scheme's per-leave-type service-band days
+// (REUSING the ServiceBand day shape + bandDaysFor math). Employees resolve to a scheme (auto-match by
+// company + current-assignment employment_type + grade group, or a manual override on employment); the
+// scheme's entitlement supersedes the grade leave_policy days, and the EA-1955 floor still applies on top.
+// All additive + backward compatible: a tenant with no schemes resolves exactly as before (grade policy).
+export const gradeGroup = pgTable(
+  'grade_group',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    name: text('name').notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    // Reject duplicate group NAMES (case-insensitive, active-only) — mirrors job_grade_name_uq.
+    uniqueIndex('grade_group_name_uq').on(t.tenantId, sql`lower(${t.name})`).where(sql`archived_at is null`),
+  ],
+);
+
+// grade_group_member = which job grades belong to a grade group. A grade maps to AT MOST ONE group (unique
+// on grade_id) so auto-match to a scheme is unambiguous. ON DELETE CASCADE from both sides.
+export const gradeGroupMember = pgTable(
+  'grade_group_member',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    gradeGroupId: uuid('grade_group_id')
+      .notNull()
+      .references(() => gradeGroup.id, { onDelete: 'cascade' }),
+    gradeId: uuid('grade_id')
+      .notNull()
+      .references(() => jobGrade.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('grade_group_member_grade_uq').on(t.tenantId, t.gradeId),
+    index('grade_group_member_group_idx').on(t.gradeGroupId),
+  ],
+);
+
+// benefit_scheme = a named entitlement target: Company × Employment Type × Grade Group. `status` is
+// 'active' | 'inactive' (only active schemes are auto-matched / override-usable). A partial-unique index
+// keeps at most one ACTIVE scheme per (company, employment_type, grade_group) so auto-match is deterministic.
+export const benefitScheme = pgTable(
+  'benefit_scheme',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    employmentType: employmentTypeEnum('employment_type').notNull(),
+    // Nullable: a scheme can be defined before its grade group, or apply to an ungrouped population.
+    gradeGroupId: uuid('grade_group_id').references(() => gradeGroup.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    status: text('status').$type<'active' | 'inactive'>().notNull().default('active'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('benefit_scheme_name_uq').on(t.tenantId, sql`lower(${t.name})`),
+    // Auto-match determinism: one active scheme per (company, employment_type, grade_group). gradeGroupId
+    // NULL rows are treated as distinct by the unique index (Postgres NULL semantics) — acceptable, the
+    // resolver's auto-match still short-circuits on the first (lowest-id) match.
+    uniqueIndex('benefit_scheme_match_uq')
+      .on(t.tenantId, t.companyId, t.employmentType, t.gradeGroupId)
+      .where(sql`status = 'active'`),
+    index('benefit_scheme_company_idx').on(t.companyId),
+  ],
+);
+
+// scheme_leave_entitlement = one leave type's service-band day table within a scheme. `serviceBands` reuses
+// the ServiceBand JSONB shape (fromYears/toYears/days[/carryForwardDays…]) resolved by bandDaysFor. One row
+// per (scheme, leave type). ON DELETE CASCADE from the scheme.
+export const schemeLeaveEntitlement = pgTable(
+  'scheme_leave_entitlement',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    benefitSchemeId: uuid('benefit_scheme_id')
+      .notNull()
+      .references(() => benefitScheme.id, { onDelete: 'cascade' }),
+    leaveTypeId: uuid('leave_type_id')
+      .notNull()
+      .references(() => leaveType.id),
+    // ServiceBand[] — the leave-type × service-band day matrix (e.g. <2y:12, 2–5y:14, ≥5y:16).
+    serviceBands: jsonb('service_bands').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('scheme_leave_entitlement_uq').on(t.tenantId, t.benefitSchemeId, t.leaveTypeId),
+    index('scheme_leave_entitlement_scheme_idx').on(t.benefitSchemeId),
   ],
 );
 
@@ -1601,6 +1708,11 @@ export const employeeStatutoryMy = pgTable(
     employerBearsSocso: boolean('employer_bears_socso').notNull().default(false),
     employerBearsEis: boolean('employer_bears_eis').notNull().default(false),
     employerBearsSkbbk: boolean('employer_bears_skbbk').notNull().default(false),
+    // Item 0d9bb2da — employer bears the employee's EPF contribution: the EPF employee + employer legs are
+    // still computed + reported in full (KWSP file + EPF report unchanged), but the employee's EPF share is
+    // funded from employer cost instead of deducted from net (same plumbing as employer_bears_socso/eis/tax).
+    // Default false ⇒ byte-identical. LHDN perquisite gross-up (employer-paid EPF as a benefit) is a follow-up.
+    employerBearsEpf: boolean('employer_bears_epf').notNull().default(false),
     // EPF citizenship status — drives the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
     epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen'),
     // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,
@@ -2036,6 +2148,90 @@ export const attendancePolicy = pgTable(
   (t) => [uniqueIndex('attendance_policy_company_uq').on(t.companyId)],
 );
 
+// ── 88e94371 · "Lateness, Early Out & Overtime Settings" — named-rule library ─────────────────────────
+// A reusable, per-company library of attendance CALCULATION rules (renamed/expanded from the single
+// Attendance Policy). Each rule bundles a Lateness section, an Early Out section, and an Overtime table
+// (attendance_rule_ot_row). A shift picks ONE rule (shift.rule_id); a shift with no rule falls back to the
+// company's `is_default` "Standard" rule (seeded per company by migration 0203 from the existing
+// attendance_policy so today's grace behaviour carries over unchanged). The Standard rule is un-deletable.
+//
+// SCOPE (88e94371): the grace-period fields ARE wired into the time engine (core/attendance.ts scheduleFor
+// — as a fallback under any explicit per-shift grace) and the OT rows drive OT-minute ROUNDING + early-OT
+// inclusion (applyOtRuleRows). The lateness/early-out `afterMinutes`/`deductMinutes` capture the reporter's
+// wage-deduction intent (stored + surfaced) but are NOT yet applied to pay — there is no deduction output on
+// the attendance engine today; that + per-band custom OT PAY multipliers (statutory 1.5×/2×/3× stay the
+// compliance cap) are a documented deferred GAP. The tenant-global statutory OT multipliers are untouched.
+export const attendanceRule = pgTable(
+  'attendance_rule',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    companyId: uuid('company_id')
+      .notNull()
+      .references(() => company.id),
+    name: text('name').notNull(),
+    description: text('description'),
+    // The company's un-deletable "Standard" rule. Exactly one per company (partial unique index). A shift
+    // with no rule_id resolves to this rule.
+    isDefault: boolean('is_default').notNull().default(false),
+    // 'active' | 'inactive' — a CHECK lives in migration 0203. Inactive rules stay assigned but are hidden
+    // from the new-shift picker (surfaced with a badge in the list).
+    status: text('status').notNull().default('active'),
+    // ── Lateness section ──
+    // Grace minutes after the scheduled start before lateness is evaluated (the engine's late threshold =
+    // shift start + this, unless a per-shift late-grace overrides). afterMinutes/deductMinutes/includeGrace
+    // capture the deduction rule (stored; pay application deferred — see the table comment).
+    lateGracePeriodMinutes: integer('late_grace_period_minutes').notNull().default(0),
+    lateAfterMinutes: integer('late_after_minutes').notNull().default(0),
+    lateDeductMinutes: integer('late_deduct_minutes').notNull().default(0),
+    includeGraceInLateness: boolean('include_grace_in_lateness').notNull().default(false),
+    // ── Early Out section (same shape) ──
+    earlyGracePeriodMinutes: integer('early_grace_period_minutes').notNull().default(0),
+    earlyAfterMinutes: integer('early_after_minutes').notNull().default(0),
+    earlyDeductMinutes: integer('early_deduct_minutes').notNull().default(0),
+    includeGraceInEarlyOut: boolean('include_grace_in_early_out').notNull().default(false),
+    // ── Overtime section ──
+    // "Apply this overtime policy to approved OVERTIME worked before the scheduled start." Honoured by the
+    // pure resolver applyOtRuleRows (unit-tested); the engine currently feeds 0 pre-shift OT minutes (early-OT
+    // punch attribution is a deferred follow-up — documented GAP).
+    applyToEarlyOt: boolean('apply_to_early_ot').notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    // Exactly one default ("Standard") rule per company.
+    uniqueIndex('attendance_rule_default_uq').on(t.companyId).where(sql`is_default`),
+    // Case-insensitive unique rule name within a company.
+    uniqueIndex('attendance_rule_company_name_uq').on(t.companyId, sql`lower(${t.name})`),
+    index('attendance_rule_company_idx').on(t.companyId),
+  ],
+);
+
+// One overtime time-band row of an attendance_rule (the reporter's "+ Add Row" OT table). fromMinutes..
+// toMinutes bound the OT duration (minutes past normal); ratePattern 'flat' (any numeric multiplier) or
+// 'variable' (a standardized multiplier). `rounding` + `roundToMinutes` round the matched OT minutes.
+export type AttendanceOtRatePattern = 'flat' | 'variable';
+export const attendanceRuleOtRow = pgTable(
+  'attendance_rule_ot_row',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    ruleId: uuid('rule_id')
+      .notNull()
+      .references(() => attendanceRule.id, { onDelete: 'cascade' }),
+    fromMinutes: integer('from_minutes').notNull().default(0),
+    // 0 (or ≤ fromMinutes) ⇒ open-ended upper bound.
+    toMinutes: integer('to_minutes').notNull().default(0),
+    ratePattern: text('rate_pattern').notNull().default('flat').$type<AttendanceOtRatePattern>(),
+    rate: numeric('rate', { precision: 6, scale: 2 }).notNull().default('1.50'),
+    rounding: boolean('rounding').notNull().default(false),
+    roundToMinutes: integer('round_to_minutes'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attendance_rule_ot_row_rule_idx').on(t.ruleId, t.sortOrder)],
+);
+
 // Attendance correction requests (ADR-0011 Phase B): an employee proposes corrected punch
 // times for a day; an admin or their manager approves, which amends the attendance row
 // (re-derived through the time engine). Mirrors the leave request→decide workflow.
@@ -2208,6 +2404,11 @@ export const shift = pgTable(
     // minimum block / daily cap); statutory multipliers stay company-level. NULL ⇒ legacy behaviour. See the
     // ShiftOtRule type above.
     otRule: jsonb('ot_rule').$type<ShiftOtRule | null>(),
+    // 88e94371 — the shift's chosen attendance-calculation rule ("Lateness, Early Out & Overtime Settings").
+    // NULL ⇒ the shift falls back to the employee's-company default ("Standard") rule at resolve time
+    // (core/attendance.ts). Replaces the old per-shift "OT Rules" UI field with a rule-library dropdown;
+    // shift.ot_rule stays as a higher-precedence per-shift OT-shape override (legacy, byte-identical).
+    ruleId: uuid('rule_id').references((): AnyPgColumn => attendanceRule.id),
     differential: jsonb('differential').$type<ShiftDifferential | null>(),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: createdAt(),

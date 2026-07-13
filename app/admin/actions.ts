@@ -79,6 +79,16 @@ import {
 import { countEmployeesInScope } from '@/core/read';
 import { ESS_VIEW_COMPONENT_KEYS, type EssViewConfig } from '@/core/ess-view';
 import { requireAdmin } from '@/lib/authz';
+import {
+  createGradeGroup,
+  updateGradeGroup,
+  deleteGradeGroup,
+  createBenefitScheme,
+  updateBenefitScheme,
+  deleteBenefitScheme,
+  upsertSchemeEntitlement,
+  deleteSchemeEntitlement,
+} from '@/core/benefit-scheme';
 import { inviteUser, revokeInvitation } from '@/core/auth';
 import { setToilPolicy, runToilExpiry, closeReplacementLeaveYear } from '@/core/toil';
 import { setEncashmentPolicy } from '@/core/leave-encashment';
@@ -1557,4 +1567,121 @@ export async function deleteClockingLocationAction(fd: FormData) {
     fail(LOCATIONS, e);
   }
   ok(LOCATIONS);
+}
+
+// ── Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b) ──────────────────────────────
+// All redirect to the Entitlements tab (where the Benefit Scheme subsection lives). requireAdmin gates the
+// route; RLS additionally gates the write (WITH CHECK app.is_admin()).
+function parseBands(fd: FormData): import('@/core/leave-compute').ServiceBand[] {
+  const raw = String(fd.get('serviceBands') ?? '[]');
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createGradeGroupAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await createGradeGroup(s, {
+      name: String(fd.get('name') ?? ''),
+      gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function updateGradeGroupAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await updateGradeGroup(s, {
+      id: String(fd.get('id') ?? ''),
+      name: String(fd.get('name') ?? ''),
+      gradeIds: fd.getAll('gradeIds').map((v) => String(v)).filter(Boolean),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function deleteGradeGroupAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await deleteGradeGroup(s, { id: String(fd.get('id') ?? '') });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function createBenefitSchemeAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await createBenefitScheme(s, {
+      companyId: String(fd.get('companyId') ?? ''),
+      employmentType: String(fd.get('employmentType') ?? ''),
+      gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
+      name: String(fd.get('name') ?? ''),
+      status: String(fd.get('status') ?? 'active'),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function updateBenefitSchemeAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await updateBenefitScheme(s, {
+      id: String(fd.get('id') ?? ''),
+      companyId: String(fd.get('companyId') ?? ''),
+      employmentType: String(fd.get('employmentType') ?? ''),
+      gradeGroupId: (String(fd.get('gradeGroupId') ?? '') || null),
+      name: String(fd.get('name') ?? ''),
+      status: String(fd.get('status') ?? 'active'),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function deleteBenefitSchemeAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await deleteBenefitScheme(s, { id: String(fd.get('id') ?? '') });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function upsertSchemeEntitlementAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await upsertSchemeEntitlement(s, {
+      benefitSchemeId: String(fd.get('benefitSchemeId') ?? ''),
+      leaveTypeId: String(fd.get('leaveTypeId') ?? ''),
+      serviceBands: parseBands(fd),
+    });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
+}
+
+export async function deleteSchemeEntitlementAction(fd: FormData) {
+  const s = await requireAdmin();
+  try {
+    await deleteSchemeEntitlement(s, { id: String(fd.get('id') ?? '') });
+  } catch (e) {
+    fail(ENTITLEMENTS, e);
+  }
+  ok(ENTITLEMENTS);
 }

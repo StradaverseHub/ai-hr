@@ -239,7 +239,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/attendance-policy',
     labelKey: 'nav.attendancePolicyConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/attendance-policy'],
+    routes: ['/admin/attendance-policy', '/admin/attendance-policy/rules/new', '/admin/attendance-policy/rules/[ruleId]'],
   },
   {
     screenKey: 'attendanceAllowance',
@@ -274,6 +274,9 @@ export const SCREENS: readonly ScreenEntry[] = [
       // each a real sub-route under the same scopedAdmin guard as the index.
       '/payroll/configuration/epf',
       '/payroll/configuration/socso',
+      // R37 674ff6a5: SKBBK (Lindung 24 Jam) surfaced in its own tab — reads the skbbk column carried on
+      // the SOCSO bands; edits round-trip into the SOCSO override. Same scopedAdmin guard as its siblings.
+      '/payroll/configuration/skbbk',
       '/payroll/configuration/eis',
       '/payroll/configuration/pcb',
       '/payroll/configuration/hrdf',

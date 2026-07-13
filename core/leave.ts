@@ -35,11 +35,15 @@ import {
   parseCarryExpiry,
   previewEntitlement,
   resolveGradePolicy,
+  resolveEffectiveSchemeId,
+  schemeBandDays,
   type AccrualConfig,
+  type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
   type PreviewResult,
   type ResolvedPolicy,
+  type SchemeMatchSubject,
   type ServiceBand,
 } from './leave-compute';
 // Re-export the pure module's surface so every existing caller/test keeps importing these from '@/core/leave'.
@@ -58,21 +62,28 @@ export {
   parseCarryExpiry,
   previewEntitlement,
   resolveGradePolicy,
+  resolveEffectiveSchemeId,
+  schemeBandDays,
   type AccrualConfig,
+  type BenefitSchemeRow,
   type CarryExpiry,
   type GradePolicyRow,
   type PreviewResult,
   type ResolvedPolicy,
+  type SchemeMatchSubject,
   type ServiceBand,
 };
 import {
   assignment,
   attendancePolicy,
+  benefitScheme,
   businessUnit,
   company,
   department,
   employment,
+  gradeGroupMember,
   jobGrade,
+  schemeLeaveEntitlement,
   leaveApprovalStep,
   leaveCancellationRequest,
   leaveEncashmentSnapshot,
@@ -3939,6 +3950,118 @@ export async function saveFutureOpeningRule(
   });
 }
 
+// ── Benefit Scheme entitlement resolution for the grant sweeps (feedback b83c6a3b) ───────────────────
+/** The per-employee attributes the scheme resolver needs beyond what the grant loops already select. */
+type SchemeEmp = {
+  employmentId: string;
+  companyId: string;
+  gradeId: string | null;
+  overrideSchemeId: string | null;
+};
+
+/**
+ * Build the scheme-entitlement lookup used by openLeaveYear / accrueEarnedLeave. Pre-loads (all within the
+ * current tenant tx): every benefit scheme, the grade→group membership map, the current-assignment
+ * employment type per employee, and the scheme×leave-type service-band tables — then resolves each
+ * employee's EFFECTIVE scheme once (override → auto-match → none via `resolveEffectiveSchemeId`). Returns a
+ * closure `(employmentId, leaveTypeId, serviceYears) => number | null`: the scheme's band days for that
+ * service length, or null when the employee has no scheme or the scheme has no entitlement for the type
+ * (⇒ caller falls back to the grade leave_policy days). READ-ONLY — no events (CLAUDE.md skip rule).
+ */
+async function buildSchemeEntitlementResolver(
+  tx: Tx,
+  emps: SchemeEmp[],
+  typeIds: string[],
+): Promise<(employmentId: string, leaveTypeId: string, serviceYears: number) => number | null> {
+  const empIds = emps.map((e) => e.employmentId);
+  if (empIds.length === 0 || typeIds.length === 0) return () => null;
+
+  const schemes = await tx
+    .select({
+      id: benefitScheme.id,
+      companyId: benefitScheme.companyId,
+      employmentType: benefitScheme.employmentType,
+      gradeGroupId: benefitScheme.gradeGroupId,
+      status: benefitScheme.status,
+    })
+    .from(benefitScheme);
+  // No schemes at all ⇒ pure back-compat: everyone resolves via the grade policy.
+  if (schemes.length === 0) return () => null;
+  const schemeRows: BenefitSchemeRow[] = schemes.map((s) => ({
+    id: s.id,
+    companyId: s.companyId,
+    employmentType: s.employmentType,
+    gradeGroupId: s.gradeGroupId,
+    status: s.status,
+  }));
+
+  // grade → group membership.
+  const distinctGradeIds = [...new Set(emps.map((e) => e.gradeId).filter((g): g is string => !!g))];
+  const gradeGroupByGrade = new Map<string, string>();
+  if (distinctGradeIds.length) {
+    const members = await tx
+      .select({ gradeId: gradeGroupMember.gradeId, gradeGroupId: gradeGroupMember.gradeGroupId })
+      .from(gradeGroupMember)
+      .where(inArray(gradeGroupMember.gradeId, distinctGradeIds));
+    for (const m of members) gradeGroupByGrade.set(m.gradeId, m.gradeGroupId);
+  }
+
+  // Current-assignment employment type per employee (validTo / supersededAt null = the current row).
+  const assigns = await tx
+    .select({ employmentId: assignment.employmentId, employmentType: assignment.employmentType })
+    .from(assignment)
+    .where(
+      and(
+        inArray(assignment.employmentId, empIds),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+      ),
+    );
+  const empTypeByEmp = new Map<string, string>();
+  for (const a of assigns) empTypeByEmp.set(a.employmentId, a.employmentType);
+
+  // Resolve each employee's effective scheme id once.
+  const schemeByEmp = new Map<string, string | null>();
+  for (const e of emps) {
+    const gradeGroupId = e.gradeId ? (gradeGroupByGrade.get(e.gradeId) ?? null) : null;
+    const sid = resolveEffectiveSchemeId(schemeRows, {
+      companyId: e.companyId,
+      employmentType: empTypeByEmp.get(e.employmentId) ?? null,
+      gradeGroupId,
+      overrideSchemeId: e.overrideSchemeId,
+    });
+    schemeByEmp.set(e.employmentId, sid);
+  }
+
+  // Scheme × leave-type service bands, only for the schemes actually resolved (bounded query).
+  const usedSchemeIds = [...new Set([...schemeByEmp.values()].filter((s): s is string => !!s))];
+  const bandsBySchemeType = new Map<string, unknown>();
+  if (usedSchemeIds.length) {
+    const ents = await tx
+      .select({
+        benefitSchemeId: schemeLeaveEntitlement.benefitSchemeId,
+        leaveTypeId: schemeLeaveEntitlement.leaveTypeId,
+        serviceBands: schemeLeaveEntitlement.serviceBands,
+      })
+      .from(schemeLeaveEntitlement)
+      .where(
+        and(
+          inArray(schemeLeaveEntitlement.benefitSchemeId, usedSchemeIds),
+          inArray(schemeLeaveEntitlement.leaveTypeId, typeIds),
+        ),
+      );
+    for (const en of ents) bandsBySchemeType.set(`${en.benefitSchemeId}|${en.leaveTypeId}`, en.serviceBands);
+  }
+
+  return (employmentId: string, leaveTypeId: string, serviceYears: number): number | null => {
+    const sid = schemeByEmp.get(employmentId);
+    if (!sid) return null;
+    const bands = bandsBySchemeType.get(`${sid}|${leaveTypeId}`);
+    if (bands === undefined) return null;
+    return schemeBandDays(bands, serviceYears);
+  };
+}
+
 export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
   return withTenant(ctx, async (tx) => {
     const yearStart = `${p.year}-01-01`;
@@ -3954,6 +4077,7 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         country: company.country,
         gradeId: employment.gradeId,
         companyId: employment.companyId,
+        benefitSchemeId: employment.benefitSchemeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -4004,6 +4128,20 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
       else policyByType.set(pol.leaveTypeId, [pol]);
     }
 
+    // Benefit Scheme & Leave Entitlement (b83c6a3b): resolve each employee's scheme entitlement days for the
+    // standing types. Returns null (fall back to grade policy) when no scheme is assigned/matched. Byte-
+    // identical behaviour for tenants with no schemes (the resolver short-circuits to `() => null`).
+    const schemeDaysFor = await buildSchemeEntitlementResolver(
+      tx,
+      emps.map((e) => ({
+        employmentId: e.employmentId,
+        companyId: e.companyId,
+        gradeId: e.gradeId,
+        overrideSchemeId: e.benefitSchemeId,
+      })),
+      typeIds,
+    );
+
     const balances = await tx
       .select({
         employmentId: leaveLedger.employmentId,
@@ -4037,7 +4175,11 @@ export async function openLeaveYear(ctx: SessionContext, p: { year: number }) {
         const pol = resolveGradePolicy(policyByType.get(t.id) ?? [], e.gradeId, e.companyId, years);
         // 2D (ADR-0040): earned types accrue through the year via accrueEarnedLeave, not this lump grant.
         if (isEarnedMethod(pol?.method)) continue;
-        const days = Math.max(pack.leave.entitlement(t.code, years), pol?.days ?? 0);
+        // Benefit Scheme (b83c6a3b): a resolved scheme entitlement SUPERSEDES the grade policy days for this
+        // type; the EA-1955 floor still clamps on top (Math.max below). null ⇒ no scheme ⇒ use policy days.
+        const schemeDays = schemeDaysFor(e.employmentId, t.id, years);
+        const policyDays = schemeDays ?? (pol?.days ?? 0);
+        const days = Math.max(pack.leave.entitlement(t.code, years), policyDays);
         if (days <= 0) continue;
         const before = balanceBy.get(key) ?? 0;
         // Carry-forward enhancement: ANNUAL carries only when the explicit toggle is on (back-compat
@@ -4246,6 +4388,7 @@ export async function accrueEarnedLeave(
         gradeId: employment.gradeId,
         companyId: employment.companyId,
         companyName: company.legalName,
+        benefitSchemeId: employment.benefitSchemeId,
       })
       .from(employment)
       .innerJoin(company, eq(company.id, employment.companyId))
@@ -4260,6 +4403,21 @@ export async function accrueEarnedLeave(
       );
     if (emps.length === 0) return { granted: 0, forfeits: 0, breakdown: [] };
     const empIds = emps.map((e) => e.employmentId);
+
+    // Benefit Scheme & Leave Entitlement (b83c6a3b): resolve each employee's scheme entitlement days for the
+    // earned types. When a scheme is assigned+matched and carries an entitlement for the type, its band days
+    // SUPERSEDE the grade policy's `days` as the annual accrual TARGET (the accrual cadence/method still
+    // comes from the earned grade policy). null ⇒ no scheme ⇒ use policy days (byte-identical back-compat).
+    const schemeDaysFor = await buildSchemeEntitlementResolver(
+      tx,
+      emps.map((e) => ({
+        employmentId: e.employmentId,
+        companyId: e.companyId,
+        gradeId: e.gradeId,
+        overrideSchemeId: e.benefitSchemeId,
+      })),
+      earnedTypeIds,
+    );
 
     // Grade-name lookup for the grouped preview breakdown (feedback 2c7c6385). A null gradeId row is the
     // ungraded/company-default bucket — no jobGrade name.
@@ -4434,7 +4592,10 @@ export async function accrueEarnedLeave(
             forfeits += 1;
           }
         }
-        const entitlement = Math.max(pack.leave.entitlement(type.code, years), pol!.days);
+        // Benefit Scheme (b83c6a3b): scheme band days supersede pol.days as the annual target; EA floor still
+        // clamps. null ⇒ fall back to the earned policy's own days.
+        const schemeTargetDays = schemeDaysFor(e.employmentId, typeId, years);
+        const entitlement = Math.max(pack.leave.entitlement(type.code, years), schemeTargetDays ?? pol!.days);
         if (entitlement <= 0) continue;
         const totalPeriods = pol!.method === 'earned_quarterly' ? 4 : 12;
         const accrualStart =

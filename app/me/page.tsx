@@ -31,7 +31,6 @@ import { CancelLeaveDialog } from '@/components/leave/cancel-leave-dialog';
 import { CancelDatesDialog } from '@/components/leave/cancel-dates-dialog';
 import { todayInKualaLumpur } from '@/core/leave';
 import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
-import { LeaveBalanceTable } from '@/components/leave/leave-balance-table';
 // deriveBalanceRow is imported from the server-safe module (NOT the 'use client' table) so this RSC can
 // call it at render time — importing it from the client module crashed all of /me (b7d84266).
 import { deriveBalanceRow } from '@/components/leave/leave-balance-row';
@@ -236,7 +235,6 @@ export default async function MePage({
   })).filter((g) => g.types.length > 0);
 
   // Detailed balance table (R24 483fa7c3, demoted to an optional toggle) — every NON-hidden type.
-  const detailedBalances = balances.filter((b) => b.placement !== 'hidden');
 
   // R17 600be8ac ask #6: for each request shown in the list, fetch its per-date rows (if any) so the employee
   // sees the same date-by-date outcome — which dates were approved / rejected and why — that the approver
@@ -1417,65 +1415,10 @@ export default async function MePage({
                   </ul>
                 </div>
 
-                {/* Detailed balance table (R24 483fa7c3) — demoted from the primary /me view to an optional
-                    toggle so the dense Workday-style comparison + its shared as-at date form stay reachable
-                    without dominating the redesigned card view. Shows every non-hidden type. */}
-                {detailedBalances.length > 0 && (
-                  <details className="mt-4 border-t border-border pt-4">
-                    <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      {t('detailedTable')}
-                    </summary>
-                    <div className="mt-3 space-y-3">
-                      {/* Workday-style redesign (483fa7c3): ONE shared as-at date GET form driving the whole
-                          table. One ?asOf= drives every row's breakdown; invalid/empty ⇒ today. Preserves tab. */}
-                      <form method="GET" action="/me" className="flex flex-wrap items-end gap-2">
-                        <input type="hidden" name="tab" value="leave" />
-                        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          {t('leaveBalanceTable.asAtDate')}
-                          <input
-                            type="date"
-                            name="asOf"
-                            defaultValue={breakdownAsOf}
-                            className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
-                          />
-                        </label>
-                        <button
-                          type="submit"
-                          className="rounded-md border border-input bg-background px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted dark:hover:bg-muted/40"
-                        >
-                          {t('leaveBalanceTable.apply')}
-                        </button>
-                      </form>
-                      <LeaveBalanceTable
-                        rows={detailedBalances.map((b) => {
-                          // Employee Leave View Configuration (65dec703): deriveBalanceRow applies available/
-                          // taken/overutilized gating; the Entitlement Calculation Breakdown side-sheet is its
-                          // own toggle (1fedb473) — off ⇒ the expander (detail) doesn't mount at all.
-                          const showBreakdown = b.essView.entitlementCalcBreakdown !== false;
-                          const bd = breakdownByType.get(b.leaveTypeId);
-                          return {
-                            ...deriveBalanceRow(b, bd ?? null),
-                            detail:
-                              showBreakdown && bd ? (
-                                <EntitlementBreakdown
-                                  data={bd}
-                                  summary={{ available: b.available, taken: b.taken, pending: b.pending, ytdEntitled: b.accrued }}
-                                  upcoming={requests
-                                    .filter((r) => r.status === 'approved' && r.startDate > today && r.leaveType === b.leaveType)
-                                    .map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days), durationType: r.durationType }))}
-                                  visual={{ color: b.color, icon: b.icon, code: b.code }}
-                                  asOf={breakdownAsOf}
-                                  action="/me"
-                                  hiddenParams={{ tab: 'leave' }}
-                                  applyEssConfig
-                                />
-                              ) : undefined,
-                          };
-                        })}
-                      />
-                    </div>
-                  </details>
-                )}
+                {/* Detailed balance table relocated to the dedicated Leave page (/leave · R37 e5a158d3).
+                    The /me Leave tab keeps the primary summary cards + upcoming/pending list; the dense
+                    Workday-style comparison table + its as-at-date form now live where people look for
+                    leave. Same source, same figures — see app/leave/page.tsx. */}
               </Card>
 
               {/* Right column: leave application form incl. supporting-document upload. */}

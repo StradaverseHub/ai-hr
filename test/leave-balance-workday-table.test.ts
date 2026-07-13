@@ -201,8 +201,11 @@ describe('Leave Balance table source: responsive DB-free client island', () => {
   });
 });
 
-describe('Leave Balance table: /me composes it while preserving R22 (panel + shared as-at form)', () => {
-  const page = read('/app/me/page.tsx');
+// R37 e5a158d3: the detailed Workday-style balance table was RELOCATED from the /me Leave tab to the
+// dedicated /leave page. These guards moved with it — /leave now composes it (preserving R22), and /me
+// no longer renders it.
+describe('Leave Balance table: /leave composes it while preserving R22 (panel + shared as-at form)', () => {
+  const page = read('/app/leave/page.tsx');
 
   it('renders LeaveBalanceTable built from deriveBalanceRow', () => {
     expect(page).toMatch(/<LeaveBalanceTable/);
@@ -215,10 +218,24 @@ describe('Leave Balance table: /me composes it while preserving R22 (panel + sha
     expect(page.includes('applyEssConfig')).toBe(true);
   });
 
-  it('lifts ONE shared ?asOf= GET form above the table (preserved, tab=leave carried)', () => {
+  it('lifts ONE shared ?asOf= GET form above the table (posts back to /leave)', () => {
     expect(page).toMatch(/method="GET"/);
     expect(page).toMatch(/name="asOf"/);
-    expect(page).toMatch(/name="tab" value="leave"/);
+    expect(page).toMatch(/action="\/leave"/);
     expect(page).toMatch(/defaultValue=\{breakdownAsOf\}/);
+  });
+
+  it('scopes the balances to the VIEWER via per-employment leaveBalances (not the all-employee pivot)', () => {
+    expect(page).toMatch(/leaveBalances\(session, me\.employmentId, locale\)/);
+    expect(page.includes('leaveBalancesAll')).toBe(false);
+  });
+});
+
+describe('Leave Balance table: /me NO LONGER renders the detailed table (relocated · R37 e5a158d3)', () => {
+  const page = read('/app/me/page.tsx');
+
+  it('does not compose LeaveBalanceTable anymore', () => {
+    expect(page.includes('<LeaveBalanceTable')).toBe(false);
+    expect(page.includes("from '@/components/leave/leave-balance-table'")).toBe(false);
   });
 });

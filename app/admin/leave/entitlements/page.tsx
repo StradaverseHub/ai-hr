@@ -4,6 +4,8 @@ import { requireAdmin, isGroupAdmin, hasGrantFor, withEffectiveGrants } from '@/
 import { listLeaveTypes, listCompanies, listJobGrades } from '@/core/read';
 import { listAdHocLeaveGrants, listLeavePolicies } from '@/core/admin';
 import { listLeaveYearConfigs } from '@/core/leave';
+import { listGradeGroups, listBenefitSchemes, listSchemeEntitlements } from '@/core/benefit-scheme';
+import { BenefitSchemeConfig } from '@/components/benefit-scheme-config';
 import type { ServiceBand } from '@/core/leave-compute';
 import { entitlement } from '@/localization/my/leave';
 import { Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, btnPrimary, inputCls } from '@/components/ui';
@@ -28,6 +30,14 @@ import {
   archiveJobGradeAction,
   updateJobGradeAction,
   deleteJobGradeAction,
+  createGradeGroupAction,
+  updateGradeGroupAction,
+  deleteGradeGroupAction,
+  createBenefitSchemeAction,
+  updateBenefitSchemeAction,
+  deleteBenefitSchemeAction,
+  upsertSchemeEntitlementAction,
+  deleteSchemeEntitlementAction,
 } from '../../actions';
 import { GradeCatalog } from '@/components/grade-catalog';
 
@@ -52,17 +62,22 @@ export default async function LeaveEntitlementsPage({
   const s = await requireAdmin();
   const t = await getTranslations('admin.leave');
   const { error } = await searchParams;
-  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs] = await Promise.all([
-    listLeaveTypes(s, { includeArchived: true }),
-    listLeavePolicies(s),
-    listCompanies(s),
-    // 728a7db6 — load archived grades too so the management table can show + unarchive them; the leave-type
-    // scope dropdown below is filtered to ACTIVE grades only (archived grades can't be assigned to new scopes).
-    listJobGrades(s, { includeArchived: true }),
-    listAdHocLeaveGrants(s),
-    // Leave Year Configuration (9aa894a4): the managed Draft/Open/Closed records driving the Leave-Year table.
-    listLeaveYearConfigs(s),
-  ]);
+  const [types, policies, companies, grades, adHocGrants, leaveYearConfigs, gradeGroups, benefitSchemes, schemeEntitlements] =
+    await Promise.all([
+      listLeaveTypes(s, { includeArchived: true }),
+      listLeavePolicies(s),
+      listCompanies(s),
+      // 728a7db6 — load archived grades too so the management table can show + unarchive them; the leave-type
+      // scope dropdown below is filtered to ACTIVE grades only (archived grades can't be assigned to new scopes).
+      listJobGrades(s, { includeArchived: true }),
+      listAdHocLeaveGrants(s),
+      // Leave Year Configuration (9aa894a4): the managed Draft/Open/Closed records driving the Leave-Year table.
+      listLeaveYearConfigs(s),
+      // Benefit Scheme & Leave Entitlement (b83c6a3b): the new configuration layer's data.
+      listGradeGroups(s),
+      listBenefitSchemes(s),
+      listSchemeEntitlements(s),
+    ]);
   const gradeOptions = grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name }));
   // ADR-0066: companies for the per-policy scope select. companyOptions stays the FULL list — policy writes
   // are separately RLS-gated and must not be narrowed here.
@@ -516,6 +531,54 @@ export default async function LeaveEntitlementsPage({
             delete: deleteJobGradeAction,
           }}
         />
+      </Card>
+
+      {/* Benefit Scheme & Leave Entitlement Configuration (feedback b83c6a3b): a friendlier configuration
+          LAYER over the grade-scoped engine, placed AFTER the Grade catalog (which stays unchanged). Grade
+          groups + named schemes (Company × Employment Type × Grade Group) + a per-scheme leave-entitlement
+          table. Employees resolve to a scheme (auto-match, or a manual override) and the scheme's service-
+          band days supersede the grade policy — the EA-1955 floor still applies. */}
+      <Card>
+        <SectionHeader title={t('benefitSchemeTitle')} count={benefitSchemes.length} />
+        <p className="px-4 pt-3 pb-1 text-xs text-muted-foreground">{t('benefitSchemeHelp')}</p>
+        <div className="p-4">
+          <BenefitSchemeConfig
+            companies={companyOptions}
+            grades={grades.filter((g) => !g.archivedAt).map((g) => ({ id: g.id, name: g.name, code: g.code }))}
+            leaveTypes={activeTypeOptions.map((lt) => ({
+              id: lt.id,
+              name: lt.name,
+              code: types.find((t) => t.id === lt.id)?.code ?? '',
+            }))}
+            gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
+            schemes={benefitSchemes.map((sc) => ({
+              id: sc.id,
+              companyId: sc.companyId,
+              employmentType: sc.employmentType,
+              gradeGroupId: sc.gradeGroupId,
+              gradeGroupName: sc.gradeGroupName,
+              name: sc.name,
+              status: sc.status,
+            }))}
+            entitlements={schemeEntitlements.map((e) => ({
+              id: e.id,
+              benefitSchemeId: e.benefitSchemeId,
+              leaveTypeId: e.leaveTypeId,
+              leaveTypeName: e.leaveTypeName,
+              serviceBands: e.serviceBands,
+            }))}
+            actions={{
+              createGradeGroup: createGradeGroupAction,
+              updateGradeGroup: updateGradeGroupAction,
+              deleteGradeGroup: deleteGradeGroupAction,
+              createScheme: createBenefitSchemeAction,
+              updateScheme: updateBenefitSchemeAction,
+              deleteScheme: deleteBenefitSchemeAction,
+              upsertEntitlement: upsertSchemeEntitlementAction,
+              deleteEntitlement: deleteSchemeEntitlementAction,
+            }}
+          />
+        </div>
       </Card>
 
       {/* Leave Data Import & Migration Tool — bulk-load opening balances / carry-forward / historical leave. */}

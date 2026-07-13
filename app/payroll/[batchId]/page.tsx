@@ -41,8 +41,8 @@ export default async function BatchPage({
   const preChecks: PreProcessAdvisory =
     batch.status === 'draft'
       ? await preProcessAdvisory(s, batchId)
-      : { missingCompensation: [], missingStatutory: [], missingBank: [] };
-  const preBlockers = preChecks.missingCompensation.length;
+      : { missingCompensation: [], missingBasicComponent: [], missingStatutory: [], missingBank: [] };
+  const preBlockers = preChecks.missingCompensation.length + preChecks.missingBasicComponent.length;
   const preWarnings = preChecks.missingStatutory.length + preChecks.missingBank.length;
   // Config-level readiness (feedback 5db3ae48, Phase A) — the layer ABOVE the employee-master pre-checks:
   // is the COMPANY configured to run payroll (statutory tables, active cycle, pay-day, pay items, policy)?
@@ -374,6 +374,7 @@ export default async function BatchPage({
               {(
                 [
                   ['missingCompensation', preChecks.missingCompensation, true],
+                  ['missingBasicComponent', preChecks.missingBasicComponent, true],
                   ['missingStatutory', preChecks.missingStatutory, false],
                   ['missingBank', preChecks.missingBank, false],
                 ] as const
