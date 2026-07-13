@@ -647,7 +647,21 @@
         "category": "Category",
         "readOnlyNote": "Company, Department, Position, Job Grade, Employment Type and Employee Status are shown for reference. Manage them under Career Movement (transfers) and the Profile tab (grade) to keep their history intact.",
         "superiorNote": "Set the reporting-to (superior) on the Reporting lines card below.",
-        "save": "Save employment information"
+        "save": "Save employment information",
+        "assignmentGroup": "Organisation Assignment",
+        "saveAssignment": "Save organisation assignment",
+        "assignmentNote": "Changes to Department, Position, Employment Type and Employee Status are recorded with an effective date and kept in the assignment history, so past records stay accurate. Job Grade is saved to the employee record.",
+        "positionNone": "None",
+        "invalidValue": "Invalid value selected.",
+        "employmentType_full_time": "Full-time",
+        "employmentType_part_time": "Part-time",
+        "employmentType_contract": "Contract",
+        "employmentType_intern": "Intern",
+        "status_active": "Active",
+        "status_on_leave": "On leave",
+        "status_probation": "Probation",
+        "status_offboarding": "Offboarding",
+        "status_terminated": "Terminated"
       },
       "documents": {
         "title": "Documents",

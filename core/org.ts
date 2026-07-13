@@ -25,7 +25,12 @@ import {
   position,
   reportingLine,
   leaveLedger,
+  employmentTypeEnum,
+  assignmentStatusEnum,
 } from '../db/schema';
+
+export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number];
+export type AssignmentStatusValue = (typeof assignmentStatusEnum.enumValues)[number];
 
 /** Hiring enhancement: a position / cost-center / department chosen for a hire must belong to the
  *  company the employment is created under. Client filtering is not a source of truth — this is the
@@ -1156,6 +1161,107 @@ export async function setEmploymentGrade(
       payload: { before: before.gradeId, after: p.gradeId },
     });
     return { id: p.employmentId };
+  });
+}
+
+/**
+ * Employment tab org-info edit (feedback 594323a6) — the single audited, effective-dated writer for the
+ * four assignment-owned dimensions HR maintains from the Personnel Employment tab: Department, Position,
+ * Employment Type and Employee Status. Job Grade is NOT here (it lives on `employment`, owned by
+ * setEmploymentGrade). Like transferEmployee this CLOSE+INSERTs so the dated assignment history is never
+ * overwritten — but it carries ALL four dimensions forward (transferEmployee only ever moved department/
+ * location and left type/status frozen), and emits a dedicated `employment.assignment.changed` event with a
+ * full before/after diff so the change is attributable in the audit trail.
+ *
+ * `undefined` on any field = carry the current value forward. Values are enum-validated by the DB column
+ * types; department/position ids are FK-checked by Postgres (an invalid id throws, surfaced to the caller).
+ * A no-op (nothing actually changed) returns `{ changed: false }` WITHOUT creating a spurious dated row or
+ * event — so a Save that only touched Job Grade doesn't fragment the assignment history.
+ */
+export async function setEmploymentAssignment(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    effectiveDate: string;
+    departmentId?: string;
+    positionId?: string | null;
+    employmentType?: EmploymentTypeValue;
+    status?: AssignmentStatusValue;
+  },
+) {
+  return withTenant(ctx, async (tx) => {
+    const [cur] = await tx
+      .select()
+      .from(assignment)
+      .where(
+        and(
+          eq(assignment.employmentId, p.employmentId),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (!cur) throw new Error('No open assignment to change');
+    // Effective date cannot predate the current version's start (would invert the dated range).
+    if (p.effectiveDate < cur.validFrom) {
+      throw new Error('Effective date cannot be before the current assignment start date');
+    }
+
+    const nextDepartmentId = p.departmentId ?? cur.departmentId;
+    const nextPositionId = p.positionId === undefined ? cur.positionId : p.positionId || null;
+    const nextEmploymentType = p.employmentType ?? cur.employmentType;
+    const nextStatus = p.status ?? cur.status;
+
+    const unchanged =
+      nextDepartmentId === cur.departmentId &&
+      nextPositionId === cur.positionId &&
+      nextEmploymentType === cur.employmentType &&
+      nextStatus === cur.status;
+    if (unchanged) return { assignmentId: cur.id, changed: false as const };
+
+    // CLOSE current (set valid_to), then INSERT the new version — ranges don't overlap.
+    await tx.update(assignment).set({ validTo: p.effectiveDate }).where(eq(assignment.id, cur.id));
+    const [next] = await tx
+      .insert(assignment)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        departmentId: nextDepartmentId,
+        positionId: nextPositionId,
+        costCenterId: cur.costCenterId,
+        locationId: cur.locationId,
+        employmentType: nextEmploymentType,
+        status: nextStatus,
+        validFrom: p.effectiveDate,
+        validTo: null,
+      })
+      .returning({ id: assignment.id });
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'assignment',
+      aggregateId: next.id,
+      eventType: 'employment.assignment.changed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        employmentId: p.employmentId,
+        effectiveDate: p.effectiveDate,
+        before: {
+          departmentId: cur.departmentId,
+          positionId: cur.positionId,
+          employmentType: cur.employmentType,
+          status: cur.status,
+        },
+        after: {
+          departmentId: nextDepartmentId,
+          positionId: nextPositionId,
+          employmentType: nextEmploymentType,
+          status: nextStatus,
+        },
+      },
+    });
+    return { assignmentId: next.id, changed: true as const };
   });
 }
 

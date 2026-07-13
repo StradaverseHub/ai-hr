@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { endReportingLine, setEmployeeCode, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type HolidayCalendarSelection } from '@/core/org';
+import { endReportingLine, setEmployeeCode, setEmploymentAssignment, setEmploymentGrade, setEmploymentHolidayCalendar, setEmploymentInfo, setReportingLine, terminateEmployment, transferEmployee, updatePerson, type AssignmentStatusValue, type EmploymentTypeValue, type HolidayCalendarSelection } from '@/core/org';
 import { setCompensation, updateCompensation } from '@/core/comp';
 import { assignEmployeeShift } from '@/core/roster';
 import { setEmployeeClockingLocations, setGeofencing } from '@/core/clocking-location';
@@ -602,6 +602,53 @@ export async function setEmploymentInfoAction(formData: FormData) {
       orgTeam: str('orgTeam'),
       orgBase: str('orgBase'),
       employmentCategory: str('employmentCategory'),
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+const EMPLOYMENT_TYPES: readonly EmploymentTypeValue[] = ['full_time', 'part_time', 'contract', 'intern'];
+const ASSIGNMENT_STATUSES: readonly AssignmentStatusValue[] = ['active', 'on_leave', 'probation', 'offboarding', 'terminated'];
+
+/**
+ * Employment tab org-info edit (feedback 594323a6) — the single Save for the five organisation fields HR
+ * maintains on the Personnel Employment tab: Department, Position, Employment Type, Employee Status (all
+ * effective-dated through setEmploymentAssignment: CLOSE+INSERT so history is preserved + an audited
+ * `employment.assignment.changed` event) and Job Grade (routed to setEmploymentGrade, which owns
+ * employment.gradeId). Enum values are validated here (defence-in-depth over the DB column types); an
+ * out-of-catalog department/position id is FK-rejected by Postgres and surfaced via ?error=. Admin-gated.
+ */
+export async function setEmploymentAssignmentAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const t = await getTranslations('people.detail');
+  const rawType = String(formData.get('employmentType') ?? '').trim();
+  const rawStatus = String(formData.get('status') ?? '').trim();
+  const employmentType = EMPLOYMENT_TYPES.includes(rawType as EmploymentTypeValue)
+    ? (rawType as EmploymentTypeValue)
+    : undefined;
+  const status = ASSIGNMENT_STATUSES.includes(rawStatus as AssignmentStatusValue)
+    ? (rawStatus as AssignmentStatusValue)
+    : undefined;
+  // A present-but-unrecognised enum value is a tampered/stale submit — reject rather than silently ignore.
+  if ((rawType && !employmentType) || (rawStatus && !status)) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(t('employmentInfo.invalidValue'))}`));
+  }
+  const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
+  try {
+    // Job Grade lives on `employment` — its own audited writer (no-ops when unchanged).
+    await setEmploymentGrade(s, { employmentId, gradeId: String(formData.get('gradeId') ?? '') || null });
+    // Department / Position / Employment Type / Employee Status — effective-dated assignment change.
+    await setEmploymentAssignment(s, {
+      employmentId,
+      effectiveDate,
+      departmentId: (formData.get('departmentId') as string) || undefined,
+      positionId: (formData.get('positionId') as string) || null,
+      employmentType,
+      status,
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

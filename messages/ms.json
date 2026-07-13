@@ -647,7 +647,21 @@
         "category": "Kategori",
         "readOnlyNote": "Syarikat, Jabatan, Jawatan, Gred Jawatan, Jenis Pekerjaan dan Status Pekerja dipaparkan sebagai rujukan. Uruskannya di bawah Pergerakan Kerjaya (pemindahan) dan tab Profil (gred) untuk mengekalkan sejarahnya.",
         "superiorNote": "Tetapkan penyelia (atasan) pada kad Barisan pelaporan di bawah.",
-        "save": "Simpan maklumat pekerjaan"
+        "save": "Simpan maklumat pekerjaan",
+        "assignmentGroup": "Penetapan Organisasi",
+        "saveAssignment": "Simpan penetapan organisasi",
+        "assignmentNote": "Perubahan pada Jabatan, Jawatan, Jenis Pekerjaan dan Status Pekerja direkodkan dengan tarikh berkuat kuasa dan disimpan dalam sejarah penetapan, supaya rekod lampau kekal tepat. Gred Pekerjaan disimpan dalam rekod pekerja.",
+        "positionNone": "Tiada",
+        "invalidValue": "Nilai yang dipilih tidak sah.",
+        "employmentType_full_time": "Sepenuh masa",
+        "employmentType_part_time": "Separuh masa",
+        "employmentType_contract": "Kontrak",
+        "employmentType_intern": "Pelatih",
+        "status_active": "Aktif",
+        "status_on_leave": "Bercuti",
+        "status_probation": "Percubaan",
+        "status_offboarding": "Pemberhentian",
+        "status_terminated": "Ditamatkan"
       },
       "documents": {
         "title": "Dokumen",

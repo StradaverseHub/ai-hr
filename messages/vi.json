@@ -647,7 +647,21 @@
         "category": "Danh mục",
         "readOnlyNote": "Công ty, Phòng ban, Vị trí, Bậc công việc, Loại hình việc làm và Trạng thái nhân viên được hiển thị để tham khảo. Quản lý chúng trong Thay đổi nghề nghiệp (điều chuyển) và tab Hồ sơ (bậc) để giữ nguyên lịch sử.",
         "superiorNote": "Đặt người quản lý (cấp trên) trên thẻ Tuyến báo cáo bên dưới.",
-        "save": "Lưu thông tin việc làm"
+        "save": "Lưu thông tin việc làm",
+        "assignmentGroup": "Phân công tổ chức",
+        "saveAssignment": "Lưu phân công tổ chức",
+        "assignmentNote": "Các thay đổi về Phòng ban, Chức vụ, Loại hình lao động và Trạng thái nhân viên được ghi lại kèm ngày hiệu lực và lưu trong lịch sử phân công, để hồ sơ trước đây vẫn chính xác. Bậc công việc được lưu vào hồ sơ nhân viên.",
+        "positionNone": "Không có",
+        "invalidValue": "Giá trị đã chọn không hợp lệ.",
+        "employmentType_full_time": "Toàn thời gian",
+        "employmentType_part_time": "Bán thời gian",
+        "employmentType_contract": "Hợp đồng",
+        "employmentType_intern": "Thực tập",
+        "status_active": "Đang làm việc",
+        "status_on_leave": "Đang nghỉ phép",
+        "status_probation": "Thử việc",
+        "status_offboarding": "Đang nghỉ việc",
+        "status_terminated": "Đã chấm dứt"
       },
       "documents": {
         "title": "Tài liệu",
