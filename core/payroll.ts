@@ -1912,6 +1912,13 @@ export async function generatePayslips(
         numChildren: employeeStatutoryMy.numChildren,
         isResident: employeeStatutoryMy.isResident,
         eisEligible: employeeStatutoryMy.eisEligible,
+        // SOCSO & EIS statutory controls (item 5a461b99) — subject_to_* gate the scheme; employer_bears_*
+        // fund the employee's share from employer cost without deducting it from net.
+        subjectToSocso: employeeStatutoryMy.subjectToSocso,
+        subjectToSkbbk: employeeStatutoryMy.subjectToSkbbk,
+        employerBearsSocso: employeeStatutoryMy.employerBearsSocso,
+        employerBearsEis: employeeStatutoryMy.employerBearsEis,
+        employerBearsSkbbk: employeeStatutoryMy.employerBearsSkbbk,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         epfMode: employeeStatutoryMy.epfMode,
         epfEmployeeRate: employeeStatutoryMy.epfEmployeeRate,
@@ -2860,6 +2867,11 @@ export async function generatePayslips(
         socsoCategory: ((age != null && age >= 60) || (e.epfCitizenship ?? 'citizen') === 'non_citizen' ? 2 : 1) as 1 | 2,
         eisEligible:
           (e.eisEligible ?? true) && (age == null || age < 60) && (e.epfCitizenship ?? 'citizen') !== 'non_citizen',
+        // Item 5a461b99 — "Subject to SOCSO"/"Subject to SKBBK". Default on (a person with no statutory row
+        // keeps today's SOCSO + mandatory SKBBK) so this is byte-identical for every currently-covered
+        // employee; unchecking exempts that scheme (zero reported contribution).
+        subjectToSocso: e.subjectToSocso ?? true,
+        subjectToSkbbk: e.subjectToSkbbk ?? true,
         resident: e.isResident ?? true,
         // EPF rule selection (#95): age + citizenship pick Part A / Part E senior / non-citizen 2%/2%.
         epfAge: age,
@@ -2950,6 +2962,20 @@ export async function generatePayslips(
           : {}),
       };
 
+      // Item 5a461b99 — "Employer bears" reassignment. The contribution is still computed AND reported in
+      // full (st.socsoEmployee / st.eisEmployee / st.socsoSkbbk are untouched, so SOCSO/EIS reports + the
+      // submitted PERKESO file are unchanged). What changes is WHO funds the employee's share: when a flag is
+      // on, that share is NOT deducted from the employee (removed from statDeductions below) and is instead
+      // added to employer cost. Off by default ⇒ 0 ⇒ byte-identical. On an additional run the SOCSO/EIS deltas
+      // are ~0 (bonus excluded), so employer-borne is naturally ~0 there too.
+      const bearsSocso = e.employerBearsSocso ?? false;
+      const bearsEis = e.employerBearsEis ?? false;
+      const bearsSkbbk = e.employerBearsSkbbk ?? false;
+      const employerBorneSocso = bearsSocso ? round2(st.socsoEmployee) : 0;
+      const employerBorneEis = bearsEis ? round2(st.eisEmployee) : 0;
+      const employerBorneSkbbk = bearsSkbbk ? round2(st.socsoSkbbk) : 0;
+      const employerBorneTotal = round2(employerBorneSocso + employerBorneEis + employerBorneSkbbk);
+
       // Payslip amounts. An additional run pays ONLY its additional remuneration — the normal wage,
       // allowance and OT were paid by the regular run — so basic/allowance/OT are 0 and gross = the bonus.
       const slipBasic = isAdditionalRun ? 0 : basic;
@@ -2957,7 +2983,11 @@ export async function generatePayslips(
       const slipOvertime = isAdditionalRun ? 0 : overtime;
       const slipUnpaid = isAdditionalRun ? 0 : unpaidDeduction;
       const grossPay = isAdditionalRun ? round2(bonus) : round2(normalWage + bonus);
-      const statDeductions = round2(st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb);
+      // Item 5a461b99 — subtract any employer-borne employee shares so they are NOT deducted from net pay
+      // (employerBorneTotal is 0 unless an "Employer bears" flag is set ⇒ byte-identical default path).
+      const statDeductions = round2(
+        st.epfEmployee + st.socsoEmployee + st.socsoSkbbk + st.eisEmployee + st.pcb - employerBorneTotal,
+      );
       // M#16 (EA s.24 net-floor): clamp EVERY post-tax deduction in priority order so net ≥ 0 BY
       // CONSTRUCTION, never as a downstream patch. Headroom after statutory + unpaid is the cash that
       // remains; manual deduction (en.deduct) takes first claim, then CP38 (court/LHDN order — exempt from
@@ -3028,11 +3058,13 @@ export async function generatePayslips(
           carryForward = { applied, added, balanceBefore: owed };
         }
       }
+      // Item 5a461b99 — any employer-borne employee share is real employer outlay, so it adds to employer
+      // cost (employerBorneTotal is 0 unless an "Employer bears" flag is set ⇒ byte-identical default path).
       const employerCost = isAdditionalRun
-        ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer)
+        ? round2(bonus + st.epfEmployer + st.socsoEmployer + st.eisEmployer + employerBorneTotal)
         // Step 4 (f3148da1) — the converted OT excess is real employer outlay (paid to the employee), so it
         // adds to employer cost alongside the OT it was rerouted from. Default (no convert) ⇒ 0 ⇒ unchanged.
-        : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf);
+        : round2(wagesExOt + overtime + otConvertAmount + bonus + en.reimburse + st.epfEmployer + st.socsoEmployer + st.eisEmployer + hrdf + employerBorneTotal);
 
       // c7fdfcf6 gap-fix (functional weekly/bi-weekly) — disburse this employee's NET across the run's cut-off
       // CYCLES. Recurring pay (basic + allowance + bonus) prorates by cycle days; OT follows each cycle's OT
@@ -3088,6 +3120,20 @@ export async function generatePayslips(
           // the run frequency is weekly/biweekly; absent ⇒ byte-identical monthly slip). The employer pays each
           // cycle's `amount` on its cadence; statutory contributions stay settled monthly on this same payslip.
           ...(paymentSchedule ? { paymentSchedule: { frequency: runFrequency, cycles: paymentSchedule } } : {}),
+          // Item 5a461b99 — snapshot the "Employer bears" decision + the amounts the employer absorbed for
+          // provenance, ONLY when at least one flag is set (absent ⇒ byte-identical to today). The reported
+          // socso/eis/skbbk figures above are unchanged; this records that their EMPLOYEE share was not deducted.
+          ...(bearsSocso || bearsEis || bearsSkbbk
+            ? {
+                employerBears: { socso: bearsSocso, eis: bearsEis, skbbk: bearsSkbbk },
+                employerBorne: {
+                  socso: employerBorneSocso,
+                  eis: employerBorneEis,
+                  skbbk: employerBorneSkbbk,
+                  total: employerBorneTotal,
+                },
+              }
+            : {}),
         }, // `version` + (when source=pack) packVersion/signedKeyId snapshot + (when OT paid) otSource
         // Carry-forward recovery/deferral rides otherDeductions too, so the invariant
         // totalDeductions = statDeductions + otherDeductions holds (0 for every non-carry_forward path).

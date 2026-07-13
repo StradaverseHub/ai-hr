@@ -1387,6 +1387,13 @@
       "when": 1781862196000,
       "tag": "0197_shift_shared_library",
       "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1781862197000,
+      "tag": "0198_socso_eis_statutory_controls",
+      "breakpoints": true
     }
   ]
 }

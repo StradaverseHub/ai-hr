@@ -59,7 +59,7 @@ import { setEmployeeClockingLocationsAction, setGeofencingAction } from './actio
 import { ReviewSection } from './review-section';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
-import { getStatutoryProfileMY } from '@/localization/my/statutory';
+import { getStatutoryProfileMY, defaultSocsoEisNumber } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { listAllProfileOptions } from '@/core/profile-options';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
@@ -1296,19 +1296,65 @@ export default async function EmployeePage({
           </div>
         </fieldset>
 
-        {/* Group 3 — SOCSO & EIS */}
-        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
-          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('statutoryGroupSocsoEis')}
+        {/* Group 3 — dedicated SOCSO & EIS information card (item 5a461b99): the shared SOCSO & EIS
+            registration number, the three "Subject to" eligibility flags, and the three "Employer bears"
+            payroll controls. Its own bordered surface so the statutory-control decisions stand apart from the
+            flat identity/bank sections. Still inside the single setStatutoryAction form (full-row overwrite),
+            so every checkbox stays mounted. `nationality` is a hidden mirror of the profile value so the server
+            action can default the number from IC for Malaysians. */}
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+            {t('socsoEisCardTitle')}
           </legend>
+          <input type="hidden" name="nationality" value={emp.nationality ?? ''} />
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t('socsoNumber')}>
-              <input name="socsoNumber" defaultValue={statutory?.socsoNumber ?? ''} className={inputCls} />
+            <Field label={t('socsoEisNumber')}>
+              <input
+                name="socsoNumber"
+                defaultValue={
+                  defaultSocsoEisNumber({
+                    socsoNumber: statutory?.socsoNumber,
+                    icNumber: statutory?.icNumber,
+                    nationality: emp.nationality,
+                  }) ?? ''
+                }
+                className={inputCls}
+              />
             </Field>
-            <label className="flex items-center gap-2 self-end pb-2 text-sm">
-              <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
-              {t('eisEligible')}
-            </label>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('subjectToLegend')}</p>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="subjectToSocso" defaultChecked={statutory ? statutory.subjectToSocso : true} className="size-4 rounded" />
+                {t('subjectToSocso')}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="eisEligible" defaultChecked={statutory ? statutory.eisEligible : true} className="size-4 rounded" />
+                {t('subjectToEis')}
+              </label>
+              <label className="flex items-center gap-2 text-sm" title={t('subjectToSkbbkHint')}>
+                <input type="checkbox" name="subjectToSkbbk" defaultChecked={statutory ? statutory.subjectToSkbbk : false} className="size-4 rounded" />
+                {t('subjectToSkbbk')}
+              </label>
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground" title={t('employerBearsHint')}>
+                {t('employerBearsLegend')}
+              </p>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="employerBearsSocso" defaultChecked={statutory ? statutory.employerBearsSocso : false} className="size-4 rounded" />
+                {t('employerBearsSocso')}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="employerBearsEis" defaultChecked={statutory ? statutory.employerBearsEis : false} className="size-4 rounded" />
+                {t('employerBearsEis')}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="employerBearsSkbbk" defaultChecked={statutory ? statutory.employerBearsSkbbk : false} className="size-4 rounded" />
+                {t('employerBearsSkbbk')}
+              </label>
+            </div>
           </div>
         </fieldset>
 

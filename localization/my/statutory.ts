@@ -130,6 +130,36 @@ function resolveEpfElection(p: {
 export const normalizeIC = (ic: string): string => ic.replace(/\D/g, '');
 export const isValidIC = (ic: string): boolean => /^\d{12}$/.test(normalizeIC(ic));
 
+/**
+ * Item 5a461b99 — a person is "Malaysian" for the SOCSO & EIS Number default when their nationality
+ * catalog value reads Malaysian/Malaysia (case-insensitive; the catalog is free-text/dropdown, so match
+ * loosely). Pure helper (no 'use client') so both the RSC detail page and the server action can call it.
+ */
+export const isMalaysianNationality = (nationality?: string | null): boolean => {
+  const n = (nationality ?? '').trim().toLowerCase();
+  return n === 'malaysian' || n === 'malaysia' || n === 'my' || n === 'mys';
+};
+
+/**
+ * The SOCSO & EIS Number to persist. For a Malaysian employee with a blank number, default it to the
+ * (normalised) IC number — SOCSO/EIS register locals under their MyKad. Non-Malaysians and any explicitly
+ * entered value are returned untouched. Used by setStatutoryAction (server-side normalisation) and mirrored
+ * as the form default on the detail page.
+ */
+export const defaultSocsoEisNumber = (args: {
+  socsoNumber?: string | null;
+  icNumber?: string | null;
+  nationality?: string | null;
+}): string | undefined => {
+  const entered = (args.socsoNumber ?? '').trim();
+  if (entered) return entered;
+  if (isMalaysianNationality(args.nationality) && args.icNumber) {
+    const ic = normalizeIC(args.icNumber);
+    if (isValidIC(ic)) return ic;
+  }
+  return undefined;
+};
+
 export type StatutoryInput = {
   personId: string;
   icNumber: string;
@@ -139,6 +169,14 @@ export type StatutoryInput = {
   taxCategory?: number; // PCB (MTD) category: 1 single, 2 married/spouse not working, 3 married/spouse working
   numChildren?: number;
   eisEligible?: boolean;
+  /** SOCSO & EIS statutory controls (item 5a461b99). `subjectToSocso`/`subjectToSkbbk` gate whether that
+   *  scheme is contributed at all (unchecked ⇒ zero). `employerBears*` keep the scheme computed + reported in
+   *  full but fund the employee's share from employer cost instead of deducting it from net (payroll wiring). */
+  subjectToSocso?: boolean;
+  subjectToSkbbk?: boolean;
+  employerBearsSocso?: boolean;
+  employerBearsEis?: boolean;
+  employerBearsSkbbk?: boolean;
   /** Tax residency — non-residents pay flat 30% MTD (LHDN spec §D.a). Defaults to resident. */
   isResident?: boolean;
   /** EPF citizenship status — selects the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
@@ -186,6 +224,16 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
     taxCategory,
     numChildren,
     eisEligible: p.eisEligible ?? true,
+    // SOCSO & EIS statutory controls (item 5a461b99). Defaults preserve existing behaviour: subject_to_socso
+    // on, employer_bears_* off. subject_to_skbbk defaults to false (reporter-approved for new employees;
+    // migration 0198 backfilled pre-existing rows to true) — but on the setter path we default an
+    // UNSPECIFIED value to the STORED value so a plain statutory save never silently flips it (the setter
+    // is a full-row overwrite). The action always sends the checkbox state, so this only guards partial callers.
+    subjectToSocso: p.subjectToSocso ?? true,
+    subjectToSkbbk: p.subjectToSkbbk ?? false,
+    employerBearsSocso: p.employerBearsSocso ?? false,
+    employerBearsEis: p.employerBearsEis ?? false,
+    employerBearsSkbbk: p.employerBearsSkbbk ?? false,
     isResident: p.isResident ?? true,
     epfCitizenship: p.epfCitizenship ?? 'citizen',
     epfMode: epf.epfMode,
@@ -209,7 +257,16 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
   };
   return withTenant(ctx, async (tx) => {
     const [existing] = await tx
-      .select({ id: employeeStatutoryMy.id })
+      .select({
+        id: employeeStatutoryMy.id,
+        // Statutory-control flags read for the event's before/after (item 5a461b99 audit trail).
+        subjectToSocso: employeeStatutoryMy.subjectToSocso,
+        eisEligible: employeeStatutoryMy.eisEligible,
+        subjectToSkbbk: employeeStatutoryMy.subjectToSkbbk,
+        employerBearsSocso: employeeStatutoryMy.employerBearsSocso,
+        employerBearsEis: employeeStatutoryMy.employerBearsEis,
+        employerBearsSkbbk: employeeStatutoryMy.employerBearsSkbbk,
+      })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
       .limit(1);
@@ -249,6 +306,28 @@ export async function setStatutoryProfileMY(ctx: SessionContext, p: StatutoryInp
         zakatFixed: zakat.zakatFixed,
         zakatEffectiveFrom: zakat.zakatEffectiveFrom,
         zakatEffectiveTo: zakat.zakatEffectiveTo,
+        // SOCSO & EIS statutory controls (item 5a461b99) — before/after so a compliance auditor can
+        // reconstruct who toggled subject-to / employer-bears and when, from the event log alone.
+        statutoryControls: {
+          before: existing
+            ? {
+                subjectToSocso: existing.subjectToSocso,
+                subjectToEis: existing.eisEligible,
+                subjectToSkbbk: existing.subjectToSkbbk,
+                employerBearsSocso: existing.employerBearsSocso,
+                employerBearsEis: existing.employerBearsEis,
+                employerBearsSkbbk: existing.employerBearsSkbbk,
+              }
+            : null,
+          after: {
+            subjectToSocso: values.subjectToSocso,
+            subjectToEis: values.eisEligible,
+            subjectToSkbbk: values.subjectToSkbbk,
+            employerBearsSocso: values.employerBearsSocso,
+            employerBearsEis: values.employerBearsEis,
+            employerBearsSkbbk: values.employerBearsSkbbk,
+          },
+        },
       },
     });
     return { id };

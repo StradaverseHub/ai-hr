@@ -1570,7 +1570,17 @@ export const employeeStatutoryMy = pgTable(
     numChildren: integer('num_children').notNull().default(0),
     // Non-residents pay flat 30% MTD (LHDN spec §D.a) — no reliefs, no accumulator method.
     isResident: boolean('is_resident').notNull().default(true),
+    // "Subject to EIS" (item 5a461b99 reuses this existing flag — no duplicate column).
     eisEligible: boolean('eis_eligible').notNull().default(true),
+    // SOCSO & EIS statutory controls (item 5a461b99). subject_to_* gate whether a scheme is contributed at
+    // all; employer_bears_* keep the scheme computed + reported in full but fund the EMPLOYEE share from
+    // employer cost instead of deducting it from net pay. subject_to_skbbk defaults false for NEW rows
+    // (reporter-approved); migration 0198 backfills existing rows to true so their live SKBBK is preserved.
+    subjectToSocso: boolean('subject_to_socso').notNull().default(true),
+    subjectToSkbbk: boolean('subject_to_skbbk').notNull().default(false),
+    employerBearsSocso: boolean('employer_bears_socso').notNull().default(false),
+    employerBearsEis: boolean('employer_bears_eis').notNull().default(false),
+    employerBearsSkbbk: boolean('employer_bears_skbbk').notNull().default(false),
     // EPF citizenship status — drives the Third Schedule rule (Part A / Part E / non-citizen 2%/2%).
     epfCitizenship: epfCitizenshipEnum('epf_citizenship').notNull().default('citizen'),
     // EPF contribution mode (Wave 2B). For 'voluntary_excess' the elected per-side rates (decimals,

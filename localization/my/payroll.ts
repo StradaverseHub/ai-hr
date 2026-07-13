@@ -511,6 +511,11 @@ export function statutory(
   opts?: {
     socsoCategory?: 1 | 2;
     eisEligible?: boolean;
+    /** Item 5a461b99 — "Subject to SOCSO" / "Subject to SKBBK". Unchecked ⇒ that scheme is not contributed
+     *  (zero employer + employee legs). Both default TRUE so existing callers/golden tests are byte-identical
+     *  (SOCSO + the mandatory SKBBK leg stay on). Gated here so the REPORTED figure is zero when exempt. */
+    subjectToSocso?: boolean;
+    subjectToSkbbk?: boolean;
     resident?: boolean;
     epfElection?: EpfElection;
     /** Employee age + citizenship select the EPF rule (Part A / Part E senior / non-citizen 2%/2%). */
@@ -528,7 +533,17 @@ export function statutory(
     citizenship: opts?.epfCitizenship,
   });
   const e = { employee: eC.employee, employer: eC.employer };
-  const s = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
+  const sRaw = socso(cashWage, opts?.socsoCategory ?? 1, rules.socso); // bonus excluded; overtime included
+  // Item 5a461b99 — "Subject to SOCSO" gates the SOCSO Injury/Invalidity legs; "Subject to SKBBK" gates the
+  // (independent) SKBBK leg. Both default on so existing behaviour is byte-identical. Unchecked ⇒ 0 in the
+  // reported figure (the employee is exempt), not merely undeducted (that is the separate employer-bears case).
+  const socsoOn = opts?.subjectToSocso ?? true;
+  const skbbkOn = opts?.subjectToSkbbk ?? true;
+  const s = {
+    employee: socsoOn ? sRaw.employee : 0,
+    employer: socsoOn ? sRaw.employer : 0,
+    skbbk: skbbkOn ? sRaw.skbbk : 0,
+  };
   const eisOn = opts?.eisEligible ?? true;
   const i = eisOn ? eis(cashWage, rules.eis) : { employer: 0, employee: 0 }; // bonus excluded; OT included
   // EPF relief split: the employee share on the bonus (Kₜ) — 0 for seniors (Part E) and the flat

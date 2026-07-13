@@ -22,6 +22,7 @@ import { setPersonComplianceFields } from '@/core/profile';
 import { removePersonPhoto, setPersonPhoto } from '@/core/person-photo';
 import { packFor } from '@/localization/registry';
 import { mapEpfUiMode } from '@/lib/epf-mode-map';
+import { defaultSocsoEisNumber } from '@/localization/my/statutory';
 
 // Tab retention (feedback bd2f0bb2): the client tab shell (components/personnel-tabs.tsx) injects a hidden
 // `tab` field into every submitting form. Each action appends `&tab=<key>` to its post-save redirect so the
@@ -660,15 +661,29 @@ export async function setStatutoryAction(formData: FormData) {
     // the current election and pass it through unchanged. Without this, every Personnel statutory
     // save would silently wipe an existing election (resolveZakatElection treats absent as inactive).
     const current = await pack.statutory.get(s, personId);
+    const icNumber = String(formData.get('icNumber'));
     await pack.statutory.set(s, {
       personId,
-      icNumber: String(formData.get('icNumber')),
+      icNumber,
       epfNumber: (formData.get('epfNumber') as string) || undefined,
-      socsoNumber: (formData.get('socsoNumber') as string) || undefined,
+      // Item 5a461b99 — "SOCSO & EIS Number". For a Malaysian employee with a blank number, normalise to
+      // their IC number server-side (mirrors the form default); non-Malaysians keep manual entry. The
+      // `nationality` hidden field is the RSC page's emp.nationality (used only for this convenience default).
+      socsoNumber: defaultSocsoEisNumber({
+        socsoNumber: (formData.get('socsoNumber') as string) || null,
+        icNumber,
+        nationality: (formData.get('nationality') as string) || null,
+      }),
       taxNumber: (formData.get('taxNumber') as string) || undefined,
       taxCategory: Number(formData.get('taxCategory')) || 1,
       numChildren: Number(formData.get('numChildren')) || 0,
+      // Item 5a461b99 — SOCSO & EIS statutory controls. eisEligible doubles as "Subject to EIS".
       eisEligible: formData.get('eisEligible') === 'on',
+      subjectToSocso: formData.get('subjectToSocso') === 'on',
+      subjectToSkbbk: formData.get('subjectToSkbbk') === 'on',
+      employerBearsSocso: formData.get('employerBearsSocso') === 'on',
+      employerBearsEis: formData.get('employerBearsEis') === 'on',
+      employerBearsSkbbk: formData.get('employerBearsSkbbk') === 'on',
       isResident: formData.get('isResident') === 'on',
       epfCitizenship: (() => {
         const c = String(formData.get('epfCitizenship') ?? 'citizen');
