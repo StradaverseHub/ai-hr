@@ -2078,7 +2078,13 @@
       "pagePrev": "Trang trước",
       "pageNext": "Trang sau",
       "pageLast": "Trang cuối",
-      "pageIndicator": "Trang {page} trên {pages}"
+      "pageIndicator": "Trang {page} trên {pages}",
+      "body_skbbk": "SKBBK",
+      "skbbkDesc": "Biểu đóng góp SKBBK (Lindung 24 Jam) do người lao động chi trả — gắn trên các bậc SOCSO và được áp dụng khi tính lương từ ngày 1 tháng 6 năm 2026.",
+      "skbbkAbout": "SKBBK là khoản do người lao động đóng, đi kèm trên các bậc đóng góp SOCSO. Nó được duy trì cùng với SOCSO — việc phát hành ghi đè SOCSO sẽ cập nhật các con số này. Cột người sử dụng lao động và người lao động SOCSO không thay đổi.",
+      "secSkbbk": "SKBBK (Lindung 24 Jam)",
+      "skbbkBothCategories": "Giống nhau cho Nhóm 1 và Nhóm 2 — {count} bậc đã được xác minh đến mức trần RM6,000. Người lao động từ 60 tuổi trở lên và lao động nước ngoài cũng phải đóng.",
+      "skbbkEditNote": "Số tiền SKBBK là cột SKBBK (RM) trong các bảng bậc SOCSO bên dưới. Chỉnh sửa tại đây và phát hành — thay đổi được lưu dưới dạng phiên bản pháp định SOCSO."
     },
     "batch": {
       "back": "Bảng lương",

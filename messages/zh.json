@@ -2078,7 +2078,13 @@
       "pagePrev": "上一页",
       "pageNext": "下一页",
       "pageLast": "末页",
-      "pageIndicator": "第 {page} 页，共 {pages} 页"
+      "pageIndicator": "第 {page} 页，共 {pages} 页",
+      "body_skbbk": "SKBBK",
+      "skbbkDesc": "由雇员缴付的 SKBBK（Lindung 24 Jam）缴纳表——附于 SOCSO 分级中，自 2026 年 6 月 1 日起由薪资计算应用。",
+      "skbbkAbout": "SKBBK 是附加于 SOCSO 缴纳分级上的雇员缴付项目。它与 SOCSO 一同维护——发布 SOCSO 覆盖将更新这些数值。雇主与 SOCSO 雇员栏保持不变。",
+      "secSkbbk": "SKBBK（Lindung 24 Jam）",
+      "skbbkBothCategories": "第 1 类与第 2 类相同——{count} 个分级已核实至 RM6,000 上限。60 岁及以上的雇员和外籍员工也需缴纳。",
+      "skbbkEditNote": "SKBBK 金额即下方 SOCSO 分级表中的 SKBBK (RM) 栏。在此编辑并发布——更改将保存为 SOCSO 法定版本。"
     },
     "batch": {
       "back": "薪资",

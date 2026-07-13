@@ -2245,7 +2245,13 @@
       "pagePrev": "Previous page",
       "pageNext": "Next page",
       "pageLast": "Last page",
-      "pageIndicator": "Page {page} of {pages}"
+      "pageIndicator": "Page {page} of {pages}",
+      "body_skbbk": "SKBBK",
+      "skbbkDesc": "The employee-paid SKBBK (Lindung 24 Jam) contribution schedule — carried on the SOCSO bands and applied by payroll from 1 June 2026.",
+      "skbbkAbout": "SKBBK is an employee-paid leg that rides on the SOCSO contribution bands. It is maintained together with SOCSO — publishing a SOCSO override updates these figures. The employer and SOCSO employee columns are unchanged.",
+      "secSkbbk": "SKBBK (Lindung 24 Jam)",
+      "skbbkBothCategories": "Identical for Category 1 and Category 2 — {count} bands verified to the RM6,000 ceiling. Employees aged 60 and above and foreign workers contribute too.",
+      "skbbkEditNote": "SKBBK amounts are the SKBBK (RM) column of the SOCSO band tables below. Edit them here and publish — the change is saved as a SOCSO statutory version."
     },
     "transactions": {
       "title": "Transactions",

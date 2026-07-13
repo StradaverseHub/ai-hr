@@ -2078,7 +2078,13 @@
       "pagePrev": "Halaman sebelumnya",
       "pageNext": "Halaman seterusnya",
       "pageLast": "Halaman terakhir",
-      "pageIndicator": "Halaman {page} daripada {pages}"
+      "pageIndicator": "Halaman {page} daripada {pages}",
+      "body_skbbk": "SKBBK",
+      "skbbkDesc": "Jadual caruman SKBBK (Lindung 24 Jam) yang dibayar oleh pekerja — dibawa pada band SOCSO dan digunakan oleh penggajian mulai 1 Jun 2026.",
+      "skbbkAbout": "SKBBK ialah bahagian caruman pekerja yang menumpang pada band caruman SOCSO. Ia diselenggara bersama SOCSO — menerbitkan tindanan SOCSO akan mengemas kini angka ini. Lajur majikan dan pekerja SOCSO tidak berubah.",
+      "secSkbbk": "SKBBK (Lindung 24 Jam)",
+      "skbbkBothCategories": "Sama untuk Kategori 1 dan Kategori 2 — {count} band disahkan hingga siling RM6,000. Pekerja berumur 60 tahun ke atas dan pekerja asing turut mencarum.",
+      "skbbkEditNote": "Amaun SKBBK ialah lajur SKBBK (RM) pada jadual band SOCSO di bawah. Sunting di sini dan terbitkan — perubahan disimpan sebagai versi berkanun SOCSO."
     },
     "batch": {
       "back": "Gaji",
