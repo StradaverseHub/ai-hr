@@ -2237,6 +2237,7 @@
       "preChecksWarningBadge": "எச்சரிக்கை",
       "preChecks": {
         "missingCompensation": "நடப்பு சம்பளப் பதிவு இல்லை",
+        "missingBasicComponent": "அடிப்படை ஊதியக் கூறு இல்லை",
         "missingStatutory": "சட்டப்பூர்வ சுயவிவரம் இல்லை (EPF/SOCSO/PCB)",
         "missingBank": "வங்கி விவரங்கள் முழுமையற்றவை"
       },

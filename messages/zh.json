@@ -2237,6 +2237,7 @@
       "preChecksWarningBadge": "警告",
       "preChecks": {
         "missingCompensation": "无当前薪资记录",
+        "missingBasicComponent": "缺少基本薪资项目",
         "missingStatutory": "无法定资料（EPF/SOCSO/PCB）",
         "missingBank": "银行资料不完整"
       },

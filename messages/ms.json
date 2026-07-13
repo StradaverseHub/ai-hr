@@ -2237,6 +2237,7 @@
       "preChecksWarningBadge": "Amaran",
       "preChecks": {
         "missingCompensation": "Tiada rekod gaji semasa",
+        "missingBasicComponent": "Tiada komponen gaji asas",
         "missingStatutory": "Tiada profil statutori (KWSP/PERKESO/PCB)",
         "missingBank": "Butiran bank tidak lengkap"
       },

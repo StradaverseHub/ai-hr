@@ -2006,6 +2006,7 @@
       "preChecksWarningBadge": "Warning",
       "preChecks": {
         "missingCompensation": "No current salary record",
+        "missingBasicComponent": "No basic-salary pay component",
         "missingStatutory": "No statutory profile (EPF/SOCSO/PCB)",
         "missingBank": "Bank details incomplete"
       },

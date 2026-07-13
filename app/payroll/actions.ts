@@ -53,8 +53,11 @@ export async function generateAction(formData: FormData) {
   let errMsg: string | null = null;
   try {
     const checks = await preProcessAdvisory(s, batchId);
-    if (checks.missingCompensation.length > 0) {
-      errMsg = t('preChecksBlockedError', { n: checks.missingCompensation.length });
+    // BLOCKER count: no compensation row OR (typed path) a compensation row with no BASIC component — both
+    // stop generation (server re-asserts via PreProcessBlockedError). See core/payroll.ts generatePayslips.
+    const blockers = checks.missingCompensation.length + checks.missingBasicComponent.length;
+    if (blockers > 0) {
+      errMsg = t('preChecksBlockedError', { n: blockers });
     } else if (checks.missingStatutory.length + checks.missingBank.length > 0 && !acknowledged) {
       errMsg = t('preChecksConfirmRequired', { n: checks.missingStatutory.length + checks.missingBank.length });
     } else {

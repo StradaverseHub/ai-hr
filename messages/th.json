@@ -2237,6 +2237,7 @@
       "preChecksWarningBadge": "คำเตือน",
       "preChecks": {
         "missingCompensation": "ไม่มีบันทึกเงินเดือนปัจจุบัน",
+        "missingBasicComponent": "ไม่มีองค์ประกอบเงินเดือนพื้นฐาน",
         "missingStatutory": "ไม่มีข้อมูลตามกฎหมาย (EPF/SOCSO/PCB)",
         "missingBank": "ข้อมูลธนาคารไม่ครบถ้วน"
       },
