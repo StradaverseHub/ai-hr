@@ -169,5 +169,10 @@ describe('Unlock closed payroll — mandatory reason (unlockClosedBatch)', () =>
     expect(await eventTypesFor(base.tenantId, batchId)).toContain('payroll-batch.unlocked');
     const payload = (await latestEventPayload(base.tenantId, batchId, 'payroll-batch.unlocked')) as { reason: string };
     expect(payload.reason).toBe('fix keyed OT');
+
+    // …and the real period-reopen (migration 0202 escape hatch) emitted its own pay-period.reopened event
+    // against the period aggregate — proof the reopen happened through the guarded path, not a bypass.
+    const { payPeriodId } = await batchRow(batchId);
+    expect(await eventTypesFor(base.tenantId, payPeriodId)).toContain('pay-period.reopened');
   });
 });

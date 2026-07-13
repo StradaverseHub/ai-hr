@@ -79,6 +79,43 @@ describe('Zakat election relocation — Payroll > Transactions > Zakat owns the 
     return fd;
   };
 
+  it('(b2) an election-only save preserves the item-5a461b99 SOCSO/EIS control flags (subjectToSkbbk + employerBears*)', async () => {
+    const a = adminCtx(base);
+    const e = await hire(a, 'Zakat Skbbk');
+    // HR has deliberately turned ON SKBBK + all three employer-bears flags (non-default = true/true/true/true).
+    // Because setStatutoryProfileMY is a full-row overwrite that DEFAULTS each unspecified flag to false, an
+    // election-only save must pass these through or it silently resets the HR configuration.
+    await setStatutoryProfileMY(a, {
+      personId: e.personId,
+      icNumber: '900101015003',
+      subjectToSkbbk: true,
+      employerBearsSocso: true,
+      employerBearsEis: true,
+      employerBearsSkbbk: true,
+    });
+    // Sanity: the flags are set before the election save.
+    const before = await getStatutoryProfileMY(a, e.personId);
+    expect(before?.subjectToSkbbk).toBe(true);
+    expect(before?.employerBearsSocso).toBe(true);
+    expect(before?.employerBearsEis).toBe(true);
+    expect(before?.employerBearsSkbbk).toBe(true);
+
+    // Save a fixed-RM zakat election via the payroll surface — the only thing that should change is zakat.
+    const fd = electionForm(e, { zakatActive: 'on', zakatState: 'Johor', zakatMethod: 'fixed', zakatFixed: '150' });
+    await expect(saveZakatElectionAction(fd)).rejects.toThrow('NEXT_REDIRECT');
+    expect(LAST_REDIRECT).toContain('toast=saved');
+
+    const row = await getStatutoryProfileMY(a, e.personId);
+    // Election applied…
+    expect(row?.zakatActive).toBe(true);
+    expect(Number(row?.zakatFixed)).toBe(150);
+    // …and the four SOCSO/EIS control flags survived (regression for the silent-reset bug).
+    expect(row?.subjectToSkbbk).toBe(true);
+    expect(row?.employerBearsSocso).toBe(true);
+    expect(row?.employerBearsEis).toBe(true);
+    expect(row?.employerBearsSkbbk).toBe(true);
+  });
+
   it('(a)+(b) saveZakatElectionAction persists the election via the existing setter, fires the existing statutory.my.updated event, and preserves every non-zakat statutory field', async () => {
     const a = adminCtx(base);
     const e = await hire(a, 'Zakat Reloc');

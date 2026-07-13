@@ -57,6 +57,13 @@ export async function saveZakatElectionAction(formData: FormData) {
       // eis_eligible booleans intact (the setter derives them from the category when it is supplied).
       socsoCategory: current.socsoCategory,
       eisCategory: current.eisCategory,
+      // Item 5a461b99 — preserve the remaining SOCSO/EIS control flags too. setStatutoryProfileMY defaults
+      // each unspecified flag to false, so omitting them here would silently reset an HR-set "Subject to
+      // SKBBK" / "Employer bears X" configuration on an election-only save.
+      subjectToSkbbk: current.subjectToSkbbk,
+      employerBearsSocso: current.employerBearsSocso,
+      employerBearsEis: current.employerBearsEis,
+      employerBearsSkbbk: current.employerBearsSkbbk,
       isResident: current.isResident,
       epfCitizenship: current.epfCitizenship,
       epfMode: current.epfMode,
