@@ -574,13 +574,13 @@
         "family": "Gia đình",
         "job": "Việc làm",
         "careerMovement": "Biến động nghề nghiệp",
-        "attendance": "Thông tin chấm công",
+        "attendance": "Chấm công",
         "bankStatutory": "Ngân hàng & Luật định",
         "payroll": "Lương",
         "documents": "Tài liệu",
         "others": "Khác",
         "empty": "Không có gì để hiển thị ở đây.",
-        "leave": "Thông tin nghỉ phép"
+        "leave": "Nghỉ phép"
       },
       "employmentInfo": {
         "title": "Thông tin việc làm",

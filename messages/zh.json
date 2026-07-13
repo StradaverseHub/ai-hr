@@ -574,13 +574,13 @@
         "family": "家庭",
         "job": "任职信息",
         "careerMovement": "职业变动",
-        "attendance": "考勤信息",
+        "attendance": "考勤",
         "bankStatutory": "银行与法定",
         "payroll": "薪酬",
         "documents": "文件",
         "others": "其他",
         "empty": "此处暂无内容。",
-        "leave": "休假信息"
+        "leave": "休假"
       },
       "employmentInfo": {
         "title": "雇佣信息",

@@ -574,13 +574,13 @@
         "family": "Keluarga",
         "job": "Pekerjaan",
         "careerMovement": "Pergerakan Kerjaya",
-        "attendance": "Maklumat Kehadiran",
+        "attendance": "Kehadiran",
         "bankStatutory": "Bank & Berkanun",
         "payroll": "Gaji",
         "documents": "Dokumen",
         "others": "Lain-lain",
         "empty": "Tiada apa-apa untuk dipaparkan di sini.",
-        "leave": "Maklumat Cuti"
+        "leave": "Cuti"
       },
       "employmentInfo": {
         "title": "Maklumat Pekerjaan",

@@ -116,7 +116,7 @@ export function ClientTabs<K extends string>({
     <div ref={shellRef} className="space-y-6">
       <nav
         aria-label={ariaLabel}
-        className="flex gap-1 overflow-x-auto rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]"
+        className="flex flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)]"
       >
         {tabs.map((tab) => (
           <button

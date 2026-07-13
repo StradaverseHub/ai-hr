@@ -574,13 +574,13 @@
         "family": "Family",
         "job": "Employment",
         "careerMovement": "Career Movement",
-        "attendance": "Attendance Information",
+        "attendance": "Attendance",
         "bankStatutory": "Bank & Statutory",
         "payroll": "Payroll",
         "documents": "Documents",
         "others": "Others",
         "empty": "Nothing to show here.",
-        "leave": "Leave Information"
+        "leave": "Leave"
       },
       "employmentInfo": {
         "title": "Employment Information",

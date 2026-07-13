@@ -574,13 +574,13 @@
         "family": "குடும்பம்",
         "job": "வேலைவாய்ப்பு",
         "careerMovement": "வேலை வளர்ச்சி நகர்வு",
-        "attendance": "வருகை தகவல்",
+        "attendance": "வருகை",
         "bankStatutory": "வங்கி & சட்டரீதியான",
         "payroll": "ஊதியம்",
         "documents": "ஆவணங்கள்",
         "others": "மற்றவை",
         "empty": "இங்கே காட்ட எதுவும் இல்லை.",
-        "leave": "விடுப்பு தகவல்"
+        "leave": "விடுப்பு"
       },
       "employmentInfo": {
         "title": "வேலைவாய்ப்பு தகவல்",
