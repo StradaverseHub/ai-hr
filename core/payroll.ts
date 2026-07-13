@@ -4291,6 +4291,13 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
         ic: employeeStatutoryMy.icNumber,
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        // Custom payment holder (item ef720d3a): where a banking restriction requires salary to be paid into a
+        // third party's account, the payee NAME / ID resolve to the custom holder instead of the employee. The
+        // bank + account number remain the statutory-row values (the receiving account is still that row).
+        enableCustomHolderName: employeeStatutoryMy.enableCustomHolderName,
+        customHolderName: employeeStatutoryMy.customHolderName,
+        enableCustomHolderId: employeeStatutoryMy.enableCustomHolderId,
+        customHolderId: employeeStatutoryMy.customHolderId,
         net: payslip.netPay,
       })
       .from(payslip)
@@ -4301,16 +4308,38 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
       .orderBy(person.fullName);
     if (rows.length === 0) throw new PaymentSummaryNotReadyError('This batch has no payslips to export.');
 
-    const header = ['No', 'Employee', 'Employee Code', 'IC', 'Bank', 'Account No', 'Net Pay (RM)'];
-    const body = rows.map((r, i) => [
-      i + 1,
-      r.name,
-      r.code ?? '',
-      r.ic ?? '',
-      r.bankName ?? '',
-      r.bankAccountNo ?? '',
-      Number(r.net).toFixed(2),
-    ]);
+    // Resolve the payee identity per row: custom holder when its switch is on (+ has a value), else the
+    // employee. This changes ONLY who is named as the account holder — never the bank, account, or amount.
+    const payeeFor = (r: (typeof rows)[number]) => ({
+      holderName: r.enableCustomHolderName && r.customHolderName?.trim() ? r.customHolderName : r.name,
+      holderId: r.enableCustomHolderId && r.customHolderId?.trim() ? r.customHolderId : (r.ic ?? ''),
+    });
+
+    const header = [
+      'No',
+      'Employee',
+      'Employee Code',
+      'IC',
+      'Payment Holder Name',
+      'Payment Holder ID',
+      'Bank',
+      'Account No',
+      'Net Pay (RM)',
+    ];
+    const body = rows.map((r, i) => {
+      const payee = payeeFor(r);
+      return [
+        i + 1,
+        r.name,
+        r.code ?? '',
+        r.ic ?? '',
+        payee.holderName,
+        payee.holderId,
+        r.bankName ?? '',
+        r.bankAccountNo ?? '',
+        Number(r.net).toFixed(2),
+      ];
+    });
     const content = toCsv([header, ...body]);
     const netTotalCents = rows.reduce((sum, r) => sum + Math.round(Number(r.net) * 100), 0);
     const missingBank = rows.filter((r) => !r.bankName || !r.bankAccountNo).length;

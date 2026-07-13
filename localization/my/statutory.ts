@@ -410,6 +410,103 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
   });
 }
 
+/** A custom-holder switch was turned on without its required value (item ef720d3a). `field` names which. */
+export class IncompleteCustomHolderError extends Error {
+  constructor(public field: 'name' | 'id') {
+    super(
+      field === 'name'
+        ? 'Enter the custom holder name, or turn off "Use a custom holder name".'
+        : 'Enter the custom holder identification, or turn off "Use a custom holder identification".',
+    );
+    this.name = 'IncompleteCustomHolderError';
+  }
+}
+
+/** Just the salary-payment bank columns + the custom-payment-holder controls (item ef720d3a). Used by the
+ *  dedicated Bank Information card, which saves independently of the full statutory row. */
+export type BankInput = {
+  personId: string;
+  bankName?: string | null;
+  bankAccountNo?: string | null;
+  enableCustomHolderName?: boolean;
+  customHolderName?: string | null;
+  enableCustomHolderId?: boolean;
+  customHolderId?: string | null;
+};
+
+/**
+ * Partial update of ONLY the bank + custom-payment-holder columns on employee_statutory_my, leaving the rest
+ * of the statutory row (IC, EPF, SOCSO/EIS, PCB, zakat, TP3) untouched — the Bank Information card was split
+ * out of the single full-row statutory form (item ef720d3a), so it needs its own partial setter, exactly like
+ * setTp3ProfileMY. Requires an existing statutory row (bank details have no meaning without an IC on file) —
+ * throws NoStatutoryProfileError otherwise. Validates require-when-enabled for both custom-holder fields.
+ * Appends an `employee.bank.updated` DomainEvent (before/after) per substrate discipline.
+ */
+export async function setBankProfileMY(ctx: SessionContext, p: BankInput) {
+  const enableName = p.enableCustomHolderName ?? false;
+  const enableId = p.enableCustomHolderId ?? false;
+  const holderName = (p.customHolderName ?? '').trim() || null;
+  const holderId = (p.customHolderId ?? '').trim() || null;
+  // Require-when-enabled (server-side; the client mirrors this). A flag on with a blank value is rejected so
+  // an incomplete payee can never reach the disbursement path.
+  if (enableName && !holderName) throw new IncompleteCustomHolderError('name');
+  if (enableId && !holderId) throw new IncompleteCustomHolderError('id');
+  const values = {
+    bankName: (p.bankName ?? '').trim() || null,
+    bankAccountNo: (p.bankAccountNo ?? '').trim() || null,
+    // When a switch is off we null its stored value so a disabled holder can't linger and be resolved later.
+    enableCustomHolderName: enableName,
+    customHolderName: enableName ? holderName : null,
+    enableCustomHolderId: enableId,
+    customHolderId: enableId ? holderId : null,
+  };
+  return withTenant(ctx, async (tx) => {
+    const [existing] = await tx
+      .select({
+        id: employeeStatutoryMy.id,
+        bankName: employeeStatutoryMy.bankName,
+        bankAccountNo: employeeStatutoryMy.bankAccountNo,
+        enableCustomHolderName: employeeStatutoryMy.enableCustomHolderName,
+        customHolderName: employeeStatutoryMy.customHolderName,
+        enableCustomHolderId: employeeStatutoryMy.enableCustomHolderId,
+        customHolderId: employeeStatutoryMy.customHolderId,
+      })
+      .from(employeeStatutoryMy)
+      .where(eq(employeeStatutoryMy.personId, p.personId))
+      .limit(1);
+    if (!existing) throw new NoStatutoryProfileError();
+    await tx
+      .update(employeeStatutoryMy)
+      .set({ ...values, updatedAt: sql`now()` })
+      .where(eq(employeeStatutoryMy.id, existing.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employee-statutory',
+      aggregateId: existing.id,
+      eventType: 'employee.bank.updated',
+      actor: actorOf(ctx),
+      subjectEmploymentId: await subjectEmploymentForPerson(tx, ctx.tenantId, p.personId),
+      // before/after of only the bank + custom-holder columns so a compliance auditor can reconstruct who
+      // changed the salary-payment destination (incl. a custom-holder activation) and when, from the log
+      // alone. Bank account number + custom-holder ID are payee routing identifiers, not per-payslip
+      // cleartext pay figures, so recording them on the event is consistent with the other statutory setters.
+      payload: {
+        personId: p.personId,
+        before: {
+          bankName: existing.bankName,
+          bankAccountNo: existing.bankAccountNo,
+          enableCustomHolderName: existing.enableCustomHolderName,
+          customHolderName: existing.customHolderName,
+          enableCustomHolderId: existing.enableCustomHolderId,
+          customHolderId: existing.customHolderId,
+        },
+        after: values,
+      },
+    });
+    return { id: existing.id };
+  });
+}
+
 export function getStatutoryProfileMY(ctx: SessionContext, personId: string) {
   return withTenant(ctx, async (tx) => {
     const [row] = await tx

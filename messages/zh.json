@@ -757,7 +757,17 @@
       "headerCompany": "公司",
       "headerJoinDate": "入职日期",
       "optionNotSet": "未设置",
-      "optionLegacySuffix": "（现有值）"
+      "optionLegacySuffix": "（现有值）",
+      "bankCardTitle": "银行信息",
+      "bankGroupEmployee": "员工银行信息",
+      "bankSelectPlaceholder": "选择银行",
+      "customHolderTitle": "自定义收款人",
+      "customHolderHint": "当存在银行限制时，将该员工的薪资支付到他人账户（例如配偶或授权人）。此设置仅更改收款人，不会更改任何薪资金额。",
+      "enableCustomHolderName": "使用自定义持有人姓名",
+      "customHolderName": "自定义持有人姓名",
+      "enableCustomHolderId": "使用自定义持有人证件",
+      "customHolderId": "自定义持有人证件号码",
+      "bankSave": "保存银行信息"
     },
     "import": {
       "title": "导入员工",

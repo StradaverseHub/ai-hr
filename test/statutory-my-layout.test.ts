@@ -20,9 +20,15 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const page = read('app/admin/personnel/[employmentId]/page.tsx');
 
 describe('Statutory (Malaysia) layout: lives in the Bank & Statutory tab', () => {
-  it('renders {statutoryCard} in the bankStatutory tab panel', () => {
-    // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab.
-    expect(page.includes('bankStatutory: statutoryCard')).toBe(true);
+  it('renders {statutoryCard} + {bankCard} in the bankStatutory tab panel', () => {
+    // R24 40ef71a0 relocated statutory into its own Bank & Statutory tab. Item ef720d3a then split the bank
+    // fields into their own dedicated Bank Information card (bankCard) rendered alongside it on the same tab.
+    const start = page.indexOf('bankStatutory: (');
+    expect(start).toBeGreaterThan(-1);
+    const end = page.indexOf('),', start);
+    const panel = page.slice(start, end);
+    expect(panel.includes('{bankCard}')).toBe(true);
+    expect(panel.includes('{statutoryCard}')).toBe(true);
   });
 
   it('keeps the remaining payroll cards in the payroll tab panel', () => {
@@ -60,8 +66,10 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
     'name="taxNumber"',
     'name="taxCategory"',
     'name="numChildren"',
-    'name="bankName"',
-    'name="bankAccountNo"',
+    // Item ef720d3a — bankName/bankAccountNo moved OUT of this full-overwrite form into the dedicated Bank
+    // Information card (components/bank-info-card.tsx, its own partial setBankAction). setStatutoryAction now
+    // passes the stored bank values through unchanged, so they can't be wiped. The card's inputs are guarded
+    // by test/bank-custom-holder.test.ts instead of appearing here.
     'name="eisEligible"',
     'name="isResident"',
     'name="epfCitizenship"',
@@ -81,7 +89,9 @@ describe('Statutory (Malaysia) layout: every statutory input stays mounted (full
 describe('Statutory (Malaysia) layout: grouped section headers exist', () => {
   // Item 5a461b99 relocated the SOCSO & EIS group into its own bordered card headed by
   // `socsoEisCardTitle` (was the `statutoryGroupSocsoEis` legend); identity + bank remain plain legends.
-  for (const key of ['statutoryGroupIdentity', 'socsoEisCardTitle', 'statutoryGroupBank']) {
+  // Item ef720d3a — the statutoryGroupBank legend moved out with the bank fields (now the bankCardTitle
+  // header on the dedicated Bank Information card). The statutory form keeps identity + SOCSO/EIS headers.
+  for (const key of ['statutoryGroupIdentity', 'socsoEisCardTitle']) {
     it(`uses the ${key} group label`, () => {
       expect(page.includes(`t('${key}')`)).toBe(true);
     });

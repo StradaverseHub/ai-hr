@@ -1591,6 +1591,15 @@ export const employeeStatutoryMy = pgTable(
     epfEmployerRate: numeric('epf_employer_rate', { precision: 5, scale: 4 }),
     bankName: text('bank_name'),
     bankAccountNo: text('bank_account_no'),
+    // Custom payment holder (item ef720d3a). Where a banking restriction requires an employee's salary to be
+    // paid into a THIRD party's account (spouse / authorised person), these opt-in switches surface a custom
+    // holder name / identification that the disbursement path uses as the payee instead of the employee.
+    // Both flags default OFF ⇒ payment resolves to the employee (backward-compatible). Payee identity only —
+    // never affects any pay figure, tax, or statutory calculation.
+    enableCustomHolderName: boolean('enable_custom_holder_name').notNull().default(false),
+    customHolderName: text('custom_holder_name'),
+    enableCustomHolderId: boolean('enable_custom_holder_id').notNull().default(false),
+    customHolderId: text('custom_holder_id'),
     // TP3 / opening balances for PCB accumulators (ADR-0014): prior-employment (or pre-migration)
     // year-to-date figures, applied only when tp3Year matches the pay-period year. Per LHDN spec
     // §E.10 these feed the formula as (Y−K), K, X, Z and never appear on payslips or the EA form.

@@ -757,7 +757,17 @@
       "headerCompany": "Company",
       "headerJoinDate": "Join date",
       "optionNotSet": "Not set",
-      "optionLegacySuffix": "(existing value)"
+      "optionLegacySuffix": "(existing value)",
+      "bankCardTitle": "Bank Information",
+      "bankGroupEmployee": "Employee bank information",
+      "bankSelectPlaceholder": "Select a bank",
+      "customHolderTitle": "Custom payment holder",
+      "customHolderHint": "Pay this employee's salary into another person's account (for example a spouse or authorised person) when a banking restriction applies. This changes only the payee, never any pay amount.",
+      "enableCustomHolderName": "Use a custom holder name",
+      "customHolderName": "Custom holder name",
+      "enableCustomHolderId": "Use a custom holder identification",
+      "customHolderId": "Custom holder identification",
+      "bankSave": "Save bank information"
     },
     "import": {
       "title": "Import employees",

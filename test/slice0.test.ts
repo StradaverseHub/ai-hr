@@ -2116,7 +2116,10 @@ describe('UC — payment summary export', () => {
     expect(file.missingBank).toBe(0);
     expect(file.filename).toMatch(/payment-summary_.*_2026-05\.csv/);
     const lines = file.content.trim().split('\r\n');
-    expect(lines[0]).toBe('No,Employee,Employee Code,IC,Bank,Account No,Net Pay (RM)');
+    // Item ef720d3a added Payment Holder Name / Payment Holder ID columns (custom-holder payee resolution).
+    expect(lines[0]).toBe(
+      'No,Employee,Employee Code,IC,Payment Holder Name,Payment Holder ID,Bank,Account No,Net Pay (RM)',
+    );
     expect(lines[1]).toContain('Payee');
     expect(lines[1]).toContain('Maybank');
     expect(lines[1]).toContain('5566778899');

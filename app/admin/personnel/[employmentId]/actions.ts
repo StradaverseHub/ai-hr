@@ -698,8 +698,14 @@ export async function setStatutoryAction(formData: FormData) {
         formData.get('epfEmployeeRate') as string | null,
         formData.get('epfEmployerRate') as string | null,
       ),
-      bankName: (formData.get('bankName') as string) || undefined,
-      bankAccountNo: (formData.get('bankAccountNo') as string) || undefined,
+      // Bank fields RELOCATED to their own Bank Information card with a dedicated partial save (setBankAction,
+      // item ef720d3a). This form no longer carries them, but setStatutoryProfileMY is a FULL overwrite of the
+      // bank columns — so read the stored values and pass them through unchanged. Without this, every statutory
+      // save would silently wipe the salary-payment bank details (the same trap the TP3 + zakat pass-throughs
+      // guard against). The four custom-holder columns are NOT in setStatutoryProfileMY's write set, so they
+      // are untouched here regardless.
+      bankName: current?.bankName ?? undefined,
+      bankAccountNo: current?.bankAccountNo ?? undefined,
       // TP3 opening balances RELOCATED to the Payroll tab (item a6a47698) with their own partial save
       // (setTp3Action). This form no longer carries the four TP3 columns, but the setter is a FULL
       // overwrite of the statutory row — so read the stored values and pass them through unchanged.
@@ -749,6 +755,36 @@ export async function setTp3Action(formData: FormData) {
       tp3NetRemuneration: formData.get('tp3NetRemuneration') ? Number(formData.get('tp3NetRemuneration')) : null,
       tp3EpfClaimed: formData.get('tp3EpfClaimed') ? Number(formData.get('tp3EpfClaimed')) : null,
       tp3PcbPaid: formData.get('tp3PcbPaid') ? Number(formData.get('tp3PcbPaid')) : null,
+    });
+  } catch (e) {
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));
+  }
+  revalidatePath(`/admin/personnel/${employmentId}`);
+  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+}
+
+/**
+ * Item ef720d3a — save ONLY the salary-payment bank columns + the custom-payment-holder controls. The Bank
+ * Information card was split out of the single full-row statutory form onto its own card, so it needs a
+ * dedicated partial-update action that leaves the rest of the statutory row untouched (exactly like
+ * setTp3Action). requireAdmin gates it like setStatutoryAction; the pack setter validates require-when-enabled
+ * and appends the `employee.bank.updated` DomainEvent.
+ */
+export async function setBankAction(formData: FormData) {
+  const s = await requireAdmin();
+  const employmentId = String(formData.get('employmentId'));
+  const personId = String(formData.get('personId'));
+  const pack = packFor('MY');
+  try {
+    if (!pack) throw new Error('No localization pack for MY');
+    await pack.statutory.setBank(s, {
+      personId,
+      bankName: (formData.get('bankName') as string) || null,
+      bankAccountNo: (formData.get('bankAccountNo') as string) || null,
+      enableCustomHolderName: formData.get('enableCustomHolderName') === 'on',
+      customHolderName: (formData.get('customHolderName') as string) || null,
+      enableCustomHolderId: formData.get('enableCustomHolderId') === 'on',
+      customHolderId: (formData.get('customHolderId') as string) || null,
     });
   } catch (e) {
     redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent((e as Error).message)}`));

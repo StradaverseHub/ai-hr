@@ -757,7 +757,17 @@
       "headerCompany": "Syarikat",
       "headerJoinDate": "Tarikh menyertai",
       "optionNotSet": "Tidak ditetapkan",
-      "optionLegacySuffix": "(nilai sedia ada)"
+      "optionLegacySuffix": "(nilai sedia ada)",
+      "bankCardTitle": "Maklumat Bank",
+      "bankGroupEmployee": "Maklumat bank pekerja",
+      "bankSelectPlaceholder": "Pilih bank",
+      "customHolderTitle": "Pemegang bayaran tersuai",
+      "customHolderHint": "Bayar gaji pekerja ini ke akaun orang lain (contohnya pasangan atau orang yang diberi kuasa) apabila terdapat sekatan perbankan. Ini hanya mengubah penerima bayaran, bukan sebarang jumlah gaji.",
+      "enableCustomHolderName": "Guna nama pemegang tersuai",
+      "customHolderName": "Nama pemegang tersuai",
+      "enableCustomHolderId": "Guna pengenalan pemegang tersuai",
+      "customHolderId": "Pengenalan pemegang tersuai",
+      "bankSave": "Simpan maklumat bank"
     },
     "import": {
       "title": "Import pekerja",

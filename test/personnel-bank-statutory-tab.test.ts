@@ -32,28 +32,37 @@ describe('Personnel — Bank & Statutory tab (40ef71a0)', () => {
     expect(TABS.includes("'bankStatutory'")).toBe(true);
   });
 
-  it('renders the statutory card as the bankStatutory panel', () => {
-    expect(PAGE.includes('bankStatutory: statutoryCard')).toBe(true);
+  it('renders the statutory card + dedicated bank card as the bankStatutory panel', () => {
+    // Item ef720d3a split the salary-payment bank fields into their own Bank Information card (bankCard)
+    // rendered on this tab alongside the statutory card.
+    const start = PAGE.indexOf('bankStatutory: (');
+    expect(start).toBeGreaterThan(-1);
+    const end = PAGE.indexOf('),', start);
+    const panel = PAGE.slice(start, end);
+    expect(panel.includes('{bankCard}')).toBe(true);
+    expect(panel.includes('{statutoryCard}')).toBe(true);
   });
 
   it('relocates the card OUT of the Payroll tab (Payroll no longer renders it)', () => {
-    // Before the relocation the payroll fragment rendered {statutoryCard}; after it, that JSX reference is
-    // gone entirely (the card is referenced by name in the bankStatutory panel instead). Its absence proves
-    // the Payroll tab no longer shows the statutory/bank form.
-    expect(PAGE.includes('{statutoryCard}')).toBe(false);
+    // The statutory card renders only in the bankStatutory panel — the payroll fragment must not reference it.
+    const start = PAGE.indexOf('payroll: (');
+    const end = PAGE.indexOf('),', start);
+    const payrollPanel = PAGE.slice(start, end);
+    expect(payrollPanel.includes('{statutoryCard}')).toBe(false);
     // The payroll panel still renders its own cards (relocation only removed the statutory one).
-    expect(PAGE.includes('{payComponentsCard}')).toBe(true);
-    expect(PAGE.includes('{compensationCard}')).toBe(true);
+    expect(payrollPanel.includes('{payComponentsCard}')).toBe(true);
+    expect(payrollPanel.includes('{compensationCard}')).toBe(true);
   });
 
-  it('preserves the statutory card as a single full-overwrite <form> with its action + bank fields', () => {
-    // The const definition is untouched: one form, one action binding, and the bank + statutory inputs.
+  it('preserves the statutory card as a single full-overwrite <form>, with bank fields on their own card', () => {
+    // The const definition is untouched: one form, one action binding, and the statutory inputs.
     expect(PAGE.includes('const statutoryCard = admin ?')).toBe(true);
     expect(PAGE.includes('<form action={setStatutoryAction}')).toBe(true);
-    // Salary-payment (bank) inputs that must remain mounted inside the single form.
-    expect(PAGE.includes('name="bankName"')).toBe(true);
-    expect(PAGE.includes('name="bankAccountNo"')).toBe(true);
-    // Malaysia statutory inputs that must remain mounted inside the same form.
+    // Item ef720d3a — salary-payment (bank) fields now live on the dedicated Bank Information card (its own
+    // partial setBankAction), no longer inside the statutory form. bankCard is wired with setBankAction.
+    expect(PAGE.includes('const bankCard = admin ?')).toBe(true);
+    expect(PAGE.includes('action={setBankAction}')).toBe(true);
+    // Malaysia statutory inputs that must remain mounted inside the statutory form.
     for (const field of ['epfNumber', 'socsoNumber', 'taxNumber', 'icNumber']) {
       expect(PAGE.includes(`name="${field}"`), `missing statutory input ${field}`).toBe(true);
     }

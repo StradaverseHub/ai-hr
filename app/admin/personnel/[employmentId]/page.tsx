@@ -21,6 +21,7 @@ import { EntitlementBreakdown } from '@/components/leave/EntitlementBreakdown';
 import { AuditTable } from '@/components/audit-table';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { EpfElection } from '@/components/epf-election';
+import { BankInfoCard } from '@/components/bank-info-card';
 import {
   addDelegationAction,
   addReportingLineAction,
@@ -38,6 +39,7 @@ import {
   removePersonPhotoAction,
   setStatutoryAction,
   setTp3Action,
+  setBankAction,
   terminateAction,
   transferAction,
 } from './actions';
@@ -1360,20 +1362,12 @@ export default async function EmployeePage({
           </div>
         </fieldset>
 
-        {/* Group 4 — Salary payment (bank) */}
-        <fieldset className="flex flex-col gap-3 border-t border-border pt-4">
-          <legend className="mb-1 w-full text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t('statutoryGroupBank')}
-          </legend>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label={t('bank')}>
-              <input name="bankName" defaultValue={statutory?.bankName ?? ''} className={inputCls} />
-            </Field>
-            <Field label={t('bankAccount')}>
-              <input name="bankAccountNo" defaultValue={statutory?.bankAccountNo ?? ''} className={inputCls} />
-            </Field>
-          </div>
-        </fieldset>
+        {/* Item ef720d3a — the salary-payment bank fields (formerly Group 4) have moved to their OWN dedicated
+            Bank Information card (bankCard, rendered above on this tab) with a partial save (setBankAction).
+            The bank name is now a pick-from-catalog select and the card adds a custom-payment-holder function.
+            Because this statutory form is a full-row overwrite, the bank columns could not simply move into it —
+            setStatutoryAction now reads the stored bankName/bankAccountNo and passes them through unchanged so
+            relocating the UI can never wipe them (the four custom-holder columns are outside its write set). */}
 
         {/* Item a6a47698 — the TP3 / opening-balances fieldset (formerly Group 5) and the Zakat pointer
             have moved to the Payroll tab (tp3Card + zakatSummaryCard). They are payroll matters, not
@@ -1386,6 +1380,28 @@ export default async function EmployeePage({
         </div>
       </form>
     </Card>
+  ) : null;
+
+  // ── BANK INFORMATION (Bank & Statutory tab) ─────────────────────────────────
+  // Item ef720d3a — the salary-payment bank fields were split out of the full-row statutory form into their
+  // OWN dedicated card with a partial save (setBankAction, only the bank + custom-holder columns). The bank
+  // name is now a pick-from-catalog select and the card adds the custom-payment-holder function (pay salary
+  // to a third party's account). It's a client island (interactive reveal/require) rendered as JSX only, so
+  // the RSC server/client boundary is respected.
+  const bankCard = admin ? (
+    <BankInfoCard
+      action={setBankAction}
+      employmentId={emp.employmentId}
+      personId={emp.personId}
+      defaults={{
+        bankName: statutory?.bankName ?? null,
+        bankAccountNo: statutory?.bankAccountNo ?? null,
+        enableCustomHolderName: statutory?.enableCustomHolderName ?? false,
+        customHolderName: statutory?.customHolderName ?? null,
+        enableCustomHolderId: statutory?.enableCustomHolderId ?? false,
+        customHolderId: statutory?.customHolderId ?? null,
+      }}
+    />
   ) : null;
 
   // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
@@ -1985,7 +2001,15 @@ export default async function EmployeePage({
     // (Group 4) alongside EPF/SOCSO/EIS/PCB — relocated WHOLE out of Payroll into its own tab. The
     // const definition (statutoryCard) is unchanged; only its render location moved, so the
     // full-row-overwrite form and every mounted input stay byte-identical and no server logic changed.
-    bankStatutory: statutoryCard,
+    // Item ef720d3a — the dedicated Bank Information card (bankCard) is pinned FIRST on this tab, above the
+    // statutory registration/EPF/SOCSO card. Bank details are the most-referenced payment attribute, and the
+    // card is visually separated with its own save (setBankAction), per the redesign request.
+    bankStatutory: (
+      <>
+        {bankCard}
+        {statutoryCard}
+      </>
+    ),
     // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
     // statutory/bank card previously pinned to the top (feedback 7524eda1) now lives on Bank & Statutory.
     // compensationCard (Basic Salary / salary history) is pinned FIRST (feedback 326f0b5e): Basic Salary

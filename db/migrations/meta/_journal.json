@@ -1394,6 +1394,13 @@
       "when": 1781862197000,
       "tag": "0198_socso_eis_statutory_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1781862198000,
+      "tag": "0199_bank_custom_holder",
+      "breakpoints": true
     }
   ]
 }

@@ -757,7 +757,17 @@
       "headerCompany": "Công ty",
       "headerJoinDate": "Ngày vào làm",
       "optionNotSet": "Chưa đặt",
-      "optionLegacySuffix": "(giá trị hiện có)"
+      "optionLegacySuffix": "(giá trị hiện có)",
+      "bankCardTitle": "Thông tin ngân hàng",
+      "bankGroupEmployee": "Thông tin ngân hàng của nhân viên",
+      "bankSelectPlaceholder": "Chọn ngân hàng",
+      "customHolderTitle": "Người nhận thanh toán tùy chỉnh",
+      "customHolderHint": "Trả lương của nhân viên này vào tài khoản của người khác (ví dụ vợ/chồng hoặc người được ủy quyền) khi có hạn chế ngân hàng. Việc này chỉ thay đổi người nhận, không thay đổi bất kỳ khoản lương nào.",
+      "enableCustomHolderName": "Dùng tên chủ tài khoản tùy chỉnh",
+      "customHolderName": "Tên chủ tài khoản tùy chỉnh",
+      "enableCustomHolderId": "Dùng giấy tờ tùy thân chủ tài khoản tùy chỉnh",
+      "customHolderId": "Số giấy tờ tùy thân chủ tài khoản tùy chỉnh",
+      "bankSave": "Lưu thông tin ngân hàng"
     },
     "import": {
       "title": "Nhập nhân viên",
