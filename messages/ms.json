@@ -112,7 +112,7 @@
     "notifications": "Pemberitahuan",
     "analytics": "Analitik",
     "attendancePolicy": "Tetapan syif",
-    "attendancePolicyConfig": "Tetapan Kelewatan, Balik Awal & Kerja Lebih Masa",
+    "attendancePolicyConfig": "Dasar kehadiran",
     "toilPolicy": "Cuti ganti",
     "leaveApproval": "Rantaian kelulusan",
     "feedback": "Maklum Balas",
@@ -2107,7 +2107,7 @@
       "subtitle": "Kelompok gaji",
       "paymentSummary": "Ringkasan pembayaran",
       "paymentSummaryTitle": "Muat turun CSV pekerja, bank, akaun dan gaji bersih untuk muat naik bank secara manual.",
-      "generatePayslips": "Proses Gaji",
+      "generatePayslips": "Jana slip gaji",
       "closeBatch": "Tutup kelompok",
       "disclaimer": "<strong>Angka draf.</strong> Amaun berkanun dikira daripada peraturan Malaysia yang disahkan dan berkuat kuasa pada akhir tempoh. Semak setiap slip gaji sebelum menutup — setelah ditutup, kelompok ini tidak boleh diubah. Fail bank (<mono>CP39 / KWSP / PERKESO</mono>) dijana secara berasingan.",
       "leaversTitle": "Pekerja berhenti tempoh ini",
@@ -4118,7 +4118,6 @@
       "cancel": "Batal",
       "back": "Kembali ke kumpulan cuti"
     },
-<<<<<<< HEAD
     "attendanceRule": {
       "moduleTitle": "Tetapan Kelewatan, Balik Awal & Kerja Lebih Masa",
       "moduleDescription": "Pustaka peraturan pengiraan kehadiran yang boleh diguna semula. Berikan peraturan kepada syif, atau biarkan syif menggunakan peraturan Standard.",
@@ -4175,7 +4174,7 @@
       "statutoryCapNote": "Pengganda lebih masa berkanun (1.5×, 2×, 3×) kekal sebagai minimum undang-undang dan ditetapkan dalam kadar lebih masa syarikat. Peraturan ini membentuk dan membundarkan lebih masa di atasnya.",
       "save": "Simpan",
       "cancel": "Batal"
-=======
+    },
     "benefitScheme": {
       "groupsTitle": "Kumpulan Gred",
       "groupsHelp": "Kumpulkan beberapa gred supaya satu skim boleh meliputi kesemuanya sekali gus (cth. \"Gred 12–15\"). Satu gred tergolong dalam satu kumpulan.",
@@ -4222,7 +4221,6 @@
       "threshold2": "Peringkat 2 hingga (tahun)",
       "thresholdError": "Sempadan peringkat mesti nombor bulat dengan yang kedua lebih besar daripada yang pertama.",
       "saveEntitlement": "Simpan kelayakan"
->>>>>>> r37-benefit
     }
   },
   "topbar": {

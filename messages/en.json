@@ -112,7 +112,7 @@
     "notifications": "Notifications",
     "analytics": "Analytics",
     "attendancePolicy": "Shift settings",
-    "attendancePolicyConfig": "Lateness, Early Out & Overtime Settings",
+    "attendancePolicyConfig": "Attendance policy",
     "toilPolicy": "Time off in lieu",
     "leaveApproval": "Approval chain",
     "feedback": "Feedback",
@@ -1870,7 +1870,7 @@
       "subtitle": "Payroll batch",
       "paymentSummary": "Payment summary",
       "paymentSummaryTitle": "Download a CSV of employee, bank, account and net pay for manual bank upload.",
-      "generatePayslips": "Process Payroll",
+      "generatePayslips": "Generate payslips",
       "closeBatch": "Close batch",
       "disclaimer": "<strong>Draft figures.</strong> Statutory amounts are computed from the verified Malaysian rules in effect at period end. Review every payslip before closing — once closed, the batch is immutable. Bank files (<mono>CP39 / KWSP / PERKESO</mono>) are generated separately.",
       "leaversTitle": "Leavers this period",
@@ -4118,7 +4118,6 @@
       "cancel": "Cancel",
       "back": "Back to holiday groups"
     },
-<<<<<<< HEAD
     "attendanceRule": {
       "moduleTitle": "Lateness, Early Out & Overtime Settings",
       "moduleDescription": "A reusable library of attendance calculation rules. Assign a rule to a shift, or let shifts fall back to the Standard rule.",
@@ -4175,7 +4174,7 @@
       "statutoryCapNote": "Statutory overtime multipliers (1.5×, 2×, 3×) remain the legal minimum and are set in the company overtime rates. These rules shape and round overtime on top of that.",
       "save": "Save",
       "cancel": "Cancel"
-=======
+    },
     "benefitScheme": {
       "groupsTitle": "Grade Groups",
       "groupsHelp": "Group several grades so a scheme can cover them at once (e.g. \"Grade 12–15\"). A grade belongs to one group.",
@@ -4222,7 +4221,6 @@
       "threshold2": "Tier 2 to (years)",
       "thresholdError": "Tier boundaries must be whole numbers with the second greater than the first.",
       "saveEntitlement": "Save entitlement"
->>>>>>> r37-benefit
     }
   },
   "topbar": {

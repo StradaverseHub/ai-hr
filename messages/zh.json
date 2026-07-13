@@ -112,7 +112,7 @@
     "notifications": "通知",
     "analytics": "分析",
     "attendancePolicy": "班次设置",
-    "attendancePolicyConfig": "迟到、早退与加班设置",
+    "attendancePolicyConfig": "考勤政策",
     "toilPolicy": "调休",
     "leaveApproval": "审批链",
     "feedback": "反馈",
@@ -2107,7 +2107,7 @@
       "subtitle": "薪资批次",
       "paymentSummary": "付款汇总",
       "paymentSummaryTitle": "下载包含员工、银行、账号和实发工资的 CSV，用于手动银行上传。",
-      "generatePayslips": "处理薪资",
+      "generatePayslips": "生成工资单",
       "closeBatch": "关闭批次",
       "disclaimer": "<strong>草稿数据。</strong>法定金额依据期末生效的已核实马来西亚规则计算。关闭前请核对每一份工资单 — 一旦关闭，批次即不可更改。银行文件（<mono>CP39 / KWSP / PERKESO</mono>）将单独生成。",
       "leaversTitle": "本周期离职人员",
@@ -4118,7 +4118,6 @@
       "cancel": "取消",
       "back": "返回假期组"
     },
-<<<<<<< HEAD
     "attendanceRule": {
       "moduleTitle": "迟到、早退与加班设置",
       "moduleDescription": "可重复使用的考勤计算规则库。为班次分配规则，或让班次回退到标准规则。",
@@ -4175,7 +4174,7 @@
       "statutoryCapNote": "法定加班倍率（1.5×、2×、3×）仍为法律最低标准，在公司加班费率中设置。这些规则在此基础上调整并对加班取整。",
       "save": "保存",
       "cancel": "取消"
-=======
+    },
     "benefitScheme": {
       "groupsTitle": "职级组",
       "groupsHelp": "将多个职级分组，使一个方案可一次覆盖它们（例如\"职级12–15\"）。一个职级只属于一个组。",
@@ -4222,7 +4221,6 @@
       "threshold2": "层级2 至（年）",
       "thresholdError": "层级边界必须为整数，且第二个大于第一个。",
       "saveEntitlement": "保存额度"
->>>>>>> r37-benefit
     }
   },
   "topbar": {
